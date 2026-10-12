@@ -119,6 +119,17 @@
         <sonar.organization>njmule</sonar.organization>
         <sonar.projectKey>njMule_njMule</sonar.projectKey>
         <sonar.projectName>njMule</sonar.projectName>
+        <!-- MD5 and SHA-1 are mandated by the eD2K and Kad protocols and file formats (hashes, key
+             derivation, signatures), as in config/spotbugs/exclude.xml. -->
+        <sonar.issue.ignore.multicriteria>wh1,wh2,wh3,wh4</sonar.issue.ignore.multicriteria>
+        <sonar.issue.ignore.multicriteria.wh1.ruleKey>java:S4790</sonar.issue.ignore.multicriteria.wh1.ruleKey>
+        <sonar.issue.ignore.multicriteria.wh1.resourceKey>**/org/njmule/core/crypto/**</sonar.issue.ignore.multicriteria.wh1.resourceKey>
+        <sonar.issue.ignore.multicriteria.wh2.ruleKey>java:S4790</sonar.issue.ignore.multicriteria.wh2.ruleKey>
+        <sonar.issue.ignore.multicriteria.wh2.resourceKey>**/org/njmule/core/files/hash/**</sonar.issue.ignore.multicriteria.wh2.resourceKey>
+        <sonar.issue.ignore.multicriteria.wh3.ruleKey>java:S4790</sonar.issue.ignore.multicriteria.wh3.ruleKey>
+        <sonar.issue.ignore.multicriteria.wh3.resourceKey>**/org/njmule/core/persist/format/**</sonar.issue.ignore.multicriteria.wh3.resourceKey>
+        <sonar.issue.ignore.multicriteria.wh4.ruleKey>java:S4790</sonar.issue.ignore.multicriteria.wh4.ruleKey>
+        <sonar.issue.ignore.multicriteria.wh4.resourceKey>**/org/njmule/core/protocol/**</sonar.issue.ignore.multicriteria.wh4.resourceKey>
 
         <!-- Quality gates (overridable from the command line, e.g. -Dspotless.check.skip=true) -->
         <jacoco.minimum.line.coverage>0.70</jacoco.minimum.line.coverage>
