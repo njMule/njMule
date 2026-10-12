@@ -1,0 +1,47 @@
+njMule - Next generation Java Mule
+Copyright (C) 2026 Salvatore Coppola and the njMule contributors
+
+njMule is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See the file LICENSE for the full text. SPDX: GPL-3.0-or-later.
+
+This program comes with ABSOLUTELY NO WARRANTY (see sections 15 and 16 of the
+license).
+
+
+Derivation from eMule
+---------------------
+njMule is an independent re-implementation in Java of the eMule file-sharing
+client. Protocol constants, file formats and algorithms were translated from
+the eMule source code, and the user-interface strings and their translations
+are converted from eMule's resource files.
+
+    eMule
+    Copyright (C) 2002-2026 Merkur (devteam at emule-project dot net)
+    and the eMule contributors
+    https://www.emule-project.net
+    Community version used as reference: https://github.com/irwir/eMule
+
+eMule is licensed under the GNU General Public License version 2 or (at your
+option) any later version; the derived material is used here under version 3.
+
+njMule is not affiliated with or endorsed by the eMule project. eMule,
+eDonkey2000 and other names are the property of their respective owners.
+
+
+Third-party components
+----------------------
+Binary distributions of njMule include the following components. Their
+licenses are compatible with the GNU GPL version 3. The complete list with
+versions is generated at release time in THIRD-PARTY.txt.
+
+    SLF4J API                   MIT License
+    Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
+    OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
+    AtlantaFX                   MIT License
+    Ikonli                      Apache License 2.0
+    GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
+    (Substrate VM runtime embedded in the native executables)
+
+Test-only dependencies (JUnit, AssertJ, jqwik) are not distributed.
