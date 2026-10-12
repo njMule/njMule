@@ -26,14 +26,14 @@ Regenerate after editing the master (the GUI build packages the 16–512 px PNGs
 its window icons, see `njmule-gui/pom.xml`):
 
 ```bash
-java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated
+./mvnw -q dependency:copy -Dartifact=com.github.weisj:jsvg:2.2.0 -DoutputDirectory=target/tools
+java -Djava.awt.headless=true -cp target/tools/jsvg-2.2.0.jar tools/IconGen.java branding/njmule-icon.svg branding/generated
 ```
+
+`IconGen` renders the SVG with [JSVG](https://github.com/weisJ/jsvg) (MIT), a build-time tool only.
 
 The social preview is rendered from the 512 px icon:
 
 ```bash
 java -Djava.awt.headless=true tools/SocialPreview.java branding/generated/njmule-512.png branding/generated/njmule-social-preview.png
 ```
-
-`IconGen` supports only the SVG subset used here (rect, circle, paths with M/L/C/Q/Z, solid fills,
-round strokes); keep the master within it.

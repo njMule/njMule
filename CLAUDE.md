@@ -107,7 +107,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `tools/native-docker.sh` (Maven on a copy of the sources inside the container: ~1.5 min instead of
   ~6 on the bind mount): `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash
   <image> /work/tools/native-docker.sh` (Git Bash: prefix `MSYS_NO_PATHCONV=1`).
-- Regenerate icons: `java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated`.
+- Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
   Known constraint: google-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
