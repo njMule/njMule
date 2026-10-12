@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+version: 2
+updates:
+    - package-ecosystem: maven
+      directory: /
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "ci(deps)"

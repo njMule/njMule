@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Security problems must not be reported here: see SECURITY.md.
+              Do not paste user hashes, IP addresses or private file names.
+    - type: input
+      id: version
+      attributes:
+          label: njMule version
+          description: Output of `njmule --version`
+      validations:
+          required: true
+    - type: dropdown
+      id: os
+      attributes:
+          label: Operating system
+          options: ["Windows", "macOS", "Linux"]
+      validations:
+          required: true
+    - type: textarea
+      id: what
+      attributes:
+          label: What happened and what did you expect?
+      validations:
+          required: true
+    - type: textarea
+      id: steps
+      attributes:
+          label: Steps to reproduce
+    - type: textarea
+      id: logs
+      attributes:
+          label: Relevant log lines
+          render: text
