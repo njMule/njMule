@@ -78,6 +78,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
 | `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX + Ikonli desktop app |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (`ManualTicker`, later fake server/peer) |
+| `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `config/` | license header, Checkstyle and SpotBugs configuration |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
 | `tools/` | single-file helper programs (`IconGen.java`) |
@@ -93,6 +94,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Run headless: `./mvnw -pl njmule-app -am package`, then
   `java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main`
   (`;` as separator on Windows). Run the GUI: `./mvnw -pl njmule-gui javafx:run` after `install`.
+- Benchmarks: `./mvnw -pl njmule-bench -am package -DskipTests`, then
+  `java -jar njmule-bench/target/benchmarks.jar` (one operation = 1 MiB, so ops/s = MiB/s).
 - Static analysis on SonarQube Cloud: `./mvnw verify sonar:sonar -Dsonar.token=<token>` (project
   `salvatore-coppola_njMule`, organisation `salvatore-coppola`); in CI the `sonar` job runs once the
   `SONAR_TOKEN` secret is set.

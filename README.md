@@ -46,6 +46,7 @@ Requirements: JDK 25. Maven is not needed — the Maven Wrapper downloads it.
 ./mvnw verify                                   # build, check formatting, run all tests
 ./mvnw -pl njmule-app -am package               # headless launcher (njmule-app/target)
 ./mvnw spotless:apply                           # format the code (google-java-format, AOSP)
+./mvnw -pl njmule-bench -am package -DskipTests # JMH benchmarks: java -jar njmule-bench/target/benchmarks.jar
 ```
 
 On Windows use `mvnw.cmd`. Run the headless engine (on Windows separate the module path with `;`):
@@ -75,6 +76,7 @@ Run the desktop GUI during development:
 | `njmule-app` | headless launcher, command line, logging |
 | `njmule-gui` | JavaFX desktop application |
 | `njmule-testkit` | test doubles shared by the modules |
+| `njmule-bench` | JMH benchmarks of the hot paths (not distributed) |
 
 ## Contributing
 
