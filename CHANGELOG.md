@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format follows
 - Headless launcher with `--version`, `--license`, `--warranty`, `--notice`, `--config-dir` and
   `--log-level`; programmatic SLF4J/Logback configuration with a rolling log file.
 - Placeholder JavaFX window with the AtlantaFX Nord light/dark themes.
-- Sober pastel colour palette and brand colours (ADR 0009).
+- Sober pastel colour palette and brand colours.
 - Quality gates: google-java-format (Spotless), Checkstyle, Error Prone, SpotBugs with
   FindSecBugs, JaCoCo coverage.
 - GPL-3.0-or-later licensing following REUSE: SPDX headers, `LICENSES/`, `NOTICE`, `AUTHORS`,

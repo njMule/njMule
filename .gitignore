@@ -99,3 +99,6 @@ fixtures-private/
 *.pcapng
 *.pcap
 *.etl
+
+# --- Design notes kept local by the maintainer (plan, architecture, ADRs) ---------
+/docs/

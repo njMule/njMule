@@ -23,4 +23,4 @@ The PR title must be a Conventional Commits header, e.g. "feat(kad): add routing
 
 ## Interoperability
 
-<!-- For protocol changes: which interop checks against eMule were run (docs/INTEROP.md)? -->
+<!-- For protocol changes: which interop checks against eMule were run? -->

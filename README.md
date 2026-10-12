@@ -12,7 +12,7 @@ Java 25, wire-compatible with the eMule network and able to import an existing e
 
 > **Status: pre-alpha (milestone M0).** The project skeleton, the engine loop and the configuration
 > layer exist; networking, downloads and the full user interface are being built milestone by
-> milestone (see [docs/PLAN.md](docs/PLAN.md)). It is not usable for file sharing yet.
+> milestone. It is not usable for file sharing yet.
 
 ## Goals
 
@@ -59,8 +59,6 @@ Run the desktop GUI during development:
 | `njmule-app` | headless launcher, command line, logging |
 | `njmule-gui` | JavaFX desktop application |
 | `njmule-testkit` | test doubles shared by the modules |
-
-Architecture and decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/adr](docs/adr).
 
 ## Contributing
 

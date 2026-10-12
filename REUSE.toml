@@ -13,8 +13,6 @@ path = [
     "**/META-INF/services/**",
     "**/META-INF/native-image/**",
     "**/src/test/resources/**",
-    "docs/**/*.png",
-    "docs/**/*.svg",
     "branding/**",
     "**/src/main/resources/**/icons/**",
     "packaging/**/*.png",

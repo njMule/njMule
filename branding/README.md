@@ -11,7 +11,7 @@ Original artwork of the njMule project (no eMule asset is used), licensed GPL-3.
 | `njmule-icon.svg` | master application icon: a stylised mule head in deep indigo strokes on a pastel periwinkle rounded square |
 | `generated/` | PNG 16–1024 px, `njmule.ico` (Windows), `njmule.icns` (macOS) rendered from the master |
 
-Palette: sober pastel tones, see `docs/PLAN.md` §6.7.
+Palette: sober pastel tones compatible with the AtlantaFX themes (WCAG AA contrast).
 
 | Role | Colour | Note |
 |---|---|---|

@@ -8,6 +8,7 @@ njMule — **N**ext generation **J**ava **Mule**: a modern Java 25 re-implementa
 (eD2K + Kad2), wire-compatible with the eMule network. Licensed **GPL-3.0-or-later**.
 
 The full implementation plan lives in `docs/PLAN.md` (milestones M0–M8). Read it before starting work.
+`docs/` is **local only**: it is git-ignored by the maintainer's decision and must never be committed.
 
 **Language: everything in the repository is written in English** — source code, comments, commit
 messages, PR texts, documentation (`docs/`, README, changelog). Only the UI translations
@@ -79,7 +80,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `config/` | license header, Checkstyle and SpotBugs configuration |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
 | `tools/` | single-file helper programs (`IconGen.java`) |
-| `docs/` | `PLAN.md`, `ARCHITECTURE.md`, `PROTOCOL.md`, `FORMATS.md`, `adr/` |
+| `docs/` (local, git-ignored) | `PLAN.md`, `ARCHITECTURE.md`, `PROTOCOL.md`, `FORMATS.md`, `adr/` |
 
 ## Tooling and commands
 

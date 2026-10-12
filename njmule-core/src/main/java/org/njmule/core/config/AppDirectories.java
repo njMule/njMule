@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Where njMule keeps its files, following each operating system's conventions (Known Folders,
- * {@code ~/Library}, XDG). The layout table is in {@code docs/ARCHITECTURE.md}.
+ * {@code ~/Library}, XDG).
  *
  * <p>An explicit root ({@code --config-dir}) or the portable mode ({@value #PORTABLE_MARKER} next
  * to the executable) puts everything below one directory. The installation directory is never
