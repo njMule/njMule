@@ -81,6 +81,9 @@ class ObfuscationTest {
         assertThatThrownBy(() -> a.sharedSecret(one)).isInstanceOf(DecodeException.class);
         byte[] pMinusOne = Dh768.toBytes(Dh768.P.subtract(java.math.BigInteger.ONE));
         assertThatThrownBy(() -> a.sharedSecret(pMinusOne)).isInstanceOf(DecodeException.class);
+        byte[] aboveP = new byte[Dh768.SIZE];
+        java.util.Arrays.fill(aboveP, (byte) 0xFF);
+        assertThatThrownBy(() -> a.sharedSecret(aboveP)).isInstanceOf(DecodeException.class);
     }
 
     @Test

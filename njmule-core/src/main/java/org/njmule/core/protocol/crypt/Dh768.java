@@ -17,15 +17,28 @@
 package org.njmule.core.protocol.crypt;
 
 import java.math.BigInteger;
+import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.HexFormat;
+import javax.crypto.KeyAgreement;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.DHPublicKeySpec;
+import org.bouncycastle.util.BigIntegers;
 import org.njmule.core.protocol.io.DecodeException;
 
 /**
  * Diffie-Hellman over the fixed 768-bit group of the server obfuscation (g = 2, 128-bit private
- * exponents). Public values travel as 96-byte big-endian numbers. Unlike a plain implementation,
- * degenerate public values (0, 1, p - 1 and above) are rejected.
+ * exponents), on the JDK's key agreement, which also rejects degenerate public values. Public
+ * values travel as 96-byte big-endian numbers.
  */
 public final class Dh768 {
 
@@ -43,21 +56,24 @@ public final class Dh768 {
 
     private static final BigInteger G = BigInteger.TWO;
     private static final int PRIVATE_BITS = 128;
+    private static final String ALGORITHM = "DH";
 
-    private final BigInteger privateKey;
+    private final PrivateKey privateKey;
     private final byte[] publicValue;
 
-    private Dh768(BigInteger privateKey) {
-        this.privateKey = privateKey;
-        this.publicValue = toBytes(G.modPow(privateKey, P));
+    private Dh768(KeyPair keys) {
+        this.privateKey = keys.getPrivate();
+        this.publicValue = toBytes(((DHPublicKey) keys.getPublic()).getY());
     }
 
     public static Dh768 generate(SecureRandom random) {
-        BigInteger a;
-        do {
-            a = new BigInteger(PRIVATE_BITS, random);
-        } while (a.signum() == 0);
-        return new Dh768(a);
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(ALGORITHM);
+            generator.initialize(new DHParameterSpec(P, G, PRIVATE_BITS), random);
+            return new Dh768(generator.generateKeyPair());
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Diffie-Hellman unavailable", e);
+        }
     }
 
     /** {@code g^a mod p}, 96 bytes. */
@@ -70,26 +86,24 @@ public final class Dh768 {
         if (otherPublic.length != SIZE) {
             throw new DecodeException("DH public values have 96 bytes");
         }
-        BigInteger b = new BigInteger(1, otherPublic);
-        if (b.compareTo(BigInteger.ONE) <= 0 || b.compareTo(P.subtract(BigInteger.ONE)) >= 0) {
-            throw new DecodeException("degenerate DH public value");
+        try {
+            PublicKey peer =
+                    KeyFactory.getInstance(ALGORITHM)
+                            .generatePublic(
+                                    new DHPublicKeySpec(new BigInteger(1, otherPublic), P, G));
+            KeyAgreement agreement = KeyAgreement.getInstance(ALGORITHM);
+            agreement.init(this.privateKey);
+            agreement.doPhase(peer, true);
+            return toBytes(new BigInteger(1, agreement.generateSecret()));
+        } catch (InvalidKeyException | InvalidKeySpecException e) {
+            throw new DecodeException("degenerate DH public value", e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Diffie-Hellman unavailable", e);
         }
-        return toBytes(b.modPow(this.privateKey, P));
     }
 
     static byte[] toBytes(BigInteger value) {
-        byte[] raw = value.toByteArray();
-        if (raw.length == SIZE) {
-            return raw;
-        }
-        byte[] out = new byte[SIZE];
-        if (raw.length > SIZE) {
-            // A leading sign byte.
-            System.arraycopy(raw, raw.length - SIZE, out, 0, SIZE);
-        } else {
-            System.arraycopy(raw, 0, out, SIZE - raw.length, raw.length);
-        }
-        return out;
+        return BigIntegers.asUnsignedByteArray(SIZE, value);
     }
 
     @Override
