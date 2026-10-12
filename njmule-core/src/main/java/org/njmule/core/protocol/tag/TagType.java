@@ -37,7 +37,7 @@ public final class TagType {
     public static final int STR16 = 0x20;
 
     /** Flag on the type byte of the new eD2K encoding: a one-byte id follows. */
-    static final int NEW_ED2K_FLAG = 0x80;
+    public static final int NEW_ED2K_FLAG = 0x80;
 
     private TagType() {}
 }
