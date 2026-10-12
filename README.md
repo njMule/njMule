@@ -38,6 +38,13 @@ On Windows use `mvnw.cmd`. Run the headless engine (on Windows separate the modu
 java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main --help
 ```
 
+Build the native executable (GraalVM; on any OS with Docker, this produces the Linux x64 binary
+`njmule-app/target/njmule`):
+
+```bash
+docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" -w /work --entrypoint ./mvnw ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 -B -Pnative -pl njmule-app -am package -DskipTests
+```
+
 Run the desktop GUI during development:
 
 ```bash

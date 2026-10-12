@@ -91,12 +91,20 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Run headless: `./mvnw -pl njmule-app -am package`, then
   `java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main`
   (`;` as separator on Windows). Run the GUI: `./mvnw -pl njmule-gui javafx:run` after `install`.
+- Native image: GraalVM Community in the pinned container
+  `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` (same image as CI; no MSVC needed on
+  Windows, it builds the Linux x64 binary `njmule-app/target/njmule`):
+  `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" -w /work --entrypoint ./mvnw <image> -B -Pnative -pl njmule-app -am package -DskipTests`.
 - Regenerate icons: `java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated`.
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
   Known constraint: google-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:salvatore-coppola/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
+- **Initial phase (until the maintainer says otherwise): no pull requests.** Each milestone lives on
+  its own branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md`
+  §10.1 met and `./mvnw verify` green) fast-forward `main` to it, push `main`, and start the next
+  milestone from the updated `main`.
 
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
 
