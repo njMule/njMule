@@ -16,105 +16,64 @@
  */
 package org.njmule.core.security;
 
-import java.util.ArrayList;
-import java.util.Arrays;
+import com.google.common.collect.ImmutableRangeMap;
+import com.google.common.collect.Range;
+import com.google.common.collect.RangeMap;
+import com.google.common.collect.TreeRangeMap;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Optional;
 import org.njmule.core.persist.format.IpFilterDat;
 
 /**
  * Immutable set of blocked IPv4 ranges: a range blocks when its level is below the filter level.
- * Lookups are a binary search over disjoint ranges, safe from any thread.
+ * Where ranges overlap, the one listed later wins. Safe to use from any thread.
  */
 public final class IpFilter {
 
     /** Filter level used when the user did not choose one. */
     public static final int DEFAULT_LEVEL = 127;
 
-    private static final IpFilter EMPTY = new IpFilter(new long[0], new long[0], new String[0]);
+    private static final IpFilter EMPTY = new IpFilter(ImmutableRangeMap.of());
 
-    // Unsigned addresses widened to long; sorted, disjoint and non-adjacent.
-    private final long[] starts;
-    private final long[] ends;
-    private final String[] descriptions;
+    // Keyed by the unsigned address widened to long.
+    private final ImmutableRangeMap<Long, String> blocked;
 
-    private IpFilter(long[] starts, long[] ends, String[] descriptions) {
-        this.starts = starts;
-        this.ends = ends;
-        this.descriptions = descriptions;
+    private IpFilter(ImmutableRangeMap<Long, String> blocked) {
+        this.blocked = blocked;
     }
 
     public static IpFilter empty() {
         return EMPTY;
     }
 
-    /** Keeps the ranges that block at {@code level} and merges those that touch or overlap. */
+    /** Keeps the ranges that block at {@code level}. */
     public static IpFilter of(Collection<IpFilterDat.Range> ranges, int level) {
-        List<IpFilterDat.Range> blocking = new ArrayList<>();
+        RangeMap<Long, String> blocked = TreeRangeMap.create();
         for (IpFilterDat.Range r : ranges) {
             if (r.level() < level) {
-                blocking.add(r);
+                blocked.put(
+                        Range.closed(
+                                Integer.toUnsignedLong(r.start()), Integer.toUnsignedLong(r.end())),
+                        r.description());
             }
         }
-        if (blocking.isEmpty()) {
-            return EMPTY;
-        }
-        blocking.sort(Comparator.comparingLong(r -> Integer.toUnsignedLong(r.start())));
-        long[] starts = new long[blocking.size()];
-        long[] ends = new long[blocking.size()];
-        String[] descriptions = new String[blocking.size()];
-        int n = 0;
-        for (IpFilterDat.Range r : blocking) {
-            long start = Integer.toUnsignedLong(r.start());
-            long end = Integer.toUnsignedLong(r.end());
-            if (n > 0 && start <= ends[n - 1] + 1) {
-                ends[n - 1] = Math.max(ends[n - 1], end);
-            } else {
-                starts[n] = start;
-                ends[n] = end;
-                descriptions[n] = r.description();
-                n++;
-            }
-        }
-        return new IpFilter(
-                Arrays.copyOf(starts, n), Arrays.copyOf(ends, n), Arrays.copyOf(descriptions, n));
+        return new IpFilter(ImmutableRangeMap.copyOf(blocked));
     }
 
     /** Whether {@code ip} ({@link org.njmule.core.util.Ipv4} form) is blocked; 0 never is. */
     public boolean blocks(int ip) {
-        return this.indexOf(ip) >= 0;
+        return this.match(ip).isPresent();
     }
 
     /** The description of the range blocking {@code ip}, if any. */
     public Optional<String> match(int ip) {
-        int i = this.indexOf(ip);
-        return i < 0 ? Optional.empty() : Optional.of(this.descriptions[i]);
+        return ip == 0
+                ? Optional.empty()
+                : Optional.ofNullable(this.blocked.get(Integer.toUnsignedLong(ip)));
     }
 
     /** Number of disjoint blocked ranges. */
     public int rangeCount() {
-        return this.starts.length;
-    }
-
-    private int indexOf(int ip) {
-        if (ip == 0) {
-            return -1;
-        }
-        long key = Integer.toUnsignedLong(ip);
-        int low = 0;
-        int high = this.starts.length - 1;
-        while (low <= high) {
-            int mid = (low + high) >>> 1;
-            if (key < this.starts[mid]) {
-                high = mid - 1;
-            } else if (key > this.ends[mid]) {
-                low = mid + 1;
-            } else {
-                return mid;
-            }
-        }
-        return -1;
+        return this.blocked.asMapOfRanges().size();
     }
 }

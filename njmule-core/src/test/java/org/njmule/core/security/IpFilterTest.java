@@ -47,7 +47,7 @@ class IpFilterTest {
     }
 
     @Test
-    void mergesOverlappingAndAdjacentRanges() {
+    void laterRangesWinWhereTheyOverlap() {
         IpFilter filter =
                 IpFilter.of(
                         List.of(
@@ -57,8 +57,10 @@ class IpFilterTest {
                                 range("1.0.0.40", "1.0.0.50", 0, "d")),
                         IpFilter.DEFAULT_LEVEL);
 
-        assertThat(filter.rangeCount()).isEqualTo(2);
-        assertThat(filter.match(Ipv4.parse("1.0.0.30"))).contains("a");
+        assertThat(filter.rangeCount()).isEqualTo(4);
+        assertThat(filter.match(Ipv4.parse("1.0.0.12"))).contains("a");
+        assertThat(filter.match(Ipv4.parse("1.0.0.17"))).contains("b");
+        assertThat(filter.match(Ipv4.parse("1.0.0.30"))).contains("c");
         assertThat(filter.blocks(Ipv4.parse("1.0.0.35"))).isFalse();
         assertThat(filter.match(Ipv4.parse("1.0.0.45"))).contains("d");
     }

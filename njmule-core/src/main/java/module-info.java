@@ -19,6 +19,7 @@ module org.njmule.core {
     // The njMule engine: everything that is not user interface. Front ends (JavaFX GUI, command
     // line, web UI) only use the exported packages: "api" (engine facade, events, application
     // information) and "config" (preferences and directory layout). Everything else is internal.
+    requires com.google.common;
     requires org.bouncycastle.provider;
     requires org.slf4j;
 

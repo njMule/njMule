@@ -16,9 +16,9 @@
  */
 package org.njmule.core.api;
 
+import com.google.common.io.BaseEncoding;
 import java.util.Arrays;
 import java.util.HexFormat;
-import org.njmule.core.util.Base32;
 
 /** An immutable 20-byte SHA-1 value, used for AICH hashes (written in Base32 in links). */
 public final class Hash20 implements Comparable<Hash20> {
@@ -26,6 +26,8 @@ public final class Hash20 implements Comparable<Hash20> {
     public static final int LENGTH = 20;
 
     private static final HexFormat HEX = HexFormat.of().withUpperCase();
+    // RFC 4648; 20 bytes make exactly 32 characters, so there is never padding.
+    private static final BaseEncoding BASE32 = BaseEncoding.base32().ignoreCase();
 
     private final byte[] bytes;
 
@@ -50,7 +52,7 @@ public final class Hash20 implements Comparable<Hash20> {
             throw new IllegalArgumentException(
                     "an AICH hash needs 32 Base32 characters, got " + base32.length());
         }
-        return new Hash20(Base32.decode(base32));
+        return new Hash20(BASE32.decode(base32));
     }
 
     public byte[] toByteArray() {
@@ -62,7 +64,7 @@ public final class Hash20 implements Comparable<Hash20> {
     }
 
     public String toBase32() {
-        return Base32.encode(this.bytes);
+        return BASE32.encode(this.bytes);
     }
 
     public String toHex() {
