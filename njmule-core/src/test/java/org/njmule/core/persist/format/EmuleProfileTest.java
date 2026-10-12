@@ -45,7 +45,9 @@ import org.njmule.core.persist.format.PartMet.Gap;
 @EnabledIfEnvironmentVariable(named = "NJMULE_EMULE_CONFIG", matches = ".+")
 class EmuleProfileTest {
 
-    private static final int PARTS_TO_CHECK = 3;
+    // NJMULE_PARTS_TO_CHECK raises the number of complete parts verified per download.
+    private static final int PARTS_TO_CHECK =
+            Integer.parseInt(System.getenv().getOrDefault("NJMULE_PARTS_TO_CHECK", "3"));
 
     private final Path config = Path.of(System.getenv("NJMULE_EMULE_CONFIG"));
 
