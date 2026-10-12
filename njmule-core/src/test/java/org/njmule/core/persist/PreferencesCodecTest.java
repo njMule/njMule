@@ -1,0 +1,107 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.core.persist;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.Properties;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.config.ObfuscationMode;
+import org.njmule.core.config.Preferences;
+
+class PreferencesCodecTest {
+
+    @TempDir Path dir;
+
+    @Test
+    void roundTripsThroughTheFile() throws IOException {
+        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+        Preferences p =
+                Preferences.defaults().toBuilder()
+                        .nick("Ünïcødé = : # nick")
+                        .tcpPort(12_345)
+                        .kadEnabled(false)
+                        .obfuscation(ObfuscationMode.REQUIRED)
+                        .incomingDir(Optional.of(this.dir.resolve("in dir")))
+                        .logLevel("DEBUG")
+                        .build();
+
+        PreferencesCodec.save(file, p);
+
+        assertThat(PreferencesCodec.load(file)).isEqualTo(p);
+        assertThat(Files.readString(file)).contains("net.tcpPort=12345").doesNotContain("#Mon");
+    }
+
+    @Test
+    void missingFileMeansDefaults() throws IOException {
+        assertThat(PreferencesCodec.load(this.dir.resolve("none")))
+                .isEqualTo(Preferences.defaults());
+    }
+
+    @Test
+    void invalidValuesKeepTheirDefaultsAndValidOnesApply() throws IOException {
+        String text =
+                """
+                net.tcpPort=99999
+                net.udpPort=5000
+                net.kad.enabled=maybe
+                net.ed2k.enabled=off
+                security.obfuscation=supported
+                log.level=nope
+                unknown.key=1
+                dirs.temp=
+                """;
+
+        Preferences p = PreferencesCodec.parse(new StringReader(text));
+
+        Preferences d = Preferences.defaults();
+        assertThat(p.tcpPort()).isEqualTo(d.tcpPort());
+        assertThat(p.udpPort()).isEqualTo(5000);
+        assertThat(p.kadEnabled()).isEqualTo(d.kadEnabled());
+        assertThat(p.ed2kEnabled()).isFalse();
+        assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.SUPPORTED);
+        assertThat(p.logLevel()).isEqualTo(d.logLevel());
+        assertThat(p.tempDir()).isEmpty();
+    }
+
+    @Test
+    void outputIsSortedAndStable() throws IOException {
+        StringWriter a = new StringWriter();
+        StringWriter b = new StringWriter();
+        PreferencesCodec.format(Preferences.defaults(), a);
+        PreferencesCodec.format(Preferences.defaults(), b);
+
+        assertThat(a.toString()).isEqualTo(b.toString());
+        assertThat(a.toString().lines().skip(1).toList()).isSorted();
+    }
+
+    @Property
+    void escapedValuesLoadBackUnchanged(@ForAll String value) throws IOException {
+        Properties props = new Properties();
+        props.load(new StringReader("k=" + PreferencesCodec.escape(value)));
+        assertThat(props.getProperty("k")).isEqualTo(value);
+    }
+}
