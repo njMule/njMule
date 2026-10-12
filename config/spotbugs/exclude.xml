@@ -27,7 +27,7 @@
         <Bug pattern="PATH_TRAVERSAL_IN"/>
         <Or>
             <Class name="org.njmule.core.config.AppDirectories"/>
-            <Class name="org.njmule.app.CommandLine"/>
+            <Class name="org.njmule.app.LaunchOptions"/>
         </Or>
     </Match>
     <!-- MD4, MD5 and SHA-1 are mandated by the eD2K/Kad protocols (file hashes, AICH, obfuscation

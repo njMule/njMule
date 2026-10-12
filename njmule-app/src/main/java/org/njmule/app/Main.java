@@ -60,16 +60,16 @@ public final class Main {
      */
     public static int run(
             String[] args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
-        CommandLine cli;
+        LaunchOptions cli;
         try {
-            cli = CommandLine.parse(args);
-        } catch (CommandLine.UsageException e) {
+            cli = LaunchOptions.parse(args);
+        } catch (LaunchOptions.UsageException e) {
             err.println(e.getMessage());
-            err.print(CommandLine.USAGE);
+            err.print(LaunchOptions.usage());
             return EXIT_USAGE;
         }
         switch (cli.action()) {
-            case HELP -> out.print(CommandLine.USAGE);
+            case HELP -> out.print(LaunchOptions.usage());
             case VERSION ->
                     out.println(
                             NjMuleInfo.NAME
@@ -92,7 +92,7 @@ public final class Main {
     }
 
     // Prints the link of each file (without part hashes) and the hashing speed.
-    private static int hash(CommandLine cli, PrintStream out, PrintStream err) {
+    private static int hash(LaunchOptions cli, PrintStream out, PrintStream err) {
         int code = EXIT_OK;
         for (Path file : cli.files()) {
             long start = System.nanoTime();
@@ -124,7 +124,7 @@ public final class Main {
     }
 
     private static int runEngine(
-            CommandLine cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
+            LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
         out.println(NjMuleInfo.startupNotice("njmule --warranty", "njmule --license"));
         AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
         NjMuleEngine engine;

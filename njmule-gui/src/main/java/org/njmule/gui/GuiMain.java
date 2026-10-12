@@ -18,7 +18,7 @@ package org.njmule.gui;
 
 import java.util.concurrent.CompletableFuture;
 import javafx.application.Application;
-import org.njmule.app.CommandLine;
+import org.njmule.app.LaunchOptions;
 import org.njmule.app.Main;
 
 /**
@@ -30,14 +30,14 @@ public final class GuiMain {
     private GuiMain() {}
 
     public static void main(String[] args) {
-        CommandLine cli;
+        LaunchOptions cli;
         try {
-            cli = CommandLine.parse(args);
-        } catch (CommandLine.UsageException e) {
+            cli = LaunchOptions.parse(args);
+        } catch (LaunchOptions.UsageException e) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
             return;
         }
-        if (cli.action() != CommandLine.Action.RUN) {
+        if (cli.action() != LaunchOptions.Action.RUN) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
         }
         Application.launch(NjMuleFxApp.class, args);

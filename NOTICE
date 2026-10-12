@@ -39,6 +39,7 @@ versions is generated at release time in THIRD-PARTY.txt.
     SLF4J API                   MIT License
     Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
     Guava                       Apache License 2.0
+    picocli                     Apache License 2.0
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
     OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
     AtlantaFX                   MIT License

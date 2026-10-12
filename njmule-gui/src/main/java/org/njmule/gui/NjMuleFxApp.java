@@ -36,7 +36,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
-import org.njmule.app.CommandLine;
+import org.njmule.app.LaunchOptions;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
@@ -55,7 +55,8 @@ public final class NjMuleFxApp extends Application {
 
     @Override
     public void init() throws Exception {
-        CommandLine cli = CommandLine.parse(this.getParameters().getRaw().toArray(String[]::new));
+        LaunchOptions cli =
+                LaunchOptions.parse(this.getParameters().getRaw().toArray(String[]::new));
         AppDirectories dirs = AppDirectories.resolve(cli.configDir(), Optional.empty());
         dirs.createAll();
         LoggingSetup.enableFileLog(dirs.logs());

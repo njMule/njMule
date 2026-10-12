@@ -22,15 +22,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.app.CommandLine.Action;
+import org.njmule.app.LaunchOptions.Action;
 
-class CommandLineTest {
+class LaunchOptionsTest {
 
     @TempDir Path dir;
 
     @Test
     void defaultsToRun() throws Exception {
-        CommandLine cli = CommandLine.parse();
+        LaunchOptions cli = LaunchOptions.parse();
         assertThat(cli.action()).isEqualTo(Action.RUN);
         assertThat(cli.configDir()).isEmpty();
         assertThat(cli.logLevel()).isEmpty();
@@ -38,37 +38,41 @@ class CommandLineTest {
 
     @Test
     void parsesEveryOption() throws Exception {
-        CommandLine cli =
-                CommandLine.parse("--config-dir", this.dir.toString(), "--log-level", "debug");
+        LaunchOptions cli =
+                LaunchOptions.parse("--config-dir", this.dir.toString(), "--log-level", "debug");
         assertThat(cli.configDir()).contains(this.dir.toAbsolutePath().normalize());
         assertThat(cli.logLevel()).contains("DEBUG");
 
-        assertThat(CommandLine.parse("-h").action()).isEqualTo(Action.HELP);
-        assertThat(CommandLine.parse("-V").action()).isEqualTo(Action.VERSION);
-        assertThat(CommandLine.parse("--license").action()).isEqualTo(Action.LICENSE);
-        assertThat(CommandLine.parse("--warranty").action()).isEqualTo(Action.WARRANTY);
-        assertThat(CommandLine.parse("--notice").action()).isEqualTo(Action.NOTICE);
+        assertThat(LaunchOptions.parse("-h").action()).isEqualTo(Action.HELP);
+        assertThat(LaunchOptions.parse("-V").action()).isEqualTo(Action.VERSION);
+        assertThat(LaunchOptions.parse("--config-dir=" + this.dir).configDir())
+                .contains(this.dir.toAbsolutePath().normalize());
+        assertThat(LaunchOptions.parse("--license").action()).isEqualTo(Action.LICENSE);
+        assertThat(LaunchOptions.parse("--warranty").action()).isEqualTo(Action.WARRANTY);
+        assertThat(LaunchOptions.parse("--notice").action()).isEqualTo(Action.NOTICE);
     }
 
     @Test
     void collectsTheFilesToHash() throws Exception {
-        CommandLine cli = CommandLine.parse("--hash", "a.iso", "b.iso", "--log-level", "info");
+        LaunchOptions cli = LaunchOptions.parse("--hash", "a.iso", "b.iso", "--log-level", "info");
 
         assertThat(cli.action()).isEqualTo(Action.HASH);
         assertThat(cli.files()).containsExactly(Path.of("a.iso"), Path.of("b.iso"));
-        assertThatThrownBy(() -> CommandLine.parse("--hash"))
-                .hasMessage("Missing value for --hash");
+        assertThatThrownBy(() -> LaunchOptions.parse("--hash"))
+                .isInstanceOf(LaunchOptions.UsageException.class)
+                .hasMessageContaining("--hash");
     }
 
     @Test
     void rejectsInvalidArguments() {
-        assertThatThrownBy(() -> CommandLine.parse("--bogus"))
-                .hasMessage("Unknown option: --bogus");
-        assertThatThrownBy(() -> CommandLine.parse("--config-dir"))
-                .hasMessage("Missing value for --config-dir");
-        assertThatThrownBy(() -> CommandLine.parse("--log-level", "--help"))
-                .hasMessage("Missing value for --log-level");
-        assertThatThrownBy(() -> CommandLine.parse("--log-level", "loud"))
+        assertThatThrownBy(() -> LaunchOptions.parse("--bogus"))
+                .hasMessageContaining("Unknown option")
+                .hasMessageContaining("--bogus");
+        assertThatThrownBy(() -> LaunchOptions.parse("--config-dir"))
+                .hasMessageContaining("--config-dir");
+        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "--help"))
+                .hasMessageContaining("--log-level");
+        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "loud"))
                 .hasMessage("Invalid log level: loud");
     }
 }
