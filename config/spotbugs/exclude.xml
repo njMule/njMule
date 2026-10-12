@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+    SPDX-License-Identifier: GPL-3.0-or-later
+
+    SpotBugs exclusions. Every entry must carry a justification.
+-->
+<FindBugsFilter
+        xmlns="https://github.com/spotbugs/filter/3.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/3.1.0/spotbugs/etc/findbugsfilter.xsd">
+
+    <!-- Test code: fixtures intentionally use temporary paths and expose internals. -->
+    <Match>
+        <Class name="~.*Test(s)?(\$.*)?"/>
+    </Match>
+
+    <!-- Log forging is neutralised centrally: the Logback encoder patterns replace CR/LF in every
+         message (org.njmule.app.logging.LoggingSetup), so call sites need no sanitising. -->
+    <Match>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+
+    <!-- Paths come from the user's own configuration or OS conventions, never from the network;
+         network-supplied names go through PathSanitizer (introduced in M3). -->
+    <Match>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+        <Or>
+            <Class name="org.njmule.core.config.AppDirectories"/>
+            <Class name="org.njmule.app.CommandLine"/>
+        </Or>
+    </Match>
+</FindBugsFilter>
