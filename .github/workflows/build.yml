@@ -11,8 +11,44 @@ permissions:
     contents: read
 
 jobs:
+    # Changes that cannot affect the build (documents, repository metadata, branding sources, local
+    # tools) skip the build jobs; skipped jobs count as passed, so such commits and PRs stay green.
+    changes:
+        name: detect changes
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: read
+        outputs:
+            build: ${{ steps.filter.outputs.build }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              id: filter
+              with:
+                  predicate-quantifier: every
+                  filters: |
+                      build:
+                          - '**'
+                          - '!**/*.md'
+                          - '!.github/ISSUE_TEMPLATE/**'
+                          - '!.github/CODEOWNERS'
+                          - '!.github/dependabot.yml'
+                          - '!.githooks/**'
+                          - '!.editorconfig'
+                          - '!.gitignore'
+                          - '!AUTHORS'
+                          - '!LICENSES/**'
+                          - '!REUSE.toml'
+                          - '!branding/*'
+                          - '!branding/generated/njmule-avatar-512.png'
+                          - '!branding/generated/njmule-social-preview.png'
+                          - '!tools/**'
+
     verify:
         name: verify (${{ matrix.os }})
+        needs: changes
+        if: needs.changes.outputs.build == 'true'
         strategy:
             fail-fast: false
             matrix:
@@ -44,6 +80,8 @@ jobs:
 
     native:
         name: native image (linux-x64)
+        needs: changes
+        if: needs.changes.outputs.build == 'true'
         runs-on: ubuntu-latest
         # Same pinned GraalVM Community image as the local Docker build (CLAUDE.md).
         container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
@@ -62,6 +100,8 @@ jobs:
 
     native-windows:
         name: native image (windows-x64)
+        needs: changes
+        if: needs.changes.outputs.build == 'true'
         runs-on: windows-latest
         # The same GraalVM Community release as the Linux image; native-image finds the runner's
         # Visual Studio on its own.
@@ -100,6 +140,8 @@ jobs:
 
     sonar:
         name: SonarQube Cloud
+        needs: changes
+        if: needs.changes.outputs.build == 'true'
         runs-on: ubuntu-latest
         # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
         env:
@@ -118,3 +160,16 @@ jobs:
             - name: Build and analyse
               if: env.SONAR_TOKEN != ''
               run: ./mvnw -B -ntp verify sonar:sonar
+
+    # The one check to require on pull requests: it passes when every job passed or was skipped
+    # because the change does not need a build.
+    ci:
+        name: CI result
+        if: always()
+        needs: [changes, verify, reuse, native, native-windows, sonar]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+              with:
+                  allowed-skips: verify, native, native-windows, sonar
+                  jobs: ${{ toJSON(needs) }}
