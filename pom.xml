@@ -81,6 +81,8 @@
         <maven.version.min>3.9.9</maven.version.min>
         <compiler-plugin.version>3.16.0</compiler-plugin.version>
         <surefire.version>3.6.0</surefire.version>
+        <!-- Run the optional groups with e.g. -Dtest.excludedGroups=interop,perf -Dgroups=private-fixtures -->
+        <test.excludedGroups>interop,private-fixtures,perf</test.excludedGroups>
         <jar-plugin.version>3.5.1</jar-plugin.version>
         <resources-plugin.version>3.5.0</resources-plugin.version>
         <clean-plugin.version>3.5.0</clean-plugin.version>
@@ -243,7 +245,7 @@
                     <configuration>
                         <!-- @{argLine} keeps the JaCoCo agent. -->
                         <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8</argLine>
-                        <excludedGroups>interop,private-fixtures,perf</excludedGroups>
+                        <excludedGroups>${test.excludedGroups}</excludedGroups>
                     </configuration>
                 </plugin>
                 <plugin>
