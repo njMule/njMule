@@ -182,6 +182,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Engineering rules
 
+- Do not reinvent the wheel: use the JDK or a well-known, maintained open-source library
+  (GPL-3.0-compatible license, native-image friendly) before writing a utility, codec, parser or
+  algorithm. Write our own only for eD2K/Kad-specific code or when no suitable library exists or
+  fits the constraints, and say why in a comment or the commit message.
 - `njmule-core` must never depend on JavaFX/AWT or any GUI module.
 - Code must stay GraalVM native-image friendly: no undeclared reflection, no dynamic proxies,
   register resources and `ServiceLoader` providers in the reachability metadata.
