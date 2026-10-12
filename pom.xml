@@ -106,8 +106,16 @@
         <license-plugin.version>2.7.1</license-plugin.version>
         <cyclonedx-plugin.version>2.9.3</cyclonedx-plugin.version>
         <dependency-check.version>13.0.0</dependency-check.version>
+        <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
         <native-plugin.version>1.1.14</native-plugin.version>
         <javafx-plugin.version>0.0.8</javafx-plugin.version>
+
+        <!-- SonarQube Cloud analysis: ./mvnw verify sonar:sonar -Dsonar.token=<token>; coverage comes
+             from the JaCoCo XML report of each module. Override these for a self-hosted server. -->
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>salvatore-coppola</sonar.organization>
+        <sonar.projectKey>salvatore-coppola_njMule</sonar.projectKey>
+        <sonar.projectName>njMule</sonar.projectName>
 
         <!-- Quality gates (overridable from the command line, e.g. -Dspotless.check.skip=true) -->
         <jacoco.minimum.line.coverage>0.70</jacoco.minimum.line.coverage>
@@ -332,6 +340,11 @@
                     <groupId>org.owasp</groupId>
                     <artifactId>dependency-check-maven</artifactId>
                     <version>${dependency-check.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.sonarsource.scanner.maven</groupId>
+                    <artifactId>sonar-maven-plugin</artifactId>
+                    <version>${sonar-plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.graalvm.buildtools</groupId>

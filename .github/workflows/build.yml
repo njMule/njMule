@@ -59,3 +59,24 @@ jobs:
               with:
                   name: njmule-linux-x64
                   path: njmule-app/target/njmule
+
+    sonar:
+        name: SonarQube Cloud
+        runs-on: ubuntu-latest
+        # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
+        env:
+            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        steps:
+            - uses: actions/checkout@v7
+              if: env.SONAR_TOKEN != ''
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-java@v6
+              if: env.SONAR_TOKEN != ''
+              with:
+                  distribution: temurin
+                  java-version: "25"
+                  cache: maven
+            - name: Build and analyse
+              if: env.SONAR_TOKEN != ''
+              run: ./mvnw -B -ntp verify sonar:sonar

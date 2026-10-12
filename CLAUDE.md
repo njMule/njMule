@@ -93,6 +93,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Run headless: `./mvnw -pl njmule-app -am package`, then
   `java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main`
   (`;` as separator on Windows). Run the GUI: `./mvnw -pl njmule-gui javafx:run` after `install`.
+- Static analysis on SonarQube Cloud: `./mvnw verify sonar:sonar -Dsonar.token=<token>` (project
+  `salvatore-coppola_njMule`, organisation `salvatore-coppola`); in CI the `sonar` job runs once the
+  `SONAR_TOKEN` secret is set.
 - Native image: GraalVM Community in the pinned container
   `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` (same image as CI; no MSVC needed on
   Windows, it builds the Linux x64 binary `njmule-app/target/njmule`):
