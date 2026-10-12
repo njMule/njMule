@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- njMule application icon (master), an original design. tools/IconGen.java renders the subset
+     used here: rect, circle, path with M/L/C/Q/Z, solid fills and round strokes.
+     Palette: pastel periwinkle #A9B8EA, mark #26304F (contrast 6.6:1, WCAG AA). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+    <rect x="48" y="48" width="928" height="928" rx="216" fill="#A9B8EA"/>
+    <!-- ears -->
+    <path d="M 404 456 C 330 380 256 270 236 150 C 360 176 452 280 488 404" fill="none" stroke="#26304F" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 620 456 C 694 380 768 270 788 150 C 664 176 572 280 536 404" fill="none" stroke="#26304F" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- forelock -->
+    <path d="M 488 404 Q 498 352 512 344 Q 526 352 536 404" fill="none" stroke="#26304F" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- head and muzzle -->
+    <path d="M 404 456 C 360 540 364 640 404 720 C 424 768 420 826 462 866 Q 512 904 562 866 C 604 826 600 768 620 720 C 660 640 664 540 620 456" fill="none" stroke="#26304F" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 414 744 Q 512 800 610 744" fill="none" stroke="#26304F" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- eyes and nostrils -->
+    <circle cx="452" cy="588" r="28" fill="#26304F"/>
+    <circle cx="572" cy="588" r="28" fill="#26304F"/>
+    <circle cx="482" cy="832" r="17" fill="#26304F"/>
+    <circle cx="542" cy="832" r="17" fill="#26304F"/>
+</svg>
