@@ -1,2 +1,2 @@
 # njMule
-Jave version of eMule
+Java version of eMule
