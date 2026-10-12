@@ -40,7 +40,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v7
-            - uses: fsfe/reuse-action@v5
+            - uses: fsfe/reuse-action@v6
 
     native:
         name: native image (linux-x64)
