@@ -30,7 +30,7 @@ jobs:
               run: ./mvnw -B -ntp verify
             - name: Upload test reports
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: test-reports-${{ matrix.os }}
                   path: "**/target/surefire-reports/"
@@ -55,7 +55,7 @@ jobs:
               run: |
                   njmule-app/target/njmule --version
                   njmule-app/target/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@v7
               with:
                   name: njmule-linux-x64
                   path: njmule-app/target/njmule
