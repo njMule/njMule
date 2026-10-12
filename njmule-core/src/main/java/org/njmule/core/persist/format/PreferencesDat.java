@@ -20,6 +20,7 @@ import java.util.Objects;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.util.Bytes;
 
 /**
@@ -44,6 +45,14 @@ public final class PreferencesDat {
         int version = in.u8();
         Hash16 hash = in.hash16();
         return new Contents(version, hash, Bytes.of(in.rest()));
+    }
+
+    public static byte[] write(Contents contents) {
+        return new PacketWriter()
+                .u8(contents.version())
+                .hash16(contents.userHash())
+                .bytes(contents.windowPlacement().toByteArray())
+                .toByteArray();
     }
 
     /**
