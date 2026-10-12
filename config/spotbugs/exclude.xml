@@ -31,7 +31,7 @@
         </Or>
     </Match>
     <!-- MD4, MD5 and SHA-1 are mandated by the eD2K/Kad protocols (file hashes, AICH, obfuscation
-         keys) for interoperability; they protect no secret. -->
+         keys, data file keys) for interoperability; they protect no secret. -->
     <Match>
         <Or>
             <Bug pattern="WEAK_MESSAGE_DIGEST_SHA1"/>
@@ -41,6 +41,7 @@
             <Package name="~org\.njmule\.core\.files\.hash.*"/>
             <Package name="~org\.njmule\.core\.protocol\..*"/>
             <Package name="~org\.njmule\.core\.crypto.*"/>
+            <Package name="~org\.njmule\.core\.persist\.format.*"/>
         </Or>
     </Match>
 </FindBugsFilter>
