@@ -16,6 +16,10 @@
  */
 package org.njmule.core.util;
 
+import com.google.common.net.InetAddresses;
+import com.google.common.primitives.Ints;
+import java.net.Inet4Address;
+
 /**
  * IPv4 addresses as {@code int}s holding {@code a.b.c.d} as {@code a<<24 | b<<16 | c<<8 | d}. Kad
  * files store this value little-endian; eD2K files store the four bytes in network order, which
@@ -26,18 +30,18 @@ public final class Ipv4 {
     private Ipv4() {}
 
     public static int of(int a, int b, int c, int d) {
-        return (a & 0xFF) << 24 | (b & 0xFF) << 16 | (c & 0xFF) << 8 | (d & 0xFF);
+        return Ints.fromBytes((byte) a, (byte) b, (byte) c, (byte) d);
     }
 
     public static int fromBytes(byte[] bytes) {
         if (bytes.length != 4) {
             throw new IllegalArgumentException("IPv4 addresses have 4 bytes");
         }
-        return of(bytes[0], bytes[1], bytes[2], bytes[3]);
+        return Ints.fromByteArray(bytes);
     }
 
     public static byte[] toBytes(int ip) {
-        return new byte[] {(byte) (ip >>> 24), (byte) (ip >>> 16), (byte) (ip >>> 8), (byte) ip};
+        return Ints.toByteArray(ip);
     }
 
     /** The address from an eD2K field read as a little-endian u32. */
@@ -51,29 +55,12 @@ public final class Ipv4 {
     }
 
     public static String format(int ip) {
-        return (ip >>> 24) + "." + (ip >>> 16 & 0xFF) + "." + (ip >>> 8 & 0xFF) + "." + (ip & 0xFF);
+        return InetAddresses.fromInteger(ip).getHostAddress();
     }
 
-    /** Parses dotted decimal strictly (four parts, 0-255, no leading signs). */
+    /** Parses an IPv4 literal without any name lookup. */
     public static int parse(String text) {
-        String[] parts = text.split("\\.", -1);
-        if (parts.length != 4) {
-            throw new IllegalArgumentException("not an IPv4 address: " + text);
-        }
-        int ip = 0;
-        for (String part : parts) {
-            if (part.isEmpty()
-                    || part.length() > 3
-                    || !part.chars().allMatch(c -> c >= '0' && c <= '9')) {
-                throw new IllegalArgumentException("not an IPv4 address: " + text);
-            }
-            int value = Integer.parseInt(part);
-            if (value > 255) {
-                throw new IllegalArgumentException("not an IPv4 address: " + text);
-            }
-            ip = ip << 8 | value;
-        }
-        return ip;
+        return fromBytes(Inet4Address.ofLiteral(text).getAddress());
     }
 
     /** Usable as a peer address: not 0.x, loopback, multicast, broadcast or reserved. */
