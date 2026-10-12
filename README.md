@@ -8,18 +8,18 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 <p align="center">
     <a href="https://github.com/salvatore-coppola/njMule/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/salvatore-coppola/njMule/actions/workflows/build.yml/badge.svg?branch=main"></a>
-    <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-A9B8EA?labelColor=26304F"></a>
-    <a href="https://reuse.software"><img alt="REUSE compliant" src="https://img.shields.io/badge/REUSE-compliant-A3BE8C?labelColor=26304F"></a>
-    <a href="https://github.com/salvatore-coppola/njMule/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/salvatore-coppola/njMule?color=A9B8EA&labelColor=26304F"></a>
+    <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-F5A65B?labelColor=24427A"></a>
+    <a href="https://reuse.software"><img alt="REUSE compliant" src="https://img.shields.io/badge/REUSE-compliant-F5A65B?labelColor=24427A"></a>
+    <a href="https://github.com/salvatore-coppola/njMule/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/salvatore-coppola/njMule?color=F5A65B&labelColor=24427A"></a>
     <br>
-    <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-A9B8EA?logo=openjdk&logoColor=white&labelColor=26304F"></a>
-    <a href="https://www.graalvm.org/latest/reference-manual/native-image/"><img alt="GraalVM native image" src="https://img.shields.io/badge/GraalVM-native%20image-A9B8EA?labelColor=26304F"></a>
-    <a href="#building"><img alt="Platforms: Windows, macOS, Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-A9B8EA?labelColor=26304F"></a>
+    <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-F5A65B?logo=openjdk&logoColor=white&labelColor=24427A"></a>
+    <a href="https://www.graalvm.org/latest/reference-manual/native-image/"><img alt="GraalVM native image" src="https://img.shields.io/badge/GraalVM-native%20image-F5A65B?labelColor=24427A"></a>
+    <a href="#building"><img alt="Platforms: Windows, macOS, Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-F5A65B?labelColor=24427A"></a>
     <br>
-    <a href="https://www.conventionalcommits.org/en/v1.0.0/"><img alt="Conventional Commits 1.0.0" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-A9B8EA?logo=conventionalcommits&logoColor=white&labelColor=26304F"></a>
-    <a href="https://semver.org/spec/v2.0.0.html"><img alt="Semantic Versioning 2.0.0" src="https://img.shields.io/badge/SemVer-2.0.0-A9B8EA?labelColor=26304F"></a>
-    <a href="https://github.com/google/google-java-format"><img alt="Code style: google-java-format" src="https://img.shields.io/badge/code%20style-google--java--format-A9B8EA?labelColor=26304F"></a>
-    <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 2.1" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-A9B8EA?labelColor=26304F"></a>
+    <a href="https://www.conventionalcommits.org/en/v1.0.0/"><img alt="Conventional Commits 1.0.0" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-F5A65B?logo=conventionalcommits&logoColor=white&labelColor=24427A"></a>
+    <a href="https://semver.org/spec/v2.0.0.html"><img alt="Semantic Versioning 2.0.0" src="https://img.shields.io/badge/SemVer-2.0.0-F5A65B?labelColor=24427A"></a>
+    <a href="https://github.com/google/google-java-format"><img alt="Code style: google-java-format" src="https://img.shields.io/badge/code%20style-google--java--format-F5A65B?labelColor=24427A"></a>
+    <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 2.1" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-F5A65B?labelColor=24427A"></a>
 </p>
 
 **njMule — Next generation Java Mule** is a modern, open-source eD2K and Kad client written in

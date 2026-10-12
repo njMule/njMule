@@ -162,7 +162,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Accessibility (WCAG 2.2 AA): text contrast ≥ 4.5:1 (≥ 3:1 for large text), essential icons and
   graphics ≥ 3:1; colour is never the only cue (add icon, tooltip, legend or pattern).
 - Every token has a light and a dark value; saturated colours only for real errors and warnings.
-- Brand: pastel periwinkle `#A9B8EA` with deep indigo ink `#26304F` (`branding/`).
+- Brand: deep blue `#24427A`, off-white mark `#F4F6FB` and warm orange accents `#F5A65B`
+  (`branding/`, README badges); orange stays an accent, never a large surface.
 
 ## Engineering rules
 
