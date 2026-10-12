@@ -78,7 +78,7 @@ public final class NodesDat {
             }
             version = (int) in.u32();
             if (version == 3 && in.u32() == 1) {
-                return new Contents(3, true, records(in, (int) in.u32(), 1, true));
+                return new Contents(3, true, records(in, in.u32(), 1, true));
             }
             if (version < 1 || version > 3) {
                 return new Contents(version, false, List.of());
