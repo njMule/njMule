@@ -19,25 +19,21 @@ package org.njmule.core.protocol.io;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
  * String encoding on the eD2K network and in its data files: a UTF-8 BOM marks UTF-8, valid UTF-8
- * is taken as such, anything else is the Windows ANSI code page. The Windows-1252 table is built
- * in, so no extra charset is needed in the native image.
+ * is taken as such, anything else is the Windows ANSI code page (Windows-1252).
  */
 public final class Ed2kStrings {
 
     private static final byte[] BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
-    // Windows-1252 code points for bytes 0x80-0x9F; other bytes map to the same code point.
-    private static final char[] CP1252_HIGH = {
-        '€', '\u0081', '‚', 'ƒ', '„', '…', '†', '‡',
-        'ˆ', '‰', 'Š', '‹', 'Œ', '\u008D', 'Ž', '\u008F',
-        '\u0090', '‘', '’', '“', '”', '•', '–', '—',
-        '˜', '™', 'š', '›', 'œ', '\u009D', 'ž', 'Ÿ'
-    };
+    // Present in native images because the class is initialised at build time
+    // (META-INF/native-image/org.njmule/njmule-core/native-image.properties).
+    private static final Charset WINDOWS_1252 = Charset.forName("windows-1252");
 
     private Ed2kStrings() {}
 
@@ -101,11 +97,6 @@ public final class Ed2kStrings {
     }
 
     private static String cp1252(byte[] raw, int offset, int length) {
-        char[] out = new char[length];
-        for (int i = 0; i < length; i++) {
-            int b = raw[offset + i] & 0xFF;
-            out[i] = b >= 0x80 && b <= 0x9F ? CP1252_HIGH[b - 0x80] : (char) b;
-        }
-        return new String(out);
+        return new String(raw, offset, length, WINDOWS_1252);
     }
 }
