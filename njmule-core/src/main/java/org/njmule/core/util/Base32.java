@@ -16,7 +16,7 @@
  */
 package org.njmule.core.util;
 
-/** RFC 4648 Base32 without padding, as used by eMule for AICH hashes. */
+/** RFC 4648 Base32 without padding, as used for AICH hashes. */
 public final class Base32 {
 
     private static final char[] ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".toCharArray();

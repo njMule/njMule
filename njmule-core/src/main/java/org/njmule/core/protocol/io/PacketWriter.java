@@ -101,7 +101,7 @@ public final class PacketWriter {
 
     /** A {@code <u16 length><bytes>} string. */
     public PacketWriter string16(String value, StringEncoding encoding) {
-        byte[] raw = EmuleStrings.encode(value, encoding);
+        byte[] raw = Ed2kStrings.encode(value, encoding);
         if (raw.length > 0xFFFF) {
             throw new IllegalArgumentException("string too long: " + raw.length + " bytes");
         }

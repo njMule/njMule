@@ -20,8 +20,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
- * A tag name as raw bytes (held as an ISO-8859-1 string). A one-byte name is a numeric id, the same
- * as eMule's {@code m_uName}; longer names (e.g. {@code "\x09" + "12"} for gaps) are strings.
+ * A tag name as raw bytes (held as an ISO-8859-1 string). A one-byte name is a numeric id; longer
+ * names (e.g. {@code "\x09" + "12"} for gaps) are strings.
  */
 public record TagName(String raw) {
 

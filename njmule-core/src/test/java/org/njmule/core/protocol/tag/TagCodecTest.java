@@ -48,7 +48,7 @@ class TagCodecTest {
 
     private static final HexFormat HEX = HexFormat.of();
 
-    // Expected bytes derived from CTag::WriteNewEd2kTag / WriteTagToFile and CDataIO::WriteTag.
+    // Expected bytes follow the old and new eD2K tag encodings and the Kad tag encoding.
 
     @Test
     void newEncodingUsesTheSmallestIntegerType() {
@@ -99,8 +99,8 @@ class TagCodecTest {
     }
 
     @Test
-    void boolArraysUseEmulesOddByteCount() throws DecodeException {
-        // 8 bits occupy 8/8+1 = 2 bytes (Packets.cpp:510).
+    void boolArraysUseTheOddByteCount() throws DecodeException {
+        // 8 bits occupy 8/8+1 = 2 bytes on the wire.
         assertThat(readEd2k("8601" + "0800" + "ff00"))
                 .isEqualTo(new BoolArrayTag(TagName.id(1), 8, Bytes.of(new byte[] {-1, 0})));
     }

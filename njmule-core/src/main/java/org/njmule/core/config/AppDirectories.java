@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * to the executable) puts everything below one directory. The installation directory is never
  * written.
  *
- * @param config preferences and eMule-compatible {@code .met}/{@code .dat} files
+ * @param config preferences and the {@code .met}/{@code .dat} data files
  * @param data large persistent data (AICH hash sets, Kad indexes)
  * @param temp incomplete downloads
  * @param cache regenerable data

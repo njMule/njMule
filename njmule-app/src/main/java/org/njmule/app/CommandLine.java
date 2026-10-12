@@ -44,7 +44,7 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
               --version, -V        print the version and exit
               --license            print the GNU General Public License and exit
               --warranty           print the warranty disclaimer and exit
-              --notice             print copyright, eMule attribution and third-party notices
+              --notice             print copyright, attribution and third-party notices
               --help, -h           print this help and exit
             """;
 

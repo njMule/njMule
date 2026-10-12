@@ -130,9 +130,11 @@ public final class PacketReader {
         return out;
     }
 
-    /** A {@code <u16 length><bytes>} string decoded with eMule's rules ({@link EmuleStrings}). */
+    /**
+     * A {@code <u16 length><bytes>} string decoded with the network's rules ({@link Ed2kStrings}).
+     */
     public String string16() throws DecodeException {
-        return EmuleStrings.decode(this.bytes(this.u16()));
+        return Ed2kStrings.decode(this.bytes(this.u16()));
     }
 
     /** Checks that a count field is plausible for the bytes left (each item ≥ {@code minSize}). */

@@ -33,10 +33,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.crypto.Md4;
 
-/**
- * Computes the eD2K hash set and the AICH tree in one pass over the data, block by block, as {@code
- * CKnownFile::CreateFromFile} does ({@code KnownFile.cpp:346-489, 922-975}).
- */
+/** Computes the eD2K hash set and the AICH tree in one pass over the data, block by block. */
 public final class FileHasher {
 
     /** The hashes of a file; there is no AICH tree for an empty file. */

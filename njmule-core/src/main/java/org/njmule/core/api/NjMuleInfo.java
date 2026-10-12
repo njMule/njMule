@@ -81,7 +81,7 @@ public final class NjMuleInfo {
                                 + " https://www.gnu.org/licenses/gpl-3.0");
     }
 
-    /** The NOTICE file: copyright, eMule attribution and third-party components. */
+    /** The NOTICE file: copyright, attribution and third-party components. */
     public static String noticeText() {
         return readResource("NOTICE").orElse(COPYRIGHT);
     }

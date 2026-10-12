@@ -23,9 +23,9 @@ import java.util.List;
 import org.njmule.core.api.Hash20;
 
 /**
- * The AICH SHA-1 hash tree ({@code SHAHashSet.cpp}). Leaves are the 180 KiB blocks of each part;
- * the tree is binary but splits at whole PARTSIZE boundaries above the part level and gives the odd
- * element to the left subtree of a left branch and to the right subtree of a right branch.
+ * The AICH SHA-1 hash tree. Leaves are the 180 KiB blocks of each part; the tree is binary but
+ * splits at whole PARTSIZE boundaries above the part level and gives the odd element to the left
+ * subtree of a left branch and to the right subtree of a right branch.
  */
 public final class AichTree {
 
@@ -110,8 +110,8 @@ public final class AichTree {
             this.parts = parts;
         }
 
-        // CAICHHashTree::FindHash / LoadLowestLevelHashes: the same split, depth ≤ 22. A part node
-        // is the first node below a PARTSIZE-based one.
+        // Depth ≤ 22 for the largest files. A part node is the first node below a PARTSIZE-based
+        // one.
         Hash20 node(long dataSize, boolean left, long base) {
             if (dataSize <= base) {
                 return this.leaves.get(this.next++);

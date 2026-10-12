@@ -23,11 +23,11 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
- * eMule string encoding ({@code SafeFile.cpp:71-110}, {@code StringConversion.cpp}): a UTF-8 BOM
- * marks UTF-8, valid UTF-8 is taken as such, anything else is the Windows ANSI code page. The
- * Windows-1252 table is built in, so no extra charset is needed in the native image.
+ * String encoding on the eD2K network and in its data files: a UTF-8 BOM marks UTF-8, valid UTF-8
+ * is taken as such, anything else is the Windows ANSI code page. The Windows-1252 table is built
+ * in, so no extra charset is needed in the native image.
  */
-public final class EmuleStrings {
+public final class Ed2kStrings {
 
     private static final byte[] BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
@@ -39,7 +39,7 @@ public final class EmuleStrings {
         '˜', '™', 'š', '›', 'œ', '\u009D', 'ž', 'Ÿ'
     };
 
-    private EmuleStrings() {}
+    private Ed2kStrings() {}
 
     public static String decode(byte[] raw) {
         return decode(raw, 0, raw.length);

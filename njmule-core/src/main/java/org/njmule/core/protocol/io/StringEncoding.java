@@ -16,10 +16,10 @@
  */
 package org.njmule.core.protocol.io;
 
-/** How strings are written (eMule {@code EUTF8str}); reading always auto-detects. */
+/** How strings are written; reading always auto-detects. */
 public enum StringEncoding {
-    /** Plain UTF-8 ({@code utf8strRaw}): Kad and peers that announce Unicode support. */
+    /** Plain UTF-8: Kad and peers that announce Unicode support. */
     UTF8,
-    /** ASCII as is, anything else as UTF-8 with a BOM ({@code utf8strOptBOM}): .met files. */
+    /** ASCII as is, anything else as UTF-8 with a BOM: .met files. */
     UTF8_BOM_IF_NEEDED
 }

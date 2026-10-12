@@ -39,7 +39,7 @@ class NjMuleInfoTest {
     @Test
     void licenseAndNoticeAreBundled() {
         assertThat(NjMuleInfo.licenseText()).contains("GNU GENERAL PUBLIC LICENSE", "Version 3");
-        assertThat(NjMuleInfo.noticeText()).contains("eMule");
+        assertThat(NjMuleInfo.noticeText()).contains("Third-party components");
     }
 
     @Test

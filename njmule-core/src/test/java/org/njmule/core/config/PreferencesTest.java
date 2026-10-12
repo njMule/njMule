@@ -97,14 +97,14 @@ class PreferencesTest {
     }
 
     @Test
-    void mapsEmuleObfuscationFlags() {
-        assertThat(ObfuscationMode.fromEmuleFlags(false, true, true))
+    void mapsObfuscationFlags() {
+        assertThat(ObfuscationMode.fromFlags(false, true, true))
                 .isEqualTo(ObfuscationMode.DISABLED);
-        assertThat(ObfuscationMode.fromEmuleFlags(true, false, false))
+        assertThat(ObfuscationMode.fromFlags(true, false, false))
                 .isEqualTo(ObfuscationMode.SUPPORTED);
-        assertThat(ObfuscationMode.fromEmuleFlags(true, true, false))
+        assertThat(ObfuscationMode.fromFlags(true, true, false))
                 .isEqualTo(ObfuscationMode.REQUESTED);
-        assertThat(ObfuscationMode.fromEmuleFlags(true, false, true))
+        assertThat(ObfuscationMode.fromFlags(true, false, true))
                 .isEqualTo(ObfuscationMode.REQUIRED);
     }
 }

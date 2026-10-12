@@ -60,7 +60,7 @@ class MainTest {
         assertThat(this.out.toString(UTF_8)).contains("Disclaimer of Warranty");
 
         assertThat(this.run("--notice")).isZero();
-        assertThat(this.out.toString(UTF_8)).contains("eMule");
+        assertThat(this.out.toString(UTF_8)).contains("Third-party components");
 
         assertThat(this.run("--help")).isZero();
         assertThat(this.out.toString(UTF_8)).contains("--config-dir");

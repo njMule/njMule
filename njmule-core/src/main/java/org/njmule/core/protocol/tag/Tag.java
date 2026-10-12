@@ -20,10 +20,7 @@ import java.util.Objects;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.util.Bytes;
 
-/**
- * A typed eD2K/Kad tag ({@code Packets.cpp:443-710}, {@code kademlia/io/DataIO.cpp}). Integers of
- * every width are one type: the encoders pick the width.
- */
+/** A typed eD2K/Kad tag. Integers of every width are one type: the encoders pick the width. */
 public sealed interface Tag {
 
     TagName name();
@@ -36,7 +33,7 @@ public sealed interface Tag {
         return new StringTag(TagName.id(id), value);
     }
 
-    /** An unsigned integer of up to 64 bits (eMule UINT8/16/32/64). */
+    /** An unsigned integer of up to 64 bits (UINT8/16/32/64 on the wire). */
     record IntTag(TagName name, long value) implements Tag {
         public IntTag {
             Objects.requireNonNull(name, "name");

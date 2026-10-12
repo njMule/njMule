@@ -19,7 +19,7 @@ package org.njmule.core.protocol.tag;
 import java.util.ArrayList;
 import java.util.List;
 import org.njmule.core.protocol.io.DecodeException;
-import org.njmule.core.protocol.io.EmuleStrings;
+import org.njmule.core.protocol.io.Ed2kStrings;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.io.StringEncoding;
@@ -34,9 +34,8 @@ import org.njmule.core.protocol.tag.Tag.StringTag;
 import org.njmule.core.util.Bytes;
 
 /**
- * Reads and writes tags in the eD2K encodings ({@code Packets.cpp:443-710}) and the Kad encoding
- * ({@code kademlia/io/DataIO.cpp:142-345}). Unlike eMule, unknown types are rejected instead of
- * being skipped without consuming their data, which desynchronises the rest of the list.
+ * Reads and writes tags in the two eD2K encodings and the Kad encoding. Unknown types are rejected:
+ * skipping them without consuming their data would desynchronise the rest of the list.
  */
 public final class TagCodec {
 
@@ -82,7 +81,7 @@ public final class TagCodec {
             default -> {
                 if (type >= TagType.STR1 && type <= TagType.STR16) {
                     yield new StringTag(
-                            name, EmuleStrings.decode(in.bytes(type - TagType.STR1 + 1)));
+                            name, Ed2kStrings.decode(in.bytes(type - TagType.STR1 + 1)));
                 }
                 throw new DecodeException(
                         String.format("unknown tag type 0x%02X for tag %s", type, name));
@@ -111,7 +110,7 @@ public final class TagCodec {
                                     ? smallestIntType(t.value())
                                     : (fits32(t.value()) ? TagType.UINT32 : TagType.UINT64);
                     case StringTag t -> {
-                        string = EmuleStrings.encode(t.value(), encoding);
+                        string = Ed2kStrings.encode(t.value(), encoding);
                         yield format == Ed2kTagFormat.NEW
                                         && string.length >= 1
                                         && string.length <= 16
@@ -125,7 +124,7 @@ public final class TagCodec {
                     case BlobTag t -> TagType.BLOB;
                     case BsobTag t ->
                             throw new IllegalArgumentException(
-                                    "eMule cannot read BSOB in eD2K tags: " + t.name());
+                                    "other clients cannot read BSOB in eD2K tags: " + t.name());
                 };
 
         TagName name = tag.name();
@@ -190,7 +189,7 @@ public final class TagCodec {
         out.u8(type).u16(raw.length).bytes(raw);
         byte[] string =
                 tag instanceof StringTag s
-                        ? EmuleStrings.encode(s.value(), StringEncoding.UTF8)
+                        ? Ed2kStrings.encode(s.value(), StringEncoding.UTF8)
                         : null;
         writeEd2kValue(out, tag, type, string);
     }

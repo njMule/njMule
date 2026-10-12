@@ -79,7 +79,7 @@ public record Preferences(
         }
     }
 
-    /** Defaults of a fresh eMule installation, with njMule's own ports. */
+    /** Defaults of a fresh installation, with njMule's own ports. */
     public static Preferences defaults() {
         return new Preferences(
                 "njMule",

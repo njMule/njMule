@@ -16,7 +16,7 @@
  */
 package org.njmule.core.protocol.tag;
 
-/** server.met tag ids ({@code Opcodes.h} {@code ST_*}); "users" and "files" are string names. */
+/** server.met tag ids; "users" and "files" are string names. */
 public final class ServerTag {
 
     public static final int SERVERNAME = 0x01;

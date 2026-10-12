@@ -17,8 +17,8 @@
 package org.njmule.core.engine;
 
 /**
- * Monotonic clock for timeouts and schedules: immune to wall-clock changes and, unlike eMule's
- * 32-bit {@code GetTickCount}, it never wraps.
+ * Monotonic clock for timeouts and schedules: immune to wall-clock changes, and it never wraps like
+ * a 32-bit millisecond counter.
  */
 @FunctionalInterface
 public interface Ticker {

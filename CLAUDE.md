@@ -143,7 +143,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 ## Code comments
 
 - Be concise: comment only what the code cannot say — the *why*, invariants, security reasons,
-  references to the eMule source (`PartFile.cpp:3624`) or to a spec.
+  references to a spec or RFC.
+- **Never reference the original project's source** in code, comments, tests or commit messages:
+  no eMule file names (`*.cpp`, `*.h`), line numbers, C++ classes, functions or variables, and no
+  "as eMule does" phrasing; describe the protocol or format itself. Name eMule only where the
+  feature is about it (importing an eMule profile, interoperability tests).
 - No comments that restate the code, no Javadoc on trivial getters, setters, builders or obvious
   methods; no change-history or "added by" comments.
 - Public API Javadoc: one summary sentence; `@param`/`@return` only when not obvious from the name.

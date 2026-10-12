@@ -31,7 +31,7 @@
         </Or>
     </Match>
     <!-- MD4, MD5 and SHA-1 are mandated by the eD2K/Kad protocols (file hashes, AICH, obfuscation
-         keys) for interoperability with eMule; they protect no secret. -->
+         keys) for interoperability; they protect no secret. -->
     <Match>
         <Or>
             <Bug pattern="WEAK_MESSAGE_DIGEST_SHA1"/>

@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Golden vectors for the eD2K and AICH hashes, from a second, independent implementation.
 
-The code follows the eMule C++ classes instead of the njMule Java code: CKnownFile::CreateFromFile
-and CreateHash (KnownFile.cpp:346-489, 922-975) and CAICHHashTree (SHAHashSet.cpp), with MD4 from
-RFC 1320 (Python's hashlib has no MD4). Pure Python is slow: generating takes about a minute.
+The code is written from the eD2K and AICH algorithms independently of the njMule Java code, with
+an explicit hash tree instead of recursion and MD4 from RFC 1320 (Python's hashlib has no MD4). Pure Python is slow: generating takes about a minute.
 
 Usage: python tools/golden/gen_vectors.py > njmule-core/src/test/resources/golden/file-hashes.txt
 """
@@ -85,7 +84,7 @@ def md4(data):
     return struct.pack("<4I", a, b, c, d)
 
 
-# --- AICH tree, mirroring CAICHHashTree ------------------------------------------------------
+# --- AICH tree ------------------------------------------------------------------------------
 
 class HashTree:
     def __init__(self, data_size, left_branch, base_size):
@@ -97,7 +96,7 @@ class HashTree:
         self.hash = None
 
     def find(self, start, size):
-        """CAICHHashTree::FindHash: creates the path down to the node covering [start, size)."""
+        """Creates the path down to the node covering [start, start + size)."""
         if start == 0 and size == self.data_size:
             return self
         blocks = -(-self.data_size // self.base_size)
@@ -112,7 +111,7 @@ class HashTree:
         return self.right.find(start - n_left, size)
 
     def recalculate(self):
-        """CAICHHashTree::ReCalculateHash."""
+        """Computes inner hashes from the leaves."""
         if self.left is not None and self.right is not None:
             self.left.recalculate()
             self.right.recalculate()
@@ -139,7 +138,7 @@ def ed2k_and_aich(data):
         part += 1
         if pos == size:
             if part_len == PARTSIZE:
-                continue  # one more, empty part (KnownFile.cpp:420-424)
+                continue  # one more, empty part
             break
     root.recalculate()
     if size < PARTSIZE:

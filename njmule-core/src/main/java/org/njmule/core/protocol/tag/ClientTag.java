@@ -16,7 +16,7 @@
  */
 package org.njmule.core.protocol.tag;
 
-/** Hello, login and eMule-info tag ids ({@code Opcodes.h} {@code CT_*}, {@code ET_*}). */
+/** Hello, login and extended-info tag ids. */
 public final class ClientTag {
 
     public static final int NAME = 0x01;

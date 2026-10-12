@@ -19,10 +19,10 @@ package org.njmule.core.api;
 import java.time.Instant;
 import java.util.Objects;
 
-/** A user-visible log entry, the equivalent of a line in eMule's "Log" pane. */
+/** A user-visible log entry, as shown in the "Log" pane of the front ends. */
 public record LogLine(Instant time, Level level, String message) {
 
-    /** Severity; {@code SUCCESS} matches eMule's blue "success" lines. */
+    /** Severity; {@code SUCCESS} marks a positive outcome that front ends highlight. */
     public enum Level {
         DEBUG,
         INFO,

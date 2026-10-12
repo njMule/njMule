@@ -22,33 +22,33 @@ import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 import org.junit.jupiter.api.Test;
 
-class EmuleStringsTest {
+class Ed2kStringsTest {
 
     private static final HexFormat HEX = HexFormat.of();
 
     @Test
     void validUtf8IsDecodedAsUtf8() {
-        assertThat(EmuleStrings.decode("città €".getBytes(StandardCharsets.UTF_8)))
+        assertThat(Ed2kStrings.decode("città €".getBytes(StandardCharsets.UTF_8)))
                 .isEqualTo("città €");
     }
 
     @Test
     void bomMarksUtf8AndIsDropped() {
-        assertThat(EmuleStrings.decode(HEX.parseHex("efbbbf63c3a0"))).isEqualTo("cà");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("efbbbf63c3a0"))).isEqualTo("cà");
     }
 
     @Test
     void invalidUtf8FallsBackToWindows1252() {
         // "Caf\xE9 \x80" is ANSI from an old client: é and the euro sign.
-        assertThat(EmuleStrings.decode(HEX.parseHex("436166e92080"))).isEqualTo("Café €");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("436166e92080"))).isEqualTo("Café €");
     }
 
     @Test
     void asciiIsWrittenWithoutBomAndUnicodeWithIt() {
-        assertThat(EmuleStrings.encode("plain", StringEncoding.UTF8_BOM_IF_NEEDED))
+        assertThat(Ed2kStrings.encode("plain", StringEncoding.UTF8_BOM_IF_NEEDED))
                 .isEqualTo("plain".getBytes(StandardCharsets.US_ASCII));
-        assertThat(HEX.formatHex(EmuleStrings.encode("à", StringEncoding.UTF8_BOM_IF_NEEDED)))
+        assertThat(HEX.formatHex(Ed2kStrings.encode("à", StringEncoding.UTF8_BOM_IF_NEEDED)))
                 .isEqualTo("efbbbfc3a0");
-        assertThat(HEX.formatHex(EmuleStrings.encode("à", StringEncoding.UTF8))).isEqualTo("c3a0");
+        assertThat(HEX.formatHex(Ed2kStrings.encode("à", StringEncoding.UTF8))).isEqualTo("c3a0");
     }
 }

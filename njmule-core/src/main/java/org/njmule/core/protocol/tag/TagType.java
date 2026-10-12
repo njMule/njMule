@@ -16,7 +16,7 @@
  */
 package org.njmule.core.protocol.tag;
 
-/** Wire values of the tag types ({@code Opcodes.h} {@code TAGTYPE_*}). */
+/** Wire values of the tag types. */
 public final class TagType {
 
     public static final int HASH = 0x01;

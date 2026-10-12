@@ -20,7 +20,7 @@ import java.util.List;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.crypto.Md4;
 
-/** eD2K file geometry and hash rules ({@code Opcodes.h}, {@code KnownFile.cpp:546-610}). */
+/** eD2K file geometry and hash rules. */
 public final class Ed2k {
 
     /** Size of an eD2K part ("chunk"), the unit of MD4 part hashes and of sharing. */

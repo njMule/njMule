@@ -30,7 +30,7 @@ class Ed2kTest {
 
     private static final long P = Ed2k.PARTSIZE;
 
-    // The table in KnownFile.cpp:597-603.
+    // Reference part counts around the PARTSIZE boundaries.
     @ParameterizedTest
     @CsvSource({
         "1,1,1,0",
@@ -40,13 +40,13 @@ class Ed2kTest {
         "19456000,2,3,3",
         "19456001,3,3,3"
     })
-    void countsPartsLikeEmule(long size, int dataParts, int ed2kParts, int hashes) {
+    void countsParts(long size, int dataParts, int ed2kParts, int hashes) {
         assertThat(Ed2k.partCount(size)).isEqualTo(dataParts);
         assertThat(Ed2k.ed2kPartCount(size)).isEqualTo(ed2kParts);
         assertThat(Ed2k.hashSetSize(size)).isEqualTo(hashes);
     }
 
-    // The examples in KnownFile.cpp:550-594: the file hash is the MD4 of the part hashes.
+    // Reference hash sets: the file hash is the MD4 of the part hashes.
     @ParameterizedTest
     @CsvSource({
         "A72CA8DF7F07154E217C236C89C17619,4891ED2E5C9C49F442145A3A5F608299:31D6CFE0D16AE931B73C59D7E0C089C0",

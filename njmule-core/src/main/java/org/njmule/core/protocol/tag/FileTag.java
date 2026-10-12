@@ -16,7 +16,7 @@
  */
 package org.njmule.core.protocol.tag;
 
-/** File tag ids ({@code Opcodes.h} {@code FT_*}), used in .met files, search results and Kad. */
+/** File tag ids, used in .met files, search results and Kad. */
 public final class FileTag {
 
     public static final int FILENAME = 0x01;

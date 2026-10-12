@@ -35,8 +35,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Crash-safe file replacement: write {@code name.tmp} + fsync, rename {@code name} to {@code
  * name.bak}, rename {@code name.tmp} to {@code name}. At any instant either the file or its backup
- * is complete, and {@link #read} falls back to the backup. (eMule rewrites {@code known.met},
- * {@code clients.met} and {@code emfriends.met} in place and corrupts them on a crash.)
+ * is complete, and {@link #read} falls back to the backup; a file rewritten in place would be
+ * corrupted by a crash.
  */
 public final class AtomicFiles {
 

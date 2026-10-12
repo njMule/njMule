@@ -17,18 +17,18 @@
 package org.njmule.core.config;
 
 /**
- * Protocol obfuscation policy: eMule's {@code CryptLayerSupported/Requested/Required} flags folded
- * into one ordered level.
+ * Protocol obfuscation policy: the supported, requested and required flags folded into one ordered
+ * level.
  */
 public enum ObfuscationMode {
     DISABLED,
     SUPPORTED,
-    /** eMule's default. */
+    /** The usual default on the network. */
     REQUESTED,
     /** Refuse plain connections. */
     REQUIRED;
 
-    public static ObfuscationMode fromEmuleFlags(
+    public static ObfuscationMode fromFlags(
             boolean supported, boolean requested, boolean required) {
         if (!supported) {
             return DISABLED;

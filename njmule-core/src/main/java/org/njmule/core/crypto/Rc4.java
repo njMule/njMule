@@ -17,12 +17,12 @@
 package org.njmule.core.crypto;
 
 /**
- * RC4 stream cipher, used by eMule's protocol obfuscation (not for security). The JCE {@code
+ * RC4 stream cipher, used by the eD2K protocol obfuscation (not for security). The JCE {@code
  * ARCFOUR} cipher would copy every buffer; this one works in place on the hot path.
  */
 public final class Rc4 {
 
-    /** Bytes of key stream eMule discards for TCP obfuscation ({@code RC4CreateKey}). */
+    /** Bytes of key stream discarded by the TCP obfuscation. */
     public static final int TCP_DISCARD = 1024;
 
     private final byte[] state = new byte[256];
