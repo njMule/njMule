@@ -10,6 +10,7 @@ Original artwork of the njMule project (no eMule asset is used), licensed GPL-3.
 |---|---|
 | `njmule-icon.svg` | master application icon: a stylised mule head in off-white strokes with orange accents on a deep blue rounded square |
 | `generated/` | PNG 16–1024 px, `njmule.ico` (Windows), `njmule.icns` (macOS) rendered from the master |
+| `njmule-avatar.svg`, `generated/njmule-avatar-512.png` | the icon on a full square with a smaller mark, for circular avatars (GitHub organisation, forums) |
 | `generated/njmule-social-preview.png` | 1280×640 repository social preview (GitHub Settings → Social preview) |
 
 Brand colours: a deep blue with warm orange accents. The user interface itself keeps sober pastel

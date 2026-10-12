@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- njMule avatar: the application icon on a full square, for circular crops (GitHub, forums). tools/IconGen.java renders the subset
+     used here: rect, circle, path with M/L/C/Q/Z, solid fills and round strokes.
+     Palette: deep blue #24427A, off-white mark #F4F6FB (9.1:1), orange accents #F5A65B (4.9:1). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+    <rect x="0" y="0" width="1024" height="1024" fill="#24427A"/>
+    <!-- ears -->
+    <path d="M 417 463 C 352 396 287 299 269 193 C 378 216 459 308 491 417" fill="none" stroke="#F4F6FB" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 607 463 C 672 396 737 299 755 193 C 646 216 565 308 533 417" fill="none" stroke="#F4F6FB" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- forelock -->
+    <path d="M 491 417 Q 500 371 512 364 Q 524 371 533 417" fill="none" stroke="#F5A65B" stroke-width="39" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- head and muzzle -->
+    <path d="M 417 463 C 378 537 382 625 417 695 C 435 737 431 788 468 824 Q 512 857 556 824 C 593 788 589 737 607 695 C 642 625 646 537 607 463" fill="none" stroke="#F4F6FB" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 426 716 Q 512 765 598 716" fill="none" stroke="#F4F6FB" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- eyes and nostrils -->
+    <circle cx="459" cy="579" r="25" fill="#F5A65B"/>
+    <circle cx="565" cy="579" r="25" fill="#F5A65B"/>
+    <circle cx="486" cy="794" r="15" fill="#F5A65B"/>
+    <circle cx="538" cy="794" r="15" fill="#F5A65B"/>
+</svg>
