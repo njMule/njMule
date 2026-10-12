@@ -70,8 +70,7 @@ public final class Packing {
     }
 
     public static byte[] deflate(byte[] data, int level) {
-        Deflater deflater = new Deflater(level);
-        try {
+        try (Deflater deflater = new Deflater(level)) {
             deflater.setInput(data);
             deflater.finish();
             ByteArrayOutputStream out = new ByteArrayOutputStream(data.length / 2 + 64);
@@ -81,15 +80,12 @@ public final class Packing {
                 out.write(chunk, 0, n);
             }
             return out.toByteArray();
-        } finally {
-            deflater.end();
         }
     }
 
     /** Inflates a zlib stream that must end within {@code maxSize} bytes of output. */
     public static byte[] inflate(byte[] data, int maxSize) throws DecodeException {
-        Inflater inflater = new Inflater();
-        try {
+        try (Inflater inflater = new Inflater()) {
             inflater.setInput(data);
             ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(maxSize, 8192));
             byte[] chunk = new byte[8192];
@@ -108,8 +104,6 @@ public final class Packing {
             return out.toByteArray();
         } catch (DataFormatException e) {
             throw new DecodeException("corrupt zlib data", e);
-        } finally {
-            inflater.end();
         }
     }
 }
