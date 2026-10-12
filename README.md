@@ -38,7 +38,7 @@ Java 25, wire-compatible with the eMule network and able to import an existing e
 - Full eD2K (servers, client-to-client transfers, source exchange, secure identification) and Kad2.
 - A GUI-independent core with a JavaFX desktop front end (AtlantaFX themes) and, later, a web UI.
 - Fast and secure by design: virtual threads, crash-safe persistence, hardened parsers — none of
-  the defects found in the eMule 0.72a code base.
+  the defects found in the eMule code base.
 - Native executables (GraalVM) and installers for Windows, macOS and Linux (64-bit).
 
 ## Building

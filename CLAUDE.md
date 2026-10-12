@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 # CLAUDE.md — njMule project instructions
 
-njMule — **N**ext generation **J**ava **Mule**: a modern Java 25 re-implementation of eMule 0.72a
+njMule — **N**ext generation **J**ava **Mule**: a modern Java 25 re-implementation of eMule
 (eD2K + Kad2), wire-compatible with the eMule network. Licensed **GPL-3.0-or-later**.
 
 The full implementation plan lives in `docs/PLAN.md` (milestones M0–M8). Read it before starting work.
