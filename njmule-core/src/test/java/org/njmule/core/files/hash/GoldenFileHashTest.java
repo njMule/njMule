@@ -73,7 +73,7 @@ class GoldenFileHashTest {
 
     private static Map<String, String> fields(String line) {
         Map<String, String> map = new HashMap<>();
-        for (String field : line.split(" ")) {
+        for (String field : line.split(" ", -1)) {
             int eq = field.indexOf('=');
             map.put(field.substring(0, eq), field.substring(eq + 1));
         }
@@ -81,7 +81,7 @@ class GoldenFileHashTest {
     }
 
     private static List<String> list(String value) {
-        return value.equals("-") ? List.of() : Arrays.asList(value.split(":"));
+        return value.equals("-") ? List.of() : Arrays.asList(value.split(":", -1));
     }
 
     /** The generator's data: byte i is (7 i + i / 251) mod 256. */

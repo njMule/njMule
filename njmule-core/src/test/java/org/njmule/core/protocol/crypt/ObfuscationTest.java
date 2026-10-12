@@ -381,7 +381,7 @@ class ObfuscationTest {
                     .filter(line -> !line.startsWith("#") && !line.isBlank())
                     .forEach(
                             line -> {
-                                String[] parts = line.split(" ");
+                                String[] parts = line.split(" ", -1);
                                 if (parts[0].startsWith("tcp")) {
                                     map.put(
                                             parts[0] + " " + parts[1],

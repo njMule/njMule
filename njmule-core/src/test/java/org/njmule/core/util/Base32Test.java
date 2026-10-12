@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class Base32Test {
 
         assertThat(Base32.encode(raw)).isEqualTo(encoded);
         assertThat(Base32.decode(encoded)).isEqualTo(raw);
-        assertThat(Base32.decode(encoded.toLowerCase())).isEqualTo(raw);
+        assertThat(Base32.decode(encoded.toLowerCase(Locale.ROOT))).isEqualTo(raw);
     }
 
     @Test
