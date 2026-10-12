@@ -1,0 +1,13 @@
+{
+    "resources": [
+        {
+            "glob": "org/njmule/core/api/LICENSE"
+        },
+        {
+            "glob": "org/njmule/core/api/NOTICE"
+        },
+        {
+            "glob": "org/njmule/core/api/build-info.properties"
+        }
+    ]
+}

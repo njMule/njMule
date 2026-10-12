@@ -11,6 +11,7 @@ path = [
     ".mvn/jvm.config",
     ".mvn/wrapper/maven-wrapper.properties",
     "**/META-INF/services/**",
+    "**/META-INF/native-image/**",
     "**/src/test/resources/**",
     "docs/**/*.png",
     "docs/**/*.svg",

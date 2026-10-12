@@ -73,9 +73,9 @@ public final class NjMuleInfo {
                 + "' for details.";
     }
 
-    /** Full GPL v3 text bundled in {@code META-INF/LICENSE}. */
+    /** Full GPL v3 text, bundled next to this class (unambiguous on the class path). */
     public static String licenseText() {
-        return readResource("/META-INF/LICENSE")
+        return readResource("LICENSE")
                 .orElse(
                         "GNU General Public License v3.0 or later:"
                                 + " https://www.gnu.org/licenses/gpl-3.0");
@@ -83,7 +83,7 @@ public final class NjMuleInfo {
 
     /** The NOTICE file: copyright, eMule attribution and third-party components. */
     public static String noticeText() {
-        return readResource("/META-INF/NOTICE").orElse(COPYRIGHT);
+        return readResource("NOTICE").orElse(COPYRIGHT);
     }
 
     /** GPL sections 15 (Disclaimer of Warranty) and 16 (Limitation of Liability). */

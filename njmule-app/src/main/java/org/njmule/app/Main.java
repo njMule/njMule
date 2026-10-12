@@ -74,9 +74,9 @@ public final class Main {
                                     + " ("
                                     + NjMuleInfo.LICENSE_ID
                                     + ")");
-            case LICENSE -> out.print(NjMuleInfo.licenseText());
+            case LICENSE -> out.println(NjMuleInfo.licenseText().stripTrailing());
             case WARRANTY -> out.println(NjMuleInfo.warrantyText());
-            case NOTICE -> out.print(NjMuleInfo.noticeText());
+            case NOTICE -> out.println(NjMuleInfo.noticeText().stripTrailing());
             case RUN -> {
                 return runEngine(cli, out, err, stop);
             }
