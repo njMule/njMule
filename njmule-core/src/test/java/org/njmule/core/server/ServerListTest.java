@@ -1,0 +1,89 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.core.server;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Path;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.util.Ipv4;
+
+class ServerListTest {
+
+    @TempDir Path dir;
+
+    @Test
+    void keepsOneEntryPerAddressAndRejectsUnusableOnes() {
+        ServerList list = new ServerList();
+
+        assertThat(list.add(server("1.2.3.4", 4661))).isTrue();
+        assertThat(list.add(server("1.2.3.4", 4661))).isFalse();
+        assertThat(list.add(server("1.2.3.4", 0))).isFalse();
+        assertThat(list.add(server("127.0.0.1", 4661))).isFalse();
+        assertThat(list.add(server("0.0.0.0", 4661))).isFalse();
+        assertThat(list.add(server("239.1.1.1", 4661))).isFalse();
+        assertThat(list.size()).isEqualTo(1);
+    }
+
+    @Test
+    void offersHighPriorityAndReliableServersFirst() {
+        ServerList list = new ServerList();
+        list.add(server("1.1.1.1", 1).with(tag(ServerTag.PREFERENCE, ServerList.PRIORITY_LOW)));
+        list.add(server("2.2.2.2", 2).with(tag(ServerTag.FAIL, 3)));
+        list.add(server("3.3.3.3", 3));
+        list.add(server("4.4.4.4", 4).with(tag(ServerTag.PREFERENCE, ServerList.PRIORITY_HIGH)));
+
+        assertThat(list.candidates())
+                .extracting(ServerList::addressOf)
+                .extracting(ServerList.Address::toString)
+                .containsExactly("4.4.4.4:4", "3.3.3.3:3", "2.2.2.2:2", "1.1.1.1:1");
+    }
+
+    @Test
+    void savesUpdatesAndLoadsAgain() throws Exception {
+        Path file = this.dir.resolve(ServerList.FILE_NAME);
+        assertThat(ServerList.load(file).size()).isZero();
+
+        ServerList list = new ServerList();
+        list.addAll(List.of(server("5.6.7.8", 4242), server("8.7.6.5", 4661)));
+        ServerList.Address address = new ServerList.Address(Ipv4.parse("5.6.7.8"), 4242);
+        list.update(
+                address,
+                s -> s.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "renamed")));
+        list.save(file);
+
+        ServerList loaded = ServerList.load(file);
+        assertThat(loaded.size()).isEqualTo(2);
+        assertThat(loaded.get(address).flatMap(ServerMet.Server::name)).contains("renamed");
+        assertThat(loaded.remove(address)).isTrue();
+        assertThat(loaded.get(address)).isEmpty();
+    }
+
+    private static ServerMet.Server server(String ip, int port) {
+        return new ServerMet.Server(Ipv4.parse(ip), port, List.of());
+    }
+
+    private static Tag tag(int id, long value) {
+        return new Tag.IntTag(TagName.id(id), value);
+    }
+}

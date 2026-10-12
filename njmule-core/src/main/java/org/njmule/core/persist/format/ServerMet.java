@@ -49,6 +49,18 @@ public final class ServerMet {
             tags = List.copyOf(tags);
         }
 
+        /** This server with {@code tag} replacing any tag of the same name. */
+        public Server with(Tag tag) {
+            List<Tag> updated = new ArrayList<>(this.tags.size() + 1);
+            for (Tag t : this.tags) {
+                if (!t.name().equals(tag.name())) {
+                    updated.add(t);
+                }
+            }
+            updated.add(tag);
+            return new Server(this.ip, this.port, updated);
+        }
+
         public Optional<String> name() {
             return Tags.stringValue(this.tags, ServerTag.SERVERNAME);
         }
