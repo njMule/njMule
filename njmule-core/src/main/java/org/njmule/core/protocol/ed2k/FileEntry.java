@@ -23,6 +23,9 @@ import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.io.StringEncoding;
+import org.njmule.core.protocol.tag.Ed2kTagFormat;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
@@ -53,6 +56,12 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
         int port = in.u16();
         List<Tag> tags = TagCodec.readEd2kList(in, in.u32(), MAX_TAGS);
         return new FileEntry(hash, clientId, port, tags);
+    }
+
+    /** Writes the entry with the new tag encoding, as servers do. */
+    public void write(PacketWriter out) {
+        out.hash16(this.hash).u32(this.clientId).u16(this.port).u32(this.tags.size());
+        TagCodec.writeEd2kList(out, this.tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
     }
 
     public Optional<String> name() {

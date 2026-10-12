@@ -97,6 +97,21 @@ public final class ServerMessages {
             TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.OLD, StringEncoding.UTF8);
             return Packet.of(Protocol.EDONKEY, Opcodes.Server.LOGINREQUEST.code(), out);
         }
+
+        /** The server side of {@link #encode}. */
+        public static Login decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            Hash16 hash = in.hash16();
+            long clientId = in.u32();
+            int port = in.u16();
+            List<Tag> tags = TagCodec.readEd2kList(in, in.u32(), FileEntry.MAX_TAGS);
+            return new Login(
+                    hash,
+                    clientId,
+                    port,
+                    Tags.stringValue(tags, ClientTag.NAME).orElse(""),
+                    (int) Tags.intValue(tags, ClientTag.SERVER_FLAGS).orElse(0));
+        }
     }
 
     /**
@@ -117,6 +132,16 @@ public final class ServerMessages {
             return (this.serverFlags & flag) != 0;
         }
 
+        public Packet encode() {
+            PacketWriter out =
+                    new PacketWriter()
+                            .u32(this.clientId)
+                            .u32(Integer.toUnsignedLong(this.serverFlags))
+                            .u32(0)
+                            .u32(this.reportedIp == 0 ? 0 : Ipv4.toEd2k(this.reportedIp));
+            return Packet.of(Protocol.EDONKEY, Opcodes.Server.IDCHANGE.code(), out);
+        }
+
         public static IdChange decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             long id = in.u32();
@@ -133,6 +158,13 @@ public final class ServerMessages {
 
     /** Users and files on the server. */
     public record ServerStatus(long users, long files) {
+        public Packet encode() {
+            return Packet.of(
+                    Protocol.EDONKEY,
+                    Opcodes.Server.SERVERSTATUS.code(),
+                    new PacketWriter().u32(this.users).u32(this.files));
+        }
+
         /** Empty for a packet too short to hold both counts. */
         public static Optional<ServerStatus> decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
@@ -146,6 +178,22 @@ public final class ServerMessages {
     /** The server's own description. */
     public record ServerIdent(
             Hash16 hash, int ip, int port, Optional<String> name, Optional<String> description) {
+        public Packet encode() {
+            List<Tag> tags = new ArrayList<>();
+            this.name.ifPresent(
+                    n -> tags.add(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), n)));
+            this.description.ifPresent(
+                    d -> tags.add(new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), d)));
+            PacketWriter out =
+                    new PacketWriter()
+                            .hash16(this.hash)
+                            .u32(Ipv4.toEd2k(this.ip))
+                            .u16(this.port)
+                            .u32(tags.size());
+            TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
+            return Packet.of(Protocol.EDONKEY, Opcodes.Server.SERVERIDENT.code(), out);
+        }
+
         public static ServerIdent decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             Hash16 hash = in.hash16();
@@ -168,6 +216,15 @@ public final class ServerMessages {
     public record SearchResults(List<FileEntry> files, boolean more) {
         public SearchResults {
             files = List.copyOf(files);
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter().u32(this.files.size());
+            for (FileEntry file : this.files) {
+                file.write(out);
+            }
+            out.u8(this.more ? 1 : 0);
+            return Packet.of(Protocol.EDONKEY, Opcodes.Server.SEARCHRESULT.code(), out);
         }
 
         public static SearchResults decode(Packet packet) throws DecodeException {
@@ -208,6 +265,21 @@ public final class ServerMessages {
             }
         }
         return lines;
+    }
+
+    public static Packet message(String text) {
+        return Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Server.SERVERMESSAGE.code(),
+                new PacketWriter().string16(text, StringEncoding.UTF8));
+    }
+
+    public static Packet serverList(List<Endpoint> servers) {
+        PacketWriter out = new PacketWriter().u8(servers.size());
+        for (Endpoint server : servers) {
+            out.u32(Ipv4.toEd2k(server.ip())).u16(server.port());
+        }
+        return Packet.of(Protocol.EDONKEY, Opcodes.Server.SERVERLIST.code(), out);
     }
 
     public static List<Endpoint> decodeServerList(Packet packet) throws DecodeException {

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
@@ -298,6 +299,53 @@ class Ed2kMessagesTest {
         assertThat(Hello.decode(hello)).isEqualTo(ours);
         assertThat(Hello.decode(answer)).isEqualTo(ours);
         assertThat(Hello.decode(answer).serverIp()).isEqualTo(Ipv4.parse("9.8.7.6"));
+    }
+
+    @Test
+    void serverSideMessagesRoundTrip() throws DecodeException {
+        ServerMessages.Login login =
+                new ServerMessages.Login(HASH, 0x0100_0001L, 4662, "nick", 0x719);
+        assertThat(ServerMessages.Login.decode(login.encode())).isEqualTo(login);
+
+        ServerMessages.IdChange high =
+                new ServerMessages.IdChange(
+                        Ipv4.toEd2k(Ipv4.parse("1.2.3.4")), 0x519, Ipv4.parse("1.2.3.4"));
+        ServerMessages.IdChange low =
+                new ServerMessages.IdChange(12_345, 0x19, Ipv4.parse("5.6.7.8"));
+        assertThat(ServerMessages.IdChange.decode(high.encode())).isEqualTo(high);
+        assertThat(ServerMessages.IdChange.decode(low.encode())).isEqualTo(low);
+
+        ServerMessages.ServerStatus status = new ServerMessages.ServerStatus(1, 2);
+        assertThat(ServerMessages.ServerStatus.decode(status.encode())).contains(status);
+
+        ServerMessages.ServerIdent ident =
+                new ServerMessages.ServerIdent(
+                        HASH, Ipv4.parse("9.8.7.6"), 4661, Optional.of("name"), Optional.empty());
+        assertThat(ServerMessages.ServerIdent.decode(ident.encode())).isEqualTo(ident);
+
+        FileEntry file =
+                new FileEntry(
+                        HASH, 0, 0, List.of(new Tag.StringTag(TagName.id(FileTag.FILENAME), "a")));
+        for (boolean more : new boolean[] {true, false}) {
+            ServerMessages.SearchResults results =
+                    new ServerMessages.SearchResults(List.of(file, file), more);
+            assertThat(ServerMessages.SearchResults.decode(results.encode())).isEqualTo(results);
+        }
+
+        assertThat(ServerMessages.decodeMessage(ServerMessages.message("one\ntwo")))
+                .containsExactly("one", "two");
+        List<ServerMessages.Endpoint> servers =
+                List.of(new ServerMessages.Endpoint(Ipv4.parse("1.1.1.1"), 4242));
+        assertThat(ServerMessages.decodeServerList(ServerMessages.serverList(servers)))
+                .isEqualTo(servers);
+
+        ServerDatagrams.Status full =
+                new ServerDatagrams.Status(7, 1, 2, 3, 4, 5, 0x30B, 6, 4665, 4667, 0xCAFEL);
+        assertThat(ServerDatagrams.Status.decode(full.encode())).isEqualTo(full);
+        assertThat(
+                        ServerDatagrams.decodeSearchResults(
+                                ServerDatagrams.searchResults(List.of(file, file, file))))
+                .containsExactly(file, file, file);
     }
 
     @Test

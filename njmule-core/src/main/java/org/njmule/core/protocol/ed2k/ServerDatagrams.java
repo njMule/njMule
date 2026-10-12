@@ -74,6 +74,24 @@ public final class ServerDatagrams {
             return (this.udpFlags & flag) != 0;
         }
 
+        /** The full answer, with every optional field. */
+        public Packet encode() {
+            PacketWriter out =
+                    new PacketWriter()
+                            .u32(this.challenge)
+                            .u32(this.users)
+                            .u32(this.files)
+                            .u32(this.maxUsers)
+                            .u32(this.softFiles)
+                            .u32(this.hardFiles)
+                            .u32(Integer.toUnsignedLong(this.udpFlags))
+                            .u32(this.lowIdUsers)
+                            .u16(this.obfuscatedUdpPort)
+                            .u16(this.obfuscatedTcpPort)
+                            .u32(this.udpKey);
+            return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), out);
+        }
+
         public static Status decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             if (in.remaining() < MIN_STATUS) {
@@ -156,6 +174,20 @@ public final class ServerDatagrams {
             files.add(FileEntry.read(in));
         }
         return files;
+    }
+
+    /** A global search answer carrying {@code files} (at least one) in one datagram. */
+    public static Packet searchResults(List<FileEntry> files) {
+        if (files.isEmpty()) {
+            throw new IllegalArgumentException("a search answer carries at least one file");
+        }
+        PacketWriter out = new PacketWriter();
+        files.getFirst().write(out);
+        for (FileEntry file : files.subList(1, files.size())) {
+            out.u8(Protocol.EDONKEY).u8(Opcodes.ServerUdp.GLOBSEARCHRES.code());
+            file.write(out);
+        }
+        return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHRES.code(), out);
     }
 
     private static boolean needs64Bit(SearchExpr tree) {
