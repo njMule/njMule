@@ -15,7 +15,7 @@
 
     <name>njMule</name>
     <description>njMule - Next generation Java Mule: a modern eD2K and Kad client, wire-compatible with eMule.</description>
-    <url>https://github.com/salvatore-coppola/njMule</url>
+    <url>https://github.com/njMule/njMule</url>
     <inceptionYear>2026</inceptionYear>
 
     <licenses>
@@ -36,15 +36,15 @@
     </developers>
 
     <scm>
-        <connection>scm:git:https://github.com/salvatore-coppola/njMule.git</connection>
-        <developerConnection>scm:git:git@github.com:salvatore-coppola/njMule.git</developerConnection>
-        <url>https://github.com/salvatore-coppola/njMule</url>
+        <connection>scm:git:https://github.com/njMule/njMule.git</connection>
+        <developerConnection>scm:git:git@github.com:njMule/njMule.git</developerConnection>
+        <url>https://github.com/njMule/njMule</url>
         <tag>HEAD</tag>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/salvatore-coppola/njMule/issues</url>
+        <url>https://github.com/njMule/njMule/issues</url>
     </issueManagement>
 
     <modules>
@@ -116,8 +116,8 @@
         <!-- SonarQube Cloud analysis: ./mvnw verify sonar:sonar -Dsonar.token=<token>; coverage comes
              from the JaCoCo XML report of each module. Override these for a self-hosted server. -->
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-        <sonar.organization>salvatore-coppola</sonar.organization>
-        <sonar.projectKey>salvatore-coppola_njMule</sonar.projectKey>
+        <sonar.organization>njmule</sonar.organization>
+        <sonar.projectKey>njMule_njMule</sonar.projectKey>
         <sonar.projectName>njMule</sonar.projectName>
 
         <!-- Quality gates (overridable from the command line, e.g. -Dspotless.check.skip=true) -->

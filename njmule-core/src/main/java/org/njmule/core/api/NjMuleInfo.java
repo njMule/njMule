@@ -32,7 +32,7 @@ public final class NjMuleInfo {
     public static final String NAME = "njMule";
     public static final String TAGLINE = "Next generation Java Mule";
     public static final String APP_ID = "org.njmule.njMule";
-    public static final String HOMEPAGE = "https://github.com/salvatore-coppola/njMule";
+    public static final String HOMEPAGE = "https://github.com/njMule/njMule";
     public static final String LICENSE_ID = "GPL-3.0-or-later";
     public static final String COPYRIGHT =
             "Copyright (C) 2026 Salvatore Coppola and the njMule contributors";

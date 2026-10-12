@@ -7,10 +7,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <h1 align="center">njMule</h1>
 
 <p align="center">
-    <a href="https://github.com/salvatore-coppola/njMule/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/salvatore-coppola/njMule/actions/workflows/build.yml/badge.svg?branch=main"></a>
+    <a href="https://github.com/njMule/njMule/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/njMule/njMule/actions/workflows/build.yml/badge.svg?branch=main"></a>
     <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-F5A65B?labelColor=24427A"></a>
     <a href="https://reuse.software"><img alt="REUSE compliant" src="https://img.shields.io/badge/REUSE-compliant-F5A65B?labelColor=24427A"></a>
-    <a href="https://github.com/salvatore-coppola/njMule/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/salvatore-coppola/njMule?color=F5A65B&labelColor=24427A"></a>
+    <a href="https://github.com/njMule/njMule/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/njMule/njMule?color=F5A65B&labelColor=24427A"></a>
     <br>
     <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-F5A65B?logo=openjdk&logoColor=white&labelColor=24427A"></a>
     <a href="https://www.graalvm.org/latest/reference-manual/native-image/"><img alt="GraalVM native image" src="https://img.shields.io/badge/GraalVM-native%20image-F5A65B?labelColor=24427A"></a>

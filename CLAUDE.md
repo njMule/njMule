@@ -97,7 +97,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Benchmarks: `./mvnw -pl njmule-bench -am package -DskipTests`, then
   `java -jar njmule-bench/target/benchmarks.jar` (one operation = 1 MiB, so ops/s = MiB/s).
 - Static analysis on SonarQube Cloud: `./mvnw verify sonar:sonar -Dsonar.token=<token>` (project
-  `salvatore-coppola_njMule`, organisation `salvatore-coppola`); in CI the `sonar` job runs once the
+  `njMule_njMule`, organisation `njmule`); in CI the `sonar` job runs once the
   `SONAR_TOKEN` secret is set.
 - Native image: GraalVM Community in the pinned container
   `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` (same image as CI; no MSVC needed on
@@ -107,7 +107,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
   Known constraint: google-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
-  `git@github.com:salvatore-coppola/njMule.git` (SSH).
+  `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
 - **Until the whole plan (M0–M8) is complete: no pull requests.** Each milestone lives on its own
   branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md` §10.1 met

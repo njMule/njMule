@@ -9,7 +9,7 @@ njMule talks to untrusted peers on the Internet, so security reports are taken s
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Use GitHub's private vulnerability reporting:
-<https://github.com/salvatore-coppola/njMule/security/advisories/new>.
+<https://github.com/njMule/njMule/security/advisories/new>.
 
 Include the affected version (`njmule --version`), a description, and if possible a reproducer
 (a packet capture or a small test). You will get an acknowledgement within 7 days; fixes are
