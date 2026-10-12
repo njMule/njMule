@@ -18,6 +18,11 @@
     <name>njMule Test Kit</name>
     <description>Test doubles for njMule: manual clock, fake servers and peers, golden vectors.</description>
 
+    <properties>
+        <!-- No classes yet (the fake server and peers arrive in M2), nothing for SpotBugs. -->
+        <spotbugs.skip>true</spotbugs.skip>
+    </properties>
+
     <build>
         <plugins>
             <plugin>

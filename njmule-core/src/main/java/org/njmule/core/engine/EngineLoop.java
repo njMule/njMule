@@ -18,65 +18,74 @@ package org.njmule.core.engine;
 
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The single thread that owns all mutable engine state. Other threads {@link #post(Runnable)} tasks
- * to a bounded queue drained here together with the {@link Timers}. Posting never blocks: a full
- * queue refuses the task and the caller decides (e.g. disconnects a flooding peer).
+ * The single thread that owns all mutable engine state: a one-thread {@link
+ * ScheduledThreadPoolExecutor} running posted tasks and timers in order. Posting never blocks: when
+ * too many tasks wait, the task is refused and the caller decides (e.g. disconnects a flooding
+ * peer). A failing task is logged and does not stop the loop.
  */
 public final class EngineLoop implements AutoCloseable {
 
     public static final int DEFAULT_QUEUE_CAPACITY = 65_536;
 
     private static final Logger LOG = LoggerFactory.getLogger(EngineLoop.class);
-    private static final long MAX_IDLE_NANOS = TimeUnit.SECONDS.toNanos(1);
-    private static final int MAX_TASKS_PER_TURN = 1_024;
 
-    private final BlockingQueue<Runnable> queue;
-    private final Timers timers = new Timers();
-    private final Ticker ticker;
-    private final Thread thread;
-    private final CountDownLatch terminated = new CountDownLatch(1);
-    // Posters take the read lock (no mutual blocking); shutdown takes the write lock so that no
-    // task is accepted after the final drain.
-    private final ReadWriteLock stateLock = new ReentrantReadWriteLock();
-    private volatile boolean running = true;
+    private final ScheduledThreadPoolExecutor executor;
+    private final int capacity;
+    private volatile Thread thread;
 
-    private EngineLoop(Ticker ticker, int capacity, String threadName) {
-        this.ticker = Objects.requireNonNull(ticker, "ticker");
-        this.queue = new ArrayBlockingQueue<>(capacity);
-        this.thread = Thread.ofPlatform().name(threadName).daemon(false).unstarted(this::run);
+    private EngineLoop(int capacity, String threadName) {
+        if (capacity < 1) {
+            throw new IllegalArgumentException("capacity must be positive");
+        }
+        this.capacity = capacity;
+        this.executor =
+                new ScheduledThreadPoolExecutor(
+                        1,
+                        task -> {
+                            Thread t =
+                                    Thread.ofPlatform()
+                                            .name(threadName)
+                                            .daemon(false)
+                                            .unstarted(task);
+                            this.thread = t;
+                            return t;
+                        });
+        // On shutdown, tasks already posted still run; timers are dropped.
+        this.executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        this.executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        this.executor.setRemoveOnCancelPolicy(true);
+        this.executor.prestartCoreThread();
     }
 
-    public static EngineLoop start(Ticker ticker, int capacity, String threadName) {
-        EngineLoop loop = new EngineLoop(ticker, capacity, threadName);
-        loop.thread.start();
-        return loop;
+    public static EngineLoop start(int capacity, String threadName) {
+        return new EngineLoop(capacity, Objects.requireNonNull(threadName, "threadName"));
     }
 
     public static EngineLoop start() {
-        return start(Ticker.system(), DEFAULT_QUEUE_CAPACITY, "njmule-engine");
+        return start(DEFAULT_QUEUE_CAPACITY, "njmule-engine");
     }
 
-    /** Queues a task; returns {@code false} if the loop is stopping or the queue is full. */
+    /** Queues a task; returns {@code false} if the loop is stopping or too many tasks wait. */
     public boolean post(Runnable task) {
         Objects.requireNonNull(task, "task");
-        this.stateLock.readLock().lock();
+        if (this.executor.getQueue().size() >= this.capacity) {
+            return false;
+        }
         try {
-            return this.running && this.queue.offer(task);
-        } finally {
-            this.stateLock.readLock().unlock();
+            this.executor.execute(() -> runTask("task", task));
+            return true;
+        } catch (RejectedExecutionException e) {
+            return false;
         }
     }
 
@@ -90,9 +99,6 @@ public final class EngineLoop implements AutoCloseable {
         boolean queued =
                 this.post(
                         () -> {
-                            if (future.isDone()) {
-                                return;
-                            }
                             try {
                                 future.complete(task.call());
                             } catch (Exception | Error e) {
@@ -106,26 +112,33 @@ public final class EngineLoop implements AutoCloseable {
         return future;
     }
 
-    /** Schedules a one-shot job from any thread. */
-    public CompletableFuture<Timers.Timer> schedule(String name, Duration delay, Runnable job) {
-        return this.submit(() -> this.timers.schedule(name, delay, this.ticker.nanoTime(), job));
+    /** Runs {@code job} once after {@code delay}, from any thread. */
+    public ScheduledFuture<?> schedule(String name, Duration delay, Runnable job) {
+        Objects.requireNonNull(job, "job");
+        return this.executor.schedule(
+                () -> runTask(name, job), delay.toNanos(), TimeUnit.NANOSECONDS);
     }
 
-    /** Schedules a fixed-rate job from any thread. */
-    public CompletableFuture<Timers.Timer> scheduleAtFixedRate(
+    /**
+     * Runs {@code job} repeatedly, {@code period} after the end of the previous run, so a stalled
+     * loop never fires a burst of missed runs. A failing run is logged and the job continues.
+     */
+    public ScheduledFuture<?> scheduleRepeating(
             String name, Duration initialDelay, Duration period, Runnable job) {
-        return this.submit(
-                () ->
-                        this.timers.scheduleAtFixedRate(
-                                name, initialDelay, period, this.ticker.nanoTime(), job));
+        Objects.requireNonNull(job, "job");
+        return this.executor.scheduleWithFixedDelay(
+                () -> runTask(name, job),
+                initialDelay.toNanos(),
+                period.toNanos(),
+                TimeUnit.NANOSECONDS);
     }
 
     public boolean isEngineThread() {
-        return this.thread.equals(Thread.currentThread());
+        return Thread.currentThread() == this.thread;
     }
 
     public boolean isRunning() {
-        return this.running;
+        return !this.executor.isShutdown();
     }
 
     /**
@@ -134,12 +147,11 @@ public final class EngineLoop implements AutoCloseable {
      * @return {@code true} if the loop terminated within the timeout
      */
     public boolean shutdown(Duration timeout) throws InterruptedException {
-        this.stopAccepting();
+        this.executor.shutdown();
         if (this.isEngineThread()) {
             return false;
         }
-        this.thread.interrupt();
-        return this.terminated.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
+        return this.executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
 
     @Override
@@ -153,56 +165,11 @@ public final class EngineLoop implements AutoCloseable {
         }
     }
 
-    private void run() {
-        try {
-            while (this.running) {
-                long next = this.timers.runDue(this.ticker.nanoTime());
-                long waitNanos =
-                        next == Timers.NO_DEADLINE
-                                ? MAX_IDLE_NANOS
-                                : Math.min(
-                                        MAX_IDLE_NANOS,
-                                        Math.max(0L, next - this.ticker.nanoTime()));
-                Runnable task;
-                try {
-                    task = this.queue.poll(waitNanos, TimeUnit.NANOSECONDS);
-                } catch (InterruptedException e) {
-                    // Shutdown interrupts the engine thread; any interrupt stops the loop.
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-                for (int i = 0; task != null && i < MAX_TASKS_PER_TURN; i++) {
-                    runTask(task);
-                    task = i + 1 < MAX_TASKS_PER_TURN ? this.queue.poll() : null;
-                }
-            }
-            // Run what was accepted before the stop so that no submitted future is left pending.
-            this.stopAccepting();
-            Thread.interrupted();
-            Runnable task;
-            while ((task = this.queue.poll()) != null) {
-                runTask(task);
-            }
-        } finally {
-            this.timers.clear();
-            this.terminated.countDown();
-        }
-    }
-
-    private void stopAccepting() {
-        this.stateLock.writeLock().lock();
-        try {
-            this.running = false;
-        } finally {
-            this.stateLock.writeLock().unlock();
-        }
-    }
-
-    private static void runTask(Runnable task) {
+    private static void runTask(String name, Runnable task) {
         try {
             task.run();
         } catch (RuntimeException e) {
-            LOG.error("Engine task failed", e);
+            LOG.error("Engine {} failed", name, e);
         }
     }
 }

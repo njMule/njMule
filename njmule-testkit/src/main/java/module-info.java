@@ -16,6 +16,4 @@
  */
 module org.njmule.testkit {
     requires transitive org.njmule.core;
-
-    exports org.njmule.testkit;
 }

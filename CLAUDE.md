@@ -74,10 +74,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 | Path | Content |
 |---|---|
-| `njmule-core` (`org.njmule.core`) | engine; exports only `api` and `config`, `engine` only to the test kit |
+| `njmule-core` (`org.njmule.core`) | engine; exports only `api` and `config` |
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
 | `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX + Ikonli desktop app |
-| `njmule-testkit` (`org.njmule.testkit`) | test doubles (`ManualTicker`, later fake server/peer) |
+| `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `config/` | license header, Checkstyle and SpotBugs configuration |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |

@@ -25,6 +25,4 @@ module org.njmule.core {
 
     exports org.njmule.core.api;
     exports org.njmule.core.config;
-    exports org.njmule.core.engine to
-            org.njmule.testkit;
 }

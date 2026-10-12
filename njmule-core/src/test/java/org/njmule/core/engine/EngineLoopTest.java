@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(10)
 class EngineLoopTest {
 
-    private final EngineLoop loop = EngineLoop.start(Ticker.system(), 16, "test-engine");
+    private final EngineLoop loop = EngineLoop.start(16, "test-engine");
 
     @AfterEach
     void stop() {
@@ -101,23 +101,33 @@ class EngineLoopTest {
     }
 
     @Test
-    void scheduledJobsRun() throws Exception {
+    void scheduledJobsRunAndFailingRunsDoNotStopRepeatingOnes() throws Exception {
         CountDownLatch oneShot = new CountDownLatch(1);
-        CountDownLatch periodic = new CountDownLatch(3);
-        assertThat(this.loop.schedule("one", Duration.ofMillis(5), oneShot::countDown).get())
-                .isNotNull();
-        assertThat(
-                        this.loop
-                                .scheduleAtFixedRate(
-                                        "tick",
-                                        Duration.ZERO,
-                                        Duration.ofMillis(5),
-                                        periodic::countDown)
-                                .get())
-                .isNotNull();
+        CountDownLatch repeating = new CountDownLatch(3);
+        AtomicInteger runs = new AtomicInteger();
+        this.loop.schedule("one", Duration.ofMillis(5), oneShot::countDown);
+        this.loop.scheduleRepeating(
+                "tick",
+                Duration.ZERO,
+                Duration.ofMillis(5),
+                () -> {
+                    repeating.countDown();
+                    if (runs.incrementAndGet() == 1) {
+                        throw new IllegalStateException("first run fails");
+                    }
+                });
 
         assertThat(oneShot.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(periodic.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(repeating.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void cancelledTimersDoNotRun() throws Exception {
+        AtomicInteger runs = new AtomicInteger();
+        this.loop.schedule("never", Duration.ofMillis(50), runs::incrementAndGet).cancel(false);
+        Thread.sleep(150);
+
+        assertThat(runs).hasValue(0);
     }
 
     @Test
@@ -149,17 +159,6 @@ class EngineLoopTest {
         assertThat(this.loop.post(() -> {})).isFalse();
         assertThatThrownBy(() -> this.loop.submit(() -> 1).get())
                 .hasCauseInstanceOf(RejectedExecutionException.class);
-    }
-
-    @Test
-    void interruptingTheEngineThreadStopsTheLoop() throws Exception {
-        Thread engine = this.loop.submit(Thread::currentThread).get();
-
-        engine.interrupt();
-        engine.join();
-
-        assertThat(this.loop.isRunning()).isFalse();
-        assertThat(this.loop.post(() -> {})).isFalse();
     }
 
     private static void awaitQuietly(CountDownLatch latch) {
