@@ -19,8 +19,8 @@ jobs:
                 os: [ubuntu-latest, windows-latest]
         runs-on: ${{ matrix.os }}
         steps:
-            - uses: actions/checkout@v7
-            - uses: actions/setup-java@v6
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
               with:
                   distribution: temurin
                   java-version: "25"
@@ -30,7 +30,7 @@ jobs:
               run: ./mvnw -B -ntp verify
             - name: Upload test reports
               if: failure()
-              uses: actions/upload-artifact@v7
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: test-reports-${{ matrix.os }}
                   path: "**/target/surefire-reports/"
@@ -39,8 +39,8 @@ jobs:
         name: REUSE compliance
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v7
-            - uses: fsfe/reuse-action@v6
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
 
     native:
         name: native image (linux-x64)
@@ -48,14 +48,14 @@ jobs:
         # Same pinned GraalVM Community image as the local Docker build (CLAUDE.md).
         container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
         steps:
-            - uses: actions/checkout@v7
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Build the native executable
               run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests
             - name: Smoke test
               run: |
                   njmule-app/target/njmule --version
                   njmule-app/target/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
-            - uses: actions/upload-artifact@v7
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: njmule-linux-x64
                   path: njmule-app/target/njmule
@@ -67,11 +67,11 @@ jobs:
         env:
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         steps:
-            - uses: actions/checkout@v7
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               if: env.SONAR_TOKEN != ''
               with:
                   fetch-depth: 0
-            - uses: actions/setup-java@v6
+            - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
               if: env.SONAR_TOKEN != ''
               with:
                   distribution: temurin
