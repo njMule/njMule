@@ -69,6 +69,17 @@ public final class Packing {
         };
     }
 
+    /** Unpacks a packet from a server: inflated {@code 0xD4} frames carry eDonkey messages. */
+    public static Packet unpackFromServer(Packet packet) throws DecodeException {
+        if (packet.protocol() != Protocol.PACKED) {
+            return packet;
+        }
+        return Packet.adopt(
+                Protocol.EDONKEY,
+                packet.opcode(),
+                inflate(packet.payloadArray(), MAX_SERVER_UNPACKED));
+    }
+
     public static byte[] deflate(byte[] data, int level) {
         try (Deflater deflater = new Deflater(level)) {
             deflater.setInput(data);

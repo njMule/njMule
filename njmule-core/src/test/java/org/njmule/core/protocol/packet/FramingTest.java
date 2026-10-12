@@ -109,6 +109,16 @@ class FramingTest {
     }
 
     @Test
+    void packedServerFramesCarryEdonkeyMessages() throws DecodeException {
+        Packet results = Packet.of(Protocol.EDONKEY, 0x33, new byte[2000]);
+        Packet packed = Packing.pack(results);
+
+        assertThat(packed.protocol()).isEqualTo(Protocol.PACKED);
+        assertThat(Packing.unpackFromServer(packed)).isEqualTo(results);
+        assertThat(Packing.unpackFromServer(results)).isSameAs(results);
+    }
+
+    @Test
     void inflatingStopsAtTheCap() {
         // 1 MiB of zeros packs to about 1 KiB: a decompression bomb for a 50 kB cap.
         Packet bomb = Packing.pack(Packet.of(Protocol.EMULE, 0x40, new byte[1 << 20]));
