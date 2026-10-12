@@ -44,4 +44,11 @@
             <Package name="~org\.njmule\.core\.persist\.format.*"/>
         </Or>
     </Match>
+
+    <!-- RC4 is the key stream of the eD2K/Kad protocol obfuscation, which hides traffic from simple
+         filters and is not meant to protect integrity or secrecy. -->
+    <Match>
+        <Bug pattern="CIPHER_INTEGRITY"/>
+        <Class name="org.njmule.core.crypto.Rc4"/>
+    </Match>
 </FindBugsFilter>

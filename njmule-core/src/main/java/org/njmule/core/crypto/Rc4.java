@@ -16,77 +16,63 @@
  */
 package org.njmule.core.crypto;
 
+import java.security.GeneralSecurityException;
+import javax.crypto.Cipher;
+import javax.crypto.ShortBufferException;
+import javax.crypto.spec.SecretKeySpec;
+
 /**
- * RC4 stream cipher, used by the eD2K protocol obfuscation (not for security). The JCE {@code
- * ARCFOUR} cipher would copy every buffer; this one works in place on the hot path.
+ * RC4 key stream of the eD2K protocol obfuscation (not for security), on the JDK's {@code ARCFOUR}
+ * cipher. Not thread-safe: each direction of a connection owns one.
  */
 public final class Rc4 {
 
     /** Bytes of key stream discarded by the TCP obfuscation. */
     public static final int TCP_DISCARD = 1024;
 
-    private final byte[] state = new byte[256];
-    private int x;
-    private int y;
+    private static final String ALGORITHM = "ARCFOUR";
+    private static final int SKIP_CHUNK = 4096;
 
+    private final Cipher cipher;
+
+    /** {@code key} has 5 to 128 bytes, the range the JDK accepts. */
     public Rc4(byte[] key) {
         this(key, 0, key.length);
     }
 
     public Rc4(byte[] key, int offset, int length) {
-        if (length <= 0 || length > 256) {
-            throw new IllegalArgumentException("RC4 keys have 1-256 bytes, got " + length);
-        }
-        byte[] s = this.state;
-        for (int i = 0; i < 256; i++) {
-            s[i] = (byte) i;
-        }
-        int j = 0;
-        for (int i = 0; i < 256; i++) {
-            j = (j + s[i] + key[offset + i % length]) & 0xFF;
-            byte t = s[i];
-            s[i] = s[j];
-            s[j] = t;
+        try {
+            this.cipher = Cipher.getInstance(ALGORITHM);
+            this.cipher.init(
+                    Cipher.ENCRYPT_MODE, new SecretKeySpec(key, offset, length, ALGORITHM));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException("cannot set up RC4: " + e.getMessage(), e);
         }
     }
 
-    /** Encrypts or decrypts {@code length} bytes of {@code data} in place. */
+    /** XORs the key stream into {@code data} in place. */
     public void apply(byte[] data, int offset, int length) {
         this.apply(data, offset, data, offset, length);
     }
 
     public void apply(byte[] in, int inOffset, byte[] out, int outOffset, int length) {
-        java.util.Objects.checkFromIndexSize(inOffset, length, in.length);
-        java.util.Objects.checkFromIndexSize(outOffset, length, out.length);
-        byte[] s = this.state;
-        int i = this.x;
-        int j = this.y;
-        for (int k = 0; k < length; k++) {
-            i = (i + 1) & 0xFF;
-            byte si = s[i];
-            j = (j + si) & 0xFF;
-            byte sj = s[j];
-            s[i] = sj;
-            s[j] = si;
-            out[outOffset + k] = (byte) (in[inOffset + k] ^ s[(si + sj) & 0xFF]);
+        try {
+            this.cipher.update(in, inOffset, length, out, outOffset);
+        } catch (ShortBufferException e) {
+            throw new IllegalArgumentException("output buffer too small", e);
         }
-        this.x = i;
-        this.y = j;
     }
 
     /** Advances the key stream by {@code length} bytes. */
     public void skip(int length) {
-        byte[] s = this.state;
-        int i = this.x;
-        int j = this.y;
-        for (int k = 0; k < length; k++) {
-            i = (i + 1) & 0xFF;
-            byte si = s[i];
-            j = (j + si) & 0xFF;
-            s[i] = s[j];
-            s[j] = si;
+        byte[] scratch = new byte[Math.min(length, SKIP_CHUNK)];
+        for (int left = length; left > 0; left -= scratch.length) {
+            this.apply(scratch, 0, Math.min(left, scratch.length));
         }
-        this.x = i;
-        this.y = j;
+    }
+
+    /** The underlying cipher, for {@link javax.crypto.CipherInputStream} and its output twin. */
+    public Cipher cipher() {
+        return this.cipher;
     }
 }

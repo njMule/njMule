@@ -25,7 +25,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -192,24 +191,6 @@ class ObfuscationTest {
 
         assertThat(roundTrip(result[0].send(), result[1].receive(), "login")).isEqualTo("login");
         assertThat(roundTrip(result[1].send(), result[0].receive(), "id")).isEqualTo("id");
-    }
-
-    @Test
-    void rc4StreamsDecryptWhatTheyEncrypt() throws IOException {
-        byte[] key = HEX.parseHex("0102030405");
-        ByteArrayOutputStream wire = new ByteArrayOutputStream();
-        byte[] message = "obfuscated payload".getBytes(StandardCharsets.US_ASCII);
-        try (OutputStream out = Rc4Streams.encrypting(wire, new Rc4(key))) {
-            out.write(message[0]);
-            out.write(message, 1, message.length - 1);
-        }
-        InputStream in =
-                Rc4Streams.decrypting(new ByteArrayInputStream(wire.toByteArray()), new Rc4(key));
-
-        assertThat(wire.toByteArray()).isNotEqualTo(message);
-        assertThat(in.read()).isEqualTo(message[0]);
-        assertThat(in.readAllBytes())
-                .isEqualTo(java.util.Arrays.copyOfRange(message, 1, message.length));
     }
 
     @Test
