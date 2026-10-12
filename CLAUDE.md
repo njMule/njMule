@@ -99,10 +99,14 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Static analysis on SonarQube Cloud: `./mvnw verify sonar:sonar -Dsonar.token=<token>` (project
   `njMule_njMule`, organisation `njmule`); in CI the `sonar` job runs once the
   `SONAR_TOKEN` secret is set.
-- Native image: GraalVM Community in the pinned container
-  `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` (same image as CI; no MSVC needed on
-  Windows, it builds the Linux x64 binary `njmule-app/target/njmule`):
-  `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" -w /work --entrypoint ./mvnw <image> -B -Pnative -pl njmule-app -am package -DskipTests`.
+- Native image: GraalVM Community `25.0.4.1.1` (25 Innovation 4, same as CI). Locally it is installed
+  in `%LOCALAPPDATA%\Programs\GraalVM` with `GRAALVM_HOME` set; on Windows `native-image` needs the
+  Visual Studio 2022 Build Tools (C++ workload) and produces `njmule.exe`:
+  `./mvnw -Pnative -pl njmule-app -am package -DskipTests`. The Linux x64 binary comes from the
+  pinned container `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` through
+  `tools/native-docker.sh` (Maven on a copy of the sources inside the container: ~1.5 min instead of
+  ~6 on the bind mount): `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash
+  <image> /work/tools/native-docker.sh` (Git Bash: prefix `MSYS_NO_PATHCONV=1`).
 - Regenerate icons: `java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated`.
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
   Known constraint: google-java-format is pinned to the newest version Spotless supports.

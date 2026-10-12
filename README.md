@@ -56,12 +56,24 @@ On Windows use `mvnw.cmd`. Run the headless engine (on Windows separate the modu
 java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main --help
 ```
 
-Build the native executable (GraalVM; on any OS with Docker, this produces the Linux x64 binary
-`njmule-app/target/njmule`):
+Build the native executable for the current OS with a local GraalVM Community for JDK 25
+(`25.0.4.1.1`, the version used in CI) and `GRAALVM_HOME` pointing to it. On Windows,
+`native-image` also needs the Visual Studio 2022 Build Tools with the C++ workload
+(`winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`).
 
 ```bash
-docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" -w /work --entrypoint ./mvnw ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 -B -Pnative -pl njmule-app -am package -DskipTests
+./mvnw -Pnative -pl njmule-app -am package -DskipTests   # njmule-app/target/njmule(.exe)
 ```
+
+Without a local GraalVM, Docker builds the Linux x64 binary in the same image as CI. The script
+compiles a copy of the sources inside the container, because on Docker Desktop (Windows, macOS)
+Maven working on the bind-mounted checkout is several times slower (about 1.5 minutes instead of 6):
+
+```bash
+docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 /work/tools/native-docker.sh
+```
+
+In PowerShell write `"${PWD}:/work"`; in Git Bash prefix the command with `MSYS_NO_PATHCONV=1`.
 
 Run the desktop GUI during development:
 
