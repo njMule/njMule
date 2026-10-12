@@ -22,8 +22,8 @@ tones compatible with the AtlantaFX themes.
 | Mark | `#F4F6FB` | off-white strokes, 9.1:1 against the brand blue |
 | Accent | `#F5A65B` | warm orange for forelock, eyes and nostrils, 4.9:1 against the brand blue; dark badge text on it reads at 6.3:1 |
 
-Regenerate after editing the master (the GUI copies the 16–512 px PNGs into
-`njmule-gui/src/main/resources/org/njmule/gui/icons/`):
+Regenerate after editing the master (the GUI build packages the 16–512 px PNGs of `generated/` as
+its window icons, see `njmule-gui/pom.xml`):
 
 ```bash
 java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated

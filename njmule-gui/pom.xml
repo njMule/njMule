@@ -62,6 +62,27 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- Redeclared: a <resources> section replaces Maven's default. -->
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- Window icons come straight from the branding renders (no copy in the sources). -->
+            <resource>
+                <directory>${project.basedir}/../branding/generated</directory>
+                <targetPath>org/njmule/gui/icons</targetPath>
+                <includes>
+                    <include>njmule-16.png</include>
+                    <include>njmule-24.png</include>
+                    <include>njmule-32.png</include>
+                    <include>njmule-48.png</include>
+                    <include>njmule-64.png</include>
+                    <include>njmule-128.png</include>
+                    <include>njmule-256.png</include>
+                    <include>njmule-512.png</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <!-- Development launcher: ./mvnw -pl njmule-gui -am install -DskipTests, then
                  ./mvnw -pl njmule-gui javafx:run -->
