@@ -151,6 +151,17 @@ class EngineLoopTest {
                 .hasCauseInstanceOf(RejectedExecutionException.class);
     }
 
+    @Test
+    void interruptingTheEngineThreadStopsTheLoop() throws Exception {
+        Thread engine = this.loop.submit(Thread::currentThread).get();
+
+        engine.interrupt();
+        engine.join();
+
+        assertThat(this.loop.isRunning()).isFalse();
+        assertThat(this.loop.post(() -> {})).isFalse();
+    }
+
     private static void awaitQuietly(CountDownLatch latch) {
         try {
             latch.await();

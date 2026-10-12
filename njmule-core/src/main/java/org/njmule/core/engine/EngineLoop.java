@@ -134,12 +134,7 @@ public final class EngineLoop implements AutoCloseable {
      * @return {@code true} if the loop terminated within the timeout
      */
     public boolean shutdown(Duration timeout) throws InterruptedException {
-        this.stateLock.writeLock().lock();
-        try {
-            this.running = false;
-        } finally {
-            this.stateLock.writeLock().unlock();
-        }
+        this.stopAccepting();
         if (this.isEngineThread()) {
             return false;
         }
@@ -172,14 +167,17 @@ public final class EngineLoop implements AutoCloseable {
                 try {
                     task = this.queue.poll(waitNanos, TimeUnit.NANOSECONDS);
                 } catch (InterruptedException e) {
-                    continue;
+                    // Shutdown interrupts the engine thread; any interrupt stops the loop.
+                    Thread.currentThread().interrupt();
+                    break;
                 }
                 for (int i = 0; task != null && i < MAX_TASKS_PER_TURN; i++) {
                     runTask(task);
                     task = i + 1 < MAX_TASKS_PER_TURN ? this.queue.poll() : null;
                 }
             }
-            // Run what was accepted before shutdown so that no submitted future is left pending.
+            // Run what was accepted before the stop so that no submitted future is left pending.
+            this.stopAccepting();
             Thread.interrupted();
             Runnable task;
             while ((task = this.queue.poll()) != null) {
@@ -188,6 +186,15 @@ public final class EngineLoop implements AutoCloseable {
         } finally {
             this.timers.clear();
             this.terminated.countDown();
+        }
+    }
+
+    private void stopAccepting() {
+        this.stateLock.writeLock().lock();
+        try {
+            this.running = false;
+        } finally {
+            this.stateLock.writeLock().unlock();
         }
     }
 
