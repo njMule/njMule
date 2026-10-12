@@ -10,6 +10,7 @@ Original artwork of the njMule project (no eMule asset is used), licensed GPL-3.
 |---|---|
 | `njmule-icon.svg` | master application icon: a stylised mule head in off-white strokes with orange accents on a deep blue rounded square |
 | `generated/` | PNG 16–1024 px, `njmule.ico` (Windows), `njmule.icns` (macOS) rendered from the master |
+| `generated/njmule-social-preview.png` | 1280×640 repository social preview (GitHub Settings → Social preview) |
 
 Brand colours: a deep blue with warm orange accents. The user interface itself keeps sober pastel
 tones compatible with the AtlantaFX themes.
@@ -25,6 +26,12 @@ Regenerate after editing the master (the GUI copies the 16–512 px PNGs into
 
 ```bash
 java -Djava.awt.headless=true tools/IconGen.java branding/njmule-icon.svg branding/generated
+```
+
+The social preview is rendered from the 512 px icon:
+
+```bash
+java -Djava.awt.headless=true tools/SocialPreview.java branding/generated/njmule-512.png branding/generated/njmule-social-preview.png
 ```
 
 `IconGen` supports only the SVG subset used here (rect, circle, paths with M/L/C/Q/Z, solid fills,
