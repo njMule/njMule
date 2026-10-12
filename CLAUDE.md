@@ -49,7 +49,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   e.g. `feat(kad): add routing zone splitting`.
 - PR body uses `.github/pull_request_template.md` (summary, security gates touched, interop
   checklist, test evidence).
-- Merge strategy: squash merge into `main`; `main` is protected and never committed to directly.
+- Merge strategy (once pull requests start, after the plan): squash merge into `main`; `main` is
+  protected and never committed to directly.
 
 ### Branch names
 
@@ -102,10 +103,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:salvatore-coppola/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
-- **Initial phase (until the maintainer says otherwise): no pull requests.** Each milestone lives on
-  its own branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md`
-  §10.1 met and `./mvnw verify` green) fast-forward `main` to it, push `main`, and start the next
-  milestone from the updated `main`.
+- **Until the whole plan (M0–M8) is complete: no pull requests.** Each milestone lives on its own
+  branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md` §10.1 met
+  and `./mvnw verify` green) fast-forward `main` to it, push `main`, and start the next milestone
+  from the updated `main`. After the plan, pull requests start and `main` gets branch protection.
 
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
 
