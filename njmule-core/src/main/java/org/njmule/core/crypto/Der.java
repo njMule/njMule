@@ -24,12 +24,12 @@ import org.njmule.core.protocol.io.DecodeException;
 /** The tiny subset of DER needed for RSA keys, with bounds checks on every length. */
 final class Der {
 
-    static final int SEQUENCE = 0x30;
-    static final int INTEGER = 0x02;
-    static final int BIT_STRING = 0x03;
-    static final int OCTET_STRING = 0x04;
-    static final int NULL = 0x05;
-    static final int OID = 0x06;
+    static final int TAG_SEQUENCE = 0x30;
+    static final int TAG_INTEGER = 0x02;
+    static final int TAG_BIT_STRING = 0x03;
+    static final int TAG_OCTET_STRING = 0x04;
+    static final int TAG_NULL = 0x05;
+    static final int TAG_OID = 0x06;
 
     private Der() {}
 
@@ -78,7 +78,7 @@ final class Der {
         }
 
         BigInteger integer() throws DecodeException {
-            Reader content = this.element(INTEGER);
+            Reader content = this.element(TAG_INTEGER);
             if (content.end == content.pos) {
                 throw new DecodeException("empty DER integer");
             }
@@ -142,7 +142,7 @@ final class Der {
     }
 
     static byte[] integer(BigInteger value) {
-        return element(INTEGER, value.toByteArray());
+        return element(TAG_INTEGER, value.toByteArray());
     }
 
     static byte[] sequence(byte[]... parts) {
@@ -150,6 +150,6 @@ final class Der {
         for (byte[] part : parts) {
             out.writeBytes(part);
         }
-        return element(SEQUENCE, out.toByteArray());
+        return element(TAG_SEQUENCE, out.toByteArray());
     }
 }

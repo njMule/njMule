@@ -66,21 +66,22 @@ public final class RsaKeys {
         byte[] rsaPublicKey = Der.sequence(Der.integer(key.modulus()), Der.integer(key.exponent()));
         byte[] bits = new byte[rsaPublicKey.length + 1];
         System.arraycopy(rsaPublicKey, 0, bits, 1, rsaPublicKey.length);
-        return Der.sequence(RSA_ALGORITHM, Der.element(Der.BIT_STRING, bits));
+        return Der.sequence(RSA_ALGORITHM, Der.element(Der.TAG_BIT_STRING, bits));
     }
 
     /** Decodes a SubjectPublicKeyInfo or a bare PKCS#1 RSAPublicKey. */
     public static PublicKey decodePublic(byte[] der) throws DecodeException {
-        Der.Reader outer = new Der.Reader(der).element(Der.SEQUENCE);
+        Der.Reader outer = new Der.Reader(der).element(Der.TAG_SEQUENCE);
         PublicKey key;
-        if (outer.peekTag() == Der.SEQUENCE) {
-            checkAlgorithm(outer.element(Der.SEQUENCE));
-            byte[] bits = outer.element(Der.BIT_STRING).bytes();
+        if (outer.peekTag() == Der.TAG_SEQUENCE) {
+            checkAlgorithm(outer.element(Der.TAG_SEQUENCE));
+            byte[] bits = outer.element(Der.TAG_BIT_STRING).bytes();
             if (bits.length < 1 || bits[0] != 0) {
                 throw new DecodeException("unexpected unused bits in the public key");
             }
             Der.Reader rsa =
-                    new Der.Reader(Arrays.copyOfRange(bits, 1, bits.length)).element(Der.SEQUENCE);
+                    new Der.Reader(Arrays.copyOfRange(bits, 1, bits.length))
+                            .element(Der.TAG_SEQUENCE);
             key = publicKey(rsa.integer(), rsa.integer());
             rsa.expectEnd();
         } else {
@@ -103,20 +104,24 @@ public final class RsaKeys {
                         Der.integer(key.dq()),
                         Der.integer(key.qInv()));
         return Der.sequence(
-                Der.integer(BigInteger.ZERO), RSA_ALGORITHM, Der.element(Der.OCTET_STRING, pkcs1));
+                Der.integer(BigInteger.ZERO),
+                RSA_ALGORITHM,
+                Der.element(Der.TAG_OCTET_STRING, pkcs1));
     }
 
     /** Decodes a PKCS#8 PrivateKeyInfo or a PKCS#1 RSAPrivateKey. */
     public static PrivateKey decodePrivate(byte[] der) throws DecodeException {
-        Der.Reader outer = new Der.Reader(der).element(Der.SEQUENCE);
+        Der.Reader outer = new Der.Reader(der).element(Der.TAG_SEQUENCE);
         BigInteger version = outer.integer();
         if (version.signum() != 0) {
             throw new DecodeException("unsupported private key version " + version);
         }
         Der.Reader rsa;
-        if (outer.peekTag() == Der.SEQUENCE) {
-            checkAlgorithm(outer.element(Der.SEQUENCE));
-            rsa = new Der.Reader(outer.element(Der.OCTET_STRING).bytes()).element(Der.SEQUENCE);
+        if (outer.peekTag() == Der.TAG_SEQUENCE) {
+            checkAlgorithm(outer.element(Der.TAG_SEQUENCE));
+            rsa =
+                    new Der.Reader(outer.element(Der.TAG_OCTET_STRING).bytes())
+                            .element(Der.TAG_SEQUENCE);
             if (rsa.integer().signum() != 0) {
                 throw new DecodeException("unsupported RSA private key version");
             }
@@ -173,13 +178,13 @@ public final class RsaKeys {
     }
 
     private static void checkAlgorithm(Der.Reader algorithm) throws DecodeException {
-        byte[] oid = algorithm.element(Der.OID).bytes();
+        byte[] oid = algorithm.element(Der.TAG_OID).bytes();
         byte[] expected = Arrays.copyOfRange(RSA_ALGORITHM, 4, 13);
         if (!Arrays.equals(oid, expected)) {
             throw new DecodeException("not an RSA key");
         }
         if (algorithm.hasMore()) {
-            algorithm.element(Der.NULL);
+            algorithm.element(Der.TAG_NULL);
         }
         algorithm.expectEnd();
     }
