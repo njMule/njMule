@@ -26,9 +26,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Java 25, wire-compatible with the eMule network and able to import an existing eMule profile
 (downloads in progress, known files, credits, servers, Kad nodes).
 
-> **Status: pre-alpha (milestone M0).** The project skeleton, the engine loop and the configuration
-> layer exist; networking, downloads and the full user interface are being built milestone by
-> milestone. It is not usable for file sharing yet.
+> **Status: pre-alpha (milestone M1).** The engine loop and the configuration layer exist, together
+> with the protocol codecs, the obfuscation layer, file hashing and readers for every eMule data
+> file; networking, downloads and the full user interface are being built milestone by milestone.
+> It is not usable for file sharing yet.
 
 ## Goals
 
