@@ -21,6 +21,7 @@ jobs:
             pull-requests: read
         outputs:
             build: ${{ steps.filter.outputs.build }}
+            workflows: ${{ steps.filter.outputs.workflows }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -44,6 +45,8 @@ jobs:
                           - '!branding/generated/njmule-avatar-512.png'
                           - '!branding/generated/njmule-social-preview.png'
                           - '!tools/**'
+                      workflows:
+                          - '.github/workflows/**'
 
     verify:
         name: verify (${{ matrix.os }})
@@ -70,6 +73,19 @@ jobs:
               with:
                   name: test-reports-${{ matrix.os }}
                   path: "**/target/surefire-reports/"
+
+    actionlint:
+        name: actionlint
+        needs: changes
+        if: needs.changes.outputs.workflows == 'true'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            # Official image (actionlint with shellcheck), pinned by digest.
+            - name: Lint the workflows
+              uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+              with:
+                  args: -color
 
     reuse:
         name: REUSE compliance
@@ -166,10 +182,10 @@ jobs:
     ci:
         name: CI result
         if: always()
-        needs: [changes, verify, reuse, native, native-windows, sonar]
+        needs: [changes, verify, actionlint, reuse, native, native-windows, sonar]
         runs-on: ubuntu-latest
         steps:
             - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
               with:
-                  allowed-skips: verify, native, native-windows, sonar
+                  allowed-skips: verify, actionlint, native, native-windows, sonar
                   jobs: ${{ toJSON(needs) }}
