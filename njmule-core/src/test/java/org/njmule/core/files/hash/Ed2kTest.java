@@ -19,6 +19,7 @@ package org.njmule.core.files.hash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,20 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.Hash16;
 
 class Ed2kTest {
+
+    // RFC 1320, appendix A.5.
+    @ParameterizedTest
+    @CsvSource({
+        "'',31D6CFE0D16AE931B73C59D7E0C089C0",
+        "abc,A448017AAF21D8525FC10AE87AA6729D",
+        "message digest,D9130A8164549FE818874806E1C7014B",
+        "12345678901234567890123456789012345678901234567890123456789012345678901234567890,"
+                + "E33B4DDC9C38F2199C3E7B164FCC0536"
+    })
+    void md4MatchesTheRfcVectors(String message, String digest) {
+        byte[] data = message.getBytes(StandardCharsets.US_ASCII);
+        assertThat(Ed2k.md4(data, 0, data.length).toHex()).isEqualTo(digest);
+    }
 
     private static final long P = Ed2k.PARTSIZE;
 

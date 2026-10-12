@@ -29,9 +29,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.LongConsumer;
+import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
-import org.njmule.core.crypto.Md4;
 
 /** Computes the eD2K hash set and the AICH tree in one pass over the data, block by block. */
 public final class FileHasher {
@@ -58,7 +58,7 @@ public final class FileHasher {
     public static Result hash(ReadableByteChannel in, long size, LongConsumer progress)
             throws IOException {
         Ed2k.checkSize(size);
-        Md4 md4 = new Md4();
+        MD4Digest md4 = new MD4Digest();
         MessageDigest sha1 = AichTree.sha1();
         byte[] block = new byte[Ed2k.EMBLOCKSIZE];
         ByteBuffer buffer = ByteBuffer.wrap(block);
@@ -80,7 +80,7 @@ public final class FileHasher {
                     throw new InterruptedIOException("hashing cancelled");
                 }
             }
-            parts.add(md4.digest());
+            parts.add(Ed2k.md4(md4));
         }
 
         Ed2kHashSet ed2k;

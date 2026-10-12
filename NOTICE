@@ -37,6 +37,7 @@ licenses are compatible with the GNU GPL version 3. The complete list with
 versions is generated at release time in THIRD-PARTY.txt.
 
     SLF4J API                   MIT License
+    Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
     OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
     AtlantaFX                   MIT License

@@ -28,7 +28,6 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
-import org.njmule.core.crypto.Md4;
 
 class FileHasherTest {
 
@@ -38,14 +37,14 @@ class FileHasherTest {
     void smallFilesHaveNoHashSet() throws IOException {
         Ed2kHashSet set = zeros(3).ed2k();
 
-        assertThat(set.fileHash()).isEqualTo(Md4.hash(new byte[3]));
+        assertThat(set.fileHash()).isEqualTo(md4(new byte[3]));
         assertThat(set.partHashes()).isEmpty();
         assertThat(set.partHash(0)).isEqualTo(set.fileHash());
     }
 
     @Test
     void anExactMultipleOfPartsizeEndsWithTheEmptyPartHash() throws IOException {
-        Hash16 zeroPart = Md4.hash(new byte[(int) P]);
+        Hash16 zeroPart = md4(new byte[(int) P]);
 
         Ed2kHashSet one = zeros(P).ed2k();
         assertThat(one.partHashes()).containsExactly(zeroPart, Ed2k.EMPTY_PART_HASH);
@@ -60,10 +59,9 @@ class FileHasherTest {
     void partialLastPartsAreHashedAsTheyAre() throws IOException {
         Ed2kHashSet set = zeros(P + 1).ed2k();
 
-        assertThat(set.partHashes())
-                .containsExactly(Md4.hash(new byte[(int) P]), Md4.hash(new byte[1]));
+        assertThat(set.partHashes()).containsExactly(md4(new byte[(int) P]), md4(new byte[1]));
         assertThat(set.isConsistent()).isTrue();
-        assertThat(set.partHash(1)).isEqualTo(Md4.hash(new byte[1]));
+        assertThat(set.partHash(1)).isEqualTo(md4(new byte[1]));
     }
 
     @Test
@@ -138,5 +136,9 @@ class FileHasherTest {
 
         @Override
         public void close() {}
+    }
+
+    private static Hash16 md4(byte[] data) {
+        return Ed2k.md4(data, 0, data.length);
     }
 }

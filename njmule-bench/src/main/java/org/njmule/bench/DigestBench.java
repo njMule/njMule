@@ -20,8 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
-import org.njmule.core.api.Hash16;
-import org.njmule.core.crypto.Md4;
+import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.crypto.Rc4;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -48,7 +47,8 @@ public class DigestBench {
     private static final int SIZE = 1 << 20;
 
     private final byte[] data = new byte[SIZE];
-    private final Md4 md4 = new Md4();
+    private final MD4Digest md4 = new MD4Digest();
+    private final byte[] md4Out = new byte[16];
     private MessageDigest sha1;
     private MessageDigest md5;
     private Rc4 rc4;
@@ -62,9 +62,10 @@ public class DigestBench {
     }
 
     @Benchmark
-    public Hash16 md4() {
-        this.md4.update(this.data);
-        return this.md4.digest();
+    public byte[] md4() {
+        this.md4.update(this.data, 0, SIZE);
+        this.md4.doFinal(this.md4Out, 0);
+        return this.md4Out;
     }
 
     @Benchmark

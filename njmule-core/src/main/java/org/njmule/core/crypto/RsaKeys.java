@@ -21,8 +21,18 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Base64;
+import org.bouncycastle.asn1.ASN1Encoding;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
+import org.bouncycastle.asn1.pkcs.RSAPublicKey;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.crypto.util.PrivateKeyInfoFactory;
+import org.bouncycastle.crypto.util.SubjectPublicKeyInfoFactory;
 import org.njmule.core.crypto.Rsa.PrivateKey;
 import org.njmule.core.crypto.Rsa.PublicKey;
 import org.njmule.core.persist.AtomicFiles;
@@ -39,110 +49,74 @@ public final class RsaKeys {
     public static final int MAX_PUBLIC_KEY_SIZE = 80;
 
     private static final int MAX_KEY_BITS = 4096;
+    // Bounds the DER parser input: a 4096-bit PKCS#8 key is about 2.4 KB.
+    private static final int MAX_ENCODED_SIZE = 4096;
     private static final int BASE64_LINE = 72;
-
-    // AlgorithmIdentifier { rsaEncryption (1.2.840.113549.1.1.1), NULL }.
-    private static final byte[] RSA_ALGORITHM = {
-        0x30,
-        0x0D,
-        0x06,
-        0x09,
-        0x2A,
-        (byte) 0x86,
-        0x48,
-        (byte) 0x86,
-        (byte) 0xF7,
-        0x0D,
-        0x01,
-        0x01,
-        0x01,
-        0x05,
-        0x00
-    };
 
     private RsaKeys() {}
 
     public static byte[] encodePublic(PublicKey key) {
-        byte[] rsaPublicKey = Der.sequence(Der.integer(key.modulus()), Der.integer(key.exponent()));
-        byte[] bits = new byte[rsaPublicKey.length + 1];
-        System.arraycopy(rsaPublicKey, 0, bits, 1, rsaPublicKey.length);
-        return Der.sequence(RSA_ALGORITHM, Der.element(Der.TAG_BIT_STRING, bits));
+        try {
+            return SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(key.parameters())
+                    .getEncoded(ASN1Encoding.DER);
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot encode an RSA public key", e);
+        }
     }
 
     /** Decodes a SubjectPublicKeyInfo or a bare PKCS#1 RSAPublicKey. */
     public static PublicKey decodePublic(byte[] der) throws DecodeException {
-        Der.Reader outer = new Der.Reader(der).element(Der.TAG_SEQUENCE);
-        PublicKey key;
-        if (outer.peekTag() == Der.TAG_SEQUENCE) {
-            checkAlgorithm(outer.element(Der.TAG_SEQUENCE));
-            byte[] bits = outer.element(Der.TAG_BIT_STRING).bytes();
-            if (bits.length < 1 || bits[0] != 0) {
-                throw new DecodeException("unexpected unused bits in the public key");
+        try {
+            ASN1Sequence outer = sequence(der);
+            RSAPublicKey rsa;
+            if (outer.getObjectAt(0) instanceof ASN1Sequence) {
+                SubjectPublicKeyInfo info = SubjectPublicKeyInfo.getInstance(outer);
+                checkAlgorithm(info.getAlgorithm());
+                rsa = RSAPublicKey.getInstance(info.parsePublicKey());
+            } else {
+                rsa = RSAPublicKey.getInstance(outer);
             }
-            Der.Reader rsa =
-                    new Der.Reader(Arrays.copyOfRange(bits, 1, bits.length))
-                            .element(Der.TAG_SEQUENCE);
-            key = publicKey(rsa.integer(), rsa.integer());
-            rsa.expectEnd();
-        } else {
-            key = publicKey(outer.integer(), outer.integer());
+            return publicKey(rsa.getModulus(), rsa.getPublicExponent());
+        } catch (IOException | RuntimeException e) {
+            throw malformed(e);
         }
-        outer.expectEnd();
-        return key;
     }
 
     public static byte[] encodePrivate(PrivateKey key) {
-        byte[] pkcs1 =
-                Der.sequence(
-                        Der.integer(BigInteger.ZERO),
-                        Der.integer(key.modulus()),
-                        Der.integer(key.publicExponent()),
-                        Der.integer(key.privateExponent()),
-                        Der.integer(key.p()),
-                        Der.integer(key.q()),
-                        Der.integer(key.dp()),
-                        Der.integer(key.dq()),
-                        Der.integer(key.qInv()));
-        return Der.sequence(
-                Der.integer(BigInteger.ZERO),
-                RSA_ALGORITHM,
-                Der.element(Der.TAG_OCTET_STRING, pkcs1));
+        try {
+            return PrivateKeyInfoFactory.createPrivateKeyInfo(key.parameters())
+                    .getEncoded(ASN1Encoding.DER);
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot encode an RSA private key", e);
+        }
     }
 
     /** Decodes a PKCS#8 PrivateKeyInfo or a PKCS#1 RSAPrivateKey. */
     public static PrivateKey decodePrivate(byte[] der) throws DecodeException {
-        Der.Reader outer = new Der.Reader(der).element(Der.TAG_SEQUENCE);
-        BigInteger version = outer.integer();
-        if (version.signum() != 0) {
-            throw new DecodeException("unsupported private key version " + version);
-        }
-        Der.Reader rsa;
-        if (outer.peekTag() == Der.TAG_SEQUENCE) {
-            checkAlgorithm(outer.element(Der.TAG_SEQUENCE));
-            rsa =
-                    new Der.Reader(outer.element(Der.TAG_OCTET_STRING).bytes())
-                            .element(Der.TAG_SEQUENCE);
-            if (rsa.integer().signum() != 0) {
-                throw new DecodeException("unsupported RSA private key version");
-            }
-        } else {
-            rsa = outer;
-        }
-        BigInteger n = rsa.integer();
-        BigInteger e = rsa.integer();
-        BigInteger d = rsa.integer();
-        BigInteger p = rsa.integer();
-        BigInteger q = rsa.integer();
-        BigInteger dp = rsa.integer();
-        BigInteger dq = rsa.integer();
-        BigInteger qInv = rsa.integer();
-        if (n.bitLength() > MAX_KEY_BITS || n.signum() <= 0 || p.signum() <= 0 || q.signum() <= 0) {
-            throw new DecodeException("implausible RSA private key");
-        }
         try {
-            return new PrivateKey(n, e, d, p, q, dp, dq, qInv);
-        } catch (IllegalArgumentException ex) {
-            throw new DecodeException(ex.getMessage(), ex);
+            ASN1Sequence outer = sequence(der);
+            RSAPrivateKey rsa;
+            if (outer.size() > 1 && outer.getObjectAt(1) instanceof ASN1Sequence) {
+                PrivateKeyInfo info = PrivateKeyInfo.getInstance(outer);
+                checkAlgorithm(info.getPrivateKeyAlgorithm());
+                rsa = RSAPrivateKey.getInstance(info.parsePrivateKey());
+            } else {
+                rsa = RSAPrivateKey.getInstance(outer);
+            }
+            if (rsa.getModulus().bitLength() > MAX_KEY_BITS) {
+                throw new DecodeException("implausible RSA private key");
+            }
+            return new PrivateKey(
+                    rsa.getModulus(),
+                    rsa.getPublicExponent(),
+                    rsa.getPrivateExponent(),
+                    rsa.getPrime1(),
+                    rsa.getPrime2(),
+                    rsa.getExponent1(),
+                    rsa.getExponent2(),
+                    rsa.getCoefficient());
+        } catch (IOException | RuntimeException e) {
+            throw malformed(e);
         }
     }
 
@@ -166,26 +140,30 @@ public final class RsaKeys {
         AtomicFiles.writeBytes(file, text.toString().getBytes(StandardCharsets.US_ASCII));
     }
 
+    // The parser reads only from the array, so lengths inside the DER cannot make it allocate more.
+    private static ASN1Sequence sequence(byte[] der) throws IOException {
+        if (der.length > MAX_ENCODED_SIZE) {
+            throw new DecodeException("RSA key of " + der.length + " bytes is too large");
+        }
+        return ASN1Sequence.getInstance(ASN1Primitive.fromByteArray(der));
+    }
+
     private static PublicKey publicKey(BigInteger n, BigInteger e) throws DecodeException {
         if (n.bitLength() > MAX_KEY_BITS || e.bitLength() > 64) {
             throw new DecodeException("implausible RSA public key");
         }
-        try {
-            return new PublicKey(n, e);
-        } catch (IllegalArgumentException ex) {
-            throw new DecodeException(ex.getMessage(), ex);
+        return new PublicKey(n, e);
+    }
+
+    private static void checkAlgorithm(AlgorithmIdentifier algorithm) throws DecodeException {
+        if (!PKCSObjectIdentifiers.rsaEncryption.equals(algorithm.getAlgorithm())) {
+            throw new DecodeException("not an RSA key");
         }
     }
 
-    private static void checkAlgorithm(Der.Reader algorithm) throws DecodeException {
-        byte[] oid = algorithm.element(Der.TAG_OID).bytes();
-        byte[] expected = Arrays.copyOfRange(RSA_ALGORITHM, 4, 13);
-        if (!Arrays.equals(oid, expected)) {
-            throw new DecodeException("not an RSA key");
-        }
-        if (algorithm.hasMore()) {
-            algorithm.element(Der.TAG_NULL);
-        }
-        algorithm.expectEnd();
+    private static DecodeException malformed(Exception cause) {
+        return cause instanceof DecodeException d
+                ? d
+                : new DecodeException("malformed RSA key: " + cause.getMessage(), cause);
     }
 }

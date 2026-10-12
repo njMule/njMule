@@ -26,11 +26,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.stream.Stream;
+import org.bouncycastle.crypto.digests.MD4Digest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.njmule.core.api.Hash16;
-import org.njmule.core.crypto.Md4;
 import org.njmule.core.crypto.Rsa;
 import org.njmule.core.crypto.RsaKeys;
 import org.njmule.core.files.hash.Ed2k;
@@ -158,7 +158,7 @@ class EmuleProfileTest {
     }
 
     private static Hash16 md4(Path file, long start, long length) throws IOException {
-        Md4 md4 = new Md4();
+        MD4Digest md4 = new MD4Digest();
         try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
             ByteBuffer buffer = ByteBuffer.allocate(1 << 20);
             long position = start;
@@ -174,7 +174,9 @@ class EmuleProfileTest {
                 left -= n;
             }
         }
-        return md4.digest();
+        byte[] digest = new byte[Hash16.LENGTH];
+        md4.doFinal(digest, 0);
+        return Hash16.of(digest);
     }
 
     private byte[] read(String name) throws IOException {

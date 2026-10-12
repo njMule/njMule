@@ -17,8 +17,8 @@
 package org.njmule.core.files.hash;
 
 import java.util.List;
+import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
-import org.njmule.core.crypto.Md4;
 
 /** eD2K file geometry and hash rules. */
 public final class Ed2k {
@@ -36,7 +36,7 @@ public final class Ed2k {
     public static final long OLD_MAX_FILE_SIZE = 4_290_048_000L;
 
     /** MD4 of no data: the hash of the empty part that ends files sized a multiple of PARTSIZE. */
-    public static final Hash16 EMPTY_PART_HASH = Md4.hash(new byte[0]);
+    public static final Hash16 EMPTY_PART_HASH = md4(new byte[0], 0, 0);
 
     private Ed2k() {}
 
@@ -81,7 +81,21 @@ public final class Ed2k {
         for (int i = 0; i < partHashes.size(); i++) {
             partHashes.get(i).copyTo(all, i * Hash16.LENGTH);
         }
-        return Md4.hash(all);
+        return md4(all, 0, all.length);
+    }
+
+    /** MD4 (RFC 1320), the digest of eD2K part and file hashes. */
+    public static Hash16 md4(byte[] data, int offset, int length) {
+        MD4Digest digest = new MD4Digest();
+        digest.update(data, offset, length);
+        return md4(digest);
+    }
+
+    /** Completes {@code digest}, which is reset for the next data. */
+    static Hash16 md4(MD4Digest digest) {
+        byte[] out = new byte[Hash16.LENGTH];
+        digest.doFinal(out, 0);
+        return Hash16.of(out);
     }
 
     public static void checkSize(long size) {
