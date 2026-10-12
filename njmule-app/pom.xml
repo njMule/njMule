@@ -88,7 +88,8 @@
     </build>
 
     <profiles>
-        <!-- Native executable with GraalVM: ./mvnw -Pnative -pl njmule-app -am package -->
+        <!-- Native executable with GraalVM: ./mvnw -Pnative -pl njmule-app -am package
+             (on Windows without MSVC, build the Linux binary in Docker, see CLAUDE.md). -->
         <profile>
             <id>native</id>
             <build>
@@ -110,9 +111,7 @@
                             <imageName>${native.image.name}</imageName>
                             <mainClass>${main.class}</mainClass>
                             <buildArgs>
-                                <buildArg>--no-fallback</buildArg>
                                 <buildArg>-H:+ReportExceptionStackTraces</buildArg>
-                                <buildArg>--enable-url-protocols=https</buildArg>
                             </buildArgs>
                         </configuration>
                     </plugin>
