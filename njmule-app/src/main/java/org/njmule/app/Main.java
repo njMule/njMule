@@ -19,10 +19,14 @@ package org.njmule.app;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.njmule.app.logging.LoggingSetup;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.AppDirectories;
@@ -77,11 +81,46 @@ public final class Main {
             case LICENSE -> out.println(NjMuleInfo.licenseText().stripTrailing());
             case WARRANTY -> out.println(NjMuleInfo.warrantyText());
             case NOTICE -> out.println(NjMuleInfo.noticeText().stripTrailing());
+            case HASH -> {
+                return hash(cli, out, err);
+            }
             case RUN -> {
                 return runEngine(cli, out, err, stop);
             }
         }
         return EXIT_OK;
+    }
+
+    // Prints the link of each file (without part hashes) and the hashing speed.
+    private static int hash(CommandLine cli, PrintStream out, PrintStream err) {
+        int code = EXIT_OK;
+        for (Path file : cli.files()) {
+            long start = System.nanoTime();
+            try {
+                Ed2kLink.FileLink link = FileHashing.link(file, bytes -> {});
+                double seconds = Math.max(1e-9, (System.nanoTime() - start) / 1e9);
+                Ed2kLink.FileLink shown =
+                        new Ed2kLink.FileLink(
+                                link.name(),
+                                link.size(),
+                                link.hash(),
+                                link.aichHash(),
+                                List.of(),
+                                List.of(),
+                                List.of());
+                out.println(shown.toUri());
+                out.printf(
+                        Locale.ROOT,
+                        "  %d bytes, %d part hashes, %.1f MB/s%n",
+                        link.size(),
+                        link.partHashes().size(),
+                        link.size() / seconds / 1e6);
+            } catch (IOException e) {
+                err.println("Cannot hash " + file + ": " + e.getMessage());
+                code = EXIT_FAILURE;
+            }
+        }
+        return code;
     }
 
     private static int runEngine(

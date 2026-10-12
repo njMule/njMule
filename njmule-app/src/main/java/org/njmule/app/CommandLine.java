@@ -18,12 +18,19 @@ package org.njmule.app;
 
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.njmule.core.config.Preferences;
 
 /** Parsed command-line options shared by the headless launcher and the GUI. */
-public record CommandLine(Action action, Optional<Path> configDir, Optional<String> logLevel) {
+public record CommandLine(
+        Action action, Optional<Path> configDir, Optional<String> logLevel, List<Path> files) {
+
+    public CommandLine {
+        files = List.copyOf(files);
+    }
 
     /** What the program should do. */
     public enum Action {
@@ -32,7 +39,8 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
         VERSION,
         LICENSE,
         WARRANTY,
-        NOTICE
+        NOTICE,
+        HASH
     }
 
     public static final String USAGE =
@@ -45,6 +53,7 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
               --license            print the GNU General Public License and exit
               --warranty           print the warranty disclaimer and exit
               --notice             print copyright, attribution and third-party notices
+              --hash <file>...     print the ed2k link (with AICH hash) of each file and exit
               --help, -h           print this help and exit
             """;
 
@@ -61,6 +70,7 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
         Action action = Action.RUN;
         Optional<Path> configDir = Optional.empty();
         Optional<String> logLevel = Optional.empty();
+        List<Path> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
             switch (arg) {
@@ -71,10 +81,17 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
                 case "--notice" -> action = Action.NOTICE;
                 case "--config-dir" -> configDir = Optional.of(toPath(value(args, ++i, arg)));
                 case "--log-level" -> logLevel = Optional.of(toLevel(value(args, ++i, arg)));
+                case "--hash" -> {
+                    action = Action.HASH;
+                    files.add(toFile(value(args, ++i, arg)));
+                    while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        files.add(toFile(args[++i]));
+                    }
+                }
                 default -> throw new UsageException("Unknown option: " + arg);
             }
         }
-        return new CommandLine(action, configDir, logLevel);
+        return new CommandLine(action, configDir, logLevel, files);
     }
 
     private static String value(String[] args, int index, String option) throws UsageException {
@@ -89,6 +106,14 @@ public record CommandLine(Action action, Optional<Path> configDir, Optional<Stri
             return Path.of(value).toAbsolutePath().normalize();
         } catch (InvalidPathException e) {
             throw new UsageException("Invalid directory: " + value);
+        }
+    }
+
+    private static Path toFile(String value) throws UsageException {
+        try {
+            return Path.of(value);
+        } catch (InvalidPathException e) {
+            throw new UsageException("Invalid file: " + value);
         }
     }
 

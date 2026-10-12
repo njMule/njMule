@@ -51,6 +51,16 @@ class CommandLineTest {
     }
 
     @Test
+    void collectsTheFilesToHash() throws Exception {
+        CommandLine cli = CommandLine.parse("--hash", "a.iso", "b.iso", "--log-level", "info");
+
+        assertThat(cli.action()).isEqualTo(Action.HASH);
+        assertThat(cli.files()).containsExactly(Path.of("a.iso"), Path.of("b.iso"));
+        assertThatThrownBy(() -> CommandLine.parse("--hash"))
+                .hasMessage("Missing value for --hash");
+    }
+
+    @Test
     void rejectsInvalidArguments() {
         assertThatThrownBy(() -> CommandLine.parse("--bogus"))
                 .hasMessage("Unknown option: --bogus");

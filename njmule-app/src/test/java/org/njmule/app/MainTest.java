@@ -73,6 +73,22 @@ class MainTest {
     }
 
     @Test
+    void hashPrintsTheLinkOfEachFile() throws Exception {
+        Path file = Files.writeString(this.dir.resolve("abc.txt"), "abc", UTF_8);
+
+        assertThat(this.run("--hash", file.toString())).isZero();
+        assertThat(this.out.toString(UTF_8))
+                .contains(
+                        "ed2k://|file|abc.txt|3|A448017AAF21D8525FC10AE87AA6729D|"
+                                + "h=VGMT4NSHA2AWVOR6EVYXQUGCNSONBWE5|/",
+                        "3 bytes, 0 part hashes");
+
+        assertThat(this.run("--hash", this.dir.resolve("missing").toString()))
+                .isEqualTo(Main.EXIT_FAILURE);
+        assertThat(this.err.toString(UTF_8)).contains("Cannot hash");
+    }
+
+    @Test
     void runStartsTheEngineInTheGivenDirectoryAndStops() throws Exception {
         CompletableFuture<Void> stop = new CompletableFuture<>();
         CompletableFuture<Integer> exit =
