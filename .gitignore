@@ -1,16 +1,33 @@
-# Compiled class file
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# --- Maven -------------------------------------------------------------------
+target/
+.flattened-pom.xml
+dependency-reduced-pom.xml
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+buildNumber.properties
+.mvn/timing.properties
+# The Maven Wrapper uses the "only-script" distribution: no wrapper jar is committed.
+.mvn/wrapper/maven-wrapper.jar
+
+# --- Java / JVM --------------------------------------------------------------
 *.class
-
-# Log file
+hs_err_pid*
+replay_pid*
 *.log
+*.jfr
+*.hprof
 
-# BlueJ files
-*.ctxt
+# --- Test tooling ------------------------------------------------------------
+.jqwik-database
+fuzz/crashes/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
+# --- Archives and packages -----------------------------------------------------
 *.jar
 *.war
 *.nar
@@ -19,6 +36,66 @@
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# --- GraalVM native image and installers --------------------------------------
+svm_err_*.md
+*.build_artifacts.txt
+*.iprof
+*.exe
+*.msi
+*.msix
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+*.flatpak
+
+# --- IDEs and editors -----------------------------------------------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.metadata/
+bin/
+nbproject/
+*.swp
+*~
+
+# --- Operating systems ----------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Claude Code: personal, machine-local settings ------------------------------
+# Shared project instructions (CLAUDE.md, .claude/settings.json, .claude/commands/) are committed.
+.claude/settings.local.json
+.claude/*.local.*
+CLAUDE.local.md
+**/CLAUDE.local.md
+
+# --- Secrets ---------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# --- Personal data that must never be committed --------------------------------
+# Copies of a real eMule profile, screenshots of the maintainer's eMule, network
+# captures. See CLAUDE.md "Licensing rules".
+fixtures-private/
+.local/
+*.pcapng
+*.pcap
+*.etl

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Linux (LF) line endings everywhere, in the repository and in every checkout.
+* text=auto eol=lf
+
+# cmd.exe mis-parses labels in batch files with LF endings: the only CRLF exception.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets.
+*.png binary
+*.ico binary
+*.icns binary
+*.gif binary
+*.jpg binary
+*.wav binary
+*.met binary
+*.dat binary
+*.part binary
+*.bin binary
