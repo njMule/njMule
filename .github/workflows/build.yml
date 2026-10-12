@@ -41,3 +41,21 @@ jobs:
         steps:
             - uses: actions/checkout@v5
             - uses: fsfe/reuse-action@v5
+
+    native:
+        name: native image (linux-x64)
+        runs-on: ubuntu-latest
+        # Same pinned GraalVM Community image as the local Docker build (CLAUDE.md).
+        container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
+        steps:
+            - uses: actions/checkout@v5
+            - name: Build the native executable
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests
+            - name: Smoke test
+              run: |
+                  njmule-app/target/njmule --version
+                  njmule-app/target/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: njmule-linux-x64
+                  path: njmule-app/target/njmule
