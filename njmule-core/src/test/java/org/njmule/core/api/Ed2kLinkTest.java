@@ -205,7 +205,7 @@ class Ed2kLinkTest {
     @Provide
     Arbitrary<String> names() {
         return Arbitraries.strings()
-                .withCharRange('\u0020', '\uD7FF')
+                .withCharRange(' ', '\uD7FF')
                 .ofMinLength(1)
                 .ofMaxLength(40)
                 .map(String::strip)
