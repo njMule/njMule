@@ -51,4 +51,14 @@
         <Bug pattern="CIPHER_INTEGRITY"/>
         <Class name="org.njmule.core.crypto.Rc4"/>
     </Match>
+
+    <!-- The eD2K and Kad protocols run over plain TCP, optionally obfuscated; TLS would break
+         interoperability with every other client and server. -->
+    <Match>
+        <Or>
+            <Bug pattern="UNENCRYPTED_SOCKET"/>
+            <Bug pattern="UNENCRYPTED_SERVER_SOCKET"/>
+        </Or>
+        <Package name="org.njmule.core.net"/>
+    </Match>
 </FindBugsFilter>
