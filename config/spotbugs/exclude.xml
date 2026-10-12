@@ -30,4 +30,17 @@
             <Class name="org.njmule.app.CommandLine"/>
         </Or>
     </Match>
+    <!-- MD4, MD5 and SHA-1 are mandated by the eD2K/Kad protocols (file hashes, AICH, obfuscation
+         keys) for interoperability with eMule; they protect no secret. -->
+    <Match>
+        <Or>
+            <Bug pattern="WEAK_MESSAGE_DIGEST_SHA1"/>
+            <Bug pattern="WEAK_MESSAGE_DIGEST_MD5"/>
+        </Or>
+        <Or>
+            <Package name="~org\.njmule\.core\.files\.hash.*"/>
+            <Package name="~org\.njmule\.core\.protocol\..*"/>
+            <Package name="~org\.njmule\.core\.crypto.*"/>
+        </Or>
+    </Match>
 </FindBugsFilter>
