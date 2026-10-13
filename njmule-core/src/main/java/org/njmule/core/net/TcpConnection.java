@@ -56,6 +56,7 @@ public final class TcpConnection implements AutoCloseable {
     }
 
     private static final int OUTBOX_CAPACITY = 1_024;
+    private static final long WRITER_STACK = 256 * 1024;
 
     private final Socket socket;
     private final InputStream in;
@@ -94,7 +95,14 @@ public final class TcpConnection implements AutoCloseable {
         this.handler = handler;
         this.unpacker = unpacker;
         String name = "njmule-tcp-" + this.remote;
-        this.writer = Thread.ofVirtual().name(name + "-out").start(this::writeLoop);
+        // On Windows a virtual thread blocked in a socket write can miss the wakeup and hang the
+        // connection for good, so writes run on a small platform thread.
+        this.writer =
+                Thread.ofPlatform()
+                        .name(name + "-out")
+                        .daemon(true)
+                        .stackSize(WRITER_STACK)
+                        .start(this::writeLoop);
         Thread.ofVirtual().name(name + "-in").start(this::readLoop);
     }
 
