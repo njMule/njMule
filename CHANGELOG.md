@@ -183,6 +183,9 @@ All notable changes to this project are documented here. The format follows
   obfuscation, static) and server menu: connect, priority, static list, copy and paste of ed2k
   server links, removal of the selected or of all servers. A box above the list filters it as one
   types; server links from the browser are added to the list.
+- My Info beside the server list, as in eMule: the eD2K state with our address, ID and HighID or
+  LowID, the server we are on (name, description, address, version, users, files, obfuscation),
+  Kad's state, address and ID, and whether the web interface is on, with its address.
 - The servers screen splits its log as eMule does: Server Info holds the connections and what the
   servers say, Log the application's events; dates follow the system's format, with a full year.
 - Connect turns into Disconnect on the server we are on, and connecting to another server leaves

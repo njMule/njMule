@@ -119,7 +119,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public static final int RATE_HISTORY = 3_600;
 
     private static final EngineStatus NO_STATUS = new EngineStatus(
-            Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0);
 
     private final NjMuleEngine engine;
     private final Executor fx;

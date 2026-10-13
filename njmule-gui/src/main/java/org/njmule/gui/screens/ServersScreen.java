@@ -90,6 +90,7 @@ public final class ServersScreen implements Screen {
     private static final KeyCombination PASTE = new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN);
 
     private final Gui gui;
+    private final MyInfoPane myInfo;
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
@@ -103,6 +104,7 @@ public final class ServersScreen implements Screen {
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
+        this.myInfo = new MyInfoPane(gui);
     }
 
     @Override
@@ -118,6 +120,15 @@ public final class ServersScreen implements Screen {
     @Override
     public Ikon icon() {
         return Material2AL.DNS;
+    }
+
+    @Override
+    public void shown() {
+        this.myInfo.readWebUi();
+    }
+
+    MyInfoPane myInfo() {
+        return this.myInfo;
     }
 
     @Override
@@ -137,20 +148,22 @@ public final class ServersScreen implements Screen {
                         Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 170, ServerInfo::name),
                         Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address),
                         Fx.column(this.gui.t("IDS_DESCRIPTION"), 170, ServerInfo::description),
-                        numeric(Fx.column(this.gui.t("IDS_PING"), 70, ServerInfo::ping, ms -> this.known(ms))),
-                        numeric(Fx.column(this.gui.t("IDS_UUSERS"), 85, ServerInfo::users, this::known)),
-                        numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 95, ServerInfo::maxUsers, this::known)),
+                        numeric(Fx.column(this.gui.t("IDS_PING"), 75, ServerInfo::ping, ms -> this.known(ms))),
+                        numeric(Fx.column(this.gui.t("IDS_UUSERS"), 90, ServerInfo::users, this::known)),
+                        numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 120, ServerInfo::maxUsers, this::known)),
                         numeric(Fx.column(this.gui.t("IDS_PW_FILES"), 95, ServerInfo::files, this::known)),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 80, ServerInfo::priority, this::priority),
-                        numeric(Fx.column(this.gui.t("IDS_UFAILED"), 75, ServerInfo::failed)),
-                        Fx.column(this.gui.t("IDS_STATICSERVER"), 65, ServerInfo::isStatic, this::yesNo),
-                        numeric(Fx.column(this.gui.t("IDS_SOFTFILES"), 110, ServerInfo::softFiles, this::known)),
+                        numeric(Fx.column(this.gui.t("IDS_UFAILED"), 90, ServerInfo::failed)),
+                        Fx.column(this.gui.t("IDS_STATICSERVER"), 70, ServerInfo::isStatic, this::yesNo),
+                        numeric(Fx.column(this.gui.t("IDS_SOFTFILES"), 175, ServerInfo::softFiles, this::known)),
                         hidden(numeric(
-                                Fx.column(this.gui.t("IDS_HARDFILES"), 110, ServerInfo::hardFiles, this::known))),
+                                Fx.column(this.gui.t("IDS_HARDFILES"), 210, ServerInfo::hardFiles, this::known))),
                         hidden(Fx.column(this.gui.t("IDS_VERSION"), 90, ServerInfo::version)),
-                        numeric(Fx.column(this.gui.t("IDS_IDLOW"), 80, ServerInfo::lowIdUsers, this::known)),
-                        Fx.column(this.gui.t("IDS_OBFUSCATION"), 95, ServerInfo::supportsObfuscation, this::yesNo)));
+                        numeric(Fx.column(this.gui.t("IDS_IDLOW"), 85, ServerInfo::lowIdUsers, this::known)),
+                        Fx.column(this.gui.t("IDS_OBFUSCATION"), 110, ServerInfo::supportsObfuscation, this::yesNo)));
         this.table.setTableMenuButtonVisible(true);
+        // Columns keep their widths and the list scrolls sideways, as eMule's does.
+        this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setOnKeyPressed(this::key);
         this.table.setRowFactory(t -> {
             TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>();
@@ -185,7 +198,12 @@ public final class ServersScreen implements Screen {
                 connectTo,
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
-        SplitPane split = new SplitPane(this.listPane(), this.logs());
+        // The list with My Info beside it, as in eMule; the logs below.
+        Node info = this.myInfo.node();
+        SplitPane top = new SplitPane(this.listPane(), info);
+        top.setDividerPositions(0.78);
+        SplitPane.setResizableWithParent(info, false);
+        SplitPane split = new SplitPane(top, this.logs());
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
         VBox content = new VBox(8, this.listRow(), split);

@@ -51,4 +51,10 @@ class ServersFilterTest {
         Predicate<ServerInfo> other = ServersScreen.matching("sunrise donkey");
         assertThat(other).rejects(SUNRISE);
     }
+
+    @Test
+    void kadShowsOurAddressAsTheNumberItsIdIsMadeOf() {
+        assertThat(MyInfoPane.number("1.2.3.4")).isEqualTo("16909060");
+        assertThat(MyInfoPane.number("255.255.255.255")).isEqualTo("4294967295");
+    }
 }

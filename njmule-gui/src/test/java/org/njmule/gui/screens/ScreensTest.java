@@ -218,6 +218,15 @@ class ScreensTest {
         FxTesting.onFx(() -> screen.addServerMet(met));
         FxTesting.await("two servers", () -> screen.table().getItems().size() == 2);
         assertThat(FxTesting.onFx(() -> screen.countLabel().getText())).isEqualTo("Servers (2)");
+        assertThat(FxTesting.onFx(() -> screen.myInfo().lines()))
+                .extracting(l -> (l.label() + " " + l.value()).strip())
+                .containsExactly(
+                        "eD2K Network",
+                        "Status: Disconnected",
+                        "Kad Network",
+                        "Status: Disconnected",
+                        "Web Interface",
+                        "Status: Disabled");
         assertThat(FxTesting.onFx(() -> screen.table().getColumns().stream()
                         .filter(c -> !c.isVisible())
                         .map(c -> c.getText())
