@@ -154,6 +154,27 @@ class MainTest {
     }
 
     @Test
+    void exitAsksTheRunningOneToStop() throws Exception {
+        String config = this.dir.toString();
+        assertThat(this.run("--config-dir", config, "--exit")).isNotZero();
+        assertThat(this.err.toString(UTF_8)).contains("No njMule runs");
+
+        CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                new String[] {"--config-dir", config},
+                new PrintStream(this.out, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                new CompletableFuture<>()));
+        Path handoff = this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME);
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (!Files.exists(handoff) && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+
+        assertThat(this.run("--config-dir", config, "--exit")).isZero();
+        assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
+    }
+
+    @Test
     void setsTheWebInterfacePasswordAndStartsTheInterface() throws Exception {
         String config = this.dir.toString();
         assertThat(this.runWith(List.of("short", "short"), "--config-dir", config, "--webui-password"))

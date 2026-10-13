@@ -166,6 +166,11 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void parsesExit() throws Exception {
+        assertThat(LaunchOptions.parse("--exit").action()).isEqualTo(Action.EXIT);
+    }
+
+    @Test
     void parsesTheWebInterfacePassword() throws Exception {
         LaunchOptions cli = LaunchOptions.parse("--webui-password", "--webui-port", "8080");
         assertThat(cli.action()).isEqualTo(Action.WEBUI_PASSWORD);

@@ -52,6 +52,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class LinkHandoff implements AutoCloseable {
 
+    /** What a later start hands over, instead of links, to have the running njMule exit. */
+    public static final String EXIT = "njmule:exit";
+
     /** The file in the configuration directory with the port and the secret. */
     public static final String FILE_NAME = "handoff";
 
@@ -125,7 +128,10 @@ public final class LinkHandoff implements AutoCloseable {
         }
     }
 
-    /** Listens for later starts; {@code receiver} gets the links of each, maybe none, on a handoff thread. */
+    /**
+     * Listens for later starts; {@code receiver} gets the links of each, maybe none, or {@link #EXIT}, on a handoff
+     * thread.
+     */
     public static LinkHandoff listen(Path configDir, Consumer<List<String>> receiver) throws IOException {
         Objects.requireNonNull(receiver, "receiver");
         byte[] secret = new byte[32];
@@ -189,7 +195,8 @@ public final class LinkHandoff implements AutoCloseable {
         }
         List<String> links = new ArrayList<>();
         for (String line = readLine(in); line != null && !line.isEmpty(); line = readLine(in)) {
-            if (links.size() < MAX_LINKS && line.toLowerCase(Locale.ROOT).startsWith("ed2k://")) {
+            if (links.size() < MAX_LINKS
+                    && (line.equals(EXIT) || line.toLowerCase(Locale.ROOT).startsWith("ed2k://"))) {
                 links.add(line);
             }
         }

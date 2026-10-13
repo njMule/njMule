@@ -166,6 +166,10 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- `njmule --exit` asks the njMule running on the same configuration (window or headless) to save
+  and exit.
+- The desktop app asks before exiting, as eMule does (with "Do not ask me again"), and can start
+  minimised, into the notification area when it hides there.
 - The server list can be updated at each start from the server.met addresses of `addresses.dat`
   (eMule's list, kept by the import and edited in the settings). The addresses typed in eMule's
   server.met and IP filter boxes are imported and offered again by njMule's.

@@ -114,7 +114,8 @@ public record LaunchOptions(
         WARRANTY,
         NOTICE,
         HASH,
-        WEBUI_PASSWORD
+        WEBUI_PASSWORD,
+        EXIT
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -144,6 +145,7 @@ public record LaunchOptions(
     private static final String IDENTITY_OPTION = "--adopt-emule-identity";
     private static final String IMPORT_DOWNLOADS_OPTION = "--import-downloads";
     private static final String WEBUI_PASSWORD_OPTION = "--webui-password";
+    private static final String EXIT_OPTION = "--exit";
     private static final String WEBUI_PORT_OPTION = "--webui-port";
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
 
@@ -234,6 +236,9 @@ public record LaunchOptions(
         if (result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
             return Action.WEBUI_PASSWORD;
         }
+        if (result.hasMatchedOption(EXIT_OPTION)) {
+            return Action.EXIT;
+        }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
 
@@ -292,6 +297,7 @@ public record LaunchOptions(
                 "ask for a password for the web interface, turn the interface on (from" + " the next start) and exit"));
         spec.addOption(valued(
                 WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
+        spec.addOption(flag(EXIT_OPTION, "ask the njMule running on this configuration to save and exit"));
         spec.addOption(flag(
                 WEBUI_LAN_OPTION,
                 "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));

@@ -104,6 +104,15 @@ public final class Main {
             case WEBUI_PASSWORD -> {
                 return webUiPassword(cli, out, err, passwords);
             }
+            case EXIT -> {
+                Path config =
+                        AppDirectories.resolve(cli.configDir(), executableDir()).config();
+                if (LinkHandoff.deliver(config, List.of(LinkHandoff.EXIT))) {
+                    return EXIT_OK;
+                }
+                err.println("No njMule runs on " + config);
+                return EXIT_FAILURE;
+            }
             case RUN -> {
                 return runEngine(cli, out, err, stop);
             }
@@ -271,7 +280,7 @@ public final class Main {
         for (Ed2kLink link : cli.links()) {
             follow(engine, link, err);
         }
-        Optional<LinkHandoff> handoff = listen(engine, dirs, err);
+        Optional<LinkHandoff> handoff = listen(engine, dirs, err, stop);
         Runnable shutdown = () -> {
             handoff.ifPresent(LinkHandoff::close);
             web.ifPresent(WebUi::close);
@@ -296,10 +305,15 @@ public final class Main {
         return EXIT_OK;
     }
 
-    // Later starts hand their links to this one.
-    private static Optional<LinkHandoff> listen(NjMuleEngine engine, AppDirectories dirs, PrintStream err) {
+    // Later starts hand their links to this one, or ask it to exit.
+    private static Optional<LinkHandoff> listen(
+            NjMuleEngine engine, AppDirectories dirs, PrintStream err, CompletableFuture<Void> stop) {
         try {
             return Optional.of(LinkHandoff.listen(dirs.config(), links -> {
+                if (links.contains(LinkHandoff.EXIT)) {
+                    stop.complete(null);
+                    return;
+                }
                 for (String text : links) {
                     Ed2kLink.tryParse(text).ifPresent(link -> follow(engine, link, err));
                 }
