@@ -27,10 +27,12 @@ overrides:
     depends:
       - libgtk-3-0t64 | libgtk-3-0
       - libxtst6
+      - libgl1
   rpm:
     depends:
       - gtk3
       - libXtst
+      - mesa-libGL
 
 contents:
   - src: ${STAGE}/njmule
