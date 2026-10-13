@@ -73,6 +73,59 @@
       "allDeclaredConstructors": true,
       "allDeclaredFields": true,
       "allDeclaredMethods": true
+    },
+    {
+      "type": "com.sun.glass.ui.win.WinDnDClipboard",
+      "jniAccessible": true,
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "com.sun.glass.ui.SystemClipboard",
+      "jniAccessible": true,
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "com.sun.glass.ui.win.WinAccessible",
+      "jniAccessible": true,
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "com.sun.glass.ui.win.WinTextRangeProvider",
+      "jniAccessible": true,
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "com.sun.glass.ui.win.WinVariant",
+      "jniAccessible": true,
+      "allDeclaredConstructors": true,
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "java.lang.Throwable",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getMessage",
+          "parameterTypes": []
+        },
+        {
+          "name": "toString",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassLoader",
+      "jniAccessible": true
     }
   ]
 }
