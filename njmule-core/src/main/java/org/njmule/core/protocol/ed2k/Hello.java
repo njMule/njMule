@@ -44,6 +44,9 @@ import org.njmule.core.util.Ipv4;
 public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags, int serverIp, int serverPort) {
 
     // Feature bits of the first options tag.
+    /** The AICH version, in bits 29-31: 1 for recovery data of parts. */
+    public static final int MISC1_AICH_SHIFT = 29;
+
     public static final int MISC1_UNICODE = 1 << 28;
     public static final int MISC1_DATA_COMPRESSION = 1 << 20;
     public static final int MISC1_NO_VIEW_SHARED_FILES = 1 << 2;
@@ -130,6 +133,11 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     public int kadPort() {
         return (int) (Tags.intValue(this.tags, ClientTag.EMULE_UDPPORTS).orElse(0) >>> 16 & 0xFFFF);
+    }
+
+    /** Whether the client exchanges AICH hashes and recovery data. */
+    public boolean supportsAich() {
+        return (this.miscOptions1() >>> MISC1_AICH_SHIFT & 7) > 0;
     }
 
     public int miscOptions1() {

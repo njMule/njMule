@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.net.PeerChannel;
 import org.njmule.core.peer.Identities;
@@ -36,6 +37,7 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -75,6 +77,12 @@ final class UploadSession implements PeerLink.Role {
 
         /** The client broke the rules in a way that only an attacker would; it is banned. */
         void misbehaved(UploadSession session, String reason);
+
+        /** The AICH master hash of the shared {@code file}, when we have its tree. */
+        Optional<Hash20> aichMaster(Hash16 file);
+
+        /** The AICH recovery data of {@code part} of {@code file}, when we have its tree with {@code master}. */
+        Optional<byte[]> aichRecovery(Hash16 file, int part, Hash20 master);
     }
 
     /** One requested block of {@code file}, which the client chose for it. */
@@ -307,16 +315,33 @@ final class UploadSession implements PeerLink.Role {
                         Protocol.EMULE,
                         Opcodes.Extended.PUBLICIP_ANSWER.code(),
                         this.address().getAddress().getAddress()));
-            // No AICH recovery data yet: the answer that says so is the file hash alone.
-            case AICHREQUEST ->
-                this.send(Packet.of(
-                        Protocol.EMULE,
-                        Opcodes.Extended.AICHANSWER.code(),
-                        new PacketWriter().hash16(ClientMessages.fileOf(packet))));
+            case AICHREQUEST -> this.aichRequested(packet);
+            case AICHFILEHASHREQ -> {
+                Hash16 file = ClientMessages.fileOf(packet);
+                this.queue
+                        .aichMaster(file)
+                        .ifPresent(master -> this.send(Packet.of(
+                                Protocol.EMULE,
+                                Opcodes.Extended.AICHFILEHASHANS.code(),
+                                new PacketWriter().hash16(file).hash20(master))));
+            }
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
         }
+    }
+
+    // A downloader repairs a corrupt part with the hashes of its blocks; without them, the answer is the file hash
+    // alone.
+    private void aichRequested(Packet packet) throws DecodeException {
+        PacketReader in = packet.reader();
+        Hash16 file = in.hash16();
+        int part = in.u16();
+        Hash20 master = Hash20.of(in.bytes(Hash20.LENGTH));
+        Optional<byte[]> recovery = this.queue.aichRecovery(file, part, master);
+        PacketWriter answer = new PacketWriter().hash16(file);
+        recovery.ifPresent(data -> answer.u16(part).hash20(master).bytes(data));
+        this.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
     }
 
     // Chat waits for the hello: we must know who writes.

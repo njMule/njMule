@@ -52,6 +52,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.files.hash.FileHasher;
 import org.njmule.core.persist.AtomicFiles;
@@ -179,6 +180,23 @@ public final class SharedFiles implements AutoCloseable {
 
     public Optional<SharedFile> get(Hash16 hash) {
         return Optional.ofNullable(this.byHash.get(hash));
+    }
+
+    /** The AICH tree of the file shared with {@code hash}, when its block hashes are kept. */
+    public Optional<AichTree> aichTree(Hash16 hash) {
+        SharedFile file = this.byHash.get(hash);
+        Known2Met.Entry entry =
+                file == null ? null : file.aichHash().map(this.aich::get).orElse(null);
+        if (entry == null) {
+            return Optional.empty();
+        }
+        try {
+            AichTree tree = AichTree.fromBlockHashes(file.size(), entry.blockHashes());
+            return tree.masterHash().equals(entry.masterHash()) ? Optional.of(tree) : Optional.empty();
+        } catch (IllegalArgumentException e) {
+            logger.debug("Unusable AICH hashes for {}: {}", file.name(), e.getMessage());
+            return Optional.empty();
+        }
     }
 
     /** The upload priority of the file shared with {@code hash}: AUTO unless one was chosen. */
@@ -322,8 +340,9 @@ public final class SharedFiles implements AutoCloseable {
 
     /** A finished download: its hashes are known, so it is shared without hashing it again. */
     public void finished(Path file, PartFile download) {
+        long mtime;
         try {
-            long mtime = mtime(file);
+            mtime = mtime(file);
             this.share(
                     new SharedFile(
                             file,
@@ -336,7 +355,37 @@ public final class SharedFiles implements AutoCloseable {
                     Optional.empty());
         } catch (IOException e) {
             logger.warn("Cannot share {}", file, e);
+            return;
         }
+        // The download checked the parts, not the AICH blocks: hashing the file once more gives its tree, and with it
+        // the recovery data other clients may ask for.
+        if (this.hashing.add(file)) {
+            this.loop.whenDone(
+                    CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    return FileHasher.hash(file);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            },
+                            this.hasher),
+                    (result, failure) -> this.treeOfFinished(file, mtime, download, result, failure));
+        }
+    }
+
+    private void treeOfFinished(Path file, long mtime, PartFile download, FileHasher.Result result, Throwable failure) {
+        if (failure == null && !result.ed2k().fileHash().equals(download.hash())) {
+            this.hashing.remove(file);
+            logger.warn("{} changed since its download finished", file);
+            return;
+        }
+        if (failure == null
+                && download.aichHash().isPresent()
+                && !result.aich().map(AichTree::masterHash).equals(download.aichHash())) {
+            logger.warn("The AICH hash of the link of {} was wrong; the file's own is kept", download.name());
+        }
+        this.hashed(file, mtime, result, failure);
     }
 
     /** Looks at the directories again: new files are hashed, missing ones unshared. */
@@ -555,8 +604,13 @@ public final class SharedFiles implements AutoCloseable {
         boolean fresh = !this.byHash.containsKey(file.hash());
         this.byHash.put(file.hash(), file);
         Key key = new Key(file.name(), file.size(), file.mtime());
-        if (!this.known.containsKey(key)) {
+        KnownMet.KnownFile known = this.known.get(key);
+        if (known == null) {
             this.known.put(key, record(file));
+            this.saveSoon();
+        } else if (file.aichHash().isPresent() && !known.aichHash().equals(file.aichHash())) {
+            // A finished download comes back with its AICH hash once hashed again; its other tags stay.
+            this.known.put(key, withAich(known, file.aichHash().get()));
             this.saveSoon();
         }
         tree.ifPresent(t -> {
@@ -602,6 +656,17 @@ public final class SharedFiles implements AutoCloseable {
             case 5 -> UploadPriority.AUTO;
             default -> UploadPriority.NORMAL;
         };
+    }
+
+    private static KnownMet.KnownFile withAich(KnownMet.KnownFile known, Hash20 aich) {
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : known.tags()) {
+            if (!tag.name().isId() || tag.name().id() != FileTag.AICH_HASH) {
+                tags.add(tag);
+            }
+        }
+        tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), aich.toBase32()));
+        return new KnownMet.KnownFile(known.mtime(), known.fileHash(), known.partHashes(), tags);
     }
 
     private static KnownMet.KnownFile record(SharedFile file) {

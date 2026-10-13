@@ -43,12 +43,15 @@ import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.download.DownloadQueue;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.SharedFiles;
+import org.njmule.core.files.hash.AichRecovery;
+import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
@@ -174,6 +177,7 @@ public final class UploadManager implements AutoCloseable {
 
     private final EngineLoop loop;
     private final Function<Hash16, Optional<SharedFiles.SharedFile>> shared;
+    private final Function<Hash16, Optional<AichTree>> aichTrees;
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
     private final Supplier<Hello> ourHello;
     private final Supplier<Settings> settings;
@@ -219,6 +223,7 @@ public final class UploadManager implements AutoCloseable {
     public UploadManager(
             EngineLoop loop,
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
+            Function<Hash16, Optional<AichTree>> aichTrees,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
             Function<Hash16, List<SourceExchange.Source>> downloadSources,
             Supplier<Hello> ourHello,
@@ -230,6 +235,7 @@ public final class UploadManager implements AutoCloseable {
             Ticker ticker) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.shared = Objects.requireNonNull(shared, "shared");
+        this.aichTrees = Objects.requireNonNull(aichTrees, "aichTrees");
         this.downloads = Objects.requireNonNull(downloads, "downloads");
         this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
@@ -734,6 +740,20 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public Optional<Uploadable> find(Hash16 file) {
             return UploadManager.this.find(file);
+        }
+
+        @Override
+        public Optional<Hash20> aichMaster(Hash16 file) {
+            return UploadManager.this.aichTrees.apply(file).map(AichTree::masterHash);
+        }
+
+        @Override
+        public Optional<byte[]> aichRecovery(Hash16 file, int part, Hash20 master) {
+            return UploadManager.this
+                    .aichTrees
+                    .apply(file)
+                    .filter(tree -> tree.masterHash().equals(master) && AichRecovery.hasRecovery(tree.size(), part))
+                    .map(tree -> AichRecovery.create(tree, part));
         }
 
         @Override

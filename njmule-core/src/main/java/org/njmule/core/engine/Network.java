@@ -318,6 +318,7 @@ final class Network {
         this.uploads = new UploadManager(
                 loop,
                 hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
+                hash -> this.shares == null ? Optional.empty() : this.shares.aichTree(hash),
                 this.downloads::find,
                 this.downloads::exchangeable,
                 this::ourHello,
@@ -961,7 +962,6 @@ final class Network {
         if (tcp || udp || was.upnp() != now.upnp()) {
             this.restartForwarding();
         }
-    }
         if (was.ipFilterLevel() != now.ipFilterLevel()) {
             // The file keeps every range: read again at the new level.
             this.ipFilter = loadIpFilter(this.configDir.resolve(IPFILTER_FILE), now.ipFilterLevel());
@@ -969,6 +969,7 @@ final class Network {
                     LogLine.Level.INFO,
                     this.ipFilter.rangeCount() + " IP filter ranges at level " + now.ipFilterLevel());
         }
+    }
 
     // The mappings follow the ports: the old ones are removed before new ones are asked for, off the engine thread.
     private void restartForwarding() {
@@ -1117,7 +1118,8 @@ final class Network {
                 prefs.nick(),
                 kadPort,
                 kadPort,
-                Hello.MISC1_UNICODE
+                1 << Hello.MISC1_AICH_SHIFT
+                        | Hello.MISC1_UNICODE
                         | Hello.MISC1_DATA_COMPRESSION
                         | IdentityHandshake.SUPPORTED << 16
                         | Hello.MISC1_NO_VIEW_SHARED_FILES,

@@ -206,6 +206,8 @@ All notable changes to this project are documented here. The format follows
   checked again while the data file is as it was saved (its date is the date of the `.part.met`).
 - Among equally rare parts the download goes on with one already begun, so that parts complete
   and can be shared sooner, and its blocks end on the 180 KiB boundaries of AICH.
+- AICH recovery data is sent to the clients that ask for it, and the AICH hash of a shared file
+  to those that ask what it is; a finished download is hashed once more for its AICH tree.
 
 ### Changed
 
