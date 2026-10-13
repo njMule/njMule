@@ -120,10 +120,12 @@ class LinkAssociationTest {
 
     @Test
     void onlyTheInstalledDesktopProgramTakesLinks() {
-        assertThat(LinkAssociation.isDesktopProgram(PROGRAM)).isTrue();
-        assertThat(LinkAssociation.isDesktopProgram(Path.of("/usr/bin/njmule-gui")))
+        // Paths of this system: a Windows path is a single odd file name elsewhere.
+        assertThat(LinkAssociation.isDesktopProgram(Path.of("njMule", "njmule-gui.exe")))
                 .isTrue();
-        assertThat(LinkAssociation.isDesktopProgram(Path.of("C:\\jdk\\bin\\java.exe")))
+        assertThat(LinkAssociation.isDesktopProgram(Path.of("usr", "bin", "njmule-gui")))
+                .isTrue();
+        assertThat(LinkAssociation.isDesktopProgram(Path.of("jdk", "bin", "java.exe")))
                 .isFalse();
     }
 
