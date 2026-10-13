@@ -59,6 +59,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -112,6 +113,7 @@ import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.search.SpamFilter;
+import org.njmule.core.search.StoredSearches;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
 import org.njmule.core.server.FilePublisher;
@@ -685,6 +687,19 @@ final class Network {
             }
         }
         return cancelled;
+    }
+
+    List<SavedSearch> savedSearches() {
+        try {
+            return StoredSearches.load(this.configDir.resolve(StoredSearches.FILE_NAME));
+        } catch (IOException e) {
+            logger.warn("Cannot read the searches left open", e);
+            return List.of();
+        }
+    }
+
+    void saveSearches(List<SavedSearch> searches) throws IOException {
+        StoredSearches.save(this.configDir.resolve(StoredSearches.FILE_NAME), searches);
     }
 
     FileHistory history() {

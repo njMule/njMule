@@ -60,6 +60,7 @@ import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -160,6 +161,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
     private long ticks;
+    // Restored searches have ids of their own, below those of the engine.
+    private long restoredIds;
 
     /** @param fx runs tasks on the FX thread (in tests, any thread) */
     public EngineModel(NjMuleEngine engine, Executor fx) {
@@ -527,6 +530,24 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         Search search = new Search(id, request);
         this.searches.put(id, search);
         return search;
+    }
+
+    /** A search kept from the last run: its results, and no more to come. */
+    public Search restored(SavedSearch saved) {
+        this.restoredIds--;
+        Search search = new Search(new SearchId(this.restoredIds), saved.request());
+        search.running.set(false);
+        search.results.update(saved.results());
+        return search;
+    }
+
+    /** The searches kept from the last run; {@code then} gets them on the FX thread. */
+    public void savedSearches(Consumer<List<SavedSearch>> then) {
+        this.later(this.engine.savedSearches(), then);
+    }
+
+    public CompletableFuture<Void> saveSearches(List<SavedSearch> searches) {
+        return this.engine.saveSearches(searches);
     }
 
     public void moreResults(Search search) {

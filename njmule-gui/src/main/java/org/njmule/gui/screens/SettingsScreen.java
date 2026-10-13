@@ -107,6 +107,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox updateAtStart = new CheckBox();
     private final CheckBox rememberDownloaded = new CheckBox();
     private final CheckBox rememberCancelled = new CheckBox();
+    private final CheckBox storeSearches = new CheckBox();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
@@ -209,6 +210,7 @@ public final class SettingsScreen implements Screen {
         this.updateAtStart.setText(this.gui.t("IDS_PW_USS"));
         this.rememberDownloaded.setText(this.gui.t("IDS_PW_REMEMBERDOWNLOADED"));
         this.rememberCancelled.setText(this.gui.t("IDS_PW_REMEMBERCANCELLED"));
+        this.storeSearches.setText(this.gui.t("IDS_STORESEARCHES"));
         this.deadRetries.setPrefColumnCount(4);
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
@@ -278,6 +280,7 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("nj.settings.backups"), this.backups);
         grid.add(this.rememberDownloaded, 1, row++);
         grid.add(this.rememberCancelled, 1, row++);
+        grid.add(this.storeSearches, 1, row++);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
         row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
         this.filterLevel.setPrefColumnCount(4);
@@ -479,6 +482,7 @@ public final class SettingsScreen implements Screen {
         this.updateAtStart.setSelected(p.updateServersAtStart());
         this.rememberDownloaded.setSelected(p.rememberDownloadedFiles());
         this.rememberCancelled.setSelected(p.rememberCancelledFiles());
+        this.storeSearches.setSelected(p.storeSearches());
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
@@ -617,6 +621,7 @@ public final class SettingsScreen implements Screen {
                 .updateServersAtStart(this.updateAtStart.isSelected())
                 .rememberDownloadedFiles(this.rememberDownloaded.isSelected())
                 .rememberCancelledFiles(this.rememberCancelled.isSelected())
+                .storeSearches(this.storeSearches.isSelected())
                 .build();
     }
 

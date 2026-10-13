@@ -18,12 +18,17 @@ package org.njmule.gui.screens;
 
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import javafx.beans.property.ObjectProperty;
@@ -60,6 +65,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
@@ -73,6 +79,8 @@ import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Searches with their parameters, one tab of results each. */
 public final class SearchScreen implements Screen {
@@ -115,6 +123,9 @@ public final class SearchScreen implements Screen {
         SPAM
     }
 
+    private static final Logger logger = LoggerFactory.getLogger(SearchScreen.class);
+    // At exit the open searches wait this long to be kept.
+    private static final Duration SAVE_TIMEOUT = Duration.ofSeconds(5);
     private static final String HISTORY = "search";
     private static final String EMULE_HISTORY = "AC_SearchStrings.dat";
     private static final int MAX_SIZE_MB = 256 * 1024;
@@ -142,7 +153,8 @@ public final class SearchScreen implements Screen {
     private final TabPane tabs = new TabPane();
     private final Map<Tab, Results> results = new HashMap<>();
 
-    private record Results(EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table) {}
+    // title: the tab's own, such as a kept related search's; empty = from the expression.
+    private record Results(EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table, String title) {}
 
     public SearchScreen(Gui gui) {
         this.gui = gui;
@@ -203,6 +215,14 @@ public final class SearchScreen implements Screen {
                 this::knownChanged);
         this.gui.model().sharedFiles().rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
                 this::knownChanged);
+        // The tabs left open at the last exit come back with the results they had.
+        if (this.gui.model().preferencesProperty().get().storeSearches()) {
+            this.gui.model().savedSearches(saved -> {
+                for (SavedSearch s : saved) {
+                    this.opened(this.gui.model().restored(s), s.title());
+                }
+            });
+        }
         VBox content = new VBox(8, this.parameters(inputs), this.tabs);
         VBox.setVgrow(this.tabs, Priority.ALWAYS);
         return Fx.screen(this.title(), tools, content);
@@ -363,7 +383,38 @@ public final class SearchScreen implements Screen {
         this.query.getEditor().setText(words);
     }
 
+    @Override
+    public void closing() {
+        // Never opened: the searches kept last time stay as they are.
+        if (this.view == null) {
+            return;
+        }
+        List<SavedSearch> open = new ArrayList<>();
+        if (this.gui.model().preferencesProperty().get().storeSearches()) {
+            for (Tab tab : this.tabs.getTabs()) {
+                Results r = this.results.get(tab);
+                if (r != null) {
+                    List<SearchResult> found = r.search().results().rows().stream()
+                            .map(LiveList.Row::get)
+                            .toList();
+                    open.add(new SavedSearch(r.title(), r.search().request(), found));
+                }
+            }
+        }
+        try {
+            this.gui.model().saveSearches(open).get(SAVE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (ExecutionException | TimeoutException e) {
+            logger.warn("Cannot keep the open searches: {}", e.toString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void opened(EngineModel.Search search) {
+        this.opened(search, "");
+    }
+
+    private void opened(EngineModel.Search search, String ownTitle) {
         var formats = this.gui.formats();
         ObjectProperty<Predicate<SearchResult>> shown = new SimpleObjectProperty<>(r -> true);
         TableView<LiveList.Row<SearchResult>> table =
@@ -417,8 +468,12 @@ public final class SearchScreen implements Screen {
         });
         Label count = new Label();
         count.getStyleClass().add(Styles.TEXT_BOLD);
-        String title =
-                ATTRIBUTES.matcher(search.request().expression()).replaceAll("").strip();
+        String title = ownTitle.isEmpty()
+                ? ATTRIBUTES
+                        .matcher(search.request().expression())
+                        .replaceAll("")
+                        .strip()
+                : ownTitle;
         Tab tab = new Tab(title);
         Runnable counted = () -> {
             int all = search.results().rows().size();
@@ -442,7 +497,7 @@ public final class SearchScreen implements Screen {
         running.managedProperty().bind(search.runningProperty());
         tab.setGraphic(running);
         tab.setOnClosed(e -> this.closed(tab));
-        this.results.put(tab, new Results(search, table));
+        this.results.put(tab, new Results(search, table, ownTitle));
         this.tabs.getTabs().add(tab);
         this.tabs.getSelectionModel().select(tab);
     }

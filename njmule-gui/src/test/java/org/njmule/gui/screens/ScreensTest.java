@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -35,7 +36,11 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.api.SavedSearch;
+import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ProxySettings;
@@ -326,6 +331,32 @@ class ScreensTest {
             screen.queryField().setText("  ");
             screen.start();
         });
+    }
+
+    @Test
+    void theSearchesLeftOpenComeBackWithTheirResults() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        SearchResult film = new SearchResult(
+                Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF"), "film.mkv", 700_000_000, 4, 1, Optional.empty());
+        this.test
+                .engine
+                .saveSearches(List.of(new SavedSearch(
+                        "", new SearchRequest("film @type=Video", SearchRequest.Scope.SERVER), List.of(film))))
+                .get(10, TimeUnit.SECONDS);
+        SearchScreen screen = new SearchScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+
+        FxTesting.await("the kept tab", () -> screen.tabs().getTabs().size() == 1);
+        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().getFirst().getText()))
+                .isEqualTo("film (1)");
+
+        FxTesting.onFx(() -> {
+            screen.tabs().getTabs().clear();
+            screen.closing();
+        });
+        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS))
+                .as("the tabs closed before the exit are not kept")
+                .isEmpty();
     }
 
     @Test

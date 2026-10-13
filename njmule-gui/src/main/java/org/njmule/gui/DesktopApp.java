@@ -487,6 +487,9 @@ public final class DesktopApp implements AutoCloseable {
         if (this.tray != null) {
             this.tray.close();
         }
+        if (this.window != null) {
+            this.window.closing();
+        }
         if (this.model != null) {
             this.model.close();
         }

@@ -183,6 +183,7 @@ class EmuleImporterTest {
         assertThat(this.target.preferences.kadEnabled()).isFalse();
         assertThat(this.target.preferences.rememberCancelledFiles()).isFalse();
         assertThat(this.target.preferences.rememberDownloadedFiles()).isTrue();
+        assertThat(this.target.preferences.storeSearches()).isFalse();
         assertThat(this.target.preferences.tcpPort()).isEqualTo(Preferences.DEFAULT_TCP_PORT);
         assertThat(this.target.servers).containsExactly(this.emule.config.resolve("server.met"));
         assertThat(this.target.contacts).isEqualTo(3);

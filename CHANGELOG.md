@@ -213,6 +213,8 @@ All notable changes to this project are documented here. The format follows
   agreement of the sources (at least ten networks and 92% of the announcements).
 - Search results show the files downloaded or cancelled before (known files and `cancelled.met`,
   whose keys do not list the files); both lists can be turned off, and eMule's choices are imported.
+- The search tabs left open at exit come back at the next start with their results
+  (`StoredSearches.met`, so eMule's open searches come over with the import); it can be turned off.
 
 ### Changed
 

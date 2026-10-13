@@ -67,7 +67,8 @@ public record Preferences(
         int backupCopies,
         int ipFilterLevel,
         boolean rememberDownloadedFiles,
-        boolean rememberCancelledFiles) {
+        boolean rememberCancelledFiles,
+        boolean storeSearches) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -157,6 +158,7 @@ public record Preferences(
                 DEFAULT_BACKUP_COPIES,
                 DEFAULT_IP_FILTER_LEVEL,
                 true,
+                true,
                 true);
     }
 
@@ -223,6 +225,7 @@ public record Preferences(
         private int ipFilterLevel;
         private boolean rememberDownloadedFiles;
         private boolean rememberCancelledFiles;
+        private boolean storeSearches;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -258,6 +261,7 @@ public record Preferences(
             this.ipFilterLevel = p.ipFilterLevel;
             this.rememberDownloadedFiles = p.rememberDownloadedFiles;
             this.rememberCancelledFiles = p.rememberCancelledFiles;
+            this.storeSearches = p.storeSearches;
         }
 
         public Builder nick(String value) {
@@ -454,6 +458,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder storeSearches(boolean value) {
+            this.storeSearches = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -489,7 +498,8 @@ public record Preferences(
                     this.backupCopies,
                     this.ipFilterLevel,
                     this.rememberDownloadedFiles,
-                    this.rememberCancelledFiles);
+                    this.rememberCancelledFiles,
+                    this.storeSearches);
         }
     }
 }

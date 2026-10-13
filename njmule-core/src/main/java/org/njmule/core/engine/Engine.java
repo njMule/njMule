@@ -69,6 +69,7 @@ import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -477,6 +478,20 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<List<UploadInfo>> uploads() {
         return this.loop.submit(this.network::uploads);
+    }
+
+    @Override
+    public CompletableFuture<List<SavedSearch>> savedSearches() {
+        return this.loop.submit(this.network::savedSearches);
+    }
+
+    @Override
+    public CompletableFuture<Void> saveSearches(List<SavedSearch> searches) {
+        List<SavedSearch> kept = List.copyOf(searches);
+        return this.loop.submit(() -> {
+            this.network.saveSearches(kept);
+            return null;
+        });
     }
 
     @Override

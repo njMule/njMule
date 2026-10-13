@@ -35,4 +35,7 @@ public interface Screen {
 
     /** The screen became visible. */
     default void shown() {}
+
+    /** The window closes for good: the screen keeps what it keeps between runs. */
+    default void closing() {}
 }

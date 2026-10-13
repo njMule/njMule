@@ -176,6 +176,11 @@ public final class MainWindow {
         later.play();
     }
 
+    /** The window closes for good: each screen keeps what it keeps between runs. */
+    public void closing() {
+        this.screens.values().forEach(Screen::closing);
+    }
+
     /** Switches to the screen {@code id}. */
     public void show(String id) {
         Screen screen = this.screens.get(id);

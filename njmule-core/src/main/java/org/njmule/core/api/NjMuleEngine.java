@@ -108,6 +108,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The clients we upload to, then those waiting in our queue. */
     CompletableFuture<List<UploadInfo>> uploads();
 
+    /** The search tabs left open at the last exit, when they are kept ({@link Preferences#storeSearches()}). */
+    CompletableFuture<List<SavedSearch>> savedSearches();
+
+    /** Keeps {@code searches} for the next start, in place of those kept before. */
+    CompletableFuture<Void> saveSearches(List<SavedSearch> searches);
+
     /** The files downloaded or cancelled before, as remembered now. */
     CompletableFuture<FileHistory> fileHistory();
 

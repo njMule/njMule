@@ -97,6 +97,7 @@ public final class PreferencesCodec {
                 "files.rememberCancelled",
                 Preferences::rememberCancelledFiles,
                 Preferences.Builder::rememberCancelledFiles);
+        boolKey("search.store", Preferences::storeSearches, Preferences.Builder::storeSearches);
         intKey("server.deadRetries", Preferences::deadServerRetries, Preferences.Builder::deadServerRetries);
         boolKey("server.addFromServer", Preferences::addServersFromServer, Preferences.Builder::addServersFromServer);
         boolKey(
