@@ -437,7 +437,8 @@ public final class UploadManager implements AutoCloseable {
             return;
         }
         UploadSession.Block block = next.get();
-        Uploadable file = slot.client.file;
+        Uploadable file = block.file();
+        slot.client.file = file;
         slot.reading = true;
         this.loop.whenDone(
                 Blocks.read(file.data(), block.start(), Math.toIntExact(block.end() - block.start())),

@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -269,6 +270,32 @@ class UploadQueueTest {
                 .hasValueSatisfying(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Client.OUTOFPARTREQS.code()));
         assertThat(waiting.poll(grace))
                 .hasValueSatisfying(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code()));
+    }
+
+    @Test
+    void aSlotSendsTheFileItsClientSwitchedTo() throws Exception {
+        NjMuleEngine engine = this.engine("", 2);
+        List<SharedFileInfo> files = awaitShared(engine, 2);
+        int port = engine.preferences().tcpPort();
+        Client client = this.client(port, 14);
+        assertThat(client.ask(files.get(0).hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+
+        Hash16 other = files.get(1).hash();
+        client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, other));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
+        client.send(new ClientMessages.RequestParts(
+                        other,
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
+
+        ClientMessages.SendingPart part = ClientMessages.SendingPart.decode(client.next());
+        assertThat(part.file()).isEqualTo(other);
+        byte[] expected = Files.readAllBytes(
+                this.dir.resolve("njmule/incoming").resolve(files.get(1).name()));
+        assertThat(part.data()).isEqualTo(Arrays.copyOf(expected, 1000));
     }
 
     private Client clientFrom(InetAddress local, int port, int seed) throws IOException {

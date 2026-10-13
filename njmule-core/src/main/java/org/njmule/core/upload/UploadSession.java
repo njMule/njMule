@@ -79,8 +79,8 @@ final class UploadSession {
         void misbehaved(UploadSession session, String reason);
     }
 
-    /** One requested block. */
-    record Block(long start, long end) {}
+    /** One requested block of {@code file}, which the client chose for it. */
+    record Block(Uploadable file, long start, long end) {}
 
     /** Blocks a client may have waiting at once. */
     static final int MAX_PENDING_BLOCKS = 32;
@@ -356,7 +356,7 @@ final class UploadSession {
             if (range.isEmpty()) {
                 continue;
             }
-            Block block = new Block(range.start(), range.end());
+            Block block = new Block(upload, range.start(), range.end());
             if (range.end() - range.start() > MAX_BLOCK || !upload.has(range.start(), range.end())) {
                 logger.debug("Refusing block {}-{} to {}", range.start(), range.end(), this.address());
                 continue;
