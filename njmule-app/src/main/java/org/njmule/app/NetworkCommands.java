@@ -130,7 +130,9 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                         + peer.nick().map(n -> ", \"" + n + "\"").orElse("")
                         + (peer.obfuscated() ? ", obfuscated" : "")
                         + ", user hash "
-                        + peer.userHash());
+                        + peer.userHash()
+                        + ", identity "
+                        + identity(peer.identification()));
         if (!tasks.isOneShot() || tasks.search().isEmpty()) {
             this.out.println(
                     "Keeping the connection open for "
@@ -299,6 +301,15 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
 
     private static String describe(String name, String address) {
         return name.equals(address) ? address : name + " (" + address + ")";
+    }
+
+    private static String identity(PeerInfo.Identification outcome) {
+        return switch (outcome) {
+            case VERIFIED -> "verified";
+            case FAILED -> "NOT verified";
+            case NOT_SUPPORTED -> "not offered";
+            case PENDING -> "not proven in time";
+        };
     }
 
     static String size(long bytes) {

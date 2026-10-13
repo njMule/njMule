@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
@@ -52,6 +53,7 @@ import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.SharedFiles;
 import org.njmule.core.net.TcpConnection;
+import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
@@ -63,8 +65,11 @@ import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Packing;
+import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
@@ -88,6 +93,9 @@ import org.slf4j.LoggerFactory;
 final class Network {
 
     static final String IPFILTER_FILE = "ipfilter.dat";
+
+    /** How long a hello waits for the identification after the answer. */
+    static final Duration IDENTIFY_WAIT = Duration.ofSeconds(10);
 
     // Server updates are saved together, at most this long after the first one.
     private static final Duration SAVE_DELAY = Duration.ofSeconds(30);
@@ -118,6 +126,8 @@ final class Network {
     private final Credits credits;
     private final UploadManager uploads;
     private final FilePublisher publisher;
+    private final Identities identities;
+    private final SecureRandom random;
     private final Path configDir;
     private final Supplier<Path> incomingDir;
     private SharedFiles shares;
@@ -151,6 +161,7 @@ final class Network {
         this.configDir = configDir;
         this.incomingDir = incomingDir;
         this.credits = Credits.load(configDir, Clock.systemUTC());
+        this.random = random;
         Identities identities =
                 new Identities(
                         IdentityHandshake.Identity.of(
@@ -234,6 +245,7 @@ final class Network {
                         this.credits,
                         random,
                         Ticker.systemTicker());
+        this.identities = identities;
         this.publisher =
                 new FilePublisher(
                         this.session, this::offers, this::listenPort, Ticker.systemTicker());
@@ -377,9 +389,132 @@ final class Network {
         this.shares.addDirectory(directory);
     }
 
-    /** Any thread: says hello to a client. */
+    /**
+     * Any thread: says hello to a client and runs the identification; the answer comes when its
+     * outcome is known or after {@link #IDENTIFY_WAIT}. The connection stays open until idle.
+     */
     CompletableFuture<PeerInfo> hello(InetSocketAddress peer) {
-        return this.greetings.greet(peer);
+        CompletableFuture<PeerInfo> answer = new CompletableFuture<>();
+        Thread.ofVirtual()
+                .name("njmule-hello-" + peer)
+                .start(
+                        () -> {
+                            try {
+                                TcpConnection connection =
+                                        TcpConnector.connectToClient(
+                                                peer,
+                                                Optional.empty(),
+                                                PeerGreetings.HELLO_TIMEOUT,
+                                                this.random);
+                                if (!this.loop.post(() -> this.greet(connection, answer))) {
+                                    connection.close();
+                                }
+                            } catch (IOException e) {
+                                answer.completeExceptionally(e);
+                            }
+                        });
+        return answer.orTimeout(
+                PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT).toSeconds() * 2, TimeUnit.SECONDS);
+    }
+
+    private void greet(TcpConnection connection, CompletableFuture<PeerInfo> answer) {
+        Greeting greeting = new Greeting(connection, answer);
+        connection.start(greeting, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
+        connection.send(this.ourHello().encode(false));
+        this.loop.schedule(
+                "hello identification",
+                PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT),
+                greeting::settle);
+    }
+
+    /** A hello of ours: the answer, then the identification. Engine thread, except callbacks. */
+    private final class Greeting implements TcpConnection.Handler {
+        private final TcpConnection connection;
+        private final CompletableFuture<PeerInfo> answer;
+        private Hello peer;
+        private Identities.Session identity;
+
+        Greeting(TcpConnection connection, CompletableFuture<PeerInfo> answer) {
+            this.connection = connection;
+            this.answer = answer;
+        }
+
+        @Override
+        public void onPacket(TcpConnection c, Packet packet) {
+            if (packet.protocol() == Protocol.EDONKEY
+                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                c.setFrameLimit(FrameLimits.CLIENT);
+            }
+            Network.this.loop.post(() -> this.received(packet));
+        }
+
+        @Override
+        public void onClosed(TcpConnection c, Optional<IOException> cause) {
+            Network.this.loop.post(
+                    () -> {
+                        if (this.peer == null) {
+                            this.answer.completeExceptionally(
+                                    cause.orElseGet(
+                                            () -> new IOException("closed before the hello")));
+                        } else {
+                            this.settle();
+                        }
+                    });
+        }
+
+        private void received(Packet packet) {
+            try {
+                if (this.peer == null) {
+                    if (packet.protocol() == Protocol.EDONKEY
+                            && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                        this.peer = Hello.decode(packet);
+                        this.connection.setReadTimeout(PeerGreetings.IDLE_TIMEOUT);
+                        this.identity =
+                                Network.this.identities.start(
+                                        this.peer,
+                                        this.connection.remoteAddress().getAddress(),
+                                        this.connection::send);
+                    }
+                } else if (!this.identity.received(packet)
+                        && packet.protocol() == Protocol.EDONKEY
+                        && packet.opcode() == Opcodes.Client.HELLO.code()) {
+                    this.connection.send(Network.this.ourHello().encode(true));
+                }
+                if (this.identity != null && this.identity.isSettled()) {
+                    this.settle();
+                }
+            } catch (IOException e) {
+                LOG.debug(
+                        "Bad packet from {}: {}", this.connection.remoteAddress(), e.getMessage());
+                this.connection.close();
+            }
+        }
+
+        private void settle() {
+            if (this.peer == null || this.answer.isDone()) {
+                return;
+            }
+            PeerInfo info = PeerGreetings.info(this.connection, this.peer);
+            PeerInfo.Identification outcome;
+            if (!this.identity.isSupported()) {
+                outcome = PeerInfo.Identification.NOT_SUPPORTED;
+            } else {
+                outcome =
+                        switch (this.identity.trust()) {
+                            case IDENTIFIED -> PeerInfo.Identification.VERIFIED;
+                            case FAILED -> PeerInfo.Identification.FAILED;
+                            default -> PeerInfo.Identification.PENDING;
+                        };
+            }
+            this.answer.complete(
+                    new PeerInfo(
+                            info.address(),
+                            info.userHash(),
+                            info.nick(),
+                            info.software(),
+                            info.obfuscated(),
+                            outcome));
+        }
     }
 
     void close() {

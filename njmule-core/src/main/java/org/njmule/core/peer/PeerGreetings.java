@@ -228,7 +228,8 @@ public final class PeerGreetings implements AutoCloseable {
         }
     }
 
-    private static PeerInfo info(TcpConnection connection, Hello peer) {
+    /** What {@code peer} said of itself over {@code connection}; identification pending. */
+    public static PeerInfo info(TcpConnection connection, Hello peer) {
         return new PeerInfo(
                 connection.remoteAddress().getAddress().getHostAddress()
                         + ":"
@@ -236,6 +237,7 @@ public final class PeerGreetings implements AutoCloseable {
                 peer.userHash(),
                 peer.nick(),
                 PeerSoftware.describe(peer),
-                connection.isObfuscated());
+                connection.isObfuscated(),
+                PeerInfo.Identification.PENDING);
     }
 }

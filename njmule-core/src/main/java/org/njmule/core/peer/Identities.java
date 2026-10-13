@@ -81,6 +81,15 @@ public final class Identities {
         public Trust trust() {
             return this.trust;
         }
+
+        /** Whether the outcome is known: identified, failed, or the peer does not take part. */
+        public boolean isSettled() {
+            return this.trust != Trust.NEEDED || this.handshake.isEmpty();
+        }
+
+        public boolean isSupported() {
+            return this.handshake.map(IdentityHandshake::isSupported).orElse(false);
+        }
     }
 
     private final IdentityHandshake.Identity own;
@@ -154,6 +163,7 @@ public final class Identities {
         @Override
         public void identified(Hash16 hash, byte[] publicKey) {
             if (hash.equals(this.userHash)) {
+                LOG.debug("{} proved it owns its key", hash);
                 this.session.trust = Trust.IDENTIFIED;
                 Identities.this.identified.accept(hash, publicKey);
             }
@@ -161,6 +171,7 @@ public final class Identities {
 
         @Override
         public void failed(Hash16 hash) {
+            LOG.debug("{} failed to prove it owns its key", hash);
             this.session.trust = Trust.FAILED;
         }
     }

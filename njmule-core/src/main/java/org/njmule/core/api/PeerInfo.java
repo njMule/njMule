@@ -19,18 +19,31 @@ package org.njmule.core.api;
 import java.util.Objects;
 import java.util.Optional;
 
-/** What a peer told about itself in its hello. */
+/** What a peer told about itself in its hello, and whether it proved its identity. */
 public record PeerInfo(
         String address,
         Hash16 userHash,
         Optional<String> nick,
         String software,
-        boolean obfuscated) {
+        boolean obfuscated,
+        Identification identification) {
+
+    /** The outcome of the secure identification. */
+    public enum Identification {
+        /** The peer signed our challenge with the key of its user hash. */
+        VERIFIED,
+        FAILED,
+        /** The peer does not take part. */
+        NOT_SUPPORTED,
+        /** No outcome yet. */
+        PENDING
+    }
 
     public PeerInfo {
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(userHash, "userHash");
         Objects.requireNonNull(nick, "nick");
         Objects.requireNonNull(software, "software");
+        Objects.requireNonNull(identification, "identification");
     }
 }
