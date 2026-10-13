@@ -37,6 +37,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.config.ObfuscationMode;
@@ -162,6 +163,7 @@ public final class UploadManager implements AutoCloseable {
     private final Map<InetAddress, Long> bans = new HashMap<>();
     private final Map<Hash16, Long> sourcesAnswered = new HashMap<>();
     private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
+    private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
     private ScheduledFuture<?> ticking;
     private long budget;
@@ -172,6 +174,7 @@ public final class UploadManager implements AutoCloseable {
      * @param shared the shared file with a hash, if any
      * @param downloads the download of a hash, whose checked parts are shared too
      * @param downloadSources the sources an active download of a hash knows
+     * @param reachable told the address (host order) of a Kad node that could reach us
      */
     public UploadManager(
             EngineLoop loop,
@@ -182,6 +185,7 @@ public final class UploadManager implements AutoCloseable {
             Supplier<Settings> settings,
             Identities identities,
             Credits credits,
+            IntConsumer reachable,
             SecureRandom random,
             Ticker ticker) {
         this.loop = Objects.requireNonNull(loop, "loop");
@@ -192,6 +196,7 @@ public final class UploadManager implements AutoCloseable {
         this.settings = Objects.requireNonNull(settings, "settings");
         this.identities = Objects.requireNonNull(identities, "identities");
         this.credits = Objects.requireNonNull(credits, "credits");
+        this.reachable = Objects.requireNonNull(reachable, "reachable");
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.nextCreditsSave = ticker.read() + CREDITS_SAVE.toNanos();
@@ -739,6 +744,13 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public void sourcesRequested(UploadSession session, SourceExchange.Request request) {
             UploadManager.this.answerSources(session, request);
+        }
+
+        @Override
+        public void reachabilityConfirmed(UploadSession session) {
+            if (session.address().getAddress() instanceof Inet4Address ip) {
+                UploadManager.this.reachable.accept(Ipv4.fromBytes(ip.getAddress()));
+            }
         }
 
         @Override

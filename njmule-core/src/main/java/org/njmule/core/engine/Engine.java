@@ -43,6 +43,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -280,6 +281,24 @@ public final class Engine implements NjMuleEngine {
     /** Downloads and uploads in detail, for diagnosing tests. */
     String describe() throws Exception {
         return this.loop.submit(this.network::describe).get(10, TimeUnit.SECONDS);
+    }
+
+    @Override
+    public CompletableFuture<Void> kadBootstrap(ServerAddress node) {
+        Objects.requireNonNull(node, "node");
+        return resolve(node.host())
+                .thenCompose(
+                        ip ->
+                                this.loop.submit(
+                                        () -> {
+                                            this.network.kadBootstrap(ip, node.port());
+                                            return null;
+                                        }));
+    }
+
+    @Override
+    public CompletableFuture<Optional<KadInfo>> kad() {
+        return this.loop.submit(this.network::kadInfo);
     }
 
     @Override

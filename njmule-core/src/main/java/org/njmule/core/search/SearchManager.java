@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchId;
@@ -79,12 +80,25 @@ public final class SearchManager {
     /** Requests for more results of one search, as servers allow. */
     public static final int MAX_MORE_REQUESTS = 5;
 
+    /** A Kad search ends after this long. */
+    public static final Duration KAD_WAIT = Duration.ofSeconds(50);
+
+    /** Kad, when it runs. */
+    public interface KadSearches {
+        /**
+         * Looks for files under {@code keyword}, filtered by {@code expression}; returns {@code
+         * false} when Kad cannot search for it now.
+         */
+        boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(SearchManager.class);
 
     private final EngineLoop loop;
     private final ServerSession session;
     private final ServerList servers;
     private final Supplier<Optional<ServerUdp>> udp;
+    private final Supplier<Optional<KadSearches>> kad;
     private final Listener listener;
     private final Map<SearchId, Search> searches = new HashMap<>();
     private long nextId = 1;
@@ -96,11 +110,13 @@ public final class SearchManager {
             ServerSession session,
             ServerList servers,
             Supplier<Optional<ServerUdp>> udp,
+            Supplier<Optional<KadSearches>> kad,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.session = Objects.requireNonNull(session, "session");
         this.servers = Objects.requireNonNull(servers, "servers");
         this.udp = Objects.requireNonNull(udp, "udp");
+        this.kad = Objects.requireNonNull(kad, "kad");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -112,6 +128,9 @@ public final class SearchManager {
      */
     public SearchId start(SearchRequest request) {
         SearchExpr expression = SearchParser.parse(request.expression());
+        if (request.scope() == SearchRequest.Scope.KAD) {
+            return this.startKad(request, expression);
+        }
         ServerMessages.IdChange id =
                 this.session
                         .id()
@@ -124,6 +143,29 @@ public final class SearchManager {
         this.session.send(
                 ServerMessages.searchRequest(expression, id.has(ServerMessages.TCP_LARGEFILES)));
         this.waitForServer(search);
+        return search.id;
+    }
+
+    // The first word of the expression is the keyword looked up; the whole expression filters.
+    private SearchId startKad(SearchRequest request, SearchExpr expression) {
+        KadSearches searches =
+                this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
+        String keyword = request.expression().strip().split("\\s+")[0].replace("\"", "");
+        Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
+        boolean started =
+                searches.search(
+                        keyword,
+                        expression,
+                        results -> {
+                            if (!search.ended) {
+                                this.mergeResults(search, results);
+                            }
+                        });
+        if (!started) {
+            throw new IllegalStateException("Kad cannot search for \"" + keyword + "\" now");
+        }
+        this.searches.put(search.id, search);
+        search.serverTimer = this.loop.schedule("Kad search", KAD_WAIT, () -> this.end(search));
         return search.id;
     }
 
@@ -256,22 +298,34 @@ public final class SearchManager {
     }
 
     private void merge(Search search, List<FileEntry> files) {
-        List<SearchResult> changed = new ArrayList<>();
+        List<SearchResult> found = new ArrayList<>();
         for (FileEntry file : files) {
             Optional<String> name = file.name();
             if (name.isEmpty() || file.size().isEmpty()) {
                 continue;
             }
+            found.add(
+                    new SearchResult(
+                            file.hash(),
+                            name.get(),
+                            file.size().getAsLong(),
+                            file.sources(),
+                            file.completeSources(),
+                            file.type()));
+        }
+        this.mergeResults(search, found);
+    }
+
+    private void mergeResults(Search search, List<SearchResult> found) {
+        List<SearchResult> changed = new ArrayList<>();
+        for (SearchResult file : found) {
+            if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {
+                continue;
+            }
             SearchResult known = search.results.get(file.hash());
             SearchResult merged =
                     known == null
-                            ? new SearchResult(
-                                    file.hash(),
-                                    name.get(),
-                                    file.size().getAsLong(),
-                                    file.sources(),
-                                    file.completeSources(),
-                                    file.type())
+                            ? file
                             : new SearchResult(
                                     known.hash(),
                                     known.name(),

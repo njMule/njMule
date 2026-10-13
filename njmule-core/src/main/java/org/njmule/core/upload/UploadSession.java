@@ -69,6 +69,9 @@ final class UploadSession {
 
         /** The client asks which other clients have {@code file}. */
         void sourcesRequested(UploadSession session, SourceExchange.Request request);
+
+        /** A Kad node we asked to check our TCP port connected and says it could. */
+        void reachabilityConfirmed(UploadSession session);
     }
 
     /** One requested block. */
@@ -321,6 +324,7 @@ final class UploadSession {
         }
         switch (opcode.get()) {
             case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
+            case KAD_FWTCPCHECK_ACK -> this.queue.reachabilityConfirmed(this);
             case REQUESTSOURCES2 ->
                     this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->

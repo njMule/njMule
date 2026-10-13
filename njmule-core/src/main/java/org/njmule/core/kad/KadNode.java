@@ -350,6 +350,26 @@ public final class KadNode implements AutoCloseable {
         return new int[] {this.index.keywordEntries(), this.index.sourceEntries()};
     }
 
+    /** Keyword publishes running now. */
+    int runningKeywordPublishes() {
+        return this.running(Lookup.Kind.STORE_KEYWORD);
+    }
+
+    /** Source publishes running now. */
+    int runningSourcePublishes() {
+        return this.running(Lookup.Kind.STORE_SOURCE);
+    }
+
+    private int running(Lookup.Kind kind) {
+        int count = 0;
+        for (Lookup lookup : this.lookups.values()) {
+            if (lookup.kind() == kind) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /** Lookups running now. */
     public int runningLookups() {
         return this.lookups.size();

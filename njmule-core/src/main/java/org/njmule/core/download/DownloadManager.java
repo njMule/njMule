@@ -38,6 +38,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
@@ -87,6 +88,12 @@ public final class DownloadManager implements AutoCloseable {
         long clientId();
     }
 
+    /** Kad, when it runs: finds sources of a file. */
+    public interface KadSources {
+        /** Starts a search; {@code false} when Kad cannot search for it now. */
+        boolean find(Hash16 file, long size, Consumer<List<InetSocketAddress>> sources);
+    }
+
     /** What the downloads need from the preferences. */
     public record Settings(ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort) {}
 
@@ -105,6 +112,9 @@ public final class DownloadManager implements AutoCloseable {
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
     private static final int CRYPT_SUPPORTED = 0x01;
+    private static final Duration KAD_SEARCH_STEP = Duration.ofHours(1);
+    private static final int KAD_SEARCH_MAX_STEPS = 7;
+    private static final int KAD_SEARCHES = 5;
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
     private static final Duration SX_RARE_ANSWER_GAP = Duration.ofMinutes(5);
@@ -144,6 +154,8 @@ public final class DownloadManager implements AutoCloseable {
         private long nextServerAsk;
         private long sourcesAnswered;
         private boolean sourcesEverAnswered;
+        private long nextKadSearch;
+        private int kadSearches;
 
         Entry(DownloadQueue.Download download, long now) {
             this.download = download;
@@ -168,7 +180,10 @@ public final class DownloadManager implements AutoCloseable {
     private final Ticker ticker;
     private final Identities identities;
     private final BiConsumer<Hash16, Long> credit;
+    private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
+    private int kadSearching;
+    private long nextKadStart;
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
     private DownloadQueue queue;
@@ -184,6 +199,7 @@ public final class DownloadManager implements AutoCloseable {
             Ticker ticker,
             Identities identities,
             BiConsumer<Hash16, Long> credit,
+            Supplier<Optional<KadSources>> kad,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
@@ -194,6 +210,7 @@ public final class DownloadManager implements AutoCloseable {
         this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.identities = Objects.requireNonNull(identities, "identities");
         this.credit = Objects.requireNonNull(credit, "credit");
+        this.kad = Objects.requireNonNull(kad, "kad");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -202,6 +219,7 @@ public final class DownloadManager implements AutoCloseable {
      *
      * @param blocked IP addresses (host order) that the IP filter refuses
      * @param credit credits a trusted source's user hash with the bytes it sent us
+     * @param kad Kad, when it runs
      */
     public static DownloadManager open(
             EngineLoop loop,
@@ -215,6 +233,7 @@ public final class DownloadManager implements AutoCloseable {
             Ticker ticker,
             Identities identities,
             BiConsumer<Hash16, Long> credit,
+            Supplier<Optional<KadSources>> kad,
             Listener listener)
             throws IOException {
         DownloadManager manager =
@@ -228,6 +247,7 @@ public final class DownloadManager implements AutoCloseable {
                         ticker,
                         identities,
                         credit,
+                        kad,
                         listener);
         manager.queue = DownloadQueue.load(loop, tempDir, incomingDir, manager.new QueueEvents());
         long now = ticker.read();
@@ -495,11 +515,44 @@ public final class DownloadManager implements AutoCloseable {
                     entry.nextServerAsk = now + SERVER_SOURCES_INTERVAL.toNanos();
                 }
                 starting += this.startSessions(entry, now, MAX_STARTING - starting);
+                this.searchKad(entry, now);
             }
             if (entry.changed) {
                 entry.changed = false;
                 this.listener.progress(this.info(entry));
             }
+        }
+    }
+
+    // A few Kad searches at a time, one new a second; a file waits longer after each search.
+    private void searchKad(Entry entry, long now) {
+        Optional<KadSources> finder = this.kad.get();
+        if (finder.isEmpty()
+                || this.kadSearching >= KAD_SEARCHES
+                || now - this.nextKadStart < 0
+                || now - entry.nextKadSearch < 0
+                || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
+            return;
+        }
+        Hash16 hash = entry.download.hash();
+        boolean started =
+                finder.get()
+                        .find(
+                                hash,
+                                entry.download.file().size(),
+                                found -> {
+                                    Entry current = this.entries.get(hash);
+                                    if (current != null) {
+                                        found.forEach(address -> this.addSource(current, address));
+                                    }
+                                });
+        if (started) {
+            this.kadSearching++;
+            this.nextKadStart = now + 1_000_000_000L;
+            entry.kadSearches = Math.min(entry.kadSearches + 1, KAD_SEARCH_MAX_STEPS);
+            entry.nextKadSearch = now + KAD_SEARCH_STEP.toNanos() * entry.kadSearches;
+            this.loop.schedule(
+                    "Kad source search", Duration.ofSeconds(45), () -> this.kadSearching--);
         }
     }
 

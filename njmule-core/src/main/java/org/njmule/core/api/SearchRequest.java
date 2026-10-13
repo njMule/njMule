@@ -28,7 +28,9 @@ public record SearchRequest(String expression, Scope scope) {
         /** The connected server only. */
         SERVER,
         /** The connected server, then the other known servers over UDP. */
-        GLOBAL
+        GLOBAL,
+        /** The Kad network, without servers; the first word of the expression is looked up. */
+        KAD
     }
 
     public SearchRequest {

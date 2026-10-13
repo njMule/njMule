@@ -40,6 +40,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
@@ -52,6 +53,10 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.SharedFiles;
+import org.njmule.core.kad.KadIdentity;
+import org.njmule.core.kad.KadNode;
+import org.njmule.core.kad.KadPublisher;
+import org.njmule.core.kad.KadSocket;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
@@ -65,6 +70,7 @@ import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -126,6 +132,9 @@ final class Network {
     private final Credits credits;
     private final UploadManager uploads;
     private final FilePublisher publisher;
+    private KadNode kad;
+    private KadSocket kadSocket;
+    private KadPublisher kadPublisher;
     private final Identities identities;
     private final SecureRandom random;
     private final Path configDir;
@@ -194,6 +203,7 @@ final class Network {
                         this.session,
                         this.servers,
                         () -> Optional.ofNullable(this.udp),
+                        () -> Optional.ofNullable(this.kad).map(k -> this.kadSearches(k)),
                         new SearchEvents());
         this.pinger =
                 new ServerPinger(
@@ -229,6 +239,7 @@ final class Network {
                         Ticker.systemTicker(),
                         identities,
                         this.credits::downloaded,
+                        () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
                         new DownloadEvents());
         this.uploads =
                 new UploadManager(
@@ -243,6 +254,11 @@ final class Network {
                                         preferences.get().obfuscation()),
                         identities,
                         this.credits,
+                        ip -> {
+                            if (this.kad != null) {
+                                this.kad.reachableConfirmed(ip);
+                            }
+                        },
                         random,
                         Ticker.systemTicker());
         this.identities = identities;
@@ -288,6 +304,9 @@ final class Network {
         this.shares =
                 SharedFiles.open(this.loop, this.configDir, this.incomingDir, new ShareEvents());
         this.uploads.start();
+        if (this.preferences.get().kadEnabled()) {
+            this.startKad();
+        }
         this.loop.scheduleRepeating(
                 "offer shared files",
                 Duration.ofSeconds(1),
@@ -523,6 +542,10 @@ final class Network {
     }
 
     void close() {
+        if (this.kad != null) {
+            this.kad.close();
+            this.kadSocket.close();
+        }
         this.uploads.close();
         this.downloads.close();
         if (this.shares != null) {
@@ -552,22 +575,206 @@ final class Network {
     private Hello ourHello() {
         Preferences prefs = this.preferences.get();
         ServerContext server = this.context;
+        // Kad listens on the client UDP port; announced while Kad is connected.
+        KadSocket socket = this.kadSocket;
+        KadNode node = this.kad;
+        int kadPort = socket != null && node != null && node.isConnected() ? socket.port() : 0;
         return Hello.of(
                 this.userHash,
                 server.clientId(),
                 this.listenPort(),
                 prefs.nick(),
-                0,
-                0,
+                kadPort,
+                kadPort,
                 Hello.MISC1_UNICODE
                         | Hello.MISC1_DATA_COMPRESSION
                         | IdentityHandshake.SUPPORTED << 16
                         | Hello.MISC1_NO_VIEW_SHARED_FILES,
                 Hello.MISC2_LARGE_FILES
                         | Hello.MISC2_SOURCE_EXCHANGE2
-                        | cryptOptions(prefs.obfuscation()),
+                        | cryptOptions(prefs.obfuscation())
+                        | (kadPort != 0 ? KadMessages.VERSION : 0),
                 server.serverIp(),
                 server.serverPort());
+    }
+
+    /** Asks the Kad node at {@code ip:port} for contacts. */
+    void kadBootstrap(int ip, int port) {
+        if (this.kad == null) {
+            throw new IllegalStateException("Kad is not running");
+        }
+        this.kad.bootstrap(ip, port);
+    }
+
+    /** The state of Kad, empty when it does not run. */
+    Optional<KadInfo> kadInfo() {
+        KadNode node = this.kad;
+        if (node == null) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                new KadInfo(
+                        node.isConnected(),
+                        node.contacts(),
+                        node.verifiedContacts(),
+                        node.isFirewalled(),
+                        node.id().toHex()));
+    }
+
+    private void startKad() {
+        Preferences prefs = this.preferences.get();
+        try {
+            KadIdentity identity = KadIdentity.loadOrCreate(this.configDir, this.random);
+            this.kadSocket =
+                    KadSocket.open(
+                            prefs.udpPort(),
+                            this.loop,
+                            this.userHash,
+                            identity,
+                            ip -> this.ipFilter.blocks(ip),
+                            this.random);
+            this.kad =
+                    new KadNode(
+                            identity,
+                            this.kadSocket,
+                            this::checkReachable,
+                            new KadNode.Settings(
+                                    this.listenPort(),
+                                    this.userHash,
+                                    cryptOptions(prefs.obfuscation()) >>> 7,
+                                    ip -> false),
+                            this.configDir,
+                            this.random,
+                            Ticker.systemTicker());
+            this.kadSocket.deliverTo(this.kad);
+            this.kad.loadNodes();
+            this.kadPublisher = new KadPublisher(this.kad, this::kadShared, Ticker.systemTicker());
+            this.loop.scheduleRepeating(
+                    "Kad",
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(1),
+                    () -> {
+                        this.kad.tick();
+                        this.kadPublisher.tick();
+                    });
+            LOG.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
+        } catch (IOException e) {
+            this.userLog.log(
+                    LogLine.Level.WARNING,
+                    "Cannot start Kad on UDP port " + prefs.udpPort() + ": " + e.getMessage());
+            if (this.kadSocket != null) {
+                this.kadSocket.close();
+            }
+            this.kad = null;
+            this.kadSocket = null;
+        }
+    }
+
+    // A node asked us to prove it reachable: we connect back and say so after the hellos.
+    private void checkReachable(int ip, int port, Hash16 peer, int connectOptions) {
+        InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), port);
+        Optional<Hash16> obfuscateFor =
+                (connectOptions & 0x01) != 0
+                                && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED
+                        ? Optional.of(peer)
+                        : Optional.empty();
+        Thread.ofVirtual()
+                .name("njmule-kad-check-" + address)
+                .start(
+                        () -> {
+                            try {
+                                TcpConnection connection =
+                                        TcpConnector.connectToClient(
+                                                address,
+                                                obfuscateFor,
+                                                PeerGreetings.HELLO_TIMEOUT,
+                                                this.random);
+                                connection.start(
+                                        new ReachabilityCheck(),
+                                        frame ->
+                                                Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
+                                connection.send(this.ourHello().encode(false));
+                                this.loop.schedule(
+                                        "Kad check close",
+                                        PeerGreetings.HELLO_TIMEOUT,
+                                        connection::close);
+                            } catch (IOException e) {
+                                LOG.debug("Kad check of {} failed: {}", address, e.getMessage());
+                            }
+                        });
+    }
+
+    /** After the peer's hello answer, tells it that we could connect. */
+    private static final class ReachabilityCheck implements TcpConnection.Handler {
+        @Override
+        public void onPacket(TcpConnection c, Packet packet) {
+            if (packet.protocol() == Protocol.EDONKEY
+                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                c.setFrameLimit(FrameLimits.CLIENT);
+                c.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.KAD_FWTCPCHECK_ACK.code()));
+            }
+        }
+
+        @Override
+        public void onClosed(TcpConnection c, Optional<IOException> cause) {
+            // Nothing to clean up.
+        }
+    }
+
+    private SearchManager.KadSearches kadSearches(KadNode node) {
+        return (keyword, expression, results) ->
+                node.searchKeyword(
+                        keyword,
+                        Optional.of(expression),
+                        found -> {
+                            List<SearchResult> converted = new ArrayList<>();
+                            for (KadNode.FileResult r : found) {
+                                converted.add(
+                                        new SearchResult(
+                                                r.hash(),
+                                                r.name(),
+                                                r.size(),
+                                                r.sources(),
+                                                0,
+                                                r.type()));
+                            }
+                            results.accept(converted);
+                        });
+    }
+
+    private DownloadManager.KadSources kadSources(KadNode node) {
+        return (file, size, sources) ->
+                node.findSources(
+                        file,
+                        size,
+                        found -> {
+                            List<InetSocketAddress> addresses = new ArrayList<>();
+                            for (KadNode.Source s : found) {
+                                addresses.add(
+                                        new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort()));
+                            }
+                            sources.accept(addresses);
+                        });
+    }
+
+    private List<KadPublisher.Shared> kadShared() {
+        List<KadPublisher.Shared> files = new ArrayList<>();
+        if (this.shares != null) {
+            for (SharedFiles.SharedFile f : this.shares.all()) {
+                files.add(new KadPublisher.Shared(f.hash(), f.name(), f.size(), true));
+            }
+        }
+        for (DownloadInfo d : this.downloads.downloads()) {
+            boolean shared =
+                    this.downloads
+                            .find(d.hash())
+                            .map(x -> !x.verifiedParts().isEmpty())
+                            .orElse(false);
+            if (shared) {
+                files.add(new KadPublisher.Shared(d.hash(), d.name(), d.size(), false));
+            }
+        }
+        return files;
     }
 
     // Complete shared files, then downloads with checked parts.
