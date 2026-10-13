@@ -153,13 +153,16 @@ class KadBasicsTest {
         assertThat(tracking.isBanned(ip, 1000 + PacketTracking.BAN_TIME.toMillis()))
                 .isFalse();
 
-        assertThat(tracking.expected(ip, 4672, Kad.PONG, 2000)).isFalse();
-        tracking.sent(ip, 4672, Kad.PING, 2000);
-        assertThat(tracking.expected(ip, 4673, Kad.PONG, 2100)).as("other port").isFalse();
-        assertThat(tracking.expected(ip, 4672, Kad.PONG, 2100)).isTrue();
-        assertThat(tracking.expected(ip, 4672, Kad.PONG, 2200)).as("consumed").isFalse();
-        tracking.sent(ip, 4672, Kad.REQ, 3000);
-        assertThat(tracking.expected(ip, 4672, Kad.RES, 3000 + PacketTracking.ANSWER_WINDOW.toMillis() + 1))
+        assertThat(tracking.expected(ip, Kad.PONG, 2000)).isFalse();
+        tracking.sent(ip, Kad.PING, 2000);
+        assertThat(tracking.expected(ip + 1, Kad.PONG, 2100))
+                .as("other address")
+                .isFalse();
+        assertThat(tracking.expected(ip, Kad.RES, 2100)).as("other answer").isFalse();
+        assertThat(tracking.expected(ip, Kad.PONG, 2100)).isTrue();
+        assertThat(tracking.expected(ip, Kad.PONG, 2200)).as("consumed").isFalse();
+        tracking.sent(ip, Kad.REQ, 3000);
+        assertThat(tracking.expected(ip, Kad.RES, 3000 + PacketTracking.ANSWER_WINDOW.toMillis() + 1))
                 .as("too late")
                 .isFalse();
     }

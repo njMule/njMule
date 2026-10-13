@@ -27,8 +27,8 @@ import org.njmule.core.protocol.packet.Opcodes.Kad;
 
 /**
  * Flood control and answer checking for Kad datagrams: each address may send each kind of request only so often (a long
- * burst bans it for two hours), and an answer is taken only from an address and port we sent the matching request to in
- * the last three minutes. Engine thread only.
+ * burst bans it for two hours), and an answer is taken only from an address we sent the matching request to in the last
+ * three minutes. The port is not compared: a NAT may answer from another one. Engine thread only.
  */
 final class PacketTracking {
 
@@ -57,7 +57,7 @@ final class PacketTracking {
 
     private record Key(int ip, Kad kind) {}
 
-    private record Sent(int ip, int port, Kad request, long at) {}
+    private record Sent(int ip, Kad request, long at) {}
 
     private final Map<Key, long[]> buckets = new HashMap<>();
     private final Map<Integer, Long> bans = new HashMap<>();
@@ -101,13 +101,13 @@ final class PacketTracking {
         return true;
     }
 
-    /** We sent {@code request} to {@code ip:port}. */
-    void sent(int ip, int port, Kad request, long nowMs) {
-        this.sent.addLast(new Sent(ip, port, request, nowMs));
+    /** We sent {@code request} to {@code ip}. */
+    void sent(int ip, Kad request, long nowMs) {
+        this.sent.addLast(new Sent(ip, request, nowMs));
     }
 
-    /** Whether {@code answer} from {@code ip:port} answers a request of ours; the request is consumed. */
-    boolean expected(int ip, int port, Kad answer, long nowMs) {
+    /** Whether {@code answer} from {@code ip} answers a request of ours; the request is consumed. */
+    boolean expected(int ip, Kad answer, long nowMs) {
         this.expire(nowMs);
         Optional<Kad[]> requests = requestsOf(answer);
         if (requests.isEmpty()) {
@@ -115,7 +115,7 @@ final class PacketTracking {
         }
         for (Iterator<Sent> it = this.sent.iterator(); it.hasNext(); ) {
             Sent s = it.next();
-            if (s.ip() == ip && s.port() == port) {
+            if (s.ip() == ip) {
                 for (Kad request : requests.get()) {
                     if (s.request() == request) {
                         it.remove();

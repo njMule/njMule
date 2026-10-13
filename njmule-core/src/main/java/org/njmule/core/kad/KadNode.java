@@ -275,7 +275,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     /** Asks the node at {@code ip:port} for contacts to start from. */
     public void bootstrap(int ip, int port) {
         this.send(ip, port, KadMessages.bootstrapRequest(), Optional.empty(), 0);
-        this.tracking.sent(ip, port, Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
+        this.tracking.sent(ip, Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
     }
 
     /** Looks for files under the first keyword of {@code words}, filtered by {@code expression}. */
@@ -466,7 +466,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 case FIREWALLED2_REQ -> this.firewallCheckRequested(peer, packet);
                 case FIREWALLED_RES -> this.firewallAnswered(peer, packet);
                 case PING -> this.answer(peer, KadMessages.pong(port));
-                case PONG -> this.tracking.expected(ip, port, Opcodes.Kad.PONG, nowMs);
+                case PONG -> this.tracking.expected(ip, Opcodes.Kad.PONG, nowMs);
                 default -> {
                     // Buddies, callbacks and the UDP firewall test are not taken part in.
                 }
@@ -494,7 +494,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void bootstrapAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.BOOTSTRAP_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.BOOTSTRAP_RES, this.nowMs())) {
             return;
         }
         KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(packet);
@@ -517,7 +517,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void helloReceived(Peer peer, Packet packet, boolean answer) throws DecodeException {
-        if (answer && !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES, this.nowMs())) {
+        if (answer && !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES, this.nowMs())) {
             return;
         }
         KadMessages.Hello hello = KadMessages.Hello.decode(packet);
@@ -544,7 +544,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                             : Optional.empty();
             this.send(peer.ip(), peer.port(), reply, key, peer.senderKey());
             if (askAck) {
-                this.tracking.sent(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES, this.nowMs());
+                this.tracking.sent(peer.ip(), Opcodes.Kad.HELLO_RES, this.nowMs());
             }
         } else if ((misc & MISC_ACK_REQUESTED) != 0 && version >= HELLO_ACK_VERSION && peer.senderKey() != 0) {
             this.answer(peer, KadMessages.helloAck(this.identity.id()));
@@ -553,8 +553,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void helloAcknowledged(Peer peer, Packet packet) throws DecodeException {
-        if (!peer.validKey()
-                || !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
+        if (!peer.validKey() || !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
             return;
         }
         UInt128 id = KadMessages.decodeHelloAck(packet);
@@ -575,7 +574,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void lookupAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.RES, this.nowMs())) {
             return;
         }
         KadMessages.Answer answer = KadMessages.Answer.decode(packet);
@@ -661,7 +660,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void publishAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.PUBLISH_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PUBLISH_RES, this.nowMs())) {
             return;
         }
         KadMessages.PublishAnswer answer = KadMessages.PublishAnswer.decode(packet);
@@ -683,7 +682,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     private void firewallAnswered(Peer peer, Packet packet) throws DecodeException {
         if (!this.firewallChecks.containsKey(peer.ip())
-                || !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.FIREWALLED_RES, this.nowMs())) {
+                || !this.tracking.expected(peer.ip(), Opcodes.Kad.FIREWALLED_RES, this.nowMs())) {
             return;
         }
         int ip = KadMessages.decodeFirewallAnswer(packet);
@@ -715,7 +714,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 .byAddress(peer.ip())
                 .ifPresentOrElse(c -> this.request(c, request, Opcodes.Kad.FIREWALLED2_REQ), () -> {
                     this.send(peer.ip(), peer.port(), request, Optional.empty(), peer.senderKey());
-                    this.tracking.sent(peer.ip(), peer.port(), Opcodes.Kad.FIREWALLED2_REQ, this.nowMs());
+                    this.tracking.sent(peer.ip(), Opcodes.Kad.FIREWALLED2_REQ, this.nowMs());
                 });
     }
 
@@ -850,7 +849,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         Optional<UInt128> key = contact.version() >= OBFUSCATION_VERSION ? Optional.of(contact.id()) : Optional.empty();
         this.send(contact.ip(), contact.udpPort(), request, key, 0);
-        this.tracking.sent(contact.ip(), contact.udpPort(), kind, this.nowMs());
+        this.tracking.sent(contact.ip(), kind, this.nowMs());
     }
 
     private void request(KadContact contact, Packet request, Opcodes.Kad kind) {
@@ -858,7 +857,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         NodesDat.UdpKey stored = contact.udpKey();
         int receiverKey = stored.ip() == this.publicIp ? stored.key() : 0;
         this.send(contact.ip(), contact.udpPort(), request, key, receiverKey);
-        this.tracking.sent(contact.ip(), contact.udpPort(), kind, this.nowMs());
+        this.tracking.sent(contact.ip(), kind, this.nowMs());
     }
 
     private void answer(Peer peer, Packet answer) {
