@@ -242,6 +242,35 @@ class UploadQueueTest {
         assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 
+    @Test
+    void aSlotLeftIdleGoesToTheNextClientInTheQueue() throws Exception {
+        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+        Client busy = this.client(port, 11);
+        Client idle = this.client(port, 12);
+        assertThat(busy.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(idle.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        Client waiting = this.client(port, 13);
+        assertThat(waiting.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
+
+        busy.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
+        assertThat(busy.next().opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
+
+        // The client that asks for nothing loses its slot to the one waiting.
+        Duration grace = Duration.ofSeconds(25);
+        assertThat(idle.poll(grace))
+                .hasValueSatisfying(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Client.OUTOFPARTREQS.code()));
+        assertThat(waiting.poll(grace))
+                .hasValueSatisfying(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code()));
+    }
+
     private Client clientFrom(InetAddress local, int port, int seed) throws IOException {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), port, local, 0);
         socket.setSoTimeout((int) WAIT.toMillis());
@@ -273,25 +302,35 @@ class UploadQueueTest {
     }
 
     private static SharedFileInfo awaitShared(NjMuleEngine engine) throws Exception {
+        return awaitShared(engine, 1).getFirst();
+    }
+
+    private static List<SharedFileInfo> awaitShared(NjMuleEngine engine, int count) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
             List<SharedFileInfo> files = engine.sharedFiles().get(10, TimeUnit.SECONDS);
-            if (!files.isEmpty()) {
-                return files.getFirst();
+            if (files.size() >= count) {
+                return files;
             }
             Thread.sleep(50);
         }
-        throw new AssertionError("nothing shared");
+        throw new AssertionError("not shared");
     }
 
     private NjMuleEngine engine(String extra) throws IOException {
+        return this.engine(extra, 1);
+    }
+
+    private NjMuleEngine engine(String extra, int files) throws IOException {
         Path root = this.dir.resolve("njmule");
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
         Path incoming = Files.createDirectories(root.resolve("incoming"));
-        byte[] data = new byte[300_000];
-        new Random(5).nextBytes(data);
-        Files.write(incoming.resolve("queued.bin"), data);
+        for (int i = 0; i < files; i++) {
+            byte[] data = new byte[300_000];
+            new Random(5 + i).nextBytes(data);
+            Files.write(incoming.resolve(i == 0 ? "queued.bin" : "other" + i + ".bin"), data);
+        }
         int port;
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();

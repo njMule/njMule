@@ -103,6 +103,11 @@ public final class UploadManager implements AutoCloseable {
     private static final Duration WAITING_TIMEOUT = Duration.ofSeconds(40);
     // Throttled slots may send nothing for a while; the client keeps its connection.
     private static final Duration SLOT_TIMEOUT = Duration.ofMinutes(5);
+
+    /** While others wait, a slot goes back to the queue when its client asks for nothing this long. */
+    static final Duration FIRST_REQUEST_WAIT = Duration.ofSeconds(15);
+
+    static final Duration IDLE_SLOT = Duration.ofSeconds(30);
     private static final Duration CREDITS_SAVE = Duration.ofMinutes(13);
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
@@ -154,10 +159,18 @@ public final class UploadManager implements AutoCloseable {
         private long sent;
         private final RateMeter rate = new RateMeter(RATE_SECONDS);
         private boolean reading;
+        // Whether the client asked for a block we have, and since when it has nothing to send.
+        private boolean requested;
+        private long idleSince;
 
-        Slot(Client client, UploadSession session) {
+        Slot(Client client, UploadSession session, long now) {
             this.client = client;
             this.session = session;
+            this.idleSince = now;
+        }
+
+        boolean isBusy() {
+            return this.reading || !this.out.isEmpty() || this.session.hasPendingBlocks();
         }
     }
 
@@ -365,6 +378,13 @@ public final class UploadManager implements AutoCloseable {
             this.read(slot);
             if (slot.sent >= SESSION_LIMIT && !this.waiting.isEmpty() && slot.out.isEmpty() && !slot.reading) {
                 this.requeue(slot, now);
+            } else if (slot.isBusy()) {
+                slot.idleSince = now;
+            } else if (!this.waiting.isEmpty()
+                    && now - slot.idleSince > (slot.requested ? IDLE_SLOT : FIRST_REQUEST_WAIT).toNanos()) {
+                // A client that holds a slot without asking for data we have keeps others waiting.
+                logger.debug("{} left its upload slot idle", slot.session.address());
+                this.requeue(slot, now);
             }
         }
         this.send();
@@ -486,7 +506,7 @@ public final class UploadManager implements AutoCloseable {
     }
 
     private void open(Client client, UploadSession session) {
-        Slot slot = new Slot(client, session);
+        Slot slot = new Slot(client, session, this.ticker.read());
         this.slots.add(slot);
         client.session = session;
         session.setReadTimeout(SLOT_TIMEOUT);
@@ -801,7 +821,11 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void blocksRequested(UploadSession session) {
-            UploadManager.this.slotOf(session).ifPresent(UploadManager.this::read);
+            UploadManager.this.slotOf(session).ifPresent(slot -> {
+                slot.requested = true;
+                slot.idleSince = UploadManager.this.ticker.read();
+                UploadManager.this.read(slot);
+            });
         }
 
         @Override
