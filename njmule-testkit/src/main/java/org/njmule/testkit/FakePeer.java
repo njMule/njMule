@@ -52,27 +52,38 @@ import org.slf4j.LoggerFactory;
 
 /**
  * An in-process client for tests that shares one file: it answers hellos and file requests, keeps
- * downloaders queued or gives them a slot, and sends the blocks they ask for, plain or compressed.
- * It can end upload sessions early and send a corrupt copy of chosen parts once. Plain connections
- * only.
+ * downloaders queued or gives them a slot (also by calling them back), and sends the blocks they
+ * ask for, plain or compressed. It can end upload sessions early and send a corrupt copy of chosen
+ * parts once. Plain connections only.
  */
 public final class FakePeer implements AutoCloseable {
 
-    /** How the peer behaves. */
+    /** How a downloader gets its upload slot. */
+    public enum Slot {
+        /** At once. */
+        NOW,
+        /** After a short wait in the queue, on the same connection. */
+        AFTER_QUEUE,
+        /** The connection closes while queued; the peer connects back to give the slot. */
+        CALL_BACK
+    }
+
+    /** How the peer behaves; a positive {@code sessionLimit} ends upload sessions early. */
     public record Config(
             Hash16 userHash,
             boolean compress,
-            boolean queueFirst,
+            Slot slot,
             long sessionLimit,
             Set<Integer> corruptParts) {
         public Config {
             Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(slot, "slot");
             corruptParts = Set.copyOf(corruptParts);
         }
 
         /** Gives a slot at once and sends compressed blocks, as most peers do. */
         public static Config simple(Hash16 userHash) {
-            return new Config(userHash, true, false, 0, Set.of());
+            return new Config(userHash, true, Slot.NOW, 0, Set.of());
         }
     }
 
@@ -150,16 +161,38 @@ public final class FakePeer implements AutoCloseable {
     }
 
     private void serve(Socket client) {
+        this.serve(client, false);
+    }
+
+    private void serve(Socket client, boolean calledBack) {
         try (client;
                 RandomAccessFile data = new RandomAccessFile(this.file.toFile(), "r")) {
             InputStream in = new BufferedInputStream(client.getInputStream());
-            Session session = new Session(new BufferedOutputStream(client.getOutputStream()), data);
-            while (true) {
+            Session session = new Session(client, data, calledBack);
+            if (calledBack) {
+                session.send(session.hello().encode(false));
+            }
+            while (!client.isClosed()) {
                 session.handle(TcpFraming.read(in, FrameLimit.fixed(1 << 20)));
             }
         } catch (IOException e) {
             LOG.debug("Fake peer client gone: {}", e.getMessage());
         }
+    }
+
+    // Connects to the downloader's listening port, as a peer with a free slot does.
+    private void callBack(InetAddress address, int port) {
+        Thread.ofVirtual()
+                .name("fake-peer-callback")
+                .start(
+                        () -> {
+                            try {
+                                Thread.sleep(SLOT_DELAY_MILLIS);
+                                this.serve(new Socket(address, port), true);
+                            } catch (IOException | InterruptedException e) {
+                                LOG.debug("Cannot call back: {}", e.getMessage());
+                            }
+                        });
     }
 
     private static String name(Packet packet) {
@@ -171,13 +204,18 @@ public final class FakePeer implements AutoCloseable {
 
     /** One downloader's connection. */
     private final class Session {
+        private final Socket socket;
         private final OutputStream out;
         private final RandomAccessFile data;
+        private final boolean calledBack;
+        private int downloaderPort;
         private long sessionBytes;
 
-        Session(OutputStream out, RandomAccessFile data) {
-            this.out = out;
+        Session(Socket socket, RandomAccessFile data, boolean calledBack) throws IOException {
+            this.socket = socket;
+            this.out = new BufferedOutputStream(socket.getOutputStream());
             this.data = data;
+            this.calledBack = calledBack;
         }
 
         void handle(Packet packet) throws IOException {
@@ -196,7 +234,17 @@ public final class FakePeer implements AutoCloseable {
                 return;
             }
             switch (opcode) {
-                case HELLO -> this.send(this.hello().encode(true));
+                case HELLO -> {
+                    this.downloaderPort = Hello.decode(packet).tcpPort();
+                    this.send(this.hello().encode(true));
+                }
+                case HELLOANSWER -> {
+                    if (this.calledBack) {
+                        this.send(
+                                Packet.empty(
+                                        Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                    }
+                }
                 case REQUESTFILENAME ->
                         this.send(
                                 new ClientMessages.FileName(hash, FakePeer.this.link.name())
@@ -208,13 +256,19 @@ public final class FakePeer implements AutoCloseable {
                                 new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes())
                                         .encode());
                 case STARTUPLOADREQ -> {
-                    if (FakePeer.this.config.queueFirst()) {
+                    Slot slot = this.calledBack ? Slot.NOW : FakePeer.this.config.slot();
+                    if (slot != Slot.NOW) {
                         this.send(
                                 Packet.of(
                                         Protocol.EMULE,
                                         Opcodes.Extended.QUEUERANKING.code(),
                                         new PacketWriter().u16(1).bytes(new byte[10])));
+                    }
+                    if (slot == Slot.AFTER_QUEUE) {
                         this.slotLater();
+                    } else if (slot == Slot.CALL_BACK) {
+                        FakePeer.this.callBack(this.socket.getInetAddress(), this.downloaderPort);
+                        this.socket.close();
                     } else {
                         this.send(
                                 Packet.empty(
@@ -228,7 +282,7 @@ public final class FakePeer implements AutoCloseable {
             }
         }
 
-        private Hello hello() {
+        Hello hello() {
             return Hello.of(
                     FakePeer.this.config.userHash(),
                     0,
@@ -319,7 +373,7 @@ public final class FakePeer implements AutoCloseable {
             }
         }
 
-        private void send(Packet packet) throws IOException {
+        void send(Packet packet) throws IOException {
             synchronized (this.out) {
                 this.out.write(TcpFraming.encode(packet));
                 this.out.flush();

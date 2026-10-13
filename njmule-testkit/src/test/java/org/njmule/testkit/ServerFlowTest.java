@@ -256,7 +256,7 @@ class ServerFlowTest {
     }
 
     // Servers on loopback are not kept in the server list, so these tests need a LAN address.
-    private static InetAddress lanAddress() throws SocketException {
+    static InetAddress lanAddress() throws SocketException {
         for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) {
                 continue;

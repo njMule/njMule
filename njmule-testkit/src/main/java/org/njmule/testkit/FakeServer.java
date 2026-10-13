@@ -33,7 +33,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.ed2k.FileEntry;
@@ -58,8 +61,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * An in-process eD2K server for tests: logs clients in with a chosen id, greets them, answers
- * searches with fixed results over TCP and, on the TCP port + 4, over UDP. It records what it
- * receives. Plain connections only.
+ * searches with fixed results over TCP and, on the TCP port + 4, over UDP, and knows the sources of
+ * files it is given. It records what it receives. Plain connections only.
  */
 public final class FakeServer implements AutoCloseable {
 
@@ -88,6 +91,7 @@ public final class FakeServer implements AutoCloseable {
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
+    private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
 
     // The UDP socket listens on the TCP port + 4 of the same address.
     private FakeServer(Config config, ServerSocket tcp) throws SocketException {
@@ -148,6 +152,16 @@ public final class FakeServer implements AutoCloseable {
         return List.copyOf(this.udpSearches);
     }
 
+    /** From now on, answers requests for the sources of {@code file} with {@code peer}. */
+    public void addSource(Hash16 file, InetSocketAddress peer) {
+        int ip = Ipv4.fromBytes(peer.getAddress().getAddress());
+        this.sources
+                .computeIfAbsent(file, f -> new CopyOnWriteArrayList<>())
+                .add(
+                        new ServerMessages.Source(
+                                Ipv4.toEd2k(ip), peer.getPort(), 0, Optional.empty()));
+    }
+
     /** Sends {@code packet} to every logged-in client. */
     public void broadcast(Packet packet) throws IOException {
         byte[] frame = TcpFraming.encode(packet);
@@ -205,6 +219,14 @@ public final class FakeServer implements AutoCloseable {
                     new ServerMessages.IdChange(this.config.clientId(), FLAGS, seen).encode(),
                     ServerMessages.message(this.config.welcome()),
                     new ServerMessages.ServerStatus(10, 20).encode());
+        }
+        if (request.opcode() == Opcodes.Server.GETSOURCES.code()
+                || request.opcode() == Opcodes.Server.GETSOURCES_OBFU.code()) {
+            Hash16 file = request.reader().hash16();
+            List<ServerMessages.Source> known = this.sources.getOrDefault(file, List.of());
+            return known.isEmpty()
+                    ? List.of()
+                    : List.of(new ServerMessages.FoundSources(file, known).encode());
         }
         if (request.opcode() == Opcodes.Server.SEARCHREQUEST.code()) {
             this.searches.add(SearchTreeCodec.read(request.reader()));

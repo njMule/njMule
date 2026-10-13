@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,22 +29,27 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.util.Ipv4;
 
 @Timeout(120)
 class DownloadFlowTest {
@@ -82,7 +88,10 @@ class DownloadFlowTest {
     void waitsInTheQueueAndGetsASlotAgainAfterTheSessionEnds() throws Exception {
         byte[] data = content(PART + 500_000, 2);
         FakePeer peer =
-                this.peer(data, new FakePeer.Config(hash(2), false, true, 1_000_000, Set.of()));
+                this.peer(
+                        data,
+                        new FakePeer.Config(
+                                hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
 
         Path file = this.download(peer);
 
@@ -93,12 +102,92 @@ class DownloadFlowTest {
     @Test
     void downloadsACorruptPartAgain() throws Exception {
         byte[] data = content(2 * PART + 1000, 3);
-        FakePeer peer = this.peer(data, new FakePeer.Config(hash(3), true, false, 0, Set.of(1)));
+        FakePeer peer =
+                this.peer(
+                        data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
 
         Path file = this.download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(peer.bytesSent()).isGreaterThan(data.length);
+    }
+
+    @Test
+    void getsTheSlotWhenTheSourceCallsBack() throws Exception {
+        byte[] data = content(PART / 2, 4);
+        FakePeer peer =
+                this.peer(
+                        data,
+                        new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
+
+        Path file = this.download(peer);
+
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(peer.received()).containsSubsequence("STARTUPLOADREQ", "HELLOANSWER");
+    }
+
+    @Test
+    void downloadsFromTheSourcesTheServerKnows() throws Exception {
+        InetAddress lan = ServerFlowTest.lanAddress();
+        byte[] data = content(1_000_000, 5);
+        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("served.bin");
+        Files.write(shared, data);
+        FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(5)));
+        this.resources.add(peer);
+        FakeServer server =
+                FakeServer.start(
+                        lan,
+                        new FakeServer.Config(
+                                Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
+        this.resources.add(server);
+        server.addSource(peer.link().hash(), new InetSocketAddress(lan, peer.port()));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port()))).get();
+
+        Ed2kLink.FileLink bare =
+                Ed2kLink.FileLink.of("served.bin", data.length, peer.link().hash());
+        DownloadInfo added = engine.addDownload(bare).get(10, TimeUnit.SECONDS);
+        assertThat(added.sources()).isZero();
+
+        Path file = events.completed(added.hash()).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+    }
+
+    @Test
+    void pausesResumesAndCancelsDownloads() throws Exception {
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        int closed;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            closed = probe.getLocalPort();
+        }
+        Ed2kLink.FileLink link =
+                (Ed2kLink.FileLink)
+                        Ed2kLink.parse(
+                                "ed2k://|file|nowhere.bin|5000|"
+                                        + "12".repeat(16)
+                                        + "|/|sources,127.0.0.1:"
+                                        + closed
+                                        + "|/");
+        DownloadInfo added = engine.addDownload(link).get(10, TimeUnit.SECONDS);
+        assertThat(events.next(EngineEvent.DownloadAdded.class).download().name())
+                .isEqualTo("nowhere.bin");
+
+        assertThat(engine.pauseDownload(added.hash()).get()).isTrue();
+        assertThat(engine.downloads().get().getFirst().status())
+                .isEqualTo(DownloadInfo.Status.PAUSED);
+        assertThat(engine.resumeDownload(added.hash()).get()).isTrue();
+        assertThat(engine.downloads().get().getFirst().status())
+                .isEqualTo(DownloadInfo.Status.DOWNLOADING);
+
+        assertThat(engine.cancelDownload(added.hash()).get()).isTrue();
+        assertThat(events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(added.hash());
+        assertThat(engine.downloads().get()).isEmpty();
+        assertThat(engine.pauseDownload(added.hash()).get()).isFalse();
+        try (Stream<Path> left = Files.list(engine.directories().temp())) {
+            assertThat(left).isEmpty();
+        }
     }
 
     private Path download(FakePeer peer) throws Exception {
@@ -157,6 +246,17 @@ class DownloadFlowTest {
 
         Events(NjMuleEngine engine) {
             engine.events().subscribe(this);
+        }
+
+        <T extends EngineEvent> T next(Class<T> type) throws InterruptedException {
+            long deadline = System.nanoTime() + WAIT.toNanos();
+            while (System.nanoTime() < deadline) {
+                EngineEvent event = this.queue.poll(100, TimeUnit.MILLISECONDS);
+                if (type.isInstance(event)) {
+                    return type.cast(event);
+                }
+            }
+            throw new AssertionError("no " + type.getSimpleName() + " within " + WAIT);
         }
 
         EngineEvent.DownloadCompleted completed(Hash16 hash) throws InterruptedException {
