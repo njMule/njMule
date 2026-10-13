@@ -64,4 +64,17 @@
             <Package name="org.njmule.testkit"/>
         </Or>
     </Match>
+
+    <!-- Download state (part files, downloads) consists of mutable objects that only the engine
+         thread touches; sharing them between the engine's classes is the design, not a leak. -->
+    <Match>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP"/>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+        </Or>
+        <Or>
+            <Package name="org.njmule.core.download"/>
+            <Package name="org.njmule.core.files"/>
+        </Or>
+    </Match>
 </FindBugsFilter>
