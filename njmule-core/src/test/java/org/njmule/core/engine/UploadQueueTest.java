@@ -101,12 +101,12 @@ class UploadQueueTest {
                 .extracting(UploadInfo::state)
                 .containsExactly(UploadInfo.State.UPLOADING, UploadInfo.State.UPLOADING, UploadInfo.State.QUEUED);
 
-        // Asking again at once: three times are tolerated, the fourth bans the client.
+        // Asking again at once: three times are tolerated, the fourth bans the client and drops it.
         for (int i = 0; i < 3; i++) {
             assertThat(third.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
         }
         third.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
-        assertThat(third.poll(Duration.ofSeconds(1))).isEmpty();
+        assertThatThrownBy(third::next).isInstanceOf(IOException.class);
 
         // A slot asks for a block and gets it, within the limit.
         first.send(new ClientMessages.RequestParts(
@@ -230,16 +230,17 @@ class UploadQueueTest {
     @Test
     void aClientChangingItsUserHashIsDroppedAndBanned() throws Exception {
         NjMuleEngine engine = this.engine("");
-        SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
 
         Client client = this.client(port, 8);
         client.send(hello(9, 5009).encode(false));
         assertThatThrownBy(client::next).isInstanceOf(IOException.class);
 
-        Client again = this.client(port, 8);
-        again.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
-        assertThat(again.poll(Duration.ofSeconds(1))).isEmpty();
+        // The banned address cannot even connect again.
+        Socket again = new Socket(InetAddress.getLoopbackAddress(), port);
+        this.resources.add(again);
+        again.setSoTimeout((int) WAIT.toMillis());
+        assertThat(again.getInputStream().read()).isEqualTo(-1);
         assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 

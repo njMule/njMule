@@ -20,7 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.security.ConnectionGuard.Admission;
@@ -75,6 +77,18 @@ class ConnectionGuardTest {
         assertThat(guard.admit(Ipv4.parse("9.9.9.9"))).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
         assertThat(guard.admit(server)).isInstanceOf(Admission.Admitted.class);
         assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
+    }
+
+    @Test
+    void refusesBannedAddressesAsLongAsTheBanLasts() {
+        Set<Integer> banned = new HashSet<>(Set.of(PEER));
+        ConnectionGuard guard =
+                new ConnectionGuard(IpFilter::empty, ip -> false, banned::contains, Limits.DEFAULT, this.ticker);
+
+        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.BANNED));
+        permit(guard.admit(OTHER));
+        banned.clear();
+        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
     }
 
     @Test

@@ -35,6 +35,7 @@ public final class ConnectionGuard {
     /** Why a connection was refused. */
     public enum Refusal {
         FILTERED,
+        BANNED,
         TOO_MANY_CONNECTIONS,
         TOO_MANY_FROM_ADDRESS,
         ACCEPT_RATE
@@ -61,6 +62,7 @@ public final class ConnectionGuard {
 
     private final Supplier<IpFilter> filter;
     private final IntPredicate exempt;
+    private final IntPredicate banned;
     private final Limits limits;
     private final Ticker ticker;
     private final Map<Integer, Integer> perAddress = new HashMap<>();
@@ -77,8 +79,19 @@ public final class ConnectionGuard {
      *     are reachable: refusing it would leave us with a LowID
      */
     public ConnectionGuard(Supplier<IpFilter> filter, IntPredicate exempt, Limits limits, Ticker ticker) {
+        this(filter, exempt, ip -> false, limits, ticker);
+    }
+
+    /**
+     * @param exempt addresses never held back by the accept rate or the total, such as the server testing whether we
+     *     are reachable: refusing it would leave us with a LowID
+     * @param banned addresses refused for a while because they misbehaved; read on every admission
+     */
+    public ConnectionGuard(
+            Supplier<IpFilter> filter, IntPredicate exempt, IntPredicate banned, Limits limits, Ticker ticker) {
         this.filter = Objects.requireNonNull(filter, "filter");
         this.exempt = Objects.requireNonNull(exempt, "exempt");
+        this.banned = Objects.requireNonNull(banned, "banned");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
@@ -87,6 +100,9 @@ public final class ConnectionGuard {
     public synchronized Admission admit(int ip) {
         if (this.filter.get().blocks(ip)) {
             return new Admission.Refused(Refusal.FILTERED);
+        }
+        if (this.banned.test(ip)) {
+            return new Admission.Refused(Refusal.BANNED);
         }
         long now = this.ticker.read();
         long window = this.limits.rateWindow().toNanos();

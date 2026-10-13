@@ -17,6 +17,7 @@
 package org.njmule.core.engine;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -297,7 +298,11 @@ final class Network {
         ProxyRoute.install(() -> this.preferences.get().proxy());
         int port = this.preferences.get().tcpPort();
         ConnectionGuard guard = new ConnectionGuard(
-                () -> this.ipFilter, this::isOurServer, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
+                () -> this.ipFilter,
+                this::isOurServer,
+                ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
+                ConnectionGuard.Limits.DEFAULT,
+                Ticker.systemTicker());
         try {
             this.listener = TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
         } catch (IOException e) {

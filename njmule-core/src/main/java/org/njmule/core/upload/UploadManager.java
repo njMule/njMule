@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -185,7 +186,8 @@ public final class UploadManager implements AutoCloseable {
     private final Ticker ticker;
     private final Map<Hash16, Client> waiting = new LinkedHashMap<>();
     private final List<Slot> slots = new ArrayList<>();
-    private final Map<InetAddress, Long> bans = new HashMap<>();
+    // Banned addresses until when; read by the listener thread too.
+    private final Map<InetAddress, Long> bans = new ConcurrentHashMap<>();
     private final Map<Hash16, Long> sourcesAnswered = new HashMap<>();
     private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
     private final IntConsumer reachable;
@@ -478,6 +480,28 @@ public final class UploadManager implements AutoCloseable {
         slot.session.sendRank(this.rank(client, now));
     }
 
+    /** Whether {@code ip} is banned; from any thread. */
+    public boolean isBanned(InetAddress ip) {
+        Long until = this.bans.get(ip);
+        return until != null && this.ticker.read() - until < 0;
+    }
+
+    // Clients waiting from a banned address leave the queue; a slot it holds runs to its end, as
+    // other clients may share the address.
+    private void ban(InetAddress ip, long now, String reason) {
+        logger.debug("Banning {}: {}", ip, reason);
+        this.bans.put(ip, now + BAN_TIME.toNanos());
+        this.waiting.values().removeIf(c -> {
+            if (!c.ip.equals(ip)) {
+                return false;
+            }
+            if (c.session != null && this.slotOf(c.session).isEmpty()) {
+                c.session.close();
+            }
+            return true;
+        });
+    }
+
     private void fillSlots(long now) {
         while (!this.waiting.isEmpty() && this.canOpenSlot(false)) {
             Client best = null;
@@ -744,7 +768,7 @@ public final class UploadManager implements AutoCloseable {
             UploadManager manager = UploadManager.this;
             long now = manager.ticker.read();
             InetAddress ip = session.address().getAddress();
-            if (manager.bans.containsKey(ip)) {
+            if (manager.isBanned(ip)) {
                 return;
             }
             for (Slot slot : manager.slots) {
@@ -770,9 +794,7 @@ public final class UploadManager implements AutoCloseable {
                         : Math.max(0, client.bad - 1);
                 client.lastAsk = now;
                 if (client.bad >= BAD_LIMIT) {
-                    logger.debug("Banning {}: asked again too often", ip);
-                    manager.bans.put(ip, now + BAN_TIME.toNanos());
-                    manager.waiting.remove(client.userHash);
+                    manager.ban(ip, now, "asked again too often");
                     return;
                 }
                 client.session = session;
@@ -848,10 +870,7 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void misbehaved(UploadSession session, String reason) {
-            UploadManager manager = UploadManager.this;
-            InetAddress ip = session.address().getAddress();
-            logger.debug("Banning {}: {}", ip, reason);
-            manager.bans.put(ip, manager.ticker.read() + BAN_TIME.toNanos());
+            UploadManager.this.ban(session.address().getAddress(), UploadManager.this.ticker.read(), reason);
         }
 
         // A request with the user hash of a known client comes from that client when it comes
