@@ -85,6 +85,21 @@ class PartFileTest {
     }
 
     @Test
+    void finishesABegunPartFirstAndCutsBlocksOnTheAichBoundaries() {
+        List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
+        PartFile file =
+                PartFile.create(2, this.dir, "big.bin", 2 * P + 100, Ed2k.fileHash(parts), Optional.empty(), parts);
+        BitSet all = new BitSet();
+        all.set(0, 3);
+        file.addAvailability(all, 1);
+        file.written(P, P + 1000);
+
+        assertThat(file.nextBlocks(all, 2))
+                .as("part 1 was begun")
+                .containsExactly(new Block(P + 1000, P + B), new Block(P + B, P + 2L * B));
+    }
+
+    @Test
     void mapsWhatIsMissingRequestedAndAvailable() {
         PartFile file = this.small(500_000);
         BitSet all = all(file);

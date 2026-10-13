@@ -369,13 +369,16 @@ public final class PartFile {
         }
         RangeSet<Long> wanted = TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
         wanted.removeAll(this.requested);
+        long partStart = Ed2k.partStart(part);
         for (Range<Long> gap : wanted.asRanges()) {
-            for (long start = gap.lowerEndpoint();
-                    start < gap.upperEndpoint() && blocks.size() < max;
-                    start += Ed2k.EMBLOCKSIZE) {
-                long end = Math.min(gap.upperEndpoint(), start + Ed2k.EMBLOCKSIZE);
+            long start = gap.lowerEndpoint();
+            while (start < gap.upperEndpoint() && blocks.size() < max) {
+                // Blocks end on the 180 KiB boundaries of the part, as AICH cuts it: a bad block is one AICH block.
+                long boundary = partStart + ((start - partStart) / Ed2k.EMBLOCKSIZE + 1) * Ed2k.EMBLOCKSIZE;
+                long end = Math.min(gap.upperEndpoint(), boundary);
                 blocks.add(new Block(start, end));
                 this.requested.add(Range.closedOpen(start, end));
+                start = end;
             }
             if (blocks.size() >= max) {
                 break;
@@ -456,19 +459,27 @@ public final class PartFile {
         return fileName(this.number) + DATA_SUFFIX;
     }
 
-    // Rarest first; ties go to the lowest part, which helps previews.
+    // Rarest first; among equally rare parts, one begun already, so that parts complete, are checked and can be shared
+    // sooner; then the lowest, which helps previews.
     private int pickPart(BitSet sourceParts) {
         int best = -1;
+        boolean bestBegun = false;
         for (int part = sourceParts.nextSetBit(0);
                 part >= 0 && part < this.partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
-            RangeSet<Long> wanted = TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+            Range<Long> range = partRange(this.size, part);
+            RangeSet<Long> missingHere = this.missing.subRangeSet(range);
+            RangeSet<Long> wanted = TreeRangeSet.create(missingHere);
             wanted.removeAll(this.requested);
             if (wanted.isEmpty()) {
                 continue;
             }
-            if (best < 0 || this.availability[part] < this.availability[best]) {
+            boolean begun = !missingHere.encloses(range);
+            if (best < 0
+                    || this.availability[part] < this.availability[best]
+                    || (this.availability[part] == this.availability[best] && begun && !bestBegun)) {
                 best = part;
+                bestBegun = begun;
             }
         }
         return best;

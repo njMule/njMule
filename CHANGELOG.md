@@ -204,6 +204,8 @@ All notable changes to this project are documented here. The format follows
   block, and a change applies at once.
 - Parts that passed their check are remembered in the `.part.met`: after a restart they are not
   checked again while the data file is as it was saved (its date is the date of the `.part.met`).
+- Among equally rare parts the download goes on with one already begun, so that parts complete
+  and can be shared sooner, and its blocks end on the 180 KiB boundaries of AICH.
 
 ### Changed
 
