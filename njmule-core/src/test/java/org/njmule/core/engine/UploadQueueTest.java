@@ -17,6 +17,7 @@
 package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -207,6 +208,61 @@ class UploadQueueTest {
                 assertThat(called.next().opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
             }
         }
+    }
+
+    @Test
+    void anotherAddressClaimingAUserHashGetsNeitherItsSlotNorItsPlace() throws Exception {
+        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+
+        Client victim = this.client(port, 7);
+        victim.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
+        assertThat(victim.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
+        assertThat(victim.ask(file.hash()).opcode())
+                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+
+        Client impostor = this.clientFrom(InetAddress.getByName("127.0.0.2"), port, 7);
+        impostor.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
+        assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
+
+        // The slot still serves the client that holds it.
+        victim.send(
+                new ClientMessages.RequestParts(
+                                file.hash(),
+                                List.of(
+                                        new ClientMessages.Range(0, 1000),
+                                        new ClientMessages.Range(0, 0),
+                                        new ClientMessages.Range(0, 0)))
+                        .encode(false));
+        assertThat(victim.next().opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
+        assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).hasSize(1);
+    }
+
+    @Test
+    void aClientChangingItsUserHashIsDroppedAndBanned() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+
+        Client client = this.client(port, 8);
+        client.send(hello(9, 5009).encode(false));
+        assertThatThrownBy(client::next).isInstanceOf(IOException.class);
+
+        Client again = this.client(port, 8);
+        again.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
+        assertThat(again.poll(Duration.ofSeconds(1))).isEmpty();
+        assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private Client clientFrom(InetAddress local, int port, int seed) throws IOException {
+        Socket socket = new Socket(InetAddress.getLoopbackAddress(), port, local, 0);
+        socket.setSoTimeout((int) WAIT.toMillis());
+        Client client = new Client(socket);
+        this.resources.add(socket);
+        client.send(hello(seed, 5000 + seed).encode(false));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+        return client;
     }
 
     private Client client(int port, int seed) throws IOException {

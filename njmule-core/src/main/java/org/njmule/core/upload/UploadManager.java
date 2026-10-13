@@ -115,7 +115,7 @@ public final class UploadManager implements AutoCloseable {
 
     private static final class Client {
         private final Hash16 userHash;
-        private final InetAddress ip;
+        private InetAddress ip;
         private final int port;
         private final boolean lowId;
         private final boolean crypt;
@@ -127,6 +127,8 @@ public final class UploadManager implements AutoCloseable {
         private int bad;
         private boolean connecting;
         private boolean nextConnect;
+        // Whether credits applied when it was last connected, from its address above.
+        private boolean trusted;
 
         Client(UploadSession session, Uploadable file, long now) {
             this.userHash = session.userHash();
@@ -541,7 +543,8 @@ public final class UploadManager implements AutoCloseable {
 
     private double score(Client client, long now) {
         double waited = Math.max(0, now - client.waitStart) / 1e9;
-        boolean trusted = client.session != null && client.session.trust().credits();
+        boolean trusted =
+                client.session != null ? client.session.trust().credits() : client.trusted;
         double ratio = this.credits.ratio(client.userHash, trusted);
         return waited * ratio * this.priority(client.file.hash()) / 10;
     }
@@ -769,6 +772,9 @@ public final class UploadManager implements AutoCloseable {
             }
             for (Slot slot : manager.slots) {
                 if (slot.client.userHash.equals(session.userHash())) {
+                    if (!sameClient(slot.client, session)) {
+                        return;
+                    }
                     // Already uploading to it, maybe over a new connection or for another file.
                     slot.session = session;
                     slot.client.file = file;
@@ -779,6 +785,9 @@ public final class UploadManager implements AutoCloseable {
             }
             Client client = manager.waiting.get(session.userHash());
             if (client != null) {
+                if (!sameClient(client, session)) {
+                    return;
+                }
                 client.bad =
                         now - client.lastAsk < MIN_REQUEST_TIME.toNanos()
                                 ? client.bad + 1
@@ -852,9 +861,34 @@ public final class UploadManager implements AutoCloseable {
             manager.slotOf(session).ifPresent(manager.slots::remove);
             for (Client c : manager.waiting.values()) {
                 if (c.session == session) {
+                    c.trusted = session.trust().credits();
                     c.session = null;
                 }
             }
+        }
+
+        @Override
+        public void misbehaved(UploadSession session, String reason) {
+            UploadManager manager = UploadManager.this;
+            InetAddress ip = session.address().getAddress();
+            LOG.debug("Banning {}: {}", ip, reason);
+            manager.bans.put(ip, manager.ticker.read() + BAN_TIME.toNanos());
+        }
+
+        // A request with the user hash of a known client comes from that client when it comes
+        // from the same address, or from a new one with the client's key proven; anyone else
+        // claiming the hash would take its slot, place and credits.
+        private static boolean sameClient(Client client, UploadSession session) {
+            InetAddress ip = session.address().getAddress();
+            if (client.ip.equals(ip)) {
+                return true;
+            }
+            if (session.trust() == Identities.Trust.IDENTIFIED) {
+                client.ip = ip;
+                return true;
+            }
+            LOG.debug("{} claims the user hash of the client at {}", ip, client.ip);
+            return false;
         }
     }
 }

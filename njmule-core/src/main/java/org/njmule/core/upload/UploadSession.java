@@ -75,6 +75,9 @@ final class UploadSession {
 
         /** A chat packet: a message or a CAPTCHA request or result. */
         void chat(UploadSession session, Packet packet);
+
+        /** The client broke the rules in a way that only an attacker would; it is banned. */
+        void misbehaved(UploadSession session, String reason);
     }
 
     /** One requested block. */
@@ -260,7 +263,15 @@ final class UploadSession {
         }
         switch (opcode.get()) {
             case HELLO -> {
-                this.peer = Hello.decode(packet);
+                Hello again = Hello.decode(packet);
+                // Becoming another client on the same connection would take over that client's
+                // credits, place in the queue and slot.
+                if (!again.userHash().equals(this.peer.userHash())) {
+                    this.queue.misbehaved(this, "changed its user hash");
+                    this.close();
+                    return;
+                }
+                this.peer = again;
                 this.send(this.ourHello.get().encode(true));
             }
             case REQUESTFILENAME -> {
