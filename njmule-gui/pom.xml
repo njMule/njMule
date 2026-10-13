@@ -191,6 +191,8 @@
                                     <goal>exec</goal>
                                 </goals>
                                 <configuration>
+                                    <!-- exec creates the directory; native-image does not. -->
+                                    <workingDirectory>${project.build.directory}/native</workingDirectory>
                                     <executable>${graalvm.home}/bin/native-image${native.cmd.suffix}</executable>
                                     <arguments>
                                         <!-- The jar, not target/classes: on Windows native-image
@@ -200,7 +202,7 @@
                                         <argument>--module</argument>
                                         <argument>org.njmule.gui/${main.class}</argument>
                                         <argument>-o</argument>
-                                        <argument>${project.build.directory}/native/njmule-gui</argument>
+                                        <argument>njmule-gui</argument>
                                         <argument>@${project.basedir}/native/${native.os}.args</argument>
                                     </arguments>
                                 </configuration>
@@ -262,6 +264,9 @@
                         <artifactId>exec-maven-plugin</artifactId>
                         <configuration>
                             <executable>${graalvm.home}/bin/java</executable>
+                            <!-- Pass the module path as given, not as an argument file. -->
+                            <longModulepath>false</longModulepath>
+                            <longClasspath>false</longClasspath>
                         </configuration>
                         <executions>
                             <execution>
@@ -275,6 +280,8 @@
                                         <argument>-agentlib:native-image-agent=config-merge-dir=${native.tour.metadata}</argument>
                                         <argument>-Dnjmule.gui.tour=true</argument>
                                         <argument>-Dprism.order=${native.tour.prism}</argument>
+                                        <!-- Also on virtual displays without a GPU (CI, Xvfb). -->
+                                        <argument>-Dprism.forceGPU=true</argument>
                                         <argument>--enable-native-access=javafx.graphics</argument>
                                         <argument>--module-path</argument>
                                         <argument>${project.build.outputDirectory}${path.separator}${native.module.path}</argument>
