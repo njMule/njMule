@@ -14,8 +14,9 @@ Derivation from eMule
 ---------------------
 njMule is an independent re-implementation in Java of the eMule file-sharing
 client. Protocol constants, file formats and algorithms were translated from
-the eMule source code, and the user-interface strings and their translations
-are converted from eMule's resource files.
+the eMule source code, the lower-case table Kad applies to keywords is taken
+from eMule's resource files, and the user-interface strings and their
+translations are converted from eMule's resource files.
 
     eMule
     Copyright (C) 2002-2026 Merkur (devteam at emule-project dot net)
