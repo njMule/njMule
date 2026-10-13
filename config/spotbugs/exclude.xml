@@ -77,6 +77,14 @@
             <Package name="org.njmule.core.files"/>
         </Or>
     </Match>
+    <!-- The web interface builds its pages from fixed markup; every text that is not a literal
+         goes through Html.text, which escapes it for element content and quoted attributes
+         (WebUiPartsTest, WebUiTest), and the Content-Security-Policy forbids scripts. -->
+    <Match>
+        <Bug pattern="POTENTIAL_XML_INJECTION"/>
+        <Package name="org.njmule.webui"/>
+    </Match>
+
     <!-- The desktop interface shares observable state on purpose: JavaFX views bind to the
          model's properties and lists, and screens hand out their nodes; all of it lives on the FX
          thread. -->

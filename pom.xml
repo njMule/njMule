@@ -50,6 +50,7 @@
     <modules>
         <module>njmule-core</module>
         <module>njmule-testkit</module>
+        <module>njmule-webui</module>
         <module>njmule-app</module>
         <module>njmule-gui</module>
         <module>njmule-bench</module>
@@ -163,6 +164,11 @@
             <dependency>
                 <groupId>org.njmule</groupId>
                 <artifactId>njmule-testkit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.njmule</groupId>
+                <artifactId>njmule-webui</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
