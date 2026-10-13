@@ -56,12 +56,16 @@ final class BlockInflater implements AutoCloseable {
         this.inflater.setInput(input);
         ByteArrayOutputStream out = new ByteArrayOutputStream(input.length * 4);
         try {
-            while (!this.inflater.finished() && !this.inflater.needsInput()) {
+            // zlib may hold output back once all input is read: inflate until it gives nothing.
+            while (!this.inflater.finished()) {
                 int n = this.inflater.inflate(this.chunk);
-                if (n == 0 && this.inflater.needsDictionary()) {
-                    throw new DecodeException("compressed block needs a dictionary");
-                }
-                if (n == 0 && !this.inflater.needsInput() && !this.inflater.finished()) {
+                if (n == 0) {
+                    if (this.inflater.needsInput()) {
+                        break;
+                    }
+                    if (this.inflater.needsDictionary()) {
+                        throw new DecodeException("compressed block needs a dictionary");
+                    }
                     throw new DecodeException("compressed block makes no progress");
                 }
                 this.produced += n;
