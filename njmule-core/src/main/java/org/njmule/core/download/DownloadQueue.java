@@ -18,6 +18,7 @@ package org.njmule.core.download;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -39,6 +40,7 @@ import org.njmule.core.files.PartFile;
 import org.njmule.core.files.PartFileStorage;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.format.PartMet;
 import org.njmule.core.security.PathSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,6 +173,44 @@ public final class DownloadQueue implements AutoCloseable {
         this.downloads.put(file.hash(), download);
         this.listener.added(download);
         return download;
+    }
+
+    /**
+     * Takes over a download another client left in {@code met} and {@code data}, both already in
+     * our temp directory: they get the next free number and the complete parts are checked again.
+     */
+    public Download adopt(Path met, Path data) throws IOException {
+        PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
+        if (this.downloads.containsKey(contents.fileHash())) {
+            throw new FileAlreadyExistsException(
+                    contents.name().orElse(contents.fileHash().toString()),
+                    null,
+                    "already downloading");
+        }
+        int number = this.nextNumber();
+        Path ownData = this.tempDir.resolve(PartFile.fileName(number) + PartFile.DATA_SUFFIX);
+        Path ownMet = this.tempDir.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX);
+        Files.move(data, ownData);
+        Files.move(met, ownMet);
+        PartFile file;
+        try {
+            file = PartFile.load(this.tempDir, number);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(ownMet);
+            Files.deleteIfExists(ownData);
+            throw e;
+        }
+        file.rename(PathSanitizer.fileName(file.name()));
+        Download download = new Download(file, PartFileStorage.open(file.dataFile()));
+        download.dirty = true;
+        this.downloads.put(file.hash(), download);
+        this.listener.added(download);
+        this.hashSetKnown(download);
+        return download;
+    }
+
+    public Path tempDir() {
+        return this.tempDir;
     }
 
     public Optional<Download> get(Hash16 hash) {
