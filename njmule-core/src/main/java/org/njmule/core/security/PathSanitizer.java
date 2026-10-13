@@ -93,7 +93,7 @@ public final class PathSanitizer {
         if (!Files.exists(first)) {
             return first;
         }
-        String safe = first.getFileName().toString();
+        String safe = fileName(name);
         int dot = safe.lastIndexOf('.');
         String stem = dot > 0 ? safe.substring(0, dot) : safe;
         String extension = dot > 0 ? safe.substring(dot) : "";

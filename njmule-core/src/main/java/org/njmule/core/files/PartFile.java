@@ -1,0 +1,363 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.core.files;
+
+import com.google.common.collect.Range;
+import com.google.common.collect.RangeSet;
+import com.google.common.collect.TreeRangeSet;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
+import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.format.PartMet;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
+
+/**
+ * A file being downloaded, {@code NNN.part} with its metadata {@code NNN.part.met}: which byte
+ * ranges are still missing, which are being requested, and the part hashes that verify each 9.28
+ * MiB part. Used on the engine thread only; the data itself is read and written by {@link
+ * PartFileStorage}.
+ */
+public final class PartFile {
+
+    /** Where a download stands. */
+    public enum Status {
+        DOWNLOADING,
+        PAUSED,
+        /** Disk failure: the file waits for the user. */
+        ERROR,
+        COMPLETE
+    }
+
+    /** A range {@code [start, end)} within one part, at most one block long. */
+    public record Block(long start, long end) {
+        public Block {
+            if (start < 0 || end <= start || end - start > Ed2k.EMBLOCKSIZE) {
+                throw new IllegalArgumentException("invalid block " + start + "-" + end);
+            }
+        }
+
+        public long length() {
+            return this.end - this.start;
+        }
+    }
+
+    public static final String DATA_SUFFIX = ".part";
+    public static final String MET_SUFFIX = ".part.met";
+
+    private final int number;
+    private final Path directory;
+    private final Hash16 hash;
+    private final long size;
+    private final Optional<Hash20> aichHash;
+    private final RangeSet<Long> missing = TreeRangeSet.create();
+    private final RangeSet<Long> requested = TreeRangeSet.create();
+    private final int[] availability;
+    private String name;
+    private List<Hash16> partHashes;
+    private Status status = Status.DOWNLOADING;
+
+    private PartFile(
+            int number,
+            Path directory,
+            String name,
+            long size,
+            Hash16 hash,
+            Optional<Hash20> aichHash,
+            List<Hash16> partHashes) {
+        Ed2k.checkSize(size);
+        if (size == 0) {
+            throw new IllegalArgumentException("nothing to download in an empty file");
+        }
+        this.number = number;
+        this.directory = Objects.requireNonNull(directory, "directory");
+        this.name = Objects.requireNonNull(name, "name");
+        this.size = size;
+        this.hash = Objects.requireNonNull(hash, "hash");
+        this.aichHash = Objects.requireNonNull(aichHash, "aichHash");
+        this.partHashes = List.copyOf(partHashes);
+        this.availability = new int[Ed2k.partCount(size)];
+    }
+
+    /** A new, empty download; its hash set may be given (from the link) or arrive later. */
+    public static PartFile create(
+            int number,
+            Path directory,
+            String name,
+            long size,
+            Hash16 hash,
+            Optional<Hash20> aichHash,
+            List<Hash16> partHashes) {
+        PartFile file = new PartFile(number, directory, name, size, hash, aichHash, List.of());
+        file.missing.add(Range.closedOpen(0L, size));
+        if (!partHashes.isEmpty()) {
+            file.setHashSet(partHashes);
+        }
+        return file;
+    }
+
+    /** Reads {@code NNN.part.met} (or its backup) from {@code directory}. */
+    public static PartFile load(Path directory, int number) throws IOException {
+        Path met = directory.resolve(fileName(number) + MET_SUFFIX);
+        PartMet.Contents contents = AtomicFiles.read(met, in -> PartMet.read(in.readAllBytes()));
+        long size = contents.size().orElseThrow();
+        PartFile file =
+                new PartFile(
+                        number,
+                        directory,
+                        contents.name().orElse(fileName(number)),
+                        size,
+                        contents.fileHash(),
+                        contents.aichHash(),
+                        contents.partHashes().size() == Ed2k.hashSetSize(size)
+                                ? contents.partHashes()
+                                : List.of());
+        for (PartMet.Gap gap : contents.gaps()) {
+            file.missing.add(Range.closedOpen(gap.start(), gap.end()));
+        }
+        if (contents.paused()) {
+            file.status = Status.PAUSED;
+        }
+        return file;
+    }
+
+    /** Writes {@code NNN.part.met} crash-safely, keeping the previous one as backup. */
+    public void save() throws IOException {
+        List<Tag> tags = new ArrayList<>();
+        tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), this.name));
+        tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), this.size));
+        tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
+        tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), this.status == Status.PAUSED ? 1 : 0));
+        this.aichHash.ifPresent(
+                h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
+        List<PartMet.Gap> gaps = new ArrayList<>();
+        for (Range<Long> gap : this.missing.asRanges()) {
+            gaps.add(new PartMet.Gap(gap.lowerEndpoint(), gap.upperEndpoint()));
+        }
+        PartMet.Contents contents =
+                new PartMet.Contents(
+                                PartMet.VERSION,
+                                System.currentTimeMillis() / 1000,
+                                this.hash,
+                                this.partHashes,
+                                tags)
+                        .withGaps(gaps);
+        AtomicFiles.writeBytes(this.metFile(), PartMet.write(contents));
+    }
+
+    public int number() {
+        return this.number;
+    }
+
+    public Hash16 hash() {
+        return this.hash;
+    }
+
+    public long size() {
+        return this.size;
+    }
+
+    public String name() {
+        return this.name;
+    }
+
+    public void rename(String name) {
+        this.name = Objects.requireNonNull(name, "name");
+    }
+
+    public Optional<Hash20> aichHash() {
+        return this.aichHash;
+    }
+
+    public Status status() {
+        return this.status;
+    }
+
+    public void setStatus(Status status) {
+        this.status = Objects.requireNonNull(status, "status");
+    }
+
+    public Path dataFile() {
+        return this.directory.resolve(this.dataName());
+    }
+
+    public Path metFile() {
+        return this.directory.resolve(fileName(this.number) + MET_SUFFIX);
+    }
+
+    public int partCount() {
+        return Ed2k.partCount(this.size);
+    }
+
+    public long missingBytes() {
+        long total = 0;
+        for (Range<Long> gap : this.missing.asRanges()) {
+            total += gap.upperEndpoint() - gap.lowerEndpoint();
+        }
+        return total;
+    }
+
+    public long completedBytes() {
+        return this.size - this.missingBytes();
+    }
+
+    /** Whether every part can be verified: files below one part need only the file hash. */
+    public boolean hasHashSet() {
+        return this.size < Ed2k.PARTSIZE || this.partHashes.size() == Ed2k.hashSetSize(this.size);
+    }
+
+    /**
+     * Sets the part hashes once a source sent them.
+     *
+     * @throws IllegalArgumentException if they do not hash to the file hash
+     */
+    public void setHashSet(List<Hash16> hashes) {
+        if (hashes.size() != Ed2k.hashSetSize(this.size)
+                || !Ed2k.fileHash(hashes).equals(this.hash)) {
+            throw new IllegalArgumentException("the hash set does not match the file hash");
+        }
+        this.partHashes = List.copyOf(hashes);
+    }
+
+    /** The hash that verifies {@code part}, once known. */
+    public Optional<Hash16> partHash(int part) {
+        if (this.size < Ed2k.PARTSIZE) {
+            return Optional.of(this.hash);
+        }
+        return this.partHashes.isEmpty()
+                ? Optional.empty()
+                : Optional.of(this.partHashes.get(part));
+    }
+
+    public boolean isComplete() {
+        return this.missing.isEmpty();
+    }
+
+    public boolean isComplete(int part) {
+        return this.missing.subRangeSet(partRange(this.size, part)).isEmpty();
+    }
+
+    /** The parts a source has, as it reports them, update the rarity of each part. */
+    public void addAvailability(BitSet parts, int delta) {
+        for (int part = parts.nextSetBit(0);
+                part >= 0 && part < this.availability.length;
+                part = parts.nextSetBit(part + 1)) {
+            this.availability[part] = Math.max(0, this.availability[part] + delta);
+        }
+    }
+
+    /**
+     * Up to {@code max} blocks to request from a source that has {@code sourceParts}: missing and
+     * not already requested, from the rarest incomplete part the source has. They are marked as
+     * requested until {@link #written} or {@link #release}.
+     */
+    public List<Block> nextBlocks(BitSet sourceParts, int max) {
+        List<Block> blocks = new ArrayList<>(max);
+        int part = this.pickPart(sourceParts);
+        if (part < 0) {
+            return blocks;
+        }
+        RangeSet<Long> wanted =
+                TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+        wanted.removeAll(this.requested);
+        for (Range<Long> gap : wanted.asRanges()) {
+            for (long start = gap.lowerEndpoint();
+                    start < gap.upperEndpoint() && blocks.size() < max;
+                    start += Ed2k.EMBLOCKSIZE) {
+                long end = Math.min(gap.upperEndpoint(), start + Ed2k.EMBLOCKSIZE);
+                blocks.add(new Block(start, end));
+                this.requested.add(Range.closedOpen(start, end));
+            }
+            if (blocks.size() >= max) {
+                break;
+            }
+        }
+        return blocks;
+    }
+
+    /** A requested block that will not arrive (the source is gone). */
+    public void release(Block block) {
+        this.requested.remove(Range.closedOpen(block.start(), block.end()));
+    }
+
+    /** Data in {@code [start, end)} reached the disk. */
+    public void written(long start, long end) {
+        Range<Long> range = Range.closedOpen(start, end);
+        this.missing.remove(range);
+        this.requested.remove(range);
+    }
+
+    /** A part failed its hash check: all of it is missing again. */
+    public void corrupt(int part) {
+        this.missing.add(partRange(this.size, part));
+    }
+
+    /** The parts that are complete, as reported to other clients. */
+    public BitSet completeParts() {
+        BitSet parts = new BitSet(this.partCount());
+        for (int part = 0; part < this.partCount(); part++) {
+            if (this.isComplete(part)) {
+                parts.set(part);
+            }
+        }
+        return parts;
+    }
+
+    /** {@code [start, end)} of a data part. */
+    public static Range<Long> partRange(long size, int part) {
+        long start = Ed2k.partStart(part);
+        return Range.closedOpen(start, start + Ed2k.partLength(size, part));
+    }
+
+    /** {@code 001}, {@code 002}, ...: the base name of download number {@code n}. */
+    public static String fileName(int number) {
+        return String.format(Locale.ROOT, "%03d", number);
+    }
+
+    private String dataName() {
+        return fileName(this.number) + DATA_SUFFIX;
+    }
+
+    // Rarest first; ties go to the lowest part, which helps previews.
+    private int pickPart(BitSet sourceParts) {
+        int best = -1;
+        for (int part = sourceParts.nextSetBit(0);
+                part >= 0 && part < this.partCount();
+                part = sourceParts.nextSetBit(part + 1)) {
+            RangeSet<Long> wanted =
+                    TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+            wanted.removeAll(this.requested);
+            if (wanted.isEmpty()) {
+                continue;
+            }
+            if (best < 0 || this.availability[part] < this.availability[best]) {
+                best = part;
+            }
+        }
+        return best;
+    }
+}
