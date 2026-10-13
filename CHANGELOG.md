@@ -143,6 +143,11 @@ All notable changes to this project are documented here. The format follows
   addresses, host names, folders, eD2K links, search expressions): other characters are dropped as
   they are typed or pasted, and a box whose text is not valid is marked, says what it expects and
   keeps its action button off. The web interface checks its links and searches too.
+- Download priorities (Low, Normal, High, or Auto, which favours rare files): higher ones ask for
+  sources and start transfers first. Stop pauses a download and forgets its sources; finished
+  downloads stay listed until cleared. Kept in the part.met as other clients write them.
+- Upload priorities of shared files (Very low to Release, or Auto), which scale the queue scores of
+  the clients waiting for them; kept in known.met as other clients write them.
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
@@ -204,5 +209,6 @@ All notable changes to this project are documented here. The format follows
 - The native desktop app no longer crashes on Windows at the first press of a mouse button, nor
   when a screen reader or another accessibility tool reads it.
 - Closing the main window ends njMule even while one of its dialogs is open.
+- The tray menu and the small status window follow a change of language at once.
 - A proxy keeps its type when the preferences are read again.
 - Italian texts that carry a translator's note are no longer lost.
