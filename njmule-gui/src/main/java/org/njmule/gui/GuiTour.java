@@ -41,7 +41,9 @@ import javafx.stage.Window;
 import javafx.util.Duration;
 import javax.imageio.ImageIO;
 import org.njmule.gui.dialogs.AboutDialog;
+import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ImportDialog;
+import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
@@ -105,6 +107,8 @@ final class GuiTour {
         this.steps.add(() -> themes.set(family, mode));
         this.steps.add(() -> new AboutDialog(this.gui, this.stage).show());
         this.steps.add(() -> new ImportDialog(this.gui, this.stage).show());
+        this.steps.add(() -> new CategoriesDialog(this.gui, this.stage).show());
+        this.steps.add(() -> new SharedFoldersDialog(this.gui, this.stage).show());
         this.steps.add(this::alert);
         this.steps.add(this::closeWindows);
         this.steps.add(() -> this.window.message("Tour"));

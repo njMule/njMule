@@ -127,5 +127,11 @@
       "type": "java.lang.ClassLoader",
       "jniAccessible": true
     }
+  ],
+  "resources": [
+    {
+      "module": "javafx.graphics",
+      "glob": "com/sun/prism/es2/glsl/*.frag"
+    }
   ]
 }

@@ -1160,6 +1160,19 @@
       ]
     },
     {
+      "type": "com.sun.prism.shader.DrawCircle_Color_Loader",
+      "methods": [
+        {
+          "name": "loadShader",
+          "parameterTypes": [
+            "com.sun.prism.ps.ShaderFactory",
+            "java.lang.String",
+            "java.io.InputStream"
+          ]
+        }
+      ]
+    },
+    {
       "type": "com.sun.prism.shader.DrawPgram_Color_Loader",
       "methods": [
         {
@@ -1174,6 +1187,19 @@
     },
     {
       "type": "com.sun.prism.shader.DrawRoundRect_Color_Loader",
+      "methods": [
+        {
+          "name": "loadShader",
+          "parameterTypes": [
+            "com.sun.prism.ps.ShaderFactory",
+            "java.lang.String",
+            "java.io.InputStream"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.prism.shader.FillCircle_Color_Loader",
       "methods": [
         {
           "name": "loadShader",
@@ -2554,6 +2580,9 @@
           ]
         }
       ]
+    },
+    {
+      "type": "javafx.scene.shape.Circle"
     },
     {
       "type": "javafx.scene.shape.LineTo"
@@ -14002,11 +14031,19 @@
     },
     {
       "module": "javafx.graphics",
+      "glob": "com/sun/prism/d3d/hlsl/DrawCircle_Color.obj"
+    },
+    {
+      "module": "javafx.graphics",
       "glob": "com/sun/prism/d3d/hlsl/DrawPgram_Color.obj"
     },
     {
       "module": "javafx.graphics",
       "glob": "com/sun/prism/d3d/hlsl/DrawRoundRect_Color.obj"
+    },
+    {
+      "module": "javafx.graphics",
+      "glob": "com/sun/prism/d3d/hlsl/FillCircle_Color.obj"
     },
     {
       "module": "javafx.graphics",
