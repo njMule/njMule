@@ -145,6 +145,17 @@ final class UploadSession {
         return !this.pending.isEmpty();
     }
 
+    /** Requested and sent blocks, for diagnostics. */
+    String describe() {
+        return this.address()
+                + (this.slot ? " slot" : "")
+                + (this.isOpen() ? "" : " closed")
+                + " pending "
+                + this.pending
+                + " sent "
+                + this.sent.size();
+    }
+
     /** Runs the secure identification over this connection. */
     void identify(Identities.Session session) {
         this.identity = Optional.of(session);

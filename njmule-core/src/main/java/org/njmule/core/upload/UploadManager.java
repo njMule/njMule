@@ -110,6 +110,7 @@ public final class UploadManager implements AutoCloseable {
         private final InetAddress ip;
         private final int port;
         private final boolean lowId;
+        private final boolean crypt;
         private Uploadable file;
         private UploadSession session;
         private long waitStart;
@@ -123,6 +124,7 @@ public final class UploadManager implements AutoCloseable {
             this.ip = session.address().getAddress();
             this.port = session.peer().tcpPort();
             this.lowId = session.peer().clientId() != 0 && session.peer().clientId() < 0x0100_0000L;
+            this.crypt = (session.peer().miscOptions2() & Hello.MISC2_SUPPORTS_CRYPT) != 0;
             this.file = file;
             this.session = session;
             this.waitStart = now;
@@ -198,6 +200,21 @@ public final class UploadManager implements AutoCloseable {
     /** Starts serving the queue. */
     public void start() {
         this.ticking = this.loop.scheduleRepeating("uploads", TICK, TICK, this::tick);
+    }
+
+    /** Slots and waiting clients, for diagnostics. */
+    public String describe() {
+        StringBuilder text = new StringBuilder("waiting " + this.waiting.size());
+        for (Slot slot : this.slots) {
+            text.append("\nslot ")
+                    .append(slot.session.describe())
+                    .append(" out ")
+                    .append(slot.out.size())
+                    .append(slot.reading ? " reading" : "")
+                    .append(" payload ")
+                    .append(slot.sent);
+        }
+        return text.toString();
     }
 
     /** Clients waiting for a slot. */
@@ -477,8 +494,9 @@ public final class UploadManager implements AutoCloseable {
     // A client with a slot but no connection: we connect to it and give the slot after the hello.
     private void connect(Client client) {
         client.connecting = true;
+        // Obfuscated only towards clients that said they take it.
         Optional<Hash16> obfuscateFor =
-                this.settings.get().obfuscation() == ObfuscationMode.DISABLED
+                this.settings.get().obfuscation() == ObfuscationMode.DISABLED || !client.crypt
                         ? Optional.empty()
                         : Optional.of(client.userHash);
         InetSocketAddress address = new InetSocketAddress(client.ip, client.port);

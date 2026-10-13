@@ -104,6 +104,7 @@ public final class DownloadManager implements AutoCloseable {
     private static final int MAX_STARTING = 8;
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
+    private static final int CRYPT_SUPPORTED = 0x01;
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
     private static final Duration SX_RARE_ANSWER_GAP = Duration.ofMinutes(5);
@@ -285,6 +286,26 @@ public final class DownloadManager implements AutoCloseable {
         return sources;
     }
 
+    /** Downloads, sources and sessions, for diagnostics. */
+    public String describe() {
+        StringBuilder text = new StringBuilder();
+        for (Entry entry : this.entries.values()) {
+            text.append(entry.download.file().name())
+                    .append(" missing ")
+                    .append(entry.download.file().missingBytes())
+                    .append(':');
+            for (Source source : entry.sources.values()) {
+                text.append(' ')
+                        .append(
+                                source.session == null
+                                        ? source.address
+                                        : source.session.describe());
+            }
+            text.append('\n');
+        }
+        return text.toString();
+    }
+
     /** The download of {@code hash}, whose checked parts other clients may download. */
     public Optional<DownloadQueue.Download> find(Hash16 hash) {
         return Optional.ofNullable(this.entries.get(hash)).map(e -> e.download);
@@ -362,6 +383,7 @@ public final class DownloadManager implements AutoCloseable {
                     this.addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
             if (fresh != null) {
                 fresh.userHash = source.userHash();
+                fresh.cryptOptions = source.cryptOptions();
                 added++;
             }
         }
@@ -507,7 +529,9 @@ public final class DownloadManager implements AutoCloseable {
                             this.ourHello,
                             this.identities,
                             this.sessionEvents);
-            source.session.connect(disabled ? Optional.empty() : source.userHash, this.random);
+            // Obfuscated only towards sources known to take it, which needs their user hash.
+            boolean crypt = !disabled && (source.cryptOptions & CRYPT_SUPPORTED) != 0;
+            source.session.connect(crypt ? source.userHash : Optional.empty(), this.random);
             started++;
         }
         return started;
@@ -705,6 +729,9 @@ public final class DownloadManager implements AutoCloseable {
             source.session = null;
             session.sourceParts().ifPresent(parts -> source.parts = parts);
             session.peerHash().ifPresent(hash -> source.userHash = Optional.of(hash));
+            if (session.peerHash().isPresent()) {
+                source.cryptOptions = session.peerCryptOptions();
+            }
             LOG.debug("{} ({}): {}", source.address, outcome, reason);
             long now = DownloadManager.this.ticker.read();
             switch (outcome) {

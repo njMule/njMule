@@ -178,6 +178,22 @@ final class DownloadSession {
         return this.state;
     }
 
+    /** State and outstanding blocks, for diagnostics. */
+    String describe() {
+        StringBuilder text = new StringBuilder(this.address + " " + this.state);
+        for (Pending p : this.pending.values()) {
+            text.append(" [")
+                    .append(p.block.start())
+                    .append('-')
+                    .append(p.block.end())
+                    .append(" missing ")
+                    .append(p.missing)
+                    .append(p.inflater != null ? " inflating" : "")
+                    .append(']');
+        }
+        return text.toString();
+    }
+
     InetSocketAddress address() {
         return this.address;
     }
@@ -188,6 +204,11 @@ final class DownloadSession {
 
     Optional<Hash16> peerHash() {
         return this.peerHash;
+    }
+
+    /** The connect options the source announced: supports, requests, requires obfuscation. */
+    int peerCryptOptions() {
+        return this.peer.map(p -> p.miscOptions2() >>> 7 & 0x07).orElse(0);
     }
 
     /** Whether the source's user hash may be credited with what it sends. */

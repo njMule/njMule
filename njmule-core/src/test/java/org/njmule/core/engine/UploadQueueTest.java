@@ -46,6 +46,8 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.SourceExchange;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -114,18 +116,94 @@ class UploadQueueTest {
         assertThat(ClientMessages.SendingPart.decode(data).end()).isEqualTo(1000);
     }
 
+    @Test
+    void answersTheOtherRequestsOfADownloader() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        Client client = this.client(engine.preferences().tcpPort(), 4);
+
+        client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
+        assertThat(ClientMessages.FileName.decode(client.next()).name()).isEqualTo("queued.bin");
+
+        Hash16 unknown = Hash16.parseHex("77".repeat(16));
+        client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, unknown));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.FILEREQANSNOFIL.code());
+
+        client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code()));
+        Packet files = client.next();
+        assertThat(files.opcode()).isEqualTo(Opcodes.Client.ASKSHAREDFILESANSWER.code());
+        assertThat(files.payload()).containsExactly(0, 0, 0, 0);
+        client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRS.code()));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.ASKSHAREDDENIEDANS.code());
+
+        client.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code()));
+        Packet ip = client.next();
+        assertThat(ip.opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
+        assertThat(ip.payload()).containsExactly(127, 0, 0, 1);
+
+        client.send(
+                Packet.of(
+                        Protocol.EMULE,
+                        Opcodes.Extended.AICHREQUEST.code(),
+                        new PacketWriter().hash16(file.hash()).u16(0).bytes(new byte[20])));
+        Packet aich = client.next();
+        assertThat(aich.opcode()).isEqualTo(Opcodes.Extended.AICHANSWER.code());
+        assertThat(aich.length()).isEqualTo(16);
+
+        // Nobody else has the file, so a request for sources gets no answer; a slot still comes.
+        client.send(SourceExchange.request(file.hash()));
+        assertThat(client.ask(file.hash()).opcode())
+                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
+    }
+
+    @Test
+    void callsAWaitingClientBackWhenASlotFrees() throws Exception {
+        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+        Client first = this.client(port, 5);
+        Client second = this.client(port, 6);
+        assertThat(first.ask(file.hash()).opcode())
+                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(second.ask(file.hash()).opcode())
+                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        try (ServerSocket listening = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            Client waiting = this.client(port, 7, listening.getLocalPort());
+            assertThat(waiting.ask(file.hash()).opcode())
+                    .isEqualTo(Opcodes.Extended.QUEUERANKING.code());
+            waiting.socket.close();
+
+            first.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
+            listening.setSoTimeout((int) WAIT.toMillis());
+            try (Socket back = listening.accept()) {
+                back.setSoTimeout((int) WAIT.toMillis());
+                Client called = new Client(back);
+                assertThat(called.next().opcode()).isEqualTo(Opcodes.Client.HELLO.code());
+                called.send(hello(7, listening.getLocalPort()).encode(true));
+                assertThat(called.next().opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+            }
+        }
+    }
+
     private Client client(int port, int seed) throws IOException {
+        return this.client(port, seed, 5000 + seed);
+    }
+
+    private Client client(int port, int seed, int listenPort) throws IOException {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), port);
         socket.setSoTimeout((int) WAIT.toMillis());
         Client client = new Client(socket);
         this.resources.add(socket);
-        byte[] hash = new byte[16];
-        new Random(seed).nextBytes(hash);
-        client.send(
-                Hello.of(Hash16.of(hash), 0, 5000 + seed, "client " + seed, 0, 0, 0, 0, 0, 0)
-                        .encode(false));
+        client.send(hello(seed, listenPort).encode(false));
         assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
         return client;
+    }
+
+    private static Hello hello(int seed, int listenPort) {
+        byte[] hash = new byte[16];
+        new Random(seed).nextBytes(hash);
+        return Hello.of(Hash16.of(hash), 0, listenPort, "client " + seed, 0, 0, 0, 0, 0, 0);
     }
 
     private static SharedFileInfo awaitShared(NjMuleEngine engine) throws Exception {
