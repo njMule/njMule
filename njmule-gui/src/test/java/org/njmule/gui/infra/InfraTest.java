@@ -156,5 +156,11 @@ class InfraTest {
         assertThat(Folders.command("Windows 11", dir)).containsExactly("explorer.exe", dir.toString());
         assertThat(Folders.command("Mac OS X", dir)).containsExactly("open", dir.toString());
         assertThat(Folders.command("Linux", dir)).containsExactly("xdg-open", dir.toString());
+        Path file = dir.resolve("film.mkv");
+        assertThat(Folders.revealCommand("Windows 11", file))
+                .as("the file selected")
+                .containsExactly("explorer.exe", "/select,", file.toString());
+        assertThat(Folders.revealCommand("Mac OS X", file)).containsExactly("open", "-R", file.toString());
+        assertThat(Folders.revealCommand("Linux", file)).containsExactly("xdg-open", dir.toString());
     }
 }

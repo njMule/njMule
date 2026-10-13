@@ -738,6 +738,15 @@ final class Network {
         return "downloads:\n" + this.downloads.describe() + "uploads: " + this.uploads.describe();
     }
 
+    boolean renameSharedFile(Hash16 hash, String name) throws IOException {
+        if (this.shares == null) {
+            return false;
+        }
+        Optional<SharedFiles.SharedFile> renamed = this.shares.rename(hash, name);
+        renamed.ifPresent(f -> this.userLog.log(LogLine.Level.INFO, "Renamed to " + f.path()));
+        return renamed.isPresent();
+    }
+
     List<SharedFileInfo> sharedFiles() {
         List<SharedFileInfo> all = new ArrayList<>();
         if (this.shares != null) {

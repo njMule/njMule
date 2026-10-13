@@ -656,6 +656,13 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> renameSharedFile(Hash16 hash, String name) {
+        Objects.requireNonNull(hash, "hash");
+        Objects.requireNonNull(name, "name");
+        return this.loop.submit(() -> this.network.renameSharedFile(hash, name));
+    }
+
+    @Override
     public CompletableFuture<Void> shareDirectory(Path directory) {
         return this.shareDirectory(directory, false);
     }

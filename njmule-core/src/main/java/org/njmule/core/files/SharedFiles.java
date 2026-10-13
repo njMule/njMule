@@ -62,6 +62,7 @@ import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.security.PathSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -227,6 +228,33 @@ public final class SharedFiles implements AutoCloseable {
         return record.uploadPriority().isPresent()
                 ? priority(record.uploadPriority().getAsLong())
                 : UploadPriority.AUTO;
+    }
+
+    /**
+     * Renames a shared file in its directory; its hashes and priority stay known under the new name. Empty for a file
+     * not shared.
+     *
+     * @throws java.nio.file.FileAlreadyExistsException when the directory has a file of that name
+     */
+    public Optional<SharedFile> rename(Hash16 hash, String newName) throws IOException {
+        SharedFile file = this.byHash.get(hash);
+        if (file == null) {
+            return Optional.empty();
+        }
+        String name = PathSanitizer.fileName(newName);
+        Path target = file.path().resolveSibling(name);
+        if (name.isEmpty() || target.equals(file.path())) {
+            return Optional.of(file);
+        }
+        Files.move(file.path(), target);
+        SharedFile renamed = new SharedFile(
+                target, name, file.size(), file.hash(), file.partHashes(), file.aichHash(), mtime(target));
+        KnownMet.KnownFile known = this.known.remove(key(file));
+        this.known.put(key(renamed), known == null ? record(renamed) : renamed(known, renamed));
+        this.unshare(file);
+        this.share(renamed, Optional.empty());
+        this.saveSoon();
+        return Optional.of(renamed);
     }
 
     /** Sets the upload priority of a shared file, kept in known.met; {@code false} for a file not shared. */
@@ -685,6 +713,18 @@ public final class SharedFiles implements AutoCloseable {
         }
         tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), aich.toBase32()));
         return new KnownMet.KnownFile(known.mtime(), known.fileHash(), known.partHashes(), tags);
+    }
+
+    // The record of a renamed file: its name and date change, its other tags stay.
+    private static KnownMet.KnownFile renamed(KnownMet.KnownFile known, SharedFile file) {
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : known.tags()) {
+            if (!tag.name().isId() || tag.name().id() != FileTag.FILENAME) {
+                tags.add(tag);
+            }
+        }
+        tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), file.name()));
+        return new KnownMet.KnownFile(file.mtime(), known.fileHash(), known.partHashes(), tags);
     }
 
     private static KnownMet.KnownFile record(SharedFile file) {

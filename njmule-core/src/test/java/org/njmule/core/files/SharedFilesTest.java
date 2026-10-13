@@ -19,6 +19,7 @@ package org.njmule.core.files;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -224,6 +225,38 @@ class SharedFilesTest {
                 .isEqualTo(UploadPriority.RELEASE);
         this.onLoop(() -> {
             again.close();
+            return null;
+        });
+    }
+
+    @Test
+    void renamesASharedFileAndKeepsWhatIsKnownOfIt() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(20_000, 6);
+        Files.write(incoming.resolve("a.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
+        this.onLoop(() -> shares.setPriority(hash, UploadPriority.HIGH));
+
+        assertThat(this.onLoop(() -> shares.rename(hash, "b?.bin")))
+                .map(SharedFiles.SharedFile::name)
+                .as("a name the file system takes")
+                .contains("b_.bin");
+        assertThat(incoming.resolve("b_.bin")).hasBinaryContent(a);
+        assertThat(incoming.resolve("a.bin")).doesNotExist();
+        assertThat(List.of(this.events.poll(10, TimeUnit.SECONDS), this.events.poll(10, TimeUnit.SECONDS)))
+                .containsExactly("unshared a.bin", "shared b_.bin");
+        assertThat(this.onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.HIGH);
+
+        Files.write(incoming.resolve("c.bin"), new byte[] {1});
+        assertThatThrownBy(() -> this.onLoop(() -> shares.rename(hash, "c.bin")))
+                .hasRootCauseInstanceOf(FileAlreadyExistsException.class);
+        assertThat(this.onLoop(() -> shares.rename(Hash16.parseHex("00".repeat(16)), "d.bin")))
+                .isEmpty();
+        this.onLoop(() -> {
+            shares.close();
             return null;
         });
     }

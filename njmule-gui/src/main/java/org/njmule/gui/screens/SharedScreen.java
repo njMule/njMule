@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import atlantafx.base.theme.Styles;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +31,9 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
@@ -41,6 +44,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.gui.dialogs.SharedFoldersDialog;
+import org.njmule.gui.infra.Folders;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
@@ -99,7 +103,15 @@ public final class SharedScreen implements Screen {
         copy.setOnAction(e -> this.copyLinks());
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));
         priority.getItems().setAll(this.priorityItems());
-        this.table.setContextMenu(new ContextMenu(priority, copy));
+        MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
+        MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Material2AL.FOLDER_OPEN, this::openFolder);
+        ContextMenu menu = new ContextMenu(folder, rename, new SeparatorMenuItem(), priority, copy);
+        menu.setOnShowing(e -> {
+            int selected = Fx.selected(this.table).size();
+            rename.setDisable(selected != 1);
+            folder.setDisable(selected != 1);
+        });
+        this.table.setContextMenu(menu);
         MenuButton priorities = new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY));
         priorities.getItems().setAll(this.priorityItems());
         priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
@@ -187,6 +199,34 @@ public final class SharedScreen implements Screen {
             case RELEASE -> this.gui.t("IDS_PRIORELEASE");
             case AUTO -> this.gui.t("IDS_PRIOAUTO");
         };
+    }
+
+    // One file at a time, in its own directory.
+    void renameSelected() {
+        List<SharedFileInfo> selected = Fx.selected(this.table);
+        if (selected.size() != 1) {
+            return;
+        }
+        SharedFileInfo file = selected.getFirst();
+        TextInputDialog ask = new TextInputDialog(file.name());
+        ask.setTitle(this.gui.t("IDS_RENAME"));
+        ask.setHeaderText(file.name());
+        ask.initOwner(this.table.getScene().getWindow());
+        ask.showAndWait()
+                .map(String::strip)
+                .filter(name -> !name.isEmpty() && !name.equals(file.name()))
+                .ifPresent(name -> this.gui.model().renameShared(file.hash(), name));
+    }
+
+    void openFolder() {
+        List<SharedFileInfo> selected = Fx.selected(this.table);
+        if (selected.size() == 1) {
+            try {
+                Folders.reveal(selected.getFirst().path());
+            } catch (IOException e) {
+                this.gui.inform().accept(e.getMessage());
+            }
+        }
     }
 
     void copyLinks() {

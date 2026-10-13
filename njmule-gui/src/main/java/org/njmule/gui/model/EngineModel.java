@@ -472,6 +472,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
     }
 
+    /** Renames a shared file; a name taken already is told through the errors. */
+    public void renameShared(Hash16 file, String name) {
+        this.later(this.engine.renameSharedFile(file, name), ok -> this.refreshShared());
+    }
+
     public void setUploadPriority(Hash16 file, UploadPriority priority) {
         this.later(this.engine.setUploadPriority(file, priority), ok -> this.refreshShared());
     }

@@ -222,6 +222,8 @@ All notable changes to this project are documented here. The format follows
   imported.
 - Servers, sources and Kad contacts at LAN addresses are left out unless the new
   `security.filterLan` setting is turned off (imported from eMule's "Filter LAN IPs").
+- A shared file can be renamed, keeping its hashes and priority, and its folder opened with the
+  file selected.
 
 ### Changed
 

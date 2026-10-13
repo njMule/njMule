@@ -188,6 +188,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Sets how a shared file ranks in the upload queue; completes with {@code false} for a file not shared. */
     CompletableFuture<Boolean> setUploadPriority(Hash16 hash, UploadPriority priority);
 
+    /**
+     * Renames a shared file in its directory; completes with {@code false} for a file not shared, and fails when the
+     * directory has a file of that name.
+     */
+    CompletableFuture<Boolean> renameSharedFile(Hash16 hash, String name);
+
     /** Shares the files of {@code directory} too (not of its subdirectories), from now on. */
     CompletableFuture<Void> shareDirectory(Path directory);
 

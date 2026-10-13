@@ -33,6 +33,22 @@ public final class Folders {
         new ProcessBuilder(command(System.getProperty("os.name", ""), dir)).start();
     }
 
+    /** Shows the folder of {@code file} with the file selected, where the file manager can. */
+    public static void reveal(Path file) throws IOException {
+        new ProcessBuilder(revealCommand(System.getProperty("os.name", ""), file.toAbsolutePath())).start();
+    }
+
+    static List<String> revealCommand(String os, Path file) {
+        String name = os.toLowerCase(Locale.ROOT);
+        if (name.startsWith("windows")) {
+            return List.of("explorer.exe", "/select,", file.toString());
+        }
+        if (name.startsWith("mac")) {
+            return List.of("open", "-R", file.toString());
+        }
+        return List.of("xdg-open", String.valueOf(file.getParent()));
+    }
+
     // The desktop's own opener; the folder is one argument, never parsed by a shell.
     static List<String> command(String os, Path dir) {
         String name = os.toLowerCase(Locale.ROOT);
