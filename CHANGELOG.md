@@ -135,12 +135,23 @@ All notable changes to this project are documented here. The format follows
 - An option of the settings, off by default, makes njMule open the ed2k links of the system on
   Windows and Linux; turned off, it gives them back to what opened them before, such as eMule.
 - Minimising the window hides it into an icon in the Windows notification area, next to the clock
-  (a setting, on by default); the icon brings it back and shows notifications meanwhile.
+  (a setting, on by default). A double click on the icon brings the window back, a click opens a
+  small status window (connection, rates, finished downloads, free space), and its menu sets the
+  speed limits with sliders, connects or disconnects, opens the options or exits.
+- The download and upload capacity of the line (imported from eMule too) top the speed controls.
+- Every input box takes only its kind of value (numbers within the engine's limits, times,
+  addresses, host names, folders, eD2K links, search expressions): other characters are dropped as
+  they are typed or pasted, and a box whose text is not valid is marked, says what it expects and
+  keeps its action button off. The web interface checks its links and searches too.
+- The Windows executable carries the njMule icon and version information, shown by Explorer and
+  Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 
 ### Changed
 
 - UPnP port forwarding is on by default; tests never use it.
+- The Italian interface keeps upload, download and the other terms that Italian software usually
+  leaves in English, such as client, firewalled, Incoming and Temp.
 - MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and
   command-line parsing now come from the JDK, Bouncy Castle, Guava and picocli instead of our own
   code.
@@ -190,3 +201,8 @@ All notable changes to this project are documented here. The format follows
   connected to download from us is asked for our downloads over that same connection.
 - Links whose separators a browser escaped (`%7C`) are read.
 - The window cannot get so small that buttons are cut or hidden.
+- The native desktop app no longer crashes on Windows at the first press of a mouse button, nor
+  when a screen reader or another accessibility tool reads it.
+- Closing the main window ends njMule even while one of its dialogs is open.
+- A proxy keeps its type when the preferences are read again.
+- Italian texts that carry a translator's note are no longer lost.
