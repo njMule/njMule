@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import javafx.beans.binding.Bindings;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -40,6 +41,7 @@ import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
@@ -101,11 +103,13 @@ public final class SharedScreen implements Screen {
         TableLayout.remember(this.table, "shared", this.gui.settings());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"));
+        html.setOnAction(e -> this.copyHtml());
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));
         priority.getItems().setAll(this.priorityItems());
         MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
         MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Material2AL.FOLDER_OPEN, this::openFolder);
-        ContextMenu menu = new ContextMenu(folder, rename, new SeparatorMenuItem(), priority, copy);
+        ContextMenu menu = new ContextMenu(folder, rename, new SeparatorMenuItem(), priority, copy, html);
         menu.setOnShowing(e -> {
             int selected = Fx.selected(this.table).size();
             rename.setDisable(selected != 1);
@@ -230,10 +234,18 @@ public final class SharedScreen implements Screen {
     }
 
     void copyLinks() {
+        this.copy(Ed2kLink.FileLink::toUri);
+    }
+
+    void copyHtml() {
+        this.copy(Ed2kLink.FileLink::toHtml);
+    }
+
+    private void copy(Function<Ed2kLink.FileLink, String> form) {
         List<SharedFileInfo> selected = Fx.selected(this.table);
         if (!selected.isEmpty()) {
             ClipboardWatch.copy(String.join(
-                    "\n", selected.stream().map(f -> f.link().toUri()).toList()));
+                    "\n", selected.stream().map(f -> form.apply(f.link())).toList()));
         }
     }
 

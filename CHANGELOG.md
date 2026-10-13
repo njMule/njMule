@@ -228,6 +228,7 @@ All notable changes to this project are documented here. The format follows
   anti-spam filter leaves out a link in a first message and more than three unanswered ones; the
   eMule settings are imported.
 - Kad can check the firewall again on request (Recheck Firewall).
+- The search, transfer and shared lists copy eD2K links as HTML anchors too.
 
 ### Changed
 

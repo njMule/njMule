@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -159,6 +160,8 @@ public final class TransfersScreen implements Screen {
         cancel.setOnAction(e -> this.cancelSelected());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"));
+        html.setOnAction(e -> this.copyHtml());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
         Menu category = new Menu(this.gui.t("IDS_CAT"));
@@ -171,6 +174,7 @@ public final class TransfersScreen implements Screen {
                 category,
                 new SeparatorMenuItem(),
                 copy,
+                html,
                 clear));
 
         this.link.setPromptText("ed2k://|file|…|/");
@@ -420,10 +424,18 @@ public final class TransfersScreen implements Screen {
     }
 
     void copyLinks() {
+        this.copy(Ed2kLink.FileLink::toUri);
+    }
+
+    void copyHtml() {
+        this.copy(Ed2kLink.FileLink::toHtml);
+    }
+
+    private void copy(Function<Ed2kLink.FileLink, String> form) {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (!selected.isEmpty()) {
             ClipboardWatch.copy(String.join(
-                    "\n", selected.stream().map(d -> d.link().toUri()).toList()));
+                    "\n", selected.stream().map(d -> form.apply(d.link())).toList()));
         }
     }
 

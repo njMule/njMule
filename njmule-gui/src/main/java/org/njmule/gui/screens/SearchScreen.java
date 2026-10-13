@@ -29,6 +29,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import javafx.beans.property.ObjectProperty;
@@ -60,6 +61,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
@@ -442,10 +444,11 @@ public final class SearchScreen implements Screen {
         });
         MenuItem download = Fx.menuItem(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
         MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
+        MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Material2AL.CODE, this::copyHtml);
         MenuItem related = Fx.menuItem(this.gui.t("IDS_SEARCHRELATED"), Material2MZ.SEARCH, this::searchRelated);
         MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Material2AL.BLOCK, () -> this.markSpam(true));
         MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Material2AL.CHECK, () -> this.markSpam(false));
-        ContextMenu menu = new ContextMenu(download, copy, related, new SeparatorMenuItem(), spam, notSpam);
+        ContextMenu menu = new ContextMenu(download, copy, html, related, new SeparatorMenuItem(), spam, notSpam);
         menu.setOnShowing(e -> {
             List<SearchResult> selected = Fx.selected(table);
             SpamMarks marks = this.gui.model().spamMarksProperty().get();
@@ -606,12 +609,21 @@ public final class SearchScreen implements Screen {
     }
 
     void copyLinks() {
+        this.copy(Ed2kLink.FileLink::toUri);
+    }
+
+    void copyHtml() {
+        this.copy(Ed2kLink.FileLink::toHtml);
+    }
+
+    private void copy(Function<Ed2kLink.FileLink, String> form) {
         Results current = this.current();
         if (current == null) {
             return;
         }
-        List<String> links =
-                Fx.selected(current.table()).stream().map(r -> r.link().toUri()).toList();
+        List<String> links = Fx.selected(current.table()).stream()
+                .map(r -> form.apply(r.link()))
+                .toList();
         if (!links.isEmpty()) {
             ClipboardWatch.copy(String.join("\n", links));
         }

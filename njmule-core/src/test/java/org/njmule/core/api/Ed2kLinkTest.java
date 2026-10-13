@@ -160,6 +160,17 @@ class Ed2kLinkTest {
         assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);
     }
 
+    @Test
+    void writesAnHtmlAnchorWithTheNameEscaped() {
+        FileLink link = FileLink.of("Tom & Jerry <1>.avi", 1000, Hash16.parseHex(HASH));
+
+        String href = link.toUri().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        assertThat(link.toHtml())
+                .as("the name escaped in the address too")
+                .isEqualTo("<a href=\"" + href + "\">Tom &amp; Jerry &lt;1&gt;.avi</a>")
+                .doesNotContain("<1>");
+    }
+
     @Property
     void fileLinksRoundTrip(@ForAll("names") String name, @ForAll @LongRange(min = 1, max = 1L << 38) long size) {
         FileLink link = FileLink.of(name, size, Hash16.parseHex(HASH));
