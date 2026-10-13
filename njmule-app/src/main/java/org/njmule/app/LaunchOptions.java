@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.Preferences;
 import picocli.CommandLine;
@@ -61,7 +62,8 @@ public record LaunchOptions(
             List<Ed2kLink.FileLink> downloads,
             List<Path> shares,
             Optional<ServerAddress> kadBootstrap,
-            boolean kad) {
+            boolean kad,
+            Optional<EmuleImport> emuleImport) {
 
         static final NetworkTasks NONE =
                 new NetworkTasks(
@@ -73,7 +75,8 @@ public record LaunchOptions(
                         List.of(),
                         List.of(),
                         Optional.empty(),
-                        false);
+                        false,
+                        Optional.empty());
 
         public NetworkTasks {
             downloads = List.copyOf(downloads);
@@ -81,9 +84,15 @@ public record LaunchOptions(
         }
 
         public boolean isOneShot() {
-            return this.search.isPresent() || this.hello.isPresent() || !this.downloads.isEmpty();
+            return this.search.isPresent()
+                    || this.hello.isPresent()
+                    || !this.downloads.isEmpty()
+                    || this.emuleImport.isPresent();
         }
     }
+
+    /** An import of the eMule profile in {@code dir}. */
+    public record EmuleImport(Path dir, ImportOptions options) {}
 
     /** What the program should do. */
     public enum Action {
@@ -118,6 +127,10 @@ public record LaunchOptions(
     private static final String SHARE_OPTION = "--share";
     private static final String KAD_BOOTSTRAP_OPTION = "--kad-bootstrap";
     private static final String KAD_OPTION = "--kad";
+    private static final String IMPORT_OPTION = "--import-emule";
+    private static final String DRY_RUN_OPTION = "--dry-run";
+    private static final String IDENTITY_OPTION = "--adopt-emule-identity";
+    private static final String IMPORT_DOWNLOADS_OPTION = "--import-downloads";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -152,12 +165,26 @@ public record LaunchOptions(
                         fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())),
                         directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())),
                         address(result, KAD_BOOTSTRAP_OPTION),
-                        result.hasMatchedOption(KAD_OPTION));
+                        result.hasMatchedOption(KAD_OPTION),
+                        emuleImport(result));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
         }
         if (network.kad() && (network.search().isEmpty() || network.global())) {
             throw new UsageException("--kad applies to --search, without --global");
+        }
+        if (network.emuleImport().isEmpty()
+                && (result.hasMatchedOption(DRY_RUN_OPTION)
+                        || result.hasMatchedOption(IDENTITY_OPTION)
+                        || result.hasMatchedOption(IMPORT_DOWNLOADS_OPTION))) {
+            throw new UsageException(
+                    DRY_RUN_OPTION
+                            + ", "
+                            + IDENTITY_OPTION
+                            + " and "
+                            + IMPORT_DOWNLOADS_OPTION
+                            + " apply to "
+                            + IMPORT_OPTION);
         }
         return new LaunchOptions(
                 action(result),
@@ -251,6 +278,27 @@ public record LaunchOptions(
                                         + " the incoming one")
                         .build());
         spec.addOption(
+                valued(
+                        IMPORT_OPTION,
+                        "<dir>",
+                        "take servers, Kad contacts, known files, shared directories and"
+                                + " preferences from eMule's config directory (only read), then"
+                                + " exit"));
+        spec.addOption(flag(DRY_RUN_OPTION, "with " + IMPORT_OPTION + ": only report"));
+        spec.addOption(
+                flag(
+                        IDENTITY_OPTION,
+                        "with "
+                                + IMPORT_OPTION
+                                + ": also take eMule's user hash, key and credits, from the"
+                                + " next start (never run both with one identity)"));
+        spec.addOption(
+                flag(
+                        IMPORT_DOWNLOADS_OPTION,
+                        "with "
+                                + IMPORT_OPTION
+                                + ": also copy eMule's downloads (paused ones while it runs)"));
+        spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
                         .description("print the version and exit")
@@ -301,6 +349,19 @@ public record LaunchOptions(
         } catch (IllegalArgumentException e) {
             throw new UsageException("Invalid address for " + option + ": " + value);
         }
+    }
+
+    private static Optional<EmuleImport> emuleImport(ParseResult result) throws UsageException {
+        if (!result.hasMatchedOption(IMPORT_OPTION)) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                new EmuleImport(
+                        toDirectory(result.matchedOptionValue(IMPORT_OPTION, "")),
+                        new ImportOptions(
+                                result.hasMatchedOption(DRY_RUN_OPTION),
+                                result.hasMatchedOption(IDENTITY_OPTION),
+                                result.hasMatchedOption(IMPORT_DOWNLOADS_OPTION))));
     }
 
     private static List<Ed2kLink.FileLink> fileLinks(List<String> values) throws UsageException {

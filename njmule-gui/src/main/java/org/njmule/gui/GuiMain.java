@@ -22,8 +22,9 @@ import org.njmule.app.LaunchOptions;
 import org.njmule.app.Main;
 
 /**
- * Desktop entry point. Informational options (--version, --license, ...) and {@code --headless}
- * runs go to the headless launcher; a plain start opens the window.
+ * Desktop entry point. Informational options (--version, --license, ...), {@code --headless} runs
+ * and one-shot commands (a search, a download, an import) go to the headless launcher; a plain
+ * start opens the window.
  */
 public final class GuiMain {
 
@@ -37,7 +38,9 @@ public final class GuiMain {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
             return;
         }
-        if (cli.action() != LaunchOptions.Action.RUN || cli.headless()) {
+        if (cli.action() != LaunchOptions.Action.RUN
+                || cli.headless()
+                || cli.network().isOneShot()) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
         }
         Application.launch(NjMuleFxApp.class, args);

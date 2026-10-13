@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions.Action;
+import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
 
 class LaunchOptionsTest {
@@ -115,6 +116,27 @@ class LaunchOptionsTest {
                 .hasMessageContaining("Invalid address for --connect-server");
         assertThatThrownBy(() -> LaunchOptions.parse("--global"))
                 .hasMessageContaining("--global applies to --search");
+    }
+
+    @Test
+    void collectsAnEmuleImport() throws Exception {
+        LaunchOptions cli =
+                LaunchOptions.parse(
+                        "--import-emule", this.dir.toString(), "--dry-run", "--import-downloads");
+
+        LaunchOptions.EmuleImport task = cli.network().emuleImport().orElseThrow();
+        assertThat(task.dir()).isEqualTo(this.dir.toAbsolutePath().normalize());
+        assertThat(task.options()).isEqualTo(new ImportOptions(true, false, true));
+        assertThat(cli.network().isOneShot()).isTrue();
+        assertThat(
+                        LaunchOptions.parse("--import-emule", "x", "--adopt-emule-identity")
+                                .network()
+                                .emuleImport()
+                                .orElseThrow()
+                                .options())
+                .isEqualTo(new ImportOptions(false, true, false));
+        assertThatThrownBy(() -> LaunchOptions.parse("--dry-run"))
+                .hasMessageContaining("apply to --import-emule");
     }
 
     @Test

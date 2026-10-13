@@ -38,6 +38,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PeerInfo;
@@ -90,6 +91,9 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
      */
     int run(NetworkTasks tasks) throws InterruptedException {
         try {
+            if (tasks.emuleImport().isPresent()) {
+                this.importEmule(tasks.emuleImport().get());
+            }
             if (tasks.serverMet().isPresent()) {
                 int added = this.engine.addServers(tasks.serverMet().get()).get();
                 this.out.println("Added " + added + " servers from " + tasks.serverMet().get());
@@ -135,6 +139,23 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         } catch (ExecutionException e) {
             this.err.println("Failed: " + message(e.getCause()));
             return Main.EXIT_FAILURE;
+        }
+    }
+
+    private void importEmule(LaunchOptions.EmuleImport task)
+            throws InterruptedException, ExecutionException {
+        this.out.println(
+                (task.options().dryRun() ? "What would be imported from " : "Importing from ")
+                        + task.dir());
+        ImportReport report = this.engine.importFromEmule(task.dir(), task.options()).get();
+        for (ImportReport.Item item : report.items()) {
+            this.out.println(
+                    String.format(
+                            Locale.ROOT,
+                            "  %-13s %-20s %s",
+                            item.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' '),
+                            item.file(),
+                            item.detail()));
         }
     }
 

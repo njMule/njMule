@@ -138,6 +138,35 @@ class CommandLineFlowTest {
         assertThat(err.toString(UTF_8)).contains("no known server");
     }
 
+    @Test
+    void reportsWhatAnImportWouldTake() throws Exception {
+        Path emule = Files.createDirectories(this.dir.resolve("emule/config"));
+        Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nNick=Someone\r\n");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        int exit =
+                Main.run(
+                        new String[] {
+                            "--config-dir",
+                            this.configDir().toString(),
+                            "--import-emule",
+                            emule.toString(),
+                            "--dry-run"
+                        },
+                        new PrintStream(out, true, UTF_8),
+                        new PrintStream(new ByteArrayOutputStream(), true, UTF_8),
+                        new CompletableFuture<>());
+
+        assertThat(exit).isEqualTo(Main.EXIT_OK);
+        assertThat(out.toString(UTF_8))
+                .contains("What would be imported from " + emule)
+                .containsPattern("would import +preferences\\.ini")
+                .containsPattern("missing +server\\.met");
+        try (Stream<Path> files = Files.list(emule)) {
+            assertThat(files.count()).isEqualTo(1);
+        }
+    }
+
     private Path configDir() throws Exception {
         Path root = this.dir.resolve("njmule");
         Files.createDirectories(root.resolve("config"));
