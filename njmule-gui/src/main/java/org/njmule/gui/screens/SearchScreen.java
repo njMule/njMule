@@ -38,6 +38,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableCell;
@@ -61,6 +62,7 @@ import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
@@ -105,7 +107,8 @@ public final class SearchScreen implements Screen {
     enum Known {
         NONE,
         DOWNLOADING,
-        SHARED
+        SHARED,
+        SPAM
     }
 
     private static final String HISTORY = "search";
@@ -189,7 +192,8 @@ public final class SearchScreen implements Screen {
                 Fx.spacer(),
                 Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected));
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
-        // A file downloaded or shared since shows so in every list.
+        // A file downloaded, shared or marked since shows so in every list.
+        this.gui.model().spamMarksProperty().addListener((o, was, now) -> this.refreshAll());
         this.gui.model().downloads().rows().addListener((ListChangeListener<LiveList.Row<DownloadInfo>>)
                 this::knownChanged);
         this.gui.model().sharedFiles().rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
@@ -383,7 +387,19 @@ public final class SearchScreen implements Screen {
         });
         MenuItem download = Fx.menuItem(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
         MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
-        table.setContextMenu(new ContextMenu(download, copy));
+        MenuItem related = Fx.menuItem(this.gui.t("IDS_SEARCHRELATED"), Material2MZ.SEARCH, this::searchRelated);
+        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Material2AL.BLOCK, () -> this.markSpam(true));
+        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Material2AL.CHECK, () -> this.markSpam(false));
+        ContextMenu menu = new ContextMenu(download, copy, related, new SeparatorMenuItem(), spam, notSpam);
+        menu.setOnShowing(e -> {
+            List<SearchResult> selected = Fx.selected(table);
+            SpamMarks marks = this.gui.model().spamMarksProperty().get();
+            related.setDisable(selected.isEmpty()
+                    || !this.gui.model().statusProperty().get().relatedSearch());
+            spam.setDisable(selected.stream().allMatch(marks::isSpam));
+            notSpam.setDisable(selected.stream().noneMatch(marks::isSpam));
+        });
+        table.setContextMenu(menu);
 
         TextField filter = new TextField();
         filter.setPromptText(this.gui.t("nj.search.filter"));
@@ -442,6 +458,9 @@ public final class SearchScreen implements Screen {
     }
 
     private Known known(SearchResult result) {
+        if (this.gui.model().spamMarksProperty().get().isSpam(result)) {
+            return Known.SPAM;
+        }
         if (this.gui.model().isDownloading(result.hash())) {
             return Known.DOWNLOADING;
         }
@@ -455,9 +474,13 @@ public final class SearchScreen implements Screen {
             membership |= change.wasAdded() || change.wasRemoved();
         }
         if (membership) {
-            for (Results r : this.results.values()) {
-                r.table().refresh();
-            }
+            this.refreshAll();
+        }
+    }
+
+    private void refreshAll() {
+        for (Results r : this.results.values()) {
+            r.table().refresh();
         }
     }
 
@@ -490,6 +513,30 @@ public final class SearchScreen implements Screen {
         Results current = this.current();
         if (current != null) {
             Fx.selected(current.table()).forEach(r -> this.gui.model().addDownload(r.link()));
+        }
+    }
+
+    /** eMule's related search: the server finds files people download along with the selected ones. */
+    void searchRelated() {
+        Results current = this.current();
+        if (current == null) {
+            return;
+        }
+        List<SearchResult> selected = Fx.selected(current.table());
+        if (selected.isEmpty()) {
+            return;
+        }
+        StringBuilder expression = new StringBuilder("related");
+        for (SearchResult r : selected) {
+            expression.append("::").append(r.hash().toHex());
+        }
+        this.gui.model().search(new SearchRequest(expression.toString(), SearchRequest.Scope.SERVER), this::opened);
+    }
+
+    void markSpam(boolean isSpam) {
+        Results current = this.current();
+        if (current != null && !Fx.selected(current.table()).isEmpty()) {
+            this.gui.model().markSpam(Fx.selected(current.table()), isSpam);
         }
     }
 
@@ -553,14 +600,24 @@ public final class SearchScreen implements Screen {
         @Override
         protected void updateItem(Known item, boolean empty) {
             super.updateItem(item, empty);
-            this.getStyleClass().removeAll("known-downloading", "known-shared");
+            this.getStyleClass().removeAll("known-downloading", "known-shared", "known-spam");
             if (empty || item == null || item == Known.NONE) {
                 this.setText(null);
                 return;
             }
-            boolean downloading = item == Known.DOWNLOADING;
-            this.setText(SearchScreen.this.gui.t(downloading ? "IDS_DOWNLOADING" : "IDS_SHARED"));
-            this.getStyleClass().add(downloading ? "known-downloading" : "known-shared");
+            this.setText(SearchScreen.this.gui.t(
+                    switch (item) {
+                        case DOWNLOADING -> "IDS_DOWNLOADING";
+                        case SHARED -> "IDS_SHARED";
+                        case SPAM, NONE -> "IDS_SPAM";
+                    }));
+            this.getStyleClass()
+                    .add(
+                            switch (item) {
+                                case DOWNLOADING -> "known-downloading";
+                                case SHARED -> "known-shared";
+                                case SPAM, NONE -> "known-spam";
+                            });
         }
     }
 }

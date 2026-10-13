@@ -67,6 +67,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
@@ -124,11 +125,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public static final int RATE_HISTORY = 3_600;
 
     private static final EngineStatus NO_STATUS = new EngineStatus(
-            Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0);
+            Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, false);
 
     private final NjMuleEngine engine;
     private final Executor fx;
     private final ObjectProperty<EngineStatus> status = new SimpleObjectProperty<>(NO_STATUS);
+    private final ObjectProperty<SpamMarks> spamMarks = new SimpleObjectProperty<>(SpamMarks.NONE);
     private final ObjectProperty<Connection> connection = new SimpleObjectProperty<>(Connection.DISCONNECTED);
     private final StringProperty serverName = new SimpleStringProperty("");
     private final StringProperty lastLog = new SimpleStringProperty("");
@@ -168,6 +170,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Subscribes to the engine's events and reads the state a first time. */
     public void start() {
+        this.later(this.engine.spamMarks(), this.spamMarks::set);
         this.engine.events().subscribe(this);
         this.refreshServers();
         this.refreshShared();
@@ -321,6 +324,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public LiveList<Hash16, DownloadInfo> downloads() {
         return this.downloads;
+    }
+
+    /** The spam markers, as last read; {@link #markSpam} changes them. */
+    public ReadOnlyObjectProperty<SpamMarks> spamMarksProperty() {
+        return this.spamMarks;
+    }
+
+    public void markSpam(List<SearchResult> results, boolean isSpam) {
+        this.later(this.engine.markSpam(results, isSpam), this.spamMarks::set);
     }
 
     public LiveList<String, SourceInfo> sources() {

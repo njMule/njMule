@@ -419,3 +419,8 @@
     -fx-background-color: -color-success-subtle;
     -fx-text-fill: -color-fg-default;
 }
+
+.table-cell.known-spam {
+    -fx-background-color: -color-warning-subtle;
+    -fx-text-fill: -color-fg-default;
+}
