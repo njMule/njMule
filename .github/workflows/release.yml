@@ -226,11 +226,16 @@ jobs:
                   njmule-app/target/njmule --version
                   tour="$RUNNER_TEMP/tour"
                   cp -r njmule-gui/native/tour "$tour"
-                  njmule-gui/target/native/njmule-gui -Dnjmule.gui.tour=true --config-dir "$tour" &
+                  njmule-gui/target/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true \
+                      --config-dir "$tour" > "$RUNNER_TEMP/gui.out" 2>&1 &
                   gui=$!
-                  ( sleep 180 && kill "$gui" ) 2>/dev/null &
-                  wait "$gui"
-                  grep -q "Tour finished" "$tour"/logs/*.log
+                  ( sleep 180 && kill -QUIT "$gui" && sleep 5 && kill "$gui" ) 2>/dev/null &
+                  wait "$gui" || true
+                  if ! grep -q "Tour finished" "$tour"/logs/*.log; then
+                      cat "$RUNNER_TEMP/gui.out"
+                      cat "$tour"/logs/*.log
+                      exit 1
+                  fi
             - name: Pack
               run: |
                   app=stage/njMule.app/Contents
