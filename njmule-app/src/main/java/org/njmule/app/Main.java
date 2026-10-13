@@ -140,6 +140,34 @@ public final class Main {
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
         LOG.info("Configuration in {}, logs in {}", dirs.config(), dirs.logs());
 
+        LaunchOptions.NetworkTasks tasks = cli.network();
+        if (tasks.isOneShot()) {
+            // The commands print their own progress, server notices included; the console log
+            // keeps only errors.
+            if (cli.logLevel().isEmpty()) {
+                LoggingSetup.setLevel("ERROR");
+            }
+            try {
+                return new NetworkCommands(engine, out, err).run(tasks);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return EXIT_FAILURE;
+            } finally {
+                engine.close();
+                LoggingSetup.disableFileLog();
+            }
+        }
+        try {
+            int code = new NetworkCommands(engine, out, err).run(tasks);
+            if (code != EXIT_OK) {
+                engine.close();
+                LoggingSetup.disableFileLog();
+                return code;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
         Thread hook =
                 Thread.ofPlatform()
                         .name("njmule-shutdown")

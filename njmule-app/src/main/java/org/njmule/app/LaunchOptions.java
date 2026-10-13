@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.Preferences;
 import picocli.CommandLine;
 import picocli.CommandLine.Help;
@@ -35,10 +36,39 @@ import picocli.CommandLine.ParseResult;
  * programmatic model, which needs no reflection in the native image.
  */
 public record LaunchOptions(
-        Action action, Optional<Path> configDir, Optional<String> logLevel, List<Path> files) {
+        Action action,
+        Optional<Path> configDir,
+        Optional<String> logLevel,
+        List<Path> files,
+        boolean headless,
+        NetworkTasks network) {
 
     public LaunchOptions {
         files = List.copyOf(files);
+    }
+
+    /**
+     * Network work for a run: servers to add, a server to connect to, a search or a hello. With a
+     * search or a hello the run ends once they are done.
+     */
+    public record NetworkTasks(
+            Optional<Path> serverMet,
+            Optional<ServerAddress> server,
+            Optional<String> search,
+            boolean global,
+            Optional<ServerAddress> hello) {
+
+        static final NetworkTasks NONE =
+                new NetworkTasks(
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        false,
+                        Optional.empty());
+
+        public boolean isOneShot() {
+            return this.search.isPresent() || this.hello.isPresent();
+        }
     }
 
     /** What the program should do. */
@@ -64,6 +94,12 @@ public record LaunchOptions(
     private static final String CONFIG_DIR = "--config-dir";
     private static final String LOG_LEVEL = "--log-level";
     private static final String HASH = "--hash";
+    private static final String HEADLESS = "--headless";
+    private static final String ADD_SERVERS = "--add-servers";
+    private static final String CONNECT_SERVER = "--connect-server";
+    private static final String SEARCH = "--search";
+    private static final String GLOBAL = "--global";
+    private static final String HELLO = "--hello";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -84,7 +120,27 @@ public record LaunchOptions(
         for (String file : result.matchedOptionValue(HASH, List.<String>of())) {
             files.add(toFile(file));
         }
-        return new LaunchOptions(action(result), configDir, logLevel, files);
+        Optional<Path> serverMet = Optional.empty();
+        if (result.hasMatchedOption(ADD_SERVERS)) {
+            serverMet = Optional.of(toFile(result.matchedOptionValue(ADD_SERVERS, "")));
+        }
+        NetworkTasks network =
+                new NetworkTasks(
+                        serverMet,
+                        address(result, CONNECT_SERVER),
+                        Optional.ofNullable(result.<String>matchedOptionValue(SEARCH, null)),
+                        result.hasMatchedOption(GLOBAL),
+                        address(result, HELLO));
+        if (network.global() && network.search().isEmpty()) {
+            throw new UsageException("--global applies to --search");
+        }
+        return new LaunchOptions(
+                action(result),
+                configDir,
+                logLevel,
+                files,
+                result.hasMatchedOption(HEADLESS),
+                network);
     }
 
     /** The help text, without colours. */
@@ -123,6 +179,22 @@ public record LaunchOptions(
                         LOG_LEVEL,
                         "<level>",
                         "ERROR, WARN, INFO, DEBUG or TRACE (overrides the preferences)"));
+        spec.addOption(flag(HEADLESS, "run without a window (the launcher of the desktop app)"));
+        spec.addOption(
+                valued(
+                        ADD_SERVERS,
+                        "<server.met>",
+                        "add the servers of another client's server.met"));
+        spec.addOption(
+                valued(
+                        CONNECT_SERVER,
+                        "<host:port>",
+                        "connect to this server (any known one when a"
+                                + " search needs a server)"));
+        spec.addOption(valued(SEARCH, "<expression>", "search, print the results and exit"));
+        spec.addOption(flag(GLOBAL, "search the other known servers too, over UDP"));
+        spec.addOption(
+                valued(HELLO, "<host:port>", "say hello to a client, print its answer and exit"));
         spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
@@ -161,6 +233,19 @@ public record LaunchOptions(
                 .type(boolean.class)
                 .description(description)
                 .build();
+    }
+
+    private static Optional<ServerAddress> address(ParseResult result, String option)
+            throws UsageException {
+        if (!result.hasMatchedOption(option)) {
+            return Optional.empty();
+        }
+        String value = result.matchedOptionValue(option, "");
+        try {
+            return Optional.of(ServerAddress.parse(value));
+        } catch (IllegalArgumentException e) {
+            throw new UsageException("Invalid address for " + option + ": " + value);
+        }
     }
 
     private static Path toDirectory(String value) throws UsageException {

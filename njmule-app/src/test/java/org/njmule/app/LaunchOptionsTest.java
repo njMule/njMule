@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions.Action;
+import org.njmule.core.api.ServerAddress;
 
 class LaunchOptionsTest {
 
@@ -61,6 +62,38 @@ class LaunchOptionsTest {
         assertThatThrownBy(() -> LaunchOptions.parse("--hash"))
                 .isInstanceOf(LaunchOptions.UsageException.class)
                 .hasMessageContaining("--hash");
+    }
+
+    @Test
+    void collectsTheNetworkTasks() throws Exception {
+        LaunchOptions cli =
+                LaunchOptions.parse(
+                        "--headless",
+                        "--add-servers",
+                        "server.met",
+                        "--connect-server",
+                        "1.2.3.4:4661",
+                        "--search",
+                        "ubuntu iso",
+                        "--global");
+
+        assertThat(cli.action()).isEqualTo(Action.RUN);
+        assertThat(cli.headless()).isTrue();
+        assertThat(cli.network().serverMet()).contains(Path.of("server.met"));
+        assertThat(cli.network().server()).contains(new ServerAddress("1.2.3.4", 4661));
+        assertThat(cli.network().search()).contains("ubuntu iso");
+        assertThat(cli.network().global()).isTrue();
+        assertThat(cli.network().isOneShot()).isTrue();
+
+        LaunchOptions hello = LaunchOptions.parse("--hello", "localhost:61426");
+        assertThat(hello.network().hello()).contains(new ServerAddress("localhost", 61426));
+        assertThat(LaunchOptions.parse("--connect-server", "s.example:4242").network().isOneShot())
+                .isFalse();
+
+        assertThatThrownBy(() -> LaunchOptions.parse("--connect-server", "nowhere"))
+                .hasMessageContaining("Invalid address for --connect-server");
+        assertThatThrownBy(() -> LaunchOptions.parse("--global"))
+                .hasMessageContaining("--global applies to --search");
     }
 
     @Test

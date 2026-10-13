@@ -22,6 +22,14 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- The launcher is a test-only dependency: let the tests read its module. -->
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-reads org.njmule.testkit=org.njmule.app</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <compilerArgs combine.children="append">
@@ -39,6 +47,12 @@
             <artifactId>njmule-core</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.njmule</groupId>
+            <artifactId>njmule-app</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
