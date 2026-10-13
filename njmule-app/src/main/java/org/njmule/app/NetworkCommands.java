@@ -17,6 +17,7 @@
 package org.njmule.app;
 
 import java.io.PrintStream;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -84,6 +85,10 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
             if (tasks.serverMet().isPresent()) {
                 int added = this.engine.addServers(tasks.serverMet().get()).get();
                 this.out.println("Added " + added + " servers from " + tasks.serverMet().get());
+            }
+            for (Path dir : tasks.shares()) {
+                this.engine.shareDirectory(dir).get();
+                this.out.println("Sharing " + dir);
             }
             if (tasks.hello().isPresent()) {
                 this.hello(tasks);

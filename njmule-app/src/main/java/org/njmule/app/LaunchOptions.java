@@ -58,7 +58,8 @@ public record LaunchOptions(
             Optional<String> search,
             boolean global,
             Optional<ServerAddress> hello,
-            List<Ed2kLink.FileLink> downloads) {
+            List<Ed2kLink.FileLink> downloads,
+            List<Path> shares) {
 
         static final NetworkTasks NONE =
                 new NetworkTasks(
@@ -67,10 +68,12 @@ public record LaunchOptions(
                         Optional.empty(),
                         false,
                         Optional.empty(),
+                        List.of(),
                         List.of());
 
         public NetworkTasks {
             downloads = List.copyOf(downloads);
+            shares = List.copyOf(shares);
         }
 
         public boolean isOneShot() {
@@ -108,6 +111,7 @@ public record LaunchOptions(
     private static final String GLOBAL_OPTION = "--global";
     private static final String HELLO_OPTION = "--hello";
     private static final String DOWNLOAD_OPTION = "--download";
+    private static final String SHARE_OPTION = "--share";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -139,7 +143,8 @@ public record LaunchOptions(
                         Optional.ofNullable(result.<String>matchedOptionValue(SEARCH_OPTION, null)),
                         result.hasMatchedOption(GLOBAL_OPTION),
                         address(result, HELLO_OPTION),
-                        fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())));
+                        fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())),
+                        directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
         }
@@ -219,6 +224,16 @@ public record LaunchOptions(
                                         + " with --connect-server, the server's), then exit")
                         .build());
         spec.addOption(
+                OptionSpec.builder(SHARE_OPTION)
+                        .paramLabel("<dir>")
+                        .type(List.class)
+                        .auxiliaryTypes(String.class)
+                        .arity("1..*")
+                        .description(
+                                "share the files of these directories too (remembered), besides"
+                                        + " the incoming one")
+                        .build());
+        spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
                         .description("print the version and exit")
@@ -280,6 +295,14 @@ public record LaunchOptions(
             links.add(link);
         }
         return links;
+    }
+
+    private static List<Path> directories(List<String> values) throws UsageException {
+        List<Path> dirs = new ArrayList<>(values.size());
+        for (String value : values) {
+            dirs.add(toDirectory(value));
+        }
+        return dirs;
     }
 
     private static Path toDirectory(String value) throws UsageException {

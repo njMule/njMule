@@ -95,6 +95,12 @@ class LaunchOptionsTest {
         assertThat(download.network().downloads()).hasSize(1);
         assertThat(download.network().downloads().getFirst().sources()).hasSize(1);
         assertThat(download.network().isOneShot()).isTrue();
+        LaunchOptions share = LaunchOptions.parse("--share", "videos", "music");
+        assertThat(share.network().shares())
+                .containsExactly(
+                        Path.of("videos").toAbsolutePath().normalize(),
+                        Path.of("music").toAbsolutePath().normalize());
+        assertThat(share.network().isOneShot()).isFalse();
         assertThatThrownBy(() -> LaunchOptions.parse("--download", "ed2k://|server|1.2.3.4|4661|/"))
                 .hasMessageContaining("Not an ed2k file link");
 
