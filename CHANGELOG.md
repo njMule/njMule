@@ -166,6 +166,9 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- The server list can be updated at each start from the server.met addresses of `addresses.dat`
+  (eMule's list, kept by the import and edited in the settings). The addresses typed in eMule's
+  server.met and IP filter boxes are imported and offered again by njMule's.
 - eMule's server options: dead servers leave the list after a number of failed attempts in a row
   (pings count until answered; static servers and the current one stay), the list can grow from
   the server we connect to and from the clients that greet us, automatic connection can keep to

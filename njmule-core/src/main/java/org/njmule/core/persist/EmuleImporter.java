@@ -169,6 +169,11 @@ public final class EmuleImporter {
         this.kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
         this.kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
         this.kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
+        // The addresses typed in eMule's boxes, which the interface offers again.
+        for (String history : List.of(
+                "AC_ServerMetURLs.dat", "AC_IPFilterUpdateURLs.dat", "AC_BootstrapIPs.dat", "AC_SearchStrings.dat")) {
+            this.kept(history, data -> TextFiles.entries(data).size() + " entries");
+        }
         this.categories();
         this.kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
@@ -243,6 +248,7 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "AddServersFromClient").ifPresent(b::addServersFromClients);
         ini.getBoolean(SECTION, "AutoConnectStaticOnly").ifPresent(b::staticServersOnly);
         ini.getBoolean(SECTION, "ManualHighPrio").ifPresent(b::manualServersHighPriority);
+        ini.getBoolean(SECTION, "Serverlist").ifPresent(b::updateServersAtStart);
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);
         ini.getBoolean(SECTION, "NetworkKademlia").ifPresent(b::kadEnabled);
         ini.getBoolean(SECTION, "SecureIdent").ifPresent(b::secureIdent);

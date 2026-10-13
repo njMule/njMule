@@ -62,7 +62,8 @@ public record Preferences(
         boolean addServersFromServer,
         boolean addServersFromClients,
         boolean staticServersOnly,
-        boolean manualServersHighPriority) {
+        boolean manualServersHighPriority,
+        boolean updateServersAtStart) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -137,6 +138,7 @@ public record Preferences(
                 false,
                 false,
                 false,
+                false,
                 false);
     }
 
@@ -198,6 +200,7 @@ public record Preferences(
         private boolean addServersFromClients;
         private boolean staticServersOnly;
         private boolean manualServersHighPriority;
+        private boolean updateServersAtStart;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -228,6 +231,7 @@ public record Preferences(
             this.addServersFromClients = p.addServersFromClients;
             this.staticServersOnly = p.staticServersOnly;
             this.manualServersHighPriority = p.manualServersHighPriority;
+            this.updateServersAtStart = p.updateServersAtStart;
         }
 
         public Builder nick(String value) {
@@ -399,6 +403,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder updateServersAtStart(boolean value) {
+            this.updateServersAtStart = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -429,7 +438,8 @@ public record Preferences(
                     this.addServersFromServer,
                     this.addServersFromClients,
                     this.staticServersOnly,
-                    this.manualServersHighPriority);
+                    this.manualServersHighPriority,
+                    this.updateServersAtStart);
         }
     }
 }

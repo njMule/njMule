@@ -94,6 +94,7 @@ public final class PreferencesCodec {
                 Preferences::addServersFromClients,
                 Preferences.Builder::addServersFromClients);
         boolKey("server.staticOnly", Preferences::staticServersOnly, Preferences.Builder::staticServersOnly);
+        boolKey("server.updateAtStart", Preferences::updateServersAtStart, Preferences.Builder::updateServersAtStart);
         boolKey(
                 "server.manualHighPriority",
                 Preferences::manualServersHighPriority,

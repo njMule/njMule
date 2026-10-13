@@ -22,6 +22,7 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,6 +88,7 @@ import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -98,6 +100,7 @@ public final class Engine implements NjMuleEngine {
     private final WebLists web = WebLists.create();
 
     private static final Logger logger = LoggerFactory.getLogger(Engine.class);
+    private static final String ADDRESSES_FILE = "addresses.dat";
     private static final int EVENT_BUFFER = 1_024;
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
@@ -190,6 +193,9 @@ public final class Engine implements NjMuleEngine {
                 .join();
         engine.publish(new EngineEvent.Started(NjMuleInfo.version()));
         engine.userLog(LogLine.Level.INFO, NjMuleInfo.NAME + " " + NjMuleInfo.version() + " started");
+        if (engine.preferences().updateServersAtStart()) {
+            engine.updateServerLists();
+        }
         return engine;
     }
 
@@ -281,6 +287,63 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(url, "url");
         return this.fetch(url, ServerMet::read)
                 .thenCompose(read -> this.loop.submit(() -> this.network.addServers(read)));
+    }
+
+    @Override
+    public CompletableFuture<List<URI>> serverListAddresses() {
+        return this.loop.submit(this::readAddresses);
+    }
+
+    @Override
+    public CompletableFuture<Void> setServerListAddresses(List<URI> addresses) {
+        List<String> lines = addresses.stream().map(URI::toString).toList();
+        return this.loop.submit(() -> {
+            AtomicFiles.writeBytes(this.addressesFile(), TextFiles.writeLines(lines));
+            return null;
+        });
+    }
+
+    // The server lists of addresses.dat, taken again at each start when the preferences ask for it.
+    private void updateServerLists() {
+        this.serverListAddresses().thenAccept(addresses -> {
+            for (URI url : addresses) {
+                this.addServers(url).whenComplete((added, failure) -> {
+                    if (failure == null) {
+                        this.userLog(LogLine.Level.INFO, added + " new servers from " + url.getHost());
+                    } else {
+                        Throwable cause = failure instanceof CompletionException c && c.getCause() != null
+                                ? c.getCause()
+                                : failure;
+                        this.userLog(
+                                LogLine.Level.WARNING,
+                                "Cannot update the server list from " + url.getHost() + ": " + cause.getMessage());
+                    }
+                });
+            }
+        });
+    }
+
+    private List<URI> readAddresses() throws IOException {
+        Path file = this.addressesFile();
+        if (!Files.exists(file)) {
+            return List.of();
+        }
+        List<URI> addresses = new ArrayList<>();
+        for (String entry : TextFiles.entries(Files.readAllBytes(file))) {
+            try {
+                URI url = new URI(entry.strip());
+                if ("http".equalsIgnoreCase(url.getScheme()) || "https".equalsIgnoreCase(url.getScheme())) {
+                    addresses.add(url);
+                }
+            } catch (URISyntaxException e) {
+                logger.debug("Not an address in {}: {}", file, entry);
+            }
+        }
+        return addresses;
+    }
+
+    private Path addressesFile() {
+        return this.directories.config().resolve(ADDRESSES_FILE);
     }
 
     @Override

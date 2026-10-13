@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
@@ -220,6 +221,19 @@ class EngineTest {
             assertThat(status.totalDownloaded()).isEqualTo(12);
             assertThat(status.totalUploaded()).isZero();
             assertThat(status.sessions()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void keepsTheServerListAddressesInAddressesDat() throws Exception {
+        URI list = URI.create("https://example.org/server.met");
+        try (NjMuleEngine engine = this.start()) {
+            assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).isEmpty();
+            engine.setServerListAddresses(List.of(list)).get(5, TimeUnit.SECONDS);
+        }
+        assertThat(this.root.resolve("config").resolve("addresses.dat")).exists();
+        try (NjMuleEngine engine = this.start()) {
+            assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).containsExactly(list);
         }
     }
 

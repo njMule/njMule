@@ -81,6 +81,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Completes with {@code false} for an unknown server. */
     CompletableFuture<Boolean> removeServer(ServerAddress server);
 
+    /** The server.met addresses of {@code addresses.dat}, which the update at start takes. */
+    CompletableFuture<List<URI>> serverListAddresses();
+
+    /** Replaces the addresses of {@code addresses.dat}. */
+    CompletableFuture<Void> setServerListAddresses(List<URI> addresses);
+
     /** Removes the known ones of {@code servers}; completes with how many. */
     CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers);
 
