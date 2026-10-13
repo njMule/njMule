@@ -18,10 +18,7 @@ package org.njmule.gui.ui;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import javafx.scene.control.ComboBox;
 import org.njmule.gui.infra.GuiSettings;
@@ -58,36 +55,9 @@ public final class UrlBox {
     // An empty history starts with what was typed in eMule's box, when its profile was imported.
     private void seed(Path config) {
         String file = EMULE_HISTORIES.get(this.history);
-        if (file == null || !this.settings.history(this.history).isEmpty()) {
-            return;
+        if (file != null) {
+            this.settings.seedHistory(this.history, config.resolve(file));
         }
-        Path path = config.resolve(file);
-        if (!Files.isRegularFile(path)) {
-            return;
-        }
-        try {
-            List<String> entries = emuleHistory(Files.readAllBytes(path));
-            for (String entry : entries.reversed()) {
-                this.settings.remember(this.history, entry);
-            }
-            this.settings.save();
-        } catch (IOException e) {
-            logger.debug("Cannot read {}: {}", path, e.toString());
-        }
-    }
-
-    /** The lines of an eMule box history: UTF-16LE after a byte order mark, newest first. */
-    static List<String> emuleHistory(byte[] data) {
-        if (data.length < 2 || (data[0] & 0xFF) != 0xFF || (data[1] & 0xFF) != 0xFE) {
-            return List.of();
-        }
-        return new String(data, 2, data.length - 2, StandardCharsets.UTF_16LE)
-                .lines()
-                .map(String::strip)
-                .filter(l -> !l.isEmpty())
-                .distinct()
-                .limit(GuiSettings.MAX_HISTORY)
-                .toList();
     }
 
     public ComboBox<String> node() {

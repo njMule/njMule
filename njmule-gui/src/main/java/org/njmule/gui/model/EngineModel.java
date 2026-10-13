@@ -20,11 +20,13 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -41,7 +43,9 @@ import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -62,6 +66,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
@@ -137,7 +142,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
     private final LiveList<Hash16, DownloadInfo> downloads = new LiveList<>(DownloadInfo::hash);
     private final LiveList<String, UploadInfo> uploads = new LiveList<>(u -> u.userHash() + "@" + u.address());
+    private final LiveList<String, SourceInfo> sources =
+            new LiveList<>(s -> s.file().toHex() + "@" + s.address());
+    private final LiveList<String, BanInfo> bans = new LiveList<>(BanInfo::address);
     private final LiveList<Path, SharedFileInfo> shared = new LiveList<>(SharedFileInfo::path);
+    // The hashes of the shared files, built again after the list changed.
+    private Set<Hash16> sharedHashes;
     private final Map<SearchId, Search> searches = new LinkedHashMap<>();
     private final Chats chats = new Chats();
     private final LiveList<Hash16, Friend> friends = new LiveList<>(Friend::userHash);
@@ -151,6 +161,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public EngineModel(NjMuleEngine engine, Executor fx) {
         this.engine = Objects.requireNonNull(engine, "engine");
         this.fx = Objects.requireNonNull(fx, "fx");
+        this.shared.rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
+                c -> this.sharedHashes = null);
         this.preferences = new SimpleObjectProperty<>(engine.preferences());
     }
 
@@ -210,6 +222,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.downloads(), this::showDownloads);
         if (this.ticks % 2 == 0) {
             this.later(this.engine.uploads(), this.uploads::update);
+            this.later(this.engine.sources(), this.sources::update);
+            this.later(this.engine.bans(), this.bans::update);
         }
         if (this.ticks % 10 == 0) {
             this.refreshServers();
@@ -288,8 +302,37 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         return this.servers;
     }
 
+    /** Whether {@code file} is one of our downloads. */
+    public boolean isDownloading(Hash16 file) {
+        return this.downloads.contains(file);
+    }
+
+    /** Whether we share {@code file}. */
+    public boolean isShared(Hash16 file) {
+        if (this.sharedHashes == null) {
+            Set<Hash16> hashes = new HashSet<>();
+            for (LiveList.Row<SharedFileInfo> row : this.shared.rows()) {
+                hashes.add(row.get().hash());
+            }
+            this.sharedHashes = hashes;
+        }
+        return this.sharedHashes.contains(file);
+    }
+
     public LiveList<Hash16, DownloadInfo> downloads() {
         return this.downloads;
+    }
+
+    public LiveList<String, SourceInfo> sources() {
+        return this.sources;
+    }
+
+    public LiveList<String, BanInfo> bans() {
+        return this.bans;
+    }
+
+    public void unban(String ip) {
+        this.later(this.engine.unban(ip), lifted -> this.later(this.engine.bans(), this.bans::update));
     }
 
     public LiveList<String, UploadInfo> uploads() {

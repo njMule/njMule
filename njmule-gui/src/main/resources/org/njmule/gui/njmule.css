@@ -408,3 +408,14 @@
 .menu-item.default-item .label {
     -fx-font-weight: bold;
 }
+
+/* A search result we download or share already: a pastel chip with its words. */
+.table-cell.known-downloading {
+    -fx-background-color: -color-danger-subtle;
+    -fx-text-fill: -color-fg-default;
+}
+
+.table-cell.known-shared {
+    -fx-background-color: -color-success-subtle;
+    -fx-text-fill: -color-fg-default;
+}

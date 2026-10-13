@@ -36,7 +36,6 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.PartMap;
-import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ProxySettings;
@@ -312,7 +311,9 @@ class ScreensTest {
 
         FxTesting.onFx(() -> {
             screen.queryField().setText("ubuntu");
-            screen.scopeBox().setValue(SearchRequest.Scope.SERVER);
+            screen.methodBox().setValue(SearchScreen.Method.SERVER);
+            screen.typeBox().setValue(SearchScreen.FileType.VIDEO);
+            screen.minSizeField().setText("100");
             screen.start();
             screen.more();
             screen.stop();

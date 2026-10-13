@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.njmule.gui.infra.GuiSettings;
 
 class UrlBoxTest {
 
@@ -29,9 +30,9 @@ class UrlBoxTest {
                 .concat("http://a.example/server.met\r\n")
                 .getBytes(StandardCharsets.UTF_16LE);
 
-        assertThat(UrlBox.emuleHistory(data))
+        assertThat(GuiSettings.emuleHistory(data))
                 .containsExactly("http://a.example/server.met", "http://b.example/server.met");
-        assertThat(UrlBox.emuleHistory("http://a.example/".getBytes(StandardCharsets.US_ASCII)))
+        assertThat(GuiSettings.emuleHistory("http://a.example/".getBytes(StandardCharsets.US_ASCII)))
                 .isEmpty();
     }
 }

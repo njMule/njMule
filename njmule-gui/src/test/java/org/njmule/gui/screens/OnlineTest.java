@@ -31,7 +31,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -98,13 +97,12 @@ class OnlineTest {
         FxTesting.onFx(() -> {
             window.show("search");
             search.queryField().setText("ubuntu");
-            search.scopeBox().setValue(SearchRequest.Scope.SERVER);
+            search.methodBox().setValue(SearchScreen.Method.SERVER);
             search.start();
         });
         FxTesting.await("a result tab", () -> search.tabs().getTabs().size() == 1);
-        @SuppressWarnings("unchecked")
-        TableView<LiveList.Row<SearchResult>> results = FxTesting.onFx(() -> (TableView<LiveList.Row<SearchResult>>)
-                search.tabs().getTabs().getFirst().getContent());
+        TableView<LiveList.Row<SearchResult>> results =
+                FxTesting.onFx(() -> search.table(search.tabs().getTabs().getFirst()));
         FxTesting.await("two results", () -> results.getItems().size() == 2);
         FxTesting.onFx(() -> {
             FxTesting.snapshot(window.root(), "search-results");

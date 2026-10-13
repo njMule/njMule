@@ -101,6 +101,10 @@ public final class LiveList<K, V> {
         return this.rows.size();
     }
 
+    public boolean contains(K k) {
+        return this.byKey.containsKey(k);
+    }
+
     private void put(K k, V value) {
         Row<V> row = this.byKey.get(k);
         if (row == null) {

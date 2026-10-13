@@ -166,6 +166,13 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- Searches take eMule's parameters (file type, minimum and maximum size, availability, complete
+  sources, extension) and its Automatic method, which picks Kad or the server by what is connected;
+  the words searched are offered again (eMule's history is imported). Each result tab has a filter
+  box and its count, and results we download, share already show so.
+- The transfers screen shows eMule's client lists: clients we upload to, those waiting in our
+  queue, the sources of our downloads (state, queue rank, parts, bytes received) and the banned
+  addresses, whose ban can be lifted.
 - The configuration is backed up as a dated zip at each exit and once a day, the latest three
   kept by default (`backup.copies`), in the data directory.
 - Every list keeps how its columns were left (order, widths, which show and the sort), and offers

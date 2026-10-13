@@ -37,6 +37,8 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -54,10 +56,12 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.model.LiveList;
@@ -81,6 +85,10 @@ public final class TransfersScreen implements Screen {
     private Node view;
     private TableView<LiveList.Row<DownloadInfo>> downloads;
     private TableView<LiveList.Row<UploadInfo>> uploads;
+    private TableView<LiveList.Row<UploadInfo>> queue;
+    private TableView<LiveList.Row<SourceInfo>> sources;
+    private TableView<LiveList.Row<BanInfo>> bans;
+    private TabPane lowerTabs;
     private final TextField link = new TextField();
     private final HBox categoryBar = new HBox();
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
@@ -187,31 +195,20 @@ public final class TransfersScreen implements Screen {
                 this.link,
                 add);
 
-        this.uploads = Fx.table(this.gui.model().uploads(), this.gui.t("nj.transfers.noUploads"));
-        this.uploads
-                .getColumns()
-                .addAll(List.of(
-                        Fx.column(
-                                this.gui.t("IDS_QL_USERNAME"),
-                                180,
-                                u -> u.nick().orElse(u.address())),
-                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software),
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file),
-                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, UploadInfo::bytesPerSecond, formats::rate),
-                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, UploadInfo::transferred, formats::size),
-                        Fx.column(this.gui.t("nj.transfers.waited"), 90, UploadInfo::waitingSeconds, formats::duration),
-                        Fx.column(
-                                this.gui.t("nj.transfers.status"),
-                                100,
-                                UploadInfo::state,
-                                s -> s == UploadInfo.State.UPLOADING
-                                        ? this.gui.t("nj.transfers.uploading")
-                                        : this.gui.t("IDS_ONQUEUE"))));
-        TableLayout.remember(this.uploads, "uploads", this.gui.settings());
-        Label uploadsTitle = new Label(this.gui.t("nj.transfers.uploadsTitle"));
-        uploadsTitle.getStyleClass().add("settings-section");
-        VBox lower = new VBox(4, uploadsTitle, this.uploads);
-        VBox.setVgrow(this.uploads, Priority.ALWAYS);
+        // eMule's lower lists: the clients we upload to, those waiting, those we download from, and the banned.
+        this.uploads = this.uploadTable(UploadInfo.State.UPLOADING, "uploads");
+        this.queue = this.uploadTable(UploadInfo.State.QUEUED, "queue");
+        this.sources = this.sourceTable();
+        this.bans = this.banTable();
+        TabPane lowerTabs = new TabPane(
+                this.counted(this.gui.t("IDS_UPLOADING"), this.uploads),
+                this.counted(this.gui.t("IDS_ONQUEUE"), this.queue),
+                this.counted(this.gui.t("IDS_DOWNLOADING"), this.sources),
+                this.counted(this.gui.t("IDS_BANNED"), this.bans));
+        lowerTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        this.lowerTabs = lowerTabs;
+        VBox lower = new VBox(4, lowerTabs);
+        VBox.setVgrow(lowerTabs, Priority.ALWAYS);
         this.downloads.getContextMenu().setOnShowing(e -> category.getItems().setAll(this.categoryItems()));
         this.categoryBar.getStyleClass().add("category-bar");
         this.showCategories();
@@ -439,6 +436,114 @@ public final class TransfersScreen implements Screen {
 
     TableView<LiveList.Row<UploadInfo>> uploads() {
         return this.uploads;
+    }
+
+    TableView<LiveList.Row<UploadInfo>> queue() {
+        return this.queue;
+    }
+
+    TableView<LiveList.Row<SourceInfo>> sources() {
+        return this.sources;
+    }
+
+    TableView<LiveList.Row<BanInfo>> bans() {
+        return this.bans;
+    }
+
+    TabPane lowerTabs() {
+        return this.lowerTabs;
+    }
+
+    // A tab whose title tells how many rows its list has.
+    private <T> Tab counted(String title, TableView<T> table) {
+        Tab tab = new Tab(title, table);
+        Runnable count = () -> tab.setText(title + " (" + table.getItems().size() + ")");
+        table.getItems().addListener((ListChangeListener<T>) c -> count.run());
+        count.run();
+        return tab;
+    }
+
+    private TableView<LiveList.Row<UploadInfo>> uploadTable(UploadInfo.State state, String layout) {
+        var formats = this.gui.formats();
+        TableView<LiveList.Row<UploadInfo>> table = Fx.table(
+                this.gui.model().uploads(),
+                this.gui.t("nj.transfers.noUploads"),
+                new SimpleObjectProperty<Predicate<UploadInfo>>(u -> u.state() == state));
+        table.getColumns()
+                .addAll(List.of(
+                        Fx.column(
+                                this.gui.t("IDS_QL_USERNAME"),
+                                180,
+                                u -> u.nick().orElse(u.address())),
+                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software),
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file),
+                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, UploadInfo::bytesPerSecond, formats::rate),
+                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, UploadInfo::transferred, formats::size),
+                        Fx.column(
+                                this.gui.t("nj.transfers.waited"), 90, UploadInfo::waitingSeconds, formats::duration)));
+        TableLayout.remember(table, layout, this.gui.settings());
+        return table;
+    }
+
+    private TableView<LiveList.Row<SourceInfo>> sourceTable() {
+        var formats = this.gui.formats();
+        TableView<LiveList.Row<SourceInfo>> table =
+                Fx.table(this.gui.model().sources(), this.gui.t("nj.transfers.noSources"));
+        table.getColumns()
+                .addAll(List.of(
+                        Fx.column(
+                                this.gui.t("IDS_QL_USERNAME"),
+                                180,
+                                s -> s.nick().orElse(s.address())),
+                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, SourceInfo::software),
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, SourceInfo::fileName),
+                        Fx.column(this.gui.t("IDS_STATUS"), 120, SourceInfo::state, this::sourceState),
+                        Fx.column(
+                                this.gui.t("nj.transfers.queueRank"),
+                                90,
+                                SourceInfo::queueRank,
+                                r -> r == 0 ? "" : String.valueOf(r)),
+                        Fx.column(
+                                this.gui.t("IDS_AVAILABLEPARTS"),
+                                100,
+                                s -> s.partCount() == 0 ? 0.0 : (double) s.parts() / s.partCount(),
+                                f -> Math.round(f * 100) + " %"),
+                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size)));
+        TableLayout.remember(table, "sources", this.gui.settings());
+        return table;
+    }
+
+    private String sourceState(SourceInfo.State state) {
+        return this.gui.t(
+                switch (state) {
+                    case WAITING -> "IDS_WAITING";
+                    case CONNECTING -> "IDS_CONNECTING";
+                    case ASKING -> "IDS_ASKING";
+                    case QUEUED -> "IDS_ONQUEUE";
+                    case DOWNLOADING -> "IDS_TRANSFERRING";
+                });
+    }
+
+    private TableView<LiveList.Row<BanInfo>> banTable() {
+        TableView<LiveList.Row<BanInfo>> table = Fx.table(this.gui.model().bans(), this.gui.t("nj.transfers.noBans"));
+        table.getColumns()
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_IP"), 200, BanInfo::address),
+                        Fx.column(
+                                this.gui.t("nj.transfers.banLeft"),
+                                120,
+                                BanInfo::secondsLeft,
+                                this.gui.formats()::duration)));
+        TableLayout.remember(table, "bans", this.gui.settings());
+        MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Material2AL.LOCK_OPEN, this::unbanSelected);
+        table.setContextMenu(new ContextMenu(unban));
+        return table;
+    }
+
+    void unbanSelected() {
+        for (BanInfo ban : Fx.selected(this.bans)) {
+            this.gui.model().unban(ban.address());
+        }
     }
 
     TextField linkField() {
