@@ -153,6 +153,10 @@ All notable changes to this project are documented here. The format follows
 - Folders can be shared with their subfolders, those made later too, and stop being shared; shared
   folders are watched, so new and changed files show within seconds. Sharing a disk's root, a
   system folder or the documents, desktop or pictures asks first.
+- Download categories: a name, an incoming folder of their own, a tint, a priority for the
+  downloads put in them and file name patterns that sort new downloads into them; the transfers
+  screen shows one category at a time and moves downloads between them. eMule's categories are
+  imported with their numbers, so its downloads stay in theirs.
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
