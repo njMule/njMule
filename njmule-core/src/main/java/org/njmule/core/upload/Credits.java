@@ -52,7 +52,7 @@ public final class Credits {
     private static final Logger LOG = LoggerFactory.getLogger(Credits.class);
 
     /** The credit of one client. */
-    static final class Credit {
+    public static final class Credit {
         private final Hash16 userHash;
         private long uploaded;
         private long downloaded;
@@ -67,16 +67,16 @@ public final class Credits {
             this.publicKey = publicKey;
         }
 
-        long uploaded() {
+        public long uploaded() {
             return this.uploaded;
         }
 
-        long downloaded() {
+        public long downloaded() {
             return this.downloaded;
         }
 
         /** The key the client proved it owns, empty if it never did. */
-        Bytes publicKey() {
+        public Bytes publicKey() {
             return this.publicKey;
         }
     }
@@ -119,18 +119,18 @@ public final class Credits {
         return store;
     }
 
-    Optional<Credit> get(Hash16 userHash) {
+    public Optional<Credit> get(Hash16 userHash) {
         return Optional.ofNullable(this.credits.get(userHash));
     }
 
     /** We sent {@code bytes} to the client. */
-    void uploaded(Hash16 userHash, long bytes) {
+    public void uploaded(Hash16 userHash, long bytes) {
         this.credit(userHash).uploaded += bytes;
         this.dirty = true;
     }
 
     /** The client sent us {@code bytes}. */
-    void downloaded(Hash16 userHash, long bytes) {
+    public void downloaded(Hash16 userHash, long bytes) {
         this.credit(userHash).downloaded += bytes;
         this.dirty = true;
     }
@@ -139,7 +139,7 @@ public final class Credits {
      * The client proved it owns {@code key}. The first key is pinned; credit gathered under the
      * user hash before that, by anyone, starts again from nothing.
      */
-    void identified(Hash16 userHash, Bytes key) {
+    public void identified(Hash16 userHash, Bytes key) {
         Credit credit = this.credit(userHash);
         if (credit.publicKey.length() == 0) {
             credit.publicKey = key;
@@ -155,7 +155,7 @@ public final class Credits {
      * The factor a client's waiting time is multiplied by in our queue: from 1 to 10, growing with
      * what it gave us compared with what it got. Clients whose identity is in doubt get 1.
      */
-    double ratio(Hash16 userHash, boolean trusted) {
+    public double ratio(Hash16 userHash, boolean trusted) {
         Credit credit = this.credits.get(userHash);
         if (!trusted || credit == null || credit.downloaded < MIB) {
             return 1;
