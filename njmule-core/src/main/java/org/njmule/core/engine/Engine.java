@@ -277,6 +277,11 @@ public final class Engine implements NjMuleEngine {
                 });
     }
 
+    /** Downloads and uploads in detail, for diagnosing tests. */
+    String describe() throws Exception {
+        return this.loop.submit(this.network::describe).get(10, TimeUnit.SECONDS);
+    }
+
     @Override
     public boolean isRunning() {
         return !this.closed.get() && this.loop.isRunning();

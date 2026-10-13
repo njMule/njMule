@@ -372,6 +372,11 @@ final class Network {
         return this.downloads.cancel(hash);
     }
 
+    /** Downloads and uploads in detail, for diagnostics. */
+    String describe() {
+        return "downloads:\n" + this.downloads.describe() + "uploads: " + this.uploads.describe();
+    }
+
     List<SharedFileInfo> sharedFiles() {
         List<SharedFileInfo> all = new ArrayList<>();
         if (this.shares != null) {

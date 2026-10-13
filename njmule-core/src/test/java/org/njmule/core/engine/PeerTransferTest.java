@@ -86,7 +86,7 @@ class PeerTransferTest {
                                         + "|/");
         DownloadInfo added = downloader.addDownload(link).get(10, TimeUnit.SECONDS);
 
-        Path file = completed(events, added, downloader).file();
+        Path file = completed(events, added, downloader, uploader).file();
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
 
         uploader.close();
@@ -120,7 +120,10 @@ class PeerTransferTest {
     }
 
     private static EngineEvent.DownloadCompleted completed(
-            BlockingQueue<EngineEvent> events, DownloadInfo download, NjMuleEngine engine)
+            BlockingQueue<EngineEvent> events,
+            DownloadInfo download,
+            NjMuleEngine engine,
+            NjMuleEngine source)
             throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -137,7 +140,45 @@ class PeerTransferTest {
                 "no download completed within "
                         + WAIT
                         + ": "
-                        + engine.downloads().get(10, TimeUnit.SECONDS));
+                        + engine.downloads().get(10, TimeUnit.SECONDS)
+                        + "\ndownloader "
+                        + ((Engine) engine).describe()
+                        + "\nuploader "
+                        + ((Engine) source).describe()
+                        + "\nthreads:\n"
+                        + connectionThreads());
+    }
+
+    // The stacks of the connection threads, virtual ones included, to see where a transfer hangs.
+    private static String connectionThreads() {
+        try {
+            Path dump = Files.createTempFile("njmule-threads", ".txt");
+            Files.delete(dump);
+            Path jcmd = Path.of(System.getProperty("java.home"), "bin", "jcmd");
+            Process process =
+                    new ProcessBuilder(
+                                    jcmd.toString(),
+                                    Long.toString(ProcessHandle.current().pid()),
+                                    "Thread.dump_to_file",
+                                    "-format=text",
+                                    dump.toString())
+                            .redirectErrorStream(true)
+                            .start();
+            process.getInputStream().readAllBytes();
+            process.waitFor(30, TimeUnit.SECONDS);
+            StringBuilder text = new StringBuilder();
+            List<String> lines = Files.readAllLines(dump);
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).contains("njmule-tcp") || lines.get(i).contains("njmule-engine")) {
+                    for (int j = i; j < Math.min(lines.size(), i + 14); j++) {
+                        text.append(lines.get(j)).append('\n');
+                    }
+                }
+            }
+            return text.toString();
+        } catch (IOException | InterruptedException e) {
+            return "no thread dump: " + e;
+        }
     }
 
     private NjMuleEngine engine(Path root) throws IOException {
