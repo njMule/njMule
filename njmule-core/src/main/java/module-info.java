@@ -25,4 +25,20 @@ module org.njmule.core {
 
     exports org.njmule.core.api;
     exports org.njmule.core.config;
+
+    // The test kit's fake server and peers speak the protocol through the internal codecs.
+    exports org.njmule.core.persist.format to
+            org.njmule.testkit;
+    exports org.njmule.core.protocol.ed2k to
+            org.njmule.testkit;
+    exports org.njmule.core.protocol.io to
+            org.njmule.testkit;
+    exports org.njmule.core.protocol.packet to
+            org.njmule.testkit;
+    exports org.njmule.core.protocol.tag to
+            org.njmule.testkit;
+    exports org.njmule.core.search to
+            org.njmule.testkit;
+    exports org.njmule.core.util to
+            org.njmule.testkit;
 }

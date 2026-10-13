@@ -1,0 +1,262 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.testkit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.SocketException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Flow;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.ServerAddress;
+import org.njmule.core.config.AppDirectories;
+import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.util.Ipv4;
+
+@Timeout(60)
+class ServerFlowTest {
+
+    private static final Duration WAIT = Duration.ofSeconds(30);
+
+    @TempDir Path dir;
+
+    private final List<AutoCloseable> resources = new ArrayList<>();
+
+    @AfterEach
+    void closeEverything() throws Exception {
+        Collections.reverse(this.resources);
+        for (AutoCloseable resource : this.resources) {
+            resource.close();
+        }
+    }
+
+    @Test
+    void logsInAndSearchesTheServerThenTheOthersOverUdp() throws Exception {
+        InetAddress local = lanAddress();
+        FakeServer connected =
+                this.server(
+                        local,
+                        new FakeServer.Config(
+                                highId(local),
+                                "server version 17.15\nWelcome to the fake server",
+                                List.of(FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50))));
+        FakeServer other =
+                this.server(
+                        local,
+                        new FakeServer.Config(
+                                1,
+                                "",
+                                List.of(
+                                        FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 7),
+                                        FakeServer.file("ubuntu notes.txt", 10, 1))));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        Path serverMet = this.dir.resolve("other-server.met");
+        Files.write(
+                serverMet,
+                ServerMet.write(
+                        List.of(
+                                new ServerMet.Server(
+                                        Ipv4.fromBytes(local.getAddress()),
+                                        other.port(),
+                                        List.of()))));
+        assertThat(engine.addServers(serverMet).get()).isEqualTo(1);
+
+        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), connected.port())))
+                .get();
+
+        EngineEvent.ServerConnected login =
+                events.next(EngineEvent.ServerConnected.class, e -> true);
+        assertThat(login.lowId()).isFalse();
+        assertThat(
+                        events.next(
+                                EngineEvent.ServerMessage.class,
+                                e -> e.text().startsWith("Welcome")))
+                .isNotNull();
+        assertThat(connected.logins()).hasSize(1);
+
+        SearchId search =
+                engine.search(new SearchRequest("ubuntu iso", SearchRequest.Scope.GLOBAL)).get();
+        Map<String, SearchResult> results = new HashMap<>();
+        while (true) {
+            EngineEvent event =
+                    events.next(
+                            EngineEvent.class,
+                            e ->
+                                    e instanceof EngineEvent.SearchResults
+                                            || e instanceof EngineEvent.SearchEnded);
+            if (event instanceof EngineEvent.SearchResults r && r.search().equals(search)) {
+                r.results().forEach(result -> results.put(result.name(), result));
+            } else if (event instanceof EngineEvent.SearchEnded ended
+                    && ended.search().equals(search)) {
+                assertThat(ended.results()).isEqualTo(2);
+                break;
+            }
+        }
+        assertThat(results.get("ubuntu-24.04.iso").sources()).isEqualTo(57);
+        assertThat(results.get("ubuntu-24.04.iso").size()).isEqualTo(6_000_000_000L);
+        assertThat(results).containsKey("ubuntu notes.txt");
+        assertThat(connected.searches()).hasSize(1);
+        assertThat(other.udpSearches()).hasSize(1);
+    }
+
+    @Test
+    void movesOnToTheNextServerAndReportsALowId() throws Exception {
+        InetAddress local = lanAddress();
+        int deadPort;
+        try (ServerSocket probe = new ServerSocket(0, 1, local)) {
+            deadPort = probe.getLocalPort();
+        }
+        FakeServer alive = this.server(local, new FakeServer.Config(1234, "low", List.of()));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        Path serverMet = this.dir.resolve("two-servers.met");
+        int ip = Ipv4.fromBytes(local.getAddress());
+        Files.write(
+                serverMet,
+                ServerMet.write(
+                        List.of(
+                                new ServerMet.Server(ip, deadPort, List.of()),
+                                new ServerMet.Server(ip, alive.port(), List.of()))));
+        engine.addServers(serverMet).get();
+
+        engine.connect(Optional.empty()).get();
+
+        EngineEvent.ServerConnected login =
+                events.next(EngineEvent.ServerConnected.class, e -> true);
+        assertThat(login.lowId()).isTrue();
+        assertThat(login.clientId()).isEqualTo(1234);
+        assertThat(login.server().address()).endsWith(":" + alive.port());
+    }
+
+    @Test
+    void answersHellosAndReportsTheAnswer() throws Exception {
+        NjMuleEngine engine = this.engine();
+        int port = engine.preferences().tcpPort();
+
+        PeerInfo self =
+                engine.hello(new ServerAddress("127.0.0.1", port)).get(10, TimeUnit.SECONDS);
+
+        assertThat(self.software()).startsWith("njMule v");
+        assertThat(self.nick()).contains(engine.preferences().nick());
+        assertThat(self.obfuscated()).isFalse();
+    }
+
+    private FakeServer server(InetAddress address, FakeServer.Config config) throws IOException {
+        FakeServer server = FakeServer.start(address, config);
+        this.resources.add(server);
+        return server;
+    }
+
+    private NjMuleEngine engine() throws IOException {
+        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
+        Files.createDirectories(dirs.config());
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
+        }
+        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n");
+        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(engine);
+        return engine;
+    }
+
+    // Servers on loopback are not kept in the server list, so these tests need a LAN address.
+    private static InetAddress lanAddress() throws SocketException {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) {
+                continue;
+            }
+            for (InetAddress address : Collections.list(nic.getInetAddresses())) {
+                if (address instanceof Inet4Address && !address.isLinkLocalAddress()) {
+                    return address;
+                }
+            }
+        }
+        assumeTrue(false, "no LAN address");
+        throw new IllegalStateException();
+    }
+
+    private static long highId(InetAddress address) {
+        return Ipv4.toEd2k(Ipv4.fromBytes(address.getAddress()));
+    }
+
+    /** Collects the engine's events for assertions. */
+    private static final class Events implements Flow.Subscriber<EngineEvent> {
+        private final BlockingQueue<EngineEvent> queue = new LinkedBlockingQueue<>();
+
+        Events(NjMuleEngine engine) {
+            engine.events().subscribe(this);
+        }
+
+        <T extends EngineEvent> T next(Class<T> type, Predicate<T> match)
+                throws InterruptedException {
+            long deadline = System.nanoTime() + WAIT.toNanos();
+            while (System.nanoTime() < deadline) {
+                EngineEvent event = this.queue.poll(100, TimeUnit.MILLISECONDS);
+                if (type.isInstance(event) && match.test(type.cast(event))) {
+                    return type.cast(event);
+                }
+            }
+            throw new AssertionError("no " + type.getSimpleName() + " within " + WAIT);
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            subscription.request(Long.MAX_VALUE);
+        }
+
+        @Override
+        public void onNext(EngineEvent item) {
+            this.queue.add(item);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {}
+
+        @Override
+        public void onComplete() {}
+    }
+}

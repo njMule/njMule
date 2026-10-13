@@ -59,6 +59,9 @@
             <Bug pattern="UNENCRYPTED_SOCKET"/>
             <Bug pattern="UNENCRYPTED_SERVER_SOCKET"/>
         </Or>
-        <Package name="org.njmule.core.net"/>
+        <Or>
+            <Package name="org.njmule.core.net"/>
+            <Package name="org.njmule.testkit"/>
+        </Or>
     </Match>
 </FindBugsFilter>

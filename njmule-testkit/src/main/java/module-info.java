@@ -16,4 +16,7 @@
  */
 module org.njmule.testkit {
     requires transitive org.njmule.core;
+    requires org.slf4j;
+
+    exports org.njmule.testkit;
 }
