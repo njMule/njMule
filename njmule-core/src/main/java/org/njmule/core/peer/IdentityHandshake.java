@@ -18,6 +18,7 @@ package org.njmule.core.peer;
 
 import java.net.Inet4Address;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -54,6 +55,23 @@ public final class IdentityHandshake {
         @Override
         public byte[] publicKey() {
             return this.publicKey.clone();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof Identity other
+                    && this.key.equals(other.key)
+                    && Arrays.equals(this.publicKey, other.publicKey);
+        }
+
+        @Override
+        public int hashCode() {
+            return this.key.hashCode() * 31 + Arrays.hashCode(this.publicKey);
+        }
+
+        @Override
+        public String toString() {
+            return "Identity[" + this.publicKey.length + "-byte public key]";
         }
     }
 
