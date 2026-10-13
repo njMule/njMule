@@ -94,6 +94,7 @@ public final class SettingsScreen implements Screen {
     private final PasswordField proxyPassword = new PasswordField();
     private final TextField incoming = new TextField();
     private final TextField temp = new TextField();
+    private final TextField minFreeSpace = new TextField();
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
     private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
@@ -117,6 +118,7 @@ public final class SettingsScreen implements Screen {
     private Input<String> proxyUserInput;
     private Input<Optional<Path>> incomingInput;
     private Input<Optional<Path>> tempInput;
+    private Input<Integer> minFreeSpaceInput;
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
@@ -222,6 +224,7 @@ public final class SettingsScreen implements Screen {
         row = section(grid, row, this.gui.t("IDS_PW_DIR"));
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
+        row = field(grid, row, this.gui.t("IDS_MINFREEDISKSPACE"), this.minFreeSpace);
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
@@ -255,6 +258,7 @@ public final class SettingsScreen implements Screen {
                                 this.proxyUserInput,
                                 this.incomingInput,
                                 this.tempInput,
+                                this.minFreeSpaceInput,
                                 this.webUiPortInput,
                                 this.webUiPasswordInput,
                                 this.webUiAgainInput))
@@ -292,6 +296,8 @@ public final class SettingsScreen implements Screen {
         this.proxyUserInput = inputs.text(this.proxyUser, this.gui.t("nj.proxy.user"), MAX_PROXY_USER, false);
         this.incomingInput = inputs.folder(this.incoming, this.gui.t("IDS_PW_INCOMING"));
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
+        this.minFreeSpaceInput =
+                inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
         this.webUiPortInput = inputs.number(this.webUiPort, this.gui.t("nj.webui.port"), 1, Preferences.MAX_PORT);
         this.webUiPasswordInput = Input.of(
                         this.webUiPassword,
@@ -370,6 +376,7 @@ public final class SettingsScreen implements Screen {
         this.proxyPassword.setText(p.proxy().password());
         this.incoming.setText(p.incomingDir().map(Path::toString).orElse(""));
         this.temp.setText(p.tempDir().map(Path::toString).orElse(""));
+        this.minFreeSpace.setText(String.valueOf(p.minFreeSpaceMiB()));
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
@@ -493,6 +500,7 @@ public final class SettingsScreen implements Screen {
                         this.proxyPassword.getText()))
                 .incomingDir(this.incomingInput.value())
                 .tempDir(this.tempInput.value())
+                .minFreeSpaceMiB(this.minFreeSpaceInput.value())
                 .build();
     }
 

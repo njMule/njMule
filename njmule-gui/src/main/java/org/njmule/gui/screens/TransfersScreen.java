@@ -261,6 +261,7 @@ public final class TransfersScreen implements Screen {
             case DOWNLOADING -> this.gui.t("IDS_DOWNLOADING");
             case PAUSED -> this.gui.t("IDS_PAUSED");
             case STOPPED -> this.gui.t("IDS_STOPPED");
+            case NO_SPACE -> this.gui.t("IDS_INSUFFICIENT");
             case ERROR -> this.gui.t("IDS_ERRORLIKE");
             case COMPLETE -> this.gui.t("IDS_COMPLETE");
         };
