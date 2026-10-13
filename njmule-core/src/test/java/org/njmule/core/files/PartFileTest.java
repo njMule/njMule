@@ -163,7 +163,8 @@ class PartFileTest {
 
             assertThat(storage.hashPart(data.length, 0).get(5, TimeUnit.SECONDS))
                     .isEqualTo(Ed2k.md4(data, 0, data.length));
-            assertThat(storage.finish(target).get(5, TimeUnit.SECONDS)).isEqualTo(target);
+            assertThat(storage.finish(target.getParent(), "done.bin").get(5, TimeUnit.SECONDS))
+                    .isEqualTo(target);
         }
         assertThat(Files.readAllBytes(target)).isEqualTo(data);
         assertThat(part).doesNotExist();
@@ -184,5 +185,24 @@ class PartFileTest {
         byte[] bytes = new byte[16];
         bytes[0] = (byte) seed;
         return Hash16.of(bytes);
+    }
+
+    @Test
+    void aFinishedFileNeverReplacesOneWithItsName() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Files.writeString(incoming.resolve("same.bin"), "already here");
+        List<Path> finished = new java.util.ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Path part = this.dir.resolve("00" + i + ".part");
+            try (PartFileStorage storage = PartFileStorage.open(part)) {
+                storage.write(0, new byte[] {(byte) i, 1, 2}).get(5, TimeUnit.SECONDS);
+                finished.add(storage.finish(incoming, "same.bin").get(5, TimeUnit.SECONDS));
+            }
+        }
+        assertThat(finished)
+                .extracting(p -> p.getFileName().toString())
+                .containsExactly("same (2).bin", "same (3).bin");
+        assertThat(Files.readString(incoming.resolve("same.bin"))).isEqualTo("already here");
+        assertThat(Files.readAllBytes(finished.get(1))).containsExactly(1, 1, 2);
     }
 }

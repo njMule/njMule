@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -30,6 +32,10 @@ import java.util.concurrent.Executors;
 import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.security.PathSanitizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The data file of a download. Every operation runs on the file's own virtual thread, one after the
@@ -37,6 +43,8 @@ import org.njmule.core.files.hash.Ed2k;
  * back as futures. The file is sparse where the system supports it.
  */
 public final class PartFileStorage implements AutoCloseable {
+
+    private static final Logger logger = LoggerFactory.getLogger(PartFileStorage.class);
 
     private static final int READ_CHUNK = 256 * 1024;
 
@@ -54,13 +62,20 @@ public final class PartFileStorage implements AutoCloseable {
 
     /** Opens the data file, creating an empty sparse one when missing. */
     public static PartFileStorage open(Path path) throws IOException {
-        FileChannel channel =
-                FileChannel.open(
-                        path,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.READ,
-                        StandardOpenOption.WRITE,
-                        StandardOpenOption.SPARSE);
+        FileChannel channel;
+        try {
+            // SPARSE applies only to a file being created: otherwise NTFS fills a fresh file with
+            // zeros up to the first write, which may be gigabytes in.
+            channel =
+                    FileChannel.open(
+                            path,
+                            StandardOpenOption.CREATE_NEW,
+                            StandardOpenOption.READ,
+                            StandardOpenOption.WRITE,
+                            StandardOpenOption.SPARSE);
+        } catch (FileAlreadyExistsException e) {
+            channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        }
         return new PartFileStorage(path, channel);
     }
 
@@ -115,30 +130,45 @@ public final class PartFileStorage implements AutoCloseable {
      * Flushes, closes and moves the finished file to {@code target}, after the queued writes. The
      * storage cannot be used afterwards.
      */
-    public CompletableFuture<Path> finish(Path target) {
+    public CompletableFuture<Path> finish(Path directory, String name) {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
                         this.channel.force(true);
                         this.channel.close();
-                        Path directory = target.toAbsolutePath().getParent();
-                        if (directory != null) {
-                            Files.createDirectories(directory);
-                        }
-                        return Files.move(this.path, target, StandardCopyOption.ATOMIC_MOVE);
-                    } catch (IOException e) {
-                        // Another volume: fall back to copy and delete.
+                        Files.createDirectories(directory);
+                        // Reserved and moved in one task, so two finished files never take the
+                        // same name.
+                        Path target = PathSanitizer.reserve(directory, name);
                         try {
-                            Files.copy(this.path, target);
-                            Files.delete(this.path);
-                            return target;
-                        } catch (IOException again) {
-                            again.addSuppressed(e);
-                            throw new UncheckedIOException(again);
+                            AtomicFiles.move(this.path, target);
+                        } catch (AtomicMoveNotSupportedException e) {
+                            this.copyTo(target);
+                        } catch (IOException e) {
+                            Files.deleteIfExists(target);
+                            throw e;
                         }
+                        return target;
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
                     }
                 },
                 this.io);
+    }
+
+    // Another volume: a copy, then the part file goes; if it cannot, the copy is still complete.
+    private void copyTo(Path target) throws IOException {
+        try {
+            Files.copy(this.path, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            Files.deleteIfExists(target);
+            throw e;
+        }
+        try {
+            Files.delete(this.path);
+        } catch (IOException e) {
+            logger.warn("Cannot delete {} after copying it to {}", this.path, target, e);
+        }
     }
 
     /** Closes the file after the queued operations. */

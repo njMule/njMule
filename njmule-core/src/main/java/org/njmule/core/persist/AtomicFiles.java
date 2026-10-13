@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -162,8 +163,11 @@ public final class AtomicFiles {
         }
     }
 
-    // Retried because on Windows antivirus scanners and indexers briefly hold files open.
-    private static void move(Path from, Path to) throws IOException {
+    /**
+     * Moves {@code from} over {@code to} atomically, retrying because on Windows antivirus scanners
+     * and indexers briefly hold files open; fails at once when the move needs a copy.
+     */
+    public static void move(Path from, Path to) throws IOException {
         long delay = FIRST_RETRY_DELAY_MILLIS;
         for (int attempt = 1; ; attempt++) {
             try {
@@ -174,7 +178,9 @@ public final class AtomicFiles {
                         StandardCopyOption.ATOMIC_MOVE);
                 return;
             } catch (FileSystemException e) {
-                if (attempt >= MOVE_ATTEMPTS || e instanceof NoSuchFileException) {
+                if (attempt >= MOVE_ATTEMPTS
+                        || e instanceof NoSuchFileException
+                        || e instanceof AtomicMoveNotSupportedException) {
                     throw e;
                 }
             }

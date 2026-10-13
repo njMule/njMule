@@ -18,6 +18,7 @@ package org.njmule.core.security;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -101,6 +102,32 @@ public final class PathSanitizer {
             Path candidate = resolveInside(directory, stem + " (" + n + ")" + extension);
             if (!Files.exists(candidate)) {
                 return candidate;
+            }
+        }
+        throw new IOException("no free name for " + name + " in " + directory);
+    }
+
+    /**
+     * As {@link #unique}, but the empty file is created at once and atomically, so two callers
+     * never get the same name; the caller replaces it.
+     */
+    public static Path reserve(Path directory, String name) throws IOException {
+        Path first = resolveInside(directory, name);
+        try {
+            return Files.createFile(first);
+        } catch (FileAlreadyExistsException e) {
+            // Taken: the numbered names below.
+        }
+        String safe = fileName(name);
+        int dot = safe.lastIndexOf('.');
+        String stem = dot > 0 ? safe.substring(0, dot) : safe;
+        String extension = dot > 0 ? safe.substring(dot) : "";
+        for (int n = 2; n < 10_000; n++) {
+            try {
+                return Files.createFile(
+                        resolveInside(directory, stem + " (" + n + ")" + extension));
+            } catch (FileAlreadyExistsException e) {
+                // Taken too.
             }
         }
         throw new IOException("no free name for " + name + " in " + directory);

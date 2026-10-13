@@ -332,16 +332,8 @@ public final class DownloadQueue implements AutoCloseable {
 
     private void finish(Download download) {
         download.finishing = true;
-        Path target;
-        try {
-            target = PathSanitizer.unique(this.incomingDir.get(), download.file.name());
-        } catch (IOException e) {
-            download.finishing = false;
-            this.listener.failed(download, e.getMessage());
-            return;
-        }
         this.loop.whenDone(
-                download.storage.finish(target),
+                download.storage.finish(this.incomingDir.get(), download.file.name()),
                 (moved, failure) -> this.finished(download, moved, failure));
     }
 
