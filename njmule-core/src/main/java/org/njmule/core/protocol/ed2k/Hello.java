@@ -52,6 +52,7 @@ public record Hello(
     // Feature bits of the second options tag.
     public static final int MISC2_LARGE_FILES = 1 << 4;
     public static final int MISC2_SOURCE_EXCHANGE2 = 1 << 10;
+    public static final int MISC2_SUPPORTS_CAPTCHA = 1 << 11;
     public static final int MISC2_SUPPORTS_CRYPT = 1 << 7;
     public static final int MISC2_REQUESTS_CRYPT = 1 << 8;
     public static final int MISC2_REQUIRES_CRYPT = 1 << 9;

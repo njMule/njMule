@@ -43,6 +43,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
@@ -94,6 +95,8 @@ import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
+import org.njmule.core.social.Friends;
+import org.njmule.core.social.Messaging;
 import org.njmule.core.upload.Credits;
 import org.njmule.core.upload.UploadManager;
 import org.njmule.core.upnp.Igd;
@@ -149,6 +152,8 @@ final class Network {
     private KadSocket kadSocket;
     private PortForwarding forwarding;
     private final Totals totals;
+    private final Messaging messaging;
+    private final Friends friends;
     private final long started;
     private KadPublisher kadPublisher;
     private final Identities identities;
@@ -187,6 +192,7 @@ final class Network {
         this.incomingDir = incomingDir;
         this.credits = Credits.load(configDir, Clock.systemUTC());
         this.totals = Totals.load(configDir.resolve(Totals.FILE_NAME));
+        this.friends = Friends.load(configDir);
         this.started = System.nanoTime();
         this.random = random;
         Identities identities =
@@ -280,6 +286,8 @@ final class Network {
                         random,
                         Ticker.systemTicker());
         this.identities = identities;
+        this.messaging = new Messaging(loop, this::ourHello, random, new ChatEvents());
+        this.uploads.onChat(this.messaging::incoming);
         this.publisher =
                 new FilePublisher(
                         this.session, this::offers, this::listenPort, Ticker.systemTicker());
@@ -403,6 +411,54 @@ final class Network {
 
     List<UploadInfo> uploads() {
         return this.uploads.uploads();
+    }
+
+    void sendMessage(InetSocketAddress to, String text) {
+        this.messaging.send(to, text);
+    }
+
+    List<Friend> friends() {
+        return this.friends.all();
+    }
+
+    void addFriend(Friend friend) throws IOException {
+        this.friends.add(friend);
+    }
+
+    boolean removeFriend(Hash16 userHash) throws IOException {
+        return this.friends.remove(userHash);
+    }
+
+    /** Conversations tell the front ends. */
+    private final class ChatEvents implements Messaging.Listener {
+        @Override
+        public void received(Messaging.Correspondent from, String text) {
+            Network.this.publish.accept(
+                    new EngineEvent.MessageReceived(
+                            address(from), from.userHash(), from.nick(), text));
+        }
+
+        @Override
+        public void captcha(Messaging.Correspondent from, byte[] image) {
+            Network.this.publish.accept(
+                    new EngineEvent.CaptchaRequested(address(from), from.userHash(), image));
+        }
+
+        @Override
+        public void captchaResult(Messaging.Correspondent from, boolean solved) {
+            Network.this.publish.accept(new EngineEvent.CaptchaAnswered(address(from), solved));
+        }
+
+        @Override
+        public void failed(InetSocketAddress to, String reason) {
+            Network.this.publish.accept(
+                    new EngineEvent.MessageFailed(
+                            to.getAddress().getHostAddress() + ":" + to.getPort(), reason));
+        }
+
+        private static String address(Messaging.Correspondent c) {
+            return c.address().getAddress().getHostAddress() + ":" + c.address().getPort();
+        }
     }
 
     /** Adds the servers of another client's server.met; returns how many were new. */
@@ -675,6 +731,7 @@ final class Network {
 
     void close() {
         this.saveTotals();
+        this.messaging.close();
         if (this.forwarding != null) {
             this.forwarding.close();
         }
@@ -728,6 +785,7 @@ final class Network {
                         | Hello.MISC1_NO_VIEW_SHARED_FILES,
                 Hello.MISC2_LARGE_FILES
                         | Hello.MISC2_SOURCE_EXCHANGE2
+                        | Hello.MISC2_SUPPORTS_CAPTCHA
                         | cryptOptions(prefs.obfuscation())
                         | (kadPort != 0 ? KadMessages.VERSION : 0),
                 server.serverIp(),

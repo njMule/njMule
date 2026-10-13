@@ -128,6 +128,20 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<ImportReport> importFromEmule(Path emuleConfigDir, ImportOptions options);
 
+    /**
+     * Sends {@code text} to the client listening at {@code to}; the answer comes as an event. A
+     * CAPTCHA's solution is sent the same way.
+     */
+    CompletableFuture<Void> sendMessage(ServerAddress to, String text);
+
+    CompletableFuture<List<Friend>> friends();
+
+    /** Adds a friend, or updates its name and address. */
+    CompletableFuture<Void> addFriend(Friend friend);
+
+    /** Completes with {@code false} for an unknown friend. */
+    CompletableFuture<Boolean> removeFriend(Hash16 userHash);
+
     boolean isRunning();
 
     /** Stops the engine and saves its state; idempotent. */

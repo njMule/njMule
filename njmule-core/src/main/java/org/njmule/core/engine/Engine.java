@@ -48,6 +48,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -503,6 +504,44 @@ public final class Engine implements NjMuleEngine {
                 Files.deleteIfExists(stagedData);
             }
         }
+    }
+
+    @Override
+    public CompletableFuture<Void> sendMessage(ServerAddress to, String text) {
+        Objects.requireNonNull(to, "to");
+        Objects.requireNonNull(text, "text");
+        return resolve(to.host())
+                .thenCompose(
+                        ip ->
+                                this.loop.submit(
+                                        () -> {
+                                            this.network.sendMessage(
+                                                    new InetSocketAddress(
+                                                            Ipv4.format(ip), to.port()),
+                                                    text);
+                                            return null;
+                                        }));
+    }
+
+    @Override
+    public CompletableFuture<List<Friend>> friends() {
+        return this.loop.submit(this.network::friends);
+    }
+
+    @Override
+    public CompletableFuture<Void> addFriend(Friend friend) {
+        Objects.requireNonNull(friend, "friend");
+        return this.loop.submit(
+                () -> {
+                    this.network.addFriend(friend);
+                    return null;
+                });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeFriend(Hash16 userHash) {
+        Objects.requireNonNull(userHash, "userHash");
+        return this.loop.submit(() -> this.network.removeFriend(userHash));
     }
 
     @Override

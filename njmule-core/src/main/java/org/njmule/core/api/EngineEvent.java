@@ -79,4 +79,45 @@ public sealed interface EngineEvent {
 
     /** The download was cancelled and its data deleted. */
     record DownloadRemoved(Hash16 hash) implements EngineEvent {}
+
+    /** A client sent us a message; {@code address} is its IP and listening port. */
+    record MessageReceived(String address, Hash16 userHash, Optional<String> nick, String text)
+            implements EngineEvent {}
+
+    /** A client wants a CAPTCHA solved before it shows our messages; the picture is a BMP. */
+    record CaptchaRequested(String address, Hash16 userHash, byte[] image) implements EngineEvent {
+        public CaptchaRequested {
+            image = image.clone();
+        }
+
+        @Override
+        public byte[] image() {
+            return this.image.clone();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof CaptchaRequested c
+                    && c.address.equals(this.address)
+                    && c.userHash.equals(this.userHash)
+                    && java.util.Arrays.equals(c.image, this.image);
+        }
+
+        @Override
+        public int hashCode() {
+            return java.util.Objects.hash(
+                    this.address, this.userHash, java.util.Arrays.hashCode(this.image));
+        }
+
+        @Override
+        public String toString() {
+            return "CaptchaRequested[" + this.address + ", " + this.image.length + " bytes]";
+        }
+    }
+
+    /** A client told whether our CAPTCHA solution was right. */
+    record CaptchaAnswered(String address, boolean solved) implements EngineEvent {}
+
+    /** Messages to a client could not be delivered. */
+    record MessageFailed(String address, String reason) implements EngineEvent {}
 }

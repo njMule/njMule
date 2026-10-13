@@ -72,6 +72,9 @@ final class UploadSession {
 
         /** A Kad node we asked to check our TCP port connected and says it could. */
         void reachabilityConfirmed(UploadSession session);
+
+        /** A chat packet: a message or a CAPTCHA request or result. */
+        void chat(UploadSession session, Packet packet);
     }
 
     /** One requested block. */
@@ -295,6 +298,7 @@ final class UploadSession {
                 this.file.ifPresent(f -> this.queue.requested(this, f));
             }
             case REQUESTPARTS -> this.blocks(ClientMessages.RequestParts.decode(packet));
+            case MESSAGE -> this.chat(packet);
             case CANCELTRANSFER, END_OF_DOWNLOAD -> {
                 this.slot = false;
                 this.pending.clear();
@@ -325,6 +329,7 @@ final class UploadSession {
         switch (opcode.get()) {
             case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
             case KAD_FWTCPCHECK_ACK -> this.queue.reachabilityConfirmed(this);
+            case CHATCAPTCHAREQ, CHATCAPTCHARES -> this.chat(packet);
             case REQUESTSOURCES2 ->
                     this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->
@@ -343,6 +348,13 @@ final class UploadSession {
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
+        }
+    }
+
+    // Chat waits for the hello: we must know who writes.
+    private void chat(Packet packet) {
+        if (this.peer != null) {
+            this.queue.chat(this, packet);
         }
     }
 

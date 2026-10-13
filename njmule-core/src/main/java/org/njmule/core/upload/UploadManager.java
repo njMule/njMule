@@ -37,6 +37,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
@@ -174,6 +176,24 @@ public final class UploadManager implements AutoCloseable {
     private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
     private final RateMeter rate = new RateMeter(RATE_SECONDS);
+    private ChatSink chat = (address, peer, reply, open, packet) -> false;
+
+    /** Where chat packets from clients go; engine thread. */
+    @FunctionalInterface
+    public interface ChatSink {
+        boolean incoming(
+                InetSocketAddress connection,
+                Hello peer,
+                Consumer<Packet> reply,
+                BooleanSupplier open,
+                Packet packet);
+    }
+
+    /** Chat packets arriving on upload connections go to {@code sink}. */
+    public void onChat(ChatSink sink) {
+        this.chat = Objects.requireNonNull(sink, "sink");
+    }
+
     private ScheduledFuture<?> ticking;
     private long budget;
     private long nextCreditsSave;
@@ -808,6 +828,12 @@ public final class UploadManager implements AutoCloseable {
             if (session.address().getAddress() instanceof Inet4Address ip) {
                 UploadManager.this.reachable.accept(Ipv4.fromBytes(ip.getAddress()));
             }
+        }
+
+        @Override
+        public void chat(UploadSession session, Packet packet) {
+            UploadManager.this.chat.incoming(
+                    session.address(), session.peer(), session::send, session::isOpen, packet);
         }
 
         @Override
