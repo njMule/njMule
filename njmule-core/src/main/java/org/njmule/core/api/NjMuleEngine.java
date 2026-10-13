@@ -117,6 +117,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The files we share: those of the incoming directory and of the shared directories. */
     CompletableFuture<List<SharedFileInfo>> sharedFiles();
 
+    /** Sets how a shared file ranks in the upload queue; completes with {@code false} for a file not shared. */
+    CompletableFuture<Boolean> setUploadPriority(Hash16 hash, UploadPriority priority);
+
     /** Shares the files of {@code directory} too (not of its subdirectories), from now on. */
     CompletableFuture<Void> shareDirectory(Path directory);
 

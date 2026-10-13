@@ -42,6 +42,7 @@ import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.download.DownloadQueue;
 import org.njmule.core.engine.EngineLoop;
@@ -203,6 +204,7 @@ public final class UploadManager implements AutoCloseable {
 
     private ScheduledFuture<?> ticking;
     private long budget;
+    private Function<Hash16, UploadPriority> priorities = hash -> UploadPriority.AUTO;
     private long nextCreditsSave;
     private int turn;
 
@@ -538,8 +540,25 @@ public final class UploadManager implements AutoCloseable {
         return waited * ratio * this.priority(client.file.hash()) / 10;
     }
 
-    // Files many clients want get a lower priority, so rare files spread first.
+    /** Where the upload priority of a shared file comes from; without it every file is AUTO. */
+    public void priorities(Function<Hash16, UploadPriority> priorities) {
+        this.priorities = Objects.requireNonNull(priorities, "priorities");
+    }
+
+    // The factor of a file's level, in tenths.
     private int priority(Hash16 file) {
+        return switch (this.priorities.apply(file)) {
+            case VERY_LOW -> 2;
+            case LOW -> 6;
+            case NORMAL -> 7;
+            case HIGH -> 9;
+            case RELEASE -> 18;
+            case AUTO -> this.automatic(file);
+        };
+    }
+
+    // Files many clients want get a lower priority, so rare files spread first.
+    private int automatic(Hash16 file) {
         int requesters = 0;
         for (Client c : this.waiting.values()) {
             if (c.file.hash().equals(file)) {

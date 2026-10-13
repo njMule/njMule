@@ -20,12 +20,13 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /** A file we share. */
-public record SharedFileInfo(Hash16 hash, String name, long size, Path path) {
+public record SharedFileInfo(Hash16 hash, String name, long size, Path path, UploadPriority priority) {
 
     public SharedFileInfo {
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(priority, "priority");
     }
 
     /** The ed2k link of the file. */

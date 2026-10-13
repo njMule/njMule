@@ -59,6 +59,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.download.DownloadManager;
@@ -296,6 +297,7 @@ final class Network {
         this.identities = identities;
         this.messaging = new Messaging(loop, this::ourHello, random, new ChatEvents());
         this.uploads.onChat(this.messaging::incoming);
+        this.uploads.priorities(hash -> this.shares == null ? UploadPriority.AUTO : this.shares.priority(hash));
         this.publisher = new FilePublisher(this.session, this::offers, this::listenPort, Ticker.systemTicker());
         this.greetings.routeTo(this::route);
     }
@@ -557,10 +559,14 @@ final class Network {
         List<SharedFileInfo> all = new ArrayList<>();
         if (this.shares != null) {
             for (SharedFiles.SharedFile f : this.shares.all()) {
-                all.add(new SharedFileInfo(f.hash(), f.name(), f.size(), f.path()));
+                all.add(new SharedFileInfo(f.hash(), f.name(), f.size(), f.path(), this.shares.priority(f.hash())));
             }
         }
         return all;
+    }
+
+    boolean setUploadPriority(Hash16 hash, UploadPriority priority) {
+        return this.shares != null && this.shares.setPriority(hash, priority);
     }
 
     void shareDirectory(Path directory) throws IOException {

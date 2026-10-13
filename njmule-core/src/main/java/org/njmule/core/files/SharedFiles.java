@@ -42,6 +42,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.files.hash.FileHasher;
@@ -152,6 +153,39 @@ public final class SharedFiles implements AutoCloseable {
 
     public Optional<SharedFile> get(Hash16 hash) {
         return Optional.ofNullable(this.byHash.get(hash));
+    }
+
+    /** The upload priority of the file shared with {@code hash}: AUTO unless one was chosen. */
+    public UploadPriority priority(Hash16 hash) {
+        SharedFile file = this.byHash.get(hash);
+        KnownMet.KnownFile record = file == null ? null : this.known.get(key(file));
+        if (record == null) {
+            return UploadPriority.AUTO;
+        }
+        return record.uploadPriority().isPresent()
+                ? priority(record.uploadPriority().getAsLong())
+                : UploadPriority.AUTO;
+    }
+
+    /** Sets the upload priority of a shared file, kept in known.met; {@code false} for a file not shared. */
+    public boolean setPriority(Hash16 hash, UploadPriority priority) {
+        SharedFile file = this.byHash.get(hash);
+        if (file == null) {
+            return false;
+        }
+        Key key = key(file);
+        KnownMet.KnownFile record = this.known.getOrDefault(key, record(file));
+        TagName name = TagName.id(FileTag.ULPRIORITY);
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : record.tags()) {
+            if (!tag.name().equals(name)) {
+                tags.add(tag);
+            }
+        }
+        tags.add(new Tag.IntTag(name, priorityCode(priority)));
+        this.known.put(key, new KnownMet.KnownFile(record.mtime(), record.fileHash(), record.partHashes(), tags));
+        this.saveSoon();
+        return true;
     }
 
     public List<SharedFile> all() {
@@ -381,6 +415,33 @@ public final class SharedFiles implements AutoCloseable {
             this.byHash.remove(file.hash());
             this.listener.unshared(file);
         }
+    }
+
+    private static Key key(SharedFile file) {
+        return new Key(file.name(), file.size(), file.mtime());
+    }
+
+    // The values other clients write too, so an imported known.met keeps its priorities.
+    private static int priorityCode(UploadPriority priority) {
+        return switch (priority) {
+            case LOW -> 0;
+            case NORMAL -> 1;
+            case HIGH -> 2;
+            case RELEASE -> 3;
+            case VERY_LOW -> 4;
+            case AUTO -> 5;
+        };
+    }
+
+    private static UploadPriority priority(long code) {
+        return switch ((int) code) {
+            case 0 -> UploadPriority.LOW;
+            case 2 -> UploadPriority.HIGH;
+            case 3 -> UploadPriority.RELEASE;
+            case 4 -> UploadPriority.VERY_LOW;
+            case 5 -> UploadPriority.AUTO;
+            default -> UploadPriority.NORMAL;
+        };
     }
 
     private static KnownMet.KnownFile record(SharedFile file) {

@@ -47,6 +47,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
@@ -133,6 +134,23 @@ class UploadQueueTest {
         assertThat(status.uploaded()).isEqualTo(1000);
         assertThat(status.sharedFiles()).isEqualTo(1);
         assertThat(status.server()).isEmpty();
+    }
+
+    @Test
+    void aSharedFileKeepsTheUploadPriorityItIsGiven() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        assertThat(file.priority()).isEqualTo(UploadPriority.AUTO);
+
+        assertThat(engine.setUploadPriority(file.hash(), UploadPriority.HIGH).get(5, TimeUnit.SECONDS))
+                .isTrue();
+        assertThat(engine.sharedFiles().get(5, TimeUnit.SECONDS))
+                .singleElement()
+                .extracting(SharedFileInfo::priority)
+                .isEqualTo(UploadPriority.HIGH);
+        assertThat(engine.setUploadPriority(Hash16.parseHex("00".repeat(16)), UploadPriority.LOW)
+                        .get(5, TimeUnit.SECONDS))
+                .isFalse();
     }
 
     @Test

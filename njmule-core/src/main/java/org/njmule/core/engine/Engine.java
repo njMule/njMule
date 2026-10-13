@@ -65,6 +65,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
@@ -386,6 +387,13 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<List<SharedFileInfo>> sharedFiles() {
         return this.loop.submit(this.network::sharedFiles);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setUploadPriority(Hash16 hash, UploadPriority priority) {
+        Objects.requireNonNull(hash, "hash");
+        Objects.requireNonNull(priority, "priority");
+        return this.loop.submit(() -> this.network.setUploadPriority(hash, priority));
     }
 
     @Override

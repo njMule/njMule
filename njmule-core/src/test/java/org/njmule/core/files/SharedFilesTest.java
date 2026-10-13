@@ -31,8 +31,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.TextFiles;
 
 @Timeout(60)
@@ -141,6 +144,43 @@ class SharedFilesTest {
         SharedFiles again = this.open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared real.bin");
         assertThat(this.events.poll(2, TimeUnit.SECONDS)).isNull();
+        this.onLoop(() -> {
+            again.close();
+            return null;
+        });
+    }
+
+    @Test
+    void keepsTheUploadPriorityOfEachFileInKnownMet() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(20_000, 3);
+        Files.write(incoming.resolve("a.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
+        assertThat(this.onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.AUTO);
+        assertThat(this.onLoop(() -> shares.setPriority(hash, UploadPriority.RELEASE)))
+                .isTrue();
+        assertThat(this.onLoop(() -> shares.setPriority(Hash16.parseHex("00".repeat(16)), UploadPriority.LOW)))
+                .isFalse();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+
+        assertThat(KnownMet.read(Files.readAllBytes(config.resolve(SharedFiles.KNOWN_MET))))
+                .singleElement()
+                .satisfies(record -> assertThat(record.uploadPriority())
+                        .as("the value other clients write")
+                        .hasValue(3));
+        SharedFiles again = this.open(config, incoming);
+        assertThat(this.onLoop(() -> {
+                    again.scan();
+                    return again.priority(hash);
+                }))
+                .isEqualTo(UploadPriority.RELEASE);
         this.onLoop(() -> {
             again.close();
             return null;

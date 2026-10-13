@@ -62,6 +62,11 @@ public final class KnownMet {
             return OptionalLong.of(high << 32 | low.getAsLong());
         }
 
+        /** FT_ULPRIORITY: 0 low, 1 normal, 2 high, 3 release, 4 very low, 5 auto. */
+        public OptionalLong uploadPriority() {
+            return Tags.intValue(this.tags, FileTag.ULPRIORITY);
+        }
+
         public Optional<Hash20> aichHash() {
             return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(KnownMet::base32);
         }
