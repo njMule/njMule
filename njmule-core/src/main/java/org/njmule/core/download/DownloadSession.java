@@ -357,8 +357,14 @@ final class DownloadSession {
             case HELLO -> this.connection.send(this.ourHello.get().encode(true));
             case FILESTATUS -> {
                 ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(packet);
-                if (status.file().equals(file)) {
-                    this.setParts(status.dataParts(this.download.file().size()));
+                long size = this.download.file().size();
+                if (!status.file().equals(file)) {
+                    return;
+                }
+                if (status.fits(size)) {
+                    this.setParts(status.dataParts(size));
+                } else {
+                    this.end(Outcome.GONE, "the source sent " + status.partCount() + " parts for the file");
                 }
             }
             case FILEREQANSNOFIL -> {

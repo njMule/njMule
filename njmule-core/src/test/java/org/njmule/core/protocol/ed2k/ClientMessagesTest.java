@@ -27,6 +27,7 @@ import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -55,6 +56,20 @@ class ClientMessagesTest {
                 ClientMessages.FileStatus.decode(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
         assertThat(complete.has(123)).isTrue();
         assertThat(complete.dataParts(3 * 9_728_000L).cardinality()).isEqualTo(3);
+    }
+
+    @Test
+    void aFileStatusFitsOnlyTheSizesOfItsPartCount() {
+        ClientMessages.FileStatus three = new ClientMessages.FileStatus(FILE, 3, new BitSet());
+
+        assertThat(new ClientMessages.FileStatus(FILE, 0, new BitSet()).fits(123))
+                .isTrue();
+        assertThat(three.fits(2 * Ed2k.PARTSIZE + 1)).isTrue();
+        assertThat(three.fits(2 * Ed2k.PARTSIZE))
+                .as("the empty last part counts")
+                .isTrue();
+        assertThat(three.fits(Ed2k.PARTSIZE)).isFalse();
+        assertThat(three.fits(3 * Ed2k.PARTSIZE)).isFalse();
     }
 
     @Test

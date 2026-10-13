@@ -84,6 +84,14 @@ public final class ClientMessages {
             return this.partCount == 0 || this.parts.get(part);
         }
 
+        /**
+         * Whether the status can be of a file of {@code size}: none for a complete file, else one bit per part,
+         * counting the empty last part of a size that is an exact multiple of the part size.
+         */
+        public boolean fits(long size) {
+            return this.partCount == 0 || this.partCount == size / Ed2k.PARTSIZE + 1;
+        }
+
         /** The data parts it has, for a file of {@code size}. */
         public BitSet dataParts(long size) {
             BitSet result = new BitSet();
