@@ -141,7 +141,6 @@ public final class FakePeer implements AutoCloseable {
         return List.copyOf(this.received);
     }
 
-    /** File bytes sent, before compression. */
     /**
      * Connects to {@code downloader} as a firewalled client with the LowID {@code lowId} on the
      * server at {@code serverIp:serverPort} does when asked to call back; then serves as usual.
@@ -165,6 +164,7 @@ public final class FakePeer implements AutoCloseable {
                         });
     }
 
+    /** File bytes sent, before compression. */
     public long bytesSent() {
         return this.sent.get();
     }
