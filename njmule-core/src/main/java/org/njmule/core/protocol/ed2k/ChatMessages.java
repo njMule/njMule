@@ -16,6 +16,8 @@
  */
 package org.njmule.core.protocol.ed2k;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -42,6 +44,15 @@ public final class ChatMessages {
     private static final int MAX_IMAGE = 4095;
     private static final int MAX_TAGS = 16;
 
+    /** The largest CAPTCHA picture accepted; the ones clients make are about 150×50 pixels. */
+    public static final int MAX_WIDTH = 200;
+
+    public static final int MAX_HEIGHT = 100;
+
+    // Offsets of the width and height in a BMP file's header.
+    private static final int BMP_WIDTH = 18;
+    private static final int BMP_HEIGHT = 22;
+
     private ChatMessages() {}
 
     /** A message; {@code unicode} when the peer announced Unicode support. */
@@ -66,7 +77,11 @@ public final class ChatMessages {
         return text.length() > MAX_LENGTH ? text.substring(0, MAX_LENGTH) : text;
     }
 
-    /** The picture of a CAPTCHA request, a BMP file of a plausible size. */
+    /**
+     * The picture of a CAPTCHA request: a BMP file of a plausible size whose header declares at
+     * most {@value #MAX_WIDTH}×{@value #MAX_HEIGHT} pixels, so that a small compressed file cannot
+     * unpack into a huge picture.
+     */
     public static byte[] captcha(Packet packet) throws DecodeException {
         PacketReader in = packet.reader();
         TagCodec.readEd2kList(in, in.u8(), MAX_TAGS);
@@ -74,7 +89,19 @@ public final class ChatMessages {
         if (size < MIN_IMAGE || size > MAX_IMAGE) {
             throw new DecodeException("a CAPTCHA picture of " + size + " bytes");
         }
-        return in.bytes(size);
+        byte[] image = in.bytes(size);
+        ByteBuffer header = ByteBuffer.wrap(image).order(ByteOrder.LITTLE_ENDIAN);
+        int width = header.getInt(BMP_WIDTH);
+        int height = Math.abs(header.getInt(BMP_HEIGHT));
+        if (image[0] != 'B'
+                || image[1] != 'M'
+                || width < 1
+                || width > MAX_WIDTH
+                || height < 1
+                || height > MAX_HEIGHT) {
+            throw new DecodeException("a CAPTCHA picture of " + width + "x" + height + " pixels");
+        }
+        return image;
     }
 
     /** Whether a CAPTCHA result says solved. */

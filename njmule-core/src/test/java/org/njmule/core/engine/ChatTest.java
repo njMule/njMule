@@ -24,6 +24,8 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -93,57 +95,87 @@ class ChatTest {
     }
 
     @Test
-    void aClientAsksForACaptchaAndTellsTheResult() throws Exception {
+    void aClientWeWroteToAsksForACaptchaAndTellsTheResult() throws Exception {
         NjMuleEngine engine = this.engine("me");
         Events seen = new Events(engine);
+        Hello asker =
+                Hello.of(
+                        Hash16.parseHex("11223344556677889900AABBCCDDEEFF"),
+                        0,
+                        4999,
+                        "asker",
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0);
+
+        // A CAPTCHA nobody asked for, on a connection the other side opened, is ignored.
         try (Socket socket =
                 new Socket(InetAddress.getLoopbackAddress(), engine.preferences().tcpPort())) {
             socket.setSoTimeout((int) WAIT.toMillis());
             InputStream in = new BufferedInputStream(socket.getInputStream());
-            socket.getOutputStream()
-                    .write(
-                            TcpFraming.encode(
-                                    Hello.of(
-                                                    Hash16.parseHex(
-                                                            "11223344556677889900AABBCCDDEEFF"),
-                                                    0,
-                                                    4999,
-                                                    "asker",
-                                                    0,
-                                                    0,
-                                                    0,
-                                                    0,
-                                                    0,
-                                                    0)
-                                            .encode(false)));
+            socket.getOutputStream().write(TcpFraming.encode(asker.encode(false)));
             assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
                     .isEqualTo(Opcodes.Client.HELLOANSWER.code());
-            byte[] image = new byte[300];
-            image[0] = 'B';
-            image[1] = 'M';
-            socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(image)));
             socket.getOutputStream()
-                    .write(TcpFraming.encode(ChatMessages.captchaResult(ChatMessages.SOLVED)));
+                    .write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(40, 24))));
             socket.getOutputStream()
-                    .write(TcpFraming.encode(ChatMessages.message("x".repeat(500), true)));
-
-            EngineEvent.CaptchaRequested asked = seen.next(EngineEvent.CaptchaRequested.class);
-            assertThat(asked.image()).isEqualTo(image);
-            assertThat(asked.address()).endsWith(":4999");
-            assertThat(asked)
-                    .isEqualTo(
-                            new EngineEvent.CaptchaRequested(
-                                    asked.address(), asked.userHash(), image));
-            assertThat(asked.hashCode())
-                    .isEqualTo(
-                            new EngineEvent.CaptchaRequested(
-                                            asked.address(), asked.userHash(), image)
-                                    .hashCode());
-            assertThat(asked.toString()).contains("300 bytes");
-            assertThat(seen.next(EngineEvent.CaptchaAnswered.class).solved()).isTrue();
-            assertThat(seen.next(EngineEvent.MessageReceived.class).text())
-                    .hasSize(ChatMessages.MAX_LENGTH);
+                    .write(TcpFraming.encode(ChatMessages.message("unasked", true)));
+            assertThat(seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo("unasked");
         }
+
+        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            peer.setSoTimeout((int) WAIT.toMillis());
+            engine.sendMessage(new ServerAddress("127.0.0.1", peer.getLocalPort()), "may I write?")
+                    .get(5, TimeUnit.SECONDS);
+            try (Socket socket = peer.accept()) {
+                socket.setSoTimeout((int) WAIT.toMillis());
+                InputStream in = new BufferedInputStream(socket.getInputStream());
+                assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
+                        .isEqualTo(Opcodes.Client.HELLO.code());
+                socket.getOutputStream().write(TcpFraming.encode(asker.encode(true)));
+                assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
+                        .isEqualTo(Opcodes.Client.MESSAGE.code());
+
+                // A picture declaring a huge size is refused; a plausible one is shown.
+                socket.getOutputStream()
+                        .write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(30_000, 24))));
+                byte[] image = bmp(40, 24);
+                socket.getOutputStream()
+                        .write(TcpFraming.encode(ChatMessages.captchaRequest(image)));
+                socket.getOutputStream()
+                        .write(TcpFraming.encode(ChatMessages.captchaResult(ChatMessages.SOLVED)));
+                socket.getOutputStream()
+                        .write(TcpFraming.encode(ChatMessages.message("x".repeat(500), true)));
+
+                EngineEvent.CaptchaRequested asked = seen.next(EngineEvent.CaptchaRequested.class);
+                assertThat(asked.image()).isEqualTo(image);
+                assertThat(asked.address()).endsWith(":" + peer.getLocalPort());
+                assertThat(asked)
+                        .isEqualTo(
+                                new EngineEvent.CaptchaRequested(
+                                        asked.address(), asked.userHash(), image));
+                assertThat(asked.hashCode())
+                        .isEqualTo(
+                                new EngineEvent.CaptchaRequested(
+                                                asked.address(), asked.userHash(), image)
+                                        .hashCode());
+                assertThat(asked.toString()).contains("300 bytes");
+                assertThat(seen.next(EngineEvent.CaptchaAnswered.class).solved()).isTrue();
+                assertThat(seen.next(EngineEvent.MessageReceived.class).text())
+                        .hasSize(ChatMessages.MAX_LENGTH);
+            }
+        }
+    }
+
+    // The start of a BMP file of the given size; the pixels do not matter here.
+    private static byte[] bmp(int width, int height) {
+        ByteBuffer file = ByteBuffer.allocate(300).order(ByteOrder.LITTLE_ENDIAN);
+        file.put((byte) 'B').put((byte) 'M');
+        file.putInt(18, width).putInt(22, height);
+        return file.array();
     }
 
     @Test

@@ -84,6 +84,8 @@ public final class Messaging implements AutoCloseable {
         private BooleanSupplier open = () -> false;
         private TcpConnection own;
         private boolean connecting;
+        // A CAPTCHA is asked for in answer to our messages: none is accepted before we write.
+        private boolean wrote;
         private final List<String> pending = new ArrayList<>();
 
         boolean isOpen() {
@@ -112,6 +114,7 @@ public final class Messaging implements AutoCloseable {
             return;
         }
         Conversation c = this.conversations.computeIfAbsent(to, a -> new Conversation());
+        c.wrote = true;
         if (c.isOpen()) {
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
             return;
@@ -225,6 +228,11 @@ public final class Messaging implements AutoCloseable {
             if (packet.protocol() == Protocol.EDONKEY) {
                 this.listener.received(from, ChatMessages.text(packet));
             } else if (packet.opcode() == Opcodes.Extended.CHATCAPTCHAREQ.code()) {
+                Conversation c = this.conversations.get(address);
+                if (c == null || !c.wrote) {
+                    LOG.debug("Ignoring a CAPTCHA {} asked for unasked", address);
+                    return;
+                }
                 this.listener.captcha(from, ChatMessages.captcha(packet));
             } else {
                 this.listener.captchaResult(from, ChatMessages.solved(packet));
