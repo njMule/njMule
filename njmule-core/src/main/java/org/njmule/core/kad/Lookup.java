@@ -77,6 +77,8 @@ final class Lookup {
     private static final int ALPHA = 3;
     private static final int START_CONTACTS = 50;
     private static final long STALL_NANOS = 3_000_000_000L;
+    // Once no node is left to ask, a search or publish waits this long for its last answers.
+    private static final long LATE_ANSWER_NANOS = 15_000_000_000L;
     private static final int RE_ASK_COUNT = 11;
 
     private final UInt128 target;
@@ -91,6 +93,8 @@ final class Lookup {
     private int answers;
     private boolean reAsked;
     private boolean stopped;
+    private boolean stopping;
+    private long stopAt;
 
     Lookup(UInt128 target, Kind kind, Requests requests, long now) {
         this.target = Objects.requireNonNull(target, "target");
@@ -206,11 +210,20 @@ final class Lookup {
             this.stopped = true;
             return;
         }
+        if (this.stopping) {
+            this.stopped = now - this.stopAt >= 0;
+            return;
+        }
         if (now - this.lastAnswer < STALL_NANOS) {
             return;
         }
         if (this.possible.isEmpty()) {
-            this.stopped = true;
+            if (this.kind.value) {
+                this.stopping = true;
+                this.stopAt = now + LATE_ANSWER_NANOS;
+            } else {
+                this.stopped = true;
+            }
             return;
         }
         if (this.kind.value && !this.reAsked && this.tried.size() >= 6) {

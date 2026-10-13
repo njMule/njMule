@@ -37,6 +37,9 @@ import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 class KadNodeTest {
@@ -101,6 +104,31 @@ class KadNodeTest {
         node.stopKeywordSearch("ubuntu");
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
                 .isTrue();
+    }
+
+    @Test
+    void anAnswerThatComesAfterTheLastRequestStillReachesTheSearch() throws Exception {
+        KadNode node = this.node();
+        UInt128 target = Keywords.id("ubuntu");
+        node.addContacts(new NodesDat.Contents(
+                2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
+        List<KadNode.FileResult> found = new ArrayList<>();
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), found::addAll))
+                .isTrue();
+        this.answer(node, target);
+        this.time.addAndGet(4 * SECOND);
+        node.tick();
+        this.time.addAndGet(4 * SECOND);
+        node.tick();
+
+        KadMessages.Entry file = new KadMessages.Entry(
+                UInt128.random(this.random),
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), "ubuntu.iso"),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 1000)));
+        node.received(PEER, PORT, new KadMessages.SearchAnswer(target, target, List.of(file)).encode(), false, 0, 0);
+
+        assertThat(found).extracting(KadNode.FileResult::name).containsExactly("ubuntu.iso");
     }
 
     @Test
