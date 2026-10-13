@@ -141,7 +141,8 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                                     + describe(e.server().name(), e.server().address())
                                     + " with "
                                     + (e.lowId() ? "LowID " : "HighID ")
-                                    + e.clientId());
+                                    + e.clientId()
+                                    + (e.obfuscated() ? ", obfuscated" : ""));
                     return true;
                 }
                 case EngineEvent.ServerDisconnected e -> {

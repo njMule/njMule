@@ -23,10 +23,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledFuture;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.EngineEvent;
@@ -70,6 +72,9 @@ final class Network {
 
     static final String IPFILTER_FILE = "ipfilter.dat";
 
+    // Server updates are saved together, at most this long after the first one.
+    private static final Duration SAVE_DELAY = Duration.ofSeconds(30);
+
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
 
@@ -93,6 +98,7 @@ final class Network {
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
     private TcpListener listener;
+    private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
     private volatile ServerContext context = ServerContext.NONE;
 
@@ -142,7 +148,7 @@ final class Network {
                         this.servers,
                         () -> Optional.ofNullable(this.udp),
                         () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
-                        server -> publish.accept(new EngineEvent.ServerUpdated(info(server))),
+                        this::serverUpdated,
                         random,
                         Clock.systemUTC());
         this.greetings =
@@ -293,6 +299,13 @@ final class Network {
         }
     }
 
+    private void serverUpdated(ServerMet.Server server) {
+        this.publish.accept(new EngineEvent.ServerUpdated(info(server)));
+        if (this.pendingSave == null || this.pendingSave.isDone()) {
+            this.pendingSave = this.loop.schedule("save server.met", SAVE_DELAY, this::saveServers);
+        }
+    }
+
     private void saveServers() {
         try {
             this.servers.save(this.serverMet);
@@ -349,15 +362,17 @@ final class Network {
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
             Network.this.context = new ServerContext(id.clientId(), server.ip(), server.port());
             ServerInfo info = info(server);
+            boolean obfuscated = Network.this.session.isObfuscated();
             Network.this.log.log(
                     LogLine.Level.SUCCESS,
                     "Connected to "
                             + describe(info)
                             + " with "
                             + (id.isLowId() ? "LowID " : "HighID ")
-                            + id.clientId());
+                            + id.clientId()
+                            + (obfuscated ? ", obfuscated" : ""));
             Network.this.publish.accept(
-                    new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId()));
+                    new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
             Network.this.saveServers();
             Network.this.pinger.start();
         }
@@ -390,7 +405,7 @@ final class Network {
 
         @Override
         public void updated(ServerMet.Server server) {
-            Network.this.publish.accept(new EngineEvent.ServerUpdated(info(server)));
+            Network.this.serverUpdated(server);
         }
 
         @Override

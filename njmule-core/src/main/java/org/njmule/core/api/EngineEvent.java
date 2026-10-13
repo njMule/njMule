@@ -34,8 +34,11 @@ public sealed interface EngineEvent {
     /** A connection attempt to a server started. */
     record ServerConnecting(ServerInfo server) implements EngineEvent {}
 
-    /** Logged in: {@code clientId} is our id on the server, a LowID when firewalled. */
-    record ServerConnected(ServerInfo server, long clientId, boolean lowId)
+    /**
+     * Logged in: {@code clientId} is our id on the server, a LowID when firewalled; {@code
+     * obfuscated} when the connection is.
+     */
+    record ServerConnected(ServerInfo server, long clientId, boolean lowId, boolean obfuscated)
             implements EngineEvent {}
 
     /**

@@ -141,6 +141,11 @@ public final class ServerSession {
         this.disconnect("disconnected");
     }
 
+    /** Whether the current session is obfuscated. */
+    public boolean isObfuscated() {
+        return this.isConnected() && this.connection.isObfuscated();
+    }
+
     public boolean isConnected() {
         return this.state == State.CONNECTED;
     }
