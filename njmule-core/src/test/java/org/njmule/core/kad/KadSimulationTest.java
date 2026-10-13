@@ -179,7 +179,7 @@ class KadSimulationTest {
                 KadIdentity.loadOrCreate(config, this.random),
                 (ip, port, packet, id, rk, sk) -> {},
                 (ip, port, hash, options) -> {},
-                new KadNode.Settings(4662, Hash16.ZERO, 0, ip -> false),
+                new KadNode.Settings(4662, Hash16.ZERO, 0, ip -> false, ip -> false),
                 config,
                 this.random,
                 this.ticker);
@@ -231,7 +231,7 @@ class KadSimulationTest {
                     this.reachabilityChecks.add(new int[] {ip, to});
                     this.wire.add(() -> this.byIp.get(to).reachableConfirmed(ip));
                 },
-                new KadNode.Settings(4662, Hash16.of(hash), 1, x -> false),
+                new KadNode.Settings(4662, Hash16.of(hash), 1, x -> false, x -> false),
                 config,
                 this.random,
                 this.ticker);

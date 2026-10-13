@@ -86,7 +86,7 @@ class KadSocketTest {
                 KadIdentity.loadOrCreate(config, this.random),
                 socket,
                 (ip, port, hash, options) -> {},
-                new KadNode.Settings(4662, Hash16.ZERO, 1, ip -> true),
+                new KadNode.Settings(4662, Hash16.ZERO, 1, ip -> true, ip -> false),
                 config,
                 this.random,
                 Ticker.systemTicker());

@@ -76,11 +76,18 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     /** A file a keyword search found. */
     public record FileResult(Hash16 hash, String name, long size, int sources, Optional<String> type) {}
 
-    /** Settings that are not the protocol's. */
-    public record Settings(int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted) {
+    /**
+     * Settings that are not the protocol's.
+     *
+     * @param trusted addresses taken although they are not public (tests, LANs)
+     * @param blocked addresses the IP filter refuses, never taken as contacts
+     */
+    public record Settings(
+            int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked) {
         public Settings {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(trusted, "trusted");
+            Objects.requireNonNull(blocked, "blocked");
         }
     }
 
@@ -235,11 +242,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         long now = this.ticker.read();
         int added = 0;
         for (NodesDat.Contact c : contents.contacts()) {
-            if (contents.bootstrap()) {
-                this.bootstrap(c.ip(), c.udpPort());
+            if (!this.isGoodAddress(c.ip())) {
                 continue;
             }
-            if (!this.isGoodAddress(c.ip())) {
+            if (contents.bootstrap()) {
+                this.bootstrap(c.ip(), c.udpPort());
                 continue;
             }
             KadContact contact = new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
@@ -898,8 +905,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return target.xor(this.identity.id()).top32() <= Lookup.TOLERANCE;
     }
 
-    // Public unicast addresses, or what the settings trust (tests, LANs).
+    // Public unicast addresses the IP filter allows, or what the settings trust (tests, LANs).
     private boolean isGoodAddress(int ip) {
+        if (this.settings.blocked().test(ip)) {
+            return false;
+        }
         if (this.settings.trusted().test(ip)) {
             return true;
         }

@@ -765,7 +765,11 @@ final class Network {
                     this.kadSocket,
                     this::checkReachable,
                     new KadNode.Settings(
-                            this.listenPort(), this.userHash, cryptOptions(prefs.obfuscation()) >>> 7, ip -> false),
+                            this.listenPort(),
+                            this.userHash,
+                            cryptOptions(prefs.obfuscation()) >>> 7,
+                            ip -> false,
+                            ip -> this.ipFilter.blocks(ip)),
                     this.configDir,
                     this.random,
                     Ticker.systemTicker());
