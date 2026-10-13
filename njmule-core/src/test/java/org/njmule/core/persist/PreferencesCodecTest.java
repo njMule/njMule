@@ -51,6 +51,7 @@ class PreferencesCodecTest {
                 .upnp(false)
                 .downloadCapacityKiBps(4096)
                 .uploadCapacityKiBps(512)
+                .minFreeSpaceMiB(2048)
                 .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
                 .build();
 

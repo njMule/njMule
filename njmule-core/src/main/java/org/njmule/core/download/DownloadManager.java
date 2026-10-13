@@ -76,6 +76,9 @@ public final class DownloadManager implements AutoCloseable {
         void failed(DownloadInfo download, String reason);
 
         void removed(Hash16 hash);
+
+        /** The temp disk has dropped below, or come back above, the free space downloads need. */
+        default void diskSpace(boolean enough) {}
     }
 
     /** The server connection, as far as the downloads use it. */
@@ -99,8 +102,8 @@ public final class DownloadManager implements AutoCloseable {
         boolean find(Hash16 file, long size, Consumer<List<InetSocketAddress>> sources);
     }
 
-    /** What the downloads need from the preferences. */
-    public record Settings(ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort) {}
+    /** What the downloads need from the preferences; {@code minFreeSpace} in bytes, 0 for none. */
+    public record Settings(ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort, long minFreeSpace) {}
 
     /** A source that keeps us in its queue is asked again this often. */
     public static final Duration REASK_INTERVAL = Duration.ofMinutes(29);
@@ -269,7 +272,8 @@ public final class DownloadManager implements AutoCloseable {
             throws IOException {
         DownloadManager manager = new DownloadManager(
                 loop, ourHello, settings, server, blocked, random, ticker, links, credit, kad, listener);
-        manager.queue = DownloadQueue.load(loop, tempDir, incomingDir, manager.new QueueEvents());
+        manager.queue = DownloadQueue.load(
+                loop, tempDir, incomingDir, () -> settings.get().minFreeSpace(), manager.new QueueEvents());
         long now = ticker.read();
         for (DownloadQueue.Download download : manager.queue.all()) {
             manager.entries.put(download.hash(), new Entry(download, now));
@@ -825,7 +829,9 @@ public final class DownloadManager implements AutoCloseable {
                 file.name(),
                 file.size(),
                 file.completedBytes(),
-                status(file.status()),
+                file.status() == PartFile.Status.DOWNLOADING && this.queue.isSpaceShort()
+                        ? DownloadInfo.Status.NO_SPACE
+                        : status(file.status()),
                 file.priority(),
                 entry.sources.size(),
                 transferring,
@@ -983,6 +989,23 @@ public final class DownloadManager implements AutoCloseable {
             }
             DownloadManager.this.closeSessions(entry, "the download is complete");
             DownloadManager.this.listener.completed(DownloadManager.this.info(entry), file, download.file());
+        }
+
+        @Override
+        public void diskSpace(boolean enough) {
+            long now = DownloadManager.this.ticker.read();
+            for (Entry entry : DownloadManager.this.entries.values()) {
+                entry.changed = true;
+                if (!enough) {
+                    DownloadManager.this.closeSessions(entry, "not enough free disk space");
+                    continue;
+                }
+                entry.nextServerAsk = now;
+                for (Source source : entry.sources.values()) {
+                    source.nextAsk = source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
+                }
+            }
+            DownloadManager.this.listener.diskSpace(enough);
         }
 
         @Override

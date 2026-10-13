@@ -175,7 +175,7 @@ class DownloadManagerTest {
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
                 () -> hello,
-                () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT),
+                () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0),
                 server,
                 ip -> ip == BLOCKED_IP,
                 random,

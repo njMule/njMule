@@ -73,6 +73,7 @@ public final class PreferencesCodec {
                 Preferences::uploadCapacityKiBps,
                 Preferences.Builder::uploadCapacityKiBps);
         intKey("download.maxSourcesPerFile", Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile);
+        intKey("download.minFreeSpaceMiB", Preferences::minFreeSpaceMiB, Preferences.Builder::minFreeSpaceMiB);
         key(
                 "security.obfuscation",
                 p -> p.obfuscation().name(),

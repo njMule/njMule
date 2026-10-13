@@ -29,6 +29,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -48,6 +49,7 @@ class DownloadQueueTest {
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
+    private final AtomicLong minFree = new AtomicLong();
 
     @AfterEach
     void stop() {
@@ -212,9 +214,43 @@ class DownloadQueueTest {
         throw new AssertionError("the corrupt part was not taken back");
     }
 
+    @Test
+    void downloadsWaitForFreeSpaceAndGoOnByThemselves() throws Exception {
+        DownloadQueue queue = this.queue();
+        DownloadQueue.Download download =
+                this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("wait.bin", 5000, Hash16.parseHex("ab".repeat(16)))));
+        assertThat(this.onLoop(download::isActive)).isTrue();
+
+        this.minFree.set(Long.MAX_VALUE);
+        this.onLoop(() -> {
+            queue.checkSpace();
+            return null;
+        });
+        assertThat(this.awaitPrefix("space")).isEqualTo("space short");
+        assertThat(this.onLoop(download::isActive)).isFalse();
+        assertThat(this.onLoop(queue::isSpaceShort)).isTrue();
+
+        this.minFree.set(1);
+        this.onLoop(() -> {
+            queue.checkSpace();
+            return null;
+        });
+        assertThat(this.awaitPrefix("space")).isEqualTo("space enough");
+        assertThat(this.onLoop(download::isActive)).isTrue();
+    }
+
     private DownloadQueue queue() throws Exception {
         return this.onLoop(() -> DownloadQueue.load(
-                this.loop, this.dir.resolve("temp"), () -> this.dir.resolve("incoming"), new DownloadQueue.Listener() {
+                this.loop,
+                this.dir.resolve("temp"),
+                () -> this.dir.resolve("incoming"),
+                this.minFree::get,
+                new DownloadQueue.Listener() {
+                    @Override
+                    public void diskSpace(boolean enough) {
+                        DownloadQueueTest.this.events.add(enough ? "space enough" : "space short");
+                    }
+
                     @Override
                     public void added(DownloadQueue.Download d) {
                         DownloadQueueTest.this.events.add("added");

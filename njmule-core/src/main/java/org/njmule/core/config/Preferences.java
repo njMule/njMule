@@ -32,6 +32,7 @@ import java.util.Set;
  * @param upnp whether the router is asked to forward our ports
  * @param downloadCapacityKiBps what the line can download, the top of the speed controls
  * @param uploadCapacityKiBps what the line can upload
+ * @param minFreeSpaceMiB downloads wait while the temp disk has less free space; {@code 0} = never
  */
 public record Preferences(
         String nick,
@@ -55,7 +56,8 @@ public record Preferences(
         ProxySettings proxy,
         boolean upnp,
         int downloadCapacityKiBps,
-        int uploadCapacityKiBps) {
+        int uploadCapacityKiBps,
+        int minFreeSpaceMiB) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -68,6 +70,8 @@ public record Preferences(
     // A common home line: about 80 Mbit/s down and 8 up.
     public static final int DEFAULT_DOWNLOAD_CAPACITY = 10_240;
     public static final int DEFAULT_UPLOAD_CAPACITY = 1_024;
+    public static final int DEFAULT_MIN_FREE_SPACE = 512;
+    public static final int MAX_MIN_FREE_SPACE = 10_000_000;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -90,6 +94,7 @@ public record Preferences(
         Objects.requireNonNull(proxy, "proxy");
         requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
+        requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -116,7 +121,8 @@ public record Preferences(
                 ProxySettings.NONE,
                 true,
                 DEFAULT_DOWNLOAD_CAPACITY,
-                DEFAULT_UPLOAD_CAPACITY);
+                DEFAULT_UPLOAD_CAPACITY,
+                DEFAULT_MIN_FREE_SPACE);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -171,6 +177,7 @@ public record Preferences(
         private boolean upnp;
         private int downloadCapacityKiBps;
         private int uploadCapacityKiBps;
+        private int minFreeSpaceMiB;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -195,6 +202,7 @@ public record Preferences(
             this.upnp = p.upnp;
             this.downloadCapacityKiBps = p.downloadCapacityKiBps;
             this.uploadCapacityKiBps = p.uploadCapacityKiBps;
+            this.minFreeSpaceMiB = p.minFreeSpaceMiB;
         }
 
         public Builder nick(String value) {
@@ -331,6 +339,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder minFreeSpaceMiB(int value) {
+            this.minFreeSpaceMiB = value;
+            return this;
+        }
+
         public Builder uploadCapacityKiBps(int value) {
             this.uploadCapacityKiBps = value;
             return this;
@@ -360,7 +373,8 @@ public record Preferences(
                             this.proxyType, this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword),
                     this.upnp,
                     this.downloadCapacityKiBps,
-                    this.uploadCapacityKiBps);
+                    this.uploadCapacityKiBps,
+                    this.minFreeSpaceMiB);
         }
     }
 }

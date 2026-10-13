@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,17 +66,23 @@ public final class DownloadQueue implements AutoCloseable {
         void completed(Download download, Path file);
 
         void failed(Download download, String reason);
+
+        /** The temp disk has dropped below, or come back above, the free space downloads need. */
+        default void diskSpace(boolean enough) {}
     }
 
     /** Part files are saved this often while their progress changes. */
     public static final Duration SAVE_INTERVAL = Duration.ofSeconds(60);
+
+    /** The free space of the temp disk is looked at this often. */
+    public static final Duration SPACE_CHECK = Duration.ofSeconds(10);
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
     private static final Pattern MET_NAME = Pattern.compile(
             "(\\d{1,6})" + Pattern.quote(PartFile.MET_SUFFIX) + "(?:" + Pattern.quote(AtomicFiles.BAK_SUFFIX) + ")?");
 
     /** One download with its storage, its known sources and the parts verified this run. */
-    public static final class Download {
+    public final class Download {
         private final PartFile file;
         private final PartFileStorage storage;
         private final Set<Ed2kLink.Source> sources = new LinkedHashSet<>();
@@ -102,7 +109,9 @@ public final class DownloadQueue implements AutoCloseable {
         }
 
         public boolean isActive() {
-            return this.file.status() == PartFile.Status.DOWNLOADING && !this.finishing;
+            return this.file.status() == PartFile.Status.DOWNLOADING
+                    && !this.finishing
+                    && !DownloadQueue.this.spaceShort;
         }
 
         /** The parts whose hash was checked: the ones other clients may download from us. */
@@ -114,24 +123,32 @@ public final class DownloadQueue implements AutoCloseable {
     private final EngineLoop loop;
     private final Path tempDir;
     private final Supplier<Path> incomingDir;
+    private final LongSupplier minFree;
     private final Listener listener;
     private final Map<Hash16, Download> downloads = new LinkedHashMap<>();
     private ScheduledFuture<?> saver;
+    private ScheduledFuture<?> spaceChecker;
+    private boolean spaceShort;
 
-    private DownloadQueue(EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener) {
+    private DownloadQueue(
+            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, LongSupplier minFree, Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.tempDir = Objects.requireNonNull(tempDir, "tempDir");
         this.incomingDir = Objects.requireNonNull(incomingDir, "incomingDir");
+        this.minFree = Objects.requireNonNull(minFree, "minFree");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
     /**
      * Loads the part files of {@code tempDir}, also those of which only the {@code .bak} is left; unreadable ones are
      * left alone and logged.
+     *
+     * @param minFree the bytes the temp disk must keep free while downloads write to it; 0 = no minimum
      */
-    public static DownloadQueue load(EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener)
+    public static DownloadQueue load(
+            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, LongSupplier minFree, Listener listener)
             throws IOException {
-        DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, listener);
+        DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, minFree, listener);
         Files.createDirectories(tempDir);
         Set<Integer> numbers = new TreeSet<>();
         try (DirectoryStream<Path> mets = Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX + "*")) {
@@ -145,7 +162,7 @@ public final class DownloadQueue implements AutoCloseable {
         for (int number : numbers) {
             try {
                 PartFile file = PartFile.load(tempDir, number);
-                Download download = new Download(file, PartFileStorage.open(file.dataFile()));
+                Download download = queue.new Download(file, PartFileStorage.open(file.dataFile()));
                 queue.downloads.put(file.hash(), download);
                 // A crash may have come between writing a part and checking it.
                 queue.hashSetKnown(download);
@@ -154,6 +171,8 @@ public final class DownloadQueue implements AutoCloseable {
             }
         }
         queue.saver = loop.scheduleRepeating("save downloads", SAVE_INTERVAL, SAVE_INTERVAL, queue::saveChanged);
+        queue.checkSpace();
+        queue.spaceChecker = loop.scheduleRepeating("disk space", SPACE_CHECK, SPACE_CHECK, queue::checkSpace);
         return queue;
     }
 
@@ -214,6 +233,11 @@ public final class DownloadQueue implements AutoCloseable {
 
     public Path tempDir() {
         return this.tempDir;
+    }
+
+    /** Whether downloads wait because the temp disk has less free space than they need. */
+    public boolean isSpaceShort() {
+        return this.spaceShort;
     }
 
     public Optional<Download> get(Hash16 hash) {
@@ -284,6 +308,9 @@ public final class DownloadQueue implements AutoCloseable {
     public void close() {
         if (this.saver != null) {
             this.saver.cancel(false);
+        }
+        if (this.spaceChecker != null) {
+            this.spaceChecker.cancel(false);
         }
         for (Download download : this.downloads.values()) {
             download.dirty = true;
@@ -373,6 +400,26 @@ public final class DownloadQueue implements AutoCloseable {
             logger.warn("Cannot delete the metadata of {}", download.file.name(), e);
         }
         this.listener.completed(download, moved);
+    }
+
+    // Downloads wait while the temp disk is short of space and go on by themselves once there is room again.
+    void checkSpace() {
+        long min = this.minFree.getAsLong();
+        boolean shortNow;
+        if (min <= 0) {
+            shortNow = false;
+        } else {
+            try {
+                shortNow = Files.getFileStore(this.tempDir).getUsableSpace() < min;
+            } catch (IOException e) {
+                logger.warn("Cannot read the free space of {}", this.tempDir, e);
+                return;
+            }
+        }
+        if (shortNow != this.spaceShort) {
+            this.spaceShort = shortNow;
+            this.listener.diskSpace(!shortNow);
+        }
     }
 
     private void saveChanged() {

@@ -267,7 +267,10 @@ final class Network {
                 () -> {
                     Preferences prefs = preferences.get();
                     return new DownloadManager.Settings(
-                            prefs.obfuscation(), prefs.maxSourcesPerFile(), this.listenPort());
+                            prefs.obfuscation(),
+                            prefs.maxSourcesPerFile(),
+                            this.listenPort(),
+                            prefs.minFreeSpaceMiB() * 1024L * 1024L);
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
@@ -1185,6 +1188,18 @@ final class Network {
     }
 
     private final class DownloadEvents implements DownloadManager.Listener {
+        @Override
+        public void diskSpace(boolean enough) {
+            if (enough) {
+                Network.this.userLog.log(
+                        LogLine.Level.INFO, "There is free space on the temp disk again: downloads go on");
+            } else {
+                Network.this.userLog.log(
+                        LogLine.Level.WARNING,
+                        "Not enough free space on the temp disk: downloads wait until there is room");
+            }
+        }
+
         @Override
         public void added(DownloadInfo download) {
             Network.this.publish.accept(new EngineEvent.DownloadAdded(download));

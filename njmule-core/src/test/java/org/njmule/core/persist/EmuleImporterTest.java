@@ -283,6 +283,8 @@ class EmuleImporterTest {
                         "MaxConnections=999999",
                         "DownloadCapacity=2048",
                         "UploadCapacityNew=-1",
+                        "CheckDiskspace=1",
+                        "MinFreeDiskSpace=1073741824",
                         "CryptLayerRequired=1")
                 .getBytes(StandardCharsets.US_ASCII));
 
@@ -296,6 +298,14 @@ class EmuleImporterTest {
         assertThat(p.uploadCapacityKiBps())
                 .as("an unknown capacity keeps ours")
                 .isEqualTo(Preferences.DEFAULT_UPLOAD_CAPACITY);
+        assertThat(p.minFreeSpaceMiB()).as("eMule keeps bytes").isEqualTo(1024);
+        assertThat(EmuleImporter.mapPreferences(
+                                IniFile.parse("[eMule]\nCheckDiskspace=0\nMinFreeDiskSpace=1"
+                                        .getBytes(StandardCharsets.US_ASCII)),
+                                Preferences.defaults())
+                        .minFreeSpaceMiB())
+                .as("eMule's minimum is used only while its check is on")
+                .isEqualTo(Preferences.DEFAULT_MIN_FREE_SPACE);
         assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUIRED);
         assertThat(EmuleImporter.mapPreferences(
                                 IniFile.parse("[eMule]\nCryptLayerSupported=0".getBytes(StandardCharsets.US_ASCII)),

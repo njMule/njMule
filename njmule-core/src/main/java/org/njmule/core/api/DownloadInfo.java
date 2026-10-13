@@ -36,6 +36,8 @@ public record DownloadInfo(
         PAUSED,
         /** Paused, and its sources are forgotten. */
         STOPPED,
+        /** Waiting for free space on the temp disk; it goes on by itself. */
+        NO_SPACE,
         ERROR,
         COMPLETE
     }
