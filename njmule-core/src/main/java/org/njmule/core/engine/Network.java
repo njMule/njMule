@@ -863,7 +863,11 @@ final class Network {
                 return;
             }
             PortForwarding started = PortForwarding.start(
-                    Igd.SSDP, tcp, udp, line -> this.loop.post(() -> this.userLog.log(LogLine.Level.INFO, line)));
+                    Igd.SSDP,
+                    tcp,
+                    udp,
+                    (fine, line) -> this.loop.post(
+                            () -> this.userLog.log(fine ? LogLine.Level.SUCCESS : LogLine.Level.WARNING, line)));
             boolean kept = this.loop.post(() -> {
                 if (this.closed) {
                     Thread.ofVirtual().start(started::close);

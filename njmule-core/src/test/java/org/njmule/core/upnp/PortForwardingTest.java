@@ -96,7 +96,7 @@ class PortForwardingTest {
         forwarding.close();
 
         assertThat(forwarding.mappings()).isEmpty();
-        assertThat(this.log).singleElement().asString().contains("refused");
+        assertThat(this.log).singleElement().asString().contains("refused TCP 4662 (606 Action not authorized)");
         assertThat(this.soap).singleElement().asString().contains("WANPPPConnection:1#AddPortMapping");
     }
 
@@ -131,7 +131,10 @@ class PortForwardingTest {
 
     private PortForwarding start(OptionalInt udp) {
         return PortForwarding.start(
-                new InetSocketAddress(LOOPBACK, this.ssdp.getLocalPort()), 4662, udp, this.log::add);
+                new InetSocketAddress(LOOPBACK, this.ssdp.getLocalPort()),
+                4662,
+                udp,
+                (fine, line) -> this.log.add(line));
     }
 
     private static String service(String type, String control) {
@@ -215,7 +218,13 @@ class PortForwardingTest {
         } else {
             this.soap.add(action + " " + body);
             code = this.status;
-            reply = "<s:Envelope/>";
+            reply = code == 200
+                    ? "<s:Envelope/>"
+                    : "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault>"
+                            + "<faultcode>s:Client</faultcode><faultstring>UPnPError</faultstring><detail>"
+                            + "<UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\"><errorCode>606</errorCode>"
+                            + "<errorDescription>Action not\nauthorized</errorDescription></UPnPError>"
+                            + "</detail></s:Fault></s:Body></s:Envelope>";
         }
         byte[] bytes = reply.getBytes(StandardCharsets.UTF_8);
         out.write(("HTTP/1.1 "

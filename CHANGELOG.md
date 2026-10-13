@@ -174,6 +174,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - UPnP port forwarding is on by default; tests never use it.
+- The log names each port the router refuses to forward over UPnP, with the router's reason.
 - The servers screen splits its log as eMule does: Server Info holds the connections and what the
   servers say, Log the application's events; dates follow the system's format, with a full year.
 - Connect turns into Disconnect on the server we are on, and connecting to another server leaves

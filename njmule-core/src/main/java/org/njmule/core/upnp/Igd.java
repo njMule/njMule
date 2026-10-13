@@ -18,6 +18,7 @@ package org.njmule.core.upnp;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.Serial;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -59,6 +60,7 @@ public final class Igd implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(Igd.class);
     private static final int MAX_DESCRIPTION = 256 * 1024;
+    private static final int MAX_REASON = 120;
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
     private static final String[] DEVICES = {
         "urn:schemas-upnp-org:device:InternetGatewayDevice:2", "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
@@ -136,9 +138,19 @@ public final class Igd implements AutoCloseable {
         return this.control;
     }
 
-    /** Forwards {@code port} of {@code protocol} ("TCP" or "UDP") to us; false if refused. */
-    public boolean addMapping(String protocol, int port, String description) throws IOException {
-        return this.call(
+    /** A gateway's refusal of an action, with its reason, such as "718 ConflictInMappingEntry". */
+    public static final class Refused extends IOException {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        Refused(String reason) {
+            super(reason);
+        }
+    }
+
+    /** Forwards {@code port} of {@code protocol} ("TCP" or "UDP") to us. */
+    public void addMapping(String protocol, int port, String description) throws IOException {
+        this.call(
                 "AddPortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
                         + "<NewExternalPort>"
@@ -160,9 +172,9 @@ public final class Igd implements AutoCloseable {
                         + "<NewLeaseDuration>0</NewLeaseDuration>");
     }
 
-    /** Removes the forwarding of {@code port}; false if the gateway refused. */
-    public boolean deleteMapping(String protocol, int port) throws IOException {
-        return this.call(
+    /** Removes the forwarding of {@code port}. */
+    public void deleteMapping(String protocol, int port) throws IOException {
+        this.call(
                 "DeletePortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
                         + "<NewExternalPort>"
@@ -173,7 +185,7 @@ public final class Igd implements AutoCloseable {
                         + "</NewProtocol>");
     }
 
-    private boolean call(String action, String arguments) throws IOException {
+    private void call(String action, String arguments) throws IOException {
         String body = "<?xml version=\"1.0\"?>"
                 + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\""
                 + " s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -193,12 +205,12 @@ public final class Igd implements AutoCloseable {
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         try {
-            HttpResponse<String> response = this.http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = this.http.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200) {
-                logger.debug("UPnP {} refused: {}", action, response.statusCode());
-                return false;
+                String reason = reason(response.statusCode(), response.body());
+                logger.debug("UPnP {} refused: {}", action, reason);
+                throw new Refused(reason);
             }
-            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted", e);
@@ -221,12 +233,7 @@ public final class Igd implements AutoCloseable {
         }
         Document doc;
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setXIncludeAware(false);
-            factory.setExpandEntityReferences(false);
-            doc = factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
+            doc = parse(xml, false);
         } catch (ParserConfigurationException | SAXException e) {
             logger.debug("UPnP: unreadable description at {}: {}", location, e.getMessage());
             return Optional.empty();
@@ -303,6 +310,48 @@ public final class Igd implements AutoCloseable {
                         + device
                         + "\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private static Document parse(byte[] xml, boolean namespaces)
+            throws ParserConfigurationException, SAXException, IOException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        factory.setNamespaceAware(namespaces);
+        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
+    }
+
+    // A UPnP fault carries <errorCode> and <errorDescription> (UPnP Device Architecture, control errors).
+    static String reason(int status, byte[] body) {
+        if (body.length <= MAX_DESCRIPTION) {
+            try {
+                Element root = parse(body, true).getDocumentElement();
+                Optional<String> code = named(root, "errorCode");
+                if (code.isPresent()) {
+                    String text = code.get()
+                            + named(root, "errorDescription").map(d -> " " + d).orElse("");
+                    // The router's words go to the log: printable and short.
+                    String clean = text.replaceAll("\\p{Cntrl}", " ").strip();
+                    return clean.length() > MAX_REASON ? clean.substring(0, MAX_REASON) : clean;
+                }
+            } catch (ParserConfigurationException | SAXException | IOException e) {
+                logger.debug("UPnP: unreadable fault: {}", e.getMessage());
+            }
+        }
+        return "HTTP " + status;
+    }
+
+    private static Optional<String> named(Element parent, String localName) {
+        NodeList nodes = parent.getElementsByTagNameNS("*", localName);
+        for (int i = 0; i < nodes.getLength(); i++) {
+            String value = nodes.item(i).getTextContent();
+            if (value != null && !value.isBlank()) {
+                return Optional.of(value.strip());
+            }
+        }
+        return Optional.empty();
     }
 
     private static Optional<String> text(Element parent, String tag) {

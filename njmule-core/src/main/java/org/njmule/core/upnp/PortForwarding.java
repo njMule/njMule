@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,12 +50,14 @@ public final class PortForwarding implements AutoCloseable {
         this.worker = worker;
     }
 
-    /**
-     * Starts forwarding {@code tcpPort} and, when present, {@code udpPort}; {@code report} gets one line for the log
-     * when it is done or failed.
-     */
-    public static PortForwarding start(
-            InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Consumer<String> report) {
+    /** Where the outcome goes: one line for the log, not {@code fine} when a port is left unforwarded. */
+    @FunctionalInterface
+    public interface Report {
+        void line(boolean fine, String text);
+    }
+
+    /** Starts forwarding {@code tcpPort} and, when present, {@code udpPort}; {@code report} gets the outcome. */
+    public static PortForwarding start(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Report report) {
         PortForwarding[] self = new PortForwarding[1];
         Thread worker =
                 Thread.ofVirtual().name("njmule-upnp").unstarted(() -> self[0].run(ssdp, tcpPort, udpPort, report));
@@ -79,29 +80,38 @@ public final class PortForwarding implements AutoCloseable {
         this.worker.join(wait);
     }
 
-    private void run(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Consumer<String> report) {
+    private void run(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Report report) {
         try {
             Optional<Igd> found = Igd.discover(ssdp, DISCOVERY);
             if (found.isEmpty()) {
-                report.accept("UPnP: no router answered");
+                report.line(false, "UPnP: no router answered");
                 return;
             }
             this.gateway = found.get();
             List<Mapping> wanted = new ArrayList<>();
             wanted.add(new Mapping("TCP", tcpPort));
             udpPort.ifPresent(p -> wanted.add(new Mapping("UDP", p)));
+            List<String> refused = new ArrayList<>();
             for (Mapping m : wanted) {
-                if (this.gateway.addMapping(m.protocol(), m.port(), DESCRIPTION)) {
+                try {
+                    this.gateway.addMapping(m.protocol(), m.port(), DESCRIPTION);
                     this.mapped.add(m);
+                } catch (Igd.Refused e) {
+                    refused.add(m.protocol() + " " + m.port() + " (" + e.getMessage() + ")");
                 }
             }
             String host = this.gateway.controlUrl().getHost();
-            report.accept(
-                    this.mapped.isEmpty()
-                            ? "UPnP: the router at " + host + " refused to forward our ports"
-                            : "UPnP: " + String.join(" and ", this.mappings()) + " forwarded by " + host);
+            String forwarded = String.join(" and ", this.mappings()) + " forwarded by " + host;
+            String denied = String.join(" and ", refused);
+            if (refused.isEmpty()) {
+                report.line(true, "UPnP: " + forwarded);
+            } else if (this.mapped.isEmpty()) {
+                report.line(false, "UPnP: the router at " + host + " refused " + denied);
+            } else {
+                report.line(false, "UPnP: " + forwarded + ", which refused " + denied);
+            }
         } catch (IOException e) {
-            report.accept("UPnP failed: " + e.getMessage());
+            report.line(false, "UPnP failed: " + e.getMessage());
         }
     }
 
