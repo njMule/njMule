@@ -256,6 +256,13 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "AddNewFilesPaused").ifPresent(b::addDownloadsPaused);
         ini.getLong(SECTION, "StartNextFile").ifPresent(v -> b.nextDownload(nextDownload(v)));
         ini.getBoolean(SECTION, "FilterBadIPs").ifPresent(b::filterLanAddresses);
+        ini.getBoolean(SECTION, "MessagesFromFriendsOnly").ifPresent(b::messagesFromFriendsOnly);
+        ini.get(SECTION, "MessageFilter")
+                .map(v -> v.length() > Preferences.MAX_MESSAGE_FILTER
+                        ? v.substring(0, Preferences.MAX_MESSAGE_FILTER)
+                        : v)
+                .ifPresent(b::messageFilter);
+        ini.getBoolean(SECTION, "AdvancedSpamFilter").ifPresent(b::advancedSpamFilter);
         ini.getLong(SECTION, "FilterLevel")
                 .ifPresent(v -> b.ipFilterLevel(Math.clamp(v, 0, Preferences.MAX_IP_FILTER_LEVEL)));
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);

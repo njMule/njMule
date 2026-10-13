@@ -113,6 +113,8 @@ public final class SyntheticEmuleProfile {
                         "AddNewFilesPaused=1",
                         "StartNextFile=2",
                         "FilterBadIPs=0",
+                        "MessagesFromFriendsOnly=1",
+                        "MessageFilter=buy now|cheap",
                         "NetworkED2K=1",
                         "NetworkKademlia=0",
                         "SecureIdent=1",

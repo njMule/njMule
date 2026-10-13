@@ -67,6 +67,10 @@ public final class Friends {
         return store;
     }
 
+    public boolean contains(Hash16 userHash) {
+        return this.friends.containsKey(userHash);
+    }
+
     public List<Friend> all() {
         List<Friend> all = new ArrayList<>();
         for (FriendsMet.Friend f : this.friends.values()) {

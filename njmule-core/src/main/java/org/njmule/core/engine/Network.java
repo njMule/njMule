@@ -121,6 +121,7 @@ import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
+import org.njmule.core.social.ChatFilter;
 import org.njmule.core.social.Friends;
 import org.njmule.core.social.Messaging;
 import org.njmule.core.upload.Credits;
@@ -344,7 +345,8 @@ final class Network {
                 random,
                 Ticker.systemTicker());
         this.identities = identities;
-        this.messaging = new Messaging(loop, this::ourHello, random, new ChatEvents());
+        this.messaging = new Messaging(
+                loop, this::ourHello, random, new ChatEvents(), this::chatFilter, h -> this.friends.contains(h));
         this.uploads.onChat(this.messaging::incoming);
         this.uploads.priorities(hash -> this.shares == null ? UploadPriority.AUTO : this.shares.priority(hash));
         this.publisher = new FilePublisher(this.session, this::offers, this::listenPort, Ticker.systemTicker());
@@ -1482,6 +1484,11 @@ final class Network {
             logger.warn("Cannot read {}, no cancelled files remembered", file, e);
             return CancelledFiles.empty(file, random);
         }
+    }
+
+    private ChatFilter chatFilter() {
+        Preferences p = this.preferences.get();
+        return new ChatFilter(p.messagesFromFriendsOnly(), ChatFilter.words(p.messageFilter()), p.advancedSpamFilter());
     }
 
     // Servers and clients at LAN addresses are left out unless the preferences let them in.

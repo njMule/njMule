@@ -71,7 +71,10 @@ public record Preferences(
         boolean storeSearches,
         boolean addDownloadsPaused,
         NextDownload nextDownload,
-        boolean filterLanAddresses) {
+        boolean filterLanAddresses,
+        boolean messagesFromFriendsOnly,
+        String messageFilter,
+        boolean advancedSpamFilter) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -98,6 +101,10 @@ public record Preferences(
     public static final int DEFAULT_IP_FILTER_LEVEL = 127;
 
     public static final int MAX_IP_FILTER_LEVEL = 255;
+    /** Chat messages holding one of these words, apart by {@code |}, do not show. */
+    public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
+
+    public static final int MAX_MESSAGE_FILTER = 4096;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -125,6 +132,10 @@ public record Preferences(
         requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
         requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
         Objects.requireNonNull(nextDownload, "nextDownload");
+        Objects.requireNonNull(messageFilter, "messageFilter");
+        if (messageFilter.length() > MAX_MESSAGE_FILTER) {
+            throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
+        }
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -166,6 +177,9 @@ public record Preferences(
                 true,
                 false,
                 NextDownload.NONE,
+                true,
+                false,
+                DEFAULT_MESSAGE_FILTER,
                 true);
     }
 
@@ -236,6 +250,9 @@ public record Preferences(
         private boolean addDownloadsPaused;
         private NextDownload nextDownload;
         private boolean filterLanAddresses;
+        private boolean messagesFromFriendsOnly;
+        private String messageFilter;
+        private boolean advancedSpamFilter;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -275,6 +292,9 @@ public record Preferences(
             this.addDownloadsPaused = p.addDownloadsPaused;
             this.nextDownload = p.nextDownload;
             this.filterLanAddresses = p.filterLanAddresses;
+            this.messagesFromFriendsOnly = p.messagesFromFriendsOnly;
+            this.messageFilter = p.messageFilter;
+            this.advancedSpamFilter = p.advancedSpamFilter;
         }
 
         public Builder nick(String value) {
@@ -491,6 +511,21 @@ public record Preferences(
             return this;
         }
 
+        public Builder messagesFromFriendsOnly(boolean value) {
+            this.messagesFromFriendsOnly = value;
+            return this;
+        }
+
+        public Builder messageFilter(String value) {
+            this.messageFilter = value;
+            return this;
+        }
+
+        public Builder advancedSpamFilter(boolean value) {
+            this.advancedSpamFilter = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -530,7 +565,10 @@ public record Preferences(
                     this.storeSearches,
                     this.addDownloadsPaused,
                     this.nextDownload,
-                    this.filterLanAddresses);
+                    this.filterLanAddresses,
+                    this.messagesFromFriendsOnly,
+                    this.messageFilter,
+                    this.advancedSpamFilter);
         }
     }
 }

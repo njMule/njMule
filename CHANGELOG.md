@@ -224,6 +224,9 @@ All notable changes to this project are documented here. The format follows
   `security.filterLan` setting is turned off (imported from eMule's "Filter LAN IPs").
 - A shared file can be renamed, keeping its hashes and priority, and its folder opened with the
   file selected.
+- Chat messages can be accepted from friends only, those with a filtered word are left out, and an
+  anti-spam filter leaves out a link in a first message and more than three unanswered ones; the
+  eMule settings are imported.
 
 ### Changed
 

@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
@@ -87,6 +88,7 @@ public final class Messaging implements AutoCloseable {
         // A CAPTCHA is asked for in answer to our messages: none is accepted before we write.
         private boolean wrote;
         private final List<String> pending = new ArrayList<>();
+        private final ChatFilter.State filtered = new ChatFilter.State();
 
         boolean isOpen() {
             return this.peer != null && this.open.getAsBoolean();
@@ -97,13 +99,27 @@ public final class Messaging implements AutoCloseable {
     private final Supplier<Hello> ourHello;
     private final SecureRandom random;
     private final Listener listener;
+    private final Supplier<ChatFilter> filter;
+    private final Predicate<Hash16> friends;
     private final Map<InetSocketAddress, Conversation> conversations = new HashMap<>();
 
-    public Messaging(EngineLoop loop, Supplier<Hello> ourHello, SecureRandom random, Listener listener) {
+    /**
+     * @param filter which incoming messages show, as the preferences say now
+     * @param friends whether a user hash is one of a friend
+     */
+    public Messaging(
+            EngineLoop loop,
+            Supplier<Hello> ourHello,
+            SecureRandom random,
+            Listener listener,
+            Supplier<ChatFilter> filter,
+            Predicate<Hash16> friends) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.random = Objects.requireNonNull(random, "random");
         this.listener = Objects.requireNonNull(listener, "listener");
+        this.filter = Objects.requireNonNull(filter, "filter");
+        this.friends = Objects.requireNonNull(friends, "friends");
     }
 
     /** Sends {@code text} to the client listening at {@code to}, connecting first if needed. */
@@ -114,6 +130,7 @@ public final class Messaging implements AutoCloseable {
         }
         Conversation c = this.conversations.computeIfAbsent(to, a -> new Conversation());
         c.wrote = true;
+        c.filtered.wrote();
         if (c.isOpen()) {
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
             return;
@@ -216,7 +233,13 @@ public final class Messaging implements AutoCloseable {
         Correspondent from = new Correspondent(address, peer.userHash(), peer.nick());
         try {
             if (packet.protocol() == Protocol.EDONKEY) {
-                this.listener.received(from, ChatMessages.text(packet));
+                String text = ChatMessages.text(packet);
+                Conversation c = this.conversations.get(address);
+                if (c != null && !this.filter.get().shows(c.filtered, this.friends.test(peer.userHash()), text)) {
+                    logger.debug("Filtered a message from {}", address);
+                    return;
+                }
+                this.listener.received(from, text);
             } else if (packet.opcode() == Opcodes.Extended.CHATCAPTCHAREQ.code()) {
                 Conversation c = this.conversations.get(address);
                 if (c == null || !c.wrote) {
