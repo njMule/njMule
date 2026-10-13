@@ -35,6 +35,7 @@ import org.njmule.core.net.TcpConnection;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimits;
@@ -65,6 +66,9 @@ final class UploadSession {
         void stopped(UploadSession session, String reason);
 
         void closed(UploadSession session);
+
+        /** The client asks which other clients have {@code file}. */
+        void sourcesRequested(UploadSession session, SourceExchange.Request request);
     }
 
     /** One requested block. */
@@ -306,6 +310,8 @@ final class UploadSession {
         }
         switch (opcode.get()) {
             case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
+            case REQUESTSOURCES2 ->
+                    this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->
                     this.send(
                             Packet.of(

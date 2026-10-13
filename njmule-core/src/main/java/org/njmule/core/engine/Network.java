@@ -224,6 +224,7 @@ final class Network {
                         loop,
                         hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
                         this.downloads::find,
+                        this.downloads::exchangeable,
                         this::ourHello,
                         () ->
                                 new UploadManager.Settings(
@@ -422,7 +423,9 @@ final class Network {
                         | Hello.MISC1_DATA_COMPRESSION
                         | IdentityHandshake.SUPPORTED << 16
                         | Hello.MISC1_NO_VIEW_SHARED_FILES,
-                Hello.MISC2_LARGE_FILES | cryptOptions(prefs.obfuscation()),
+                Hello.MISC2_LARGE_FILES
+                        | Hello.MISC2_SOURCE_EXCHANGE2
+                        | cryptOptions(prefs.obfuscation()),
                 server.serverIp(),
                 server.serverPort());
     }

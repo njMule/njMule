@@ -18,6 +18,7 @@ package org.njmule.core.upload;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -48,6 +49,7 @@ import org.njmule.core.net.TcpConnector;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
@@ -55,6 +57,7 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
+import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,6 +97,10 @@ public final class UploadManager implements AutoCloseable {
     // Throttled slots may send nothing for a while; the client keeps its connection.
     private static final Duration SLOT_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration CREDITS_SAVE = Duration.ofMinutes(13);
+    private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
+    private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
+    private static final int SX_RARE_SOURCES = 50;
+    private static final int SX_PACK_ABOVE = 354;
     private static final int HEADER = TcpFraming.HEADER_SIZE;
     private static final int MIN_COMPRESSIBLE = 32;
     private static final Logger LOG = LoggerFactory.getLogger(UploadManager.class);
@@ -151,6 +158,8 @@ public final class UploadManager implements AutoCloseable {
     private final Map<Hash16, Client> waiting = new LinkedHashMap<>();
     private final List<Slot> slots = new ArrayList<>();
     private final Map<InetAddress, Long> bans = new HashMap<>();
+    private final Map<Hash16, Long> sourcesAnswered = new HashMap<>();
+    private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
     private final SessionEvents events = new SessionEvents();
     private ScheduledFuture<?> ticking;
     private long budget;
@@ -160,11 +169,13 @@ public final class UploadManager implements AutoCloseable {
     /**
      * @param shared the shared file with a hash, if any
      * @param downloads the download of a hash, whose checked parts are shared too
+     * @param downloadSources the sources an active download of a hash knows
      */
     public UploadManager(
             EngineLoop loop,
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
+            Function<Hash16, List<SourceExchange.Source>> downloadSources,
             Supplier<Hello> ourHello,
             Supplier<Settings> settings,
             Identities identities,
@@ -174,6 +185,7 @@ public final class UploadManager implements AutoCloseable {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.shared = Objects.requireNonNull(shared, "shared");
         this.downloads = Objects.requireNonNull(downloads, "downloads");
+        this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.identities = Objects.requireNonNull(identities, "identities");
@@ -567,6 +579,67 @@ public final class UploadManager implements AutoCloseable {
         }
     }
 
+    // A client may ask once, then again after 40 minutes for rare downloads or 160 for the rest.
+    private void answerSources(UploadSession session, SourceExchange.Request request) {
+        long now = this.ticker.read();
+        Optional<Uploadable> file = this.find(request.file());
+        if (file.isEmpty() || request.version() < 1) {
+            return;
+        }
+        List<SourceExchange.Source> sources = new ArrayList<>();
+        Optional<DownloadQueue.Download> download = this.downloads.apply(request.file());
+        if (download.isPresent() && download.get().isActive()) {
+            sources.addAll(this.downloadSources.apply(request.file()));
+        }
+        boolean rare = download.isPresent() && sources.size() <= SX_RARE_SOURCES;
+        Long last = this.sourcesAnswered.get(session.userHash());
+        long wait = (rare ? SX_RARE_INTERVAL : SX_INTERVAL).toNanos();
+        if (last != null && now - last < wait) {
+            return;
+        }
+        if (sources.isEmpty()) {
+            for (Client c : this.uploaders(request.file())) {
+                if (!c.lowId && c.ip instanceof Inet4Address ip4) {
+                    sources.add(
+                            new SourceExchange.Source(
+                                    Ipv4.fromBytes(ip4.getAddress()),
+                                    0,
+                                    c.port,
+                                    0,
+                                    0,
+                                    Optional.of(c.userHash),
+                                    0));
+                }
+            }
+        }
+        sources.removeIf(s -> s.userHash().map(session.userHash()::equals).orElse(false));
+        if (sources.isEmpty()) {
+            return;
+        }
+        this.sourcesAnswered.put(session.userHash(), now);
+        List<SourceExchange.Source> sent =
+                sources.subList(0, Math.min(sources.size(), SourceExchange.MAX_SOURCES));
+        int version = Math.min(request.version(), SourceExchange.VERSION);
+        Packet answer = new SourceExchange.Answer(version, request.file(), sent).encode();
+        session.send(answer.length() > SX_PACK_ABOVE ? Packing.pack(answer) : answer);
+    }
+
+    // Clients waiting for or downloading the file from us.
+    private List<Client> uploaders(Hash16 file) {
+        List<Client> clients = new ArrayList<>();
+        for (Client c : this.waiting.values()) {
+            if (c.file.hash().equals(file)) {
+                clients.add(c);
+            }
+        }
+        for (Slot s : this.slots) {
+            if (s.client.file.hash().equals(file)) {
+                clients.add(s.client);
+            }
+        }
+        return clients;
+    }
+
     private static Packet unpack(Packet frame) throws DecodeException {
         return Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED);
     }
@@ -643,6 +716,11 @@ public final class UploadManager implements AutoCloseable {
             }
             manager.waiting.put(client.userHash, client);
             session.sendRank(manager.rank(client, now));
+        }
+
+        @Override
+        public void sourcesRequested(UploadSession session, SourceExchange.Request request) {
+            UploadManager.this.answerSources(session, request);
         }
 
         @Override

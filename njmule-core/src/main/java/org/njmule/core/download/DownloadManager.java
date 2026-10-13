@@ -51,6 +51,7 @@ import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
+import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,6 +104,13 @@ public final class DownloadManager implements AutoCloseable {
     private static final int MAX_STARTING = 8;
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
+    private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
+    private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
+    private static final Duration SX_RARE_ANSWER_GAP = Duration.ofMinutes(5);
+    private static final Duration SX_ANSWER_GAP = Duration.ofMinutes(20);
+    private static final int SX_VERY_RARE = 10;
+    private static final int SX_RARE = 50;
+    private static final int SX_MAX_SOURCES = 750;
 
     private static final Logger LOG = LoggerFactory.getLogger(DownloadManager.class);
 
@@ -115,6 +123,9 @@ public final class DownloadManager implements AutoCloseable {
         private int failures;
         private BitSet parts;
         private DownloadSession session;
+        private long sourcesAsked;
+        private boolean sourcesEverAsked;
+        private int cryptOptions;
 
         Source(InetSocketAddress address, long now) {
             this.address = address;
@@ -130,6 +141,8 @@ public final class DownloadManager implements AutoCloseable {
         private long received;
         private boolean changed;
         private long nextServerAsk;
+        private long sourcesAnswered;
+        private boolean sourcesEverAnswered;
 
         Entry(DownloadQueue.Download download, long now) {
             this.download = download;
@@ -242,6 +255,34 @@ public final class DownloadManager implements AutoCloseable {
             all.add(this.info(entry));
         }
         return all;
+    }
+
+    /**
+     * Sources of an active download that we spoke with, for other clients asking for sources:
+     * HighIDs with a known user hash.
+     */
+    public List<SourceExchange.Source> exchangeable(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null || !entry.download.isActive()) {
+            return List.of();
+        }
+        List<SourceExchange.Source> sources = new ArrayList<>();
+        for (Source source : entry.sources.values()) {
+            if (source.userHash.isPresent()
+                    && source.parts != null
+                    && source.address.getAddress() instanceof Inet4Address ip) {
+                sources.add(
+                        new SourceExchange.Source(
+                                Ipv4.fromBytes(ip.getAddress()),
+                                0,
+                                source.address.getPort(),
+                                0,
+                                0,
+                                source.userHash,
+                                source.cryptOptions));
+            }
+        }
+        return sources;
     }
 
     /** The download of {@code hash}, whose checked parts other clients may download. */
@@ -566,7 +607,83 @@ public final class DownloadManager implements AutoCloseable {
         };
     }
 
+    // Rare files may ask a source every 40 minutes, others every 160; a file waits for answers.
+    private boolean maySourcesBeAsked(DownloadSession session) {
+        Entry entry = this.entries.get(session.download().hash());
+        Source source = entry == null ? null : entry.sources.get(session.address());
+        if (source == null) {
+            return false;
+        }
+        int known = entry.sources.size();
+        int max = Math.min(this.settings.get().maxSourcesPerFile() * 9 / 10, SX_MAX_SOURCES);
+        if (known >= max) {
+            return false;
+        }
+        long now = this.ticker.read();
+        boolean rareDue =
+                !source.sourcesEverAsked || now - source.sourcesAsked >= SX_RARE_INTERVAL.toNanos();
+        boolean commonDue =
+                !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
+        long sinceAnswer = entry.sourcesEverAnswered ? now - entry.sourcesAnswered : Long.MAX_VALUE;
+        boolean allowed =
+                known <= SX_VERY_RARE && rareDue
+                        || known <= SX_RARE
+                                && rareDue
+                                && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos()
+                        || commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos();
+        if (allowed) {
+            source.sourcesEverAsked = true;
+            source.sourcesAsked = now;
+        }
+        return allowed;
+    }
+
+    private void sourcesFound(DownloadSession session, SourceExchange.Answer answer) {
+        Entry entry = this.entries.get(answer.file());
+        if (entry == null || !entry.download.isActive()) {
+            return;
+        }
+        entry.sourcesEverAnswered = true;
+        entry.sourcesAnswered = this.ticker.read();
+        long ourId = this.server.clientId();
+        int ourPort = this.settings.get().listenPort();
+        int added = 0;
+        for (SourceExchange.Source s : answer.sources()) {
+            // A LowID would need a callback through its server; ours may differ.
+            if (s.isLowId()
+                    || s.port() == 0
+                    || !Ipv4.isUnicastPublicCandidate(s.ip())
+                    || this.blocked.test(s.ip())
+                    || Ipv4.toEd2k(s.ip()) == ourId && s.port() == ourPort) {
+                continue;
+            }
+            Source fresh =
+                    this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
+            if (fresh != null) {
+                fresh.userHash = s.userHash().filter(h -> !h.equals(Hash16.ZERO));
+                fresh.cryptOptions = s.cryptOptions();
+                added++;
+            }
+        }
+        LOG.debug(
+                "{} of {} sources from {} are new for {}",
+                added,
+                answer.sources().size(),
+                session.address(),
+                entry.download.file().name());
+    }
+
     private final class SessionEvents implements DownloadSession.Listener {
+        @Override
+        public boolean maySourcesBeAsked(DownloadSession session) {
+            return DownloadManager.this.maySourcesBeAsked(session);
+        }
+
+        @Override
+        public void sourcesFound(DownloadSession session, SourceExchange.Answer answer) {
+            DownloadManager.this.sourcesFound(session, answer);
+        }
+
         @Override
         public void received(DownloadSession session, int bytes, int transferred) {
             Entry entry = DownloadManager.this.entries.get(session.download().hash());

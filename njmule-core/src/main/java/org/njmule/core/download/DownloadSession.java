@@ -41,6 +41,7 @@ import org.njmule.core.net.TcpConnector;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
@@ -66,6 +67,12 @@ final class DownloadSession {
 
         /** The session is over. */
         void ended(DownloadSession session, Outcome outcome, String reason);
+
+        /** Whether the source may be asked for more sources now. */
+        boolean maySourcesBeAsked(DownloadSession session);
+
+        /** The source told us of other sources. */
+        void sourcesFound(DownloadSession session, SourceExchange.Answer answer);
     }
 
     /** How a session ended, which decides when the source is asked again. */
@@ -147,6 +154,8 @@ final class DownloadSession {
     private int queueRank;
     private ScheduledFuture<?> idle;
     private Optional<Identities.Session> identity = Optional.empty();
+    private Optional<Hello> peer = Optional.empty();
+    private boolean sourcesAsked;
 
     DownloadSession(
             EngineLoop loop,
@@ -223,6 +232,7 @@ final class DownloadSession {
      */
     TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
         this.connection = incoming;
+        this.peer = Optional.of(peer);
         this.peerHash = Optional.of(peer.userHash());
         this.identity =
                 Optional.of(
@@ -324,6 +334,7 @@ final class DownloadSession {
             case HELLOANSWER -> {
                 if (this.state == State.GREETING) {
                     Hello peer = Hello.decode(packet);
+                    this.peer = Optional.of(peer);
                     this.peerHash = Optional.of(peer.userHash());
                     // As the side that connected, we ask for the identification first.
                     this.identity =
@@ -373,6 +384,14 @@ final class DownloadSession {
             case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
             case COMPRESSEDPART, COMPRESSEDPART_I64 ->
                     this.compressed(ClientMessages.CompressedPart.decode(packet));
+            case ANSWERSOURCES2 -> {
+                SourceExchange.Answer answer = SourceExchange.Answer.decode(packet);
+                // Only answers we asked for, about this file.
+                if (this.sourcesAsked && answer.file().equals(this.download.hash())) {
+                    this.sourcesAsked = false;
+                    this.listener.sourcesFound(this, answer);
+                }
+            }
             default -> {
                 // Nothing else is expected from an uploader.
             }
@@ -385,6 +404,14 @@ final class DownloadSession {
         this.connection.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
         if (!this.download.file().hasHashSet()) {
             this.connection.send(ClientMessages.forFile(Opcodes.Client.HASHSETREQUEST, file));
+        }
+        boolean exchanges =
+                this.peer
+                        .map(p -> (p.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0)
+                        .orElse(false);
+        if (exchanges && this.listener.maySourcesBeAsked(this)) {
+            this.sourcesAsked = true;
+            this.connection.send(SourceExchange.request(file));
         }
     }
 
