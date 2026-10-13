@@ -47,6 +47,7 @@ import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
+import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
@@ -68,6 +69,7 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<ObfuscationMode> obfuscation = new ComboBox<>();
     private final CheckBox ed2k = new CheckBox();
     private final CheckBox ed2kLinks = new CheckBox();
+    private final CheckBox tray = new CheckBox();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
@@ -142,6 +144,7 @@ public final class SettingsScreen implements Screen {
         this.language.setButtonCell(new NamedCell<>(this::languageName));
         this.ed2k.setText(this.gui.t("nj.settings.ed2k"));
         this.ed2kLinks.setText(this.gui.t("nj.settings.ed2kLinks"));
+        this.tray.setText(this.gui.t("nj.settings.tray"));
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
@@ -163,6 +166,9 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_NICK"), this.nick);
         row = field(grid, row, this.gui.t("IDS_PW_LANG"), this.language);
         row = field(grid, row, this.gui.t("nj.settings.theme"), new HBox(8, this.theme, this.mode));
+        if (NotificationArea.isSupported()) {
+            grid.add(this.tray, 1, row++);
+        }
         if (this.links.isPresent()) {
             grid.add(this.ed2kLinks, 1, row++);
         }
@@ -262,6 +268,7 @@ public final class SettingsScreen implements Screen {
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
+        this.tray.setSelected(this.gui.settings().minimizeToTray());
         WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
@@ -339,6 +346,7 @@ public final class SettingsScreen implements Screen {
         this.gui.settings().setTheme(this.theme.getValue());
         this.gui.settings().setMode(this.mode.getValue());
         this.gui.settings().setLanguage(this.language.getValue());
+        this.gui.settings().setMinimizeToTray(this.tray.isSelected());
         try {
             this.gui.settings().save();
             web.save(this.gui.directories().config());

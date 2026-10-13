@@ -55,5 +55,7 @@ public final class GuiMain {
             return;
         }
         Application.launch(NjMuleFxApp.class, args);
+        // The window has closed and the engine stopped; the notification area keeps AWT threads alive.
+        System.exit(0);
     }
 }

@@ -47,6 +47,7 @@ import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.shell.MainWindow;
+import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.ui.Gui;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
@@ -70,6 +71,7 @@ public final class DesktopApp implements AutoCloseable {
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
     private LinkHandoff handoff;
     private Stage stage;
+    private NotificationArea tray;
     private EngineModel model;
     private Themes themes;
     private MainWindow window;
@@ -116,7 +118,9 @@ public final class DesktopApp implements AutoCloseable {
             }
         }
         this.addPending();
-        if (this.stage != null) {
+        if (this.tray != null && this.tray.isHidden()) {
+            this.tray.restore();
+        } else if (this.stage != null) {
             this.stage.setIconified(false);
             this.stage.show();
             this.stage.toFront();
@@ -182,9 +186,16 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker.play();
         logger.info("Main window shown");
         this.keepButtonsVisible(stage);
+        if (NotificationArea.isSupported()) {
+            this.tray = NotificationArea.attach(
+                    stage,
+                    this.settings::minimizeToTray,
+                    new NotificationArea.Texts(this.gui.t("nj.tray.open"), this.gui.t("nj.tray.exit")));
+            this.window.whileHidden(this.tray::notify);
+        }
         this.addPending();
         if (GuiTour.requested()) {
-            GuiTour.start(this.gui, this.window, stage, Platform::exit);
+            GuiTour.start(this.gui, this.window, stage, Optional.ofNullable(this.tray), Platform::exit);
         } else if (!this.settings.existed()) {
             // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
@@ -214,6 +225,9 @@ public final class DesktopApp implements AutoCloseable {
         }
         if (this.handoff != null) {
             this.handoff.close();
+        }
+        if (this.tray != null) {
+            this.tray.close();
         }
         if (this.model != null) {
             this.model.close();

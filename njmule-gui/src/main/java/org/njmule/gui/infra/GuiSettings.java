@@ -134,6 +134,15 @@ public final class GuiSettings {
         this.values.setProperty("window.height", String.valueOf(height));
     }
 
+    /** Whether a minimised window hides into the notification area; on unless turned off. */
+    public boolean minimizeToTray() {
+        return Boolean.parseBoolean(this.values.getProperty("window.minimizeToTray", "true"));
+    }
+
+    public void setMinimizeToTray(boolean value) {
+        this.values.setProperty("window.minimizeToTray", String.valueOf(value));
+    }
+
     public boolean maximized() {
         return Boolean.parseBoolean(this.values.getProperty("window.maximized"));
     }

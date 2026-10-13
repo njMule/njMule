@@ -20,7 +20,9 @@ import atlantafx.base.controls.Notification;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Dimension2D;
 import javafx.geometry.Insets;
@@ -96,6 +98,7 @@ public final class MainWindow {
     private final Label server = new Label();
     private final Label counts = new Label();
     private String current = "";
+    private Consumer<String> elsewhere = text -> {};
 
     public MainWindow(Gui gui) {
         this.gui = gui;
@@ -153,8 +156,14 @@ public final class MainWindow {
         return this.root;
     }
 
+    /** Where messages also go while the window is hidden, such as the notification area. */
+    public void whileHidden(Consumer<String> elsewhere) {
+        this.elsewhere = Objects.requireNonNull(elsewhere, "elsewhere");
+    }
+
     /** Shows a short message for a few seconds. */
     public void message(String text) {
+        this.elsewhere.accept(text);
         Notification note = new Notification(text, new FontIcon(Material2AL.INFO));
         note.getStyleClass().add("elevated-1");
         note.setPrefWidth(380);
