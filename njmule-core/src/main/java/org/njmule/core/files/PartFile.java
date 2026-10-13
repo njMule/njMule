@@ -243,6 +243,11 @@ public final class PartFile {
         this.partHashes = List.copyOf(hashes);
     }
 
+    /** The part hashes, empty until known and for files below one part. */
+    public List<Hash16> partHashes() {
+        return this.partHashes;
+    }
+
     /** The hash that verifies {@code part}, once known. */
     public Optional<Hash16> partHash(int part) {
         if (this.size < Ed2k.PARTSIZE) {
