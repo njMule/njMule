@@ -18,15 +18,23 @@ package org.njmule.core.files;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -93,10 +101,19 @@ public final class SharedFiles implements AutoCloseable {
     public static final String KNOWN2_MET = "known2_64.met";
     public static final String SHARED_DIRS = "shareddir.dat";
 
+    /** The directories shared with their subdirectories; other clients know only {@link #SHARED_DIRS}. */
+    public static final String SHARED_TREES = "sharedtrees.dat";
+
+    /** A change in a shared directory is looked at this long after the last one, once a copy is done. */
+    public static final Duration WATCH_DELAY = Duration.ofSeconds(5);
+
     /** The directories are looked at again this often. */
     public static final Duration RESCAN_INTERVAL = Duration.ofMinutes(10);
 
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
+    // A shared tree is walked this deep, and up to so many directories.
+    private static final int MAX_TREE_DEPTH = 32;
+    private static final int MAX_TREE_DIRS = 10_000;
     private static final Set<String> SKIPPED = Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
     private static final Logger logger = LoggerFactory.getLogger(SharedFiles.class);
 
@@ -119,6 +136,9 @@ public final class SharedFiles implements AutoCloseable {
             Thread.ofPlatform().name("njmule-hasher").daemon(true).factory());
     private ScheduledFuture<?> rescan;
     private ScheduledFuture<?> pendingSave;
+    private ScheduledFuture<?> pendingScan;
+    private final Map<Path, WatchKey> watched = new HashMap<>();
+    private WatchService watcher;
     private boolean closed;
 
     private SharedFiles(
@@ -147,6 +167,12 @@ public final class SharedFiles implements AutoCloseable {
             Listener listener) {
         SharedFiles shares = new SharedFiles(loop, configDir, incomingDir, privateDirs, listener);
         shares.loadKnown();
+        try {
+            shares.watcher = FileSystems.getDefault().newWatchService();
+            Thread.ofVirtual().name("njmule-share-watcher").start(shares::watch);
+        } catch (IOException | UnsupportedOperationException e) {
+            logger.warn("Changes in the shared directories show at the next rescan only: {}", e.toString());
+        }
         shares.rescan = loop.scheduleRepeating("rescan shared files", Duration.ZERO, RESCAN_INTERVAL, shares::scan);
         return shares;
     }
@@ -192,9 +218,18 @@ public final class SharedFiles implements AutoCloseable {
         return List.copyOf(this.byHash.values());
     }
 
-    /** The directories shared besides the incoming one. */
+    /** The directories shared alone, besides the incoming one. */
     public List<Path> directories() {
-        Path file = this.configDir.resolve(SHARED_DIRS);
+        return this.readDirectories(SHARED_DIRS);
+    }
+
+    /** The directories shared with their subdirectories. */
+    public List<Path> trees() {
+        return this.readDirectories(SHARED_TREES);
+    }
+
+    private List<Path> readDirectories(String name) {
+        Path file = this.configDir.resolve(name);
         if (!Files.exists(file)) {
             return List.of();
         }
@@ -219,18 +254,40 @@ public final class SharedFiles implements AutoCloseable {
      * @throws IllegalArgumentException for a private directory (see {@link #isPrivate})
      */
     public void addDirectory(Path directory) throws IOException {
+        this.addDirectory(directory, false);
+    }
+
+    /**
+     * Shares {@code directory} too, from now on, with its subdirectories (also those made later) or alone.
+     *
+     * @throws IllegalArgumentException for a private directory (see {@link #isPrivate})
+     */
+    public void addDirectory(Path directory, boolean subdirectories) throws IOException {
         Path dir = directory.toAbsolutePath().normalize();
         if (this.isPrivate(dir)) {
             throw new IllegalArgumentException("refusing to share the private directory " + dir);
         }
-        List<Path> dirs = new ArrayList<>(this.directories());
-        if (!dirs.contains(dir)) {
-            dirs.add(dir);
+        this.change(SHARED_DIRS, dir, !subdirectories);
+        this.change(SHARED_TREES, dir, subdirectories);
+        this.scan();
+    }
+
+    /** Stops sharing {@code directory}, as shared alone or with its subdirectories. */
+    public void removeDirectory(Path directory) throws IOException {
+        Path dir = directory.toAbsolutePath().normalize();
+        this.change(SHARED_DIRS, dir, false);
+        this.change(SHARED_TREES, dir, false);
+        this.scan();
+    }
+
+    private void change(String name, Path dir, boolean listed) throws IOException {
+        List<Path> dirs = new ArrayList<>(this.readDirectories(name));
+        boolean changed = listed ? !dirs.contains(dir) && dirs.add(dir) : dirs.remove(dir);
+        if (changed) {
             List<String> lines = new ArrayList<>();
             dirs.forEach(d -> lines.add(d.toString()));
-            AtomicFiles.writeBytes(this.configDir.resolve(SHARED_DIRS), TextFiles.writeLines(lines));
+            AtomicFiles.writeBytes(this.configDir.resolve(name), TextFiles.writeLines(lines));
         }
-        this.scan();
     }
 
     /**
@@ -292,6 +349,10 @@ public final class SharedFiles implements AutoCloseable {
         for (Path dir : this.directories()) {
             dirs.add(dir.toAbsolutePath().normalize());
         }
+        for (Path tree : this.trees()) {
+            this.walk(tree.toAbsolutePath().normalize(), dirs);
+        }
+        this.watch(dirs);
         Set<Path> seen = new LinkedHashSet<>();
         for (Path dir : dirs) {
             if (!Files.isDirectory(dir)) {
@@ -316,11 +377,108 @@ public final class SharedFiles implements AutoCloseable {
         }
     }
 
+    // The directories of a tree, without hidden or private ones and without following links.
+    private void walk(Path root, Set<Path> dirs) {
+        if (!Files.isDirectory(root)) {
+            return;
+        }
+        try {
+            Files.walkFileTree(root, Set.of(), MAX_TREE_DEPTH, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    if (!dir.equals(root) && (Files.isHidden(dir) || SharedFiles.this.isPrivate(dir))) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    dirs.add(dir);
+                    return dirs.size() >= MAX_TREE_DIRS ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException e) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            logger.warn("Cannot walk the shared directory {}", root, e);
+        }
+    }
+
+    // Each shared directory is watched; the watch of one no longer shared ends.
+    private void watch(Set<Path> dirs) {
+        if (this.watcher == null) {
+            return;
+        }
+        for (Iterator<Map.Entry<Path, WatchKey>> it = this.watched.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Path, WatchKey> entry = it.next();
+            if (!dirs.contains(entry.getKey()) || !entry.getValue().isValid()) {
+                entry.getValue().cancel();
+                it.remove();
+            }
+        }
+        for (Path dir : dirs) {
+            if (!this.watched.containsKey(dir) && Files.isDirectory(dir)) {
+                try {
+                    this.watched.put(
+                            dir,
+                            dir.register(
+                                    this.watcher,
+                                    StandardWatchEventKinds.ENTRY_CREATE,
+                                    StandardWatchEventKinds.ENTRY_DELETE,
+                                    StandardWatchEventKinds.ENTRY_MODIFY));
+                } catch (IOException | ClosedWatchServiceException e) {
+                    logger.debug("Cannot watch {}: {}", dir, e.toString());
+                }
+            }
+        }
+    }
+
+    // On a thread of its own: each change asks the engine for a scan.
+    private void watch() {
+        try {
+            while (true) {
+                WatchKey key = this.watcher.take();
+                key.pollEvents();
+                key.reset();
+                this.loop.post(this::changed);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ClosedWatchServiceException e) {
+            // Closed with the shared files.
+        }
+    }
+
+    // A burst of changes, such as a file being copied, gives one scan, a moment after the last of them.
+    private void changed() {
+        if (this.closed) {
+            return;
+        }
+        if (this.pendingScan != null) {
+            this.pendingScan.cancel(false);
+        }
+        this.pendingScan = this.loop.schedule("scan changed shared files", WATCH_DELAY, this::scan);
+    }
+
     @Override
     public void close() {
         this.closed = true;
         if (this.rescan != null) {
             this.rescan.cancel(false);
+        }
+        if (this.pendingScan != null) {
+            this.pendingScan.cancel(false);
+        }
+        if (this.watcher != null) {
+            try {
+                this.watcher.close();
+            } catch (IOException e) {
+                logger.debug("Cannot close the watcher of the shared directories", e);
+            }
         }
         this.hasher.shutdownNow();
         this.save();

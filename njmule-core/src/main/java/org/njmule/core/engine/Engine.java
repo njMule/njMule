@@ -63,6 +63,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -398,11 +399,30 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> shareDirectory(Path directory) {
+        return this.shareDirectory(directory, false);
+    }
+
+    @Override
+    public CompletableFuture<Void> shareDirectory(Path directory, boolean subdirectories) {
         Objects.requireNonNull(directory, "directory");
         return this.loop.submit(() -> {
-            this.network.shareDirectory(directory);
+            this.network.shareDirectory(directory, subdirectories);
             return null;
         });
+    }
+
+    @Override
+    public CompletableFuture<Void> unshareDirectory(Path directory) {
+        Objects.requireNonNull(directory, "directory");
+        return this.loop.submit(() -> {
+            this.network.unshareDirectory(directory);
+            return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<SharedDirectory>> sharedDirectories() {
+        return this.loop.submit(this.network::sharedDirectories);
     }
 
     /** Downloads and uploads in detail, for diagnosing tests. */

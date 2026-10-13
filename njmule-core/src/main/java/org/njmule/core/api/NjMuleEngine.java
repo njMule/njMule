@@ -123,6 +123,15 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Shares the files of {@code directory} too (not of its subdirectories), from now on. */
     CompletableFuture<Void> shareDirectory(Path directory);
 
+    /** Shares the files of {@code directory} too, with those of its subdirectories (also later ones) or alone. */
+    CompletableFuture<Void> shareDirectory(Path directory, boolean subdirectories);
+
+    /** Stops sharing {@code directory}, as shared alone or with its subdirectories. */
+    CompletableFuture<Void> unshareDirectory(Path directory);
+
+    /** The directories shared besides the incoming one. */
+    CompletableFuture<List<SharedDirectory>> sharedDirectories();
+
     /** Asks the Kad node at {@code node} (its UDP port) for contacts to join with. */
     CompletableFuture<Void> kadBootstrap(ServerAddress node);
 

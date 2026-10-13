@@ -57,6 +57,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -572,11 +573,27 @@ final class Network {
         return this.shares != null && this.shares.setPriority(hash, priority);
     }
 
-    void shareDirectory(Path directory) throws IOException {
+    void shareDirectory(Path directory, boolean subdirectories) throws IOException {
         if (this.shares == null) {
             throw new IllegalStateException("the network is not started");
         }
-        this.shares.addDirectory(directory);
+        this.shares.addDirectory(directory, subdirectories);
+    }
+
+    void unshareDirectory(Path directory) throws IOException {
+        if (this.shares == null) {
+            throw new IllegalStateException("the network is not started");
+        }
+        this.shares.removeDirectory(directory);
+    }
+
+    List<SharedDirectory> sharedDirectories() {
+        List<SharedDirectory> all = new ArrayList<>();
+        if (this.shares != null) {
+            this.shares.directories().forEach(d -> all.add(new SharedDirectory(d, false)));
+            this.shares.trees().forEach(d -> all.add(new SharedDirectory(d, true)));
+        }
+        return all;
     }
 
     /** Adds Kad contacts to the running node, or to {@code nodes.dat}; returns how many were new. */

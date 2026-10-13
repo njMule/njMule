@@ -151,6 +151,47 @@ class SharedFilesTest {
     }
 
     @Test
+    void sharesATreeWithItsSubdirectoriesAlsoLaterOnesUntilItIsUnshared() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Path tree =
+                Files.createDirectories(this.dir.resolve("tree").resolve("sub").resolve("deeper"));
+        Files.write(this.dir.resolve("tree").resolve("sub").resolve("c.bin"), bytes(3000, 4));
+        Files.write(tree.resolve("d.bin"), bytes(4000, 5));
+        SharedFiles shares = this.open(config, incoming);
+
+        this.onLoop(() -> {
+            shares.addDirectory(this.dir.resolve("tree"), true);
+            return null;
+        });
+        assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder("shared c.bin", "shared d.bin");
+        assertThat(this.onLoop(shares::trees))
+                .containsExactly(this.dir.resolve("tree").toAbsolutePath());
+        assertThat(this.onLoop(shares::directories)).isEmpty();
+
+        // A directory made later is watched and shared without a rescan.
+        Path later = Files.createDirectories(this.dir.resolve("tree").resolve("later"));
+        Files.write(later.resolve("e.bin"), bytes(5000, 6));
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared e.bin");
+
+        this.onLoop(() -> {
+            shares.removeDirectory(this.dir.resolve("tree"));
+            return null;
+        });
+        assertThat(List.of(
+                        this.events.poll(30, TimeUnit.SECONDS),
+                        this.events.poll(30, TimeUnit.SECONDS),
+                        this.events.poll(30, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder("unshared c.bin", "unshared d.bin", "unshared e.bin");
+        assertThat(this.onLoop(shares::trees)).isEmpty();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
     void keepsTheUploadPriorityOfEachFileInKnownMet() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));
