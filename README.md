@@ -28,12 +28,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Java 25, wire-compatible with the eMule network and able to import an existing eMule profile
 (downloads in progress, known files, credits, servers, Kad nodes).
 
-> **Status: pre-alpha (milestone M6).** njMule connects to eD2K servers (plain or obfuscated) and
+> **Status: pre-alpha (milestone M7).** njMule connects to eD2K servers (plain or obfuscated) and
 > to the Kad network, searches both, downloads files from other clients verifying every part, and
 > shares files in turn: an upload queue with credits, secure identification and source exchange.
 > It imports an eMule profile, reading it only: preferences, servers, Kad contacts, known and
-> shared files and, on request, the identity and the downloads in progress. The user interface
-> comes in the next milestone.
+> shared files and, on request, the identity and the downloads in progress. The desktop
+> interface (JavaFX, AtlantaFX themes, English and Italian) shows servers and log, transfers with
+> part bars, searches, shared files, Kad, statistics and the options. Extras, installers and the
+> first release come in the last milestone.
 
 ## Goals
 

@@ -19,7 +19,6 @@ All notable changes to this project are documented here. The format follows
   Library, XDG) with portable mode, typed preferences stored in `njmule.properties`.
 - Headless launcher with `--version`, `--license`, `--warranty`, `--notice`, `--config-dir` and
   `--log-level`; programmatic SLF4J/Logback configuration with a rolling log file.
-- Placeholder JavaFX window with the AtlantaFX Nord light/dark themes.
 - Sober pastel colour palette and brand colours.
 - Quality gates: google-java-format (Spotless), Checkstyle, Error Prone, SpotBugs with
   FindSecBugs, JaCoCo coverage.
@@ -98,6 +97,17 @@ All notable changes to this project are documented here. The format follows
   start and never while eMule runs, and copies of the downloads (paused ones while eMule runs),
   whose complete parts are checked again. `njmule --import-emule <dir>` with `--dry-run`,
   `--adopt-emule-identity` and `--import-downloads`.
+- Engine API for front ends: the server list (with priority, limits and failures) and its
+  removal, the clients uploading and waiting, one status with connections, rates and session
+  totals, and the part map of each download.
+- Desktop interface: a top bar with the connection, the eD2K and Kad state and the rates, a
+  navigation rail (Ctrl+1 to Ctrl+7) and a status strip; screens for servers with the log,
+  transfers with eMule-style part bars and the upload queue, searches in tabs, shared files, Kad,
+  statistics with a rate graph and the options; the eMule import with a check before the import
+  (offered at the first start when an eMule is found), messages for errors and finished downloads,
+  and About. AtlantaFX themes (Nord by default), light, dark or as the system, with sober pastel
+  colour tokens; English and Italian, with eMule's own interface texts converted from its string
+  tables by `tools/Rc2Properties.java`. Tables keep their selection and order while they refresh.
 
 ### Changed
 
