@@ -135,6 +135,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     private int publicIp;
     private int pendingIp;
     private long lastPacket;
+    private long lastQuietRefresh;
     private long nextSmallTimer;
     private long nextBigTimer;
     private long nextConsolidate;
@@ -408,12 +409,15 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         if (now - this.nextBigTimer >= 0) {
             this.nextBigTimer = now + 10 * SECOND;
-            // After a quarter of an hour without a packet every zone looks for contacts again.
-            if (this.lastPacket != 0 && now - this.lastPacket > QUIET_FOR.toNanos()) {
+            // After a quarter of an hour without a packet every zone looks for contacts again, and
+            // again every quarter of an hour while it stays quiet.
+            if (this.lastPacket != 0
+                    && now - this.lastPacket > QUIET_FOR.toNanos()
+                    && (this.lastQuietRefresh == 0 || now - this.lastQuietRefresh > QUIET_FOR.toNanos())) {
                 for (RoutingTable.Zone zone : this.table.leaves()) {
                     zone.setNextBigTimer(now);
                 }
-                this.lastPacket = now;
+                this.lastQuietRefresh = now;
             }
             this.refreshOneZone(now);
         }
