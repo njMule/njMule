@@ -200,6 +200,8 @@ All notable changes to this project are documented here. The format follows
 - Ports read from Kad tags are taken only within 1..65535.
 - The IP filter applies to servers, to Kad contacts and to every source, from links too.
 - Kad keyword searches look up the longest word of the expression.
+- UPnP finds the router on computers with virtual network adapters (WSL, Hyper-V, VPNs): the
+  search goes out on every LAN rather than on the route of lowest metric.
 - A second njMule cannot start on the same configuration.
 - Part files stay sparse, and a finished download never replaces another file in the incoming
   folder, nor is left truncated there when it is copied to another volume.

@@ -21,9 +21,13 @@ import java.io.IOException;
 import java.io.Serial;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
 import java.net.ProxySelector;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -32,7 +36,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -90,10 +96,23 @@ public final class Igd implements AutoCloseable {
                 .build();
         Set<URI> seen = new LinkedHashSet<>();
         boolean found = false;
-        try (DatagramSocket socket = new DatagramSocket()) {
+        try (MulticastSocket socket = new MulticastSocket()) {
+            // UPnP Device Architecture: a TTL of 2 for discovery.
+            socket.setTimeToLive(2);
+            List<NetworkInterface> lans = target.getAddress().isMulticastAddress() ? lans() : List.of();
             for (String device : DEVICES) {
                 byte[] search = search(device, target);
-                socket.send(new DatagramPacket(search, search.length, target));
+                if (lans.isEmpty()) {
+                    socket.send(new DatagramPacket(search, search.length, target));
+                }
+                for (NetworkInterface lan : lans) {
+                    try {
+                        socket.setNetworkInterface(lan);
+                        socket.send(new DatagramPacket(search, search.length, target));
+                    } catch (IOException e) {
+                        logger.debug("UPnP: cannot search on {}: {}", lan.getName(), e.getMessage());
+                    }
+                }
             }
             long deadline = System.nanoTime() + wait.toNanos();
             byte[] buffer = new byte[2048];
@@ -273,6 +292,29 @@ public final class Igd implements AutoCloseable {
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    // Multicast takes the route of lowest metric, often a virtual adapter (WSL, Hyper-V, a VPN) that leads to no
+    // router: the search goes out on every LAN instead.
+    private static List<NetworkInterface> lans() {
+        List<NetworkInterface> lans = new ArrayList<>();
+        try {
+            for (NetworkInterface nif : NetworkInterface.networkInterfaces().toList()) {
+                if (nif.isUp()
+                        && !nif.isLoopback()
+                        && !nif.isPointToPoint()
+                        && nif.supportsMulticast()
+                        && nif.inetAddresses()
+                                .anyMatch(a -> a instanceof Inet4Address
+                                        && !a.isLinkLocalAddress()
+                                        && !a.isLoopbackAddress())) {
+                    lans.add(nif);
+                }
+            }
+        } catch (SocketException e) {
+            logger.debug("UPnP: cannot list the network interfaces: {}", e.getMessage());
+        }
+        return lans;
     }
 
     private static InetAddress localTowards(URI location) throws IOException {
