@@ -28,6 +28,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
@@ -38,6 +39,7 @@ import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
@@ -64,6 +66,12 @@ public final class SettingsScreen implements Screen {
     private final CheckBox reconnect = new CheckBox();
     private final CheckBox secureIdent = new CheckBox();
     private final CheckBox credits = new CheckBox();
+    private final CheckBox upnp = new CheckBox();
+    private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
+    private final TextField proxyHost = new TextField();
+    private final TextField proxyPort = new TextField();
+    private final TextField proxyUser = new TextField();
+    private final PasswordField proxyPassword = new PasswordField();
     private final TextField incoming = new TextField();
     private final TextField temp = new TextField();
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
@@ -122,6 +130,10 @@ public final class SettingsScreen implements Screen {
         this.reconnect.setText(this.gui.t("IDS_PW_RECON"));
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
+        this.upnp.setText(this.gui.t("nj.settings.upnp"));
+        this.proxyType.getItems().addAll(ProxySettings.Type.values());
+        this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
+        this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
 
         GridPane grid = new GridPane();
         grid.setHgap(12);
@@ -145,6 +157,21 @@ public final class SettingsScreen implements Screen {
         grid.add(this.reconnect, 1, row++);
         grid.add(this.secureIdent, 1, row++);
         grid.add(this.credits, 1, row++);
+        grid.add(this.upnp, 1, row++);
+        row = section(grid, row, this.gui.t("IDS_PW_PROXY"));
+        row = field(grid, row, this.gui.t("nj.proxy.type"), this.proxyType);
+        row =
+                field(
+                        grid,
+                        row,
+                        this.gui.t("nj.proxy.host"),
+                        new HBox(8, this.proxyHost, this.proxyPort));
+        row =
+                field(
+                        grid,
+                        row,
+                        this.gui.t("nj.proxy.user"),
+                        new HBox(8, this.proxyUser, this.proxyPassword));
         row = section(grid, row, this.gui.t("IDS_PW_DIR"));
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
@@ -196,6 +223,12 @@ public final class SettingsScreen implements Screen {
         this.reconnect.setSelected(p.reconnect());
         this.secureIdent.setSelected(p.secureIdent());
         this.credits.setSelected(p.creditSystem());
+        this.upnp.setSelected(p.upnp());
+        this.proxyType.setValue(p.proxy().type());
+        this.proxyHost.setText(p.proxy().host());
+        this.proxyPort.setText(String.valueOf(p.proxy().port()));
+        this.proxyUser.setText(p.proxy().user());
+        this.proxyPassword.setText(p.proxy().password());
         this.incoming.setText(p.incomingDir().map(Path::toString).orElse(""));
         this.temp.setText(p.tempDir().map(Path::toString).orElse(""));
         this.theme.setValue(this.gui.themes().family());
@@ -249,6 +282,14 @@ public final class SettingsScreen implements Screen {
                 .reconnect(this.reconnect.isSelected())
                 .secureIdent(this.secureIdent.isSelected())
                 .creditSystem(this.credits.isSelected())
+                .upnp(this.upnp.isSelected())
+                .proxy(
+                        new ProxySettings(
+                                this.proxyType.getValue(),
+                                this.proxyHost.getText(),
+                                number(this.proxyPort, this.gui.t("nj.proxy.host")),
+                                this.proxyUser.getText().strip(),
+                                this.proxyPassword.getText()))
                 .incomingDir(path(this.incoming))
                 .tempDir(path(this.temp))
                 .build();
@@ -306,6 +347,14 @@ public final class SettingsScreen implements Screen {
 
     TextField tcpPortField() {
         return this.tcpPort;
+    }
+
+    ComboBox<ProxySettings.Type> proxyTypeBox() {
+        return this.proxyType;
+    }
+
+    TextField proxyHostField() {
+        return this.proxyHost;
     }
 
     ComboBox<GuiSettings.Mode> modeBox() {

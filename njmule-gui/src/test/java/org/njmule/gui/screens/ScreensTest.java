@@ -31,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchRequest;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 import org.njmule.gui.infra.GuiSettings;
@@ -269,6 +270,22 @@ class ScreensTest {
                 });
         FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
         assertThat(this.test.engine.preferences().nick()).isEqualTo("Tester");
+
+        FxTesting.onFx(
+                () -> {
+                    screen.proxyTypeBox().setValue(ProxySettings.Type.SOCKS);
+                    screen.proxyHostField().setText("proxy.lan");
+                    screen.apply();
+                });
+        FxTesting.await(
+                "the proxy",
+                () -> this.test.engine.preferences().proxy().host().equals("proxy.lan"));
+        FxTesting.onFx(
+                () -> {
+                    screen.proxyTypeBox().setValue(ProxySettings.Type.NONE);
+                    screen.apply();
+                });
+        FxTesting.await("no proxy", () -> !this.test.engine.preferences().proxy().isEnabled());
         assertThat(FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get())).isTrue();
         assertThat(GuiSettings.load(this.test.engine.directories().gui()).mode())
                 .isEqualTo(GuiSettings.Mode.DARK);

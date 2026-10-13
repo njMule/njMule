@@ -58,7 +58,10 @@ class I18nTest {
                     "nj.import.outcome.would_import",
                     "nj.import.outcome.skipped",
                     "nj.import.outcome.missing",
-                    "nj.import.outcome.failed");
+                    "nj.import.outcome.failed",
+                    "nj.proxy.none",
+                    "nj.proxy.socks",
+                    "nj.proxy.http");
 
     @Test
     void englishAndItalianTextsLoad() {
