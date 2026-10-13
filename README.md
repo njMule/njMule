@@ -28,19 +28,20 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Java 25, wire-compatible with the eMule network and able to import an existing eMule profile
 (downloads in progress, known files, credits, servers, Kad nodes).
 
-> **Status: pre-alpha (milestone M7).** njMule connects to eD2K servers (plain or obfuscated) and
+> **Status: pre-alpha (milestone M8).** njMule connects to eD2K servers (plain or obfuscated) and
 > to the Kad network, searches both, downloads files from other clients verifying every part, and
 > shares files in turn: an upload queue with credits, secure identification and source exchange.
 > It imports an eMule profile, reading it only: preferences, servers, Kad contacts, known and
 > shared files and, on request, the identity and the downloads in progress. The desktop
 > interface (JavaFX, AtlantaFX themes, English and Italian) shows servers and log, transfers with
-> part bars, searches, shared files, Kad, statistics and the options. Extras, installers and the
-> first release come in the last milestone.
+> part bars, searches, shared files, Kad, messages and friends, statistics and the options; a web
+> interface covers status, transfers, searches and servers. A proxy, a weekly scheduler of the
+> limits and UPnP port forwarding are available. Installers and the first release are next.
 
 ## Goals
 
 - Full eD2K (servers, client-to-client transfers, source exchange, secure identification) and Kad2.
-- A GUI-independent core with a JavaFX desktop front end (AtlantaFX themes) and, later, a web UI.
+- A GUI-independent core with a JavaFX desktop front end (AtlantaFX themes) and a web UI.
 - Fast and secure by design: virtual threads, crash-safe persistence, hardened parsers — none of
   the defects found in the eMule code base.
 - Native executables (GraalVM) and installers for Windows, macOS and Linux (64-bit).
@@ -69,6 +70,14 @@ too:
 
 ```bash
 njmule --import-emule <eMule config dir> --dry-run
+```
+
+Turn the web interface on with a password (asked twice; at least 8 characters). It starts with
+the engine, headless or with the desktop interface, on port 4711 and for this computer only
+unless `--webui-lan` is given; the desktop options set it too:
+
+```bash
+njmule --webui-password [--webui-port <port>] [--webui-lan]
 ```
 
 Build the native executable for the current OS with a local GraalVM Community for JDK 25
@@ -103,6 +112,7 @@ Run the desktop GUI during development:
 | `njmule-core` | engine, protocol, persistence — no GUI dependency |
 | `njmule-app` | headless launcher, command line, logging |
 | `njmule-gui` | JavaFX desktop application |
+| `njmule-webui` | web interface served by the JDK HTTP server |
 | `njmule-testkit` | test doubles shared by the modules |
 | `njmule-bench` | JMH benchmarks of the hot paths (not distributed) |
 

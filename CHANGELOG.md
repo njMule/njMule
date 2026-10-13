@@ -108,6 +108,20 @@ All notable changes to this project are documented here. The format follows
   and About. AtlantaFX themes (Nord by default), light, dark or as the system, with sober pastel
   colour tokens; English and Italian, with eMule's own interface texts converted from its string
   tables by `tools/Rc2Properties.java`. Tables keep their selection and order while they refresh.
+- Proxy for outgoing TCP connections (SOCKS 4/5, with or without credentials, and HTTP CONNECT),
+  also taken from an eMule profile.
+- Scheduler: rules by weekday and time that change the transfer limits and connections; edited
+  in the options and kept in `scheduler.properties`.
+- Port forwarding with UPnP (off by default): the router is found on the local network, ports are
+  mapped and renewed while njMule runs and removed on exit.
+- Totals over all sessions (bytes, sessions, time) in `statistics.properties`.
+- Messages with other clients and their CAPTCHA check, both ways, and friends kept in
+  `emfriends.met`; a messages screen in the desktop interface.
+- Web interface (`njmule-webui`): status, transfers, searches and servers as plain pages served by
+  the JDK, behind a PBKDF2-hashed password, with HTTP-only same-site session cookies, form tokens,
+  origin and host checks, a login lockout and a strict Content-Security-Policy; on this computer
+  only unless other computers are allowed. Set with `njmule --webui-password` (`--webui-port`,
+  `--webui-lan`) or in the desktop options, and started with the engine.
 
 ### Changed
 
