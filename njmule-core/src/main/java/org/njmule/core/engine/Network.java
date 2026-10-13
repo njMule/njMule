@@ -169,7 +169,8 @@ final class Network {
     private final ServerPinger pinger;
     private final PeerGreetings greetings;
     private final PeerLinks links;
-    private final IpFilter ipFilter;
+    // Replaced from the engine thread, read by the connection threads too.
+    private volatile IpFilter ipFilter;
     // Clients the server asked us to call back, by address and when; engine thread only.
     private final Map<InetSocketAddress, Long> callbacks = new HashMap<>();
     private int callbacksOpen;
@@ -242,7 +243,7 @@ final class Network {
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
         this.servers = ServerList.load(this.serverMet);
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
-        this.servers.filter(this.ipFilter::blocks);
+        this.servers.filter(ip -> this.ipFilter.blocks(ip));
         this.session = new ServerSession(
                 loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
         this.searches = new SearchManager(
@@ -610,6 +611,21 @@ final class Network {
         if (this.shares != null) {
             this.shares.scan();
         }
+    }
+
+    /**
+     * Replaces the IP filter with {@code ranges}, kept as ipfilter.dat; returns how many ranges it has.
+     *
+     * @throws IOException when there are none: a filter is not replaced by nothing
+     */
+    int setIpFilter(List<IpFilterDat.Range> ranges) throws IOException {
+        if (ranges.isEmpty()) {
+            throw new IOException("the list holds no IP range");
+        }
+        AtomicFiles.writeBytes(this.configDir.resolve(IPFILTER_FILE), IpFilterDat.write(ranges));
+        this.ipFilter = IpFilter.of(ranges, IpFilter.DEFAULT_LEVEL);
+        this.userLog.log(LogLine.Level.INFO, this.ipFilter.rangeCount() + " IP filter ranges");
+        return this.ipFilter.rangeCount();
     }
 
     boolean setDownloadCategory(Hash16 hash, int category) {

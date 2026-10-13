@@ -79,6 +79,7 @@ import org.njmule.core.persist.EmuleImporter;
 import org.njmule.core.persist.PreferencesCodec;
 import org.njmule.core.persist.ScheduleCodec;
 import org.njmule.core.persist.UserHashStore;
+import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
@@ -276,6 +277,26 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(url, "url");
         return this.fetch(url, ServerMet::read)
                 .thenCompose(read -> this.loop.submit(() -> this.network.addServers(read)));
+    }
+
+    @Override
+    public CompletableFuture<Integer> updateIpFilter(URI url) {
+        Objects.requireNonNull(url, "url");
+        return this.fetch(url, data -> ipRanges(data, url))
+                .thenCompose(ranges -> this.loop.submit(() -> this.network.setIpFilter(ranges)));
+    }
+
+    // The text forms are told apart by the file name: the address's first, then PeerGuardian, then eMule's.
+    static List<IpFilterDat.Range> ipRanges(byte[] data, URI url) {
+        String path = url.getPath() == null ? "" : url.getPath();
+        String name = path.substring(path.lastIndexOf('/') + 1).replaceFirst("(?i)\\.(gz|zip)$", "");
+        for (String candidate : List.of(name, "guarding.p2p", "ipfilter.dat")) {
+            List<IpFilterDat.Range> ranges = IpFilterDat.read(data, candidate);
+            if (!ranges.isEmpty()) {
+                return ranges;
+            }
+        }
+        return List.of();
     }
 
     @Override

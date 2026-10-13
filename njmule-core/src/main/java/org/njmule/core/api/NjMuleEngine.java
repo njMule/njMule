@@ -68,6 +68,12 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addServers(URI url);
 
+    /**
+     * Replaces the IP filter with the list at {@code url} (ipfilter.dat, PeerGuardian or P2B form, maybe zipped),
+     * fetched like a server list; completes with how many ranges it has.
+     */
+    CompletableFuture<Integer> updateIpFilter(URI url);
+
     /** The known servers, in the order of the list. */
     CompletableFuture<List<ServerInfo>> servers();
 
