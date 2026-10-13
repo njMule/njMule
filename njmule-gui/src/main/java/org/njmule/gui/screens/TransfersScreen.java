@@ -16,6 +16,8 @@
  */
 package org.njmule.gui.screens;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import javafx.geometry.Orientation;
@@ -26,12 +28,16 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
@@ -39,9 +45,11 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.model.LiveList;
@@ -107,6 +115,7 @@ public final class TransfersScreen implements Screen {
                         Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate),
                         Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n)),
                         Fx.column(this.gui.t("nj.transfers.status"), 110, DownloadInfo::status, this::status),
+                        Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
                         Fx.column(
                                 this.gui.t("IDS_DL_REMAINS"),
                                 90,
@@ -116,11 +125,23 @@ public final class TransfersScreen implements Screen {
         pause.setOnAction(e -> this.pauseSelected());
         MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"));
         resume.setOnAction(e -> this.resumeSelected());
+        MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"));
+        stop.setOnAction(e -> this.stopSelected());
         MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"));
         cancel.setOnAction(e -> this.cancelSelected());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
-        this.downloads.setContextMenu(new ContextMenu(pause, resume, cancel, copy));
+        MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
+        clear.setOnAction(e -> this.gui.model().clearCompleted());
+        this.downloads.setContextMenu(new ContextMenu(
+                pause,
+                resume,
+                stop,
+                cancel,
+                this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
+                new SeparatorMenuItem(),
+                copy,
+                clear));
 
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
@@ -133,8 +154,11 @@ public final class TransfersScreen implements Screen {
         var tools = Fx.toolRow(
                 Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected),
                 Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected),
+                Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected),
                 Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected),
+                this.priorityMenu(new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY))),
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
                 Fx.spacer(),
                 this.link,
                 add);
@@ -169,10 +193,74 @@ public final class TransfersScreen implements Screen {
         return Fx.screen(this.title(), tools, split);
     }
 
+    private Menu priorityMenu(Menu menu) {
+        menu.getItems().setAll(this.priorityItems());
+        return menu;
+    }
+
+    // On the tool row the button shows only its icon.
+    private MenuButton priorityMenu(MenuButton button) {
+        button.getItems().setAll(this.priorityItems());
+        button.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
+        button.setAccessibleText(this.gui.t("IDS_PRIORITY"));
+        return button;
+    }
+
+    // Low, Normal, High and Auto, for each selected download.
+    private List<MenuItem> priorityItems() {
+        List<MenuItem> items = new ArrayList<>();
+        for (DownloadPriority priority : DownloadPriority.values()) {
+            MenuItem item = new MenuItem(this.priorityName(priority));
+            item.setOnAction(e -> this.prioritize(priority));
+            items.add(item);
+        }
+        return items;
+    }
+
+    void prioritize(DownloadPriority priority) {
+        Fx.selected(this.downloads).forEach(d -> this.gui.model().setPriority(d.hash(), priority));
+    }
+
+    private String priorityName(DownloadPriority priority) {
+        return switch (priority) {
+            case LOW -> this.gui.t("IDS_PRIOLOW");
+            case NORMAL -> this.gui.t("IDS_PRIONORMAL");
+            case HIGH -> this.gui.t("IDS_PRIOHIGH");
+            case AUTO -> this.gui.t("IDS_PRIOAUTO");
+        };
+    }
+
+    /** The priority a download acts with, and whether it follows its rarity; sorted by the first. */
+    record ShownPriority(DownloadPriority effective, boolean auto) implements Comparable<ShownPriority> {
+        private static final Comparator<ShownPriority> ORDER =
+                Comparator.comparing(ShownPriority::effective).thenComparing(ShownPriority::auto);
+
+        @Override
+        public int compareTo(ShownPriority other) {
+            return ORDER.compare(this, other);
+        }
+    }
+
+    static ShownPriority shownPriority(DownloadInfo d) {
+        return new ShownPriority(d.priority().effective(d.sources()), d.priority() == DownloadPriority.AUTO);
+    }
+
+    private String priorityText(ShownPriority shown) {
+        if (!shown.auto()) {
+            return this.priorityName(shown.effective());
+        }
+        return switch (shown.effective()) {
+            case LOW -> this.gui.t("IDS_PRIOAUTOLOW");
+            case HIGH -> this.gui.t("IDS_PRIOAUTOHIGH");
+            default -> this.gui.t("IDS_PRIOAUTONORMAL");
+        };
+    }
+
     private String status(DownloadInfo.Status status) {
         return switch (status) {
             case DOWNLOADING -> this.gui.t("IDS_DOWNLOADING");
             case PAUSED -> this.gui.t("IDS_PAUSED");
+            case STOPPED -> this.gui.t("IDS_STOPPED");
             case ERROR -> this.gui.t("IDS_ERRORLIKE");
             case COMPLETE -> this.gui.t("IDS_COMPLETE");
         };
@@ -202,6 +290,10 @@ public final class TransfersScreen implements Screen {
 
     void pauseSelected() {
         Fx.selected(this.downloads).forEach(d -> this.gui.model().pause(d.hash()));
+    }
+
+    void stopSelected() {
+        Fx.selected(this.downloads).forEach(d -> this.gui.model().stop(d.hash()));
     }
 
     void resumeSelected() {

@@ -18,6 +18,7 @@ package org.njmule.gui.model;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
@@ -171,7 +173,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 this.rates.remove(0, this.rates.size() - RATE_HISTORY);
             }
         });
-        this.later(this.engine.downloads(), this.downloads::update);
+        this.later(this.engine.downloads(), this::showDownloads);
         if (this.ticks % 2 == 0) {
             this.later(this.engine.uploads(), this.uploads::update);
         }
@@ -297,6 +299,25 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.resumeDownload(file), ok -> this.refreshDownloads());
     }
 
+    /** Pauses the download and lets it forget its sources. */
+    public void stop(Hash16 file) {
+        this.later(this.engine.stopDownload(file), ok -> this.refreshDownloads());
+    }
+
+    public void setPriority(Hash16 file, DownloadPriority priority) {
+        this.later(this.engine.setDownloadPriority(file, priority), ok -> this.refreshDownloads());
+    }
+
+    /** Takes the finished downloads off the list. */
+    public void clearCompleted() {
+        this.downloads.rows().stream()
+                .map(LiveList.Row::get)
+                .filter(d -> d.status() == DownloadInfo.Status.COMPLETE)
+                .map(DownloadInfo::hash)
+                .toList()
+                .forEach(this.downloads::remove);
+    }
+
     public void cancel(Hash16 file) {
         this.later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
     }
@@ -416,7 +437,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadAdded e -> this.downloads.put(e.download());
             case EngineEvent.DownloadProgress e -> this.downloads.put(e.download());
             case EngineEvent.DownloadCompleted e -> {
-                this.downloads.remove(e.download().hash());
+                this.downloads.put(e.download());
                 this.refreshShared();
                 this.completedCount.set(this.completedCount.get() + 1);
                 this.completed.accept(e.download());
@@ -454,7 +475,18 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     private void refreshDownloads() {
-        this.later(this.engine.downloads(), this.downloads::update);
+        this.later(this.engine.downloads(), this::showDownloads);
+    }
+
+    // The engine forgets finished downloads; they stay listed until cleared.
+    private void showDownloads(List<DownloadInfo> active) {
+        List<DownloadInfo> all = new ArrayList<>(active);
+        for (LiveList.Row<DownloadInfo> row : this.downloads.rows()) {
+            if (row.get().status() == DownloadInfo.Status.COMPLETE) {
+                all.add(row.get());
+            }
+        }
+        this.downloads.update(all);
     }
 
     private void run(CompletableFuture<?> work) {

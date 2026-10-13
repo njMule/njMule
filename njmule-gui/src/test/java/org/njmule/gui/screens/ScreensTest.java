@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.config.ProxySettings;
@@ -73,6 +74,14 @@ class ScreensTest {
         });
         FxTesting.await(
                 "paused", () -> screen.downloads().getItems().getFirst().get().status() == DownloadInfo.Status.PAUSED);
+        FxTesting.onFx(screen::stopSelected);
+        FxTesting.await(
+                "stopped",
+                () -> screen.downloads().getItems().getFirst().get().status() == DownloadInfo.Status.STOPPED);
+        FxTesting.onFx(() -> screen.prioritize(DownloadPriority.HIGH));
+        FxTesting.await(
+                "high priority",
+                () -> screen.downloads().getItems().getFirst().get().priority() == DownloadPriority.HIGH);
         FxTesting.onFx(screen::resumeSelected);
         FxTesting.await(
                 "downloading again",
@@ -99,6 +108,7 @@ class ScreensTest {
                         1000,
                         400,
                         DownloadInfo.Status.DOWNLOADING,
+                        DownloadPriority.AUTO,
                         1,
                         1,
                         100,

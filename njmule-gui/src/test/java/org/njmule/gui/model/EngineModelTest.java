@@ -17,6 +17,7 @@
 package org.njmule.gui.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.njmule.core.api.DownloadPriority.AUTO;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -146,7 +147,7 @@ class EngineModelTest {
         assertThat(m.log()).hasSize(EngineModel.LOG_LINES);
 
         DownloadInfo download =
-                new DownloadInfo(FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, 0, 0, 0, PartMap.EMPTY);
+                new DownloadInfo(FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, AUTO, 0, 0, 0, PartMap.EMPTY);
         m.handle(new EngineEvent.DownloadAdded(download));
         m.handle(new EngineEvent.DownloadProgress(download));
         m.handle(new EngineEvent.DownloadFailed(download, "disk"));
@@ -156,9 +157,13 @@ class EngineModelTest {
         List<String> finished = new CopyOnWriteArrayList<>();
         m.onCompleted(d -> finished.add(d.name()));
         m.handle(new EngineEvent.DownloadAdded(download));
-        m.handle(new EngineEvent.DownloadCompleted(download, this.dir.resolve("a.bin")));
-        assertThat(m.downloads().size()).isZero();
+        DownloadInfo done =
+                new DownloadInfo(FILE, "a.bin", 100, 100, DownloadInfo.Status.COMPLETE, AUTO, 0, 0, 0, PartMap.EMPTY);
+        m.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("a.bin")));
+        assertThat(m.downloads().size()).as("finished downloads stay listed").isEqualTo(1);
         assertThat(finished).containsExactly("a.bin");
+        m.clearCompleted();
+        assertThat(m.downloads().size()).isZero();
         m.handle(new EngineEvent.PreferencesChanged(this.engine.preferences()));
         m.handle(new EngineEvent.Started("x"));
     }
