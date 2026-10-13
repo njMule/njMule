@@ -52,10 +52,11 @@ public final class ServerList {
     public static final String FILE_NAME = "server.met";
     public static final String STATIC_FILE_NAME = "staticservers.dat";
 
-    // Values of the preference tag.
-    static final int PRIORITY_NORMAL = 0;
-    static final int PRIORITY_HIGH = 1;
-    static final int PRIORITY_LOW = 2;
+    /** Values of the preference tag. */
+    public static final int PRIORITY_NORMAL = 0;
+
+    public static final int PRIORITY_HIGH = 1;
+    public static final int PRIORITY_LOW = 2;
 
     /** A server address; {@code ip} is in {@link Ipv4} form. */
     public record Address(int ip, int port) {
@@ -211,6 +212,17 @@ public final class ServerList {
 
     public int size() {
         return this.servers.size();
+    }
+
+    /** The servers that failed {@code retries} times in a row or more; static servers are never dead. */
+    public List<Address> dead(int retries) {
+        List<Address> dead = new ArrayList<>();
+        for (Map.Entry<Address, ServerMet.Server> e : this.servers.entrySet()) {
+            if (e.getValue().failedCount().orElse(0) >= retries && !this.statics.contains(e.getKey())) {
+                dead.add(e.getKey());
+            }
+        }
+        return dead;
     }
 
     /** The servers to try, high priority first, then those that failed least. */

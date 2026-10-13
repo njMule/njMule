@@ -51,6 +51,9 @@ public sealed interface EngineEvent {
     /** New users, files, name or description of a server. */
     record ServerUpdated(ServerInfo server) implements EngineEvent {}
 
+    /** Servers were added to or dropped from the list by njMule itself; {@code count} are known now. */
+    record ServersChanged(int count) implements EngineEvent {}
+
     /** Results new to a search, or updated with more sources. */
     record SearchResults(SearchId search, List<SearchResult> results) implements EngineEvent {
         public SearchResults {

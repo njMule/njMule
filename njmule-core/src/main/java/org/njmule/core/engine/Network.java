@@ -101,6 +101,9 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.security.ConnectionGuard;
@@ -267,6 +270,8 @@ final class Network {
                 () -> Optional.ofNullable(this.udp),
                 () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
                 this::serverUpdated,
+                () -> this.preferences.get().deadServerRetries(),
+                this::deadServer,
                 random,
                 Clock.systemUTC());
         this.greetings = new PeerGreetings(
@@ -276,6 +281,7 @@ final class Network {
                 this::isOurServer,
                 random);
         this.links = new PeerLinks(loop, identities, this::uploadSide);
+        this.links.onGreeted(hello -> this.loop.post(() -> this.serverOf(hello)));
         this.downloads = DownloadManager.open(
                 loop,
                 tempDir,
@@ -415,11 +421,19 @@ final class Network {
 
     /** Adds a server without connecting to it; false when known or not usable. */
     boolean addServer(ServerList.Address address) {
-        boolean added = this.servers.add(new ServerMet.Server(address.ip(), address.port(), List.of()));
+        boolean added = this.servers.add(this.byHand(address));
         if (added) {
             this.saveServers();
         }
         return added;
+    }
+
+    // A server the user gave: high priority when the preferences ask for it, as in eMule.
+    private ServerMet.Server byHand(ServerList.Address address) {
+        List<Tag> tags = this.preferences.get().manualServersHighPriority()
+                ? List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), ServerList.PRIORITY_HIGH))
+                : List.of();
+        return new ServerMet.Server(address.ip(), address.port(), tags);
     }
 
     /** False for an unknown server. */
@@ -558,10 +572,7 @@ final class Network {
             this.session.connect(Optional.empty());
             return;
         }
-        ServerMet.Server server = this.servers
-                .get(address.get())
-                .orElseGet(() ->
-                        new ServerMet.Server(address.get().ip(), address.get().port(), List.of()));
+        ServerMet.Server server = this.servers.get(address.get()).orElseGet(() -> this.byHand(address.get()));
         if (this.servers.add(server)) {
             this.saveServers();
         }
@@ -1264,8 +1275,64 @@ final class Network {
 
     private void serverUpdated(ServerMet.Server server) {
         this.publish.accept(new EngineEvent.ServerUpdated(this.info(server)));
+        this.saveServersSoon();
+    }
+
+    private void saveServersSoon() {
         if (this.pendingSave == null || this.pendingSave.isDone()) {
             this.pendingSave = this.loop.schedule("save server.met", SAVE_DELAY, this::saveServers);
+        }
+    }
+
+    // A server that failed as many times in a row as the preferences allow leaves the list, as in eMule;
+    // static servers and the one we are on stay.
+    private void deadServer(ServerMet.Server server) {
+        this.removeDead(List.of(ServerList.addressOf(server)));
+    }
+
+    private void removeDeadServers() {
+        this.removeDead(this.servers.dead(this.preferences.get().deadServerRetries()));
+    }
+
+    private void removeDead(List<ServerList.Address> dead) {
+        Optional<ServerList.Address> current = this.session.server().map(ServerList::addressOf);
+        List<ServerList.Address> gone =
+                dead.stream().filter(a -> !current.equals(Optional.of(a))).toList();
+        int removed = gone.isEmpty() ? 0 : this.removeServers(gone);
+        if (removed > 0) {
+            this.userLog.log(
+                    LogLine.Level.INFO, removed == 1 ? "1 dead server removed" : removed + " dead servers removed");
+            this.publish.accept(new EngineEvent.ServersChanged(this.servers.size()));
+        }
+    }
+
+    // Servers learnt from the server we are on or from the clients that greet us: at low priority, named by
+    // their address, when the preferences ask for them.
+    private void serversLearnt(List<ServerMessages.Endpoint> learnt, String from) {
+        int added = 0;
+        for (ServerMessages.Endpoint endpoint : learnt) {
+            String name = Ipv4.format(endpoint.ip()) + ":" + endpoint.port();
+            ServerMet.Server server = new ServerMet.Server(
+                    endpoint.ip(),
+                    endpoint.port(),
+                    List.of(
+                            new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), name),
+                            new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), ServerList.PRIORITY_LOW)));
+            if (this.servers.add(server)) {
+                added++;
+            }
+        }
+        if (added > 0) {
+            this.saveServersSoon();
+            this.userLog.log(
+                    LogLine.Level.INFO, (added == 1 ? "1 new server" : added + " new servers") + " from " + from);
+            this.publish.accept(new EngineEvent.ServersChanged(this.servers.size()));
+        }
+    }
+
+    private void serverOf(Hello hello) {
+        if (this.preferences.get().addServersFromClients() && hello.serverIp() != 0 && hello.serverPort() != 0) {
+            this.serversLearnt(List.of(new ServerMessages.Endpoint(hello.serverIp(), hello.serverPort())), "a client");
         }
     }
 
@@ -1358,6 +1425,17 @@ final class Network {
             Network.this.pinger.start();
             Network.this.downloads.serverConnected();
             Network.this.publisher.connected();
+            Network.this.removeDeadServers();
+            if (Network.this.preferences.get().addServersFromServer()) {
+                Network.this.session.send(ServerMessages.getServerList());
+            }
+        }
+
+        @Override
+        public void serverList(ServerMet.Server server, List<ServerMessages.Endpoint> servers) {
+            if (Network.this.preferences.get().addServersFromServer()) {
+                Network.this.serversLearnt(servers, describe(Network.this.info(server)));
+            }
         }
 
         @Override

@@ -65,6 +65,8 @@ public final class ServerPinger {
     private final Supplier<Optional<ServerUdp>> udp;
     private final IntSupplier publicIp;
     private final Consumer<ServerMet.Server> updated;
+    private final IntSupplier deadRetries;
+    private final Consumer<ServerMet.Server> dead;
     private final SecureRandom random;
     private final Clock clock;
     private final Map<ServerList.Address, Pending> pending = new HashMap<>();
@@ -74,6 +76,8 @@ public final class ServerPinger {
     /**
      * @param publicIp our address as the connected server sees it; the UDP key is bound to it
      * @param updated told about each server an answer updated
+     * @param deadRetries the failures in a row after which a server is dead
+     * @param dead told about a dead server instead of pinging it again
      */
     public ServerPinger(
             EngineLoop loop,
@@ -81,6 +85,8 @@ public final class ServerPinger {
             Supplier<Optional<ServerUdp>> udp,
             IntSupplier publicIp,
             Consumer<ServerMet.Server> updated,
+            IntSupplier deadRetries,
+            Consumer<ServerMet.Server> dead,
             SecureRandom random,
             Clock clock) {
         this.loop = Objects.requireNonNull(loop, "loop");
@@ -88,6 +94,8 @@ public final class ServerPinger {
         this.udp = Objects.requireNonNull(udp, "udp");
         this.publicIp = Objects.requireNonNull(publicIp, "publicIp");
         this.updated = Objects.requireNonNull(updated, "updated");
+        this.deadRetries = Objects.requireNonNull(deadRetries, "deadRetries");
+        this.dead = Objects.requireNonNull(dead, "dead");
         this.random = Objects.requireNonNull(random, "random");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -151,14 +159,22 @@ public final class ServerPinger {
                 continue;
             }
             this.cursor = index + 1;
+            if (server.failedCount().orElse(0) >= this.deadRetries.getAsInt() && !this.servers.isStatic(address)) {
+                this.dead.accept(server);
+                return;
+            }
             long challenge = CHALLENGE_BASE | (this.random.nextInt() & 0xFFFF);
             InetSocketAddress target =
                     new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
             try {
                 socket.get().send(target, ServerDatagrams.statusRequest(challenge));
                 this.pending.put(address, new Pending(challenge, now, this.clock.millis()));
-                // Recorded on sending, so a silent server is not asked again at every start.
-                this.servers.update(address, s -> s.with(intTag(ServerTag.LASTPING, now)));
+                // Recorded on sending, so a silent server is not asked again at every start; the answer
+                // takes the failure back.
+                this.servers.update(
+                        address,
+                        s -> s.with(intTag(ServerTag.LASTPING, now))
+                                .with(intTag(ServerTag.FAIL, s.failedCount().orElse(0) + 1)));
             } catch (IOException e) {
                 logger.debug("Cannot ping {}", target, e);
             }

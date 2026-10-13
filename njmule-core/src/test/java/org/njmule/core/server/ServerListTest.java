@@ -135,6 +135,19 @@ class ServerListTest {
     }
 
     @Test
+    void deadServersFailedOftenEnoughButStaticOnesNever() {
+        ServerList list = new ServerList();
+        list.add(server("1.1.1.1", 1).with(tag(ServerTag.FAIL, 2)));
+        list.add(server("2.2.2.2", 2).with(tag(ServerTag.FAIL, 1)));
+        list.add(server("3.3.3.3", 3));
+        list.add(server("4.4.4.4", 4).with(tag(ServerTag.FAIL, 5)));
+        list.setStatic(new ServerList.Address(Ipv4.parse("4.4.4.4"), 4), true);
+
+        assertThat(list.dead(1)).extracting(ServerList.Address::toString).containsExactly("1.1.1.1:1", "2.2.2.2:2");
+        assertThat(list.dead(2)).extracting(ServerList.Address::toString).containsExactly("1.1.1.1:1");
+    }
+
+    @Test
     void obfuscationNeedsTheFlagAndAPort() {
         ServerMet.Server plain = server("1.2.3.4", 4661);
         ServerMet.Server flagged = plain.with(tag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION));

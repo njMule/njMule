@@ -54,14 +54,19 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.FileEntry;
+import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(60)
@@ -222,6 +227,48 @@ class ServerFlowTest {
         assertThat(login.lowId()).isTrue();
         assertThat(login.clientId()).isEqualTo(1234);
         assertThat(login.server().address()).endsWith(":" + alive.port());
+    }
+
+    @Test
+    void dropsDeadServersButStaticOnesAndTakesTheServersListWhenAsked() throws Exception {
+        InetAddress local = lanAddress();
+        int deadPort;
+        try (ServerSocket probe = new ServerSocket(0, 1, local)) {
+            deadPort = probe.getLocalPort();
+        }
+        FakeServer alive = this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        alive.knowsServers(List.of(new ServerMessages.Endpoint(Ipv4.of(81, 2, 3, 9), 4661)));
+        NjMuleEngine engine = this.engine();
+        engine.updatePreferences(p -> p.toBuilder().addServersFromServer(true).build())
+                .get();
+        Events events = new Events(engine);
+        Path serverMet = this.dir.resolve("dead.met");
+        List<Tag> failedOnce = List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 1));
+        Files.write(
+                serverMet,
+                ServerMet.write(List.of(
+                        new ServerMet.Server(Ipv4.fromBytes(local.getAddress()), deadPort, failedOnce),
+                        new ServerMet.Server(Ipv4.of(81, 2, 3, 7), 4661, failedOnce))));
+        engine.addServers(serverMet).get();
+        assertThat(engine.setStaticServer(new ServerAddress("81.2.3.7", 4661), true)
+                        .get())
+                .isTrue();
+
+        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), alive.port())))
+                .get();
+        events.next(EngineEvent.ServerConnected.class, e -> true);
+        events.next(EngineEvent.ServersChanged.class, e -> true);
+        events.next(EngineEvent.ServersChanged.class, e -> true);
+
+        List<ServerInfo> servers = engine.servers().get();
+        assertThat(servers)
+                .extracting(ServerInfo::address)
+                .containsExactlyInAnyOrder(
+                        local.getHostAddress() + ":" + alive.port(), "81.2.3.7:4661", "81.2.3.9:4661");
+        assertThat(servers)
+                .filteredOn(s -> s.address().equals("81.2.3.9:4661"))
+                .singleElement()
+                .satisfies(s -> assertThat(s.priority()).isEqualTo(ServerInfo.Priority.LOW));
     }
 
     @Test

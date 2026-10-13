@@ -94,6 +94,7 @@ public final class FakeServer implements AutoCloseable {
     private final List<ServerMessages.Login> logins = new CopyOnWriteArrayList<>();
     private final Map<Long, FakePeer> lowIds = new ConcurrentHashMap<>();
     private final List<Long> callbackRequests = new CopyOnWriteArrayList<>();
+    private volatile List<ServerMessages.Endpoint> knownServers = List.of();
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
@@ -205,6 +206,11 @@ public final class FakeServer implements AutoCloseable {
                 .add(new ServerMessages.Source(lowId, peer.port(), 0, Optional.empty()));
     }
 
+    /** The servers sent to clients that ask for the server list. */
+    public void knowsServers(List<ServerMessages.Endpoint> servers) {
+        this.knownServers = List.copyOf(servers);
+    }
+
     /** The LowIDs clients asked us to have call them back. */
     public List<Long> callbackRequests() {
         return List.copyOf(this.callbackRequests);
@@ -267,6 +273,9 @@ public final class FakeServer implements AutoCloseable {
                     new ServerMessages.IdChange(this.config.clientId(), FLAGS, seen).encode(),
                     ServerMessages.message(this.config.welcome()),
                     new ServerMessages.ServerStatus(10, 20).encode());
+        }
+        if (request.opcode() == Opcodes.Server.GETSERVERLIST.code()) {
+            return List.of(ServerMessages.serverList(this.knownServers));
         }
         if (request.opcode() == Opcodes.Server.OFFERFILES.code()) {
             PacketReader in = request.reader();

@@ -57,7 +57,12 @@ public record Preferences(
         boolean upnp,
         int downloadCapacityKiBps,
         int uploadCapacityKiBps,
-        int minFreeSpaceMiB) {
+        int minFreeSpaceMiB,
+        int deadServerRetries,
+        boolean addServersFromServer,
+        boolean addServersFromClients,
+        boolean staticServersOnly,
+        boolean manualServersHighPriority) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -72,6 +77,10 @@ public record Preferences(
     public static final int DEFAULT_UPLOAD_CAPACITY = 1_024;
     public static final int DEFAULT_MIN_FREE_SPACE = 512;
     public static final int MAX_MIN_FREE_SPACE = 10_000_000;
+    /** A server that failed this many times in a row is dropped from the list, as in eMule. */
+    public static final int DEFAULT_DEAD_SERVER_RETRIES = 1;
+
+    public static final int MAX_DEAD_SERVER_RETRIES = 10;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -95,6 +104,7 @@ public record Preferences(
         requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
+        requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -122,7 +132,12 @@ public record Preferences(
                 true,
                 DEFAULT_DOWNLOAD_CAPACITY,
                 DEFAULT_UPLOAD_CAPACITY,
-                DEFAULT_MIN_FREE_SPACE);
+                DEFAULT_MIN_FREE_SPACE,
+                DEFAULT_DEAD_SERVER_RETRIES,
+                false,
+                false,
+                false,
+                false);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -178,6 +193,11 @@ public record Preferences(
         private int downloadCapacityKiBps;
         private int uploadCapacityKiBps;
         private int minFreeSpaceMiB;
+        private int deadServerRetries;
+        private boolean addServersFromServer;
+        private boolean addServersFromClients;
+        private boolean staticServersOnly;
+        private boolean manualServersHighPriority;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -203,6 +223,11 @@ public record Preferences(
             this.downloadCapacityKiBps = p.downloadCapacityKiBps;
             this.uploadCapacityKiBps = p.uploadCapacityKiBps;
             this.minFreeSpaceMiB = p.minFreeSpaceMiB;
+            this.deadServerRetries = p.deadServerRetries;
+            this.addServersFromServer = p.addServersFromServer;
+            this.addServersFromClients = p.addServersFromClients;
+            this.staticServersOnly = p.staticServersOnly;
+            this.manualServersHighPriority = p.manualServersHighPriority;
         }
 
         public Builder nick(String value) {
@@ -349,6 +374,31 @@ public record Preferences(
             return this;
         }
 
+        public Builder deadServerRetries(int value) {
+            this.deadServerRetries = value;
+            return this;
+        }
+
+        public Builder addServersFromServer(boolean value) {
+            this.addServersFromServer = value;
+            return this;
+        }
+
+        public Builder addServersFromClients(boolean value) {
+            this.addServersFromClients = value;
+            return this;
+        }
+
+        public Builder staticServersOnly(boolean value) {
+            this.staticServersOnly = value;
+            return this;
+        }
+
+        public Builder manualServersHighPriority(boolean value) {
+            this.manualServersHighPriority = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -374,7 +424,12 @@ public record Preferences(
                     this.upnp,
                     this.downloadCapacityKiBps,
                     this.uploadCapacityKiBps,
-                    this.minFreeSpaceMiB);
+                    this.minFreeSpaceMiB,
+                    this.deadServerRetries,
+                    this.addServersFromServer,
+                    this.addServersFromClients,
+                    this.staticServersOnly,
+                    this.manualServersHighPriority);
         }
     }
 }

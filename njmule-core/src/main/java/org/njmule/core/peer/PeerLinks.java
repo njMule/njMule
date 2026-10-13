@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.protocol.ed2k.Hello;
@@ -59,6 +60,8 @@ public final class PeerLinks {
     private final Uploads uploads;
     private final Map<InetSocketAddress, PeerLink> open = new HashMap<>();
 
+    private volatile Consumer<Hello> greeted = hello -> {};
+
     public PeerLinks(EngineLoop loop, Identities identities, Uploads uploads) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.identities = Objects.requireNonNull(identities, "identities");
@@ -90,8 +93,14 @@ public final class PeerLinks {
         return this.uploads;
     }
 
+    /** Hears every hello of a client we are linked with, on the thread that read it. */
+    public void onGreeted(Consumer<Hello> observer) {
+        this.greeted = Objects.requireNonNull(observer, "observer");
+    }
+
     void register(PeerLink link) {
         link.peerAddress().ifPresent(address -> this.open.put(address, link));
+        link.peer().ifPresent(this.greeted);
     }
 
     void unregister(PeerLink link) {

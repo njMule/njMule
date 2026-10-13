@@ -87,6 +87,17 @@ public final class PreferencesCodec {
         key("dirs.temp", p -> p.tempDir().map(Path::toString).orElse(""), (b, v) -> b.tempDir(optionalPath(v)));
         key("log.level", Preferences::logLevel, (b, v) -> b.logLevel(v.strip().toUpperCase(Locale.ROOT)));
         boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
+        intKey("server.deadRetries", Preferences::deadServerRetries, Preferences.Builder::deadServerRetries);
+        boolKey("server.addFromServer", Preferences::addServersFromServer, Preferences.Builder::addServersFromServer);
+        boolKey(
+                "server.addFromClients",
+                Preferences::addServersFromClients,
+                Preferences.Builder::addServersFromClients);
+        boolKey("server.staticOnly", Preferences::staticServersOnly, Preferences.Builder::staticServersOnly);
+        boolKey(
+                "server.manualHighPriority",
+                Preferences::manualServersHighPriority,
+                Preferences.Builder::manualServersHighPriority);
         key("proxy.host", p -> p.proxy().host(), Preferences.Builder::proxyHost);
         key("proxy.port", p -> String.valueOf(p.proxy().port()), (b, v) -> b.proxyPort(Integer.parseInt(v.strip())));
         key("proxy.user", p -> p.proxy().user(), Preferences.Builder::proxyUser);

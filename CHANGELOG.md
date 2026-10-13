@@ -166,6 +166,11 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- eMule's server options: dead servers leave the list after a number of failed attempts in a row
+  (pings count until answered; static servers and the current one stay), the list can grow from
+  the server we connect to and from the clients that greet us, automatic connection can keep to
+  the static servers, and servers added by hand can take the high priority. eMule's settings for
+  them are imported.
 - Servers keep their ping time, soft and hard file limits, LowID users and software version (from
   the "server version" line); eMule's static servers (`staticservers.dat`) are loaded, and servers
   can be put in or taken out of the static list, given another priority, added from a link or

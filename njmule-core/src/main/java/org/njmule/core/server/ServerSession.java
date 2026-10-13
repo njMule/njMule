@@ -22,6 +22,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
@@ -76,6 +77,9 @@ public final class ServerSession {
 
         /** The server's answer to a request for the sources of a file. */
         void foundSources(ServerMessages.FoundSources sources);
+
+        /** The servers the server knows, sent when asked. */
+        void serverList(ServerMet.Server server, List<ServerMessages.Endpoint> servers);
     }
 
     /** From the start of an attempt to the id: connection, handshake and login. */
@@ -136,7 +140,7 @@ public final class ServerSession {
         if (target.isPresent()) {
             this.pending.add(target.get());
         } else {
-            this.pending.addAll(this.servers.candidates());
+            this.pending.addAll(this.candidates());
         }
         this.tryNext();
     }
@@ -287,6 +291,7 @@ public final class ServerSession {
                 case SEARCHRESULT -> this.listener.searchResults(target, ServerMessages.SearchResults.decode(packet));
                 case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
                     this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
+                case SERVERLIST -> this.listener.serverList(target, ServerMessages.decodeServerList(packet));
                 case REJECT -> logger.info("{} rejected our last request", ServerList.addressOf(target));
                 default -> logger.debug("Ignoring server message {}", opcode.get());
             }
@@ -314,6 +319,17 @@ public final class ServerSession {
             this.servers.update(ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
             this.listener.connected(target, change);
         }
+    }
+
+    // Only the static servers when the preferences say so.
+    private List<ServerMet.Server> candidates() {
+        List<ServerMet.Server> all = this.servers.candidates();
+        if (!this.preferences.get().staticServersOnly()) {
+            return all;
+        }
+        return all.stream()
+                .filter(s -> this.servers.isStatic(ServerList.addressOf(s)))
+                .toList();
     }
 
     // Servers name their software in a message line: "server version 17.15 (lugdunum)".
