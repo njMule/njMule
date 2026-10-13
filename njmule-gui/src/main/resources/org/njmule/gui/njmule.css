@@ -268,11 +268,11 @@
     -fx-background-color: -color-bg-default;
     -fx-border-color: -color-border-default;
     -fx-border-width: 1;
-    -fx-font-size: 11px;
+    -fx-font-size: 13px;
 }
 
 .tray-menu .ikonli-font-icon {
-    -fx-icon-size: 12px;
+    -fx-icon-size: 14px;
 }
 
 .tray-menu .separator {
@@ -284,13 +284,13 @@
 }
 
 .tray-menu .text-field {
-    -fx-padding: 1 4 1 4;
+    -fx-padding: 1 5 1 5;
     -fx-pref-width: 4.5em;
 }
 
 .tray-band {
     -fx-background-color: -nj-brand;
-    -fx-padding: 4 2 4 2;
+    -fx-padding: 5 2 5 2;
     -fx-border-color: -nj-brand-accent;
     -fx-border-width: 0 2 0 0;
 }
@@ -301,13 +301,13 @@
 }
 
 .tray-items {
-    -fx-padding: 3;
+    -fx-padding: 4;
     -fx-spacing: 0;
 }
 
 .tray-title {
     -fx-font-weight: bold;
-    -fx-padding: 1 4 2 4;
+    -fx-padding: 1 5 2 5;
 }
 
 .tray-title .ikonli-font-icon {
@@ -315,9 +315,9 @@
 }
 
 .tray-speeds {
-    -fx-hgap: 4;
+    -fx-hgap: 5;
     -fx-vgap: 2;
-    -fx-padding: 0 4 2 4;
+    -fx-padding: 0 5 2 5;
 }
 
 .tray-down {
@@ -329,8 +329,8 @@
 }
 
 .tray-item {
-    -fx-padding: 2 6 2 6;
-    -fx-graphic-text-gap: 6;
+    -fx-padding: 2 7 2 7;
+    -fx-graphic-text-gap: 7;
 }
 
 .tray-default {

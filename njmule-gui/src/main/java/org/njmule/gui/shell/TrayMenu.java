@@ -215,7 +215,7 @@ public final class TrayMenu {
         Input<Integer> input = this.inputs.number(text, name, 0, Preferences.MAX_RATE_KIBPS);
         text.setPrefColumnCount(4);
         text.setAlignment(Pos.CENTER_RIGHT);
-        slider.setPrefWidth(90);
+        slider.setPrefWidth(108);
         slider.valueChangingProperty().addListener((o, was, now) -> {
             if (!now) {
                 this.apply(change, (int) Math.round(slider.getValue()));
