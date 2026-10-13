@@ -184,16 +184,22 @@ jobs:
               shell: pwsh
               run: |
                   $msi = (Resolve-Path "dist\njmule-$env:VERSION-windows-x64.msi").Path
-                  $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn") -PassThru -Wait
+                  $log = "$env:RUNNER_TEMP\install.log"
+                  $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn", "/l*v", "`"$log`"") -PassThru -Wait
                   if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
                   # Per user, or for all users when the account is an administrator.
                   $dir = (Get-ItemProperty HKCU:\Software\njMule).InstallFolder
                   "Installed in $dir"
-                  & "$dir\njmule.exe" --version
+                  if (-not (Test-Path (Join-Path $dir "njmule.exe"))) {
+                      Get-ChildItem $dir -ErrorAction SilentlyContinue | Format-Table Name, Length
+                      Select-String -Path $log -Pattern "njmule.exe|INSTALLFOLDER|ProgramFiles" | Select-Object -First 40
+                      throw "njmule.exe is not where the installer put the programs"
+                  }
+                  & (Join-Path $dir "njmule.exe") --version
                   $tour = "$env:RUNNER_TEMP\tour"
                   New-Item -ItemType Directory -Force "$tour\config" | Out-Null
                   Set-Content "$tour\config\njmule.properties" "net.ed2k.enabled=false`nnet.kad.enabled=false"
-                  $gui = Start-Process "$dir\njmule-gui.exe" -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
+                  $gui = Start-Process (Join-Path $dir "njmule-gui.exe") -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
                   if (-not $gui.WaitForExit(300000)) { $gui.Kill(); throw "the GUI tour did not finish" }
                   if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
                   $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn") -PassThru -Wait
