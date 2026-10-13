@@ -574,6 +574,18 @@
     </build>
 
     <profiles>
+        <!-- Nothing to analyse in a module without code (this aggregator). -->
+        <profile>
+            <id>no-code</id>
+            <activation>
+                <file>
+                    <missing>${project.basedir}/src/main/java</missing>
+                </file>
+            </activation>
+            <properties>
+                <spotbugs.skip>true</spotbugs.skip>
+            </properties>
+        </profile>
         <!-- Error Prone static analysis (on by default; disable with -P!errorprone). -->
         <profile>
             <id>errorprone</id>

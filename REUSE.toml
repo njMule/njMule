@@ -9,6 +9,7 @@ version = 1
 path = [
     "NOTICE",
     ".mvn/jvm.config",
+    ".mvn/maven.config",
     ".mvn/wrapper/maven-wrapper.properties",
     "**/META-INF/services/**",
     "**/META-INF/native-image/**",

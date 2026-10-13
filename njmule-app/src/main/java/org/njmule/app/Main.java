@@ -200,9 +200,12 @@ public final class Main {
 
     // Reads passwords without echo on a terminal, otherwise one per line of standard input.
     private static PasswordSource terminal(PrintStream out) {
-        Console console = System.console();
-        if (console != null && console.isTerminal()) {
-            return prompt -> console.readPassword("%s", prompt);
+        // Since JDK 22 there is a console even without a terminal; isTerminal() tells them apart.
+        Optional<Console> console =
+                Optional.ofNullable(System.console()).filter(Console::isTerminal);
+        if (console.isPresent()) {
+            Console terminal = console.get();
+            return prompt -> terminal.readPassword("%s", prompt);
         }
         BufferedReader in =
                 new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));

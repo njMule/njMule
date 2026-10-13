@@ -493,6 +493,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(work, done -> {});
     }
 
+    // The follow-up only hands the outcome to the FX thread, which reports failures itself.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private <T> void later(CompletableFuture<T> work, Consumer<T> then) {
         work.whenComplete(
                 (value, failure) ->

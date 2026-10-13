@@ -143,7 +143,7 @@ final class GuiTour {
 
     private void closePopups() {
         for (Window w : List.copyOf(Window.getWindows())) {
-            if (w != this.stage && !(w instanceof Stage)) {
+            if (!this.stage.equals(w) && !(w instanceof Stage)) {
                 w.hide();
             }
         }
@@ -151,7 +151,7 @@ final class GuiTour {
 
     private void closeWindows() {
         for (Window w : List.copyOf(Window.getWindows())) {
-            if (w != this.stage) {
+            if (!this.stage.equals(w)) {
                 w.hide();
             }
         }

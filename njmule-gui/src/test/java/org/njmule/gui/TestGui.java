@@ -105,11 +105,19 @@ public final class TestGui implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
-        if (this.stage != null) {
-            FxTesting.onFx(this.stage::close);
+    public void close() {
+        try {
+            if (this.stage != null) {
+                FxTesting.onFx(this.stage::close);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        } finally {
+            this.model.close();
+            this.engine.close();
         }
-        this.model.close();
-        this.engine.close();
     }
 }

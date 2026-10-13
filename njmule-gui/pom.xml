@@ -109,7 +109,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-modules java.desktop --add-reads org.njmule.gui=java.desktop --add-exports org.njmule.core/org.njmule.core.persist.format=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.ed2k=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.io=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.packet=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.tag=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.search=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.util=ALL-UNNAMED</argLine>
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --enable-native-access=javafx.graphics --add-modules java.desktop --add-reads org.njmule.gui=java.desktop --add-exports org.njmule.core/org.njmule.core.persist.format=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.ed2k=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.io=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.packet=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.tag=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.search=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.util=ALL-UNNAMED</argLine>
                     <systemPropertyVariables>
                         <glass.platform>Headless</glass.platform>
                         <prism.order>sw</prism.order>
