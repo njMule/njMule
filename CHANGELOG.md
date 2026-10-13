@@ -160,6 +160,8 @@ All notable changes to this project are documented here. The format follows
 - A server.met or a nodes.dat can be taken from an address, as in eMule: the box offers the
   addresses used before, and server list and nodes.dat links from the browser are followed. The
   lists are fetched over http or https from public addresses only, within size and redirect limits.
+- The IP filter can be updated from an address in the settings (ipfilter.dat, PeerGuardian or P2B,
+  zipped or not), with the addresses used before offered again; it applies at once.
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
