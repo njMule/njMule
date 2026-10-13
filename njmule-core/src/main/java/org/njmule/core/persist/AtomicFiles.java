@@ -34,9 +34,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Crash-safe file replacement: write {@code name.tmp} + fsync, rename {@code name} to {@code name.bak}, rename
- * {@code name.tmp} to {@code name}. At any instant either the file or its backup is complete, and {@link #read} falls
- * back to the backup; a file rewritten in place would be corrupted by a crash.
+ * Crash-safe file replacement: write {@code name.tmp} + fsync, keep the current {@code name} as {@code name.bak} (a
+ * hard link, or a copy where links are not supported), then rename {@code name.tmp} over {@code name}. The file is
+ * never missing, even when the last rename fails, and {@link #read} falls back to the backup; a file rewritten in place
+ * would be corrupted by a crash.
  */
 public final class AtomicFiles {
 
@@ -95,7 +96,7 @@ public final class AtomicFiles {
                 channel.force(true);
             }
             if (keepBackup && Files.exists(absolute)) {
-                move(absolute, bakPath(absolute));
+                backup(absolute, bakPath(absolute));
             }
             move(tmp, absolute);
         } catch (IOException | RuntimeException e) {
@@ -182,6 +183,20 @@ public final class AtomicFiles {
                 throw new IOException("Interrupted while replacing " + to, e);
             }
             delay *= 2;
+        }
+    }
+
+    // A link costs nothing; FAT volumes have none, so they get a copy. Without a fresh backup the old one stays.
+    private static void backup(Path file, Path bak) {
+        try {
+            Files.deleteIfExists(bak);
+            try {
+                Files.createLink(bak, file);
+            } catch (UnsupportedOperationException | FileSystemException e) {
+                Files.copy(file, bak, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            logger.warn("Cannot refresh the backup {}", bak, e);
         }
     }
 

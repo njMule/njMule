@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +36,9 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.PartFile;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.AtomicFiles;
 
 @Timeout(60)
 class DownloadQueueTest {
@@ -151,6 +154,31 @@ class DownloadQueueTest {
             this.events.poll(100, TimeUnit.MILLISECONDS);
         }
         assertThat(this.onLoop(() -> reloaded.verifiedParts().isEmpty())).isTrue();
+    }
+
+    @Test
+    void loadsADownloadOfWhichOnlyTheBackupIsLeftAndNeverReusesItsNumber() throws Exception {
+        DownloadQueue queue = this.queue();
+        Hash16 hash = Hash16.parseHex("12".repeat(16));
+        this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("kept.bin", 1000, hash)));
+        this.onLoop(() -> {
+            queue.close();
+            return null;
+        });
+        Path temp = this.dir.resolve("temp");
+        Path met = temp.resolve("001" + PartFile.MET_SUFFIX);
+        Files.move(met, AtomicFiles.bakPath(met), StandardCopyOption.REPLACE_EXISTING);
+        Files.writeString(temp.resolve("002" + PartFile.DATA_SUFFIX), "left by a crash");
+
+        DownloadQueue again = this.queue();
+        assertThat(this.onLoop(() -> again.get(hash))).isPresent();
+        DownloadQueue.Download next =
+                this.onLoop(() -> again.add(Ed2kLink.FileLink.of("new.bin", 1000, Hash16.parseHex("34".repeat(16)))));
+        assertThat(next.file().number()).isEqualTo(3);
+        this.onLoop(() -> {
+            again.close();
+            return null;
+        });
     }
 
     private void awaitCorruptPart0(DownloadQueue.Download download) throws Exception {

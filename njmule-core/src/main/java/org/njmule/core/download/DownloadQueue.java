@@ -31,8 +31,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
@@ -67,6 +70,8 @@ public final class DownloadQueue implements AutoCloseable {
     public static final Duration SAVE_INTERVAL = Duration.ofSeconds(60);
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
+    private static final Pattern MET_NAME = Pattern.compile(
+            "(\\d{1,6})" + Pattern.quote(PartFile.MET_SUFFIX) + "(?:" + Pattern.quote(AtomicFiles.BAK_SUFFIX) + ")?");
 
     /** One download with its storage, its known sources and the parts verified this run. */
     public static final class Download {
@@ -119,27 +124,32 @@ public final class DownloadQueue implements AutoCloseable {
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
-    /** Loads the part files of {@code tempDir}; unreadable ones are left alone and logged. */
+    /**
+     * Loads the part files of {@code tempDir}, also those of which only the {@code .bak} is left; unreadable ones are
+     * left alone and logged.
+     */
     public static DownloadQueue load(EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener)
             throws IOException {
         DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, listener);
         Files.createDirectories(tempDir);
-        try (DirectoryStream<Path> mets = Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX)) {
+        Set<Integer> numbers = new TreeSet<>();
+        try (DirectoryStream<Path> mets = Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX + "*")) {
             for (Path met : mets) {
-                String name = String.valueOf(met.getFileName());
-                String number = name.substring(0, name.length() - PartFile.MET_SUFFIX.length());
-                if (!number.matches("\\d{1,6}")) {
-                    continue;
+                Matcher m = MET_NAME.matcher(String.valueOf(met.getFileName()));
+                if (m.matches()) {
+                    numbers.add(Integer.parseInt(m.group(1)));
                 }
-                try {
-                    PartFile file = PartFile.load(tempDir, Integer.parseInt(number));
-                    Download download = new Download(file, PartFileStorage.open(file.dataFile()));
-                    queue.downloads.put(file.hash(), download);
-                    // A crash may have come between writing a part and checking it.
-                    queue.hashSetKnown(download);
-                } catch (IOException | RuntimeException e) {
-                    logger.warn("Cannot load the download {}", met, e);
-                }
+            }
+        }
+        for (int number : numbers) {
+            try {
+                PartFile file = PartFile.load(tempDir, number);
+                Download download = new Download(file, PartFileStorage.open(file.dataFile()));
+                queue.downloads.put(file.hash(), download);
+                // A crash may have come between writing a part and checking it.
+                queue.hashSetKnown(download);
+            } catch (IOException | RuntimeException e) {
+                logger.warn("Cannot load the download {}", PartFile.fileName(number), e);
             }
         }
         queue.saver = loop.scheduleRepeating("save downloads", SAVE_INTERVAL, SAVE_INTERVAL, queue::saveChanged);
@@ -361,10 +371,19 @@ public final class DownloadQueue implements AutoCloseable {
             used.add(download.file.number());
         }
         int number = 1;
-        while (used.contains(number)
-                || Files.exists(this.tempDir.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX))) {
+        while (used.contains(number) || this.anyFileOf(number)) {
             number++;
         }
         return number;
+    }
+
+    // A number is taken while any file of it is left, so a new download never reopens an old part file.
+    private boolean anyFileOf(int number) {
+        String base = PartFile.fileName(number);
+        Path met = this.tempDir.resolve(base + PartFile.MET_SUFFIX);
+        return Files.exists(met)
+                || Files.exists(AtomicFiles.bakPath(met))
+                || Files.exists(AtomicFiles.tmpPath(met))
+                || Files.exists(this.tempDir.resolve(base + PartFile.DATA_SUFFIX));
     }
 }
