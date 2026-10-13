@@ -229,6 +229,9 @@ All notable changes to this project are documented here. The format follows
   eMule settings are imported.
 - Kad can check the firewall again on request (Recheck Firewall).
 - The search, transfer and shared lists copy eD2K links as HTML anchors too.
+- The statistics screen has a statistics tree beside the graph: ratios, session and cumulative
+  transfers, average and top rates, run times, clients by software, servers, shared files and the
+  free space of the temp and incoming disks.
 
 ### Changed
 

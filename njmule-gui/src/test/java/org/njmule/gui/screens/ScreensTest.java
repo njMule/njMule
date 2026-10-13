@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import javafx.scene.control.TreeItem;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import org.junit.jupiter.api.AfterEach;
@@ -436,6 +437,33 @@ class ScreensTest {
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("totals", () -> screen.downloadedLabel().getText().equals("0 B"));
         assertThat(FxTesting.onFx(() -> screen.downloadedLabel().getText())).isEqualTo("0 B");
+        List<String> sections = FxTesting.onFx(() -> screen.tree().view().getRoot().getChildren().stream()
+                .map(TreeItem::getValue)
+                .toList());
+        assertThat(sections)
+                .startsWith("Transfers", "Uploads", "Downloads", "Connection", "Time Statistics")
+                .contains("Clients (0)", "Servers", "Shared Files", "Disk Space");
+        TreeItem<String> transfers = FxTesting.onFx(
+                () -> screen.tree().view().getRoot().getChildren().getFirst());
+        assertThat(FxTesting.onFx(transfers::isExpanded)).isTrue();
+        FxTesting.onFx(() -> {
+            transfers.setExpanded(false);
+            screen.tree().refresh();
+        });
+        assertThat(FxTesting.onFx(
+                        () -> screen.tree().view().getRoot().getChildren().getFirst()))
+                .as("the same item, still closed")
+                .isSameAs(transfers)
+                .satisfies(t -> assertThat(t.isExpanded()).isFalse());
+        assertThat(FxTesting.onFx(() -> screen.tree()
+                        .view()
+                        .getRoot()
+                        .getChildren()
+                        .getLast()
+                        .getChildren()
+                        .size()))
+                .as("temp and incoming")
+                .isEqualTo(2);
         FxTesting.onFx(() -> {
             FxTesting.snapshot(screen.view(), "statistics-alone");
             return null;

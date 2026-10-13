@@ -161,6 +161,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
     private long ticks;
+    private long maxDown;
+    private long maxUp;
     // Restored searches have ids of their own, below those of the engine.
     private long restoredIds;
 
@@ -222,6 +224,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.ticks++;
         this.later(this.engine.status(), s -> {
             this.status.set(s);
+            this.maxDown = Math.max(this.maxDown, s.downloadBytesPerSecond());
+            this.maxUp = Math.max(this.maxUp, s.uploadBytesPerSecond());
             this.rates.add(new RateSample(Instant.now(), s.downloadBytesPerSecond(), s.uploadBytesPerSecond()));
             if (this.rates.size() > RATE_HISTORY) {
                 this.rates.remove(0, this.rates.size() - RATE_HISTORY);
@@ -300,6 +304,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public ObservableList<LogLine> log() {
         return this.log;
+    }
+
+    /** The highest download rate of this session, in bytes per second. */
+    public long maxDownloadRate() {
+        return this.maxDown;
+    }
+
+    public long maxUploadRate() {
+        return this.maxUp;
     }
 
     public ObservableList<RateSample> rates() {

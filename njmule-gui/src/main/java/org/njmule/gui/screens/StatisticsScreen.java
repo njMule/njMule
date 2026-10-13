@@ -20,6 +20,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SplitPane;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -49,9 +50,11 @@ public final class StatisticsScreen implements Screen {
     private final Label totalUp = value();
     private final Label sessions = value();
     private final Label runtime = value();
+    private final StatsTree tree;
 
     public StatisticsScreen(Gui gui) {
         this.gui = gui;
+        this.tree = new StatsTree(gui);
     }
 
     @Override
@@ -110,10 +113,18 @@ public final class StatisticsScreen implements Screen {
         // A short window scrolls the cards instead of setting a tall minimum for the whole window.
         ScrollPane scroll = new ScrollPane(new VBox(10, graph, legend, cards));
         scroll.setFitToWidth(true);
-        return Fx.screen(this.title(), Fx.toolRow(), scroll);
+        // The tree on the left, the rates and totals beside it.
+        SplitPane split = new SplitPane(this.tree.view(), scroll);
+        split.setDividerPositions(0.34);
+        SplitPane.setResizableWithParent(this.tree.view(), false);
+        this.tree.refresh();
+        return Fx.screen(this.title(), Fx.toolRow(), split);
     }
 
     private void show(EngineStatus s) {
+        if (this.view != null) {
+            this.tree.refresh();
+        }
         var formats = this.gui.formats();
         this.downRate.setText(formats.rate(s.downloadBytesPerSecond()));
         this.upRate.setText(formats.rate(s.uploadBytesPerSecond()));
@@ -131,6 +142,10 @@ public final class StatisticsScreen implements Screen {
 
     Label downloadedLabel() {
         return this.downloaded;
+    }
+
+    StatsTree tree() {
+        return this.tree;
     }
 
     private static Label value() {

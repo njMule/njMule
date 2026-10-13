@@ -84,6 +84,11 @@ public final class Formats {
         return this.oneDecimal.format(Math.max(0, bytesPerSecond) / 1024.0) + " KB/s";
     }
 
+    /** A ratio with up to two decimals: 2.5, 0.33. */
+    public String ratio(double value) {
+        return this.twoDecimals.format(value);
+    }
+
     public String count(long value) {
         return this.integer.format(value);
     }
