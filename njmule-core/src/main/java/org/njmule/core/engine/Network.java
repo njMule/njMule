@@ -144,6 +144,8 @@ final class Network {
     private final ServerPinger pinger;
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
+    // The server logged in to or being tried, read by the listener's threads; 0 for none.
+    private volatile int serverIp;
     private final DownloadManager downloads;
     private final Credits credits;
     private final UploadManager uploads;
@@ -244,6 +246,7 @@ final class Network {
                         userHash,
                         this::ourHello,
                         () -> preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
+                        this::isOurServer,
                         random);
         this.downloads =
                 DownloadManager.open(
@@ -308,7 +311,10 @@ final class Network {
         int port = this.preferences.get().tcpPort();
         ConnectionGuard guard =
                 new ConnectionGuard(
-                        () -> this.ipFilter, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
+                        () -> this.ipFilter,
+                        this::isOurServer,
+                        ConnectionGuard.Limits.DEFAULT,
+                        Ticker.systemTicker());
         try {
             this.listener =
                     TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
@@ -1042,6 +1048,10 @@ final class Network {
         }
     }
 
+    private boolean isOurServer(int ip) {
+        return ip != 0 && ip == this.serverIp;
+    }
+
     private static IpFilter loadIpFilter(Path file) {
         if (!Files.exists(file)) {
             return IpFilter.empty();
@@ -1084,6 +1094,7 @@ final class Network {
     private final class SessionEvents implements ServerSession.Listener {
         @Override
         public void connecting(ServerMet.Server server) {
+            Network.this.serverIp = server.ip();
             ServerInfo info = info(server);
             Network.this.userLog.log(LogLine.Level.INFO, "Connecting to " + describe(info));
             Network.this.publish.accept(new EngineEvent.ServerConnecting(info));
@@ -1112,6 +1123,7 @@ final class Network {
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
+            Network.this.serverIp = 0;
             Network.this.context = ServerContext.NONE;
             Network.this.publisher.disconnected();
             Network.this.searches.stopAll();

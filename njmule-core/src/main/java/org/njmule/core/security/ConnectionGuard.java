@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 /**
@@ -59,6 +60,7 @@ public final class ConnectionGuard {
     }
 
     private final Supplier<IpFilter> filter;
+    private final IntPredicate exempt;
     private final Limits limits;
     private final Ticker ticker;
     private final Map<Integer, Integer> perAddress = new HashMap<>();
@@ -67,7 +69,17 @@ public final class ConnectionGuard {
 
     /** {@code filter} is read on every admission, so a reloaded filter applies at once. */
     public ConnectionGuard(Supplier<IpFilter> filter, Limits limits, Ticker ticker) {
+        this(filter, ip -> false, limits, ticker);
+    }
+
+    /**
+     * @param exempt addresses never held back by the accept rate or the total, such as the server
+     *     testing whether we are reachable: refusing it would leave us with a LowID
+     */
+    public ConnectionGuard(
+            Supplier<IpFilter> filter, IntPredicate exempt, Limits limits, Ticker ticker) {
         this.filter = Objects.requireNonNull(filter, "filter");
+        this.exempt = Objects.requireNonNull(exempt, "exempt");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
@@ -82,10 +94,11 @@ public final class ConnectionGuard {
         while (!this.recentAccepts.isEmpty() && now - this.recentAccepts.peekFirst() >= window) {
             this.recentAccepts.pollFirst();
         }
-        if (this.recentAccepts.size() >= this.limits.maxAccepts()) {
+        boolean exempted = this.exempt.test(ip);
+        if (!exempted && this.recentAccepts.size() >= this.limits.maxAccepts()) {
             return new Admission.Refused(Refusal.ACCEPT_RATE);
         }
-        if (this.total >= this.limits.maxTotal()) {
+        if (!exempted && this.total >= this.limits.maxTotal()) {
             return new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS);
         }
         int fromAddress = this.perAddress.getOrDefault(ip, 0);

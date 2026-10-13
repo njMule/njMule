@@ -17,6 +17,7 @@
 package org.njmule.core.peer;
 
 import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.SecureRandom;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PeerInfo;
@@ -40,6 +42,7 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.security.ConnectionGuard;
+import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,6 +72,7 @@ public final class PeerGreetings implements AutoCloseable {
     private final Hash16 userHash;
     private final Supplier<Hello> ourHello;
     private final Supplier<Boolean> plainAllowed;
+    private final IntPredicate serverTesting;
     private final SecureRandom random;
     private final Set<TcpConnection> open = ConcurrentHashMap.newKeySet();
     private volatile Router router = (connection, peer) -> Optional.empty();
@@ -76,15 +80,19 @@ public final class PeerGreetings implements AutoCloseable {
     /**
      * @param ourHello builds our greeting from the current state (name, ports, server)
      * @param plainAllowed whether plain incoming connections are accepted
+     * @param serverTesting whether an address ({@code Ipv4} form) is the server we log in to, which
+     *     connects to tell whether we are reachable: it may come plain and takes a short padding
      */
     public PeerGreetings(
             Hash16 userHash,
             Supplier<Hello> ourHello,
             Supplier<Boolean> plainAllowed,
+            IntPredicate serverTesting,
             SecureRandom random) {
         this.userHash = Objects.requireNonNull(userHash, "userHash");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.plainAllowed = Objects.requireNonNull(plainAllowed, "plainAllowed");
+        this.serverTesting = Objects.requireNonNull(serverTesting, "serverTesting");
         this.random = Objects.requireNonNull(random, "random");
     }
 
@@ -96,14 +104,20 @@ public final class PeerGreetings implements AutoCloseable {
     /** Serves an accepted socket (from a listener thread) until the connection ends. */
     public void accepted(Socket socket, ConnectionGuard.Permit permit) {
         TcpConnection connection;
+        boolean server =
+                socket.getInetAddress() instanceof Inet4Address ip
+                        && this.serverTesting.test(Ipv4.fromBytes(ip.getAddress()));
         try {
             connection =
                     TcpConnector.accept(
                             socket,
                             this.userHash,
-                            this.plainAllowed.get(),
+                            server || this.plainAllowed.get(),
                             HELLO_TIMEOUT,
-                            this.random);
+                            this.random,
+                            server
+                                    ? TcpConnector.MAX_SERVER_TEST_PADDING
+                                    : TcpConnector.MAX_CLIENT_PADDING);
         } catch (IOException e) {
             logger.debug(
                     "Incoming connection from {} failed: {}",

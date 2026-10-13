@@ -68,6 +68,27 @@ class ConnectionGuardTest {
     }
 
     @Test
+    void theServerTestingUsPassesTheRateAndTotalLimitsButNotTheFilter() {
+        int server = Ipv4.parse("7.7.7.7");
+        IpFilter filter =
+                IpFilter.of(
+                        List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")),
+                        IpFilter.DEFAULT_LEVEL);
+        ConnectionGuard guard =
+                new ConnectionGuard(
+                        () -> filter,
+                        ip -> ip == server || ip == PEER,
+                        new Limits(1, 5, 1, Duration.ofSeconds(5)),
+                        this.ticker);
+
+        permit(guard.admit(OTHER));
+        assertThat(guard.admit(Ipv4.parse("9.9.9.9")))
+                .isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
+        assertThat(guard.admit(server)).isInstanceOf(Admission.Admitted.class);
+        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
+    }
+
+    @Test
     void limitsTheAcceptRateOverASlidingWindow() {
         ConnectionGuard guard =
                 new ConnectionGuard(

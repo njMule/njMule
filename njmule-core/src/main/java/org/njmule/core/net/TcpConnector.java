@@ -48,6 +48,12 @@ public final class TcpConnector {
     /** Largest random padding added to an obfuscation handshake with a client. */
     public static final int MAX_CLIENT_PADDING = 128;
 
+    /**
+     * Largest padding in the answer to a server testing whether we are reachable: servers accept at
+     * most 16 bytes there, and a longer padding leaves us with a LowID.
+     */
+    public static final int MAX_SERVER_TEST_PADDING = 15;
+
     private static final int BUFFER = 16 * 1024;
 
     // One engine per process: the network sets where outgoing connections go.
@@ -125,6 +131,18 @@ public final class TcpConnector {
             Duration timeout,
             SecureRandom random)
             throws IOException {
+        return accept(socket, ownUserHash, allowPlain, timeout, random, MAX_CLIENT_PADDING);
+    }
+
+    /** As above, with at most {@code maxPadding} bytes of handshake padding. */
+    public static TcpConnection accept(
+            Socket socket,
+            Hash16 ownUserHash,
+            boolean allowPlain,
+            Duration timeout,
+            SecureRandom random,
+            int maxPadding)
+            throws IOException {
         try {
             socket.setTcpNoDelay(true);
             socket.setSoTimeout(Math.toIntExact(timeout.toMillis()));
@@ -144,8 +162,7 @@ public final class TcpConnector {
                 return new TcpConnection(socket, raw, out, false, FrameLimits.CLIENT_HANDSHAKE);
             }
             StreamObfuscation.Ciphers ciphers =
-                    StreamObfuscation.acceptFromClient(
-                            raw, out, ownUserHash, random, MAX_CLIENT_PADDING);
+                    StreamObfuscation.acceptFromClient(raw, out, ownUserHash, random, maxPadding);
             return new TcpConnection(
                     socket,
                     new CipherInputStream(raw, ciphers.receive().cipher()),
