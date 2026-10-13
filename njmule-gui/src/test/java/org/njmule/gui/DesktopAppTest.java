@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.shell.TrayMenu;
 
 @Timeout(60)
 class DesktopAppTest {
@@ -61,10 +62,16 @@ class DesktopAppTest {
             });
             assertThat(FxTesting.onFx(() -> stage.get().getTitle())).startsWith("njMule");
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("transfers");
+            TrayMenu menu = FxTesting.onFx(app::trayMenu);
             FxTesting.onFx(() -> {
                 app.window().show("search");
                 app.relaunch();
             });
+            if (menu != null) {
+                assertThat(FxTesting.onFx(app::trayMenu))
+                        .as("the tray menu follows the language")
+                        .isNotSameAs(menu);
+            }
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("search");
             assertThat(app.engine().isRunning()).isTrue();
             FxTesting.onFx(() -> stage.get().close());

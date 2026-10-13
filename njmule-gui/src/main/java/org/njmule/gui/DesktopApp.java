@@ -228,12 +228,35 @@ public final class DesktopApp implements AutoCloseable {
         owner.setX(-10_000);
         owner.setY(-10_000);
         owner.show();
+        this.trayWindows();
+        this.tray = NotificationArea.attach(stage, this.settings::minimizeToTray, new NotificationArea.Handlers() {
+            @Override
+            public void click() {
+                DesktopApp.this.miniMule.show();
+            }
+
+            @Override
+            public void menu(double x, double y) {
+                DesktopApp.this.trayMenu.show(x, y);
+            }
+
+            @Override
+            public void restored() {
+                DesktopApp.this.miniMule.hide();
+                DesktopApp.this.trayMenu.hide();
+            }
+        });
+        this.window.whileHidden(this.tray::notify);
+    }
+
+    // The menu and the small status window, in the language of the interface.
+    private void trayWindows() {
         Runnable restore = () -> this.tray.restore();
         Runnable options = () -> {
             this.tray.restore();
             this.window.show("settings");
         };
-        this.trayMenu = new TrayMenu(this.gui, owner, new TrayMenu.Actions() {
+        this.trayMenu = new TrayMenu(this.gui, this.trayOwner, new TrayMenu.Actions() {
             @Override
             public void restore() {
                 restore.run();
@@ -251,7 +274,7 @@ public final class DesktopApp implements AutoCloseable {
         });
         this.miniMule = new MiniMule(
                 this.gui,
-                owner,
+                this.trayOwner,
                 () -> this.engine.preferences().effectiveIncomingDir(this.directories),
                 new MiniMule.Actions() {
                     @Override
@@ -276,24 +299,6 @@ public final class DesktopApp implements AutoCloseable {
                         restore.run();
                     }
                 });
-        this.tray = NotificationArea.attach(stage, this.settings::minimizeToTray, new NotificationArea.Handlers() {
-            @Override
-            public void click() {
-                DesktopApp.this.miniMule.show();
-            }
-
-            @Override
-            public void menu(double x, double y) {
-                DesktopApp.this.trayMenu.show(x, y);
-            }
-
-            @Override
-            public void restored() {
-                DesktopApp.this.miniMule.hide();
-                DesktopApp.this.trayMenu.hide();
-            }
-        });
-        this.window.whileHidden(this.tray::notify);
     }
 
     // Closing the main window ends njMule: its dialogs and the tray's windows go with it, or any of them left
@@ -413,6 +418,14 @@ public final class DesktopApp implements AutoCloseable {
         String screen = this.window.current();
         this.scene.setRoot(this.build());
         this.window.show(screen);
+        if (this.tray != null) {
+            this.trayWindows();
+            this.window.whileHidden(this.tray::notify);
+        }
+    }
+
+    TrayMenu trayMenu() {
+        return this.trayMenu;
     }
 
     private void remember(Stage stage) {
