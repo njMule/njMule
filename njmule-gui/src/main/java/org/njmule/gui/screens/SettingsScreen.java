@@ -49,6 +49,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.app.LinkAssociation;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -109,6 +110,9 @@ public final class SettingsScreen implements Screen {
     private final CheckBox rememberDownloaded = new CheckBox();
     private final CheckBox rememberCancelled = new CheckBox();
     private final CheckBox storeSearches = new CheckBox();
+    private final CheckBox addPaused = new CheckBox();
+    private final CheckBox startNext = new CheckBox();
+    private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
@@ -213,6 +217,17 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setText(this.gui.t("IDS_PW_REMEMBERDOWNLOADED"));
         this.rememberCancelled.setText(this.gui.t("IDS_PW_REMEMBERCANCELLED"));
         this.storeSearches.setText(this.gui.t("IDS_STORESEARCHES"));
+        this.addPaused.setText(this.gui.t("IDS_ADDNEWFILESPAUSED"));
+        this.startNext.setText(this.gui.t("IDS_STARTNEXTFILE"));
+        // Any category, the same first, or the same only.
+        this.nextCategory
+                .getItems()
+                .addAll(NextDownload.ANY, NextDownload.SAME_CATEGORY_FIRST, NextDownload.SAME_CATEGORY);
+        this.nextCategory.setCellFactory(l -> new NamedCell<>(this::nextName));
+        this.nextCategory.setButtonCell(new NamedCell<>(this::nextName));
+        this.nextCategory
+                .disableProperty()
+                .bind(this.startNext.selectedProperty().not());
         this.deadRetries.setPrefColumnCount(4);
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
@@ -284,6 +299,10 @@ public final class SettingsScreen implements Screen {
         grid.add(this.rememberDownloaded, 1, row++);
         grid.add(this.rememberCancelled, 1, row++);
         grid.add(this.storeSearches, 1, row++);
+        grid.add(this.addPaused, 1, row++);
+        HBox next = new HBox(8, this.startNext, this.nextCategory);
+        next.setAlignment(Pos.CENTER_LEFT);
+        grid.add(next, 1, row++);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
         row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
         this.filterLevel.setPrefColumnCount(4);
@@ -486,6 +505,9 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setSelected(p.rememberDownloadedFiles());
         this.rememberCancelled.setSelected(p.rememberCancelledFiles());
         this.storeSearches.setSelected(p.storeSearches());
+        this.addPaused.setSelected(p.addDownloadsPaused());
+        this.startNext.setSelected(p.nextDownload() != NextDownload.NONE);
+        this.nextCategory.setValue(p.nextDownload() == NextDownload.NONE ? NextDownload.ANY : p.nextDownload());
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
@@ -627,6 +649,8 @@ public final class SettingsScreen implements Screen {
                 .rememberDownloadedFiles(this.rememberDownloaded.isSelected())
                 .rememberCancelledFiles(this.rememberCancelled.isSelected())
                 .storeSearches(this.storeSearches.isSelected())
+                .addDownloadsPaused(this.addPaused.isSelected())
+                .nextDownload(this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
                 .build();
     }
 
@@ -658,6 +682,14 @@ public final class SettingsScreen implements Screen {
 
     private String obfuscationName(ObfuscationMode m) {
         return this.gui.t("nj.obfuscation." + key(m));
+    }
+
+    private String nextName(NextDownload next) {
+        return switch (next) {
+            case SAME_CATEGORY_FIRST -> this.gui.t("IDS_PREF_STARTNEXTFILECAT");
+            case SAME_CATEGORY -> this.gui.t("IDS_PREF_STARTNEXTFILECATONLY");
+            case ANY, NONE -> this.gui.t("nj.settings.anyCategory");
+        };
     }
 
     private String languageName(Optional<Locale> l) {

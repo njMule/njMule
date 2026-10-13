@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -98,6 +99,11 @@ public final class PreferencesCodec {
                 Preferences::rememberCancelledFiles,
                 Preferences.Builder::rememberCancelledFiles);
         boolKey("search.store", Preferences::storeSearches, Preferences.Builder::storeSearches);
+        boolKey("download.addPaused", Preferences::addDownloadsPaused, Preferences.Builder::addDownloadsPaused);
+        key(
+                "download.startNext",
+                p -> p.nextDownload().name(),
+                (b, v) -> b.nextDownload(NextDownload.valueOf(v.strip().toUpperCase(Locale.ROOT))));
         intKey("server.deadRetries", Preferences::deadServerRetries, Preferences.Builder::deadServerRetries);
         boolKey("server.addFromServer", Preferences::addServersFromServer, Preferences.Builder::addServersFromServer);
         boolKey(

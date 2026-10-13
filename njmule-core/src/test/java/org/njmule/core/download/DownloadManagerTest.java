@@ -38,6 +38,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
@@ -135,6 +136,46 @@ class DownloadManagerTest {
         assertThat(resumed.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
         assertThat(this.onLoop(() -> manager.stop(Hash16.parseHex("00".repeat(16)))))
                 .isFalse();
+    }
+
+    @Test
+    void resumesThePausedDownloadOfHighestPriorityAsAsked() throws Exception {
+        this.categories =
+                List.of(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false));
+        DownloadManager manager = this.manager();
+        Hash16 film = Hash16.parseHex("a1".repeat(16));
+        Hash16 urgent = Hash16.parseHex("a2".repeat(16));
+        Hash16 later = Hash16.parseHex("a3".repeat(16));
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, film));
+            manager.add(Ed2kLink.FileLink.of("urgent.txt", 5000, urgent));
+            manager.add(Ed2kLink.FileLink.of("later.txt", 5000, later));
+            manager.setPriority(film, DownloadPriority.LOW);
+            manager.setPriority(urgent, DownloadPriority.HIGH);
+            manager.setPriority(later, DownloadPriority.NORMAL);
+            manager.pause(film);
+            manager.stop(urgent);
+            manager.pause(later);
+            return null;
+        });
+
+        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.NONE))).isEmpty();
+        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
+                .map(DownloadInfo::hash)
+                .as("the category's, though of low priority")
+                .contains(film);
+        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY)))
+                .as("none left in the category")
+                .isEmpty();
+        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
+                .map(DownloadInfo::hash)
+                .as("then any, a stopped one too")
+                .contains(urgent);
+        assertThat(this.onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
+                .map(DownloadInfo::status)
+                .contains(DownloadInfo.Status.DOWNLOADING);
+        assertThat(this.onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
+                .isEmpty();
     }
 
     @Test

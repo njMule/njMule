@@ -217,6 +217,9 @@ All notable changes to this project are documented here. The format follows
   (`StoredSearches.met`, so eMule's open searches come over with the import); it can be turned off.
 - eD2K file links copied in other programs can become downloads (off by default); the links njMule
   copies itself are left alone.
+- New downloads can start paused, and when a download completes or is cancelled a paused one can
+  start: the one of highest priority, of the same category first or only. eMule's choices are
+  imported.
 
 ### Changed
 

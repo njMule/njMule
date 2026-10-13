@@ -68,7 +68,9 @@ public record Preferences(
         int ipFilterLevel,
         boolean rememberDownloadedFiles,
         boolean rememberCancelledFiles,
-        boolean storeSearches) {
+        boolean storeSearches,
+        boolean addDownloadsPaused,
+        NextDownload nextDownload) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -121,6 +123,7 @@ public record Preferences(
         requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
         requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
         requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
+        Objects.requireNonNull(nextDownload, "nextDownload");
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -159,7 +162,9 @@ public record Preferences(
                 DEFAULT_IP_FILTER_LEVEL,
                 true,
                 true,
-                true);
+                true,
+                false,
+                NextDownload.NONE);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -226,6 +231,8 @@ public record Preferences(
         private boolean rememberDownloadedFiles;
         private boolean rememberCancelledFiles;
         private boolean storeSearches;
+        private boolean addDownloadsPaused;
+        private NextDownload nextDownload;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -262,6 +269,8 @@ public record Preferences(
             this.rememberDownloadedFiles = p.rememberDownloadedFiles;
             this.rememberCancelledFiles = p.rememberCancelledFiles;
             this.storeSearches = p.storeSearches;
+            this.addDownloadsPaused = p.addDownloadsPaused;
+            this.nextDownload = p.nextDownload;
         }
 
         public Builder nick(String value) {
@@ -463,6 +472,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder addDownloadsPaused(boolean value) {
+            this.addDownloadsPaused = value;
+            return this;
+        }
+
+        public Builder nextDownload(NextDownload value) {
+            this.nextDownload = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -499,7 +518,9 @@ public record Preferences(
                     this.ipFilterLevel,
                     this.rememberDownloadedFiles,
                     this.rememberCancelledFiles,
-                    this.storeSearches);
+                    this.storeSearches,
+                    this.addDownloadsPaused,
+                    this.nextDownload);
         }
     }
 }

@@ -38,6 +38,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -252,6 +253,10 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "RememberDownloadedFiles").ifPresent(b::rememberDownloadedFiles);
         ini.getBoolean(SECTION, "RememberCancelledFiles").ifPresent(b::rememberCancelledFiles);
         ini.getBoolean(SECTION, "StoreSearches").ifPresent(b::storeSearches);
+        ini.getBoolean(SECTION, "AddNewFilesPaused").ifPresent(b::addDownloadsPaused);
+        // 0 none, 1 any, 2 the same category first, 3 the same category only.
+        ini.getLong(SECTION, "StartNextFile")
+                .ifPresent(v -> b.nextDownload(NextDownload.values()[(int) Math.clamp(v, 0, 3)]));
         ini.getLong(SECTION, "FilterLevel")
                 .ifPresent(v -> b.ipFilterLevel(Math.clamp(v, 0, Preferences.MAX_IP_FILTER_LEVEL)));
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);

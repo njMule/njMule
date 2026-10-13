@@ -39,6 +39,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
@@ -47,6 +48,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
@@ -498,6 +500,35 @@ public final class DownloadManager implements AutoCloseable {
         entry.nextServerAsk = now;
         this.listener.progress(this.info(entry));
         return true;
+    }
+
+    /**
+     * Resumes the paused or stopped download of highest priority, the first added among equals: one of {@code category}
+     * first, unless {@code mode} takes any; returns it, if there was one.
+     */
+    public Optional<DownloadInfo> resumeNext(int category, NextDownload mode) {
+        Optional<Entry> next = Optional.empty();
+        if (mode == NextDownload.SAME_CATEGORY_FIRST || mode == NextDownload.SAME_CATEGORY) {
+            next = this.firstPaused(e -> e.download.file().category() == category);
+        }
+        if (next.isEmpty() && (mode == NextDownload.ANY || mode == NextDownload.SAME_CATEGORY_FIRST)) {
+            next = this.firstPaused(e -> true);
+        }
+        next.ifPresent(e -> this.resume(e.download.hash()));
+        return next.map(this::info);
+    }
+
+    private Optional<Entry> firstPaused(Predicate<Entry> wanted) {
+        Entry best = null;
+        for (Entry entry : this.entries.values()) {
+            PartFile.Status status = entry.download.file().status();
+            if ((status == PartFile.Status.PAUSED || status == PartFile.Status.STOPPED)
+                    && wanted.test(entry)
+                    && (best == null || priority(entry).compareTo(priority(best)) > 0)) {
+                best = entry;
+            }
+        }
+        return Optional.ofNullable(best);
     }
 
     /** Stops the download and deletes its data. */

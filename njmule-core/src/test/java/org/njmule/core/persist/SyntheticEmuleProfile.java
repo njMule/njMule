@@ -110,6 +110,8 @@ public final class SyntheticEmuleProfile {
                         "Autoconnect=0",
                         "RememberCancelledFiles=0",
                         "StoreSearches=0",
+                        "AddNewFilesPaused=1",
+                        "StartNextFile=2",
                         "NetworkED2K=1",
                         "NetworkKademlia=0",
                         "SecureIdent=1",

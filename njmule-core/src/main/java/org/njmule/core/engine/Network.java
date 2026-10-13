@@ -652,7 +652,12 @@ final class Network {
     }
 
     DownloadInfo addDownload(Ed2kLink.FileLink link) throws IOException {
+        boolean fresh = this.downloads.download(link.hash()).isEmpty();
         DownloadInfo info = this.downloads.add(link);
+        if (fresh && this.preferences.get().addDownloadsPaused()) {
+            this.downloads.pause(info.hash());
+            info = this.downloads.download(info.hash()).orElse(info);
+        }
         this.userLog.log(LogLine.Level.INFO, "Downloading " + info.name());
         return info;
     }
@@ -678,6 +683,7 @@ final class Network {
     }
 
     boolean cancelDownload(Hash16 hash) {
+        int category = this.downloads.download(hash).map(DownloadInfo::category).orElse(Category.NONE);
         boolean cancelled = this.downloads.cancel(hash);
         if (cancelled && this.preferences.get().rememberCancelledFiles()) {
             try {
@@ -686,7 +692,17 @@ final class Network {
                 logger.warn("Cannot save {}", CancelledFiles.FILE_NAME, e);
             }
         }
+        if (cancelled) {
+            this.startNext(category);
+        }
         return cancelled;
+    }
+
+    // A download left: a paused one may take its place, as the preferences say.
+    private void startNext(int category) {
+        this.downloads
+                .resumeNext(category, this.preferences.get().nextDownload())
+                .ifPresent(next -> this.userLog.log(LogLine.Level.INFO, "Resuming " + next.name()));
     }
 
     List<SavedSearch> savedSearches() {
@@ -1705,6 +1721,7 @@ final class Network {
             }
             Network.this.publisher.changed(Optional.of(download.hash()));
             Network.this.publish.accept(new EngineEvent.DownloadCompleted(download, file));
+            Network.this.startNext(download.category());
         }
 
         @Override

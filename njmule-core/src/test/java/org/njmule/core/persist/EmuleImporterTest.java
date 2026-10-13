@@ -37,6 +37,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.ImportReport.Outcome;
+import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -184,6 +185,8 @@ class EmuleImporterTest {
         assertThat(this.target.preferences.rememberCancelledFiles()).isFalse();
         assertThat(this.target.preferences.rememberDownloadedFiles()).isTrue();
         assertThat(this.target.preferences.storeSearches()).isFalse();
+        assertThat(this.target.preferences.addDownloadsPaused()).isTrue();
+        assertThat(this.target.preferences.nextDownload()).isEqualTo(NextDownload.SAME_CATEGORY_FIRST);
         assertThat(this.target.preferences.tcpPort()).isEqualTo(Preferences.DEFAULT_TCP_PORT);
         assertThat(this.target.servers).containsExactly(this.emule.config.resolve("server.met"));
         assertThat(this.target.contacts).isEqualTo(3);
