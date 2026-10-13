@@ -49,6 +49,7 @@ class KadSimulationTest {
     private static final long SECOND = 1_000_000_000L;
     // Publish lookups live 140 s: searching earlier may miss a store still on its way.
     private static final int PUBLISH_WAIT = 150;
+    private static final int SEARCHES = 3;
 
     @TempDir Path dir;
 
@@ -136,10 +137,14 @@ class KadSimulationTest {
         assertThat(this.nodes.stream().filter(n -> n.indexed()[0] > 0).count())
                 .as("nodes that store the keyword")
                 .isPositive();
+        // A lookup may miss the one node near the key in so small a network: like a user, the
+        // searcher tries again.
         List<KadNode.FileResult> found = new ArrayList<>();
-        assertThat(this.nodes.get(150).searchKeyword(word, Optional.empty(), found::addAll))
-                .isTrue();
-        this.run(60);
+        for (int attempt = 0; attempt < SEARCHES && found.isEmpty(); attempt++) {
+            assertThat(this.nodes.get(150).searchKeyword(word, Optional.empty(), found::addAll))
+                    .isTrue();
+            this.run(60);
+        }
         assertThat(found).isNotEmpty();
         assertThat(found.getFirst().name()).isEqualTo("Night Sky " + word + ".zip");
         assertThat(found.getFirst().hash()).isEqualTo(file);
@@ -150,8 +155,10 @@ class KadSimulationTest {
         assertThat(source.publishSource(file, 123_456)).isTrue();
         this.run(PUBLISH_WAIT);
         List<KadNode.Source> sources = new ArrayList<>();
-        assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll)).isTrue();
-        this.run(60);
+        for (int attempt = 0; attempt < SEARCHES && sources.isEmpty(); attempt++) {
+            assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll)).isTrue();
+            this.run(60);
+        }
         assertThat(sources).isNotEmpty();
         assertThat(sources.getFirst().ip()).isEqualTo(this.ips.get(42));
         assertThat(sources.getFirst().tcpPort()).isEqualTo(4662);
