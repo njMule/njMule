@@ -385,6 +385,16 @@ public final class ServerMessages {
                 new PacketWriter().u32(lowId));
     }
 
+    /** Our shared files, with new tags for servers that announced them. */
+    public static Packet offerFiles(List<FileEntry> files, boolean newTags) {
+        PacketWriter out = new PacketWriter().u32(files.size());
+        Ed2kTagFormat format = newTags ? Ed2kTagFormat.NEW : Ed2kTagFormat.OLD;
+        for (FileEntry file : files) {
+            file.write(out, format);
+        }
+        return Packet.of(Protocol.EDONKEY, Opcodes.Server.OFFERFILES.code(), out);
+    }
+
     /** An empty file offer: keeps an idle connection alive. */
     public static Packet keepAlive() {
         return Packet.of(

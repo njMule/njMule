@@ -60,8 +60,13 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
 
     /** Writes the entry with the new tag encoding, as servers do. */
     public void write(PacketWriter out) {
+        this.write(out, Ed2kTagFormat.NEW);
+    }
+
+    /** Writes the entry with {@code format} tags; strings are UTF-8. */
+    public void write(PacketWriter out, Ed2kTagFormat format) {
         out.hash16(this.hash).u32(this.clientId).u16(this.port).u32(this.tags.size());
-        TagCodec.writeEd2kList(out, this.tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
+        TagCodec.writeEd2kList(out, this.tags, format, StringEncoding.UTF8);
     }
 
     public Optional<String> name() {

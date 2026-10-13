@@ -47,6 +47,7 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.protocol.packet.UdpFraming;
 import org.njmule.core.protocol.tag.FileTag;
@@ -90,6 +91,7 @@ public final class FakeServer implements AutoCloseable {
     private final List<ServerMessages.Login> logins = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
+    private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
     private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
 
@@ -152,6 +154,11 @@ public final class FakeServer implements AutoCloseable {
         return List.copyOf(this.udpSearches);
     }
 
+    /** The files clients offered, in order. */
+    public List<FileEntry> offers() {
+        return List.copyOf(this.offers);
+    }
+
     /** From now on, answers requests for the sources of {@code file} with {@code peer}. */
     public void addSource(Hash16 file, InetSocketAddress peer) {
         int ip = Ipv4.fromBytes(peer.getAddress().getAddress());
@@ -198,7 +205,8 @@ public final class FakeServer implements AutoCloseable {
             OutputStream out = new BufferedOutputStream(client.getOutputStream());
             this.clients.add(out);
             while (true) {
-                Packet request = TcpFraming.read(in, FrameLimit.fixed(1 << 20));
+                Packet request =
+                        Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
                 synchronized (out) {
                     for (Packet answer : this.answer(request, client)) {
                         out.write(TcpFraming.encode(answer));
@@ -219,6 +227,14 @@ public final class FakeServer implements AutoCloseable {
                     new ServerMessages.IdChange(this.config.clientId(), FLAGS, seen).encode(),
                     ServerMessages.message(this.config.welcome()),
                     new ServerMessages.ServerStatus(10, 20).encode());
+        }
+        if (request.opcode() == Opcodes.Server.OFFERFILES.code()) {
+            PacketReader in = request.reader();
+            long count = in.u32();
+            for (long i = 0; i < count; i++) {
+                this.offers.add(FileEntry.read(in));
+            }
+            return List.of();
         }
         if (request.opcode() == Opcodes.Server.GETSOURCES.code()
                 || request.opcode() == Opcodes.Server.GETSOURCES_OBFU.code()) {

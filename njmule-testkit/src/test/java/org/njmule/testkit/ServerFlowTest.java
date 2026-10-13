@@ -54,6 +54,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Packet;
@@ -146,6 +147,37 @@ class ServerFlowTest {
         assertThat(results).containsKey("ubuntu notes.txt");
         assertThat(connected.searches()).hasSize(1);
         assertThat(other.udpSearches()).hasSize(1);
+    }
+
+    @Test
+    void offersTheSharedFilesToTheServer() throws Exception {
+        InetAddress local = lanAddress();
+        FakeServer server =
+                this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
+        Files.write(incoming.resolve("song.mp3"), new byte[] {1, 2, 3, 4, 5});
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (engine.sharedFiles().get().isEmpty()) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(50);
+        }
+
+        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), server.port()))).get();
+        events.next(EngineEvent.ServerConnected.class, e -> true);
+
+        while (server.offers().isEmpty()) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        FileEntry offer = server.offers().getFirst();
+        assertThat(offer.name()).contains("song.mp3");
+        assertThat(offer.size()).hasValue(5);
+        assertThat(offer.type()).contains("Audio");
+        // A server with compression learns our address from the connection.
+        assertThat(offer.clientId()).isEqualTo(0xFBFB_FBFBL);
+        assertThat(offer.port()).isEqualTo(0xFBFB);
     }
 
     @Test

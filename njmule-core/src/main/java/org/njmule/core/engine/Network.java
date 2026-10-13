@@ -68,6 +68,7 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
+import org.njmule.core.server.FilePublisher;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerSession;
@@ -116,6 +117,7 @@ final class Network {
     private final DownloadManager downloads;
     private final Credits credits;
     private final UploadManager uploads;
+    private final FilePublisher publisher;
     private final Path configDir;
     private final Supplier<Path> incomingDir;
     private SharedFiles shares;
@@ -231,6 +233,9 @@ final class Network {
                         this.credits,
                         random,
                         Ticker.systemTicker());
+        this.publisher =
+                new FilePublisher(
+                        this.session, this::offers, this::listenPort, Ticker.systemTicker());
         PeerGreetings.Router forDownloads = this.downloads.router();
         PeerGreetings.Router forUploads = this.uploads.router();
         // A source calling back with a slot first; any other client may want our files.
@@ -270,6 +275,11 @@ final class Network {
         this.shares =
                 SharedFiles.open(this.loop, this.configDir, this.incomingDir, new ShareEvents());
         this.uploads.start();
+        this.loop.scheduleRepeating(
+                "offer shared files",
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1),
+                this.publisher::tick);
         LOG.info(
                 "{} servers known, {} IP filter ranges, user hash {}",
                 this.servers.size(),
@@ -417,6 +427,27 @@ final class Network {
                 server.serverPort());
     }
 
+    // Complete shared files, then downloads with checked parts.
+    private List<FilePublisher.Offer> offers() {
+        List<FilePublisher.Offer> offers = new ArrayList<>();
+        if (this.shares != null) {
+            for (SharedFiles.SharedFile f : this.shares.all()) {
+                offers.add(new FilePublisher.Offer(f.hash(), f.name(), f.size(), true));
+            }
+        }
+        for (DownloadInfo d : this.downloads.downloads()) {
+            boolean shared =
+                    this.downloads
+                            .find(d.hash())
+                            .map(x -> !x.verifiedParts().isEmpty())
+                            .orElse(false);
+            if (shared) {
+                offers.add(new FilePublisher.Offer(d.hash(), d.name(), d.size(), false));
+            }
+        }
+        return offers;
+    }
+
     // Our public address, known when the server gave us a HighID.
     private Optional<Inet4Address> ourPublicAddress() {
         long id = this.context.clientId();
@@ -523,11 +554,13 @@ final class Network {
             Network.this.saveServers();
             Network.this.pinger.start();
             Network.this.downloads.serverConnected();
+            Network.this.publisher.connected();
         }
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
             Network.this.context = ServerContext.NONE;
+            Network.this.publisher.disconnected();
             Network.this.searches.stopAll();
             Network.this.pinger.stop();
             Optional<ServerInfo> info = server.map(Network::info);
@@ -643,6 +676,7 @@ final class Network {
             if (Network.this.shares != null) {
                 Network.this.shares.finished(file, part);
             }
+            Network.this.publisher.changed(Optional.of(download.hash()));
             Network.this.publish.accept(new EngineEvent.DownloadCompleted(download, file));
         }
 
@@ -659,10 +693,11 @@ final class Network {
         }
     }
 
-    private static final class ShareEvents implements SharedFiles.Listener {
+    private final class ShareEvents implements SharedFiles.Listener {
         @Override
         public void shared(SharedFiles.SharedFile file) {
             LOG.debug("Shared {}", file.name());
+            Network.this.publisher.changed(Optional.empty());
         }
 
         @Override
