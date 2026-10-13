@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.model;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.function.UnaryOperator;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyIntegerProperty;
@@ -374,6 +376,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Hands the shared directories to {@code sink}, on the FX thread. */
     public void sharedDirectories(Consumer<List<SharedDirectory>> sink) {
         this.later(this.engine.sharedDirectories(), sink);
+    }
+
+    /** Adds the servers of the server.met at {@code url}, then hands {@code done} how many were new. */
+    public void addServers(URI url, IntConsumer done) {
+        this.later(this.engine.addServers(url), added -> {
+            this.refreshServers();
+            done.accept(added);
+        });
+    }
+
+    /** Adds the Kad contacts of the nodes.dat at {@code url}, then hands {@code done} how many were new. */
+    public void addKadContacts(URI url, IntConsumer done) {
+        this.later(this.engine.addKadContacts(url), done::accept);
     }
 
     public void kadBootstrap(ServerAddress node) {

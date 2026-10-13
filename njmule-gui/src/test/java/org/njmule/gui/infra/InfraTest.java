@@ -20,12 +20,30 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class InfraTest {
+
+    @Test
+    void historiesKeepTheLatestEntriesFirstOnce() throws Exception {
+        GuiSettings settings = GuiSettings.load(this.dir);
+        for (int i = 1; i <= GuiSettings.MAX_HISTORY + 2; i++) {
+            settings.remember("serverMet", "https://example.org/" + i);
+        }
+        settings.remember("serverMet", "https://example.org/5");
+        settings.save();
+
+        List<String> history = GuiSettings.load(this.dir).history("serverMet");
+        assertThat(history).hasSize(GuiSettings.MAX_HISTORY);
+        assertThat(history).first().isEqualTo("https://example.org/5");
+        assertThat(history).containsOnlyOnce("https://example.org/5");
+        assertThat(history).doesNotContain("https://example.org/1", "https://example.org/2");
+        assertThat(settings.history("nodesDat")).isEmpty();
+    }
 
     @TempDir
     Path dir;

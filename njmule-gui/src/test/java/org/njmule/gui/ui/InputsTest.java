@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import atlantafx.base.theme.Styles;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalTime;
@@ -161,6 +162,22 @@ class InputsTest {
             assertThat(host.isValid()).isFalse();
             proxy.setText("proxy.lan");
             assertThat(host.value()).isEqualTo("proxy.lan");
+        });
+    }
+
+    @Test
+    void urlsAreHttpOrHttpsWithAHost() throws Exception {
+        FxTesting.onFx(() -> {
+            TextField field = new TextField();
+            Input<URI> url = this.inputs.url(field, "server.met");
+            field.setText("https://example.org/server.met");
+            assertThat(url.value()).isEqualTo(URI.create("https://example.org/server.met"));
+            field.setText("ftp://example.org/server.met");
+            assertThat(url.isValid()).isFalse();
+            field.setText("not an address");
+            assertThat(url.isValid()).isFalse();
+            field.setText("http:///server.met");
+            assertThat(url.isValid()).isFalse();
         });
     }
 

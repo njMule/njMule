@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.screens;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -24,9 +25,11 @@ import java.util.Locale;
 import java.util.Optional;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuItem;
@@ -34,9 +37,13 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
+import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
@@ -46,6 +53,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.UrlBox;
 
 /** The known servers, connecting to one, and the log below. */
 public final class ServersScreen implements Screen {
@@ -58,6 +66,7 @@ public final class ServersScreen implements Screen {
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
     private Input<ServerAddress> addressInput;
+    private UrlBox list;
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
@@ -139,7 +148,38 @@ public final class ServersScreen implements Screen {
         SplitPane split = new SplitPane(this.table, log);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
-        return Fx.screen(this.title(), tools, split);
+        VBox content = new VBox(8, this.listRow(), split);
+        VBox.setVgrow(split, Priority.ALWAYS);
+        return Fx.screen(this.title(), tools, content);
+    }
+
+    // A server list from the web, from an address typed or used before.
+    private Node listRow() {
+        this.list = new UrlBox(this.gui, "serverMet", this.gui.t("IDS_SV_MET"));
+        this.list.node().setPromptText("https://\u2026/server.met");
+        this.list.node().getEditor().setOnAction(e -> this.updateFromUrl());
+        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl);
+        update.disableProperty().bind(this.list.input().validProperty().not());
+        HBox row = new HBox(8, new Label(this.gui.t("IDS_SV_MET")), this.list.node(), update);
+        row.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(this.list.node(), Priority.ALWAYS);
+        return row;
+    }
+
+    void updateFromUrl() {
+        if (!this.list.input().isValid()) {
+            return;
+        }
+        URI url = this.list.input().value();
+        this.gui.inform().accept(this.gui.f("IDS_DOWNLOADING_SERVERMET_FROM", url));
+        this.gui.model().addServers(url, added -> {
+            this.list.worked(url);
+            this.gui.inform().accept(this.gui.f("nj.servers.fromUrl", added, url.getHost()));
+        });
+    }
+
+    UrlBox listBox() {
+        return this.list;
     }
 
     private String priority(ServerInfo.Priority priority) {

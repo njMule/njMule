@@ -16,15 +16,20 @@
  */
 package org.njmule.gui.screens;
 
+import java.net.URI;
 import java.util.Optional;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
+import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.ServerAddress;
@@ -33,6 +38,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.UrlBox;
 
 /** The state of our Kad node and joining Kad through a known node. */
 public final class KadScreen implements Screen {
@@ -45,6 +51,7 @@ public final class KadScreen implements Screen {
     private final Label id = value();
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
+    private UrlBox nodes;
 
     public KadScreen(Gui gui) {
         this.gui = gui;
@@ -94,7 +101,36 @@ public final class KadScreen implements Screen {
         hint.setWrapText(true);
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
-        return Fx.screen(this.title(), tools, new VBox(16, cards, hint));
+        return Fx.screen(this.title(), tools, new VBox(16, this.nodesRow(), cards, hint));
+    }
+
+    // Contacts from a nodes.dat on the web, from an address typed or used before.
+    private Node nodesRow() {
+        this.nodes = new UrlBox(this.gui, "nodesDat", this.gui.t("IDS_BOOTSRAPNODESDAT"));
+        this.nodes.node().setPromptText("https://\u2026/nodes.dat");
+        this.nodes.node().getEditor().setOnAction(e -> this.nodesFromUrl());
+        Button take = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2MZ.REFRESH, this::nodesFromUrl);
+        take.disableProperty().bind(this.nodes.input().validProperty().not());
+        HBox row = new HBox(8, new Label(this.gui.t("IDS_BOOTSRAPNODESDAT")), this.nodes.node(), take);
+        row.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(this.nodes.node(), Priority.ALWAYS);
+        return row;
+    }
+
+    void nodesFromUrl() {
+        if (!this.nodes.input().isValid()) {
+            return;
+        }
+        URI url = this.nodes.input().value();
+        this.gui.inform().accept(this.gui.f("IDS_DOWNLOADING_NODESDAT_FROM", url));
+        this.gui.model().addKadContacts(url, added -> {
+            this.nodes.worked(url);
+            this.gui.inform().accept(this.gui.f("nj.kad.fromUrl", added, url.getHost()));
+        });
+    }
+
+    UrlBox nodesBox() {
+        return this.nodes;
     }
 
     private void show(EngineStatus status) {

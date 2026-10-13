@@ -23,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,6 +40,9 @@ import org.slf4j.LoggerFactory;
 public final class GuiSettings {
 
     public static final String FILE_NAME = "gui.properties";
+
+    /** Entries kept in each list of things used before, such as addresses. */
+    public static final int MAX_HISTORY = 10;
 
     /** Light, dark, or as the system is. */
     public enum Mode {
@@ -141,6 +146,33 @@ public final class GuiSettings {
 
     public void setMinimizeToTray(boolean value) {
         this.values.setProperty("window.minimizeToTray", String.valueOf(value));
+    }
+
+    /** The entries of the list {@code name}, the latest first. */
+    public List<String> history(String name) {
+        List<String> entries = new ArrayList<>();
+        for (int i = 1; i <= MAX_HISTORY; i++) {
+            String entry = this.values.getProperty("history." + name + "." + i);
+            if (entry != null && !entry.isBlank()) {
+                entries.add(entry);
+            }
+        }
+        return entries;
+    }
+
+    /** Puts {@code entry} at the top of the list {@code name}, once, keeping the latest {@value #MAX_HISTORY}. */
+    public void remember(String name, String entry) {
+        List<String> entries = new ArrayList<>(this.history(name));
+        entries.remove(entry);
+        entries.addFirst(entry);
+        for (int i = 1; i <= MAX_HISTORY; i++) {
+            String key = "history." + name + "." + i;
+            if (i <= entries.size()) {
+                this.values.setProperty(key, entries.get(i - 1));
+            } else {
+                this.values.remove(key);
+            }
+        }
     }
 
     public boolean maximized() {

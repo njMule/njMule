@@ -17,6 +17,7 @@
 package org.njmule.gui;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -78,6 +79,8 @@ public final class DesktopApp implements AutoCloseable {
     private final Optional<WebUi> webUi;
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
+    // The links of the command line, followed once the window shows.
+    private final List<String> startLinks = new ArrayList<>();
     private LinkHandoff handoff;
     private Stage stage;
     private NotificationArea tray;
@@ -106,7 +109,7 @@ public final class DesktopApp implements AutoCloseable {
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
         DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
-        app.pending.addAll(cli.links());
+        cli.links().forEach(link -> app.startLinks.add(link.toUri()));
         try {
             app.handoff = LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
         } catch (IOException e) {
@@ -125,8 +128,13 @@ public final class DesktopApp implements AutoCloseable {
     // A later start handed over its links, or none when it only wants the window: FX thread.
     private void handedOver(List<String> links) {
         for (String text : links) {
-            if (Ed2kLink.tryParse(text).orElse(null) instanceof Ed2kLink.FileLink link) {
-                this.pending.add(link);
+            switch (Ed2kLink.tryParse(text).orElse(null)) {
+                case Ed2kLink.FileLink link -> this.pending.add(link);
+                case Ed2kLink.ServerListLink list -> this.fromUrl(list.url(), true);
+                case Ed2kLink.NodesListLink list -> this.fromUrl(list.url(), false);
+                case null, default -> {
+                    // A server or search link is not acted upon yet.
+                }
             }
         }
         this.addPending();
@@ -136,6 +144,27 @@ public final class DesktopApp implements AutoCloseable {
             this.stage.setIconified(false);
             this.stage.show();
             this.stage.toFront();
+        }
+    }
+
+    // A server list or a nodes.dat a link points to; links come before the window only from the command line.
+    private void fromUrl(String url, boolean servers) {
+        if (this.model == null) {
+            return;
+        }
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            this.window.message(e.getMessage());
+            return;
+        }
+        if (servers) {
+            this.model.addServers(
+                    uri, added -> this.window.message(this.gui.f("nj.servers.fromUrl", added, uri.getHost())));
+        } else {
+            this.model.addKadContacts(
+                    uri, added -> this.window.message(this.gui.f("nj.kad.fromUrl", added, uri.getHost())));
         }
     }
 
@@ -210,7 +239,8 @@ public final class DesktopApp implements AutoCloseable {
                 this.closeTheOthers(stage);
             }
         });
-        this.addPending();
+        this.handedOver(List.copyOf(this.startLinks));
+        this.startLinks.clear();
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, this.trayTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {

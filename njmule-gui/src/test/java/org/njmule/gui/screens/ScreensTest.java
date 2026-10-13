@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -161,6 +162,28 @@ class ScreensTest {
             FxTesting.snapshot(screen.view(), "transfers-categories");
             return null;
         });
+    }
+
+    @Test
+    void aServerListFromTheWebIsRememberedOnlyOnceItWorked() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        ServersScreen screen = new ServersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+
+        FxTesting.onFx(() -> {
+            screen.listBox().node().getEditor().setText("http://127.0.0.1:9/server.met");
+            screen.updateFromUrl();
+        });
+        FxTesting.await("refused", () -> this.test.told.stream().anyMatch(m -> m.contains("local or private")));
+        assertThat(this.test.gui.settings().history("serverMet"))
+                .as("a failed address is not kept")
+                .isEmpty();
+
+        URI worked = URI.create("https://example.org/server.met");
+        FxTesting.onFx(() -> screen.listBox().worked(worked));
+        assertThat(FxTesting.onFx(() -> screen.listBox().node().getItems())).containsExactly(worked.toString());
+        assertThat(GuiSettings.load(this.test.engine.directories().gui()).history("serverMet"))
+                .containsExactly(worked.toString());
     }
 
     @Test

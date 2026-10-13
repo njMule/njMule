@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.ui;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DateTimeException;
@@ -23,6 +24,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.BooleanSupplier;
@@ -89,6 +91,18 @@ public final class Inputs {
                 throw new IllegalArgumentException(t);
             }
             return address;
+        });
+    }
+
+    /** An http or https address with a host. */
+    public Input<URI> url(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.url"), Inputs::printable, MAX_TEXT, t -> {
+            URI uri = URI.create(t);
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
+                throw new IllegalArgumentException(t);
+            }
+            return uri;
         });
     }
 

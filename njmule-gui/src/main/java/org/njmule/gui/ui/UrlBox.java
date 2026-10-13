@@ -1,0 +1,69 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.gui.ui;
+
+import java.io.IOException;
+import java.net.URI;
+import javafx.scene.control.ComboBox;
+import org.njmule.gui.infra.GuiSettings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * An editable box for a web address that offers the ones used before, the latest first; an address is remembered once
+ * it worked. FX thread only.
+ */
+public final class UrlBox {
+
+    private static final Logger logger = LoggerFactory.getLogger(UrlBox.class);
+
+    private final GuiSettings settings;
+    private final String history;
+    private final ComboBox<String> box = new ComboBox<>();
+    private final Input<URI> input;
+
+    /** A box whose addresses are kept as {@code history} in the interface settings. */
+    public UrlBox(Gui gui, String history, String name) {
+        this.settings = gui.settings();
+        this.history = history;
+        this.box.setEditable(true);
+        this.box.setMaxWidth(Double.MAX_VALUE);
+        this.box.getItems().setAll(this.settings.history(history));
+        this.input = new Inputs(gui).url(this.box.getEditor(), name).quietWhenEmpty();
+    }
+
+    public ComboBox<String> node() {
+        return this.box;
+    }
+
+    public Input<URI> input() {
+        return this.input;
+    }
+
+    /** Remembers {@code url} at the top of the list. */
+    public void worked(URI url) {
+        this.settings.remember(this.history, url.toString());
+        try {
+            this.settings.save();
+        } catch (IOException e) {
+            logger.warn("Cannot save the addresses used: {}", e.toString());
+        }
+        String text = this.box.getEditor().getText();
+        this.box.getItems().setAll(this.settings.history(this.history));
+        this.box.getEditor().setText(text);
+    }
+}
