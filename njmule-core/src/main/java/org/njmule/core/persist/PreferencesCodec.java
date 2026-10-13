@@ -78,14 +78,15 @@ public final class PreferencesCodec {
         key("dirs.temp", p -> p.tempDir().map(Path::toString).orElse(""), (b, v) -> b.tempDir(optionalPath(v)));
         key("log.level", Preferences::logLevel, (b, v) -> b.logLevel(v.strip().toUpperCase(Locale.ROOT)));
         boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
-        key(
-                "proxy.type",
-                p -> p.proxy().type().name(),
-                (b, v) -> b.proxyType(ProxySettings.Type.valueOf(v.strip().toUpperCase(Locale.ROOT))));
         key("proxy.host", p -> p.proxy().host(), Preferences.Builder::proxyHost);
         key("proxy.port", p -> String.valueOf(p.proxy().port()), (b, v) -> b.proxyPort(Integer.parseInt(v.strip())));
         key("proxy.user", p -> p.proxy().user(), Preferences.Builder::proxyUser);
         key("proxy.password", p -> p.proxy().password(), Preferences.Builder::proxyPassword);
+        // A proxy type needs its host: read after it.
+        key(
+                "proxy.type",
+                p -> p.proxy().type().name(),
+                (b, v) -> b.proxyType(ProxySettings.Type.valueOf(v.strip().toUpperCase(Locale.ROOT))));
     }
 
     private PreferencesCodec() {}
@@ -110,11 +111,16 @@ public final class PreferencesCodec {
     static Preferences parse(Reader reader) throws IOException {
         Properties props = new Properties();
         props.load(reader);
-        Preferences.Builder builder = Preferences.defaults().toBuilder();
         for (String name : props.stringPropertyNames()) {
-            Key key = KEYS.get(name);
-            if (key == null) {
+            if (!KEYS.containsKey(name)) {
                 logger.debug("Ignoring unknown preference {}", name);
+            }
+        }
+        // In the order the keys are declared: a value checked against others comes after them.
+        Preferences.Builder builder = Preferences.defaults().toBuilder();
+        for (Key key : KEYS.values()) {
+            String name = key.name();
+            if (props.getProperty(name) == null) {
                 continue;
             }
             Preferences.Builder candidate = builder.build().toBuilder();
