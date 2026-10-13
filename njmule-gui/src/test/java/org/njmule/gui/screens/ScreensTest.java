@@ -165,6 +165,20 @@ class ScreensTest {
     }
 
     @Test
+    void anIpFilterFromALocalAddressIsRefused() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        SettingsScreen screen = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+
+        FxTesting.onFx(() -> {
+            screen.ipFilterBox().node().getEditor().setText("http://127.0.0.1:9/ipfilter.zip");
+            screen.updateIpFilter();
+        });
+        FxTesting.await("refused", () -> this.test.told.stream().anyMatch(m -> m.contains("local or private")));
+        assertThat(this.test.gui.settings().history("ipFilter")).isEmpty();
+    }
+
+    @Test
     void aServerListFromTheWebIsRememberedOnlyOnceItWorked() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         ServersScreen screen = new ServersScreen(this.test.gui);

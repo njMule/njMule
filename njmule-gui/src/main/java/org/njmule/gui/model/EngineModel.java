@@ -386,6 +386,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         });
     }
 
+    /** Replaces the IP filter with the list at {@code url}, then hands {@code done} how many ranges it has. */
+    public void updateIpFilter(URI url, IntConsumer done) {
+        this.later(this.engine.updateIpFilter(url), done::accept);
+    }
+
     /** Adds the Kad contacts of the nodes.dat at {@code url}, then hands {@code done} how many were new. */
     public void addKadContacts(URI url, IntConsumer done) {
         this.later(this.engine.addKadContacts(url), done::accept);

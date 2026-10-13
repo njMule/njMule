@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -54,6 +55,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.UrlBox;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 
@@ -104,6 +106,7 @@ public final class SettingsScreen implements Screen {
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
+    private UrlBox ipFilter;
     private Input<String> nickInput;
     private Input<Integer> tcpPortInput;
     private Input<Integer> udpPortInput;
@@ -225,6 +228,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
         row = field(grid, row, this.gui.t("IDS_MINFREEDISKSPACE"), this.minFreeSpace);
+        row = section(grid, row, this.gui.t("IDS_IPFILTER"));
+        row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
@@ -326,6 +331,32 @@ public final class SettingsScreen implements Screen {
                         })
                 .keepSpaces();
         this.webUiPassword.textProperty().addListener((o, was, now) -> this.webUiAgainInput.check());
+    }
+
+    // An IP filter from the web, from an address typed or used before.
+    private Node ipFilterRow() {
+        this.ipFilter = new UrlBox(this.gui, "ipFilter", this.gui.t("IDS_IPFILTER"));
+        this.ipFilter.node().setPromptText("https://\u2026/ipfilter.zip");
+        this.ipFilter.node().setPrefWidth(420);
+        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateIpFilter);
+        update.disableProperty().bind(this.ipFilter.input().validProperty().not());
+        return new HBox(6, this.ipFilter.node(), update);
+    }
+
+    void updateIpFilter() {
+        if (!this.ipFilter.input().isValid()) {
+            return;
+        }
+        URI url = this.ipFilter.input().value();
+        this.gui.inform().accept(this.gui.t("IDS_DWL_IPFILTERFILE"));
+        this.gui.model().updateIpFilter(url, ranges -> {
+            this.ipFilter.worked(url);
+            this.gui.inform().accept(this.gui.f("IDS_IPFILTERLOADED", ranges));
+        });
+    }
+
+    UrlBox ipFilterBox() {
+        return this.ipFilter;
     }
 
     private SchedulerPane scheduler() {
