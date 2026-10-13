@@ -212,6 +212,7 @@ final class Network {
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
         this.servers = ServerList.load(this.serverMet);
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
+        this.servers.filter(this.ipFilter::blocks);
         this.session =
                 new ServerSession(
                         loop,

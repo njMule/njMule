@@ -25,7 +25,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.IntPredicate;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.persist.AtomicFiles;
@@ -36,7 +38,8 @@ import org.njmule.core.util.Ipv4;
  * The known eD2K servers, kept in {@code server.met}. Only the engine thread uses it.
  *
  * <p>Servers without a usable address (port 0, a reserved IP, a host name not yet resolved) are
- * kept in the file but never offered as {@link #candidates()}.
+ * kept in the file but never offered as {@link #candidates()}; servers the IP filter blocks are
+ * neither added nor offered.
  */
 public final class ServerList {
 
@@ -56,6 +59,7 @@ public final class ServerList {
     }
 
     private final Map<Address, ServerMet.Server> servers = new LinkedHashMap<>();
+    private IntPredicate blocked = ip -> false;
 
     /** Reads {@code file} (or its backup); a missing file gives an empty list. */
     public static ServerList load(Path file) throws IOException {
@@ -81,9 +85,16 @@ public final class ServerList {
         return added;
     }
 
-    /** Adds a server unless its address is already known or cannot be one of a server. */
+    /** Applies the IP filter: blocked servers are no longer added nor offered. */
+    public void filter(IntPredicate blocks) {
+        this.blocked = Objects.requireNonNull(blocks, "blocks");
+    }
+
+    /** Adds a server unless its address is already known, blocked or cannot be one of a server. */
     public boolean add(ServerMet.Server server) {
-        if (server.port() == 0 || !(isUsable(server.ip()) || server.dynamicIp().isPresent())) {
+        if (server.port() == 0
+                || !(isUsable(server.ip()) || server.dynamicIp().isPresent())
+                || (server.ip() != 0 && this.blocked.test(server.ip()))) {
             return false;
         }
         return this.servers.putIfAbsent(addressOf(server), server) == null;
@@ -113,7 +124,7 @@ public final class ServerList {
     public List<ServerMet.Server> candidates() {
         List<ServerMet.Server> usable = new ArrayList<>();
         for (ServerMet.Server server : this.servers.values()) {
-            if (isUsable(server.ip())) {
+            if (isUsable(server.ip()) && !this.blocked.test(server.ip())) {
                 usable.add(server);
             }
         }

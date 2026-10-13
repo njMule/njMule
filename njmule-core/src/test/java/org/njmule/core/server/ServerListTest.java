@@ -46,6 +46,20 @@ class ServerListTest {
     }
 
     @Test
+    void neitherAddsNorOffersServersTheFilterBlocks() {
+        ServerList list = new ServerList();
+        assertThat(list.add(server("1.2.3.4", 4661))).isTrue();
+        assertThat(list.add(server("5.6.7.8", 4661))).isTrue();
+        list.filter(ip -> ip == Ipv4.parse("5.6.7.8"));
+        assertThat(list.add(server("5.6.7.9", 4661))).isTrue();
+        assertThat(list.add(server("5.6.7.8", 4662))).isFalse();
+        assertThat(list.candidates())
+                .extracting(ServerMet.Server::ip)
+                .containsExactly(Ipv4.parse("1.2.3.4"), Ipv4.parse("5.6.7.9"));
+        assertThat(list.size()).as("kept in the file").isEqualTo(3);
+    }
+
+    @Test
     void offersHighPriorityAndReliableServersFirst() {
         ServerList list = new ServerList();
         list.add(server("1.1.1.1", 1).with(tag(ServerTag.PREFERENCE, ServerList.PRIORITY_LOW)));
