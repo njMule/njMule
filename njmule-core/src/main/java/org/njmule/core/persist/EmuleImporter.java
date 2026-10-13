@@ -263,6 +263,11 @@ public final class EmuleImporter {
                         : v)
                 .ifPresent(b::messageFilter);
         ini.getBoolean(SECTION, "AdvancedSpamFilter").ifPresent(b::advancedSpamFilter);
+        ini.getLong(SECTION, "MaxConnectionsPerFiveSeconds")
+                .ifPresent(v -> b.newConnectionsPerFiveSeconds(Math.clamp(v, 1, Preferences.MAX_NEW_CONNECTIONS)));
+        ini.getLong(SECTION, "QueueSize")
+                .ifPresent(v ->
+                        b.uploadQueueSize(Math.clamp(v, Preferences.MIN_UPLOAD_QUEUE, Preferences.MAX_UPLOAD_QUEUE)));
         ini.getLong(SECTION, "FilterLevel")
                 .ifPresent(v -> b.ipFilterLevel(Math.clamp(v, 0, Preferences.MAX_IP_FILTER_LEVEL)));
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);

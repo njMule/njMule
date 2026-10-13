@@ -232,6 +232,8 @@ All notable changes to this project are documented here. The format follows
 - The statistics screen has a statistics tree beside the graph: ratios, session and cumulative
   transfers, average and top rates, run times, clients by software, servers, shared files and the
   free space of the temp and incoming disks.
+- The connection settings take the new connections allowed in five seconds and the size of the
+  upload queue (imported from eMule), and the maximum of connections now limits the incoming ones.
 
 ### Changed
 

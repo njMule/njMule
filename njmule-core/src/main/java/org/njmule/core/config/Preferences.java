@@ -74,7 +74,9 @@ public record Preferences(
         boolean filterLanAddresses,
         boolean messagesFromFriendsOnly,
         String messageFilter,
-        boolean advancedSpamFilter) {
+        boolean advancedSpamFilter,
+        int newConnectionsPerFiveSeconds,
+        int uploadQueueSize) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -105,6 +107,15 @@ public record Preferences(
     public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
 
     public static final int MAX_MESSAGE_FILTER = 4096;
+    /** Incoming connections taken in five seconds at most. */
+    public static final int DEFAULT_NEW_CONNECTIONS = 20;
+
+    public static final int MAX_NEW_CONNECTIONS = 1_000;
+    /** Clients waiting in the upload queue at most. */
+    public static final int DEFAULT_UPLOAD_QUEUE = 5_000;
+
+    public static final int MIN_UPLOAD_QUEUE = 100;
+    public static final int MAX_UPLOAD_QUEUE = 100_000;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -133,6 +144,8 @@ public record Preferences(
         requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
         Objects.requireNonNull(nextDownload, "nextDownload");
         Objects.requireNonNull(messageFilter, "messageFilter");
+        requireRange("newConnectionsPerFiveSeconds", newConnectionsPerFiveSeconds, 1, MAX_NEW_CONNECTIONS);
+        requireRange("uploadQueueSize", uploadQueueSize, MIN_UPLOAD_QUEUE, MAX_UPLOAD_QUEUE);
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
@@ -180,7 +193,9 @@ public record Preferences(
                 true,
                 false,
                 DEFAULT_MESSAGE_FILTER,
-                true);
+                true,
+                DEFAULT_NEW_CONNECTIONS,
+                DEFAULT_UPLOAD_QUEUE);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -253,6 +268,8 @@ public record Preferences(
         private boolean messagesFromFriendsOnly;
         private String messageFilter;
         private boolean advancedSpamFilter;
+        private int newConnectionsPerFiveSeconds;
+        private int uploadQueueSize;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -295,6 +312,8 @@ public record Preferences(
             this.messagesFromFriendsOnly = p.messagesFromFriendsOnly;
             this.messageFilter = p.messageFilter;
             this.advancedSpamFilter = p.advancedSpamFilter;
+            this.newConnectionsPerFiveSeconds = p.newConnectionsPerFiveSeconds;
+            this.uploadQueueSize = p.uploadQueueSize;
         }
 
         public Builder nick(String value) {
@@ -526,6 +545,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder newConnectionsPerFiveSeconds(int value) {
+            this.newConnectionsPerFiveSeconds = value;
+            return this;
+        }
+
+        public Builder uploadQueueSize(int value) {
+            this.uploadQueueSize = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -568,7 +597,9 @@ public record Preferences(
                     this.filterLanAddresses,
                     this.messagesFromFriendsOnly,
                     this.messageFilter,
-                    this.advancedSpamFilter);
+                    this.advancedSpamFilter,
+                    this.newConnectionsPerFiveSeconds,
+                    this.uploadQueueSize);
         }
     }
 }

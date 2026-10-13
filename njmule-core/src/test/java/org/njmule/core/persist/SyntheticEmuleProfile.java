@@ -115,6 +115,8 @@ public final class SyntheticEmuleProfile {
                         "FilterBadIPs=0",
                         "MessagesFromFriendsOnly=1",
                         "MessageFilter=buy now|cheap",
+                        "MaxConnectionsPerFiveSeconds=35",
+                        "QueueSize=9000",
                         "NetworkED2K=1",
                         "NetworkKademlia=0",
                         "SecureIdent=1",

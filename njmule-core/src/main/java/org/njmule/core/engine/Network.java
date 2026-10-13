@@ -334,7 +334,9 @@ final class Network {
                 this.downloads::exchangeable,
                 this::ourHello,
                 () -> new UploadManager.Settings(
-                        preferences.get().maxUploadKiBps(), preferences.get().obfuscation()),
+                        preferences.get().maxUploadKiBps(),
+                        preferences.get().obfuscation(),
+                        preferences.get().uploadQueueSize()),
                 this.links,
                 this.credits,
                 ip -> {
@@ -387,7 +389,11 @@ final class Network {
                 () -> this.ipFilter,
                 this::isOurServer,
                 ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
-                ConnectionGuard.Limits.DEFAULT,
+                () -> new ConnectionGuard.Limits(
+                        this.preferences.get().maxConnections(),
+                        ConnectionGuard.Limits.DEFAULT.maxPerAddress(),
+                        this.preferences.get().newConnectionsPerFiveSeconds(),
+                        ConnectionGuard.Limits.DEFAULT.rateWindow()),
                 Ticker.systemTicker());
         this.listen(this.preferences.get().tcpPort());
         try {

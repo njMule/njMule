@@ -63,7 +63,7 @@ public final class ConnectionGuard {
     private final Supplier<IpFilter> filter;
     private final IntPredicate exempt;
     private final IntPredicate banned;
-    private final Limits limits;
+    private final Supplier<Limits> limits;
     private final Ticker ticker;
     private final Map<Integer, Integer> perAddress = new HashMap<>();
     private final ArrayDeque<Long> recentAccepts = new ArrayDeque<>();
@@ -89,6 +89,16 @@ public final class ConnectionGuard {
      */
     public ConnectionGuard(
             Supplier<IpFilter> filter, IntPredicate exempt, IntPredicate banned, Limits limits, Ticker ticker) {
+        this(filter, exempt, banned, constant(limits), ticker);
+    }
+
+    /** {@code limits} is read on every admission, so the settings apply at once. */
+    public ConnectionGuard(
+            Supplier<IpFilter> filter,
+            IntPredicate exempt,
+            IntPredicate banned,
+            Supplier<Limits> limits,
+            Ticker ticker) {
         this.filter = Objects.requireNonNull(filter, "filter");
         this.exempt = Objects.requireNonNull(exempt, "exempt");
         this.banned = Objects.requireNonNull(banned, "banned");
@@ -96,8 +106,14 @@ public final class ConnectionGuard {
         this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
 
+    private static Supplier<Limits> constant(Limits limits) {
+        Objects.requireNonNull(limits, "limits");
+        return () -> limits;
+    }
+
     /** Decides on a connection from {@code ip} ({@link org.njmule.core.util.Ipv4} form). */
     public synchronized Admission admit(int ip) {
+        Limits limits = this.limits.get();
         if (this.filter.get().blocks(ip)) {
             return new Admission.Refused(Refusal.FILTERED);
         }
@@ -105,19 +121,19 @@ public final class ConnectionGuard {
             return new Admission.Refused(Refusal.BANNED);
         }
         long now = this.ticker.read();
-        long window = this.limits.rateWindow().toNanos();
+        long window = limits.rateWindow().toNanos();
         while (!this.recentAccepts.isEmpty() && now - this.recentAccepts.peekFirst() >= window) {
             this.recentAccepts.pollFirst();
         }
         boolean exempted = this.exempt.test(ip);
-        if (!exempted && this.recentAccepts.size() >= this.limits.maxAccepts()) {
+        if (!exempted && this.recentAccepts.size() >= limits.maxAccepts()) {
             return new Admission.Refused(Refusal.ACCEPT_RATE);
         }
-        if (!exempted && this.total >= this.limits.maxTotal()) {
+        if (!exempted && this.total >= limits.maxTotal()) {
             return new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS);
         }
         int fromAddress = this.perAddress.getOrDefault(ip, 0);
-        if (fromAddress >= this.limits.maxPerAddress()) {
+        if (fromAddress >= limits.maxPerAddress()) {
             return new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS);
         }
         this.recentAccepts.addLast(now);

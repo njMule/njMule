@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.security.ConnectionGuard.Admission;
@@ -61,6 +62,18 @@ class ConnectionGuardTest {
         first.close();
         assertThat(guard.openConnections()).isEqualTo(2);
         assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+    }
+
+    @Test
+    void readsTheLimitsAtEachAdmission() {
+        AtomicReference<Limits> limits = new AtomicReference<>(new Limits(1, 5, 100, Duration.ofSeconds(5)));
+        ConnectionGuard guard =
+                new ConnectionGuard(IpFilter::empty, ip -> false, ip -> false, limits::get, this.ticker);
+
+        permit(guard.admit(PEER));
+        assertThat(guard.admit(OTHER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS));
+        limits.set(new Limits(2, 5, 100, Duration.ofSeconds(5)));
+        assertThat(guard.admit(OTHER)).as("the settings changed").isInstanceOf(Admission.Admitted.class);
     }
 
     @Test

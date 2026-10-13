@@ -77,8 +77,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class UploadManager implements AutoCloseable {
 
-    /** What the uploads need from the preferences. */
-    public record Settings(int maxUploadKiBps, ObfuscationMode obfuscation) {}
+    /** What the uploads need from the preferences; {@code queueSize} is how many clients may wait. */
+    public record Settings(int maxUploadKiBps, ObfuscationMode obfuscation, int queueSize) {}
 
     /** Payload a slot gets before the client waits again, while others wait. */
     public static final long SESSION_LIMIT = Ed2k.PARTSIZE + 20_480;
@@ -90,8 +90,6 @@ public final class UploadManager implements AutoCloseable {
 
     /** A waiting client that does not ask again for this long is forgotten. */
     public static final Duration PURGE_AFTER = Duration.ofHours(1);
-
-    public static final int QUEUE_SIZE = 5_000;
 
     static final int BAD_LIMIT = 4;
     static final int MAX_WAITING_PER_IP = 3;
@@ -806,7 +804,7 @@ public final class UploadManager implements AutoCloseable {
                     sameIp++;
                 }
             }
-            if (manager.waiting.size() >= QUEUE_SIZE || sameIp >= MAX_WAITING_PER_IP) {
+            if (manager.waiting.size() >= manager.settings.get().queueSize() || sameIp >= MAX_WAITING_PER_IP) {
                 return;
             }
             client = new Client(session, file, now);

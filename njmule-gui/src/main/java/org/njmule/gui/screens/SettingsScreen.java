@@ -82,6 +82,8 @@ public final class SettingsScreen implements Screen {
     private final TextField downloadCapacity = new TextField();
     private final TextField uploadCapacity = new TextField();
     private final TextField connections = new TextField();
+    private final TextField newConnections = new TextField();
+    private final TextField queueSize = new TextField();
     private final TextField sources = new TextField();
     private final ComboBox<ObfuscationMode> obfuscation = new ComboBox<>();
     private final CheckBox ed2k = new CheckBox();
@@ -143,6 +145,8 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> downloadCapacityInput;
     private Input<Integer> uploadCapacityInput;
     private Input<Integer> connectionsInput;
+    private Input<Integer> newConnectionsInput;
+    private Input<Integer> queueSizeInput;
     private Input<Integer> sourcesInput;
     private Input<String> proxyHostInput;
     private Input<Integer> proxyPortInput;
@@ -272,6 +276,10 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("nj.settings.downloadCapacity"), this.downloadCapacity);
         row = field(grid, row, this.gui.t("nj.settings.uploadCapacity"), this.uploadCapacity);
         row = field(grid, row, this.gui.t("IDS_PW_MAXC"), this.connections);
+        this.newConnections.setPrefColumnCount(5);
+        row = field(grid, row, this.gui.t("IDS_MAXCON5SECLABEL"), this.newConnections);
+        this.queueSize.setPrefColumnCount(7);
+        row = field(grid, row, this.gui.t("IDS_QUEUESIZE"), this.queueSize);
         row = field(grid, row, this.gui.t("IDS_PW_MAXSOURCES"), this.sources);
         row = field(grid, row, this.gui.t("nj.settings.obfuscation"), this.obfuscation);
         grid.add(this.ed2k, 1, row++);
@@ -347,6 +355,8 @@ public final class SettingsScreen implements Screen {
                                 this.downloadCapacityInput,
                                 this.uploadCapacityInput,
                                 this.connectionsInput,
+                                this.newConnectionsInput,
+                                this.queueSizeInput,
                                 this.sourcesInput,
                                 this.proxyHostInput,
                                 this.proxyPortInput,
@@ -383,6 +393,13 @@ public final class SettingsScreen implements Screen {
                 this.uploadCapacity, this.gui.t("nj.settings.uploadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
         this.connectionsInput =
                 inputs.number(this.connections, this.gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
+        this.newConnectionsInput = inputs.number(
+                this.newConnections, this.gui.t("IDS_MAXCON5SECLABEL"), 1, Preferences.MAX_NEW_CONNECTIONS);
+        this.queueSizeInput = inputs.number(
+                this.queueSize,
+                this.gui.t("IDS_QUEUESIZE"),
+                Preferences.MIN_UPLOAD_QUEUE,
+                Preferences.MAX_UPLOAD_QUEUE);
         this.sourcesInput =
                 inputs.number(this.sources, this.gui.t("IDS_PW_MAXSOURCES"), 1, Preferences.MAX_SOURCES_PER_FILE);
         this.proxyHostInput = inputs.host(
@@ -490,6 +507,8 @@ public final class SettingsScreen implements Screen {
         this.downloadCapacity.setText(String.valueOf(p.downloadCapacityKiBps()));
         this.uploadCapacity.setText(String.valueOf(p.uploadCapacityKiBps()));
         this.connections.setText(String.valueOf(p.maxConnections()));
+        this.newConnections.setText(String.valueOf(p.newConnectionsPerFiveSeconds()));
+        this.queueSize.setText(String.valueOf(p.uploadQueueSize()));
         this.sources.setText(String.valueOf(p.maxSourcesPerFile()));
         this.obfuscation.setValue(p.obfuscation());
         this.ed2k.setSelected(p.ed2kEnabled());
@@ -637,6 +656,8 @@ public final class SettingsScreen implements Screen {
                 .downloadCapacityKiBps(this.downloadCapacityInput.value())
                 .uploadCapacityKiBps(this.uploadCapacityInput.value())
                 .maxConnections(this.connectionsInput.value())
+                .newConnectionsPerFiveSeconds(this.newConnectionsInput.value())
+                .uploadQueueSize(this.queueSizeInput.value())
                 .maxSourcesPerFile(this.sourcesInput.value())
                 .obfuscation(this.obfuscation.getValue())
                 .ed2kEnabled(this.ed2k.isSelected())

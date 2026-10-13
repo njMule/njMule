@@ -193,6 +193,8 @@ class EmuleImporterTest {
         assertThat(this.target.preferences.advancedSpamFilter())
                 .as("not in the profile")
                 .isTrue();
+        assertThat(this.target.preferences.newConnectionsPerFiveSeconds()).isEqualTo(35);
+        assertThat(this.target.preferences.uploadQueueSize()).isEqualTo(9000);
         assertThat(this.target.preferences.tcpPort()).isEqualTo(Preferences.DEFAULT_TCP_PORT);
         assertThat(this.target.servers).containsExactly(this.emule.config.resolve("server.met"));
         assertThat(this.target.contacts).isEqualTo(3);

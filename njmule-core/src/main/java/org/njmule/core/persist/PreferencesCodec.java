@@ -94,6 +94,11 @@ public final class PreferencesCodec {
         boolKey("chat.friendsOnly", Preferences::messagesFromFriendsOnly, Preferences.Builder::messagesFromFriendsOnly);
         key("chat.filter", Preferences::messageFilter, Preferences.Builder::messageFilter);
         boolKey("chat.spamFilter", Preferences::advancedSpamFilter, Preferences.Builder::advancedSpamFilter);
+        intKey(
+                "net.newConnectionsPer5s",
+                Preferences::newConnectionsPerFiveSeconds,
+                Preferences.Builder::newConnectionsPerFiveSeconds);
+        intKey("upload.queueSize", Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize);
         boolKey(
                 "files.rememberDownloaded",
                 Preferences::rememberDownloadedFiles,
