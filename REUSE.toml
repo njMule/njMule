@@ -19,6 +19,7 @@ path = [
     "packaging/**/*.ico",
     "packaging/**/*.icns",
     "njmule-gui/native/*.args",
+    "njmule-gui/native/**/*.json",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Salvatore Coppola and the njMule contributors"

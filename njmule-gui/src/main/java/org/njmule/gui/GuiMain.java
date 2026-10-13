@@ -43,6 +43,10 @@ public final class GuiMain {
                 || cli.network().isOneShot()) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
         }
+        if (MacMainThread.needed()) {
+            MacMainThread.run(() -> Application.launch(NjMuleFxApp.class, args));
+            return;
+        }
         Application.launch(NjMuleFxApp.class, args);
     }
 }

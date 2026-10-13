@@ -1,3 +1,5 @@
 -H:+ReportExceptionStackTraces
---enable-native-access=javafx.graphics
+--enable-native-access=javafx.graphics,org.njmule.gui
 --enable-monitoring=threaddump
+-H:+ForeignAPISupport
+-H:ConfigurationFileDirectories=../../native/macos
