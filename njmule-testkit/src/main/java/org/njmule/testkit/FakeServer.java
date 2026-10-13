@@ -86,6 +86,7 @@ public final class FakeServer implements AutoCloseable {
     private final List<ServerMessages.Login> logins = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
+    private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
 
     private FakeServer(Config config, ServerSocket tcp, DatagramSocket udp) {
         this.config = config;
@@ -143,6 +144,17 @@ public final class FakeServer implements AutoCloseable {
         return List.copyOf(this.udpSearches);
     }
 
+    /** Sends {@code packet} to every logged-in client. */
+    public void broadcast(Packet packet) throws IOException {
+        byte[] frame = TcpFraming.encode(packet);
+        for (OutputStream client : this.clients) {
+            synchronized (client) {
+                client.write(frame);
+                client.flush();
+            }
+        }
+    }
+
     @Override
     public void close() throws IOException {
         this.udp.close();
@@ -166,12 +178,15 @@ public final class FakeServer implements AutoCloseable {
         try (client) {
             InputStream in = new BufferedInputStream(client.getInputStream());
             OutputStream out = new BufferedOutputStream(client.getOutputStream());
+            this.clients.add(out);
             while (true) {
                 Packet request = TcpFraming.read(in, FrameLimit.fixed(1 << 20));
-                for (Packet answer : this.answer(request, client)) {
-                    out.write(TcpFraming.encode(answer));
+                synchronized (out) {
+                    for (Packet answer : this.answer(request, client)) {
+                        out.write(TcpFraming.encode(answer));
+                    }
+                    out.flush();
                 }
-                out.flush();
             }
         } catch (IOException e) {
             LOG.debug("Fake server client gone: {}", e.getMessage());

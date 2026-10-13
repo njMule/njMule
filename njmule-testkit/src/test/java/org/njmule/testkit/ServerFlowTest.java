@@ -24,6 +24,7 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +54,11 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.packet.FrameLimit;
+import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(60)
@@ -169,6 +175,52 @@ class ServerFlowTest {
         assertThat(login.lowId()).isTrue();
         assertThat(login.clientId()).isEqualTo(1234);
         assertThat(login.server().address()).endsWith(":" + alive.port());
+    }
+
+    @Test
+    void pingsTheKnownServersAndConnectsBackOnCallbackRequests() throws Exception {
+        InetAddress local = lanAddress();
+        FakeServer connected =
+                this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        FakeServer other = this.server(local, new FakeServer.Config(1, "", List.of()));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        Path serverMet = this.dir.resolve("other.met");
+        Files.write(
+                serverMet,
+                ServerMet.write(
+                        List.of(
+                                new ServerMet.Server(
+                                        Ipv4.fromBytes(local.getAddress()),
+                                        other.port(),
+                                        List.of()))));
+        engine.addServers(serverMet).get();
+        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), connected.port())))
+                .get();
+        events.next(EngineEvent.ServerConnected.class, e -> true);
+
+        EngineEvent.ServerUpdated pinged =
+                events.next(
+                        EngineEvent.ServerUpdated.class,
+                        e ->
+                                e.server().address().endsWith(":" + other.port())
+                                        && e.server().users() == 10);
+        assertThat(pinged.server().files()).isEqualTo(20);
+
+        try (ServerSocket firewalled = new ServerSocket(0, 1, local)) {
+            connected.broadcast(
+                    callbackRequested(
+                            Ipv4.fromBytes(local.getAddress()), firewalled.getLocalPort()));
+            try (Socket peer = firewalled.accept()) {
+                peer.setSoTimeout(10_000);
+                Packet hello = TcpFraming.read(peer.getInputStream(), FrameLimit.fixed(4096));
+                assertThat(hello.opcode()).isEqualTo(0x01);
+            }
+        }
+    }
+
+    private static Packet callbackRequested(int ip, int port) {
+        return Packet.of(Protocol.EDONKEY, 0x35, new PacketWriter().u32(Ipv4.toEd2k(ip)).u16(port));
     }
 
     @Test
