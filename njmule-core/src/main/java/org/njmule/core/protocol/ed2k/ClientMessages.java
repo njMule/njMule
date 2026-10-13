@@ -17,6 +17,7 @@
 package org.njmule.core.protocol.ed2k;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Objects;
@@ -265,6 +266,25 @@ public final class ClientMessages {
         public byte[] data() {
             return this.data.clone();
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof SendingPart other
+                    && this.file.equals(other.file)
+                    && this.start == other.start
+                    && this.end == other.end
+                    && Arrays.equals(this.data, other.data);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.file, this.start, this.end) * 31 + Arrays.hashCode(this.data);
+        }
+
+        @Override
+        public String toString() {
+            return "SendingPart[" + this.file + ", " + this.start + "-" + this.end + "]";
+        }
     }
 
     /**
@@ -279,6 +299,34 @@ public final class ClientMessages {
         @Override
         public byte[] chunk() {
             return this.chunk.clone();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof CompressedPart other
+                    && this.file.equals(other.file)
+                    && this.blockStart == other.blockStart
+                    && this.compressedSize == other.compressedSize
+                    && Arrays.equals(this.chunk, other.chunk);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(this.file, this.blockStart, this.compressedSize) * 31
+                    + Arrays.hashCode(this.chunk);
+        }
+
+        @Override
+        public String toString() {
+            return "CompressedPart["
+                    + this.file
+                    + ", block "
+                    + this.blockStart
+                    + ", "
+                    + this.chunk.length
+                    + " of "
+                    + this.compressedSize
+                    + " bytes]";
         }
 
         public Packet encode(boolean wide) {

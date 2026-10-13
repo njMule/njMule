@@ -189,8 +189,10 @@ public final class FakePeer implements AutoCloseable {
                             try {
                                 Thread.sleep(SLOT_DELAY_MILLIS);
                                 this.serve(new Socket(address, port), true);
-                            } catch (IOException | InterruptedException e) {
+                            } catch (IOException e) {
                                 LOG.debug("Cannot call back: {}", e.getMessage());
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
                             }
                         });
     }
@@ -306,8 +308,10 @@ public final class FakePeer implements AutoCloseable {
                                             Packet.empty(
                                                     Protocol.EDONKEY,
                                                     Opcodes.Client.ACCEPTUPLOADREQ.code()));
-                                } catch (IOException | InterruptedException e) {
+                                } catch (IOException e) {
                                     LOG.debug("No slot given: {}", e.getMessage());
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
                                 }
                             });
         }

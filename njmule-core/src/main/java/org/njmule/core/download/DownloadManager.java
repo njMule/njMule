@@ -153,7 +153,7 @@ public final class DownloadManager implements AutoCloseable {
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
     private DownloadQueue queue;
-    private ScheduledFuture<?> tick;
+    private ScheduledFuture<?> ticking;
 
     private DownloadManager(
             EngineLoop loop,
@@ -199,7 +199,7 @@ public final class DownloadManager implements AutoCloseable {
         for (DownloadQueue.Download download : manager.queue.all()) {
             manager.entries.put(download.hash(), new Entry(download, now));
         }
-        manager.tick = loop.scheduleRepeating("downloads", TICK, TICK, manager::tick);
+        manager.ticking = loop.scheduleRepeating("downloads", TICK, TICK, manager::tick);
         return manager;
     }
 
@@ -328,8 +328,8 @@ public final class DownloadManager implements AutoCloseable {
     /** Ends every session and saves the downloads. */
     @Override
     public void close() {
-        if (this.tick != null) {
-            this.tick.cancel(false);
+        if (this.ticking != null) {
+            this.ticking.cancel(false);
         }
         for (Entry entry : this.entries.values()) {
             this.closeSessions(entry, "shutting down");
