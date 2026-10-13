@@ -206,7 +206,7 @@ jobs:
                   & (Join-Path $dir "njmule.exe") --version
                   $tour = "$env:RUNNER_TEMP\tour"
                   New-Item -ItemType Directory -Force "$tour\config" | Out-Null
-                  Set-Content "$tour\config\njmule.properties" "net.ed2k.enabled=false`nnet.kad.enabled=false"
+                  Set-Content "$tour\config\njmule.properties" "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false"
                   $gui = Start-Process (Join-Path $dir "njmule-gui.exe") -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
                   if (-not $gui.WaitForExit(300000)) { $gui.Kill(); throw "the GUI tour did not finish" }
                   if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }

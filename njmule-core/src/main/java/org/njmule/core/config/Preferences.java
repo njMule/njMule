@@ -101,7 +101,7 @@ public record Preferences(
                 Optional.empty(),
                 "INFO",
                 ProxySettings.NONE,
-                false);
+                true);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {

@@ -308,7 +308,8 @@
                     <version>${surefire.version}</version>
                     <configuration>
                         <!-- @{argLine} keeps the JaCoCo agent. -->
-                        <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8</argLine>
+                        <!-- UPnP stays off in every test: it would change the router's port mappings. -->
+                        <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true</argLine>
                         <excludedGroups>${test.excludedGroups}</excludedGroups>
                     </configuration>
                 </plugin>

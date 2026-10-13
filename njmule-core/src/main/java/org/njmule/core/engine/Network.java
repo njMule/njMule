@@ -133,6 +133,9 @@ final class Network {
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
 
     private static final Logger logger = LoggerFactory.getLogger(Network.class);
+    /** Set to {@code true}, no port is ever forwarded: tests must not touch the router of the machine they run on. */
+    public static final String NO_UPNP_PROPERTY = "njmule.upnp.disabled";
+
     // How long a new connection waits for the engine to take it.
     private static final Duration ROUTE_WAIT = Duration.ofSeconds(5);
 
@@ -355,7 +358,7 @@ final class Network {
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
         }
-        if (this.preferences.get().upnp() && this.listener != null) {
+        if (this.preferences.get().upnp() && this.listener != null && !Boolean.getBoolean(NO_UPNP_PROPERTY)) {
             OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
             this.forwarding = PortForwarding.start(
                     Igd.SSDP,

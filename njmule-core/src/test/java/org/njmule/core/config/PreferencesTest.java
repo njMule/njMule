@@ -35,6 +35,9 @@ class PreferencesTest {
         assertThat(p.tcpPort()).isEqualTo(4662);
         assertThat(p.udpPort()).isEqualTo(4672);
         assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUESTED);
+        assertThat(p.upnp())
+                .as("the router forwards our ports unless turned off")
+                .isTrue();
         assertThat(p.toBuilder().build()).isEqualTo(p);
     }
 

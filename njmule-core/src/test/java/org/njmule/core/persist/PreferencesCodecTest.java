@@ -48,7 +48,7 @@ class PreferencesCodecTest {
                 .obfuscation(ObfuscationMode.REQUIRED)
                 .incomingDir(Optional.of(this.dir.resolve("in dir")))
                 .logLevel("DEBUG")
-                .upnp(true)
+                .upnp(false)
                 .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
                 .build();
 
