@@ -25,6 +25,7 @@ import java.util.concurrent.Flow;
 import java.util.function.UnaryOperator;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 import org.njmule.core.engine.Engine;
 
 /**
@@ -47,6 +48,15 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<Preferences> updatePreferences(UnaryOperator<Preferences> change);
 
     Flow.Publisher<EngineEvent> events();
+
+    /** The scheduler's rules; never blocks. */
+    Schedule schedule();
+
+    /** Saves new rules and applies them at once. */
+    CompletableFuture<Schedule> updateSchedule(Schedule schedule);
+
+    /** The rule whose limits apply now, if any; never blocks. */
+    Optional<Schedule.Rule> activeRule();
 
     /**
      * Adds the servers of a {@code server.met} (e.g. eMule's); completes with how many were new.

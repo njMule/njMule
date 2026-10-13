@@ -25,7 +25,9 @@ import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -62,9 +64,11 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.EmuleImporter;
 import org.njmule.core.persist.PreferencesCodec;
+import org.njmule.core.persist.ScheduleCodec;
 import org.njmule.core.persist.UserHashStore;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
@@ -79,6 +83,7 @@ public final class Engine implements NjMuleEngine {
 
     private static final Logger LOG = LoggerFactory.getLogger(Engine.class);
     private static final int EVENT_BUFFER = 1_024;
+    private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
     private final AppDirectories directories;
     private final Path preferencesFile;
@@ -88,6 +93,11 @@ public final class Engine implements NjMuleEngine {
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
+    // The preferences with the scheduler's rule applied: what the network uses.
+    private volatile Preferences effective;
+    private volatile Schedule schedule;
+    private volatile Schedule.Rule activeRule;
+    private final Path scheduleFile;
     private final Network network;
     private final BooleanSupplier emuleRunning;
 
@@ -102,6 +112,9 @@ public final class Engine implements NjMuleEngine {
         this.emuleRunning = emuleRunning;
         this.preferencesFile = directories.config().resolve(PreferencesCodec.FILE_NAME);
         this.preferences = preferences;
+        this.scheduleFile = directories.config().resolve(ScheduleCodec.FILE_NAME);
+        this.schedule = ScheduleCodec.load(this.scheduleFile);
+        this.effective = preferences;
         this.loop = loop;
         this.eventExecutor =
                 Executors.newSingleThreadExecutor(
@@ -111,7 +124,7 @@ public final class Engine implements NjMuleEngine {
                 new Network(
                         loop,
                         directories.config(),
-                        () -> this.preferences,
+                        () -> this.effective,
                         this::publish,
                         this::userLog,
                         userHash,
@@ -146,7 +159,13 @@ public final class Engine implements NjMuleEngine {
         engine.loop
                 .submit(
                         () -> {
+                            engine.refreshSchedule();
                             engine.network.start();
+                            engine.loop.scheduleRepeating(
+                                    "scheduler",
+                                    SCHEDULE_CHECK,
+                                    SCHEDULE_CHECK,
+                                    engine::refreshSchedule);
                             return null;
                         })
                 .join();
@@ -181,10 +200,57 @@ public final class Engine implements NjMuleEngine {
                                     "Cannot save " + this.preferencesFile, e);
                         }
                         this.preferences = next;
+                        this.refreshSchedule();
                         this.publish(new EngineEvent.PreferencesChanged(next));
                     }
                     return next;
                 });
+    }
+
+    @Override
+    public Schedule schedule() {
+        return this.schedule;
+    }
+
+    @Override
+    public CompletableFuture<Schedule> updateSchedule(Schedule changed) {
+        Objects.requireNonNull(changed, "changed");
+        return this.loop.submit(
+                () -> {
+                    try {
+                        ScheduleCodec.save(this.scheduleFile, changed);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Cannot save " + this.scheduleFile, e);
+                    }
+                    this.schedule = changed;
+                    this.refreshSchedule();
+                    return changed;
+                });
+    }
+
+    /** The preferences the network uses now, for tests. */
+    Preferences effective() {
+        return this.effective;
+    }
+
+    @Override
+    public Optional<Schedule.Rule> activeRule() {
+        return Optional.ofNullable(this.activeRule);
+    }
+
+    // Engine thread: which rule holds now, and the preferences it gives.
+    private void refreshSchedule() {
+        Schedule.Rule rule = this.schedule.active(LocalDateTime.now()).orElse(null);
+        Preferences base = this.preferences;
+        this.effective = rule == null ? base : rule.applyTo(base);
+        if (!Objects.equals(rule, this.activeRule)) {
+            this.activeRule = rule;
+            this.userLog(
+                    LogLine.Level.INFO,
+                    rule == null
+                            ? "Scheduler: the preferences apply again"
+                            : "Scheduler: \"" + rule.name() + "\" applies now");
+        }
     }
 
     @Override

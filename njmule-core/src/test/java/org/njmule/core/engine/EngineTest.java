@@ -22,7 +22,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -39,6 +43,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.tag.ServerTag;
@@ -163,6 +168,40 @@ class EngineTest {
             assertThat(status.downloads()).isZero();
             assertThat(status.downloadBytesPerSecond()).isZero();
             assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
+        }
+    }
+
+    @Test
+    void theSchedulerAppliesItsRuleOverThePreferences() throws Exception {
+        Schedule.Rule always =
+                new Schedule.Rule(
+                        "always",
+                        true,
+                        EnumSet.allOf(DayOfWeek.class),
+                        LocalTime.MIDNIGHT,
+                        LocalTime.MIDNIGHT,
+                        OptionalInt.of(7),
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OptionalInt.empty());
+        try (Engine engine = (Engine) this.start()) {
+            assertThat(engine.activeRule()).isEmpty();
+            engine.updateSchedule(new Schedule(List.of(always))).get(5, TimeUnit.SECONDS);
+
+            assertThat(engine.activeRule()).contains(always);
+            assertThat(engine.schedule().rules()).containsExactly(always);
+            assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
+            assertThat(engine.preferences().maxUploadKiBps()).isZero();
+            engine.updatePreferences(p -> p.toBuilder().nick("other").build())
+                    .get(5, TimeUnit.SECONDS);
+            assertThat(engine.effective().nick()).isEqualTo("other");
+            assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
+        }
+        try (Engine engine = (Engine) this.start()) {
+            assertThat(engine.activeRule()).contains(always);
+            engine.updateSchedule(Schedule.EMPTY).get(5, TimeUnit.SECONDS);
+            assertThat(engine.activeRule()).isEmpty();
+            assertThat(engine.effective().maxUploadKiBps()).isZero();
         }
     }
 
