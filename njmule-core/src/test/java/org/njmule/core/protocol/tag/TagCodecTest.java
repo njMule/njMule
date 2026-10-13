@@ -51,6 +51,21 @@ class TagCodecTest {
     // Expected bytes follow the old and new eD2K tag encodings and the Kad tag encoding.
 
     @Test
+    void portsAreTakenOnlyWithinTheirRange() {
+        List<Tag> tags =
+                List.of(
+                        new IntTag(TagName.id(1), 4662),
+                        new IntTag(TagName.id(2), 0),
+                        new IntTag(TagName.id(3), 0x1_0000),
+                        new IntTag(TagName.id(4), 0xFFFF));
+        assertThat(Tags.portValue(tags, 1)).hasValue(4662);
+        assertThat(Tags.portValue(tags, 2)).isEmpty();
+        assertThat(Tags.portValue(tags, 3)).isEmpty();
+        assertThat(Tags.portValue(tags, 4)).hasValue(0xFFFF);
+        assertThat(Tags.portValue(tags, 5)).isEmpty();
+    }
+
+    @Test
     void newEncodingUsesTheSmallestIntegerType() {
         assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 5))).isEqualTo("890205");
         assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 0x1234))).isEqualTo("88023412");

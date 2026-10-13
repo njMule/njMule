@@ -198,6 +198,14 @@ class KadIndexTest {
         assertThat(this.index.publishSource(file, source, noPort, IP, 4672, NOW)).isEmpty();
         assertThat(this.index.publishSource(file, source, sourceTags(4662), 0, 4672, NOW))
                 .isEmpty();
+        assertThat(this.index.publishSource(file, source, sourceTags(0x1_0000), IP, 4672, NOW))
+                .as("TCP port out of range")
+                .isEmpty();
+        List<Tag> badUdp = new java.util.ArrayList<>(sourceTags(4662));
+        badUdp.add(new Tag.IntTag(TagName.id(FileTag.SOURCEUPORT), -1));
+        assertThat(this.index.publishSource(file, source, badUdp, IP, 4672, NOW))
+                .as("UDP port out of range")
+                .isEmpty();
         assertThat(this.index.sourceEntries()).isZero();
     }
 

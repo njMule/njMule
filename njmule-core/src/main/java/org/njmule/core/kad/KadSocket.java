@@ -129,7 +129,8 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                             datagram,
                             datagram.length,
                             new InetSocketAddress(Ipv4.format(ip), port)));
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
+            // A bad address must not end the caller's work, a lookup or the table's upkeep.
             LOG.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
         }
     }

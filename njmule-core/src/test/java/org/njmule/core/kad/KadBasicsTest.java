@@ -68,6 +68,17 @@ class KadBasicsTest {
         assertThat(table.add(contact(random, ip, 4673), false, NodesDat.UdpKey.NONE, 0, 0))
                 .as("same address")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
+        for (int port : new int[] {0, 0x1_0000, -1}) {
+            assertThat(
+                            table.add(
+                                    contact(random, Ipv4.of(9, 8, 7, 6), port),
+                                    false,
+                                    NodesDat.UdpKey.NONE,
+                                    0,
+                                    0))
+                    .as("port " + port)
+                    .isEqualTo(RoutingTable.Outcome.REFUSED);
+        }
         assertThat(
                         table.add(
                                 new KadContact(own, Ipv4.of(5, 5, 5, 5), 1, 1, 8, 0),

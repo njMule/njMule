@@ -547,7 +547,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return;
         }
         KadMessages.Hello hello = KadMessages.Hello.decode(packet);
-        int udpPort = (int) Tags.intValue(hello.tags(), FileTag.SOURCEUPORT).orElse(peer.port());
+        int udpPort = Tags.portValue(hello.tags(), FileTag.SOURCEUPORT).orElse(peer.port());
         int misc = (int) Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS).orElse(0);
         int version = hello.sender().version();
         long now = this.ticker.read();
@@ -1031,7 +1031,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 continue;
             }
             int ip = (int) Tags.intValue(e.tags(), FileTag.SOURCEIP).orElse(0);
-            int port = (int) Tags.intValue(e.tags(), FileTag.SOURCEPORT).orElse(0);
+            int port = Tags.portValue(e.tags(), FileTag.SOURCEPORT).orElse(0);
             if (ip == 0 || port == 0) {
                 continue;
             }

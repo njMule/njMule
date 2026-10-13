@@ -18,6 +18,7 @@ package org.njmule.core.protocol.tag;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.tag.Tag.BlobTag;
@@ -51,6 +52,14 @@ public final class Tags {
             }
         }
         return OptionalLong.empty();
+    }
+
+    /** The integer tag {@code id} as a TCP or UDP port: empty unless within 1..65535. */
+    public static OptionalInt portValue(List<Tag> tags, int id) {
+        OptionalLong value = intValue(tags, id);
+        return value.isPresent() && value.getAsLong() >= 1 && value.getAsLong() <= 0xFFFF
+                ? OptionalInt.of((int) value.getAsLong())
+                : OptionalInt.empty();
     }
 
     public static Optional<String> stringValue(List<Tag> tags, int id) {

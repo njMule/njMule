@@ -130,8 +130,11 @@ final class KadIndex {
         if (Tags.intValue(tags, FileTag.SOURCETYPE).isEmpty()) {
             return OptionalLong.empty();
         }
-        int tcp = (int) Tags.intValue(tags, FileTag.SOURCEPORT).orElse(0);
-        int udp = (int) Tags.intValue(tags, FileTag.SOURCEUPORT).orElse(udpPort);
+        int tcp = Tags.portValue(tags, FileTag.SOURCEPORT).orElse(0);
+        int udp =
+                Tags.intValue(tags, FileTag.SOURCEUPORT).isPresent()
+                        ? Tags.portValue(tags, FileTag.SOURCEUPORT).orElse(0)
+                        : udpPort;
         if (ip == 0 || tcp == 0 || udp == 0) {
             return OptionalLong.empty();
         }

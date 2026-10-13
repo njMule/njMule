@@ -135,7 +135,10 @@ final class RoutingTable {
      */
     Outcome add(
             KadContact contact, boolean update, NodesDat.UdpKey senderKey, int ourIp, long now) {
-        if (contact.id().equals(this.own) || contact.version() <= 1 || contact.udpPort() == 0) {
+        if (contact.id().equals(this.own)
+                || contact.version() <= 1
+                || contact.udpPort() < 1
+                || contact.udpPort() > 0xFFFF) {
             return Outcome.REFUSED;
         }
         if (contact.udpPort() == 53 && contact.version() <= 5) {
