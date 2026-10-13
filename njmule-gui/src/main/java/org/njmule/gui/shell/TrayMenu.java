@@ -208,9 +208,9 @@ public final class TrayMenu {
             BiFunction<Preferences, Integer, Preferences> change) {
         FontIcon arrow = new FontIcon(icon);
         arrow.getStyleClass().add(row == 0 ? "tray-down" : "tray-up");
-        text.setPrefColumnCount(5);
+        text.setPrefColumnCount(4);
         text.setAlignment(Pos.CENTER_RIGHT);
-        slider.setPrefWidth(120);
+        slider.setPrefWidth(90);
         slider.valueChangingProperty().addListener((o, was, now) -> {
             if (!now) {
                 this.apply(change, (int) Math.round(slider.getValue()));

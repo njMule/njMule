@@ -263,15 +263,34 @@
 .bar-complete { -fx-background-color: -nj-bar-complete; }
 
 /* The menu of the notification area icon: the name up the left edge, as on eMule's. */
+/* Compact like a system menu: smaller text, tight rows and separators. */
 .tray-menu {
     -fx-background-color: -color-bg-default;
     -fx-border-color: -color-border-default;
     -fx-border-width: 1;
+    -fx-font-size: 11px;
+}
+
+.tray-menu .ikonli-font-icon {
+    -fx-icon-size: 12px;
+}
+
+.tray-menu .separator {
+    -fx-padding: 1 0 1 0;
+}
+
+.tray-menu .slider {
+    -fx-padding: 0;
+}
+
+.tray-menu .text-field {
+    -fx-padding: 1 4 1 4;
+    -fx-pref-width: 4.5em;
 }
 
 .tray-band {
     -fx-background-color: -nj-brand;
-    -fx-padding: 8 4 8 4;
+    -fx-padding: 4 2 4 2;
     -fx-border-color: -nj-brand-accent;
     -fx-border-width: 0 2 0 0;
 }
@@ -279,17 +298,16 @@
 .tray-band-text {
     -fx-text-fill: -nj-brand-mark;
     -fx-font-weight: bold;
-    -fx-font-size: 1.1em;
 }
 
 .tray-items {
-    -fx-padding: 6;
-    -fx-spacing: 2;
+    -fx-padding: 3;
+    -fx-spacing: 0;
 }
 
 .tray-title {
     -fx-font-weight: bold;
-    -fx-padding: 2 4 4 4;
+    -fx-padding: 1 4 2 4;
 }
 
 .tray-title .ikonli-font-icon {
@@ -297,9 +315,9 @@
 }
 
 .tray-speeds {
-    -fx-hgap: 6;
-    -fx-vgap: 4;
-    -fx-padding: 0 4 4 4;
+    -fx-hgap: 4;
+    -fx-vgap: 2;
+    -fx-padding: 0 4 2 4;
 }
 
 .tray-down {
@@ -311,7 +329,8 @@
 }
 
 .tray-item {
-    -fx-padding: 4 8 4 8;
+    -fx-padding: 2 6 2 6;
+    -fx-graphic-text-gap: 6;
 }
 
 .tray-default {
