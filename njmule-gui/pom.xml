@@ -27,6 +27,10 @@
         <native.cmd.suffix></native.cmd.suffix>
         <native.tour.prism>es2</native.tour.prism>
         <native.tour.metadata>${project.basedir}/src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour</native.tour.metadata>
+        <!-- Windows links the executable's icon and version information (native/windows); the other
+             platforms repeat an option of their argument file, as an argument cannot be empty. -->
+        <native.resources.skip>true</native.resources.skip>
+        <native.platform.option>-H:+ReportExceptionStackTraces</native.platform.option>
     </properties>
 
     <dependencies>
@@ -144,6 +148,8 @@
                 <native.os>windows</native.os>
                 <native.cmd.suffix>.cmd</native.cmd.suffix>
                 <native.tour.prism>d3d</native.tour.prism>
+                <native.resources.skip>false</native.resources.skip>
+                <native.platform.option>-H:NativeLinkerOption=${project.build.directory}/native-res/njmule-gui.res</native.platform.option>
             </properties>
         </profile>
         <profile>
@@ -185,9 +191,58 @@
                         </executions>
                     </plugin>
                     <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>native-resources</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${native.resources.skip}</skip>
+                                    <outputDirectory>${project.build.directory}/native-res</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/native/windows</directory>
+                                            <includes>
+                                                <include>njmule-gui.rc</include>
+                                            </includes>
+                                            <filtering>true</filtering>
+                                        </resource>
+                                        <resource>
+                                            <directory>${project.basedir}/../branding/generated</directory>
+                                            <includes>
+                                                <include>njmule.ico</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
                         <executions>
+                            <execution>
+                                <id>native-resources</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${native.resources.skip}</skip>
+                                    <workingDirectory>${project.build.directory}/native-res</workingDirectory>
+                                    <executable>${project.basedir}/native/windows/rc.cmd</executable>
+                                    <arguments>
+                                        <argument>njmule-gui.rc</argument>
+                                        <argument>njmule-gui.res</argument>
+                                        <argument>${project.version}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
                             <execution>
                                 <id>native-gui</id>
                                 <phase>package</phase>
@@ -208,6 +263,7 @@
                                         <argument>-o</argument>
                                         <argument>njmule-gui</argument>
                                         <argument>@${project.basedir}/native/${native.os}.args</argument>
+                                        <argument>${native.platform.option}</argument>
                                     </arguments>
                                 </configuration>
                             </execution>
