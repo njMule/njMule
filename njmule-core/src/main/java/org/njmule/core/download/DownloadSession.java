@@ -38,6 +38,7 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
+import org.njmule.core.peer.Identities;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.io.DecodeException;
@@ -57,8 +58,11 @@ final class DownloadSession {
 
     /** What a session reports, on the engine thread. */
     interface Listener {
-        /** The source sent us data that reached the download. */
-        void received(DownloadSession session, int bytes);
+        /**
+         * The source sent us data that reached the download: {@code bytes} of the file, carried in
+         * {@code transferred} bytes (compressed or not).
+         */
+        void received(DownloadSession session, int bytes, int transferred);
 
         /** The session is over. */
         void ended(DownloadSession session, Outcome outcome, String reason);
@@ -130,6 +134,7 @@ final class DownloadSession {
     private final DownloadQueue.Download download;
     private final InetSocketAddress address;
     private final Supplier<Hello> ourHello;
+    private final Identities identities;
     private final Listener listener;
     private final Map<Long, Pending> pending = new LinkedHashMap<>();
 
@@ -141,6 +146,7 @@ final class DownloadSession {
     private boolean accepted;
     private int queueRank;
     private ScheduledFuture<?> idle;
+    private Optional<Identities.Session> identity = Optional.empty();
 
     DownloadSession(
             EngineLoop loop,
@@ -148,12 +154,14 @@ final class DownloadSession {
             DownloadQueue.Download download,
             InetSocketAddress address,
             Supplier<Hello> ourHello,
+            Identities identities,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.queue = Objects.requireNonNull(queue, "queue");
         this.download = Objects.requireNonNull(download, "download");
         this.address = Objects.requireNonNull(address, "address");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
+        this.identities = Objects.requireNonNull(identities, "identities");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -171,6 +179,11 @@ final class DownloadSession {
 
     Optional<Hash16> peerHash() {
         return this.peerHash;
+    }
+
+    /** Whether the source's user hash may be credited with what it sends. */
+    boolean trusted() {
+        return this.identity.map(i -> i.trust().credits()).orElse(false);
     }
 
     /** Our place in the source's queue, once it told us. */
@@ -211,6 +224,10 @@ final class DownloadSession {
     TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
         this.connection = incoming;
         this.peerHash = Optional.of(peer.userHash());
+        this.identity =
+                Optional.of(
+                        this.identities.start(
+                                peer, incoming.remoteAddress().getAddress(), incoming::send));
         this.state = State.QUEUED;
         this.uploadRequested = true;
         knownParts.ifPresentOrElse(this::setParts, this::requestFile);
@@ -279,6 +296,9 @@ final class DownloadSession {
             return;
         }
         try {
+            if (this.identity.isPresent() && this.identity.get().received(packet)) {
+                return;
+            }
             if (packet.protocol() == Protocol.EMULE) {
                 this.receivedExtended(packet);
             } else if (packet.protocol() == Protocol.EDONKEY) {
@@ -287,6 +307,10 @@ final class DownloadSession {
         } catch (DecodeException | IllegalArgumentException e) {
             LOG.debug("Bad packet from {}: {}", this.address, e.getMessage());
             this.end(Outcome.GONE, "protocol error: " + e.getMessage());
+        } catch (RuntimeException e) {
+            // A lost packet would stall the session: end it, the source is asked again later.
+            LOG.warn("Failed handling a packet from {}", this.address, e);
+            this.end(Outcome.LATER, "internal error: " + e);
         }
     }
 
@@ -299,7 +323,15 @@ final class DownloadSession {
         switch (opcode.get()) {
             case HELLOANSWER -> {
                 if (this.state == State.GREETING) {
-                    this.peerHash = Optional.of(Hello.decode(packet).userHash());
+                    Hello peer = Hello.decode(packet);
+                    this.peerHash = Optional.of(peer.userHash());
+                    // As the side that connected, we ask for the identification first.
+                    this.identity =
+                            Optional.of(
+                                    this.identities.start(
+                                            peer,
+                                            this.connection.remoteAddress().getAddress(),
+                                            this.connection::send));
                     this.state = State.REQUESTING;
                     this.requestFile();
                 }
@@ -445,7 +477,8 @@ final class DownloadSession {
 
     private void data(ClientMessages.SendingPart part) {
         if (part.file().equals(this.download.hash())) {
-            this.accept(part.start(), part.data());
+            byte[] data = part.data();
+            this.accept(part.start(), data, data.length);
         }
     }
 
@@ -461,12 +494,13 @@ final class DownloadSession {
                     new BlockInflater(block.block.start(), Math.toIntExact(block.block.length()));
         }
         long position = block.inflater.position();
-        byte[] data = block.inflater.inflate(part.chunk());
-        this.accept(position, data);
+        byte[] chunk = part.chunk();
+        byte[] data = block.inflater.inflate(chunk);
+        this.accept(position, data, chunk.length);
     }
 
     // Data counts only inside a block we asked for and still wait for.
-    private void accept(long start, byte[] data) {
+    private void accept(long start, byte[] data, int transferred) {
         if (this.state != State.DOWNLOADING || data.length == 0) {
             return;
         }
@@ -483,7 +517,7 @@ final class DownloadSession {
             return;
         }
         this.queue.received(this.download, start, data);
-        this.listener.received(this, data.length);
+        this.listener.received(this, data.length, transferred);
         target.missing.remove(Range.closedOpen(start, end));
         if (target.missing.isEmpty()) {
             target.dispose();

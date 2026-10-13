@@ -88,6 +88,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Stops the download and deletes its data. */
     CompletableFuture<Boolean> cancelDownload(Hash16 hash);
 
+    /** The files we share: those of the incoming directory and of the shared directories. */
+    CompletableFuture<List<SharedFileInfo>> sharedFiles();
+
+    /** Shares the files of {@code directory} too (not of its subdirectories), from now on. */
+    CompletableFuture<Void> shareDirectory(Path directory);
+
     boolean isRunning();
 
     /** Stops the engine and saves its state; idempotent. */

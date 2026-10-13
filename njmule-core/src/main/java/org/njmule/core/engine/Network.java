@@ -18,12 +18,16 @@ package org.njmule.core.engine;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -41,10 +45,16 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.download.DownloadManager;
+import org.njmule.core.files.PartFile;
+import org.njmule.core.files.SharedFiles;
+import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpListener;
+import org.njmule.core.peer.Identities;
+import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.IpFilterDat;
@@ -62,14 +72,17 @@ import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
+import org.njmule.core.upload.Credits;
+import org.njmule.core.upload.UploadManager;
+import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * The network side of the engine: the listening socket, the server session, server UDP queries,
- * searches, the hello exchange with peers and the downloads. Engine thread only, except the methods
- * marked otherwise.
+ * searches, the hello exchange with peers, the downloads, the shared files and the uploads. Engine
+ * thread only, except the methods marked otherwise.
  */
 final class Network {
 
@@ -101,6 +114,11 @@ final class Network {
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
     private final DownloadManager downloads;
+    private final Credits credits;
+    private final UploadManager uploads;
+    private final Path configDir;
+    private final Supplier<Path> incomingDir;
+    private SharedFiles shares;
     private TcpListener listener;
     private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
@@ -128,6 +146,22 @@ final class Network {
         this.userLog = Objects.requireNonNull(log, "log");
         this.userHash = Objects.requireNonNull(userHash, "userHash");
         SecureRandom random = new SecureRandom();
+        this.configDir = configDir;
+        this.incomingDir = incomingDir;
+        this.credits = Credits.load(configDir, Clock.systemUTC());
+        Identities identities =
+                new Identities(
+                        IdentityHandshake.Identity.of(
+                                Identities.loadOrCreateKey(configDir, random)),
+                        hash ->
+                                this.credits
+                                        .get(hash)
+                                        .map(Credits.Credit::publicKey)
+                                        .filter(key -> key.length() > 0)
+                                        .map(Bytes::toByteArray),
+                        (hash, key) -> this.credits.identified(hash, Bytes.of(key)),
+                        this::ourPublicAddress,
+                        random);
         this.serverMet = configDir.resolve(ServerList.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
         this.servers = ServerList.load(this.serverMet);
@@ -180,8 +214,31 @@ final class Network {
                         ip -> this.ipFilter.blocks(ip),
                         random,
                         Ticker.systemTicker(),
+                        identities,
+                        this.credits::downloaded,
                         new DownloadEvents());
-        this.greetings.routeTo(this.downloads.router());
+        this.uploads =
+                new UploadManager(
+                        loop,
+                        hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
+                        this.downloads::find,
+                        this::ourHello,
+                        () ->
+                                new UploadManager.Settings(
+                                        preferences.get().maxUploadKiBps(),
+                                        preferences.get().obfuscation()),
+                        identities,
+                        this.credits,
+                        random,
+                        Ticker.systemTicker());
+        PeerGreetings.Router forDownloads = this.downloads.router();
+        PeerGreetings.Router forUploads = this.uploads.router();
+        // A source calling back with a slot first; any other client may want our files.
+        this.greetings.routeTo(
+                (connection, peer) -> {
+                    Optional<TcpConnection.Handler> handler = forDownloads.route(connection, peer);
+                    return handler.isPresent() ? handler : forUploads.route(connection, peer);
+                });
     }
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
@@ -210,6 +267,9 @@ final class Network {
             this.userLog.log(
                     LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
+        this.shares =
+                SharedFiles.open(this.loop, this.configDir, this.incomingDir, new ShareEvents());
+        this.uploads.start();
         LOG.info(
                 "{} servers known, {} IP filter ranges, user hash {}",
                 this.servers.size(),
@@ -289,13 +349,34 @@ final class Network {
         return this.downloads.cancel(hash);
     }
 
+    List<SharedFileInfo> sharedFiles() {
+        List<SharedFileInfo> all = new ArrayList<>();
+        if (this.shares != null) {
+            for (SharedFiles.SharedFile f : this.shares.all()) {
+                all.add(new SharedFileInfo(f.hash(), f.name(), f.size(), f.path()));
+            }
+        }
+        return all;
+    }
+
+    void shareDirectory(Path directory) throws IOException {
+        if (this.shares == null) {
+            throw new IllegalStateException("the network is not started");
+        }
+        this.shares.addDirectory(directory);
+    }
+
     /** Any thread: says hello to a client. */
     CompletableFuture<PeerInfo> hello(InetSocketAddress peer) {
         return this.greetings.greet(peer);
     }
 
     void close() {
+        this.uploads.close();
         this.downloads.close();
+        if (this.shares != null) {
+            this.shares.close();
+        }
         this.session.disconnect();
         this.greetings.close();
         if (this.listener != null) {
@@ -329,10 +410,25 @@ final class Network {
                 0,
                 Hello.MISC1_UNICODE
                         | Hello.MISC1_DATA_COMPRESSION
+                        | IdentityHandshake.SUPPORTED << 16
                         | Hello.MISC1_NO_VIEW_SHARED_FILES,
                 Hello.MISC2_LARGE_FILES | cryptOptions(prefs.obfuscation()),
                 server.serverIp(),
                 server.serverPort());
+    }
+
+    // Our public address, known when the server gave us a HighID.
+    private Optional<Inet4Address> ourPublicAddress() {
+        long id = this.context.clientId();
+        if (id < ServerMessages.LOW_ID_LIMIT) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(
+                    (Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(Ipv4.fromEd2k(id))));
+        } catch (UnknownHostException e) {
+            return Optional.empty();
+        }
     }
 
     private void datagram(InetSocketAddress from, Packet packet) {
@@ -541,9 +637,12 @@ final class Network {
         }
 
         @Override
-        public void completed(DownloadInfo download, Path file) {
+        public void completed(DownloadInfo download, Path file, PartFile part) {
             Network.this.userLog.log(
                     LogLine.Level.SUCCESS, "Finished downloading " + download.name());
+            if (Network.this.shares != null) {
+                Network.this.shares.finished(file, part);
+            }
             Network.this.publish.accept(new EngineEvent.DownloadCompleted(download, file));
         }
 
@@ -557,6 +656,18 @@ final class Network {
         @Override
         public void removed(Hash16 hash) {
             Network.this.publish.accept(new EngineEvent.DownloadRemoved(hash));
+        }
+    }
+
+    private static final class ShareEvents implements SharedFiles.Listener {
+        @Override
+        public void shared(SharedFiles.SharedFile file) {
+            LOG.debug("Shared {}", file.name());
+        }
+
+        @Override
+        public void unshared(SharedFiles.SharedFile file) {
+            LOG.debug("No longer shared: {}", file.name());
         }
     }
 

@@ -50,6 +50,7 @@ import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.persist.AtomicFiles;
@@ -259,6 +260,21 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Boolean> cancelDownload(Hash16 hash) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.cancelDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<List<SharedFileInfo>> sharedFiles() {
+        return this.loop.submit(this.network::sharedFiles);
+    }
+
+    @Override
+    public CompletableFuture<Void> shareDirectory(Path directory) {
+        Objects.requireNonNull(directory, "directory");
+        return this.loop.submit(
+                () -> {
+                    this.network.shareDirectory(directory);
+                    return null;
+                });
     }
 
     @Override

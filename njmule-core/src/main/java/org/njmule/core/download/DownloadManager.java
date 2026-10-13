@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
@@ -46,6 +47,7 @@ import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.net.TcpConnection;
+import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
@@ -67,7 +69,8 @@ public final class DownloadManager implements AutoCloseable {
         /** At most once a second per download. */
         void progress(DownloadInfo download);
 
-        void completed(DownloadInfo download, Path file);
+        /** {@code part} has the hashes of the finished file, now at {@code file}. */
+        void completed(DownloadInfo download, Path file, PartFile part);
 
         void failed(DownloadInfo download, String reason);
 
@@ -149,6 +152,8 @@ public final class DownloadManager implements AutoCloseable {
     private final IntPredicate blocked;
     private final SecureRandom random;
     private final Ticker ticker;
+    private final Identities identities;
+    private final BiConsumer<Hash16, Long> credit;
     private final Listener listener;
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
@@ -163,6 +168,8 @@ public final class DownloadManager implements AutoCloseable {
             IntPredicate blocked,
             SecureRandom random,
             Ticker ticker,
+            Identities identities,
+            BiConsumer<Hash16, Long> credit,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
@@ -171,6 +178,8 @@ public final class DownloadManager implements AutoCloseable {
         this.blocked = Objects.requireNonNull(blocked, "blocked");
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
+        this.identities = Objects.requireNonNull(identities, "identities");
+        this.credit = Objects.requireNonNull(credit, "credit");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -178,6 +187,7 @@ public final class DownloadManager implements AutoCloseable {
      * Loads the downloads of {@code tempDir} and starts asking for sources.
      *
      * @param blocked IP addresses (host order) that the IP filter refuses
+     * @param credit credits a trusted source's user hash with the bytes it sent us
      */
     public static DownloadManager open(
             EngineLoop loop,
@@ -189,11 +199,22 @@ public final class DownloadManager implements AutoCloseable {
             IntPredicate blocked,
             SecureRandom random,
             Ticker ticker,
+            Identities identities,
+            BiConsumer<Hash16, Long> credit,
             Listener listener)
             throws IOException {
         DownloadManager manager =
                 new DownloadManager(
-                        loop, ourHello, settings, server, blocked, random, ticker, listener);
+                        loop,
+                        ourHello,
+                        settings,
+                        server,
+                        blocked,
+                        random,
+                        ticker,
+                        identities,
+                        credit,
+                        listener);
         manager.queue = DownloadQueue.load(loop, tempDir, incomingDir, manager.new QueueEvents());
         long now = ticker.read();
         for (DownloadQueue.Download download : manager.queue.all()) {
@@ -221,6 +242,11 @@ public final class DownloadManager implements AutoCloseable {
             all.add(this.info(entry));
         }
         return all;
+    }
+
+    /** The download of {@code hash}, whose checked parts other clients may download. */
+    public Optional<DownloadQueue.Download> find(Hash16 hash) {
+        return Optional.ofNullable(this.entries.get(hash)).map(e -> e.download);
     }
 
     public Optional<DownloadInfo> download(Hash16 hash) {
@@ -366,6 +392,7 @@ public final class DownloadManager implements AutoCloseable {
                                 entry.download,
                                 source.address,
                                 this.ourHello,
+                                this.identities,
                                 this.sessionEvents);
                 source.session = session;
                 source.userHash = Optional.of(peer.userHash());
@@ -437,6 +464,7 @@ public final class DownloadManager implements AutoCloseable {
                             entry.download,
                             source.address,
                             this.ourHello,
+                            this.identities,
                             this.sessionEvents);
             source.session.connect(disabled ? Optional.empty() : source.userHash, this.random);
             started++;
@@ -540,10 +568,13 @@ public final class DownloadManager implements AutoCloseable {
 
     private final class SessionEvents implements DownloadSession.Listener {
         @Override
-        public void received(DownloadSession session, int bytes) {
+        public void received(DownloadSession session, int bytes, int transferred) {
             Entry entry = DownloadManager.this.entries.get(session.download().hash());
             if (entry != null) {
                 entry.received += bytes;
+            }
+            if (session.trusted() && session.peerHash().isPresent()) {
+                DownloadManager.this.credit.accept(session.peerHash().get(), (long) transferred);
             }
         }
 
@@ -606,7 +637,8 @@ public final class DownloadManager implements AutoCloseable {
                 return;
             }
             DownloadManager.this.closeSessions(entry, "the download is complete");
-            DownloadManager.this.listener.completed(DownloadManager.this.info(entry), file);
+            DownloadManager.this.listener.completed(
+                    DownloadManager.this.info(entry), file, download.file());
         }
 
         @Override
