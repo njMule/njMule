@@ -59,7 +59,7 @@ final class GuiTour {
 
     static final String PROPERTY = "njmule.gui.tour";
 
-    private static final Logger LOG = LoggerFactory.getLogger(GuiTour.class);
+    private static final Logger logger = LoggerFactory.getLogger(GuiTour.class);
     private static final Duration STEP = Duration.millis(250);
 
     private final Gui gui;
@@ -109,7 +109,7 @@ final class GuiTour {
         this.steps.add(GuiTour::clipboard);
         this.steps.add(
                 () -> {
-                    LOG.info("Tour finished");
+                    logger.info("Tour finished");
                     this.done.run();
                 });
         Timeline timeline = new Timeline();

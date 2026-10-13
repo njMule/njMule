@@ -44,7 +44,7 @@ public final class ServerUdp implements AutoCloseable {
     /** UDP port of a server: its TCP port + 4. */
     public static final int PORT_OFFSET = 4;
 
-    private static final Logger LOG = LoggerFactory.getLogger(ServerUdp.class);
+    private static final Logger logger = LoggerFactory.getLogger(ServerUdp.class);
     private static final int MAX_DATAGRAM = 8 * 1024;
 
     private final DatagramSocket socket;
@@ -90,10 +90,10 @@ public final class ServerUdp implements AutoCloseable {
                     this.receiver.received((InetSocketAddress) datagram.getSocketAddress(), packet);
                 }
             } catch (DecodeException e) {
-                LOG.debug("Dropping a malformed datagram from {}", datagram.getSocketAddress());
+                logger.debug("Dropping a malformed datagram from {}", datagram.getSocketAddress());
             } catch (IOException e) {
                 if (!this.socket.isClosed()) {
-                    LOG.warn("Server UDP receive failed", e);
+                    logger.warn("Server UDP receive failed", e);
                 }
             }
         }

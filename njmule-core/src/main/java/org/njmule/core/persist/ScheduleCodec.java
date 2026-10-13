@@ -47,7 +47,7 @@ public final class ScheduleCodec {
 
     public static final String FILE_NAME = "scheduler.properties";
 
-    private static final Logger LOG = LoggerFactory.getLogger(ScheduleCodec.class);
+    private static final Logger logger = LoggerFactory.getLogger(ScheduleCodec.class);
     private static final String PREFIX = "rule.";
 
     private ScheduleCodec() {}
@@ -75,7 +75,7 @@ public final class ScheduleCodec {
                 try {
                     numbers.add(Integer.parseInt(number));
                 } catch (NumberFormatException e) {
-                    LOG.warn("Ignoring {} in {}", key, file.getFileName());
+                    logger.warn("Ignoring {} in {}", key, file.getFileName());
                 }
             }
         }
@@ -95,7 +95,7 @@ public final class ScheduleCodec {
                                 number(p.getProperty(k + "maxConnections")),
                                 number(p.getProperty(k + "maxSourcesPerFile"))));
             } catch (IllegalArgumentException | DateTimeException e) {
-                LOG.warn("Ignoring rule {} of {}: {}", n, file.getFileName(), e.getMessage());
+                logger.warn("Ignoring rule {} of {}: {}", n, file.getFileName(), e.getMessage());
             }
         }
         return new Schedule(rules);

@@ -46,7 +46,7 @@ public final class PreferencesCodec {
 
     public static final String FILE_NAME = "njmule.properties";
 
-    private static final Logger LOG = LoggerFactory.getLogger(PreferencesCodec.class);
+    private static final Logger logger = LoggerFactory.getLogger(PreferencesCodec.class);
 
     private record Key(
             String name,
@@ -147,7 +147,7 @@ public final class PreferencesCodec {
         for (String name : props.stringPropertyNames()) {
             Key key = KEYS.get(name);
             if (key == null) {
-                LOG.debug("Ignoring unknown preference {}", name);
+                logger.debug("Ignoring unknown preference {}", name);
                 continue;
             }
             Preferences.Builder candidate = builder.build().toBuilder();
@@ -155,7 +155,7 @@ public final class PreferencesCodec {
                 key.setter().accept(candidate, props.getProperty(name));
                 builder = candidate.build().toBuilder();
             } catch (RuntimeException e) {
-                LOG.warn(
+                logger.warn(
                         "Invalid value for preference {}, keeping the default: {}",
                         name,
                         e.getMessage());

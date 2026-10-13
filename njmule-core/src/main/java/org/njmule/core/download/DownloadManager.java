@@ -124,7 +124,7 @@ public final class DownloadManager implements AutoCloseable {
     private static final int SX_RARE = 50;
     private static final int SX_MAX_SOURCES = 750;
 
-    private static final Logger LOG = LoggerFactory.getLogger(DownloadManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(DownloadManager.class);
 
     private static final class Source {
         private final InetSocketAddress address;
@@ -429,7 +429,7 @@ public final class DownloadManager implements AutoCloseable {
                 added++;
             }
         }
-        LOG.debug(
+        logger.debug(
                 "{} of {} sources from the server are new for {}",
                 added,
                 found.sources().size(),
@@ -450,7 +450,7 @@ public final class DownloadManager implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 return Optional.empty();
             } catch (ExecutionException | TimeoutException | RuntimeException e) {
-                LOG.debug("Cannot route the connection from {}", connection.remoteAddress(), e);
+                logger.debug("Cannot route the connection from {}", connection.remoteAddress(), e);
                 return Optional.empty();
             }
         };
@@ -501,7 +501,7 @@ public final class DownloadManager implements AutoCloseable {
                                 this.sessionEvents);
                 source.session = session;
                 source.userHash = Optional.of(peer.userHash());
-                LOG.debug("{} called back for {}", source.address, entry.download.file().name());
+                logger.debug("{} called back for {}", source.address, entry.download.file().name());
                 return Optional.of(
                         session.adopt(connection, peer, Optional.ofNullable(source.parts)));
             }
@@ -650,7 +650,7 @@ public final class DownloadManager implements AutoCloseable {
                                     }
                                 }
                             } catch (UnknownHostException e) {
-                                LOG.debug("Cannot resolve the source {}", source.host());
+                                logger.debug("Cannot resolve the source {}", source.host());
                             }
                         });
     }
@@ -765,7 +765,7 @@ public final class DownloadManager implements AutoCloseable {
                 added++;
             }
         }
-        LOG.debug(
+        logger.debug(
                 "{} of {} sources from {} are new for {}",
                 added,
                 answer.sources().size(),
@@ -809,7 +809,7 @@ public final class DownloadManager implements AutoCloseable {
             if (session.peerHash().isPresent()) {
                 source.cryptOptions = session.peerCryptOptions();
             }
-            LOG.debug("{} ({}): {}", source.address, outcome, reason);
+            logger.debug("{} ({}): {}", source.address, outcome, reason);
             long now = DownloadManager.this.ticker.read();
             switch (outcome) {
                 case QUEUED, LATER -> {

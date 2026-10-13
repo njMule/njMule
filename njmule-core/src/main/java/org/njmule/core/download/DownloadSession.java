@@ -111,7 +111,7 @@ final class DownloadSession {
      */
     static final Duration IDLE_SLOT = Duration.ofSeconds(30);
 
-    private static final Logger LOG = LoggerFactory.getLogger(DownloadSession.class);
+    private static final Logger logger = LoggerFactory.getLogger(DownloadSession.class);
 
     /** One requested block and the bytes of it still to come. */
     private static final class Pending {
@@ -336,11 +336,11 @@ final class DownloadSession {
                 this.receivedBasic(packet);
             }
         } catch (DecodeException | IllegalArgumentException e) {
-            LOG.debug("Bad packet from {}: {}", this.address, e.getMessage());
+            logger.debug("Bad packet from {}: {}", this.address, e.getMessage());
             this.end(Outcome.GONE, "protocol error: " + e.getMessage());
         } catch (RuntimeException e) {
             // A lost packet would stall the session: end it, the source is asked again later.
-            LOG.warn("Failed handling a packet from {}", this.address, e);
+            logger.warn("Failed handling a packet from {}", this.address, e);
             this.end(Outcome.LATER, "internal error: " + e);
         }
     }
@@ -467,7 +467,7 @@ final class DownloadSession {
     private void queued(int rank) {
         if (this.state == State.QUEUED) {
             this.queueRank = rank;
-            LOG.debug("Queued at {} on {}", rank, this.address);
+            logger.debug("Queued at {} on {}", rank, this.address);
         }
     }
 
@@ -478,7 +478,7 @@ final class DownloadSession {
         this.state = State.DOWNLOADING;
         this.queueRank = 0;
         this.setReadTimeout(DATA_TIMEOUT);
-        LOG.debug("Downloading {} from {}", this.download.file().name(), this.address);
+        logger.debug("Downloading {} from {}", this.download.file().name(), this.address);
         this.requestBlocks();
     }
 
@@ -561,7 +561,7 @@ final class DownloadSession {
             }
         }
         if (target == null) {
-            LOG.debug("Data {}-{} from {} was not requested", start, end, this.address);
+            logger.debug("Data {}-{} from {} was not requested", start, end, this.address);
             return;
         }
         this.queue.received(this.download, start, data);
@@ -578,7 +578,7 @@ final class DownloadSession {
         if (this.state != State.DOWNLOADING) {
             return;
         }
-        LOG.debug("{}: {}", this.address, reason);
+        logger.debug("{}: {}", this.address, reason);
         this.releaseBlocks();
         this.stopIdle();
         this.accepted = false;

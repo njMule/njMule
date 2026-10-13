@@ -84,7 +84,7 @@ public final class FakeServer implements AutoCloseable {
                     | ServerMessages.TCP_UNICODE
                     | ServerMessages.TCP_LARGEFILES;
 
-    private static final Logger LOG = LoggerFactory.getLogger(FakeServer.class);
+    private static final Logger logger = LoggerFactory.getLogger(FakeServer.class);
     private static final int UDP_OFFSET = 4;
     private static final SecureRandom PORTS = new SecureRandom();
 
@@ -215,7 +215,7 @@ public final class FakeServer implements AutoCloseable {
                 Thread.ofVirtual().name("fake-server-client").start(() -> this.serve(client));
             } catch (IOException e) {
                 if (!this.tcp.isClosed()) {
-                    LOG.warn("Fake server accept failed", e);
+                    logger.warn("Fake server accept failed", e);
                 }
             }
         }
@@ -237,7 +237,7 @@ public final class FakeServer implements AutoCloseable {
                 }
             }
         } catch (IOException e) {
-            LOG.debug("Fake server client gone: {}", e.getMessage());
+            logger.debug("Fake server client gone: {}", e.getMessage());
         }
     }
 
@@ -289,7 +289,7 @@ public final class FakeServer implements AutoCloseable {
                 }
             } catch (IOException e) {
                 if (!this.udp.isClosed()) {
-                    LOG.debug("Fake server UDP: {}", e.getMessage());
+                    logger.debug("Fake server UDP: {}", e.getMessage());
                 }
             }
         }

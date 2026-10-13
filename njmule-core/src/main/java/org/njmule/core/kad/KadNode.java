@@ -99,7 +99,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     private static final Duration QUIET_FOR = Duration.ofMinutes(15);
 
-    private static final Logger LOG = LoggerFactory.getLogger(KadNode.class);
+    private static final Logger logger = LoggerFactory.getLogger(KadNode.class);
     private static final long SECOND = 1_000_000_000L;
     private static final long MINUTE = 60 * SECOND;
     private static final long HOUR = 60 * MINUTE;
@@ -230,9 +230,9 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         try {
             this.addContacts(NodesDat.read(Files.readAllBytes(file)));
-            LOG.info("{} Kad contacts from {}", this.table.size(), file.getFileName());
+            logger.info("{} Kad contacts from {}", this.table.size(), file.getFileName());
         } catch (IOException e) {
-            LOG.warn("Cannot read {}", file, e);
+            logger.warn("Cannot read {}", file, e);
         }
     }
 
@@ -277,7 +277,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         try {
             AtomicFiles.writeBytes(this.configDir.resolve(NODES_FILE), NodesDat.write(records));
         } catch (IOException e) {
-            LOG.warn("Cannot save the Kad contacts", e);
+            logger.warn("Cannot save the Kad contacts", e);
         }
     }
 
@@ -493,7 +493,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 }
             }
         } catch (DecodeException e) {
-            LOG.debug("Bad Kad packet from {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
+            logger.debug("Bad Kad packet from {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
         }
     }
 

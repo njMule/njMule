@@ -43,7 +43,7 @@ public final class Friends {
 
     public static final String FILE_NAME = "emfriends.met";
 
-    private static final Logger LOG = LoggerFactory.getLogger(Friends.class);
+    private static final Logger logger = LoggerFactory.getLogger(Friends.class);
 
     private final Path file;
     private final Map<Hash16, FriendsMet.Friend> friends = new LinkedHashMap<>();
@@ -63,7 +63,7 @@ public final class Friends {
                     store.friends.put(f.userHash(), f);
                 }
             } catch (IOException e) {
-                LOG.warn("Cannot read {}", store.file, e);
+                logger.warn("Cannot read {}", store.file, e);
             }
         }
         return store;

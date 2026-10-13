@@ -110,7 +110,7 @@ public final class UploadManager implements AutoCloseable {
     private static final int SX_PACK_ABOVE = 354;
     private static final int HEADER = TcpFraming.HEADER_SIZE;
     private static final int MIN_COMPRESSIBLE = 32;
-    private static final Logger LOG = LoggerFactory.getLogger(UploadManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(UploadManager.class);
     private static final int RATE_SECONDS = 5;
 
     private static final class Client {
@@ -322,7 +322,7 @@ public final class UploadManager implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 return Optional.empty();
             } catch (ExecutionException | TimeoutException e) {
-                LOG.debug("Cannot take the connection from {}", connection.remoteAddress(), e);
+                logger.debug("Cannot take the connection from {}", connection.remoteAddress(), e);
                 return Optional.empty();
             }
         };
@@ -455,7 +455,7 @@ public final class UploadManager implements AutoCloseable {
             return;
         }
         if (failure != null) {
-            LOG.warn("Cannot read {} for an upload: {}", file.name(), failure.getMessage());
+            logger.warn("Cannot read {} for an upload: {}", file.name(), failure.getMessage());
             this.slots.remove(slot);
             slot.session.close();
             return;
@@ -517,7 +517,7 @@ public final class UploadManager implements AutoCloseable {
         client.session = session;
         session.setReadTimeout(SLOT_TIMEOUT);
         session.accept();
-        LOG.debug("Upload slot for {} ({})", session.address(), client.file.name());
+        logger.debug("Upload slot for {} ({})", session.address(), client.file.name());
     }
 
     private boolean canOpenSlot(boolean extra) {
@@ -606,7 +606,7 @@ public final class UploadManager implements AutoCloseable {
     }
 
     private void unreachable(Client client, String reason) {
-        LOG.debug("Cannot reach {} for its slot: {}", client.ip, reason);
+        logger.debug("Cannot reach {} for its slot: {}", client.ip, reason);
         client.connecting = false;
         this.waiting.remove(client.userHash, client);
     }
@@ -794,7 +794,7 @@ public final class UploadManager implements AutoCloseable {
                                 : Math.max(0, client.bad - 1);
                 client.lastAsk = now;
                 if (client.bad >= BAD_LIMIT) {
-                    LOG.debug("Banning {}: asked again too often", ip);
+                    logger.debug("Banning {}: asked again too often", ip);
                     manager.bans.put(ip, now + BAN_TIME.toNanos());
                     manager.waiting.remove(client.userHash);
                     return;
@@ -871,7 +871,7 @@ public final class UploadManager implements AutoCloseable {
         public void misbehaved(UploadSession session, String reason) {
             UploadManager manager = UploadManager.this;
             InetAddress ip = session.address().getAddress();
-            LOG.debug("Banning {}: {}", ip, reason);
+            logger.debug("Banning {}: {}", ip, reason);
             manager.bans.put(ip, manager.ticker.read() + BAN_TIME.toNanos());
         }
 
@@ -887,7 +887,7 @@ public final class UploadManager implements AutoCloseable {
                 client.ip = ip;
                 return true;
             }
-            LOG.debug("{} claims the user hash of the client at {}", ip, client.ip);
+            logger.debug("{} claims the user hash of the client at {}", ip, client.ip);
             return false;
         }
     }

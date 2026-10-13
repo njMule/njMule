@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(KadSocket.class);
+    private static final Logger logger = LoggerFactory.getLogger(KadSocket.class);
     private static final int MAX_DATAGRAM = 8 * 1024;
     private static final int MAX_UNPACKED = 250_000;
     private static final int PACK_ABOVE = 200;
@@ -131,7 +131,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                             new InetSocketAddress(Ipv4.format(ip), port)));
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
-            LOG.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
+            logger.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
         }
     }
 
@@ -150,7 +150,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                 this.received(datagram);
             } catch (IOException e) {
                 if (!this.socket.isClosed()) {
-                    LOG.debug("Kad UDP: {}", e.getMessage());
+                    logger.debug("Kad UDP: {}", e.getMessage());
                 }
             }
         }
@@ -199,7 +199,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                                     opened.receiverVerifyKey(),
                                     opened.senderVerifyKey()));
         } catch (DecodeException e) {
-            LOG.debug("Bad datagram from {}: {}", from, e.getMessage());
+            logger.debug("Bad datagram from {}: {}", from, e.getMessage());
         }
     }
 }

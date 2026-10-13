@@ -46,7 +46,7 @@ public final class Identities {
 
     public static final String KEY_FILE = "cryptkey.dat";
 
-    private static final Logger LOG = LoggerFactory.getLogger(Identities.class);
+    private static final Logger logger = LoggerFactory.getLogger(Identities.class);
 
     /** How far a connection's user hash is trusted. */
     public enum Trust {
@@ -124,7 +124,7 @@ public final class Identities {
             try {
                 return RsaKeys.readKeyFile(file);
             } catch (DecodeException e) {
-                LOG.warn("{} is unreadable, creating a new key", file, e);
+                logger.warn("{} is unreadable, creating a new key", file, e);
             }
         }
         Rsa.PrivateKey key = Rsa.generate(Rsa.NETWORK_KEY_BITS, random);
@@ -163,7 +163,7 @@ public final class Identities {
         @Override
         public void identified(Hash16 hash, byte[] publicKey) {
             if (hash.equals(this.userHash)) {
-                LOG.debug("{} proved it owns its key", hash);
+                logger.debug("{} proved it owns its key", hash);
                 this.session.trust = Trust.IDENTIFIED;
                 Identities.this.identified.accept(hash, publicKey);
             }
@@ -171,7 +171,7 @@ public final class Identities {
 
         @Override
         public void failed(Hash16 hash) {
-            LOG.debug("{} failed to prove it owns its key", hash);
+            logger.debug("{} failed to prove it owns its key", hash);
             this.session.trust = Trust.FAILED;
         }
     }

@@ -66,7 +66,7 @@ public final class DownloadQueue implements AutoCloseable {
     /** Part files are saved this often while their progress changes. */
     public static final Duration SAVE_INTERVAL = Duration.ofSeconds(60);
 
-    private static final Logger LOG = LoggerFactory.getLogger(DownloadQueue.class);
+    private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
 
     /** One download with its storage, its known sources and the parts verified this run. */
     public static final class Download {
@@ -141,7 +141,7 @@ public final class DownloadQueue implements AutoCloseable {
                     // A crash may have come between writing a part and checking it.
                     queue.hashSetKnown(download);
                 } catch (IOException | RuntimeException e) {
-                    LOG.warn("Cannot load the download {}", met, e);
+                    logger.warn("Cannot load the download {}", met, e);
                 }
             }
         }
@@ -266,7 +266,7 @@ public final class DownloadQueue implements AutoCloseable {
             Files.deleteIfExists(AtomicFiles.bakPath(download.file.metFile().toAbsolutePath()));
             Files.deleteIfExists(download.file.dataFile());
         } catch (IOException e) {
-            LOG.warn("Cannot delete the files of {}", download.file.name(), e);
+            logger.warn("Cannot delete the files of {}", download.file.name(), e);
         }
     }
 
@@ -326,7 +326,8 @@ public final class DownloadQueue implements AutoCloseable {
     private void checked(
             Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
         if (failure != null || !expected.equals(actual)) {
-            LOG.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
+            logger.warn(
+                    "Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
             download.dirty = true;
             this.listener.progress(download);
@@ -371,7 +372,7 @@ public final class DownloadQueue implements AutoCloseable {
             Files.deleteIfExists(download.file.metFile());
             Files.deleteIfExists(AtomicFiles.bakPath(download.file.metFile().toAbsolutePath()));
         } catch (IOException e) {
-            LOG.warn("Cannot delete the metadata of {}", download.file.name(), e);
+            logger.warn("Cannot delete the metadata of {}", download.file.name(), e);
         }
         this.listener.completed(download, moved);
     }
@@ -383,7 +384,7 @@ public final class DownloadQueue implements AutoCloseable {
                     download.file.save();
                     download.dirty = false;
                 } catch (IOException e) {
-                    LOG.warn("Cannot save {}", download.file.metFile(), e);
+                    logger.warn("Cannot save {}", download.file.metFile(), e);
                 }
             }
         }

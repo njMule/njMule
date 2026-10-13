@@ -82,7 +82,7 @@ import org.slf4j.LoggerFactory;
 /** Engine implementation behind {@link NjMuleEngine}. */
 public final class Engine implements NjMuleEngine {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Engine.class);
+    private static final Logger logger = LoggerFactory.getLogger(Engine.class);
     private static final int EVENT_BUFFER = 1_024;
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
@@ -555,7 +555,7 @@ public final class Engine implements NjMuleEngine {
             return;
         }
         this.publish(new EngineEvent.Stopping());
-        LOG.info("Stopping {}", NjMuleInfo.NAME);
+        logger.info("Stopping {}", NjMuleInfo.NAME);
         try {
             this.loop
                     .submit(
@@ -567,7 +567,7 @@ public final class Engine implements NjMuleEngine {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException | TimeoutException e) {
-            LOG.warn("Closing the network failed", e);
+            logger.warn("Closing the network failed", e);
         }
         this.loop.close();
         this.events.close();
@@ -585,10 +585,10 @@ public final class Engine implements NjMuleEngine {
     /** Logs a message both to SLF4J and to the front ends' log pane. */
     void userLog(LogLine.Level level, String message) {
         switch (level) {
-            case DEBUG -> LOG.debug("{}", message);
-            case INFO, SUCCESS -> LOG.info("{}", message);
-            case WARNING -> LOG.warn("{}", message);
-            case ERROR -> LOG.error("{}", message);
+            case DEBUG -> logger.debug("{}", message);
+            case INFO, SUCCESS -> logger.info("{}", message);
+            case WARNING -> logger.warn("{}", message);
+            case ERROR -> logger.error("{}", message);
         }
         this.publish(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
     }
@@ -622,7 +622,7 @@ public final class Engine implements NjMuleEngine {
             this.events.offer(
                     event,
                     (subscriber, dropped) -> {
-                        LOG.debug("Dropped {} for a slow subscriber", dropped);
+                        logger.debug("Dropped {} for a slow subscriber", dropped);
                         return false;
                     });
         }

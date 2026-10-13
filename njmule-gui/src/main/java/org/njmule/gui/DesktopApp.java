@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class DesktopApp implements AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(DesktopApp.class);
+    private static final Logger logger = LoggerFactory.getLogger(DesktopApp.class);
     private static final int[] ICON_SIZES = {16, 24, 32, 48, 64, 128, 256, 512};
 
     private final NjMuleEngine engine;
@@ -97,7 +97,7 @@ public final class DesktopApp implements AutoCloseable {
         try {
             return Optional.of(WebUi.start(engine, web));
         } catch (IOException e) {
-            LOG.warn("Cannot start the web interface on port {}: {}", web.port(), e.toString());
+            logger.warn("Cannot start the web interface on port {}: {}", web.port(), e.toString());
             return Optional.empty();
         }
     }
@@ -136,7 +136,7 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> this.model.tick()));
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
-        LOG.info("Main window shown");
+        logger.info("Main window shown");
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, Platform::exit);
         } else if (!this.settings.existed()) {
@@ -202,7 +202,7 @@ public final class DesktopApp implements AutoCloseable {
         try {
             this.settings.save();
         } catch (IOException e) {
-            LOG.warn("Cannot save the window settings", e);
+            logger.warn("Cannot save the window settings", e);
         }
     }
 }

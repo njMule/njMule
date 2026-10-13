@@ -35,7 +35,7 @@ final class Totals {
 
     static final String FILE_NAME = "statistics.properties";
 
-    private static final Logger LOG = LoggerFactory.getLogger(Totals.class);
+    private static final Logger logger = LoggerFactory.getLogger(Totals.class);
 
     private final Path file;
     private final long downloaded;
@@ -73,7 +73,7 @@ final class Totals {
                         number(p, "sessions"),
                         number(p, "seconds"));
             } catch (IOException e) {
-                LOG.warn("Cannot read {}, the totals start again", file, e);
+                logger.warn("Cannot read {}, the totals start again", file, e);
             }
         }
         return new Totals(file, 0, 0, 0, 0);
@@ -116,7 +116,7 @@ final class Totals {
         try {
             AtomicFiles.writeBytes(this.file, text.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            LOG.warn("Cannot save {}", this.file, e);
+            logger.warn("Cannot save {}", this.file, e);
         }
     }
 

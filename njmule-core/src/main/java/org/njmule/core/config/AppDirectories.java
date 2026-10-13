@@ -54,7 +54,7 @@ public record AppDirectories(
 
     public static final String PORTABLE_MARKER = "portable.flag";
 
-    private static final Logger LOG = LoggerFactory.getLogger(AppDirectories.class);
+    private static final Logger logger = LoggerFactory.getLogger(AppDirectories.class);
     private static final String APP_DIR = "njMule";
     private static final String XDG_DIR = "njmule";
 
@@ -211,7 +211,7 @@ public record AppDirectories(
                 return path.isAbsolute() ? Optional.of(path) : Optional.empty();
             }
         } catch (IOException | RuntimeException e) {
-            LOG.debug("Cannot read {}", file, e);
+            logger.debug("Cannot read {}", file, e);
         }
         return Optional.empty();
     }

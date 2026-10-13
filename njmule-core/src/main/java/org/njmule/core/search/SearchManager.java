@@ -92,7 +92,7 @@ public final class SearchManager {
         boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(SearchManager.class);
+    private static final Logger logger = LoggerFactory.getLogger(SearchManager.class);
 
     private final EngineLoop loop;
     private final ServerSession session;
@@ -214,7 +214,7 @@ public final class SearchManager {
                 return;
             }
         }
-        LOG.debug("Unrequested search results from {}", from);
+        logger.debug("Unrequested search results from {}", from);
     }
 
     /** Ends every search, e.g. when the server connection is lost. */
@@ -293,7 +293,7 @@ public final class SearchManager {
             socket.get().send(address, request.get());
             search.askedOverUdp.add(server.ip());
         } catch (IOException e) {
-            LOG.debug("Cannot query {}", address, e);
+            logger.debug("Cannot query {}", address, e);
         }
     }
 

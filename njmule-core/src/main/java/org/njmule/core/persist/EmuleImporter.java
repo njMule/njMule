@@ -87,7 +87,7 @@ public final class EmuleImporter {
     /** Under the config directory: the identity files waiting for the next start. */
     public static final String PENDING_IDENTITY = "import-identity";
 
-    private static final Logger LOG = LoggerFactory.getLogger(EmuleImporter.class);
+    private static final Logger logger = LoggerFactory.getLogger(EmuleImporter.class);
     private static final String SECTION = "eMule";
     private static final String PROXY = "Proxy";
     // Limits at or above this mean "no limit".
@@ -143,7 +143,7 @@ public final class EmuleImporter {
             return false;
         }
         if (emuleRunning.getAsBoolean()) {
-            LOG.warn("eMule runs: its identity is taken over once it is closed");
+            logger.warn("eMule runs: its identity is taken over once it is closed");
             return false;
         }
         for (String name : IDENTITY) {
@@ -154,7 +154,7 @@ public final class EmuleImporter {
             }
         }
         Files.delete(pending);
-        LOG.info("Using the identity imported from eMule");
+        logger.info("Using the identity imported from eMule");
         return true;
     }
 
@@ -483,7 +483,7 @@ public final class EmuleImporter {
             }
             Files.deleteIfExists(pending);
         } catch (IOException e) {
-            LOG.warn("Cannot remove {}", pending, e);
+            logger.warn("Cannot remove {}", pending, e);
         }
     }
 

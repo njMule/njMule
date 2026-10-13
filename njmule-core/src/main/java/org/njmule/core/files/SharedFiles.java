@@ -98,7 +98,7 @@ public final class SharedFiles implements AutoCloseable {
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
     private static final Set<String> SKIPPED =
             Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
-    private static final Logger LOG = LoggerFactory.getLogger(SharedFiles.class);
+    private static final Logger logger = LoggerFactory.getLogger(SharedFiles.class);
 
     /** A client's private key: a directory holding one is a client's configuration. */
     static final String CLIENT_KEY = "cryptkey.dat";
@@ -174,11 +174,11 @@ public final class SharedFiles implements AutoCloseable {
                 try {
                     dirs.add(Path.of(entry));
                 } catch (IllegalArgumentException e) {
-                    LOG.warn("Ignoring the shared directory {}", entry);
+                    logger.warn("Ignoring the shared directory {}", entry);
                 }
             }
         } catch (IOException e) {
-            LOG.warn("Cannot read {}", file, e);
+            logger.warn("Cannot read {}", file, e);
         }
         return dirs;
     }
@@ -249,7 +249,7 @@ public final class SharedFiles implements AutoCloseable {
                             mtime),
                     Optional.empty());
         } catch (IOException e) {
-            LOG.warn("Cannot share {}", file, e);
+            logger.warn("Cannot share {}", file, e);
         }
     }
 
@@ -269,7 +269,7 @@ public final class SharedFiles implements AutoCloseable {
                 continue;
             }
             if (this.isPrivate(dir)) {
-                LOG.warn("Not sharing the private directory {}", dir);
+                logger.warn("Not sharing the private directory {}", dir);
                 continue;
             }
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
@@ -277,7 +277,7 @@ public final class SharedFiles implements AutoCloseable {
                     this.consider(file, seen);
                 }
             } catch (IOException e) {
-                LOG.warn("Cannot list the shared directory {}", dir, e);
+                logger.warn("Cannot list the shared directory {}", dir, e);
             }
         }
         for (SharedFile file : List.copyOf(this.byPath.values())) {
@@ -351,7 +351,7 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         if (failure != null) {
-            LOG.warn("Cannot hash {}: {}", file, failure.getMessage());
+            logger.warn("Cannot hash {}: {}", file, failure.getMessage());
             return;
         }
         Optional<Known2Met.Entry> tree =
@@ -386,7 +386,7 @@ public final class SharedFiles implements AutoCloseable {
                     this.saveSoon();
                 });
         if (fresh) {
-            LOG.debug("Sharing {}", file.path());
+            logger.debug("Sharing {}", file.path());
             this.listener.shared(file);
         }
     }
@@ -426,7 +426,7 @@ public final class SharedFiles implements AutoCloseable {
                     }
                 }
             } catch (IOException e) {
-                LOG.warn("Cannot read {}; files will be hashed again", met, e);
+                logger.warn("Cannot read {}; files will be hashed again", met, e);
             }
         }
         Path met2 = this.configDir.resolve(KNOWN2_MET);
@@ -436,7 +436,7 @@ public final class SharedFiles implements AutoCloseable {
                     this.aich.put(entry.masterHash(), entry);
                 }
             } catch (IOException e) {
-                LOG.warn("Cannot read {}", met2, e);
+                logger.warn("Cannot read {}", met2, e);
             }
         }
     }
@@ -456,7 +456,7 @@ public final class SharedFiles implements AutoCloseable {
                     this.configDir.resolve(KNOWN2_MET),
                     Known2Met.write(List.copyOf(this.aich.values())));
         } catch (IOException e) {
-            LOG.warn("Cannot save the known files", e);
+            logger.warn("Cannot save the known files", e);
         }
     }
 

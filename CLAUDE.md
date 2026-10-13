@@ -205,4 +205,6 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Code must stay GraalVM native-image friendly: no undeclared reflection, no dynamic proxies,
   register resources and `ServiceLoader` providers in the reachability metadata.
 - Log only through SLF4J with `{}` placeholders; never use external data as a format string.
+  Loggers are `private static final Logger logger` (lowerCamelCase: per the Google style a logger
+  is not a constant), never `LOG`.
 - Never write into the user's eMule installation or config directory.

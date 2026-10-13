@@ -40,7 +40,7 @@ public final class TcpListener implements AutoCloseable {
         void accepted(Socket socket, ConnectionGuard.Permit permit);
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(TcpListener.class);
+    private static final Logger logger = LoggerFactory.getLogger(TcpListener.class);
     private static final int BACKLOG = 128;
 
     private final ServerSocket server;
@@ -87,7 +87,7 @@ public final class TcpListener implements AutoCloseable {
                 socket = this.server.accept();
             } catch (IOException e) {
                 if (!this.server.isClosed()) {
-                    LOG.warn("Accept failed on port {}", this.port(), e);
+                    logger.warn("Accept failed on port {}", this.port(), e);
                 }
                 continue;
             }
@@ -107,7 +107,7 @@ public final class TcpListener implements AutoCloseable {
                             .name("njmule-tcp-accept-" + socket.getRemoteSocketAddress())
                             .start(() -> this.acceptor.accepted(socket, permit));
             case Admission.Refused(ConnectionGuard.Refusal reason) -> {
-                LOG.debug("Refused {}: {}", socket.getRemoteSocketAddress(), reason);
+                logger.debug("Refused {}: {}", socket.getRemoteSocketAddress(), reason);
                 closeQuietly(socket);
             }
         }

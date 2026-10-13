@@ -57,7 +57,7 @@ public final class PeerGreetings implements AutoCloseable {
     /** An idle connection closes after this time. */
     public static final Duration IDLE_TIMEOUT = Duration.ofSeconds(40);
 
-    private static final Logger LOG = LoggerFactory.getLogger(PeerGreetings.class);
+    private static final Logger logger = LoggerFactory.getLogger(PeerGreetings.class);
 
     /** Takes over incoming connections from clients something waits for, after their hello. */
     @FunctionalInterface
@@ -105,7 +105,7 @@ public final class PeerGreetings implements AutoCloseable {
                             HELLO_TIMEOUT,
                             this.random);
         } catch (IOException e) {
-            LOG.debug(
+            logger.debug(
                     "Incoming connection from {} failed: {}",
                     socket.getRemoteSocketAddress(),
                     e.getMessage());
@@ -199,7 +199,7 @@ public final class PeerGreetings implements AutoCloseable {
                     this.greeted = true;
                     connection.setFrameLimit(FrameLimits.CLIENT);
                     connection.setReadTimeout(IDLE_TIMEOUT);
-                    LOG.debug(
+                    logger.debug(
                             "Hello from {}: {}",
                             connection.remoteAddress(),
                             PeerSoftware.describe(peer));
@@ -209,7 +209,7 @@ public final class PeerGreetings implements AutoCloseable {
                     }
                 }
             } catch (IOException e) {
-                LOG.debug("Bad hello from {}: {}", connection.remoteAddress(), e.getMessage());
+                logger.debug("Bad hello from {}: {}", connection.remoteAddress(), e.getMessage());
                 connection.close();
             }
         }

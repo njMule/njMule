@@ -37,7 +37,7 @@ public final class EngineLoop implements AutoCloseable {
 
     public static final int DEFAULT_QUEUE_CAPACITY = 65_536;
 
-    private static final Logger LOG = LoggerFactory.getLogger(EngineLoop.class);
+    private static final Logger logger = LoggerFactory.getLogger(EngineLoop.class);
 
     private final ScheduledThreadPoolExecutor executor;
     private final int capacity;
@@ -158,7 +158,7 @@ public final class EngineLoop implements AutoCloseable {
     public void close() {
         try {
             if (!this.shutdown(Duration.ofSeconds(10))) {
-                LOG.warn("Engine loop did not terminate within 10 seconds");
+                logger.warn("Engine loop did not terminate within 10 seconds");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -169,7 +169,7 @@ public final class EngineLoop implements AutoCloseable {
         try {
             task.run();
         } catch (RuntimeException e) {
-            LOG.error("Engine {} failed", name, e);
+            logger.error("Engine {} failed", name, e);
         }
     }
 }

@@ -49,7 +49,7 @@ public final class Main {
     public static final int EXIT_USAGE = 2;
     public static final int EXIT_FAILURE = 1;
 
-    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     /** Where a password comes from: the terminal, or a line of standard input. */
     @FunctionalInterface
@@ -228,7 +228,7 @@ public final class Main {
             out.println("Web interface on port " + ui.port());
             return Optional.of(ui);
         } catch (IOException e) {
-            LOG.warn(
+            logger.warn(
                     "Cannot start the web interface on port {}: {}", settings.port(), e.toString());
             return Optional.empty();
         }
@@ -244,12 +244,12 @@ public final class Main {
             LoggingSetup.enableFileLog(dirs.logs());
             engine = NjMuleEngine.start(new EngineConfig(dirs));
         } catch (IOException | RuntimeException e) {
-            LOG.error("Cannot start {}", NjMuleInfo.NAME, e);
+            logger.error("Cannot start {}", NjMuleInfo.NAME, e);
             err.println("Cannot start " + NjMuleInfo.NAME + ": " + e.getMessage());
             return EXIT_FAILURE;
         }
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
-        LOG.info("Configuration in {}, logs in {}", dirs.config(), dirs.logs());
+        logger.info("Configuration in {}, logs in {}", dirs.config(), dirs.logs());
 
         LaunchOptions.NetworkTasks tasks = cli.network();
         if (tasks.isOneShot()) {

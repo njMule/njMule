@@ -58,7 +58,7 @@ public final class Igd implements AutoCloseable {
     public static final InetSocketAddress SSDP =
             new InetSocketAddress(InetAddress.ofLiteral("239.255.255.250"), 1900);
 
-    private static final Logger LOG = LoggerFactory.getLogger(Igd.class);
+    private static final Logger logger = LoggerFactory.getLogger(Igd.class);
     private static final int MAX_DESCRIPTION = 256 * 1024;
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
     private static final String[] DEVICES = {
@@ -120,7 +120,7 @@ public final class Igd implements AutoCloseable {
                     continue;
                 }
                 if (!trusted(location.get(), answer.getAddress())) {
-                    LOG.debug(
+                    logger.debug(
                             "UPnP: ignoring {} announced by {}",
                             location.get(),
                             answer.getAddress());
@@ -211,7 +211,7 @@ public final class Igd implements AutoCloseable {
             HttpResponse<String> response =
                     this.http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                LOG.debug("UPnP {} refused: {}", action, response.statusCode());
+                logger.debug("UPnP {} refused: {}", action, response.statusCode());
                 return false;
             }
             return true;
@@ -244,7 +244,7 @@ public final class Igd implements AutoCloseable {
             factory.setExpandEntityReferences(false);
             doc = factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
         } catch (ParserConfigurationException | SAXException e) {
-            LOG.debug("UPnP: unreadable description at {}: {}", location, e.getMessage());
+            logger.debug("UPnP: unreadable description at {}: {}", location, e.getMessage());
             return Optional.empty();
         }
         String base = text(doc.getDocumentElement(), "URLBase").orElse(location.toString());

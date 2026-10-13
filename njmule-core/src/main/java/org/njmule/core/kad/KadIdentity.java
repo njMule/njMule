@@ -38,7 +38,7 @@ public final class KadIdentity {
     public static final String FILE_NAME = "preferencesKad.dat";
     public static final String KEY_FILE_NAME = "kadudpkey.dat";
 
-    private static final Logger LOG = LoggerFactory.getLogger(KadIdentity.class);
+    private static final Logger logger = LoggerFactory.getLogger(KadIdentity.class);
 
     private final UInt128 id;
     private final int udpKey;
@@ -59,7 +59,7 @@ public final class KadIdentity {
             try {
                 id = PreferencesKadDat.read(Files.readAllBytes(file)).kadId();
             } catch (IOException e) {
-                LOG.warn("{} is unreadable, creating a new Kad id", file, e);
+                logger.warn("{} is unreadable, creating a new Kad id", file, e);
             }
         }
         if (id.isZero()) {

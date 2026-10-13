@@ -74,7 +74,7 @@ public final class Messaging implements AutoCloseable {
         void failed(InetSocketAddress to, String reason);
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(Messaging.class);
+    private static final Logger logger = LoggerFactory.getLogger(Messaging.class);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration IDLE = Duration.ofMinutes(10);
 
@@ -219,7 +219,7 @@ public final class Messaging implements AutoCloseable {
         }
         c.pending.clear();
         c.connecting = false;
-        LOG.debug("Chatting with {}", to);
+        logger.debug("Chatting with {}", to);
     }
 
     private void handle(InetSocketAddress address, Hello peer, Packet packet) {
@@ -230,7 +230,7 @@ public final class Messaging implements AutoCloseable {
             } else if (packet.opcode() == Opcodes.Extended.CHATCAPTCHAREQ.code()) {
                 Conversation c = this.conversations.get(address);
                 if (c == null || !c.wrote) {
-                    LOG.debug("Ignoring a CAPTCHA {} asked for unasked", address);
+                    logger.debug("Ignoring a CAPTCHA {} asked for unasked", address);
                     return;
                 }
                 this.listener.captcha(from, ChatMessages.captcha(packet));
@@ -238,7 +238,7 @@ public final class Messaging implements AutoCloseable {
                 this.listener.captchaResult(from, ChatMessages.solved(packet));
             }
         } catch (DecodeException e) {
-            LOG.debug("Bad chat packet from {}: {}", address, e.getMessage());
+            logger.debug("Bad chat packet from {}: {}", address, e.getMessage());
         }
     }
 
@@ -290,7 +290,7 @@ public final class Messaging implements AutoCloseable {
                     Messaging.this.handle(this.to, c.peer, packet);
                 }
             } catch (DecodeException e) {
-                LOG.debug("Bad hello from {}: {}", this.to, e.getMessage());
+                logger.debug("Bad hello from {}: {}", this.to, e.getMessage());
                 connection.close();
             }
         }

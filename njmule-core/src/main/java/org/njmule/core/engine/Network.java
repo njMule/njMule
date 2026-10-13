@@ -125,7 +125,7 @@ final class Network {
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
 
-    private static final Logger LOG = LoggerFactory.getLogger(Network.class);
+    private static final Logger logger = LoggerFactory.getLogger(Network.class);
 
     /** What our hello says about the server we are on. */
     private record ServerContext(long clientId, int serverIp, int serverPort) {
@@ -360,7 +360,7 @@ final class Network {
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 this.publisher::tick);
-        LOG.info(
+        logger.info(
                 "{} servers known, {} IP filter ranges, user hash {}",
                 this.servers.size(),
                 this.ipFilter.rangeCount(),
@@ -702,7 +702,7 @@ final class Network {
                     this.settle();
                 }
             } catch (IOException e) {
-                LOG.debug(
+                logger.debug(
                         "Bad packet from {}: {}", this.connection.remoteAddress(), e.getMessage());
                 this.connection.close();
             }
@@ -756,7 +756,7 @@ final class Network {
             try {
                 this.listener.close();
             } catch (IOException e) {
-                LOG.debug("Closing the listener failed", e);
+                logger.debug("Closing the listener failed", e);
             }
         }
         if (this.udp != null) {
@@ -857,7 +857,7 @@ final class Network {
                         this.kad.tick();
                         this.kadPublisher.tick();
                     });
-            LOG.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
+            logger.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
         } catch (IOException e) {
             this.userLog.log(
                     LogLine.Level.WARNING,
@@ -899,7 +899,7 @@ final class Network {
                                         PeerGreetings.HELLO_TIMEOUT,
                                         connection::close);
                             } catch (IOException e) {
-                                LOG.debug("Kad check of {} failed: {}", address, e.getMessage());
+                                logger.debug("Kad check of {} failed: {}", address, e.getMessage());
                             }
                         });
     }
@@ -1023,7 +1023,7 @@ final class Network {
         try {
             this.searches.datagramResults(from, ServerDatagrams.decodeSearchResults(packet));
         } catch (DecodeException e) {
-            LOG.debug("Malformed search answer from {}", from, e);
+            logger.debug("Malformed search answer from {}", from, e);
         }
     }
 
@@ -1038,7 +1038,7 @@ final class Network {
         try {
             this.servers.save(this.serverMet);
         } catch (IOException e) {
-            LOG.warn("Cannot save {}", this.serverMet, e);
+            logger.warn("Cannot save {}", this.serverMet, e);
         }
     }
 
@@ -1051,7 +1051,7 @@ final class Network {
                     IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE),
                     IpFilter.DEFAULT_LEVEL);
         } catch (IOException e) {
-            LOG.warn("Cannot read {}, no IP filter", file, e);
+            logger.warn("Cannot read {}, no IP filter", file, e);
             return IpFilter.empty();
         }
     }
@@ -1151,7 +1151,7 @@ final class Network {
         public void callbackRequested(ServerMessages.CallbackRequested request) {
             int ip = request.endpoint().ip();
             if (!Ipv4.isUnicastPublicCandidate(ip) || Network.this.ipFilter.blocks(ip)) {
-                LOG.debug("Ignoring a callback request to {}", Ipv4.format(ip));
+                logger.debug("Ignoring a callback request to {}", Ipv4.format(ip));
                 return;
             }
             // The client may require obfuscation, which needs its user hash.
@@ -1167,7 +1167,7 @@ final class Network {
                     .greet(address, obfuscate ? request.userHash() : Optional.empty())
                     .whenComplete(
                             (peer, failure) ->
-                                    LOG.debug(
+                                    logger.debug(
                                             "Callback to {}: {}",
                                             address,
                                             failure == null
@@ -1249,13 +1249,13 @@ final class Network {
     private final class ShareEvents implements SharedFiles.Listener {
         @Override
         public void shared(SharedFiles.SharedFile file) {
-            LOG.debug("Shared {}", file.name());
+            logger.debug("Shared {}", file.name());
             Network.this.publisher.changed(Optional.empty());
         }
 
         @Override
         public void unshared(SharedFiles.SharedFile file) {
-            LOG.debug("No longer shared: {}", file.name());
+            logger.debug("No longer shared: {}", file.name());
         }
     }
 

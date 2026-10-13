@@ -34,7 +34,7 @@ public final class UserHashStore {
 
     public static final String FILE_NAME = "preferences.dat";
 
-    private static final Logger LOG = LoggerFactory.getLogger(UserHashStore.class);
+    private static final Logger logger = LoggerFactory.getLogger(UserHashStore.class);
     private static final int MARKER_5 = 14;
     private static final int MARKER_14 = 111;
 
@@ -50,11 +50,11 @@ public final class UserHashStore {
             if (isUsable(hash)) {
                 return hash;
             }
-            LOG.warn("Unusable user hash in {}, creating a new one", file);
+            logger.warn("Unusable user hash in {}, creating a new one", file);
         } catch (NoSuchFileException e) {
-            LOG.info("Creating the user hash in {}", file);
+            logger.info("Creating the user hash in {}", file);
         } catch (IOException e) {
-            LOG.warn("Cannot read {}, creating a new user hash", file, e);
+            logger.warn("Cannot read {}, creating a new user hash", file, e);
         }
         Hash16 hash = generate(random);
         AtomicFiles.writeBytes(

@@ -87,7 +87,7 @@ public final class FakePeer implements AutoCloseable {
         }
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(FakePeer.class);
+    private static final Logger logger = LoggerFactory.getLogger(FakePeer.class);
     private static final int CHUNK = 10_240;
     private static final long SLOT_DELAY_MILLIS = 300;
 
@@ -154,7 +154,7 @@ public final class FakePeer implements AutoCloseable {
                 Thread.ofVirtual().name("fake-peer-client").start(() -> this.serve(client));
             } catch (IOException e) {
                 if (!this.tcp.isClosed()) {
-                    LOG.warn("Fake peer accept failed", e);
+                    logger.warn("Fake peer accept failed", e);
                 }
             }
         }
@@ -176,7 +176,7 @@ public final class FakePeer implements AutoCloseable {
                 session.handle(TcpFraming.read(in, FrameLimit.fixed(1 << 20)));
             }
         } catch (IOException e) {
-            LOG.debug("Fake peer client gone: {}", e.getMessage());
+            logger.debug("Fake peer client gone: {}", e.getMessage());
         }
     }
 
@@ -190,7 +190,7 @@ public final class FakePeer implements AutoCloseable {
                                 Thread.sleep(SLOT_DELAY_MILLIS);
                                 this.serve(new Socket(address, port), true);
                             } catch (IOException e) {
-                                LOG.debug("Cannot call back: {}", e.getMessage());
+                                logger.debug("Cannot call back: {}", e.getMessage());
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                             }
@@ -309,7 +309,7 @@ public final class FakePeer implements AutoCloseable {
                                                     Protocol.EDONKEY,
                                                     Opcodes.Client.ACCEPTUPLOADREQ.code()));
                                 } catch (IOException e) {
-                                    LOG.debug("No slot given: {}", e.getMessage());
+                                    logger.debug("No slot given: {}", e.getMessage());
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                 }

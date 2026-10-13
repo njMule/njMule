@@ -49,7 +49,7 @@ public final class Credits {
     private static final long MIB = 1024 * 1024;
     // Below this many bytes received the ratio grows linearly from 1.
     private static final long RAMP_END = 9_646_899;
-    private static final Logger LOG = LoggerFactory.getLogger(Credits.class);
+    private static final Logger logger = LoggerFactory.getLogger(Credits.class);
 
     /** The credit of one client. */
     public static final class Credit {
@@ -114,7 +114,7 @@ public final class Credits {
                 }
             }
         } catch (IOException e) {
-            LOG.warn("Cannot read {}, credits start from zero", store.file, e);
+            logger.warn("Cannot read {}, credits start from zero", store.file, e);
         }
         return store;
     }
@@ -187,7 +187,7 @@ public final class Credits {
             AtomicFiles.writeBytes(this.file, ClientsMet.write(all));
             this.dirty = false;
         } catch (IOException e) {
-            LOG.warn("Cannot save {}", this.file, e);
+            logger.warn("Cannot save {}", this.file, e);
         }
     }
 

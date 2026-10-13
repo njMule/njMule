@@ -43,7 +43,7 @@ public final class AtomicFiles {
     public static final String TMP_SUFFIX = ".tmp";
     public static final String BAK_SUFFIX = ".bak";
 
-    private static final Logger LOG = LoggerFactory.getLogger(AtomicFiles.class);
+    private static final Logger logger = LoggerFactory.getLogger(AtomicFiles.class);
     private static final int MOVE_ATTEMPTS = 6;
     private static final long FIRST_RETRY_DELAY_MILLIS = 15;
 
@@ -128,13 +128,13 @@ public final class AtomicFiles {
                 return readOne(absolute, reader);
             } catch (IOException | RuntimeException e) {
                 primaryFailure = e;
-                LOG.warn("Cannot read {}, trying backup", absolute, e);
+                logger.warn("Cannot read {}, trying backup", absolute, e);
             }
         }
         if (Files.exists(bak)) {
             try {
                 T value = readOne(bak, reader);
-                LOG.warn("Recovered {} from its backup", absolute);
+                logger.warn("Recovered {} from its backup", absolute);
                 return value;
             } catch (IOException | RuntimeException e) {
                 if (primaryFailure == null) {
@@ -196,7 +196,7 @@ public final class AtomicFiles {
         try (FileChannel channel = FileChannel.open(dir, StandardOpenOption.READ)) {
             channel.force(true);
         } catch (IOException | UnsupportedOperationException e) {
-            LOG.trace("Directory sync not supported for {}", dir, e);
+            logger.trace("Directory sync not supported for {}", dir, e);
         }
     }
 
@@ -204,7 +204,7 @@ public final class AtomicFiles {
         try {
             return Files.deleteIfExists(file);
         } catch (IOException e) {
-            LOG.debug("Cannot delete {}", file, e);
+            logger.debug("Cannot delete {}", file, e);
             return false;
         }
     }

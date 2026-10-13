@@ -53,7 +53,7 @@ public final class ServerPinger {
     public static final Duration INTERVAL = Duration.ofSeconds(5);
     public static final Duration REPING_AFTER = Duration.ofMinutes(270);
 
-    private static final Logger LOG = LoggerFactory.getLogger(ServerPinger.class);
+    private static final Logger logger = LoggerFactory.getLogger(ServerPinger.class);
     private static final Duration ANSWER_TIMEOUT = Duration.ofSeconds(30);
     private static final long CHALLENGE_BASE = 0x55AA_0000L;
     // Servers that announce obfuscation without ports use these defaults.
@@ -115,7 +115,7 @@ public final class ServerPinger {
         try {
             status = ServerDatagrams.Status.decode(packet);
         } catch (DecodeException e) {
-            LOG.debug("Malformed status from {}", from, e);
+            logger.debug("Malformed status from {}", from, e);
             return;
         }
         int ip = Ipv4.fromBytes(from.getAddress().getAddress());
@@ -132,7 +132,7 @@ public final class ServerPinger {
                 return;
             }
         }
-        LOG.debug("Unrequested status from {}", from);
+        logger.debug("Unrequested status from {}", from);
     }
 
     private void pingNext() {
@@ -162,7 +162,7 @@ public final class ServerPinger {
                 // Recorded on sending, so a silent server is not asked again at every start.
                 this.servers.update(address, s -> s.with(intTag(ServerTag.LASTPING, now)));
             } catch (IOException e) {
-                LOG.debug("Cannot ping {}", target, e);
+                logger.debug("Cannot ping {}", target, e);
             }
             return;
         }

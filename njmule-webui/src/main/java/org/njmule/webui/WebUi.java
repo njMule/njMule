@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class WebUi implements AutoCloseable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(WebUi.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebUi.class);
     private static final String COOKIE = "njmule-session";
     private static final String HTML = "text/html; charset=utf-8";
     private static final String TEXT = "text/plain; charset=utf-8";
@@ -122,7 +122,7 @@ public final class WebUi implements AutoCloseable {
         server.createContext("/", ui::handle);
         engine.events().subscribe(ui.new Results());
         server.start();
-        LOG.info("Web interface on {}", server.getAddress());
+        logger.info("Web interface on {}", server.getAddress());
         return ui;
     }
 
@@ -148,7 +148,7 @@ public final class WebUi implements AutoCloseable {
                 this.send(exchange, 400, TEXT, "Bad request.");
             }
         } catch (RuntimeException e) {
-            LOG.warn("Web interface request failed", e);
+            logger.warn("Web interface request failed", e);
         }
     }
 
@@ -714,7 +714,7 @@ public final class WebUi implements AutoCloseable {
 
         @Override
         public void onError(Throwable throwable) {
-            LOG.debug("Engine events ended", throwable);
+            logger.debug("Engine events ended", throwable);
         }
 
         @Override

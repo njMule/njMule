@@ -47,7 +47,7 @@ public final class GuiSettings {
         DARK
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(GuiSettings.class);
+    private static final Logger logger = LoggerFactory.getLogger(GuiSettings.class);
 
     private final Path file;
     private final Properties values = new Properties();
@@ -64,7 +64,7 @@ public final class GuiSettings {
             try (Reader in = Files.newBufferedReader(settings.file, StandardCharsets.UTF_8)) {
                 settings.values.load(in);
             } catch (IOException | IllegalArgumentException e) {
-                LOG.warn("Cannot read {}, using the defaults", settings.file, e);
+                logger.warn("Cannot read {}, using the defaults", settings.file, e);
                 settings.values.clear();
             }
         }

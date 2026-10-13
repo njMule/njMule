@@ -37,7 +37,7 @@ public final class PortForwarding implements AutoCloseable {
     /** How long discovery waits for a router to answer. */
     public static final Duration DISCOVERY = Duration.ofSeconds(3);
 
-    private static final Logger LOG = LoggerFactory.getLogger(PortForwarding.class);
+    private static final Logger logger = LoggerFactory.getLogger(PortForwarding.class);
     private static final String DESCRIPTION = "njMule";
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(5);
 
@@ -127,7 +127,8 @@ public final class PortForwarding implements AutoCloseable {
             try {
                 igd.deleteMapping(m.protocol(), m.port());
             } catch (IOException e) {
-                LOG.debug("UPnP: cannot remove {} {}: {}", m.protocol(), m.port(), e.getMessage());
+                logger.debug(
+                        "UPnP: cannot remove {} {}: {}", m.protocol(), m.port(), e.getMessage());
             }
         }
         this.mapped.clear();

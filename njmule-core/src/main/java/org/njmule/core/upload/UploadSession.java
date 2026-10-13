@@ -89,7 +89,7 @@ final class UploadSession {
     /** The largest block a client may ask for. */
     static final long MAX_BLOCK = 3L * Ed2k.EMBLOCKSIZE;
 
-    private static final Logger LOG = LoggerFactory.getLogger(UploadSession.class);
+    private static final Logger logger = LoggerFactory.getLogger(UploadSession.class);
 
     private final EngineLoop loop;
     private final TcpConnection connection;
@@ -248,10 +248,10 @@ final class UploadSession {
                 this.extended(packet);
             }
         } catch (DecodeException | IllegalArgumentException e) {
-            LOG.debug("Bad packet from {}: {}", this.address(), e.getMessage());
+            logger.debug("Bad packet from {}: {}", this.address(), e.getMessage());
             this.close();
         } catch (RuntimeException e) {
-            LOG.warn("Failed handling a packet from {}", this.address(), e);
+            logger.warn("Failed handling a packet from {}", this.address(), e);
             this.close();
         }
     }
@@ -382,7 +382,8 @@ final class UploadSession {
             Block block = new Block(range.start(), range.end());
             if (range.end() - range.start() > MAX_BLOCK
                     || !upload.has(range.start(), range.end())) {
-                LOG.debug("Refusing block {}-{} to {}", range.start(), range.end(), this.address());
+                logger.debug(
+                        "Refusing block {}-{} to {}", range.start(), range.end(), this.address());
                 continue;
             }
             if (!this.pending.contains(block)

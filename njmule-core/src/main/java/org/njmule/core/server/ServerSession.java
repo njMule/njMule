@@ -80,7 +80,7 @@ public final class ServerSession {
     /** From the start of an attempt to the id: connection, handshake and login. */
     public static final Duration LOGIN_TIMEOUT = Duration.ofSeconds(25);
 
-    private static final Logger LOG = LoggerFactory.getLogger(ServerSession.class);
+    private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
 
     private enum State {
         IDLE,
@@ -175,7 +175,8 @@ public final class ServerSession {
                 this.start(next);
                 return;
             }
-            LOG.debug("Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
+            logger.debug(
+                    "Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
         }
         Optional<ServerMet.Server> last = this.server;
         this.state = State.IDLE;
@@ -266,7 +267,7 @@ public final class ServerSession {
         ServerMet.Server target = this.server.get();
         Optional<Opcodes.Server> opcode = Opcodes.Server.of(packet.opcode());
         if (opcode.isEmpty()) {
-            LOG.debug("Ignoring server opcode 0x{}", Integer.toHexString(packet.opcode()));
+            logger.debug("Ignoring server opcode 0x{}", Integer.toHexString(packet.opcode()));
             return;
         }
         try {
@@ -303,11 +304,11 @@ public final class ServerSession {
                 case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
                         this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
                 case REJECT ->
-                        LOG.info("{} rejected our last request", ServerList.addressOf(target));
-                default -> LOG.debug("Ignoring server message {}", opcode.get());
+                        logger.info("{} rejected our last request", ServerList.addressOf(target));
+                default -> logger.debug("Ignoring server message {}", opcode.get());
             }
         } catch (DecodeException e) {
-            LOG.warn(
+            logger.warn(
                     "Malformed packet 0x{} from {}",
                     Integer.toHexString(packet.opcode()),
                     ServerList.addressOf(target),
@@ -318,7 +319,7 @@ public final class ServerSession {
     private void idChanged(ServerMet.Server target, IdChange change) {
         if (change.clientId() == 0) {
             // The server refuses us without saying so; the login timeout moves on.
-            LOG.debug("Id 0 from {}", ServerList.addressOf(target));
+            logger.debug("Id 0 from {}", ServerList.addressOf(target));
             return;
         }
         this.id = Optional.of(change);
@@ -356,7 +357,7 @@ public final class ServerSession {
             return;
         }
         ServerMet.Server target = this.server.orElseThrow();
-        LOG.info("Cannot connect to {}: {}", ServerList.addressOf(target), reason);
+        logger.info("Cannot connect to {}: {}", ServerList.addressOf(target), reason);
         this.servers.update(
                 ServerList.addressOf(target),
                 s -> s.with(intTag(ServerTag.FAIL, s.failedCount().orElse(0) + 1)));
