@@ -348,6 +348,14 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.removeServer(server), removed -> this.refreshServers());
     }
 
+    public void serverListAddresses(Consumer<List<URI>> done) {
+        this.later(this.engine.serverListAddresses(), done);
+    }
+
+    public void setServerListAddresses(List<URI> addresses) {
+        this.run(this.engine.setServerListAddresses(addresses));
+    }
+
     public void removeServers(List<ServerAddress> servers) {
         this.later(this.engine.removeServers(servers), removed -> this.refreshServers());
     }

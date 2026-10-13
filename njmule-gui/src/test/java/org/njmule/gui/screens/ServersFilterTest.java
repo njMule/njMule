@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.ServerInfo;
@@ -50,6 +51,14 @@ class ServersFilterTest {
         assertThat(ServersScreen.matching("lugdunum")).as("the version").accepts(SUNRISE);
         Predicate<ServerInfo> other = ServersScreen.matching("sunrise donkey");
         assertThat(other).rejects(SUNRISE);
+    }
+
+    @Test
+    void serverListAddressesAreTheWebOnesOfTheLines() {
+        assertThat(SettingsScreen.addresses(
+                        "http://a.example/server.met\n  \nftp://x.example/y\nnot an address\nhttps://b.example/s.met"))
+                .extracting(URI::toString)
+                .containsExactly("http://a.example/server.met", "https://b.example/s.met");
     }
 
     @Test

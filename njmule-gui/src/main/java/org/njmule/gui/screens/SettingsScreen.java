@@ -18,8 +18,10 @@ package org.njmule.gui.screens;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -30,12 +32,15 @@ import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -95,6 +100,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox fromClients = new CheckBox();
     private final CheckBox staticOnly = new CheckBox();
     private final CheckBox manualHigh = new CheckBox();
+    private final CheckBox updateAtStart = new CheckBox();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
@@ -190,6 +196,7 @@ public final class SettingsScreen implements Screen {
         this.fromClients.setText(this.gui.t("IDS_PW_UCC"));
         this.staticOnly.setText(this.gui.t("IDS_PW_AUTOCONNECTSTATICONLY"));
         this.manualHigh.setText(this.gui.t("IDS_MANUALSERVERHIGHPRIO"));
+        this.updateAtStart.setText(this.gui.t("IDS_PW_USS"));
         this.deadRetries.setPrefColumnCount(4);
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
@@ -241,6 +248,10 @@ public final class SettingsScreen implements Screen {
         grid.add(this.fromClients, 1, row++);
         grid.add(this.staticOnly, 1, row++);
         grid.add(this.manualHigh, 1, row++);
+        Button addresses = Fx.button(this.gui.t("IDS_EDITLIST"), Material2AL.EDIT, this::editServerListAddresses);
+        HBox update = new HBox(8, this.updateAtStart, addresses);
+        update.setAlignment(Pos.CENTER_LEFT);
+        grid.add(update, 1, row++);
         row = section(grid, row, this.gui.t("IDS_PW_PROXY"));
         row = field(grid, row, this.gui.t("nj.proxy.type"), this.proxyType);
         row = field(grid, row, this.gui.t("nj.proxy.host"), new HBox(8, this.proxyHost, this.proxyPort));
@@ -437,6 +448,7 @@ public final class SettingsScreen implements Screen {
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
         this.manualHigh.setSelected(p.manualServersHighPriority());
+        this.updateAtStart.setSelected(p.updateServersAtStart());
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
@@ -566,6 +578,7 @@ public final class SettingsScreen implements Screen {
                 .addServersFromClients(this.fromClients.isSelected())
                 .staticServersOnly(this.staticOnly.isSelected())
                 .manualServersHighPriority(this.manualHigh.isSelected())
+                .updateServersAtStart(this.updateAtStart.isSelected())
                 .build();
     }
 
@@ -605,6 +618,44 @@ public final class SettingsScreen implements Screen {
 
     private static String key(Enum<?> e) {
         return e.name().toLowerCase(Locale.ROOT);
+    }
+
+    // eMule's addresses.dat: the server.met addresses the update at start takes, one per line.
+    void editServerListAddresses() {
+        this.gui.model().serverListAddresses(addresses -> {
+            TextArea text = new TextArea(
+                    String.join("\n", addresses.stream().map(URI::toString).toList()));
+            text.setPrefRowCount(8);
+            text.setPrefColumnCount(50);
+            text.setPromptText("https://\u2026/server.met");
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle(this.gui.t("IDS_PW_USS"));
+            dialog.setHeaderText(this.gui.t("nj.settings.serverListAddresses"));
+            dialog.getDialogPane().setContent(text);
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            dialog.initOwner(this.view.getScene().getWindow());
+            dialog.showAndWait()
+                    .filter(b -> b == ButtonType.OK)
+                    .ifPresent(b -> this.gui.model().setServerListAddresses(addresses(text.getText())));
+        });
+    }
+
+    /** The http and https addresses among the lines of {@code text}. */
+    static List<URI> addresses(String text) {
+        List<URI> addresses = new ArrayList<>();
+        for (String line :
+                text.lines().map(String::strip).filter(l -> !l.isEmpty()).toList()) {
+            try {
+                URI url = new URI(line);
+                if (("http".equalsIgnoreCase(url.getScheme()) || "https".equalsIgnoreCase(url.getScheme()))
+                        && url.getHost() != null) {
+                    addresses.add(url);
+                }
+            } catch (URISyntaxException e) {
+                // Not an address: left out.
+            }
+        }
+        return addresses;
     }
 
     private static int section(GridPane grid, int row, String text) {
