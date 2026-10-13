@@ -109,6 +109,13 @@ public final class NotificationArea implements AutoCloseable {
         return this.hidden;
     }
 
+    /** Hides the window into the notification area now, as when it is minimised. */
+    public void hideNow() {
+        if (!this.hidden && isSupported()) {
+            this.hide();
+        }
+    }
+
     /** Brings the window back from the notification area, if it is there. */
     public void restore() {
         this.single.stop();

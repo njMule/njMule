@@ -42,6 +42,20 @@ class InfraTest {
     }
 
     @Test
+    void exitPromptAndStartMinimisedAreRemembered() throws Exception {
+        GuiSettings settings = GuiSettings.load(this.dir);
+        assertThat(settings.confirmExit()).as("as in eMule").isTrue();
+        assertThat(settings.startMinimized()).isFalse();
+        settings.setConfirmExit(false);
+        settings.setStartMinimized(true);
+        settings.save();
+
+        GuiSettings loaded = GuiSettings.load(this.dir);
+        assertThat(loaded.confirmExit()).isFalse();
+        assertThat(loaded.startMinimized()).isTrue();
+    }
+
+    @Test
     void historiesKeepTheLatestEntriesFirstOnce() throws Exception {
         GuiSettings settings = GuiSettings.load(this.dir);
         for (int i = 1; i <= GuiSettings.MAX_HISTORY + 2; i++) {

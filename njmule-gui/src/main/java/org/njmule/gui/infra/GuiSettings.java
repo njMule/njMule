@@ -139,6 +139,24 @@ public final class GuiSettings {
         this.values.setProperty("window.height", String.valueOf(height));
     }
 
+    /** Whether closing asks first, as eMule's "Prompt on exit"; on by default. */
+    public boolean confirmExit() {
+        return Boolean.parseBoolean(this.values.getProperty("window.confirmExit", "true"));
+    }
+
+    public void setConfirmExit(boolean value) {
+        this.values.setProperty("window.confirmExit", String.valueOf(value));
+    }
+
+    /** Whether njMule starts minimised, in the notification area when it hides there. */
+    public boolean startMinimized() {
+        return Boolean.parseBoolean(this.values.getProperty("window.startMinimized", "false"));
+    }
+
+    public void setStartMinimized(boolean value) {
+        this.values.setProperty("window.startMinimized", String.valueOf(value));
+    }
+
     /** Whether a minimised window hides into the notification area; on unless turned off. */
     public boolean minimizeToTray() {
         return Boolean.parseBoolean(this.values.getProperty("window.minimizeToTray", "true"));

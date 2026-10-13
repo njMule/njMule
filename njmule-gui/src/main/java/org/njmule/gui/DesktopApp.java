@@ -31,6 +31,9 @@ import javafx.collections.ListChangeListener;
 import javafx.geometry.Dimension2D;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.image.Image;
 import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
@@ -126,8 +129,36 @@ public final class DesktopApp implements AutoCloseable {
         return AppDirectories.resolve(cli.configDir(), Optional.empty()).config();
     }
 
+    /** Whether to exit: asked first, as eMule's "Prompt on exit", unless turned off there or here. */
+    boolean mayExit(Window owner) {
+        if (!this.settings.confirmExit()) {
+            return true;
+        }
+        CheckBox again = new CheckBox(this.gui.t("IDS_DONOTASKAGAIN"));
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO);
+        ask.setHeaderText(this.gui.t("nj.exit.confirm"));
+        ask.getDialogPane().setContent(again);
+        ask.initOwner(owner);
+        boolean yes = ask.showAndWait().filter(b -> b == ButtonType.YES).isPresent();
+        if (yes && again.isSelected()) {
+            this.settings.setConfirmExit(false);
+            try {
+                this.settings.save();
+            } catch (IOException e) {
+                logger.warn("Cannot save the interface settings: {}", e.toString());
+            }
+        }
+        return yes;
+    }
+
     // A later start handed over its links, or none when it only wants the window: FX thread.
     private void handedOver(List<String> links) {
+        if (links.contains(LinkHandoff.EXIT)) {
+            // Asked by njmule --exit: no question, the user asked already.
+            logger.info("Exiting as a later start asked");
+            Platform.exit();
+            return;
+        }
         for (String text : links) {
             switch (Ed2kLink.tryParse(text).orElse(null)) {
                 case Ed2kLink.FileLink link -> this.pending.add(link);
@@ -230,6 +261,11 @@ public final class DesktopApp implements AutoCloseable {
         stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         stage.setScene(this.scene);
         stage.setOnHiding(e -> this.remember(stage));
+        stage.setOnCloseRequest(e -> {
+            if (!this.mayExit(stage)) {
+                e.consume();
+            }
+        });
         stage.show();
         this.model.start();
         this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> {
@@ -242,6 +278,13 @@ public final class DesktopApp implements AutoCloseable {
         this.keepButtonsVisible(stage);
         if (NotificationArea.isSupported()) {
             this.attachTray(stage);
+        }
+        if (this.settings.startMinimized() && !GuiTour.requested()) {
+            if (this.tray != null && this.settings.minimizeToTray()) {
+                this.tray.hideNow();
+            } else {
+                stage.setIconified(true);
+            }
         }
         stage.addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> {
             if (this.tray == null || !this.tray.isHidden()) {
@@ -323,7 +366,9 @@ public final class DesktopApp implements AutoCloseable {
 
             @Override
             public void exit() {
-                Platform.exit();
+                if (DesktopApp.this.mayExit(DesktopApp.this.trayOwner)) {
+                    Platform.exit();
+                }
             }
         });
         this.miniMule = new MiniMule(

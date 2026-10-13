@@ -86,6 +86,8 @@ public final class SettingsScreen implements Screen {
     private final CheckBox ed2k = new CheckBox();
     private final CheckBox ed2kLinks = new CheckBox();
     private final CheckBox tray = new CheckBox();
+    private final CheckBox confirmExit = new CheckBox();
+    private final CheckBox startMinimized = new CheckBox();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
@@ -188,6 +190,8 @@ public final class SettingsScreen implements Screen {
         this.ed2k.setText(this.gui.t("nj.settings.ed2k"));
         this.ed2kLinks.setText(this.gui.t("nj.settings.ed2kLinks"));
         this.tray.setText(this.gui.t("nj.settings.tray"));
+        this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
+        this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
@@ -219,6 +223,8 @@ public final class SettingsScreen implements Screen {
         if (NotificationArea.isSupported()) {
             grid.add(this.tray, 1, row++);
         }
+        grid.add(this.startMinimized, 1, row++);
+        grid.add(this.confirmExit, 1, row++);
         if (this.links.isPresent()) {
             grid.add(this.ed2kLinks, 1, row++);
         }
@@ -453,6 +459,8 @@ public final class SettingsScreen implements Screen {
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
         this.tray.setSelected(this.gui.settings().minimizeToTray());
+        this.confirmExit.setSelected(this.gui.settings().confirmExit());
+        this.startMinimized.setSelected(this.gui.settings().startMinimized());
         WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
@@ -531,6 +539,8 @@ public final class SettingsScreen implements Screen {
         this.gui.settings().setMode(this.mode.getValue());
         this.gui.settings().setLanguage(this.language.getValue());
         this.gui.settings().setMinimizeToTray(this.tray.isSelected());
+        this.gui.settings().setConfirmExit(this.confirmExit.isSelected());
+        this.gui.settings().setStartMinimized(this.startMinimized.isSelected());
         try {
             this.gui.settings().save();
             web.save(this.gui.directories().config());
