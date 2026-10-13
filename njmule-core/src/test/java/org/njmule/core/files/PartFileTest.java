@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
@@ -133,6 +134,28 @@ class PartFileTest {
         assertThat(loaded.status()).isEqualTo(PartFile.Status.PAUSED);
         assertThat(loaded.partHash(2)).contains(hash(3));
         assertThat(loaded.metFile().getFileName().toString()).isEqualTo("007.part.met");
+    }
+
+    @Test
+    void trustsThePartsCheckedBeforeOnlyWhileTheDataIsUnchanged() throws Exception {
+        List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
+        PartFile file =
+                PartFile.create(8, this.dir, "film.mkv", 2 * P + 5, Ed2k.fileHash(parts), Optional.empty(), parts);
+        Files.write(file.dataFile(), new byte[] {1, 2, 3});
+        file.written(0, P);
+        file.written(P, 2 * P);
+        file.verified(0);
+        file.save();
+
+        assertThat(PartFile.load(this.dir, 8).trustedParts().stream().boxed().toList())
+                .containsExactly(0);
+
+        Files.setLastModifiedTime(
+                file.dataFile(),
+                FileTime.fromMillis(Files.getLastModifiedTime(file.dataFile()).toMillis() + 5_000));
+        assertThat(PartFile.load(this.dir, 8).trustedParts().isEmpty())
+                .as("the data changed since the save")
+                .isTrue();
     }
 
     @Test

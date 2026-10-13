@@ -20,6 +20,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
 import com.google.common.collect.TreeRangeSet;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
@@ -38,6 +40,7 @@ import org.njmule.core.persist.format.PartMet;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.util.Bytes;
 
 /**
  * A file being downloaded, {@code NNN.part} with its metadata {@code NNN.part.met}: which byte ranges are still
@@ -45,6 +48,9 @@ import org.njmule.core.protocol.tag.TagName;
  * only; the data itself is read and written by {@link PartFileStorage}.
  */
 public final class PartFile {
+
+    // njMule's own tag, which other clients skip: the parts that passed their check.
+    private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
 
     /** Where a download stands. */
     public enum Status {
@@ -78,6 +84,9 @@ public final class PartFile {
     private final Hash16 hash;
     private final long size;
     private final Optional<Hash20> aichHash;
+    // The parts checked in this run and before, and those trusted from the last save.
+    private final BitSet verified = new BitSet();
+    private final BitSet trusted = new BitSet();
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
@@ -149,7 +158,27 @@ public final class PartFile {
         }
         contents.downloadPriority().ifPresent(code -> file.priority = priority(code));
         contents.category().ifPresent(id -> file.category = Math.clamp(id, 0, Integer.MAX_VALUE));
+        // Parts checked before are trusted only while the data file is as it was saved.
+        if (dataDate(file.dataFile()).equals(OptionalLong.of(contents.mtime()))) {
+            for (Tag tag : contents.tags()) {
+                if (tag instanceof Tag.BlobTag blob && blob.name().equals(VERIFIED_TAG)) {
+                    file.trusted.or(BitSet.valueOf(blob.value().toByteArray()));
+                }
+            }
+            file.trusted.clear(file.partCount(), Math.max(file.partCount(), file.trusted.length()));
+            file.verified.or(file.trusted);
+        }
         return file;
+    }
+
+    /** Records that {@code part} passed its check, so that a restart need not check it again. */
+    public void verified(int part) {
+        this.verified.set(part);
+    }
+
+    /** The parts that passed their check before the last save, when the data has not changed since. */
+    public BitSet trustedParts() {
+        return (BitSet) this.trusted.clone();
     }
 
     /** Writes {@code NNN.part.met} crash-safely, keeping the previous one as backup. */
@@ -168,10 +197,22 @@ public final class PartFile {
         for (Range<Long> gap : this.missing.asRanges()) {
             gaps.add(new PartMet.Gap(gap.lowerEndpoint(), gap.upperEndpoint()));
         }
-        PartMet.Contents contents = new PartMet.Contents(
-                        PartMet.VERSION, System.currentTimeMillis() / 1000, this.hash, this.partHashes, tags)
-                .withGaps(gaps);
+        // The date is that of the data: a data file changed since the save has its parts checked again.
+        long dataDate = dataDate(this.dataFile()).orElse(System.currentTimeMillis() / 1000);
+        if (!this.verified.isEmpty()) {
+            tags.add(new Tag.BlobTag(VERIFIED_TAG, Bytes.of(this.verified.toByteArray())));
+        }
+        PartMet.Contents contents =
+                new PartMet.Contents(PartMet.VERSION, dataDate, this.hash, this.partHashes, tags).withGaps(gaps);
         AtomicFiles.writeBytes(this.metFile(), PartMet.write(contents));
+    }
+
+    private static OptionalLong dataDate(Path data) {
+        try {
+            return OptionalLong.of(Files.getLastModifiedTime(data).toMillis() / 1000);
+        } catch (IOException e) {
+            return OptionalLong.empty();
+        }
     }
 
     public int number() {
@@ -358,6 +399,8 @@ public final class PartFile {
     /** A part failed its hash check: all of it is missing again. */
     public void corrupt(int part) {
         this.missing.add(partRange(this.size, part));
+        this.verified.clear(part);
+        this.trusted.clear(part);
     }
 
     /** The parts that are complete, as reported to other clients. */

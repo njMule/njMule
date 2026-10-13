@@ -202,6 +202,8 @@ All notable changes to this project are documented here. The format follows
   nodes.dat are looked up at once.
 - The IP filter level can be set (`security.ipFilterLevel`, imported from eMule): ranges below it
   block, and a change applies at once.
+- Parts that passed their check are remembered in the `.part.met`: after a restart they are not
+  checked again while the data file is as it was saved (its date is the date of the `.part.met`).
 
 ### Changed
 

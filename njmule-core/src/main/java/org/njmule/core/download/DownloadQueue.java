@@ -267,12 +267,23 @@ public final class DownloadQueue implements AutoCloseable {
                 download.storage.write(start, data), (ok, failure) -> this.written(download, start, end, failure));
     }
 
-    /** The hash set arrived: parts finished before it can now be checked. */
+    /** The hash set arrived: parts finished before it can now be checked, unless checked before a restart. */
     public void hashSetKnown(Download download) {
+        BitSet trusted = download.file.trustedParts();
         for (int part = 0; part < download.file.partCount(); part++) {
-            if (download.file.isComplete(part) && !download.verified.get(part)) {
+            if (!download.file.isComplete(part) || download.verified.get(part)) {
+                continue;
+            }
+            if (trusted.get(part)) {
+                download.verified.set(part);
+            } else {
                 this.verify(download, part);
             }
+        }
+        if (download.file.isComplete()
+                && download.verified.cardinality() == download.file.partCount()
+                && !download.finishing) {
+            this.finish(download);
         }
     }
 
@@ -384,6 +395,8 @@ public final class DownloadQueue implements AutoCloseable {
             return;
         }
         download.verified.set(part);
+        download.file.verified(part);
+        download.dirty = true;
         if (download.file.isComplete()
                 && download.verified.cardinality() == download.file.partCount()
                 && !download.finishing) {
