@@ -17,6 +17,7 @@
 package org.njmule.core.api;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +61,12 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Adds the servers of a {@code server.met} (e.g. eMule's); completes with how many were new. */
     CompletableFuture<Integer> addServers(Path serverMet);
+
+    /**
+     * Adds the servers of the {@code server.met} at {@code url}, fetched over http or https from a public address;
+     * completes with how many were new.
+     */
+    CompletableFuture<Integer> addServers(URI url);
 
     /** The known servers, in the order of the list. */
     CompletableFuture<List<ServerInfo>> servers();
@@ -143,6 +150,12 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Asks the Kad node at {@code node} (its UDP port) for contacts to join with. */
     CompletableFuture<Void> kadBootstrap(ServerAddress node);
+
+    /**
+     * Adds the Kad contacts of the {@code nodes.dat} at {@code url}, fetched like a server list; completes with how
+     * many were new.
+     */
+    CompletableFuture<Integer> addKadContacts(URI url);
 
     /** The state of Kad, empty when it does not run. */
     CompletableFuture<Optional<KadInfo>> kad();

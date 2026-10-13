@@ -489,7 +489,10 @@ final class Network {
 
     /** Adds the servers of another client's server.met; returns how many were new. */
     int addServers(Path file) throws IOException {
-        List<ServerMet.Server> read = ServerMet.read(Files.readAllBytes(file));
+        return this.addServers(ServerMet.read(Files.readAllBytes(file)));
+    }
+
+    int addServers(List<ServerMet.Server> read) throws IOException {
         int added = this.servers.addAll(read);
         if (added > 0) {
             this.servers.save(this.serverMet);

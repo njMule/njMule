@@ -21,6 +21,7 @@ import java.io.UncheckedIOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +35,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -71,6 +73,7 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
+import org.njmule.core.net.WebLists;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.EmuleImporter;
 import org.njmule.core.persist.PreferencesCodec;
@@ -79,6 +82,7 @@ import org.njmule.core.persist.UserHashStore;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -86,6 +90,8 @@ import org.slf4j.LoggerFactory;
 
 /** Engine implementation behind {@link NjMuleEngine}. */
 public final class Engine implements NjMuleEngine {
+
+    private final WebLists web = WebLists.create();
 
     private static final Logger logger = LoggerFactory.getLogger(Engine.class);
     private static final int EVENT_BUFFER = 1_024;
@@ -263,6 +269,38 @@ public final class Engine implements NjMuleEngine {
     @Override
     public Flow.Publisher<EngineEvent> events() {
         return this.events;
+    }
+
+    @Override
+    public CompletableFuture<Integer> addServers(URI url) {
+        Objects.requireNonNull(url, "url");
+        return this.fetch(url, ServerMet::read)
+                .thenCompose(read -> this.loop.submit(() -> this.network.addServers(read)));
+    }
+
+    @Override
+    public CompletableFuture<Integer> addKadContacts(URI url) {
+        Objects.requireNonNull(url, "url");
+        return this.fetch(url, NodesDat::read)
+                .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
+    }
+
+    /** Reads what the web gives, on a thread of its own: the engine thread never waits for the network. */
+    private <T> CompletableFuture<T> fetch(URI url, Parser<T> parser) {
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        return parser.parse(this.web.fetch(url));
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
+                },
+                task -> Thread.ofVirtual().name("njmule-fetch").start(task));
+    }
+
+    @FunctionalInterface
+    private interface Parser<T> {
+        T parse(byte[] data) throws IOException;
     }
 
     @Override
