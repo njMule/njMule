@@ -736,7 +736,7 @@ public final class DownloadManager implements AutoCloseable {
                     for (InetAddress address : InetAddress.getAllByName(source.host())) {
                         if (address instanceof Inet4Address) {
                             InetSocketAddress resolved = new InetSocketAddress(address, source.port());
-                            this.loop.post(() -> Optional.ofNullable(this.entries.get(hash))
+                            this.loop.postOutcome(() -> Optional.ofNullable(this.entries.get(hash))
                                     .ifPresent(e -> this.addLinkSource(e, resolved)));
                             break;
                         }

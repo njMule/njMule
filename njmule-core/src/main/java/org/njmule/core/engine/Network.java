@@ -577,7 +577,7 @@ final class Network {
             try {
                 TcpConnection connection =
                         TcpConnector.connectToClient(peer, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
-                if (!this.loop.post(() -> this.greet(connection, answer))) {
+                if (!this.loop.postOutcome(() -> this.greet(connection, answer))) {
                     connection.close();
                 }
             } catch (IOException e) {
@@ -611,12 +611,14 @@ final class Network {
             if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
             }
-            Network.this.loop.post(() -> this.received(packet));
+            if (!Network.this.loop.post(() -> this.received(packet))) {
+                c.close();
+            }
         }
 
         @Override
         public void onClosed(TcpConnection c, Optional<IOException> cause) {
-            Network.this.loop.post(() -> {
+            Network.this.loop.postOutcome(() -> {
                 if (this.peer == null) {
                     this.answer.completeExceptionally(
                             cause.orElseGet(() -> new IOException("closed before the hello")));

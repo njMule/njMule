@@ -31,8 +31,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The single thread that owns all mutable engine state: a one-thread {@link ScheduledThreadPoolExecutor} running posted
- * tasks and timers in order. Posting never blocks: when too many tasks wait, the task is refused and the caller decides
- * (e.g. disconnects a flooding peer). A failing task is logged and does not stop the loop.
+ * tasks and timers in order. Posting never blocks: when too many tasks wait, a task from the network is refused and the
+ * caller decides (e.g. disconnects a flooding peer), while the outcome of work the engine started is always queued. A
+ * failing task is logged and does not stop the loop.
  */
 public final class EngineLoop implements AutoCloseable {
 
@@ -84,6 +85,22 @@ public final class EngineLoop implements AutoCloseable {
     }
 
     /**
+     * Queues the outcome of work the engine started, such as a connection that closed or a write that finished. It is
+     * never refused for a full queue, since there are no more of them than work in flight, so state that waits for it
+     * cannot hang; it is refused only once the loop stops.
+     */
+    public boolean postOutcome(Runnable task) {
+        Objects.requireNonNull(task, "task");
+        try {
+            this.executor.execute(() -> runTask("task", task));
+            return true;
+        } catch (RejectedExecutionException e) {
+            logger.debug("Engine loop stopped, an outcome is dropped");
+            return false;
+        }
+    }
+
+    /**
      * Runs a computation on the engine thread. The future fails with {@link RejectedExecutionException} if the task
      * cannot be queued.
      */
@@ -122,12 +139,12 @@ public final class EngineLoop implements AutoCloseable {
     }
 
     /**
-     * Runs {@code then} on the engine thread with the outcome of {@code work}; dropped if the loop has stopped or is
-     * full, like {@link #post}.
+     * Runs {@code then} on the engine thread with the outcome of {@code work}, like {@link #postOutcome}: dropped only
+     * once the loop has stopped.
      */
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-up reports its own failures
     public <T> void whenDone(CompletableFuture<T> work, BiConsumer<T, Throwable> then) {
-        work.whenComplete((value, failure) -> this.post(() -> then.accept(value, failure)));
+        work.whenComplete((value, failure) -> this.postOutcome(() -> then.accept(value, failure)));
     }
 
     public boolean isEngineThread() {

@@ -166,9 +166,11 @@ public final class Messaging implements AutoCloseable {
             try {
                 TcpConnection connection =
                         TcpConnector.connectToClient(to, Optional.empty(), CONNECT_TIMEOUT, this.random);
-                this.loop.post(() -> this.connected(to, c, connection));
+                if (!this.loop.postOutcome(() -> this.connected(to, c, connection))) {
+                    connection.close();
+                }
             } catch (IOException e) {
-                this.loop.post(() -> this.unreachable(to, c, String.valueOf(e.getMessage())));
+                this.loop.postOutcome(() -> this.unreachable(to, c, String.valueOf(e.getMessage())));
             }
         });
     }
@@ -260,7 +262,9 @@ public final class Messaging implements AutoCloseable {
             if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 connection.setFrameLimit(FrameLimits.CLIENT);
             }
-            Messaging.this.loop.post(() -> this.received(connection, packet));
+            if (!Messaging.this.loop.post(() -> this.received(connection, packet))) {
+                connection.close();
+            }
         }
 
         private void received(TcpConnection connection, Packet packet) {
@@ -282,7 +286,7 @@ public final class Messaging implements AutoCloseable {
 
         @Override
         public void onClosed(TcpConnection connection, Optional<IOException> cause) {
-            Messaging.this.loop.post(() -> {
+            Messaging.this.loop.postOutcome(() -> {
                 Conversation c = this.conversation;
                 if (c.own == connection) {
                     c.own = null;

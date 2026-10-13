@@ -184,7 +184,7 @@ final class UploadSession {
 
             @Override
             public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                UploadSession.this.loop.post(UploadSession.this::gone);
+                UploadSession.this.loop.postOutcome(UploadSession.this::gone);
             }
         };
     }

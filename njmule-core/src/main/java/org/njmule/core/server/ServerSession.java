@@ -201,11 +201,11 @@ public final class ServerSession {
         Thread.ofVirtual().name("njmule-server-connect").start(() -> {
             try {
                 TcpConnection opened = TcpConnector.connectToServer(address, obfuscate, LOGIN_TIMEOUT, this.random);
-                if (!this.loop.post(() -> this.opened(current, opened))) {
+                if (!this.loop.postOutcome(() -> this.opened(current, opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.post(() -> this.fail(current, describe(e)));
+                this.loop.postOutcome(() -> this.fail(current, describe(e)));
             }
         });
     }
@@ -227,7 +227,7 @@ public final class ServerSession {
 
                     @Override
                     public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                        ServerSession.this.loop.post(() -> ServerSession.this.closed(
+                        ServerSession.this.loop.postOutcome(() -> ServerSession.this.closed(
                                 current, cause.map(ServerSession::describe).orElse("closed by the server")));
                     }
                 },

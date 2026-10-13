@@ -561,11 +561,11 @@ public final class UploadManager implements AutoCloseable {
             try {
                 TcpConnection opened =
                         TcpConnector.connectToClient(address, obfuscateFor, CONNECT_TIMEOUT, this.random);
-                if (!this.loop.post(() -> this.connected(client, opened))) {
+                if (!this.loop.postOutcome(() -> this.connected(client, opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.post(() -> this.unreachable(client, e.getMessage()));
+                this.loop.postOutcome(() -> this.unreachable(client, e.getMessage()));
             }
         });
     }
@@ -602,12 +602,14 @@ public final class UploadManager implements AutoCloseable {
             if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
             }
-            UploadManager.this.loop.post(() -> this.deliver(packet));
+            if (!UploadManager.this.loop.post(() -> this.deliver(packet))) {
+                c.close();
+            }
         }
 
         @Override
         public void onClosed(TcpConnection c, Optional<IOException> cause) {
-            UploadManager.this.loop.post(() -> {
+            UploadManager.this.loop.postOutcome(() -> {
                 if (this.session != null) {
                     this.session.gone();
                 } else {

@@ -227,11 +227,11 @@ final class DownloadSession {
             try {
                 TcpConnection opened =
                         TcpConnector.connectToClient(this.address, obfuscateFor, HANDSHAKE_TIMEOUT, random);
-                if (!this.loop.post(() -> this.opened(opened))) {
+                if (!this.loop.postOutcome(() -> this.opened(opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.post(() -> this.end(Outcome.UNREACHABLE, "cannot connect: " + e.getMessage()));
+                this.loop.postOutcome(() -> this.end(Outcome.UNREACHABLE, "cannot connect: " + e.getMessage()));
             }
         });
     }
@@ -306,7 +306,7 @@ final class DownloadSession {
 
             @Override
             public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                DownloadSession.this.loop.post(
+                DownloadSession.this.loop.postOutcome(
                         () -> DownloadSession.this.closed(mine, cause.map(IOException::getMessage)));
             }
         };

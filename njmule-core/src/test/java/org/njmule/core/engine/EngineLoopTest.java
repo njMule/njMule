@@ -93,7 +93,13 @@ class EngineLoopTest {
             accepted++;
         }
         assertThat(accepted).isEqualTo(16);
+
+        // The outcome of work in flight still gets in, as does a follow-up of finished work.
+        CountDownLatch outcomes = new CountDownLatch(2);
+        assertThat(this.loop.postOutcome(outcomes::countDown)).isTrue();
+        this.loop.whenDone(CompletableFuture.completedFuture(1), (value, failure) -> outcomes.countDown());
         release.countDown();
+        assertThat(outcomes.await(10, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test
@@ -148,6 +154,7 @@ class EngineLoopTest {
 
         assertThat(ran).hasValue(5);
         assertThat(this.loop.post(() -> {})).isFalse();
+        assertThat(this.loop.postOutcome(() -> {})).isFalse();
         assertThatThrownBy(() -> this.loop.submit(() -> 1).get()).hasCauseInstanceOf(RejectedExecutionException.class);
     }
 
