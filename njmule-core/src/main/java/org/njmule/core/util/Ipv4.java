@@ -63,6 +63,13 @@ public final class Ipv4 {
         return fromBytes(Inet4Address.ofLiteral(text).getAddress());
     }
 
+    /** A private address (RFC 1918) or one of the "this network" block, 0.x. */
+    public static boolean isLan(int ip) {
+        int a = ip >>> 24;
+        int b = (ip >>> 16) & 0xFF;
+        return a == 0 || a == 10 || (a == 172 && b >= 16 && b < 32) || (a == 192 && b == 168);
+    }
+
     /** Usable as a peer address: not 0.x, loopback, multicast, broadcast or reserved. */
     public static boolean isUnicastPublicCandidate(int ip) {
         int a = ip >>> 24;

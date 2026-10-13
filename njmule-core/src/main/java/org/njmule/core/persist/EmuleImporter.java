@@ -255,6 +255,7 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "StoreSearches").ifPresent(b::storeSearches);
         ini.getBoolean(SECTION, "AddNewFilesPaused").ifPresent(b::addDownloadsPaused);
         ini.getLong(SECTION, "StartNextFile").ifPresent(v -> b.nextDownload(nextDownload(v)));
+        ini.getBoolean(SECTION, "FilterBadIPs").ifPresent(b::filterLanAddresses);
         ini.getLong(SECTION, "FilterLevel")
                 .ifPresent(v -> b.ipFilterLevel(Math.clamp(v, 0, Preferences.MAX_IP_FILTER_LEVEL)));
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);

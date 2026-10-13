@@ -70,7 +70,8 @@ public record Preferences(
         boolean rememberCancelledFiles,
         boolean storeSearches,
         boolean addDownloadsPaused,
-        NextDownload nextDownload) {
+        NextDownload nextDownload,
+        boolean filterLanAddresses) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -164,7 +165,8 @@ public record Preferences(
                 true,
                 true,
                 false,
-                NextDownload.NONE);
+                NextDownload.NONE,
+                true);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -233,6 +235,7 @@ public record Preferences(
         private boolean storeSearches;
         private boolean addDownloadsPaused;
         private NextDownload nextDownload;
+        private boolean filterLanAddresses;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -271,6 +274,7 @@ public record Preferences(
             this.storeSearches = p.storeSearches;
             this.addDownloadsPaused = p.addDownloadsPaused;
             this.nextDownload = p.nextDownload;
+            this.filterLanAddresses = p.filterLanAddresses;
         }
 
         public Builder nick(String value) {
@@ -482,6 +486,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder filterLanAddresses(boolean value) {
+            this.filterLanAddresses = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -520,7 +529,8 @@ public record Preferences(
                     this.rememberCancelledFiles,
                     this.storeSearches,
                     this.addDownloadsPaused,
-                    this.nextDownload);
+                    this.nextDownload,
+                    this.filterLanAddresses);
         }
     }
 }

@@ -118,7 +118,10 @@ class SourceExchangeFlowTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
+        // The fake servers and peers listen on this machine's LAN address, which must be let in.
+        Files.writeString(
+                dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + port + "\nsecurity.filterLan=false\n" + extra);
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
         return engine;

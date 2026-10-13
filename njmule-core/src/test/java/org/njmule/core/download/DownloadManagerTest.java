@@ -88,6 +88,8 @@ class DownloadManagerTest {
                     address(Ipv4.of(224, 0, 0, 1), PORT),
                     address(BLOCKED_IP, PORT),
                     address(OUR_IP, PORT),
+                    address(Ipv4.of(192, 168, 1, 20), PORT),
+                    address(Ipv4.of(10, 1, 2, 3), PORT),
                     address(Ipv4.of(192, 0, 2, 10), 0),
                     address(Ipv4.of(192, 0, 2, 10), PORT)));
             return manager.download(hash).orElseThrow();
@@ -100,7 +102,8 @@ class DownloadManagerTest {
     void takesTheLinkSourcesTheIpFilterAllows() throws Exception {
         DownloadManager manager = this.manager();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|link.bin|5000|" + "34".repeat(16)
-                + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + "|/");
+                + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + ",172.20.0.9:" + PORT
+                + "|/");
 
         DownloadInfo info = this.onLoop(() -> {
             DownloadInfo added = manager.add(link);
@@ -254,7 +257,7 @@ class DownloadManagerTest {
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
                 () -> hello,
-                () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0),
+                () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true),
                 server,
                 ip -> ip == BLOCKED_IP,
                 random,

@@ -112,6 +112,7 @@ public final class SyntheticEmuleProfile {
                         "StoreSearches=0",
                         "AddNewFilesPaused=1",
                         "StartNextFile=2",
+                        "FilterBadIPs=0",
                         "NetworkED2K=1",
                         "NetworkKademlia=0",
                         "SecureIdent=1",

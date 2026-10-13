@@ -960,10 +960,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (this.settings.trusted().test(ip)) {
             return true;
         }
-        int a = ip >>> 24;
-        int b = (ip >>> 16) & 0xFF;
-        boolean lan = a == 10 || (a == 172 && b >= 16 && b < 32) || (a == 192 && b == 168);
-        return Ipv4.isUnicastPublicCandidate(ip) && !lan;
+        return Ipv4.isUnicastPublicCandidate(ip) && !Ipv4.isLan(ip);
     }
 
     private long nowMs() {

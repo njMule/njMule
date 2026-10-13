@@ -111,8 +111,14 @@ public final class DownloadManager implements AutoCloseable {
         boolean find(Hash16 file, long size, Consumer<List<InetSocketAddress>> sources);
     }
 
-    /** What the downloads need from the preferences; {@code minFreeSpace} in bytes, 0 for none. */
-    public record Settings(ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort, long minFreeSpace) {}
+    /**
+     * What the downloads need from the preferences.
+     *
+     * @param minFreeSpace in bytes, 0 for none
+     * @param filterLan whether sources at LAN addresses are left out
+     */
+    public record Settings(
+            ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort, long minFreeSpace, boolean filterLan) {}
 
     /** A source that keeps us in its queue is asked again this often. */
     public static final Duration REASK_INTERVAL = Duration.ofMinutes(29);
@@ -888,10 +894,14 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     private void addLinkSource(Entry entry, InetSocketAddress address) {
-        if (address.getPort() != 0
-                && !this.blocked.test(Ipv4.fromBytes(address.getAddress().getAddress()))) {
+        int ip = Ipv4.fromBytes(address.getAddress().getAddress());
+        if (address.getPort() != 0 && !this.blocked.test(ip) && !this.isFilteredLan(ip)) {
             this.addSource(entry, address);
         }
+    }
+
+    private boolean isFilteredLan(int ip) {
+        return this.settings.get().filterLan() && Ipv4.isLan(ip);
     }
 
     // A source the network told us about: a public-looking address the IP filter allows, not ourselves.
@@ -899,6 +909,7 @@ public final class DownloadManager implements AutoCloseable {
         return port != 0
                 && Ipv4.isUnicastPublicCandidate(ip)
                 && !this.blocked.test(ip)
+                && !this.isFilteredLan(ip)
                 && !(Ipv4.toEd2k(ip) == this.server.clientId()
                         && port == this.settings.get().listenPort());
     }

@@ -90,6 +90,7 @@ public final class PreferencesCodec {
         boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
         intKey("backup.copies", Preferences::backupCopies, Preferences.Builder::backupCopies);
         intKey("security.ipFilterLevel", Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel);
+        boolKey("security.filterLan", Preferences::filterLanAddresses, Preferences.Builder::filterLanAddresses);
         boolKey(
                 "files.rememberDownloaded",
                 Preferences::rememberDownloadedFiles,

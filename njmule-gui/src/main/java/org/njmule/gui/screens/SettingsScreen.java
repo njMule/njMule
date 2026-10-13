@@ -90,6 +90,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox confirmExit = new CheckBox();
     private final CheckBox startMinimized = new CheckBox();
     private final CheckBox watchClipboard = new CheckBox();
+    private final CheckBox filterLan = new CheckBox();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
@@ -205,6 +206,7 @@ public final class SettingsScreen implements Screen {
         this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
         this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
         this.watchClipboard.setText(this.gui.t("IDS_PF_WATCHCB"));
+        this.filterLan.setText(this.gui.t("IDS_PW_FILTER"));
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
@@ -307,6 +309,7 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
         this.filterLevel.setPrefColumnCount(4);
         row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
+        grid.add(this.filterLan, 1, row++);
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
@@ -497,6 +500,7 @@ public final class SettingsScreen implements Screen {
         this.deadRetries.setText(String.valueOf(p.deadServerRetries()));
         this.backups.setText(String.valueOf(p.backupCopies()));
         this.filterLevel.setText(String.valueOf(p.ipFilterLevel()));
+        this.filterLan.setSelected(p.filterLanAddresses());
         this.fromServer.setSelected(p.addServersFromServer());
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
@@ -641,6 +645,7 @@ public final class SettingsScreen implements Screen {
                 .deadServerRetries(this.deadRetriesInput.value())
                 .backupCopies(this.backupsInput.value())
                 .ipFilterLevel(this.filterLevelInput.value())
+                .filterLanAddresses(this.filterLan.isSelected())
                 .addServersFromServer(this.fromServer.isSelected())
                 .addServersFromClients(this.fromClients.isSelected())
                 .staticServersOnly(this.staticOnly.isSelected())

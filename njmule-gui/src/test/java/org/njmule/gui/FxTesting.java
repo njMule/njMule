@@ -113,7 +113,8 @@ public final class FxTesting {
         }
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");
+                // Fake servers listen on this machine's LAN address, which must be let in.
+                "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n");
         return NjMuleEngine.start(new EngineConfig(dirs));
     }
 

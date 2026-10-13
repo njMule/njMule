@@ -274,7 +274,7 @@ final class Network {
         }
         this.ipFilter =
                 loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get().ipFilterLevel());
-        this.servers.filter(ip -> this.ipFilter.blocks(ip));
+        this.servers.filter(ip -> this.ipFilter.blocks(ip) || this.isFilteredLan(ip));
         this.session = new ServerSession(
                 loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
         this.searches = new SearchManager(
@@ -313,7 +313,8 @@ final class Network {
                             prefs.obfuscation(),
                             prefs.maxSourcesPerFile(),
                             this.listenPort(),
-                            prefs.minFreeSpaceMiB() * 1024L * 1024L);
+                            prefs.minFreeSpaceMiB() * 1024L * 1024L,
+                            prefs.filterLanAddresses());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
@@ -1237,7 +1238,7 @@ final class Network {
                             this.listenPort(),
                             this.userHash,
                             cryptOptions(prefs.obfuscation()) >>> 7,
-                            ip -> false,
+                            ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
                             ip -> this.ipFilter.blocks(ip)),
                     this.configDir,
                     this.random,
@@ -1472,6 +1473,11 @@ final class Network {
             logger.warn("Cannot read {}, no cancelled files remembered", file, e);
             return CancelledFiles.empty(file, random);
         }
+    }
+
+    // Servers and clients at LAN addresses are left out unless the preferences let them in.
+    private boolean isFilteredLan(int ip) {
+        return this.preferences.get().filterLanAddresses() && Ipv4.isLan(ip);
     }
 
     private static SpamFilter loadSpam(Path file) {

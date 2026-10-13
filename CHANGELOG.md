@@ -220,6 +220,8 @@ All notable changes to this project are documented here. The format follows
 - New downloads can start paused, and when a download completes or is cancelled a paused one can
   start: the one of highest priority, of the same category first or only. eMule's choices are
   imported.
+- Servers, sources and Kad contacts at LAN addresses are left out unless the new
+  `security.filterLan` setting is turned off (imported from eMule's "Filter LAN IPs").
 
 ### Changed
 
