@@ -74,6 +74,19 @@ class SourceExchangeTest {
     }
 
     @Test
+    void aLowIdWithItsBytesSwappedIsALowIdNotAnAddressEndingInZero() throws DecodeException {
+        byte[] payload = HEX.parseHex(
+                "03" + "ab".repeat(16) + "0100" + "000004d2" + "3612" + "00000000" + "0000" + "cd".repeat(16));
+
+        SourceExchange.Source source = SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, payload))
+                .sources()
+                .getFirst();
+
+        assertThat(source.isLowId()).isTrue();
+        assertThat(source.lowId()).isEqualTo(1234);
+    }
+
+    @Test
     void requestsCarryVersionOptionsThenTheFile() throws DecodeException {
         Packet request = SourceExchange.request(FILE);
         assertThat(HEX.formatHex(request.payload())).isEqualTo("04" + "0000" + "ab".repeat(16));

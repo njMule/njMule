@@ -109,6 +109,12 @@ public final class SourceExchange {
                 Optional<Hash16> hash = version >= 2 ? Optional.of(in.hash16()) : Optional.empty();
                 int crypt = version >= 4 ? in.u8() : 0;
                 boolean low = id < ServerMessages.LOW_ID_LIMIT;
+                // Some clients send a LowID in versions 3 and 4 with its bytes swapped, which reads as
+                // an address ending in .0, where no client is reachable.
+                if (!low && version >= 3 && (id & 0xFF) == 0) {
+                    low = true;
+                    id = Integer.toUnsignedLong(Integer.reverseBytes((int) id));
+                }
                 int ip = low ? 0 : version >= 3 ? (int) id : Ipv4.fromEd2k(id);
                 sources.add(new Source(ip, low ? id : 0, port, serverIp, serverPort, hash, crypt));
             }
