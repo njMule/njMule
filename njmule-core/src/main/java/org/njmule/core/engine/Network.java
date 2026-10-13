@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -95,6 +96,8 @@ import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
 import org.njmule.core.upload.Credits;
 import org.njmule.core.upload.UploadManager;
+import org.njmule.core.upnp.Igd;
+import org.njmule.core.upnp.PortForwarding;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -143,6 +146,7 @@ final class Network {
     private final FilePublisher publisher;
     private KadNode kad;
     private KadSocket kadSocket;
+    private PortForwarding forwarding;
     private KadPublisher kadPublisher;
     private final Identities identities;
     private final SecureRandom random;
@@ -316,6 +320,20 @@ final class Network {
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
+        }
+        if (this.preferences.get().upnp() && this.listener != null) {
+            OptionalInt udp =
+                    this.kadSocket == null
+                            ? OptionalInt.empty()
+                            : OptionalInt.of(this.kadSocket.port());
+            this.forwarding =
+                    PortForwarding.start(
+                            Igd.SSDP,
+                            this.listenPort(),
+                            udp,
+                            line ->
+                                    this.loop.post(
+                                            () -> this.userLog.log(LogLine.Level.INFO, line)));
         }
         this.loop.scheduleRepeating(
                 "offer shared files",
@@ -636,6 +654,9 @@ final class Network {
     }
 
     void close() {
+        if (this.forwarding != null) {
+            this.forwarding.close();
+        }
         if (this.kad != null) {
             this.kad.close();
             this.kadSocket.close();
