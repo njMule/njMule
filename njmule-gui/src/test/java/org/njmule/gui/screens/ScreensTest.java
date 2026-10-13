@@ -407,4 +407,26 @@ class ScreensTest {
         FxTesting.onFx(screen::shown);
         assertThat(FxTesting.onFx(() -> screen.webUiPortField().getText())).isEqualTo("4712");
     }
+
+    @Test
+    void pastedLinksMayHaveSpacesInTheirNames() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        TransfersScreen screen = new TransfersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        FxTesting.onFx(
+                () -> {
+                    screen.linkField()
+                            .setText(
+                                    "ed2k://|file|my holiday video.mkv|5000|"
+                                            + "00112233445566778899AABBCCDDEEFF|/\n"
+                                            + "  ed2k://|file|notes.txt|10|"
+                                            + "FFEEDDCCBBAA99887766554433221100|/");
+                    screen.addLink();
+                });
+        FxTesting.await("both downloads", () -> screen.downloads().getItems().size() == 2);
+        assertThat(this.test.told).isEmpty();
+        assertThat(this.test.engine.downloads().get())
+                .extracting(DownloadInfo::name)
+                .containsExactlyInAnyOrder("my holiday video.mkv", "notes.txt");
+    }
 }

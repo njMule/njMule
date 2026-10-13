@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -51,6 +52,10 @@ import org.njmule.gui.ui.Screen;
 
 /** Downloads with their progress, and below the clients we upload to or that wait for us. */
 public final class TransfersScreen implements Screen {
+
+    // Pasted links are separated by white space, which file names may contain too.
+    private static final Pattern LINKS =
+            Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
     private final Gui gui;
     private Node view;
@@ -229,7 +234,7 @@ public final class TransfersScreen implements Screen {
 
     void addLink() {
         String text = this.link.getText().strip();
-        for (String one : text.split("\\s+")) {
+        for (String one : LINKS.split(text, -1)) {
             if (one.isEmpty()) {
                 continue;
             }
