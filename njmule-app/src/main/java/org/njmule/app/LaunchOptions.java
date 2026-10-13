@@ -91,15 +91,15 @@ public record LaunchOptions(
         }
     }
 
-    private static final String CONFIG_DIR = "--config-dir";
-    private static final String LOG_LEVEL = "--log-level";
-    private static final String HASH = "--hash";
-    private static final String HEADLESS = "--headless";
-    private static final String ADD_SERVERS = "--add-servers";
-    private static final String CONNECT_SERVER = "--connect-server";
-    private static final String SEARCH = "--search";
-    private static final String GLOBAL = "--global";
-    private static final String HELLO = "--hello";
+    private static final String CONFIG_DIR_OPTION = "--config-dir";
+    private static final String LOG_LEVEL_OPTION = "--log-level";
+    private static final String HASH_OPTION = "--hash";
+    private static final String HEADLESS_OPTION = "--headless";
+    private static final String ADD_SERVERS_OPTION = "--add-servers";
+    private static final String CONNECT_SERVER_OPTION = "--connect-server";
+    private static final String SEARCH_OPTION = "--search";
+    private static final String GLOBAL_OPTION = "--global";
+    private static final String HELLO_OPTION = "--hello";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -109,28 +109,28 @@ public record LaunchOptions(
             throw new UsageException(e.getMessage());
         }
         Optional<Path> configDir = Optional.empty();
-        if (result.hasMatchedOption(CONFIG_DIR)) {
-            configDir = Optional.of(toDirectory(result.matchedOptionValue(CONFIG_DIR, "")));
+        if (result.hasMatchedOption(CONFIG_DIR_OPTION)) {
+            configDir = Optional.of(toDirectory(result.matchedOptionValue(CONFIG_DIR_OPTION, "")));
         }
         Optional<String> logLevel = Optional.empty();
-        if (result.hasMatchedOption(LOG_LEVEL)) {
-            logLevel = Optional.of(toLevel(result.matchedOptionValue(LOG_LEVEL, "")));
+        if (result.hasMatchedOption(LOG_LEVEL_OPTION)) {
+            logLevel = Optional.of(toLevel(result.matchedOptionValue(LOG_LEVEL_OPTION, "")));
         }
         List<Path> files = new ArrayList<>();
-        for (String file : result.matchedOptionValue(HASH, List.<String>of())) {
+        for (String file : result.matchedOptionValue(HASH_OPTION, List.<String>of())) {
             files.add(toFile(file));
         }
         Optional<Path> serverMet = Optional.empty();
-        if (result.hasMatchedOption(ADD_SERVERS)) {
-            serverMet = Optional.of(toFile(result.matchedOptionValue(ADD_SERVERS, "")));
+        if (result.hasMatchedOption(ADD_SERVERS_OPTION)) {
+            serverMet = Optional.of(toFile(result.matchedOptionValue(ADD_SERVERS_OPTION, "")));
         }
         NetworkTasks network =
                 new NetworkTasks(
                         serverMet,
-                        address(result, CONNECT_SERVER),
-                        Optional.ofNullable(result.<String>matchedOptionValue(SEARCH, null)),
-                        result.hasMatchedOption(GLOBAL),
-                        address(result, HELLO));
+                        address(result, CONNECT_SERVER_OPTION),
+                        Optional.ofNullable(result.<String>matchedOptionValue(SEARCH_OPTION, null)),
+                        result.hasMatchedOption(GLOBAL_OPTION),
+                        address(result, HELLO_OPTION));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
         }
@@ -139,7 +139,7 @@ public record LaunchOptions(
                 configDir,
                 logLevel,
                 files,
-                result.hasMatchedOption(HEADLESS),
+                result.hasMatchedOption(HEADLESS_OPTION),
                 network);
     }
 
@@ -164,37 +164,41 @@ public record LaunchOptions(
         if (result.hasMatchedOption("--notice")) {
             return Action.NOTICE;
         }
-        return result.hasMatchedOption(HASH) ? Action.HASH : Action.RUN;
+        return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
 
     private static CommandLine parser() {
         CommandSpec spec = CommandSpec.create().name("njmule");
         spec.addOption(
                 valued(
-                        CONFIG_DIR,
+                        CONFIG_DIR_OPTION,
                         "<dir>",
                         "keep all data below <dir> instead of the system locations"));
         spec.addOption(
                 valued(
-                        LOG_LEVEL,
+                        LOG_LEVEL_OPTION,
                         "<level>",
                         "ERROR, WARN, INFO, DEBUG or TRACE (overrides the preferences)"));
-        spec.addOption(flag(HEADLESS, "run without a window (the launcher of the desktop app)"));
+        spec.addOption(
+                flag(HEADLESS_OPTION, "run without a window (the launcher of the desktop app)"));
         spec.addOption(
                 valued(
-                        ADD_SERVERS,
+                        ADD_SERVERS_OPTION,
                         "<server.met>",
                         "add the servers of another client's server.met"));
         spec.addOption(
                 valued(
-                        CONNECT_SERVER,
+                        CONNECT_SERVER_OPTION,
                         "<host:port>",
                         "connect to this server (any known one when a"
                                 + " search needs a server)"));
-        spec.addOption(valued(SEARCH, "<expression>", "search, print the results and exit"));
-        spec.addOption(flag(GLOBAL, "search the other known servers too, over UDP"));
+        spec.addOption(valued(SEARCH_OPTION, "<expression>", "search, print the results and exit"));
+        spec.addOption(flag(GLOBAL_OPTION, "search the other known servers too, over UDP"));
         spec.addOption(
-                valued(HELLO, "<host:port>", "say hello to a client, print its answer and exit"));
+                valued(
+                        HELLO_OPTION,
+                        "<host:port>",
+                        "say hello to a client, print its answer and exit"));
         spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
@@ -204,7 +208,7 @@ public record LaunchOptions(
         spec.addOption(flag("--warranty", "print the warranty disclaimer and exit"));
         spec.addOption(flag("--notice", "print copyright, attribution and third-party notices"));
         spec.addOption(
-                OptionSpec.builder(HASH)
+                OptionSpec.builder(HASH_OPTION)
                         .paramLabel("<file>")
                         .type(List.class)
                         .auxiliaryTypes(String.class)

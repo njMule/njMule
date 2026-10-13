@@ -98,17 +98,19 @@ public final class FakeServer implements AutoCloseable {
     public static FakeServer start(InetAddress address, Config config) throws IOException {
         for (int attempt = 0; attempt < 20; attempt++) {
             ServerSocket tcp = new ServerSocket(0, 16, address);
+            DatagramSocket udp;
             try {
-                DatagramSocket udp =
+                udp =
                         new DatagramSocket(
                                 new InetSocketAddress(address, tcp.getLocalPort() + UDP_OFFSET));
-                FakeServer server = new FakeServer(config, tcp, udp);
-                Thread.ofVirtual().name("fake-server-tcp").start(server::acceptLoop);
-                Thread.ofVirtual().name("fake-server-udp").start(server::udpLoop);
-                return server;
             } catch (BindException e) {
                 tcp.close();
+                continue;
             }
+            FakeServer server = new FakeServer(config, tcp, udp);
+            Thread.ofVirtual().name("fake-server-tcp").start(server::acceptLoop);
+            Thread.ofVirtual().name("fake-server-udp").start(server::udpLoop);
+            return server;
         }
         throw new BindException("no free TCP/UDP port pair");
     }

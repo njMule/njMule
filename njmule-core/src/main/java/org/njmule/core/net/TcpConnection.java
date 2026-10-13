@@ -182,7 +182,7 @@ public final class TcpConnection implements AutoCloseable {
 
     private void writeLoop() {
         try {
-            while (true) {
+            while (!this.closed.get()) {
                 byte[] frame = this.outbox.take();
                 this.out.write(frame);
                 if (this.outbox.isEmpty()) {

@@ -88,7 +88,7 @@ final class Network {
     private final EngineLoop loop;
     private final Supplier<Preferences> preferences;
     private final Consumer<EngineEvent> publish;
-    private final UserLog log;
+    private final UserLog userLog;
     private final Hash16 userHash;
     private final Path serverMet;
     private final ServerList servers;
@@ -119,7 +119,7 @@ final class Network {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.preferences = Objects.requireNonNull(preferences, "preferences");
         this.publish = Objects.requireNonNull(publish, "publish");
-        this.log = Objects.requireNonNull(log, "log");
+        this.userLog = Objects.requireNonNull(log, "log");
         this.userHash = Objects.requireNonNull(userHash, "userHash");
         SecureRandom random = new SecureRandom();
         this.serverMet = configDir.resolve(ServerList.FILE_NAME);
@@ -169,7 +169,7 @@ final class Network {
             this.listener =
                     TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
         } catch (IOException e) {
-            this.log.log(
+            this.userLog.log(
                     LogLine.Level.WARNING,
                     "Cannot listen on TCP port "
                             + port
@@ -182,7 +182,8 @@ final class Network {
                     ServerUdp.open(
                             0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
         } catch (IOException e) {
-            this.log.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
+            this.userLog.log(
+                    LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
         LOG.info(
                 "{} servers known, {} IP filter ranges, user hash {}",
@@ -354,7 +355,7 @@ final class Network {
         @Override
         public void connecting(ServerMet.Server server) {
             ServerInfo info = info(server);
-            Network.this.log.log(LogLine.Level.INFO, "Connecting to " + describe(info));
+            Network.this.userLog.log(LogLine.Level.INFO, "Connecting to " + describe(info));
             Network.this.publish.accept(new EngineEvent.ServerConnecting(info));
         }
 
@@ -363,7 +364,7 @@ final class Network {
             Network.this.context = new ServerContext(id.clientId(), server.ip(), server.port());
             ServerInfo info = info(server);
             boolean obfuscated = Network.this.session.isObfuscated();
-            Network.this.log.log(
+            Network.this.userLog.log(
                     LogLine.Level.SUCCESS,
                     "Connected to "
                             + describe(info)
@@ -383,7 +384,7 @@ final class Network {
             Network.this.searches.stopAll();
             Network.this.pinger.stop();
             Optional<ServerInfo> info = server.map(Network::info);
-            Network.this.log.log(
+            Network.this.userLog.log(
                     LogLine.Level.INFO,
                     info.map(i -> "Disconnected from " + describe(i)).orElse("Not connected")
                             + ": "
@@ -399,7 +400,7 @@ final class Network {
                             : line.startsWith("WARNING")
                                     ? LogLine.Level.WARNING
                                     : LogLine.Level.INFO;
-            Network.this.log.log(level, line);
+            Network.this.userLog.log(level, line);
             Network.this.publish.accept(new EngineEvent.ServerMessage(info(server), line));
         }
 

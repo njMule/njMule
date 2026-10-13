@@ -20,6 +20,21 @@
 
     <build>
         <plugins>
+            <!-- The end-to-end tests here exercise the core and the launcher: one coverage report
+                 for all of them, which SonarQube Cloud reads too. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>jacoco-aggregate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -51,7 +66,8 @@
             <groupId>org.njmule</groupId>
             <artifactId>njmule-app</artifactId>
             <version>${project.version}</version>
-            <scope>test</scope>
+            <!-- Runtime rather than test, so the coverage report aggregates the launcher too. -->
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
