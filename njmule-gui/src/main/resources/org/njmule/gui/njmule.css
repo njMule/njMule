@@ -1,0 +1,220 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * njMule's colour tokens and component styles. Generic colours come from the AtlantaFX theme
+ * (-color-*); every -nj-* token has a light and a dark value.
+ */
+
+.root {
+    -nj-brand: #24427A;
+    -nj-brand-mark: #F4F6FB;
+    -nj-brand-accent: #F5A65B;
+    -nj-bar-bg: #E5E9F0;
+    -nj-bar-have: #4C566A;
+    -nj-bar-missing: #BF616A;
+    -nj-bar-sources-min: #B4C7E7;
+    -nj-bar-sources-max: #5E81AC;
+    -nj-bar-requested: #E0B85C;
+    -nj-bar-complete: #638C52;
+    -nj-bar-client: #5E81AC;
+    -nj-bar-error: #D08770;
+    -nj-graph-down: #5E81AC;
+    -nj-graph-up: #A3BE8C;
+    -nj-graph-grid: -color-border-muted;
+}
+
+.root.dark {
+    -nj-bar-bg: #3B4252;
+    -nj-bar-have: #D8DEE9;
+    -nj-bar-missing: #E39CA3;
+    -nj-bar-sources-min: #56688A;
+    -nj-bar-sources-max: #88C0D0;
+    -nj-bar-requested: #EBCB8B;
+    -nj-bar-complete: #A3BE8C;
+    -nj-bar-client: #81A1C1;
+    -nj-bar-error: #D08770;
+    -nj-graph-down: #88C0D0;
+    -nj-graph-up: #A3BE8C;
+}
+
+/* Navigation rail on the left. */
+.nav-rail {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 8 6 8 6;
+    -fx-spacing: 4;
+}
+
+.nav-rail .toggle-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-content-display: top;
+    -fx-graphic-text-gap: 2;
+    -fx-padding: 8 4 6 4;
+    -fx-pref-width: 84;
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.85em;
+}
+
+.nav-rail .toggle-button .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+    -fx-icon-size: 22;
+}
+
+.nav-rail .toggle-button:hover {
+    -fx-background-color: -color-bg-default;
+}
+
+.nav-rail .toggle-button:selected {
+    -fx-background-color: -color-accent-subtle;
+    -fx-text-fill: -color-fg-default;
+}
+
+.nav-rail .toggle-button:selected .ikonli-font-icon {
+    -fx-icon-color: -color-accent-fg;
+}
+
+/* Bars at the top and the bottom. */
+.top-bar {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 6 10 6 10;
+    -fx-spacing: 10;
+    -fx-alignment: center-left;
+}
+
+.status-strip {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 3 10 3 10;
+    -fx-spacing: 16;
+    -fx-alignment: center-left;
+}
+
+.status-strip .label {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.9em;
+}
+
+/* Connection chips: the dot carries the state, the text says it too. */
+.connection-chip {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 12;
+    -fx-padding: 3 10 3 8;
+}
+
+.connection-chip .ikonli-font-icon {
+    -fx-icon-size: 12;
+    -fx-icon-color: -color-fg-subtle;
+}
+
+.connection-chip.connected .ikonli-font-icon {
+    -fx-icon-color: -color-success-emphasis;
+}
+
+.connection-chip.connecting .ikonli-font-icon {
+    -fx-icon-color: -color-warning-emphasis;
+}
+
+.connection-chip.firewalled .ikonli-font-icon {
+    -fx-icon-color: -color-warning-emphasis;
+}
+
+.rate-label {
+    -fx-font-family: monospace;
+}
+
+/* Screens. */
+.screen {
+    -fx-padding: 12;
+    -fx-spacing: 10;
+}
+
+.screen-title {
+    -fx-font-size: 1.35em;
+    -fx-font-weight: bold;
+}
+
+.tool-row {
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+}
+
+/* Log lines, by level. */
+.log-line.warning {
+    -fx-text-fill: -color-warning-fg;
+}
+
+.log-line.error {
+    -fx-text-fill: -color-danger-fg;
+}
+
+.log-line.success {
+    -fx-text-fill: -color-success-fg;
+}
+
+.log-line.debug {
+    -fx-text-fill: -color-fg-subtle;
+}
+
+/* Statistics. */
+.stat-card {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+    -fx-padding: 10 14 10 14;
+    -fx-spacing: 2;
+}
+
+.stat-card .stat-value {
+    -fx-font-size: 1.3em;
+    -fx-font-weight: bold;
+}
+
+.stat-card .stat-name {
+    -fx-text-fill: -color-fg-muted;
+}
+
+.legend-down {
+    -fx-background-color: -nj-graph-down;
+    -fx-min-width: 14;
+    -fx-min-height: 4;
+}
+
+.legend-up {
+    -fx-background-color: -nj-graph-up;
+    -fx-min-width: 14;
+    -fx-min-height: 4;
+}
+
+.settings-section {
+    -fx-font-weight: bold;
+    -fx-padding: 8 0 2 0;
+}
+
+.import-report .outcome-failed {
+    -fx-text-fill: -color-danger-fg;
+}
+
+.graph-grid {
+    -fx-background-color: -nj-graph-grid;
+}
+
+.rate-graph {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+}
+
+/* Swatches the part bars take their colours from. */
+.bar-bg { -fx-background-color: -nj-bar-bg; }
+.bar-have { -fx-background-color: -nj-bar-have; }
+.bar-missing { -fx-background-color: -nj-bar-missing; }
+.bar-sources-min { -fx-background-color: -nj-bar-sources-min; }
+.bar-sources-max { -fx-background-color: -nj-bar-sources-max; }
+.bar-requested { -fx-background-color: -nj-bar-requested; }
+.bar-complete { -fx-background-color: -nj-bar-complete; }

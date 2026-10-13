@@ -77,4 +77,14 @@
             <Package name="org.njmule.core.files"/>
         </Or>
     </Match>
+    <!-- The desktop interface shares observable state on purpose: JavaFX views bind to the
+         model's properties and lists, and screens hand out their nodes; all of it lives on the FX
+         thread. -->
+    <Match>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP"/>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+        </Or>
+        <Package name="~org\.njmule\.gui(\..*)?"/>
+    </Match>
 </FindBugsFilter>

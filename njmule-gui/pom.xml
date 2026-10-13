@@ -50,6 +50,12 @@
         </dependency>
 
         <dependency>
+            <groupId>org.njmule</groupId>
+            <artifactId>njmule-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
@@ -84,6 +90,22 @@
             </resource>
         </resources>
         <plugins>
+            <!-- GUI tests run on JavaFX's headless platform with software rendering: no display
+                 is needed. Snapshots of the screens are written with java.desktop's ImageIO. The
+                 test kit runs from the class path here, so it gets the core packages the core
+                 exports to it as a module. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-modules java.desktop --add-reads org.njmule.gui=java.desktop --add-exports org.njmule.core/org.njmule.core.persist.format=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.ed2k=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.io=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.packet=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.protocol.tag=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.search=ALL-UNNAMED --add-exports org.njmule.core/org.njmule.core.util=ALL-UNNAMED</argLine>
+                    <systemPropertyVariables>
+                        <glass.platform>Headless</glass.platform>
+                        <prism.order>sw</prism.order>
+                        <njmule.snapshots>${project.build.directory}/gui-snapshots</njmule.snapshots>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
             <!-- Development launcher: ./mvnw -pl njmule-gui -am install -DskipTests, then
                  ./mvnw -pl njmule-gui javafx:run -->
             <plugin>
