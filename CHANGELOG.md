@@ -63,6 +63,17 @@ All notable changes to this project are documented here. The format follows
   `--headless`.
 - Windows native executable in CI; documentation-only changes skip the build, and workflows are
   checked with actionlint.
+- Downloads: part files in the eMule `.part.met` format, written in order on one thread per file,
+  the rarest parts first; every part is checked against its hash and downloaded again when
+  corrupt, and finished files move to the incoming directory under a sanitized, unique name.
+- Download sessions with other clients: file request, part status and hash set, a place in the
+  upload queue, then blocks plain or zlib-compressed (inflated with a cap at the requested size),
+  32- and 64-bit offsets. Sources come from links and from the server; queued sources are asked
+  again every 29 minutes and may call back with a slot.
+- Engine API to add, list, pause, resume and cancel downloads, with progress events, and
+  `njmule --download <ed2k link>...` on the command line.
+- Test kit: a fake peer that shares a file, with queueing, short upload sessions and corrupt
+  parts.
 
 ### Changed
 
