@@ -24,10 +24,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.Socket;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import org.njmule.core.api.Hash16;
@@ -47,7 +50,15 @@ public final class TcpConnector {
 
     private static final int BUFFER = 16 * 1024;
 
+    // One engine per process: the network sets where outgoing connections go.
+    private static volatile Supplier<Proxy> proxy = () -> Proxy.NO_PROXY;
+
     private TcpConnector() {}
+
+    /** Outgoing connections go through the proxy {@code supplier} gives at each connection. */
+    public static void useProxy(Supplier<Proxy> supplier) {
+        proxy = Objects.requireNonNull(supplier, "supplier");
+    }
 
     /** Connects to a server, obfuscated with a Diffie-Hellman key exchange if requested. */
     public static TcpConnection connectToServer(
@@ -149,7 +160,7 @@ public final class TcpConnector {
 
     private static Socket connect(InetSocketAddress address, Duration timeout) throws IOException {
         int millis = Math.toIntExact(timeout.toMillis());
-        Socket socket = new Socket();
+        Socket socket = new Socket(proxy.get());
         try {
             socket.connect(address, millis);
             socket.setTcpNoDelay(true);

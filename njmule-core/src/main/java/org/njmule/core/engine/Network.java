@@ -62,6 +62,7 @@ import org.njmule.core.kad.KadNode;
 import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
 import org.njmule.core.kad.UInt128;
+import org.njmule.core.net.ProxyRoute;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
@@ -285,6 +286,7 @@ final class Network {
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
     void start() {
+        ProxyRoute.install(() -> this.preferences.get().proxy());
         int port = this.preferences.get().tcpPort();
         ConnectionGuard guard =
                 new ConnectionGuard(

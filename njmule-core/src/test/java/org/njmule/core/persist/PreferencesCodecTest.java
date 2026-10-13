@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 
 class PreferencesCodecTest {
 
@@ -47,6 +48,10 @@ class PreferencesCodecTest {
                         .obfuscation(ObfuscationMode.REQUIRED)
                         .incomingDir(Optional.of(this.dir.resolve("in dir")))
                         .logLevel("DEBUG")
+                        .upnp(true)
+                        .proxy(
+                                new ProxySettings(
+                                        ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
                         .build();
 
         PreferencesCodec.save(file, p);

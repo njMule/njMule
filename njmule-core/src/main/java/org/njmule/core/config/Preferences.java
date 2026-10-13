@@ -29,6 +29,7 @@ import java.util.Set;
  * @param incomingDir empty = platform default ({@link AppDirectories#downloads()})
  * @param tempDir empty = platform default ({@link AppDirectories#temp()})
  * @param logLevel one of {@link #LOG_LEVELS}
+ * @param upnp whether the router is asked to forward our ports
  */
 public record Preferences(
         String nick,
@@ -48,7 +49,9 @@ public record Preferences(
         boolean creditSystem,
         Optional<Path> incomingDir,
         Optional<Path> tempDir,
-        String logLevel) {
+        String logLevel,
+        ProxySettings proxy,
+        boolean upnp) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final Set<String> LOG_LEVELS = Set.of("ERROR", "WARN", "INFO", "DEBUG", "TRACE");
@@ -77,6 +80,7 @@ public record Preferences(
         if (!LOG_LEVELS.contains(Objects.requireNonNull(logLevel, "logLevel"))) {
             throw new IllegalArgumentException("logLevel must be one of " + LOG_LEVELS);
         }
+        Objects.requireNonNull(proxy, "proxy");
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -99,7 +103,9 @@ public record Preferences(
                 true,
                 Optional.empty(),
                 Optional.empty(),
-                "INFO");
+                "INFO",
+                ProxySettings.NONE,
+                false);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -147,6 +153,12 @@ public record Preferences(
         private Optional<Path> incomingDir;
         private Optional<Path> tempDir;
         private String logLevel;
+        private ProxySettings.Type proxyType;
+        private String proxyHost;
+        private int proxyPort;
+        private String proxyUser;
+        private String proxyPassword;
+        private boolean upnp;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -167,6 +179,8 @@ public record Preferences(
             this.incomingDir = p.incomingDir;
             this.tempDir = p.tempDir;
             this.logLevel = p.logLevel;
+            this.proxy(p.proxy);
+            this.upnp = p.upnp;
         }
 
         public Builder nick(String value) {
@@ -259,6 +273,45 @@ public record Preferences(
             return this;
         }
 
+        public Builder proxy(ProxySettings value) {
+            this.proxyType = value.type();
+            this.proxyHost = value.host();
+            this.proxyPort = value.port();
+            this.proxyUser = value.user();
+            this.proxyPassword = value.password();
+            return this;
+        }
+
+        public Builder proxyType(ProxySettings.Type value) {
+            this.proxyType = value;
+            return this;
+        }
+
+        public Builder proxyHost(String value) {
+            this.proxyHost = value;
+            return this;
+        }
+
+        public Builder proxyPort(int value) {
+            this.proxyPort = value;
+            return this;
+        }
+
+        public Builder proxyUser(String value) {
+            this.proxyUser = value;
+            return this;
+        }
+
+        public Builder proxyPassword(String value) {
+            this.proxyPassword = value;
+            return this;
+        }
+
+        public Builder upnp(boolean value) {
+            this.upnp = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -278,7 +331,14 @@ public record Preferences(
                     this.creditSystem,
                     this.incomingDir,
                     this.tempDir,
-                    this.logLevel);
+                    this.logLevel,
+                    new ProxySettings(
+                            this.proxyType,
+                            this.proxyHost,
+                            this.proxyPort,
+                            this.proxyUser,
+                            this.proxyPassword),
+                    this.upnp);
         }
     }
 }

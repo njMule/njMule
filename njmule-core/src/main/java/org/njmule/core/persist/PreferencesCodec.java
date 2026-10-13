@@ -33,6 +33,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,6 +102,20 @@ public final class PreferencesCodec {
                 "log.level",
                 Preferences::logLevel,
                 (b, v) -> b.logLevel(v.strip().toUpperCase(Locale.ROOT)));
+        boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
+        key(
+                "proxy.type",
+                p -> p.proxy().type().name(),
+                (b, v) ->
+                        b.proxyType(
+                                ProxySettings.Type.valueOf(v.strip().toUpperCase(Locale.ROOT))));
+        key("proxy.host", p -> p.proxy().host(), Preferences.Builder::proxyHost);
+        key(
+                "proxy.port",
+                p -> String.valueOf(p.proxy().port()),
+                (b, v) -> b.proxyPort(Integer.parseInt(v.strip())));
+        key("proxy.user", p -> p.proxy().user(), Preferences.Builder::proxyUser);
+        key("proxy.password", p -> p.proxy().password(), Preferences.Builder::proxyPassword);
     }
 
     private PreferencesCodec() {}
