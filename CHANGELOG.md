@@ -47,3 +47,25 @@ All notable changes to this project are documented here. The format follows
 - Golden test vectors from an independent Python implementation, property-based tests and an
   optional test group that reads a real eMule profile.
 - JMH benchmarks of the hashing and cipher hot paths (`njmule-bench`).
+- IP filter (`ipfilter.dat`, PeerGuardian text and P2B) applied to incoming connections, with
+  limits per address, in total and on the accept rate.
+- Networking on virtual threads: framed TCP connections with per-state frame limits and bounded
+  send queues, plain or obfuscated (Diffie-Hellman with servers, user-hash keys with clients), and
+  a listening socket.
+- eD2K servers: a server list kept in `server.met` (servers can be added from another client's
+  list), login with HighID/LowID, server messages, status and identity, moving on through the
+  known servers, challenge-checked UDP status pings and callbacks to firewalled clients.
+- Searches on the connected server and, globally, on the other known servers over UDP, with
+  results merged by hash.
+- Hello exchange with other clients, answering incoming ones and greeting a given client.
+- A user hash created at the first start and kept in `preferences.dat`.
+- Command line: `--add-servers`, `--connect-server`, `--search` (with `--global`), `--hello` and
+  `--headless`.
+- Windows native executable in CI; documentation-only changes skip the build, and workflows are
+  checked with actionlint.
+
+### Changed
+
+- MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and
+  command-line parsing now come from the JDK, Bouncy Castle, Guava and picocli instead of our own
+  code.
