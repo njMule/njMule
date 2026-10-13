@@ -64,6 +64,14 @@ public final class PreferencesCodec {
         intKey("net.maxConnections", Preferences::maxConnections, Preferences.Builder::maxConnections);
         intKey("limits.uploadKiBps", Preferences::maxUploadKiBps, Preferences.Builder::maxUploadKiBps);
         intKey("limits.downloadKiBps", Preferences::maxDownloadKiBps, Preferences.Builder::maxDownloadKiBps);
+        intKey(
+                "limits.downloadCapacityKiBps",
+                Preferences::downloadCapacityKiBps,
+                Preferences.Builder::downloadCapacityKiBps);
+        intKey(
+                "limits.uploadCapacityKiBps",
+                Preferences::uploadCapacityKiBps,
+                Preferences.Builder::uploadCapacityKiBps);
         intKey("download.maxSourcesPerFile", Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile);
         key(
                 "security.obfuscation",

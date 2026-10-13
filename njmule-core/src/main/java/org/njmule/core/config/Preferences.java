@@ -30,6 +30,8 @@ import java.util.Set;
  * @param tempDir empty = platform default ({@link AppDirectories#temp()})
  * @param logLevel one of {@link #LOG_LEVELS}
  * @param upnp whether the router is asked to forward our ports
+ * @param downloadCapacityKiBps what the line can download, the top of the speed controls
+ * @param uploadCapacityKiBps what the line can upload
  */
 public record Preferences(
         String nick,
@@ -51,12 +53,17 @@ public record Preferences(
         Optional<Path> tempDir,
         String logLevel,
         ProxySettings proxy,
-        boolean upnp) {
+        boolean upnp,
+        int downloadCapacityKiBps,
+        int uploadCapacityKiBps) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final Set<String> LOG_LEVELS = Set.of("ERROR", "WARN", "INFO", "DEBUG", "TRACE");
     public static final int DEFAULT_TCP_PORT = 4662;
     public static final int DEFAULT_UDP_PORT = 4672;
+    // A common home line: about 80 Mbit/s down and 8 up.
+    public static final int DEFAULT_DOWNLOAD_CAPACITY = 10_240;
+    public static final int DEFAULT_UPLOAD_CAPACITY = 1_024;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -77,6 +84,8 @@ public record Preferences(
             throw new IllegalArgumentException("logLevel must be one of " + LOG_LEVELS);
         }
         Objects.requireNonNull(proxy, "proxy");
+        requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, 10_000_000);
+        requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, 10_000_000);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -101,7 +110,9 @@ public record Preferences(
                 Optional.empty(),
                 "INFO",
                 ProxySettings.NONE,
-                true);
+                true,
+                DEFAULT_DOWNLOAD_CAPACITY,
+                DEFAULT_UPLOAD_CAPACITY);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -154,6 +165,8 @@ public record Preferences(
         private String proxyUser;
         private String proxyPassword;
         private boolean upnp;
+        private int downloadCapacityKiBps;
+        private int uploadCapacityKiBps;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -176,6 +189,8 @@ public record Preferences(
             this.logLevel = p.logLevel;
             this.proxy(p.proxy);
             this.upnp = p.upnp;
+            this.downloadCapacityKiBps = p.downloadCapacityKiBps;
+            this.uploadCapacityKiBps = p.uploadCapacityKiBps;
         }
 
         public Builder nick(String value) {
@@ -307,6 +322,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder downloadCapacityKiBps(int value) {
+            this.downloadCapacityKiBps = value;
+            return this;
+        }
+
+        public Builder uploadCapacityKiBps(int value) {
+            this.uploadCapacityKiBps = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -329,7 +354,9 @@ public record Preferences(
                     this.logLevel,
                     new ProxySettings(
                             this.proxyType, this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword),
-                    this.upnp);
+                    this.upnp,
+                    this.downloadCapacityKiBps,
+                    this.uploadCapacityKiBps);
         }
     }
 }

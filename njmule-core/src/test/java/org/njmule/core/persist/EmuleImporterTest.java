@@ -281,6 +281,8 @@ class EmuleImporterTest {
                         "MaxUpload=-1",
                         "MaxDownload=0",
                         "MaxConnections=999999",
+                        "DownloadCapacity=2048",
+                        "UploadCapacityNew=-1",
                         "CryptLayerRequired=1")
                 .getBytes(StandardCharsets.US_ASCII));
 
@@ -290,6 +292,10 @@ class EmuleImporterTest {
         assertThat(p.maxUploadKiBps()).isZero();
         assertThat(p.maxDownloadKiBps()).isZero();
         assertThat(p.maxConnections()).isEqualTo(10_000);
+        assertThat(p.downloadCapacityKiBps()).isEqualTo(2048);
+        assertThat(p.uploadCapacityKiBps())
+                .as("an unknown capacity keeps ours")
+                .isEqualTo(Preferences.DEFAULT_UPLOAD_CAPACITY);
         assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUIRED);
         assertThat(EmuleImporter.mapPreferences(
                                 IniFile.parse("[eMule]\nCryptLayerSupported=0".getBytes(StandardCharsets.US_ASCII)),

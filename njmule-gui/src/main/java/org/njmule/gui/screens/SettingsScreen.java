@@ -64,6 +64,8 @@ public final class SettingsScreen implements Screen {
     private final TextField udpPort = new TextField();
     private final TextField upload = new TextField();
     private final TextField download = new TextField();
+    private final TextField downloadCapacity = new TextField();
+    private final TextField uploadCapacity = new TextField();
     private final TextField connections = new TextField();
     private final TextField sources = new TextField();
     private final ComboBox<ObfuscationMode> obfuscation = new ComboBox<>();
@@ -177,6 +179,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, "UDP", this.udpPort);
         row = field(grid, row, this.gui.t("nj.settings.upload"), this.upload);
         row = field(grid, row, this.gui.t("nj.settings.download"), this.download);
+        row = field(grid, row, this.gui.t("nj.settings.downloadCapacity"), this.downloadCapacity);
+        row = field(grid, row, this.gui.t("nj.settings.uploadCapacity"), this.uploadCapacity);
         row = field(grid, row, this.gui.t("IDS_PW_MAXC"), this.connections);
         row = field(grid, row, this.gui.t("IDS_PW_MAXSOURCES"), this.sources);
         row = field(grid, row, this.gui.t("nj.settings.obfuscation"), this.obfuscation);
@@ -248,6 +252,8 @@ public final class SettingsScreen implements Screen {
         this.udpPort.setText(String.valueOf(p.udpPort()));
         this.upload.setText(String.valueOf(p.maxUploadKiBps()));
         this.download.setText(String.valueOf(p.maxDownloadKiBps()));
+        this.downloadCapacity.setText(String.valueOf(p.downloadCapacityKiBps()));
+        this.uploadCapacity.setText(String.valueOf(p.uploadCapacityKiBps()));
         this.connections.setText(String.valueOf(p.maxConnections()));
         this.sources.setText(String.valueOf(p.maxSourcesPerFile()));
         this.obfuscation.setValue(p.obfuscation());
@@ -368,6 +374,8 @@ public final class SettingsScreen implements Screen {
                 .udpPort(number(this.udpPort, "UDP"))
                 .maxUploadKiBps(number(this.upload, this.gui.t("nj.settings.upload")))
                 .maxDownloadKiBps(number(this.download, this.gui.t("nj.settings.download")))
+                .downloadCapacityKiBps(number(this.downloadCapacity, this.gui.t("nj.settings.downloadCapacity")))
+                .uploadCapacityKiBps(number(this.uploadCapacity, this.gui.t("nj.settings.uploadCapacity")))
                 .maxConnections(number(this.connections, this.gui.t("IDS_PW_MAXC")))
                 .maxSourcesPerFile(number(this.sources, this.gui.t("IDS_PW_MAXSOURCES")))
                 .obfuscation(this.obfuscation.getValue())

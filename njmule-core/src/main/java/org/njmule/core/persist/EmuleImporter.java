@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
@@ -218,6 +219,9 @@ public final class EmuleImporter {
                 .ifPresent(b::nick);
         limit(ini, "MaxUpload").ifPresent(v -> b.maxUploadKiBps((int) v));
         limit(ini, "MaxDownload").ifPresent(v -> b.maxDownloadKiBps((int) v));
+        // An unknown capacity is stored as "unlimited", which says nothing about the line.
+        capacity(ini, "DownloadCapacity").ifPresent(b::downloadCapacityKiBps);
+        capacity(ini, "UploadCapacityNew").ifPresent(b::uploadCapacityKiBps);
         ini.getLong(SECTION, "MaxConnections").ifPresent(v -> b.maxConnections(Math.clamp(v, 1, 10_000)));
         ini.getLong(SECTION, "MaxSourcesPerFile").ifPresent(v -> b.maxSourcesPerFile(Math.clamp(v, 1, 10_000)));
         ini.getBoolean(SECTION, "Reconnect").ifPresent(b::reconnect);
@@ -251,6 +255,13 @@ public final class EmuleImporter {
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
+    }
+
+    private static OptionalInt capacity(IniFile ini, String key) {
+        OptionalLong value = limit(ini, key);
+        return value.isPresent() && value.getAsLong() > 0
+                ? OptionalInt.of((int) Math.min(value.getAsLong(), 10_000_000))
+                : OptionalInt.empty();
     }
 
     private static OptionalLong limit(IniFile ini, String key) {

@@ -49,6 +49,8 @@ class PreferencesCodecTest {
                 .incomingDir(Optional.of(this.dir.resolve("in dir")))
                 .logLevel("DEBUG")
                 .upnp(false)
+                .downloadCapacityKiBps(4096)
+                .uploadCapacityKiBps(512)
                 .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
                 .build();
 
