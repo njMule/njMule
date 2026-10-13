@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.Preferences;
 import picocli.CommandLine;
@@ -48,15 +49,16 @@ public record LaunchOptions(
     }
 
     /**
-     * Network work for a run: servers to add, a server to connect to, a search or a hello. With a
-     * search or a hello the run ends once they are done.
+     * Network work for a run: servers to add, a server to connect to, a search, a hello or
+     * downloads. With a search, a hello or downloads the run ends once they are done.
      */
     public record NetworkTasks(
             Optional<Path> serverMet,
             Optional<ServerAddress> server,
             Optional<String> search,
             boolean global,
-            Optional<ServerAddress> hello) {
+            Optional<ServerAddress> hello,
+            List<Ed2kLink.FileLink> downloads) {
 
         static final NetworkTasks NONE =
                 new NetworkTasks(
@@ -64,10 +66,15 @@ public record LaunchOptions(
                         Optional.empty(),
                         Optional.empty(),
                         false,
-                        Optional.empty());
+                        Optional.empty(),
+                        List.of());
+
+        public NetworkTasks {
+            downloads = List.copyOf(downloads);
+        }
 
         public boolean isOneShot() {
-            return this.search.isPresent() || this.hello.isPresent();
+            return this.search.isPresent() || this.hello.isPresent() || !this.downloads.isEmpty();
         }
     }
 
@@ -100,6 +107,7 @@ public record LaunchOptions(
     private static final String SEARCH_OPTION = "--search";
     private static final String GLOBAL_OPTION = "--global";
     private static final String HELLO_OPTION = "--hello";
+    private static final String DOWNLOAD_OPTION = "--download";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -130,7 +138,8 @@ public record LaunchOptions(
                         address(result, CONNECT_SERVER_OPTION),
                         Optional.ofNullable(result.<String>matchedOptionValue(SEARCH_OPTION, null)),
                         result.hasMatchedOption(GLOBAL_OPTION),
-                        address(result, HELLO_OPTION));
+                        address(result, HELLO_OPTION),
+                        fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
         }
@@ -200,6 +209,16 @@ public record LaunchOptions(
                         "<host:port>",
                         "say hello to a client, print its answer and exit"));
         spec.addOption(
+                OptionSpec.builder(DOWNLOAD_OPTION)
+                        .paramLabel("<ed2k link>")
+                        .type(List.class)
+                        .auxiliaryTypes(String.class)
+                        .arity("1..*")
+                        .description(
+                                "download the files of these links (from their sources and,"
+                                        + " with --connect-server, the server's), then exit")
+                        .build());
+        spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
                         .description("print the version and exit")
@@ -250,6 +269,17 @@ public record LaunchOptions(
         } catch (IllegalArgumentException e) {
             throw new UsageException("Invalid address for " + option + ": " + value);
         }
+    }
+
+    private static List<Ed2kLink.FileLink> fileLinks(List<String> values) throws UsageException {
+        List<Ed2kLink.FileLink> links = new ArrayList<>(values.size());
+        for (String value : values) {
+            if (!(Ed2kLink.tryParse(value).orElse(null) instanceof Ed2kLink.FileLink link)) {
+                throw new UsageException("Not an ed2k file link: " + value);
+            }
+            links.add(link);
+        }
+        return links;
     }
 
     private static Path toDirectory(String value) throws UsageException {

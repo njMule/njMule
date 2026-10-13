@@ -26,11 +26,14 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.Main;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(60)
@@ -79,6 +82,43 @@ class CommandLineFlowTest {
                             "ed2k://|file|ubuntu.txt|10|",
                             "2 results");
             assertThat(server.searches()).hasSize(1);
+        }
+    }
+
+    @Test
+    void downloadsALinkAndExitsWhenTheFileIsComplete() throws Exception {
+        byte[] data = new byte[3_000_000];
+        new Random(4).nextBytes(data);
+        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("cli.bin");
+        Files.write(shared, data);
+        try (FakePeer peer =
+                FakePeer.start(
+                        InetAddress.getLoopbackAddress(),
+                        shared,
+                        FakePeer.Config.simple(Hash16.parseHex("cd".repeat(16))))) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayOutputStream err = new ByteArrayOutputStream();
+            Path config = this.configDir();
+
+            int exit =
+                    Main.run(
+                            new String[] {
+                                "--config-dir", config.toString(), "--download", peer.link().toUri()
+                            },
+                            new PrintStream(out, true, UTF_8),
+                            new PrintStream(err, true, UTF_8),
+                            new CompletableFuture<>());
+
+            assertThat(exit).as(err.toString(UTF_8)).isZero();
+            assertThat(out.toString(UTF_8))
+                    .contains("Downloading cli.bin (2.9 MiB, 1 source)", "Finished cli.bin: ");
+            try (Stream<Path> incoming = Files.walk(config)) {
+                Path done =
+                        incoming.filter(p -> p.getFileName().toString().equals("cli.bin"))
+                                .findFirst()
+                                .orElseThrow();
+                assertThat(Files.readAllBytes(done)).isEqualTo(data);
+            }
         }
     }
 

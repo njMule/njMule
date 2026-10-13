@@ -147,6 +147,9 @@ public final class Main {
             if (cli.logLevel().isEmpty()) {
                 LoggingSetup.setLevel("ERROR");
             }
+            // Interrupting a download still saves what arrived.
+            Thread hook = Thread.ofPlatform().name("njmule-shutdown").unstarted(engine::close);
+            Runtime.getRuntime().addShutdownHook(hook);
             try {
                 return new NetworkCommands(engine, out, err).run(tasks);
             } catch (InterruptedException e) {
@@ -154,6 +157,11 @@ public final class Main {
                 return EXIT_FAILURE;
             } finally {
                 engine.close();
+                try {
+                    Runtime.getRuntime().removeShutdownHook(hook);
+                } catch (IllegalStateException e) {
+                    // Already shutting down: the hook closes the engine too.
+                }
                 LoggingSetup.disableFileLog();
             }
         }

@@ -90,6 +90,14 @@ class LaunchOptionsTest {
         assertThat(LaunchOptions.parse("--connect-server", "s.example:4242").network().isOneShot())
                 .isFalse();
 
+        String link = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/|sources,127.0.0.1:61426|/";
+        LaunchOptions download = LaunchOptions.parse("--download", link);
+        assertThat(download.network().downloads()).hasSize(1);
+        assertThat(download.network().downloads().getFirst().sources()).hasSize(1);
+        assertThat(download.network().isOneShot()).isTrue();
+        assertThatThrownBy(() -> LaunchOptions.parse("--download", "ed2k://|server|1.2.3.4|4661|/"))
+                .hasMessageContaining("Not an ed2k file link");
+
         assertThatThrownBy(() -> LaunchOptions.parse("--connect-server", "nowhere"))
                 .hasMessageContaining("Invalid address for --connect-server");
         assertThatThrownBy(() -> LaunchOptions.parse("--global"))
