@@ -387,6 +387,8 @@ public final class DownloadManager implements AutoCloseable {
                 }
             }
         }
+        // One source request per tick, so the server is never flooded.
+        boolean askedServer = false;
         for (Entry entry : this.entries.values()) {
             entry.window[entry.slot] = entry.received;
             entry.slot = (entry.slot + 1) % RATE_WINDOW;
@@ -395,9 +397,11 @@ public final class DownloadManager implements AutoCloseable {
             }
             entry.received = 0;
             if (entry.download.isActive()) {
-                if (now - entry.nextServerAsk >= 0
+                if (!askedServer
+                        && now - entry.nextServerAsk >= 0
                         && this.server.askSources(
                                 entry.download.hash(), entry.download.file().size())) {
+                    askedServer = true;
                     entry.nextServerAsk = now + SERVER_SOURCES_INTERVAL.toNanos();
                 }
                 starting += this.startSessions(entry, now, MAX_STARTING - starting);
@@ -562,7 +566,7 @@ public final class DownloadManager implements AutoCloseable {
                 }
                 case UNREACHABLE -> {
                     source.failures++;
-                    source.nextAsk = now + REASK_INTERVAL.toNanos();
+                    source.nextAsk = now + MIN_REASK.toNanos();
                     if (source.failures >= MAX_FAILURES) {
                         entry.sources.remove(source.address);
                     }
