@@ -26,6 +26,15 @@
     -nj-bar-complete: #638C52;
     -nj-bar-client: #5E81AC;
     -nj-bar-error: #D08770;
+    /* Category tints: never the only cue, the name is beside them. */
+    -nj-cat-1: #E5A4AA;
+    -nj-cat-2: #F2C29B;
+    -nj-cat-3: #EBD38F;
+    -nj-cat-4: #B5CFA0;
+    -nj-cat-5: #9FCFC9;
+    -nj-cat-6: #A9BEE0;
+    -nj-cat-7: #C7B0DB;
+    -nj-cat-8: #E6B3CF;
     -nj-graph-down: #5E81AC;
     -nj-graph-up: #A3BE8C;
     -nj-graph-grid: -color-border-muted;
@@ -43,6 +52,14 @@
     -nj-bar-complete: #A3BE8C;
     -nj-bar-client: #81A1C1;
     -nj-bar-error: #D08770;
+    -nj-cat-1: #BF616A;
+    -nj-cat-2: #D08770;
+    -nj-cat-3: #EBCB8B;
+    -nj-cat-4: #A3BE8C;
+    -nj-cat-5: #8FBCBB;
+    -nj-cat-6: #81A1C1;
+    -nj-cat-7: #B48EAD;
+    -nj-cat-8: #C98BAA;
     -nj-graph-down: #88C0D0;
     -nj-graph-up: #A3BE8C;
 }
@@ -354,4 +371,24 @@
 
 .minimule-buttons {
     -fx-spacing: 2;
+}
+
+/* Download categories: a dot of the category's tint beside its name. */
+.category-dot {
+    -fx-fill: transparent;
+    -fx-stroke: -color-border-default;
+}
+
+.category-dot.cat-1 { -fx-fill: -nj-cat-1; }
+.category-dot.cat-2 { -fx-fill: -nj-cat-2; }
+.category-dot.cat-3 { -fx-fill: -nj-cat-3; }
+.category-dot.cat-4 { -fx-fill: -nj-cat-4; }
+.category-dot.cat-5 { -fx-fill: -nj-cat-5; }
+.category-dot.cat-6 { -fx-fill: -nj-cat-6; }
+.category-dot.cat-7 { -fx-fill: -nj-cat-7; }
+.category-dot.cat-8 { -fx-fill: -nj-cat-8; }
+
+.category-bar {
+    -fx-spacing: 4;
+    -fx-padding: 0 0 4 0;
 }

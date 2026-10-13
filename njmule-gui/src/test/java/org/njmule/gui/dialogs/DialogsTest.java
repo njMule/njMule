@@ -48,6 +48,44 @@ class DialogsTest {
     }
 
     @Test
+    void categoriesAreAddedChangedAndRemoved() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        AtomicReference<CategoriesDialog> dialog = new AtomicReference<>();
+        FxTesting.onFx(() -> {
+            dialog.set(new CategoriesDialog(this.test.gui, new Stage()));
+            dialog.get().show();
+            dialog.get().nameField().setText("Films");
+            dialog.get().patternsField().setText("*.mkv|*.avi");
+            dialog.get().save();
+        });
+        FxTesting.await("the category", () -> this.test.gui.model().categories().size() == 1);
+        assertThat(this.test.engine.categories().get(10, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(c -> {
+                    assertThat(c.id()).isEqualTo(1);
+                    assertThat(c.matches("a.mkv")).isTrue();
+                });
+
+        FxTesting.await(
+                "selected", () -> dialog.get().list().getSelectionModel().getSelectedItem() != null);
+        FxTesting.onFx(() -> {
+            dialog.get().nameField().setText("Movies");
+            dialog.get().save();
+        });
+        FxTesting.await(
+                "renamed",
+                () -> this.test.gui.model().categories().getFirst().name().equals("Movies"));
+        assertThat(this.test.gui.model().categories()).hasSize(1);
+
+        FxTesting.onFx(() -> {
+            dialog.get().list().getSelectionModel().select(0);
+            dialog.get().remove();
+        });
+        FxTesting.await("no category", () -> this.test.gui.model().categories().isEmpty());
+        FxTesting.onFx(() -> dialog.get().stage().close());
+    }
+
+    @Test
     void sharedFoldersAreListedAndUnshared() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         Path folder = Files.createDirectories(this.dir.resolve("films"));

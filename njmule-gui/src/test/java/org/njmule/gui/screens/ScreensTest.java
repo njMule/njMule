@@ -28,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.PartMap;
@@ -110,11 +111,56 @@ class ScreensTest {
                         400,
                         DownloadInfo.Status.DOWNLOADING,
                         DownloadPriority.AUTO,
+                        0,
                         1,
                         1,
                         100,
                         PartMap.EMPTY)))
                 .isEqualTo(6);
+    }
+
+    @Test
+    void transfersShowTheDownloadsOfACategory() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        TransfersScreen screen = new TransfersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        FxTesting.onFx(() -> this.test
+                .gui
+                .model()
+                .setCategories(
+                        List.of(
+                                new Category(
+                                        1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false),
+                                new Category(
+                                        2, "Tests", Optional.empty(), "", 4, DownloadPriority.HIGH, "test", false)),
+                        () -> {}));
+        FxTesting.await(
+                "the categories", () -> this.test.gui.model().categories().size() == 2);
+
+        FxTesting.onFx(() -> {
+            screen.linkField().setText(LINK);
+            screen.addLink();
+        });
+        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
+        assertThat(FxTesting.onFx(
+                        () -> screen.downloads().getItems().getFirst().get().category()))
+                .as("its name matches the second category")
+                .isEqualTo(2);
+        FxTesting.onFx(() -> screen.showCategory(1));
+        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size())).isZero();
+        FxTesting.onFx(() -> screen.showCategory(2));
+        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size())).isEqualTo(1);
+
+        FxTesting.onFx(() -> {
+            screen.downloads().getSelectionModel().select(0);
+            screen.categorize(Category.NONE);
+        });
+        FxTesting.await(
+                "out of the category", () -> screen.downloads().getItems().isEmpty());
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(screen.view(), "transfers-categories");
+            return null;
+        });
     }
 
     @Test

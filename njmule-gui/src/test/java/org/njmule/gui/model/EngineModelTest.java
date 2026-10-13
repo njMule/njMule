@@ -146,8 +146,8 @@ class EngineModelTest {
         }
         assertThat(m.log()).hasSize(EngineModel.LOG_LINES);
 
-        DownloadInfo download =
-                new DownloadInfo(FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, AUTO, 0, 0, 0, PartMap.EMPTY);
+        DownloadInfo download = new DownloadInfo(
+                FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
         m.handle(new EngineEvent.DownloadAdded(download));
         m.handle(new EngineEvent.DownloadProgress(download));
         m.handle(new EngineEvent.DownloadFailed(download, "disk"));
@@ -157,8 +157,8 @@ class EngineModelTest {
         List<String> finished = new CopyOnWriteArrayList<>();
         m.onCompleted(d -> finished.add(d.name()));
         m.handle(new EngineEvent.DownloadAdded(download));
-        DownloadInfo done =
-                new DownloadInfo(FILE, "a.bin", 100, 100, DownloadInfo.Status.COMPLETE, AUTO, 0, 0, 0, PartMap.EMPTY);
+        DownloadInfo done = new DownloadInfo(
+                FILE, "a.bin", 100, 100, DownloadInfo.Status.COMPLETE, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
         m.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("a.bin")));
         assertThat(m.downloads().size()).as("finished downloads stay listed").isEqualTo(1);
         assertThat(finished).containsExactly("a.bin");

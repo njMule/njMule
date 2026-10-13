@@ -20,6 +20,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -37,6 +41,8 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -48,10 +54,12 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -63,6 +71,9 @@ import org.njmule.gui.ui.Screen;
 /** Downloads with their progress, and below the clients we upload to or that wait for us. */
 public final class TransfersScreen implements Screen {
 
+    // Every download, whatever its category.
+    private static final int SHOW_ALL = -1;
+
     // Pasted links are separated by white space, which file names may contain too.
 
     private final Gui gui;
@@ -70,6 +81,9 @@ public final class TransfersScreen implements Screen {
     private TableView<LiveList.Row<DownloadInfo>> downloads;
     private TableView<LiveList.Row<UploadInfo>> uploads;
     private final TextField link = new TextField();
+    private final HBox categoryBar = new HBox();
+    private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
+    private int shownCategory = SHOW_ALL;
     private Input<List<Ed2kLink.FileLink>> linkInput;
 
     public TransfersScreen(Gui gui) {
@@ -101,7 +115,11 @@ public final class TransfersScreen implements Screen {
 
     private Node build() {
         var formats = this.gui.formats();
-        this.downloads = Fx.table(this.gui.model().downloads(), this.gui.t("nj.transfers.none"));
+        this.downloads = Fx.table(this.gui.model().downloads(), this.gui.t("nj.transfers.none"), this.shown);
+        this.gui.model().categories().addListener((ListChangeListener<Category>) c -> {
+            this.showCategories();
+            this.downloads.refresh();
+        });
         TableColumn<LiveList.Row<DownloadInfo>, Double> progress =
                 Fx.column(this.gui.t("IDS_DL_PROGRESS"), 170, TransfersScreen::fraction);
         progress.setCellFactory(c -> new ProgressCell());
@@ -116,6 +134,7 @@ public final class TransfersScreen implements Screen {
                         Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n)),
                         Fx.column(this.gui.t("nj.transfers.status"), 110, DownloadInfo::status, this::status),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
+                        Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName),
                         Fx.column(
                                 this.gui.t("IDS_DL_REMAINS"),
                                 90,
@@ -133,12 +152,14 @@ public final class TransfersScreen implements Screen {
         copy.setOnAction(e -> this.copyLinks());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
+        Menu category = new Menu(this.gui.t("IDS_CAT"));
         this.downloads.setContextMenu(new ContextMenu(
                 pause,
                 resume,
                 stop,
                 cancel,
                 this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
+                category,
                 new SeparatorMenuItem(),
                 copy,
                 clear));
@@ -159,6 +180,7 @@ public final class TransfersScreen implements Screen {
                 this.priorityMenu(new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY))),
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
+                Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
                 Fx.spacer(),
                 this.link,
                 add);
@@ -187,10 +209,89 @@ public final class TransfersScreen implements Screen {
         uploadsTitle.getStyleClass().add("settings-section");
         VBox lower = new VBox(4, uploadsTitle, this.uploads);
         VBox.setVgrow(this.uploads, Priority.ALWAYS);
-        SplitPane split = new SplitPane(this.downloads, lower);
+        this.downloads.getContextMenu().setOnShowing(e -> category.getItems().setAll(this.categoryItems()));
+        this.categoryBar.getStyleClass().add("category-bar");
+        this.showCategories();
+        VBox upper = new VBox(this.categoryBar, this.downloads);
+        VBox.setVgrow(this.downloads, Priority.ALWAYS);
+        SplitPane split = new SplitPane(upper, lower);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.6);
         return Fx.screen(this.title(), tools, split);
+    }
+
+    // All downloads, then one button per category; the chosen one filters the list.
+    private void showCategories() {
+        ToggleGroup group = new ToggleGroup();
+        List<Node> buttons = new ArrayList<>();
+        ToggleButton all = new ToggleButton(this.gui.t("IDS_ALL"));
+        all.setToggleGroup(group);
+        all.setUserData(SHOW_ALL);
+        all.setOnAction(e -> this.showCategory(SHOW_ALL));
+        buttons.add(all);
+        boolean found = this.shownCategory == SHOW_ALL;
+        for (Category c : this.gui.model().categories()) {
+            ToggleButton button = new ToggleButton(c.name(), Fx.categoryDot(c.color()));
+            button.setToggleGroup(group);
+            button.setUserData(c.id());
+            button.setOnAction(e -> this.showCategory(c.id()));
+            if (c.id() == this.shownCategory) {
+                button.setSelected(true);
+                found = true;
+            }
+            buttons.add(button);
+        }
+        if (!found) {
+            this.showCategory(SHOW_ALL);
+        }
+        all.setSelected(this.shownCategory == SHOW_ALL);
+        // A click on the chosen button keeps it chosen.
+        group.selectedToggleProperty().addListener((o, was, now) -> {
+            if (now == null && was != null) {
+                was.setSelected(true);
+            }
+        });
+        this.categoryBar.getChildren().setAll(buttons);
+    }
+
+    void showCategory(int id) {
+        this.shownCategory = id;
+        this.shown.set(id == SHOW_ALL ? d -> true : d -> d.category() == id);
+        for (Node node : this.categoryBar.getChildren()) {
+            if (node instanceof ToggleButton button) {
+                button.setSelected(Integer.valueOf(id).equals(button.getUserData()));
+            }
+        }
+    }
+
+    private List<MenuItem> categoryItems() {
+        List<MenuItem> items = new ArrayList<>();
+        MenuItem none = new MenuItem(this.gui.t("IDS_CAT_UNASSIGN"));
+        none.setOnAction(e -> this.categorize(Category.NONE));
+        items.add(none);
+        for (Category c : this.gui.model().categories()) {
+            MenuItem item = new MenuItem(c.name(), Fx.categoryDot(c.color()));
+            item.setOnAction(e -> this.categorize(c.id()));
+            items.add(item);
+        }
+        return items;
+    }
+
+    void categorize(int category) {
+        Fx.selected(this.downloads).forEach(d -> this.gui.model().setDownloadCategory(d.hash(), category));
+    }
+
+    private String categoryName(int id) {
+        for (Category c : this.gui.model().categories()) {
+            if (c.id() == id) {
+                return c.name();
+            }
+        }
+        return "";
+    }
+
+    private void showCategoriesDialog() {
+        new CategoriesDialog(this.gui, this.view.getScene().getWindow()).show();
     }
 
     private Menu priorityMenu(Menu menu) {

@@ -19,7 +19,11 @@ package org.njmule.gui.ui;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
+import javafx.beans.value.ObservableValue;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -36,6 +40,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Circle;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.njmule.gui.model.LiveList;
@@ -53,6 +58,16 @@ public final class Fx {
         Button button = new Button(text, icon(ikon));
         button.setOnAction(e -> action.run());
         return whole(button);
+    }
+
+    /** A dot of a category's tint, an outline for none; the category's name goes beside it. */
+    public static Circle categoryDot(int color) {
+        Circle dot = new Circle(5);
+        dot.getStyleClass().add("category-dot");
+        if (color > 0) {
+            dot.getStyleClass().add("cat-" + color);
+        }
+        return dot;
     }
 
     /** A button showing only its icon, with the text as tooltip and accessible name. */
@@ -110,8 +125,26 @@ public final class Fx {
 
     /** A table over live rows, sortable by any column, with several rows selectable. */
     public static <V> TableView<LiveList.Row<V>> table(LiveList<?, V> rows, String empty) {
+        return table(rows.rows(), empty);
+    }
+
+    /** As above, with only the rows {@code shown} takes; a changed value can show or hide its row. */
+    public static <V> TableView<LiveList.Row<V>> table(
+            LiveList<?, V> rows, String empty, ObservableValue<Predicate<V>> shown) {
+        FilteredList<LiveList.Row<V>> filtered = new FilteredList<>(rows.rows());
+        filtered.predicateProperty()
+                .bind(Bindings.createObjectBinding(
+                        () -> {
+                            Predicate<V> test = shown.getValue();
+                            return row -> test.test(row.get());
+                        },
+                        shown));
+        return table(filtered, empty);
+    }
+
+    private static <V> TableView<LiveList.Row<V>> table(ObservableList<LiveList.Row<V>> rows, String empty) {
         TableView<LiveList.Row<V>> table = new TableView<>();
-        SortedList<LiveList.Row<V>> sorted = new SortedList<>(rows.rows());
+        SortedList<LiveList.Row<V>> sorted = new SortedList<>(rows);
         sorted.comparatorProperty().bind(table.comparatorProperty());
         table.setItems(sorted);
         table.setPlaceholder(new Label(empty));

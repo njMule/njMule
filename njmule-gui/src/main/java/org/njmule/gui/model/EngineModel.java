@@ -40,6 +40,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -125,6 +126,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final StringProperty lastLog = new SimpleStringProperty("");
     private final ObjectProperty<Preferences> preferences;
     private final ObservableList<LogLine> log = FXCollections.observableArrayList();
+    private final ObservableList<Category> categories = FXCollections.observableArrayList();
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
     private final LiveList<Hash16, DownloadInfo> downloads = new LiveList<>(DownloadInfo::hash);
@@ -152,7 +154,31 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.refreshServers();
         this.refreshShared();
         this.refreshFriends();
+        this.refreshCategories();
         this.tick();
+    }
+
+    /** The download categories, in the order of their ids. */
+    public ObservableList<Category> categories() {
+        return FXCollections.unmodifiableObservableList(this.categories);
+    }
+
+    /** Replaces the categories, then runs {@code done}; a refusal shows as an error. */
+    public void setCategories(List<Category> categories, Runnable done) {
+        this.later(this.engine.setCategories(categories).thenCompose(ok -> this.engine.categories()), now -> {
+            this.categories.setAll(now);
+            this.refreshDownloads();
+            done.run();
+        });
+    }
+
+    /** Puts a download in a category; {@link Category#NONE} takes it out of any. */
+    public void setDownloadCategory(Hash16 file, int category) {
+        this.later(this.engine.setDownloadCategory(file, category), ok -> this.refreshDownloads());
+    }
+
+    private void refreshCategories() {
+        this.later(this.engine.categories(), this.categories::setAll);
     }
 
     /** Where failed commands are told; called on the FX thread. */
