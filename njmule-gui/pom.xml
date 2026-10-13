@@ -152,6 +152,7 @@
             </activation>
             <properties>
                 <native.os>macos</native.os>
+                <native.tour.prism>mtl</native.tour.prism>
             </properties>
         </profile>
 
