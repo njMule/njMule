@@ -190,6 +190,15 @@
     -fx-min-height: 4;
 }
 
+.chat-us {
+    -fx-text-fill: -color-fg-muted;
+}
+
+.chat-notice {
+    -fx-text-fill: -color-accent-fg;
+    -fx-font-style: italic;
+}
+
 .settings-section {
     -fx-font-weight: bold;
     -fx-padding: 8 0 2 0;

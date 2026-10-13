@@ -51,6 +51,7 @@ import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.screens.KadScreen;
+import org.njmule.gui.screens.MessagesScreen;
 import org.njmule.gui.screens.SearchScreen;
 import org.njmule.gui.screens.ServersScreen;
 import org.njmule.gui.screens.SettingsScreen;
@@ -76,7 +77,8 @@ public final class MainWindow {
                     KeyCode.DIGIT4,
                     KeyCode.DIGIT5,
                     KeyCode.DIGIT6,
-                    KeyCode.DIGIT7);
+                    KeyCode.DIGIT7,
+                    KeyCode.DIGIT8);
 
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
@@ -103,6 +105,7 @@ public final class MainWindow {
                         new TransfersScreen(gui),
                         new SearchScreen(gui),
                         new SharedScreen(gui),
+                        new MessagesScreen(gui),
                         new StatisticsScreen(gui),
                         new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
@@ -117,7 +120,7 @@ public final class MainWindow {
         StackPane.setAlignment(this.messages, Pos.TOP_RIGHT);
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
-        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the screens in rail order.
+        // Ctrl+1 ... Ctrl+8 (Cmd on macOS) open the screens in rail order.
         this.root.setOnKeyPressed(
                 e -> {
                     int index = DIGITS.indexOf(e.getCode());
@@ -133,6 +136,17 @@ public final class MainWindow {
         model.statusProperty().addListener((o, was, now) -> this.showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> this.message(gui.f("nj.transfers.completed", d.name())));
+        model.chats()
+                .onMessage(
+                        chat -> {
+                            if (!this.current.equals("messages")) {
+                                String who =
+                                        chat.nickProperty().get().isEmpty()
+                                                ? chat.address()
+                                                : chat.nickProperty().get();
+                                this.message(gui.f("nj.chat.from", who));
+                            }
+                        });
         this.showConnection();
         this.showStatus(model.statusProperty().get());
         this.show(

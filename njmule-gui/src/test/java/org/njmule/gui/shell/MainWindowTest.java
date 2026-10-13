@@ -44,7 +44,15 @@ import org.njmule.gui.ui.Gui;
 class MainWindowTest {
 
     private static final List<String> SCREENS =
-            List.of("servers", "kad", "transfers", "search", "shared", "statistics", "settings");
+            List.of(
+                    "servers",
+                    "kad",
+                    "transfers",
+                    "search",
+                    "shared",
+                    "messages",
+                    "statistics",
+                    "settings");
 
     @TempDir Path dir;
 

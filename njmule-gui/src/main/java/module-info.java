@@ -18,6 +18,8 @@ module org.njmule.gui {
     requires org.njmule.app;
     requires org.slf4j;
     requires javafx.controls;
+    // ImageIO reads the BMP pictures of chat CAPTCHAs, which JavaFX cannot.
+    requires java.desktop;
     requires atlantafx.base;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.material2;

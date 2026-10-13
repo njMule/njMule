@@ -41,6 +41,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -145,6 +146,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             new LiveList<>(u -> u.userHash() + "@" + u.address());
     private final LiveList<Path, SharedFileInfo> shared = new LiveList<>(SharedFileInfo::path);
     private final Map<SearchId, Search> searches = new LinkedHashMap<>();
+    private final Chats chats = new Chats();
+    private final LiveList<Hash16, Friend> friends = new LiveList<>(Friend::userHash);
     private Consumer<String> errors = message -> {};
     private Consumer<DownloadInfo> completed = download -> {};
     private Flow.Subscription subscription;
@@ -164,6 +167,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.engine.events().subscribe(this);
         this.refreshServers();
         this.refreshShared();
+        this.refreshFriends();
         this.tick();
     }
 
@@ -252,6 +256,35 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public LiveList<Path, SharedFileInfo> sharedFiles() {
         return this.shared;
+    }
+
+    public Chats chats() {
+        return this.chats;
+    }
+
+    public LiveList<Hash16, Friend> friends() {
+        return this.friends;
+    }
+
+    /** Sends {@code text} to the client at {@code address} ("ip:port"); it shows at once. */
+    public void sendMessage(String address, String text) {
+        if (text.isBlank()) {
+            return;
+        }
+        this.chats.sent(address, text);
+        this.later(this.engine.sendMessage(ServerAddress.parse(address), text), done -> {});
+    }
+
+    public void addFriend(Friend friend) {
+        this.later(this.engine.addFriend(friend), done -> this.refreshFriends());
+    }
+
+    public void removeFriend(Hash16 userHash) {
+        this.later(this.engine.removeFriend(userHash), done -> this.refreshFriends());
+    }
+
+    private void refreshFriends() {
+        this.later(this.engine.friends(), this.friends::update);
     }
 
     // Commands: errors go to the error sink, results come back on the FX thread.
@@ -377,7 +410,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         }
     }
 
-    void handle(EngineEvent event) {
+    /** Applies one engine event; FX thread. Events normally arrive through the subscription. */
+    public void handle(EngineEvent event) {
         switch (event) {
             case EngineEvent.Log e -> this.addLog(e.line());
             case EngineEvent.ServerConnecting e -> {
@@ -416,6 +450,17 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadFailed e -> this.downloads.put(e.download());
             case EngineEvent.DownloadRemoved e -> this.downloads.remove(e.hash());
             case EngineEvent.PreferencesChanged e -> this.preferences.set(e.preferences());
+            case EngineEvent.MessageReceived e ->
+                    this.chats.received(e.address(), e.userHash(), e.nick(), e.text());
+            case EngineEvent.CaptchaRequested e ->
+                    this.chats.captcha(e.address(), e.userHash(), e.image());
+            case EngineEvent.CaptchaAnswered e ->
+                    this.chats.notice(
+                            e.address(),
+                            e.solved() ? "IDS_CAPTCHASOLVED" : "IDS_CAPTCHAFAILED",
+                            "");
+            case EngineEvent.MessageFailed e ->
+                    this.chats.notice(e.address(), "nj.chat.failed", e.reason());
             default -> {
                 // Started, stopping and server messages show through the log.
             }
