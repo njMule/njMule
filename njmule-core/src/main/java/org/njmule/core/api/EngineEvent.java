@@ -16,6 +16,8 @@
  */
 package org.njmule.core.api;
 
+import java.util.List;
+import java.util.Optional;
 import org.njmule.core.config.Preferences;
 
 /** Notifications published by the engine to front ends, in order, on a dedicated thread. */
@@ -28,4 +30,32 @@ public sealed interface EngineEvent {
     record PreferencesChanged(Preferences preferences) implements EngineEvent {}
 
     record Log(LogLine line) implements EngineEvent {}
+
+    /** A connection attempt to a server started. */
+    record ServerConnecting(ServerInfo server) implements EngineEvent {}
+
+    /** Logged in: {@code clientId} is our id on the server, a LowID when firewalled. */
+    record ServerConnected(ServerInfo server, long clientId, boolean lowId)
+            implements EngineEvent {}
+
+    /**
+     * The server connection ended or no attempt succeeded; {@code server} is the last one tried.
+     */
+    record ServerDisconnected(Optional<ServerInfo> server, String reason) implements EngineEvent {}
+
+    /** A line of the connected server's welcome or notice text. */
+    record ServerMessage(ServerInfo server, String text) implements EngineEvent {}
+
+    /** New users, files, name or description of a server. */
+    record ServerUpdated(ServerInfo server) implements EngineEvent {}
+
+    /** Results new to a search, or updated with more sources. */
+    record SearchResults(SearchId search, List<SearchResult> results) implements EngineEvent {
+        public SearchResults {
+            results = List.copyOf(results);
+        }
+    }
+
+    /** A search ended; no more results will arrive for it. */
+    record SearchEnded(SearchId search, int results) implements EngineEvent {}
 }
