@@ -64,7 +64,8 @@ public record Preferences(
         boolean staticServersOnly,
         boolean manualServersHighPriority,
         boolean updateServersAtStart,
-        int backupCopies) {
+        int backupCopies,
+        int ipFilterLevel) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -87,6 +88,10 @@ public record Preferences(
     public static final int DEFAULT_BACKUP_COPIES = 3;
 
     public static final int MAX_BACKUP_COPIES = 50;
+    /** IP filter ranges below this level block. */
+    public static final int DEFAULT_IP_FILTER_LEVEL = 127;
+
+    public static final int MAX_IP_FILTER_LEVEL = 255;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -112,6 +117,7 @@ public record Preferences(
         requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
         requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
         requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
+        requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -146,7 +152,8 @@ public record Preferences(
                 false,
                 false,
                 false,
-                DEFAULT_BACKUP_COPIES);
+                DEFAULT_BACKUP_COPIES,
+                DEFAULT_IP_FILTER_LEVEL);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -209,6 +216,7 @@ public record Preferences(
         private boolean manualServersHighPriority;
         private boolean updateServersAtStart;
         private int backupCopies;
+        private int ipFilterLevel;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -241,6 +249,7 @@ public record Preferences(
             this.manualServersHighPriority = p.manualServersHighPriority;
             this.updateServersAtStart = p.updateServersAtStart;
             this.backupCopies = p.backupCopies;
+            this.ipFilterLevel = p.ipFilterLevel;
         }
 
         public Builder nick(String value) {
@@ -422,6 +431,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder ipFilterLevel(int value) {
+            this.ipFilterLevel = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -454,7 +468,8 @@ public record Preferences(
                     this.staticServersOnly,
                     this.manualServersHighPriority,
                     this.updateServersAtStart,
-                    this.backupCopies);
+                    this.backupCopies,
+                    this.ipFilterLevel);
         }
     }
 }

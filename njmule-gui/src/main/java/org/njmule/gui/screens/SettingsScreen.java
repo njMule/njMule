@@ -99,6 +99,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox upnp = new CheckBox();
     private final TextField deadRetries = new TextField();
     private final TextField backups = new TextField();
+    private final TextField filterLevel = new TextField();
     private final CheckBox fromServer = new CheckBox();
     private final CheckBox fromClients = new CheckBox();
     private final CheckBox staticOnly = new CheckBox();
@@ -139,6 +140,7 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> minFreeSpaceInput;
     private Input<Integer> deadRetriesInput;
     private Input<Integer> backupsInput;
+    private Input<Integer> filterLevelInput;
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
@@ -272,6 +274,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("nj.settings.backups"), this.backups);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
         row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
+        this.filterLevel.setPrefColumnCount(4);
+        row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
@@ -308,6 +312,7 @@ public final class SettingsScreen implements Screen {
                                 this.minFreeSpaceInput,
                                 this.deadRetriesInput,
                                 this.backupsInput,
+                                this.filterLevelInput,
                                 this.webUiPortInput,
                                 this.webUiPasswordInput,
                                 this.webUiAgainInput))
@@ -347,6 +352,8 @@ public final class SettingsScreen implements Screen {
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
         this.minFreeSpaceInput =
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
+        this.filterLevelInput =
+                inputs.number(this.filterLevel, this.gui.t("IDS_FILTERLEVEL"), 0, Preferences.MAX_IP_FILTER_LEVEL);
         this.backupsInput =
                 inputs.number(this.backups, this.gui.t("nj.settings.backups"), 0, Preferences.MAX_BACKUP_COPIES);
         this.deadRetriesInput =
@@ -458,6 +465,7 @@ public final class SettingsScreen implements Screen {
         this.minFreeSpace.setText(String.valueOf(p.minFreeSpaceMiB()));
         this.deadRetries.setText(String.valueOf(p.deadServerRetries()));
         this.backups.setText(String.valueOf(p.backupCopies()));
+        this.filterLevel.setText(String.valueOf(p.ipFilterLevel()));
         this.fromServer.setSelected(p.addServersFromServer());
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
@@ -593,6 +601,7 @@ public final class SettingsScreen implements Screen {
                 .minFreeSpaceMiB(this.minFreeSpaceInput.value())
                 .deadServerRetries(this.deadRetriesInput.value())
                 .backupCopies(this.backupsInput.value())
+                .ipFilterLevel(this.filterLevelInput.value())
                 .addServersFromServer(this.fromServer.isSelected())
                 .addServersFromClients(this.fromClients.isSelected())
                 .staticServersOnly(this.staticOnly.isSelected())

@@ -88,6 +88,7 @@ public final class PreferencesCodec {
         key("log.level", Preferences::logLevel, (b, v) -> b.logLevel(v.strip().toUpperCase(Locale.ROOT)));
         boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
         intKey("backup.copies", Preferences::backupCopies, Preferences.Builder::backupCopies);
+        intKey("security.ipFilterLevel", Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel);
         intKey("server.deadRetries", Preferences::deadServerRetries, Preferences.Builder::deadServerRetries);
         boolKey("server.addFromServer", Preferences::addServersFromServer, Preferences.Builder::addServersFromServer);
         boolKey(

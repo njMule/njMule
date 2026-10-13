@@ -263,7 +263,8 @@ final class Network {
         this.spamFile = configDir.resolve(SpamFilter.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.spamFile);
         this.spam = loadSpam(this.spamFile);
-        this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
+        this.ipFilter =
+                loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get().ipFilterLevel());
         this.servers.filter(ip -> this.ipFilter.blocks(ip));
         this.session = new ServerSession(
                 loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
@@ -726,7 +727,7 @@ final class Network {
             throw new IOException("the list holds no IP range");
         }
         AtomicFiles.writeBytes(this.configDir.resolve(IPFILTER_FILE), IpFilterDat.write(ranges));
-        this.ipFilter = IpFilter.of(ranges, IpFilter.DEFAULT_LEVEL);
+        this.ipFilter = IpFilter.of(ranges, this.preferences.get().ipFilterLevel());
         this.userLog.log(LogLine.Level.INFO, this.ipFilter.rangeCount() + " IP filter ranges");
         return this.ipFilter.rangeCount();
     }
@@ -961,6 +962,13 @@ final class Network {
             this.restartForwarding();
         }
     }
+        if (was.ipFilterLevel() != now.ipFilterLevel()) {
+            // The file keeps every range: read again at the new level.
+            this.ipFilter = loadIpFilter(this.configDir.resolve(IPFILTER_FILE), now.ipFilterLevel());
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    this.ipFilter.rangeCount() + " IP filter ranges at level " + now.ipFilterLevel());
+        }
 
     // The mappings follow the ports: the old ones are removed before new ones are asked for, off the engine thread.
     private void restartForwarding() {
@@ -1409,12 +1417,12 @@ final class Network {
         return ip != 0 && ip == this.serverIp;
     }
 
-    private static IpFilter loadIpFilter(Path file) {
+    private static IpFilter loadIpFilter(Path file, int level) {
         if (!Files.exists(file)) {
             return IpFilter.empty();
         }
         try {
-            return IpFilter.of(IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE), IpFilter.DEFAULT_LEVEL);
+            return IpFilter.of(IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE), level);
         } catch (IOException e) {
             logger.warn("Cannot read {}, no IP filter", file, e);
             return IpFilter.empty();

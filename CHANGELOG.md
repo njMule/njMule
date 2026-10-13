@@ -200,6 +200,8 @@ All notable changes to this project are documented here. The format follows
   announced again to the server, to Kad and through the router, without a restart.
 - Kad connects and disconnects by hand, starting from the contacts it knows; contacts taken from a
   nodes.dat are looked up at once.
+- The IP filter level can be set (`security.ipFilterLevel`, imported from eMule): ranges below it
+  block, and a change applies at once.
 
 ### Changed
 
