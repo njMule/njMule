@@ -47,6 +47,8 @@ class KadSimulationTest {
     private static final int NODES = 200;
     private static final int PORT = 4672;
     private static final long SECOND = 1_000_000_000L;
+    // Publish lookups live 140 s: searching earlier may miss a store still on its way.
+    private static final int PUBLISH_WAIT = 150;
 
     @TempDir Path dir;
 
@@ -79,7 +81,10 @@ class KadSimulationTest {
         }
         // The first node only seeded the others; like any node it bootstraps too.
         this.nodes.get(0).bootstrap(this.ips.get(1), PORT);
-        this.run(3 * 60 * 60);
+        // All nodes start together, so their first self lookups (after 3 minutes) see a young
+        // network; the second one, after 4 hours, finds the nearest nodes as joining a mature
+        // network does.
+        this.run(4 * 60 * 60 + 5 * 60);
 
         int connected = 0;
         long verified = 0;
@@ -127,7 +132,7 @@ class KadSimulationTest {
                         publisher.publishKeyword(
                                 word, List.of(new KadMessages.Entry(UInt128.of(file), tags))))
                 .isTrue();
-        this.run(60);
+        this.run(PUBLISH_WAIT);
         assertThat(this.nodes.stream().filter(n -> n.indexed()[0] > 0).count())
                 .as("nodes that store the keyword")
                 .isPositive();
@@ -143,7 +148,7 @@ class KadSimulationTest {
         // A source published by one node is found by another.
         KadNode source = this.nodes.get(42);
         assertThat(source.publishSource(file, 123_456)).isTrue();
-        this.run(60);
+        this.run(PUBLISH_WAIT);
         List<KadNode.Source> sources = new ArrayList<>();
         assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll)).isTrue();
         this.run(60);
