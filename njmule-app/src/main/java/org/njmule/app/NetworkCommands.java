@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
@@ -37,6 +38,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
@@ -62,6 +64,12 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
 
     /** Downloads print their progress this often. */
     static final Duration PROGRESS_EVERY = Duration.ofSeconds(5);
+
+    /** Longest wait for Kad to know enough nodes before a Kad search. */
+    static final Duration KAD_WAIT = Duration.ofMinutes(3);
+
+    /** Contacts Kad should know before a Kad search. */
+    static final int KAD_CONTACTS = 20;
 
     private final NjMuleEngine engine;
     private final PrintStream out;
@@ -93,6 +101,19 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
             if (tasks.hello().isPresent()) {
                 this.hello(tasks);
             }
+            if (tasks.kadBootstrap().isPresent()) {
+                this.engine.kadBootstrap(tasks.kadBootstrap().get()).get();
+                this.out.println("Joining Kad through " + tasks.kadBootstrap().get());
+            }
+            if (tasks.kad()) {
+                if (!this.awaitKad()) {
+                    return Main.EXIT_FAILURE;
+                }
+                this.search(tasks.search().orElseThrow(), SearchRequest.Scope.KAD);
+                return tasks.downloads().isEmpty()
+                        ? Main.EXIT_OK
+                        : this.download(tasks.downloads());
+            }
             if (tasks.server().isEmpty() && tasks.search().isEmpty()) {
                 return tasks.downloads().isEmpty()
                         ? Main.EXIT_OK
@@ -106,7 +127,9 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                 return Main.EXIT_FAILURE;
             }
             if (tasks.search().isPresent()) {
-                this.search(tasks.search().get(), tasks.global());
+                this.search(
+                        tasks.search().get(),
+                        tasks.global() ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER);
             }
             return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
         } catch (ExecutionException e) {
@@ -175,16 +198,53 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         return false;
     }
 
-    private void search(String expression, boolean global)
+    // Waits until Kad knows enough nodes, printing how it grows.
+    private boolean awaitKad() throws InterruptedException, ExecutionException {
+        long deadline = System.nanoTime() + KAD_WAIT.toNanos();
+        long nextReport = 0;
+        while (System.nanoTime() < deadline) {
+            Optional<KadInfo> kad = this.engine.kad().get();
+            if (kad.isEmpty()) {
+                this.err.println("Kad is not running");
+                return false;
+            }
+            if (kad.get().connected() && kad.get().verifiedContacts() >= KAD_CONTACTS) {
+                this.out.println(kadLine(kad.get()));
+                return true;
+            }
+            if (System.nanoTime() - nextReport >= 0) {
+                nextReport = System.nanoTime() + PROGRESS_EVERY.toNanos();
+                this.out.println(kadLine(kad.get()));
+            }
+            Thread.sleep(500);
+        }
+        this.err.println("Kad knows too few nodes after " + KAD_WAIT.toMinutes() + " minutes");
+        return false;
+    }
+
+    static String kadLine(KadInfo kad) {
+        return "Kad: "
+                + kad.contacts()
+                + " contacts, "
+                + kad.verifiedContacts()
+                + " verified"
+                + (kad.connected() ? ", connected" : "")
+                + (kad.firewalled() ? ", firewalled" : ", reachable");
+    }
+
+    private void search(String expression, SearchRequest.Scope scope)
             throws InterruptedException, ExecutionException {
-        SearchRequest.Scope scope =
-                global ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER;
+        boolean global = scope != SearchRequest.Scope.SERVER;
         SearchId id = this.engine.search(new SearchRequest(expression, scope)).get();
         this.out.println(
                 "Searching \""
                         + expression
                         + "\""
-                        + (global ? " on every known server" : " on the server"));
+                        + switch (scope) {
+                            case SERVER -> " on the server";
+                            case GLOBAL -> " on every known server";
+                            case KAD -> " on Kad";
+                        });
         Map<Hash16, SearchResult> results = new LinkedHashMap<>();
         long deadline = System.nanoTime() + SEARCH_WAIT.toNanos();
         long quietSince = Long.MAX_VALUE;

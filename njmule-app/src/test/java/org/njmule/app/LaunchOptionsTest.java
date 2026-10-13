@@ -95,6 +95,13 @@ class LaunchOptionsTest {
         assertThat(download.network().downloads()).hasSize(1);
         assertThat(download.network().downloads().getFirst().sources()).hasSize(1);
         assertThat(download.network().isOneShot()).isTrue();
+        LaunchOptions kad =
+                LaunchOptions.parse("--kad-bootstrap", "127.0.0.1:14897", "--search", "x", "--kad");
+        assertThat(kad.network().kadBootstrap()).contains(new ServerAddress("127.0.0.1", 14897));
+        assertThat(kad.network().kad()).isTrue();
+        assertThatThrownBy(() -> LaunchOptions.parse("--kad"))
+                .hasMessageContaining("--kad applies to --search");
+
         LaunchOptions share = LaunchOptions.parse("--share", "videos", "music");
         assertThat(share.network().shares())
                 .containsExactly(

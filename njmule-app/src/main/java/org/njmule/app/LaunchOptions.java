@@ -59,7 +59,9 @@ public record LaunchOptions(
             boolean global,
             Optional<ServerAddress> hello,
             List<Ed2kLink.FileLink> downloads,
-            List<Path> shares) {
+            List<Path> shares,
+            Optional<ServerAddress> kadBootstrap,
+            boolean kad) {
 
         static final NetworkTasks NONE =
                 new NetworkTasks(
@@ -69,7 +71,9 @@ public record LaunchOptions(
                         false,
                         Optional.empty(),
                         List.of(),
-                        List.of());
+                        List.of(),
+                        Optional.empty(),
+                        false);
 
         public NetworkTasks {
             downloads = List.copyOf(downloads);
@@ -112,6 +116,8 @@ public record LaunchOptions(
     private static final String HELLO_OPTION = "--hello";
     private static final String DOWNLOAD_OPTION = "--download";
     private static final String SHARE_OPTION = "--share";
+    private static final String KAD_BOOTSTRAP_OPTION = "--kad-bootstrap";
+    private static final String KAD_OPTION = "--kad";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -144,9 +150,14 @@ public record LaunchOptions(
                         result.hasMatchedOption(GLOBAL_OPTION),
                         address(result, HELLO_OPTION),
                         fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())),
-                        directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())));
+                        directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())),
+                        address(result, KAD_BOOTSTRAP_OPTION),
+                        result.hasMatchedOption(KAD_OPTION));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
+        }
+        if (network.kad() && (network.search().isEmpty() || network.global())) {
+            throw new UsageException("--kad applies to --search, without --global");
         }
         return new LaunchOptions(
                 action(result),
@@ -208,6 +219,12 @@ public record LaunchOptions(
                                 + " search needs a server)"));
         spec.addOption(valued(SEARCH_OPTION, "<expression>", "search, print the results and exit"));
         spec.addOption(flag(GLOBAL_OPTION, "search the other known servers too, over UDP"));
+        spec.addOption(flag(KAD_OPTION, "search on Kad instead of the servers"));
+        spec.addOption(
+                valued(
+                        KAD_BOOTSTRAP_OPTION,
+                        "<host:port>",
+                        "join Kad through this node (its UDP port), e.g. a running eMule"));
         spec.addOption(
                 valued(
                         HELLO_OPTION,
