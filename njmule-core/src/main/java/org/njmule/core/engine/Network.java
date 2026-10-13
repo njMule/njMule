@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
@@ -50,6 +51,7 @@ import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.download.DownloadManager;
@@ -323,6 +325,44 @@ final class Network {
                 this.servers.size(),
                 this.ipFilter.rangeCount(),
                 this.userHash);
+    }
+
+    List<ServerInfo> servers() {
+        List<ServerInfo> all = new ArrayList<>();
+        for (ServerMet.Server server : this.servers.all()) {
+            all.add(info(server));
+        }
+        return all;
+    }
+
+    boolean removeServer(ServerList.Address address) {
+        boolean removed = this.servers.remove(address);
+        if (removed) {
+            this.saveServers();
+        }
+        return removed;
+    }
+
+    EngineStatus status() {
+        Optional<ServerMessages.IdChange> id = this.session.id();
+        return new EngineStatus(
+                id.isPresent() ? this.session.server().map(Network::info) : Optional.empty(),
+                id.map(ServerMessages.IdChange::clientId).orElse(0L),
+                id.map(ServerMessages.IdChange::isLowId).orElse(false),
+                this.session.isObfuscated(),
+                this.kadInfo(),
+                this.downloads.rate(),
+                this.uploads.rate(),
+                this.downloads.downloaded(),
+                this.uploads.uploaded(),
+                this.downloads.downloads().size(),
+                this.uploads.slotCount(),
+                this.uploads.waitingCount(),
+                this.shares == null ? 0 : this.shares.all().size());
+    }
+
+    List<UploadInfo> uploads() {
+        return this.uploads.uploads();
     }
 
     /** Adds the servers of another client's server.met; returns how many were new. */
@@ -927,7 +967,10 @@ final class Network {
                 server.name().orElse(address),
                 server.description().orElse(""),
                 server.users().orElse(0),
-                server.files().orElse(0));
+                server.files().orElse(0),
+                server.maxUsers().orElse(0),
+                (int) server.failedCount().orElse(0),
+                ServerList.priority(server));
     }
 
     private final class SessionEvents implements ServerSession.Listener {

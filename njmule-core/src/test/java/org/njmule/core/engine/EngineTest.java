@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -32,10 +33,18 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.persist.PreferencesCodec;
+import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.util.Ipv4;
 
 @Timeout(20)
 class EngineTest {
@@ -116,6 +125,44 @@ class EngineTest {
                     .isInstanceOf(ExecutionException.class)
                     .hasCauseInstanceOf(IllegalArgumentException.class);
             assertThat(engine.preferences()).isEqualTo(Preferences.defaults());
+        }
+    }
+
+    @Test
+    void listsAndRemovesServersAndTellsItsStatus() throws Exception {
+        Path met = this.root.resolve("other-server.met");
+        Files.write(
+                met,
+                ServerMet.write(
+                        List.of(
+                                new ServerMet.Server(
+                                        Ipv4.of(81, 2, 3, 4),
+                                        4661,
+                                        List.of(
+                                                new Tag.StringTag(
+                                                        TagName.id(ServerTag.SERVERNAME), "One"),
+                                                new Tag.IntTag(
+                                                        TagName.id(ServerTag.PREFERENCE), 1))),
+                                new ServerMet.Server(Ipv4.of(81, 2, 3, 5), 4242, List.of()))));
+        try (NjMuleEngine engine = this.start()) {
+            assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
+
+            List<ServerInfo> servers = engine.servers().get(5, TimeUnit.SECONDS);
+            assertThat(servers)
+                    .extracting(ServerInfo::name)
+                    .containsExactly("One", "81.2.3.5:4242");
+            assertThat(servers.getFirst().priority()).isEqualTo(ServerInfo.Priority.HIGH);
+            assertThat(servers.get(1).priority()).isEqualTo(ServerInfo.Priority.NORMAL);
+            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get()).isTrue();
+            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get()).isFalse();
+            assertThat(engine.servers().get(5, TimeUnit.SECONDS)).hasSize(1);
+
+            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
+            assertThat(status.server()).isEmpty();
+            assertThat(status.clientId()).isZero();
+            assertThat(status.downloads()).isZero();
+            assertThat(status.downloadBytesPerSecond()).isZero();
+            assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
         }
     }
 

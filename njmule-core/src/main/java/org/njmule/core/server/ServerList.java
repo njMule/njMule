@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.util.Ipv4;
@@ -124,6 +125,14 @@ public final class ServerList {
 
     public static Address addressOf(ServerMet.Server server) {
         return new Address(server.ip(), server.port());
+    }
+
+    public static ServerInfo.Priority priority(ServerMet.Server server) {
+        return switch ((int) server.preference().orElse(PRIORITY_NORMAL)) {
+            case PRIORITY_HIGH -> ServerInfo.Priority.HIGH;
+            case PRIORITY_LOW -> ServerInfo.Priority.LOW;
+            default -> ServerInfo.Priority.NORMAL;
+        };
     }
 
     private static int rank(ServerMet.Server server) {

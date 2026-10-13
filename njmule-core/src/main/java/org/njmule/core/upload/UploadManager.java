@@ -25,6 +25,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -40,6 +41,7 @@ import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.download.DownloadQueue;
 import org.njmule.core.engine.EngineLoop;
@@ -49,6 +51,7 @@ import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerGreetings;
+import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
@@ -59,6 +62,7 @@ import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.RateMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,6 +109,7 @@ public final class UploadManager implements AutoCloseable {
     private static final int HEADER = TcpFraming.HEADER_SIZE;
     private static final int MIN_COMPRESSIBLE = 32;
     private static final Logger LOG = LoggerFactory.getLogger(UploadManager.class);
+    private static final int RATE_SECONDS = 5;
 
     private static final class Client {
         private final Hash16 userHash;
@@ -112,6 +117,7 @@ public final class UploadManager implements AutoCloseable {
         private final int port;
         private final boolean lowId;
         private final boolean crypt;
+        private final Hello hello;
         private Uploadable file;
         private UploadSession session;
         private long waitStart;
@@ -126,6 +132,7 @@ public final class UploadManager implements AutoCloseable {
             this.port = session.peer().tcpPort();
             this.lowId = session.peer().clientId() != 0 && session.peer().clientId() < 0x0100_0000L;
             this.crypt = (session.peer().miscOptions2() & Hello.MISC2_SUPPORTS_CRYPT) != 0;
+            this.hello = session.peer();
             this.file = file;
             this.session = session;
             this.waitStart = now;
@@ -141,6 +148,7 @@ public final class UploadManager implements AutoCloseable {
         private UploadSession session;
         private final Deque<Item> out = new ArrayDeque<>();
         private long sent;
+        private final RateMeter rate = new RateMeter(RATE_SECONDS);
         private boolean reading;
 
         Slot(Client client, UploadSession session) {
@@ -165,6 +173,7 @@ public final class UploadManager implements AutoCloseable {
     private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
     private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
+    private final RateMeter rate = new RateMeter(RATE_SECONDS);
     private ScheduledFuture<?> ticking;
     private long budget;
     private long nextCreditsSave;
@@ -220,6 +229,51 @@ public final class UploadManager implements AutoCloseable {
                     .append(slot.sent);
         }
         return text.toString();
+    }
+
+    /** The clients with a slot, then the waiting ones from the best score down. */
+    public List<UploadInfo> uploads() {
+        long now = this.ticker.read();
+        List<UploadInfo> all = new ArrayList<>();
+        for (Slot slot : this.slots) {
+            all.add(
+                    info(
+                            slot.client,
+                            UploadInfo.State.UPLOADING,
+                            slot.sent,
+                            slot.rate.rate(now),
+                            now));
+        }
+        List<Client> queue = new ArrayList<>(this.waiting.values());
+        queue.sort(Comparator.comparingDouble((Client c) -> this.score(c, now)).reversed());
+        for (Client client : queue) {
+            all.add(info(client, UploadInfo.State.QUEUED, 0, 0, now));
+        }
+        return all;
+    }
+
+    /** Payload bytes per second sent to all slots. */
+    public long rate() {
+        return this.rate.rate(this.ticker.read());
+    }
+
+    /** Payload bytes sent in this session. */
+    public long uploaded() {
+        return this.rate.total();
+    }
+
+    private static UploadInfo info(
+            Client client, UploadInfo.State state, long sent, long rate, long now) {
+        return new UploadInfo(
+                client.ip.getHostAddress() + ":" + client.port,
+                client.userHash,
+                client.hello.nick(),
+                PeerSoftware.describe(client.hello),
+                client.file.name(),
+                state,
+                sent,
+                rate,
+                Math.max(0, now - client.waitStart) / 1_000_000_000L);
     }
 
     /** Clients waiting for a slot. */
@@ -339,6 +393,9 @@ public final class UploadManager implements AutoCloseable {
                 }
                 if (slot.session.send(item.packet())) {
                     slot.sent += item.payload();
+                    long now = this.ticker.read();
+                    slot.rate.add(item.payload(), now);
+                    this.rate.add(item.payload(), now);
                     if (slot.session.trust().credits()) {
                         this.credits.uploaded(slot.client.userHash, wire);
                     }

@@ -45,6 +45,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -56,7 +57,9 @@ import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.persist.AtomicFiles;
@@ -193,6 +196,34 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Integer> addServers(Path serverMet) {
         Objects.requireNonNull(serverMet, "serverMet");
         return this.loop.submit(() -> this.network.addServers(serverMet));
+    }
+
+    @Override
+    public CompletableFuture<List<ServerInfo>> servers() {
+        return this.loop.submit(this.network::servers);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeServer(ServerAddress server) {
+        Objects.requireNonNull(server, "server");
+        return resolve(server.host())
+                .thenCompose(
+                        ip ->
+                                this.loop.submit(
+                                        () ->
+                                                this.network.removeServer(
+                                                        new ServerList.Address(
+                                                                ip, server.port()))));
+    }
+
+    @Override
+    public CompletableFuture<EngineStatus> status() {
+        return this.loop.submit(this.network::status);
+    }
+
+    @Override
+    public CompletableFuture<List<UploadInfo>> uploads() {
+        return this.loop.submit(this.network::uploads);
     }
 
     @Override

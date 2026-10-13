@@ -54,6 +54,7 @@ import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.RateMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -183,6 +184,7 @@ public final class DownloadManager implements AutoCloseable {
     private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
     private int kadSearching;
+    private final RateMeter rate = new RateMeter(5);
     private long nextKadStart;
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
@@ -278,6 +280,16 @@ public final class DownloadManager implements AutoCloseable {
 
     public Path tempDir() {
         return this.queue.tempDir();
+    }
+
+    /** Payload bytes per second received for all downloads. */
+    public long rate() {
+        return this.rate.rate(this.ticker.read());
+    }
+
+    /** Payload bytes received in this session. */
+    public long downloaded() {
+        return this.rate.total();
     }
 
     public List<DownloadInfo> downloads() {
@@ -777,6 +789,7 @@ public final class DownloadManager implements AutoCloseable {
             if (entry != null) {
                 entry.received += bytes;
             }
+            DownloadManager.this.rate.add(bytes, DownloadManager.this.ticker.read());
             if (session.trusted() && session.peerHash().isPresent()) {
                 DownloadManager.this.credit.accept(session.peerHash().get(), (long) transferred);
             }

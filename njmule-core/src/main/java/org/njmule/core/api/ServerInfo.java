@@ -18,12 +18,32 @@ package org.njmule.core.api;
 
 import java.util.Objects;
 
-/** What front ends show about a server; {@code address} is {@code ip:port}. */
-public record ServerInfo(String address, String name, String description, long users, long files) {
+/**
+ * What front ends show about a server; {@code address} is {@code ip:port}.
+ *
+ * @param failed connection attempts that failed in a row
+ */
+public record ServerInfo(
+        String address,
+        String name,
+        String description,
+        long users,
+        long files,
+        long maxUsers,
+        int failed,
+        Priority priority) {
+
+    /** The order servers are tried in. */
+    public enum Priority {
+        HIGH,
+        NORMAL,
+        LOW
+    }
 
     public ServerInfo {
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(description, "description");
+        Objects.requireNonNull(priority, "priority");
     }
 }

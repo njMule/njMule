@@ -40,9 +40,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
@@ -93,6 +95,13 @@ class UploadQueueTest {
         assertThat(rank.protocol()).isEqualTo(Protocol.EMULE);
         assertThat(rank.opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
         assertThat(ClientMessages.decodeQueueRank(rank)).isEqualTo(1);
+        // Front ends see the slots, then the queue.
+        assertThat(engine.uploads().get(5, TimeUnit.SECONDS))
+                .extracting(UploadInfo::state)
+                .containsExactly(
+                        UploadInfo.State.UPLOADING,
+                        UploadInfo.State.UPLOADING,
+                        UploadInfo.State.QUEUED);
 
         // Asking again at once: three times are tolerated, the fourth bans the client.
         for (int i = 0; i < 3; i++) {
@@ -114,6 +123,20 @@ class UploadQueueTest {
         Packet data = first.next();
         assertThat(data.opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
         assertThat(ClientMessages.SendingPart.decode(data).end()).isEqualTo(1000);
+
+        // The banned client left the queue.
+        List<UploadInfo> uploads = engine.uploads().get(5, TimeUnit.SECONDS);
+        assertThat(uploads)
+                .extracting(UploadInfo::state)
+                .containsExactly(UploadInfo.State.UPLOADING, UploadInfo.State.UPLOADING);
+        assertThat(uploads).allMatch(u -> u.file().equals(file.name()));
+        assertThat(uploads.stream().mapToLong(UploadInfo::transferred).sum()).isEqualTo(1000);
+        EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
+        assertThat(status.uploads()).isEqualTo(2);
+        assertThat(status.queued()).isZero();
+        assertThat(status.uploaded()).isEqualTo(1000);
+        assertThat(status.sharedFiles()).isEqualTo(1);
+        assertThat(status.server()).isEmpty();
     }
 
     @Test

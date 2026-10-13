@@ -53,6 +53,18 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addServers(Path serverMet);
 
+    /** The known servers, in the order of the list. */
+    CompletableFuture<List<ServerInfo>> servers();
+
+    /** Completes with {@code false} for an unknown server. */
+    CompletableFuture<Boolean> removeServer(ServerAddress server);
+
+    /** Connections, rates and counts at this moment. */
+    CompletableFuture<EngineStatus> status();
+
+    /** The clients we upload to, then those waiting in our queue. */
+    CompletableFuture<List<UploadInfo>> uploads();
+
     /**
      * Connects to {@code server} (added to the list when new), or tries the known servers in turn
      * when empty. The future completes once the attempt has started; events tell the outcome.
