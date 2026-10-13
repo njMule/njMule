@@ -239,7 +239,7 @@ class ScreensTest {
         FxTesting.onFx(() -> screen.filterField().clear());
         assertThat(FxTesting.onFx(() -> screen.table().getItems().size())).isEqualTo(2);
 
-        // Static list, priority and links, as in eMule's server menu.
+        // Static list, priority and links in the server menu.
         Path statics = this.test.engine.directories().config().resolve("staticservers.dat");
         FxTesting.onFx(() -> {
             screen.table().getSelectionModel().clearSelection();

@@ -139,7 +139,7 @@ public final class GuiSettings {
         this.values.setProperty("window.height", String.valueOf(height));
     }
 
-    /** Whether closing asks first, as eMule's "Prompt on exit"; on by default. */
+    /** Whether closing asks first; on by default. */
     public boolean confirmExit() {
         return Boolean.parseBoolean(this.values.getProperty("window.confirmExit", "true"));
     }

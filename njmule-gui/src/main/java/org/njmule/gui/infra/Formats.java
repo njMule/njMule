@@ -79,7 +79,7 @@ public final class Formats {
         return format.format(value) + " " + UNITS[unit];
     }
 
-    /** A rate in KB/s with one decimal, as eMule shows it. */
+    /** A rate in KB/s with one decimal. */
     public String rate(long bytesPerSecond) {
         return this.oneDecimal.format(Math.max(0, bytesPerSecond) / 1024.0) + " KB/s";
     }

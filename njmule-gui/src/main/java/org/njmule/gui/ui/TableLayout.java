@@ -27,8 +27,8 @@ import javafx.scene.control.TableView;
 import org.njmule.gui.infra.GuiSettings;
 
 /**
- * Remembers how a table's columns were left, as eMule's lists do: their order, widths, which ones show (from the column
- * menu) and the sort. Columns are known by their place when the table was built.
+ * Remembers how a table's columns were left: their order, widths, which ones show (from the column menu) and the sort.
+ * Columns are known by their place when the table was built.
  */
 public final class TableLayout {
 

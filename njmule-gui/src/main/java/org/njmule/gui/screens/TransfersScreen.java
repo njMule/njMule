@@ -195,7 +195,7 @@ public final class TransfersScreen implements Screen {
                 this.link,
                 add);
 
-        // eMule's lower lists: the clients we upload to, those waiting, those we download from, and the banned.
+        // The lower lists: the clients we upload to, those waiting, those we download from, and the banned.
         this.uploads = this.uploadTable(UploadInfo.State.UPLOADING, "uploads");
         this.queue = this.uploadTable(UploadInfo.State.QUEUED, "queue");
         this.sources = this.sourceTable();

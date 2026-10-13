@@ -281,7 +281,7 @@ public final class MainWindow {
         return strip;
     }
 
-    // As in eMule, Connect and Disconnect act on both networks; Cancel only stops trying servers.
+    // Connect and Disconnect act on both networks; Cancel only stops trying servers.
     private void toggleConnection() {
         EngineModel model = this.gui.model();
         boolean kadRuns = model.statusProperty().get().kad().isPresent();

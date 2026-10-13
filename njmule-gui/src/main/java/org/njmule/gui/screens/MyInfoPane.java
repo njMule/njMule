@@ -42,7 +42,7 @@ import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Gui;
 import org.njmule.webui.WebUiSettings;
 
-/** What eMule calls My Info: our state on eD2K and Kad, the server we are on and the web interface. */
+/** My Info: our state on eD2K and Kad, the server we are on and the web interface. */
 final class MyInfoPane {
 
     /** A line of the pane: a section title, or a label with its value. */

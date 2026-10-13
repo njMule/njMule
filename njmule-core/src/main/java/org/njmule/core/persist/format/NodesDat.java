@@ -80,7 +80,7 @@ public final class NodesDat {
         return new Contents(version, false, records(in, count, version, false));
     }
 
-    /** Writes version 2, as eMule does. */
+    /** Writes version 2, which every Kad client reads. */
     public static byte[] write(List<Contact> contacts) {
         PacketWriter out = new PacketWriter();
         out.u32(0).u32(2).u32(contacts.size());

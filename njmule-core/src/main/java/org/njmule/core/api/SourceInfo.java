@@ -20,7 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A client we download from or may, as eMule's list of downloading clients shows it.
+ * A client we download from or may download from.
  *
  * @param address {@code ip:port}
  * @param queueRank our place in its queue, 0 when unknown or not queued

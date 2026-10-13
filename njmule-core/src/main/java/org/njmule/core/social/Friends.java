@@ -36,8 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The friends, kept in {@code emfriends.met} as eMule keeps them; what njMule does not change (Kad id, times) is kept
- * as read. Engine thread only.
+ * The friends, kept in {@code emfriends.met}; what njMule does not change (Kad id, times) is kept as read. Engine
+ * thread only.
  */
 public final class Friends {
 
@@ -88,7 +88,7 @@ public final class Friends {
                 ip = Ipv4.parse(friend.address().get().host());
                 port = friend.address().get().port();
             } catch (IllegalArgumentException e) {
-                // Only IPv4 literals are kept, as eMule keeps them.
+                // The file holds IPv4 addresses only: names are not kept.
             }
         }
         List<Tag> tags = new ArrayList<>();

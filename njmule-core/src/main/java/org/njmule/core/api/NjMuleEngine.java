@@ -114,7 +114,7 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The search results marked as spam. */
     CompletableFuture<SpamMarks> spamMarks();
 
-    /** Marks {@code results} as spam, or clears them, as eMule's search does; completes with the marks now. */
+    /** Marks {@code results} as spam, or clears them; completes with the marks now. */
     CompletableFuture<SpamMarks> markSpam(List<SearchResult> results, boolean isSpam);
 
     /** The sources of our downloads. */

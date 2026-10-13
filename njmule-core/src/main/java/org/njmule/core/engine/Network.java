@@ -448,7 +448,7 @@ final class Network {
         return added;
     }
 
-    // A server the user gave: high priority when the preferences ask for it, as in eMule.
+    // A server the user gave: high priority when the preferences ask for it.
     private ServerMet.Server byHand(ServerList.Address address) {
         List<Tag> tags = this.preferences.get().manualServersHighPriority()
                 ? List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), ServerList.PRIORITY_HIGH))
@@ -1374,7 +1374,7 @@ final class Network {
         }
     }
 
-    // A server that failed as many times in a row as the preferences allow leaves the list, as in eMule;
+    // A server that failed as many times in a row as the preferences allow leaves the list;
     // static servers and the one we are on stay.
     private void deadServer(ServerMet.Server server) {
         this.removeDead(List.of(ServerList.addressOf(server)));

@@ -34,8 +34,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 
 /**
- * The search results marked as spam, kept in {@code SearchSpam.met} as eMule does: by file hash, by full name, and the
- * hashes cleared again. The other markers of that file (similar names, sizes, addresses) are kept as they are.
+ * The search results marked as spam, kept in {@code SearchSpam.met}: by file hash, by full name, and the hashes cleared
+ * again. The other markers of that file (similar names, sizes, addresses) are kept as they are.
  */
 public final class SpamFilter {
 

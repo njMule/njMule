@@ -74,10 +74,10 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 
-/** Searches with eMule's parameters, one tab of results each. */
+/** Searches with their parameters, one tab of results each. */
 public final class SearchScreen implements Screen {
 
-    /** eMule's search methods: Automatic picks Kad or the server by what is connected. */
+    /** The search methods: Automatic picks Kad or the server by what is connected. */
     enum Method {
         AUTOMATIC,
         SERVER,
@@ -85,7 +85,7 @@ public final class SearchScreen implements Screen {
         KAD
     }
 
-    /** The file types of eMule's search, with the value of the type attribute. */
+    /** The file types a search can ask for, with the value of the type attribute. */
     enum FileType {
         ANY("IDS_SEARCH_ANY", ""),
         ARCHIVE("IDS_SEARCH_ARC", "archive"),
@@ -208,7 +208,7 @@ public final class SearchScreen implements Screen {
         return Fx.screen(this.title(), tools, content);
     }
 
-    // eMule's search parameters: the type and the attributes the server or Kad filter on.
+    // The search parameters: the type and the attributes the server or Kad filter on.
     private Node parameters(Inputs inputs) {
         this.type.getItems().addAll(FileType.values());
         this.type.setValue(FileType.ANY);
@@ -251,7 +251,7 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** The expression for the search box words with eMule's parameters as attributes. */
+    /** The expression for the search box words with the parameters as attributes. */
     static String expression(
             String words,
             FileType type,
@@ -284,7 +284,7 @@ public final class SearchScreen implements Screen {
         };
     }
 
-    // Automatic, as in eMule: the network we are connected to, Kad when both unless the server is a static one.
+    // Automatic: the network we are connected to, Kad when both unless the server is a static one.
     private Optional<SearchRequest.Scope> scope() {
         if (this.method.getValue() != Method.AUTOMATIC) {
             return Optional.of(
@@ -527,7 +527,7 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** eMule's related search: the server finds files people download along with the selected ones. */
+    /** Related search: the server finds files people download along with the selected ones. */
     void searchRelated() {
         Results current = this.current();
         if (current == null) {

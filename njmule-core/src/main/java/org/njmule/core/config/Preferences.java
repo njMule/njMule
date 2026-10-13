@@ -82,7 +82,7 @@ public record Preferences(
     public static final int DEFAULT_UPLOAD_CAPACITY = 1_024;
     public static final int DEFAULT_MIN_FREE_SPACE = 512;
     public static final int MAX_MIN_FREE_SPACE = 10_000_000;
-    /** A server that failed this many times in a row is dropped from the list, as in eMule. */
+    /** A server that failed this many times in a row is dropped from the list. */
     public static final int DEFAULT_DEAD_SERVER_RETRIES = 1;
 
     public static final int MAX_DEAD_SERVER_RETRIES = 10;

@@ -44,7 +44,7 @@ class InfraTest {
     @Test
     void exitPromptAndStartMinimisedAreRemembered() throws Exception {
         GuiSettings settings = GuiSettings.load(this.dir);
-        assertThat(settings.confirmExit()).as("as in eMule").isTrue();
+        assertThat(settings.confirmExit()).as("on by default").isTrue();
         assertThat(settings.startMinimized()).isFalse();
         settings.setConfirmExit(false);
         settings.setStartMinimized(true);

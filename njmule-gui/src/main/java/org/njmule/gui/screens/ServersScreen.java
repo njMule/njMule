@@ -142,7 +142,7 @@ public final class ServersScreen implements Screen {
 
     private Node build() {
         this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"), this.shown);
-        // eMule's columns, in its order; the hard file limit and the version start hidden, as there.
+        // The usual server columns; the hard file limit and the version start hidden.
         this.table
                 .getColumns()
                 .addAll(List.of(
@@ -163,7 +163,7 @@ public final class ServersScreen implements Screen {
                         numeric(Fx.column(this.gui.t("IDS_IDLOW"), 85, ServerInfo::lowIdUsers, this::known)),
                         Fx.column(this.gui.t("IDS_OBFUSCATION"), 110, ServerInfo::supportsObfuscation, this::yesNo)));
         TableLayout.remember(this.table, "servers", this.gui.settings());
-        // Columns keep their widths and the list scrolls sideways, as eMule's does.
+        // Columns keep their widths and the list scrolls sideways.
         this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setOnKeyPressed(this::key);
         this.table.setRowFactory(t -> {
@@ -199,7 +199,7 @@ public final class ServersScreen implements Screen {
                 connectTo,
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
-        // The list with My Info beside it, as in eMule; the logs below.
+        // The list with My Info beside it; the logs below.
         Node info = this.myInfo.node();
         SplitPane top = new SplitPane(this.listPane(), info);
         top.setDividerPositions(0.78);
@@ -212,7 +212,7 @@ public final class ServersScreen implements Screen {
         return Fx.screen(this.title(), tools, content);
     }
 
-    // What the servers said and what happened, in two tabs as in eMule; Reset empties the one shown.
+    // What the servers said and what happened, in two tabs; Reset empties the one shown.
     private Node logs() {
         ListView<EngineModel.ServerNote> info = new ListView<>(this.gui.model().serverInfo());
         info.getStyleClass().add("log-list");
@@ -358,7 +358,7 @@ public final class ServersScreen implements Screen {
         };
     }
 
-    // The server menu of eMule but Find, which the box above the list does as one types.
+    // The server menu; no Find, which the box above the list does as one types.
     private ContextMenu menu() {
         MenuItem connect = Fx.menuItem(this.gui.t("IDS_CONNECTTHIS"), Material2AL.LINK, this::connectOrDisconnect);
         connect.getStyleClass().add("default-item");

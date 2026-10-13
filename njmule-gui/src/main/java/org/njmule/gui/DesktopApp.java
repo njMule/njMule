@@ -129,7 +129,7 @@ public final class DesktopApp implements AutoCloseable {
         return AppDirectories.resolve(cli.configDir(), Optional.empty()).config();
     }
 
-    /** Whether to exit: asked first, as eMule's "Prompt on exit", unless turned off there or here. */
+    /** Whether to exit: asked first, unless the question was turned off. */
     boolean mayExit(Window owner) {
         if (!this.settings.confirmExit()) {
             return true;
