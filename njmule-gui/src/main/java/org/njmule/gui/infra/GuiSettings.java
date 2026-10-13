@@ -157,6 +157,23 @@ public final class GuiSettings {
         this.values.setProperty("window.startMinimized", String.valueOf(value));
     }
 
+    /** How the columns of the table {@code name} were left: see {@code TableLayout}. */
+    public String tableColumns(String name) {
+        return this.values.getProperty("table." + name + ".columns", "");
+    }
+
+    public void setTableColumns(String name, String layout) {
+        this.values.setProperty("table." + name + ".columns", layout);
+    }
+
+    public String tableSort(String name) {
+        return this.values.getProperty("table." + name + ".sort", "");
+    }
+
+    public void setTableSort(String name, String sort) {
+        this.values.setProperty("table." + name + ".sort", sort);
+    }
+
     /** Whether a minimised window hides into the notification area; on unless turned off. */
     public boolean minimizeToTray() {
         return Boolean.parseBoolean(this.values.getProperty("window.minimizeToTray", "true"));

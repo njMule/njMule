@@ -43,6 +43,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.TableLayout;
 
 /** Searches on the server, all known servers or Kad, one tab each. */
 public final class SearchScreen implements Screen {
@@ -141,6 +142,7 @@ public final class SearchScreen implements Screen {
                         Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources),
                         Fx.column(
                                 this.gui.t("nj.search.type"), 90, r -> r.type().orElse(""))));
+        TableLayout.remember(table, "search", this.gui.settings());
         table.setRowFactory(t -> {
             TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();
             row.setOnMouseClicked(e -> {

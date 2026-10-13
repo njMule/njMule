@@ -47,6 +47,7 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.TableLayout;
 
 /** The files we share, and sharing one more directory. */
 public final class SharedScreen implements Screen {
@@ -94,6 +95,7 @@ public final class SharedScreen implements Screen {
                                 this.gui.t("nj.shared.folder"),
                                 360,
                                 f -> String.valueOf(f.path().getParent()))));
+        TableLayout.remember(this.table, "shared", this.gui.settings());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));

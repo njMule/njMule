@@ -80,6 +80,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.UrlBox;
 
 /** The known servers, connecting to one, and the log below. */
@@ -161,7 +162,7 @@ public final class ServersScreen implements Screen {
                         hidden(Fx.column(this.gui.t("IDS_VERSION"), 90, ServerInfo::version)),
                         numeric(Fx.column(this.gui.t("IDS_IDLOW"), 85, ServerInfo::lowIdUsers, this::known)),
                         Fx.column(this.gui.t("IDS_OBFUSCATION"), 110, ServerInfo::supportsObfuscation, this::yesNo)));
-        this.table.setTableMenuButtonVisible(true);
+        TableLayout.remember(this.table, "servers", this.gui.settings());
         // Columns keep their widths and the list scrolls sideways, as eMule's does.
         this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setOnKeyPressed(this::key);

@@ -98,6 +98,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox credits = new CheckBox();
     private final CheckBox upnp = new CheckBox();
     private final TextField deadRetries = new TextField();
+    private final TextField backups = new TextField();
     private final CheckBox fromServer = new CheckBox();
     private final CheckBox fromClients = new CheckBox();
     private final CheckBox staticOnly = new CheckBox();
@@ -137,6 +138,7 @@ public final class SettingsScreen implements Screen {
     private Input<Optional<Path>> tempInput;
     private Input<Integer> minFreeSpaceInput;
     private Input<Integer> deadRetriesInput;
+    private Input<Integer> backupsInput;
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
@@ -266,6 +268,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
         row = field(grid, row, this.gui.t("IDS_MINFREEDISKSPACE"), this.minFreeSpace);
+        this.backups.setPrefColumnCount(4);
+        row = field(grid, row, this.gui.t("nj.settings.backups"), this.backups);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
         row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
@@ -303,6 +307,7 @@ public final class SettingsScreen implements Screen {
                                 this.tempInput,
                                 this.minFreeSpaceInput,
                                 this.deadRetriesInput,
+                                this.backupsInput,
                                 this.webUiPortInput,
                                 this.webUiPasswordInput,
                                 this.webUiAgainInput))
@@ -342,6 +347,8 @@ public final class SettingsScreen implements Screen {
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
         this.minFreeSpaceInput =
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
+        this.backupsInput =
+                inputs.number(this.backups, this.gui.t("nj.settings.backups"), 0, Preferences.MAX_BACKUP_COPIES);
         this.deadRetriesInput =
                 inputs.number(this.deadRetries, this.gui.t("IDS_PW_RDEAD"), 1, Preferences.MAX_DEAD_SERVER_RETRIES);
         this.webUiPortInput = inputs.number(this.webUiPort, this.gui.t("nj.webui.port"), 1, Preferences.MAX_PORT);
@@ -450,6 +457,7 @@ public final class SettingsScreen implements Screen {
         this.temp.setText(p.tempDir().map(Path::toString).orElse(""));
         this.minFreeSpace.setText(String.valueOf(p.minFreeSpaceMiB()));
         this.deadRetries.setText(String.valueOf(p.deadServerRetries()));
+        this.backups.setText(String.valueOf(p.backupCopies()));
         this.fromServer.setSelected(p.addServersFromServer());
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
@@ -584,6 +592,7 @@ public final class SettingsScreen implements Screen {
                 .tempDir(this.tempInput.value())
                 .minFreeSpaceMiB(this.minFreeSpaceInput.value())
                 .deadServerRetries(this.deadRetriesInput.value())
+                .backupCopies(this.backupsInput.value())
                 .addServersFromServer(this.fromServer.isSelected())
                 .addServersFromClients(this.fromClients.isSelected())
                 .staticServersOnly(this.staticOnly.isSelected())

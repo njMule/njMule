@@ -67,6 +67,7 @@ import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PartBar;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.TableLayout;
 
 /** Downloads with their progress, and below the clients we upload to or that wait for us. */
 public final class TransfersScreen implements Screen {
@@ -140,6 +141,7 @@ public final class TransfersScreen implements Screen {
                                 90,
                                 TransfersScreen::remaining,
                                 s -> s < 0 ? "?" : formats.duration(s))));
+        TableLayout.remember(this.downloads, "downloads", this.gui.settings());
         MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"));
         pause.setOnAction(e -> this.pauseSelected());
         MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"));
@@ -205,6 +207,7 @@ public final class TransfersScreen implements Screen {
                                 s -> s == UploadInfo.State.UPLOADING
                                         ? this.gui.t("nj.transfers.uploading")
                                         : this.gui.t("IDS_ONQUEUE"))));
+        TableLayout.remember(this.uploads, "uploads", this.gui.settings());
         Label uploadsTitle = new Label(this.gui.t("nj.transfers.uploadsTitle"));
         uploadsTitle.getStyleClass().add("settings-section");
         VBox lower = new VBox(4, uploadsTitle, this.uploads);
