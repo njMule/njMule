@@ -88,6 +88,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox tray = new CheckBox();
     private final CheckBox confirmExit = new CheckBox();
     private final CheckBox startMinimized = new CheckBox();
+    private final CheckBox watchClipboard = new CheckBox();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
@@ -199,6 +200,7 @@ public final class SettingsScreen implements Screen {
         this.tray.setText(this.gui.t("nj.settings.tray"));
         this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
         this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
+        this.watchClipboard.setText(this.gui.t("IDS_PF_WATCHCB"));
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
@@ -235,6 +237,7 @@ public final class SettingsScreen implements Screen {
         }
         grid.add(this.startMinimized, 1, row++);
         grid.add(this.confirmExit, 1, row++);
+        grid.add(this.watchClipboard, 1, row++);
         if (this.links.isPresent()) {
             grid.add(this.ed2kLinks, 1, row++);
         }
@@ -489,6 +492,7 @@ public final class SettingsScreen implements Screen {
         this.tray.setSelected(this.gui.settings().minimizeToTray());
         this.confirmExit.setSelected(this.gui.settings().confirmExit());
         this.startMinimized.setSelected(this.gui.settings().startMinimized());
+        this.watchClipboard.setSelected(this.gui.settings().watchClipboard());
         WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
@@ -569,6 +573,7 @@ public final class SettingsScreen implements Screen {
         this.gui.settings().setMinimizeToTray(this.tray.isSelected());
         this.gui.settings().setConfirmExit(this.confirmExit.isSelected());
         this.gui.settings().setStartMinimized(this.startMinimized.isSelected());
+        this.gui.settings().setWatchClipboard(this.watchClipboard.isSelected());
         try {
             this.gui.settings().save();
             web.save(this.gui.directories().config());

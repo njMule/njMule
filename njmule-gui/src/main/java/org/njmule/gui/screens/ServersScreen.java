@@ -54,7 +54,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -75,6 +74,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
@@ -456,9 +456,7 @@ public final class ServersScreen implements Screen {
             ServerAddress address = ServerAddress.parse(server.address());
             links.add(new Ed2kLink.ServerLink(address.host(), address.port()).toUri());
         }
-        ClipboardContent content = new ClipboardContent();
-        content.putString(String.join("\n", links));
-        Clipboard.getSystemClipboard().setContent(content);
+        ClipboardWatch.copy(String.join("\n", links));
     }
 
     /** Adds the servers of the ed2k server links on the clipboard, and fetches the server lists linked there. */

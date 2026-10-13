@@ -62,6 +62,7 @@ import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.shell.TrayMenu;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Gui;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
@@ -97,6 +98,7 @@ public final class DesktopApp implements AutoCloseable {
     private Gui gui;
     private Scene scene;
     private Timeline ticker;
+    private ClipboardWatch clipboard;
 
     private DesktopApp(NjMuleEngine engine, AppDirectories directories, GuiSettings settings, Optional<WebUi> webUi) {
         this.engine = engine;
@@ -274,6 +276,11 @@ public final class DesktopApp implements AutoCloseable {
         }));
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
+        // eD2K file links copied anywhere become downloads when the settings ask for it.
+        this.clipboard = ClipboardWatch.start(this.settings::watchClipboard, links -> {
+            this.pending.addAll(links);
+            this.addPending();
+        });
         logger.info("Main window shown");
         this.keepButtonsVisible(stage);
         if (NotificationArea.isSupported()) {
@@ -480,6 +487,9 @@ public final class DesktopApp implements AutoCloseable {
     public void close() {
         if (this.ticker != null) {
             this.ticker.stop();
+        }
+        if (this.clipboard != null) {
+            this.clipboard.close();
         }
         if (this.handoff != null) {
             this.handoff.close();

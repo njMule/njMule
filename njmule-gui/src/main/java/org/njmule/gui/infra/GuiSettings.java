@@ -174,6 +174,15 @@ public final class GuiSettings {
         this.values.setProperty("table." + name + ".sort", sort);
     }
 
+    /** Whether eD2K file links copied in other programs are downloaded; off by default. */
+    public boolean watchClipboard() {
+        return Boolean.parseBoolean(this.values.getProperty("links.watchClipboard", "false"));
+    }
+
+    public void setWatchClipboard(boolean value) {
+        this.values.setProperty("links.watchClipboard", String.valueOf(value));
+    }
+
     /** Whether a minimised window hides into the notification area; on unless turned off. */
     public boolean minimizeToTray() {
         return Boolean.parseBoolean(this.values.getProperty("window.minimizeToTray", "true"));

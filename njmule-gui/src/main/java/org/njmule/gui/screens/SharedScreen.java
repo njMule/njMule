@@ -32,8 +32,6 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
@@ -44,6 +42,7 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
@@ -193,10 +192,8 @@ public final class SharedScreen implements Screen {
     void copyLinks() {
         List<SharedFileInfo> selected = Fx.selected(this.table);
         if (!selected.isEmpty()) {
-            ClipboardContent content = new ClipboardContent();
-            content.putString(String.join(
+            ClipboardWatch.copy(String.join(
                     "\n", selected.stream().map(f -> f.link().toUri()).toList()));
-            Clipboard.getSystemClipboard().setContent(content);
         }
     }
 

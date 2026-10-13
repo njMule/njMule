@@ -215,6 +215,8 @@ All notable changes to this project are documented here. The format follows
   whose keys do not list the files); both lists can be turned off, and eMule's choices are imported.
 - The search tabs left open at exit come back at the next start with their results
   (`StoredSearches.met`, so eMule's open searches come over with the import); it can be turned off.
+- eD2K file links copied in other programs can become downloads (off by default); the links njMule
+  copies itself are left alone.
 
 ### Changed
 

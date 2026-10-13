@@ -46,8 +46,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -65,6 +63,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
@@ -423,10 +422,8 @@ public final class TransfersScreen implements Screen {
     void copyLinks() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (!selected.isEmpty()) {
-            ClipboardContent content = new ClipboardContent();
-            content.putString(String.join(
+            ClipboardWatch.copy(String.join(
                     "\n", selected.stream().map(d -> d.link().toUri()).toList()));
-            Clipboard.getSystemClipboard().setContent(content);
         }
     }
 

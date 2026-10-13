@@ -52,8 +52,6 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -73,6 +71,7 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
@@ -614,9 +613,7 @@ public final class SearchScreen implements Screen {
         List<String> links =
                 Fx.selected(current.table()).stream().map(r -> r.link().toUri()).toList();
         if (!links.isEmpty()) {
-            ClipboardContent content = new ClipboardContent();
-            content.putString(String.join("\n", links));
-            Clipboard.getSystemClipboard().setContent(content);
+            ClipboardWatch.copy(String.join("\n", links));
         }
     }
 
