@@ -166,6 +166,10 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- The configuration is backed up as a dated zip at each exit and once a day, the latest three
+  kept by default (`backup.copies`), in the data directory.
+- Every list keeps how its columns were left (order, widths, which show and the sort), and offers
+  a column menu to show or hide them.
 - `njmule --exit` asks the njMule running on the same configuration (window or headless) to save
   and exit.
 - The desktop app asks before exiting, as eMule does (with "Do not ask me again"), and can start

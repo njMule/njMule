@@ -27,6 +27,7 @@ import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -79,6 +80,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.net.WebLists;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.ConfigBackup;
 import org.njmule.core.persist.EmuleImporter;
 import org.njmule.core.persist.PreferencesCodec;
 import org.njmule.core.persist.ScheduleCodec;
@@ -101,6 +103,7 @@ public final class Engine implements NjMuleEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(Engine.class);
     private static final String ADDRESSES_FILE = "addresses.dat";
+    private static final Duration BACKUP_EVERY = Duration.ofDays(1);
     private static final int EVENT_BUFFER = 1_024;
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
@@ -188,6 +191,7 @@ public final class Engine implements NjMuleEngine {
                     engine.refreshSchedule();
                     engine.network.start();
                     engine.loop.scheduleRepeating("scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
+                    engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
                     return null;
                 })
                 .join();
@@ -783,6 +787,8 @@ public final class Engine implements NjMuleEngine {
             this.loop
                     .submit(() -> {
                         this.network.close();
+                        // After the last saves.
+                        this.backUp();
                         return null;
                     })
                     .get(10, TimeUnit.SECONDS);
@@ -803,6 +809,25 @@ public final class Engine implements NjMuleEngine {
             this.eventExecutor.shutdownNow();
         }
         this.lock.close();
+    }
+
+    // The configuration, copied into the data directory as the preferences ask; on the engine thread, between saves.
+    private void backUp() {
+        int keep = this.preferences.backupCopies();
+        if (keep == 0) {
+            return;
+        }
+        try {
+            Path copy = ConfigBackup.write(
+                    this.directories.config(),
+                    this.directories.data().resolve(ConfigBackup.FOLDER),
+                    keep,
+                    // The copy is named by the local time.
+                    Clock.system(ZoneId.systemDefault()));
+            logger.info("Configuration backed up to {}", copy);
+        } catch (IOException e) {
+            logger.warn("Cannot back up the configuration: {}", e.toString());
+        }
     }
 
     /** Logs a message both to SLF4J and to the front ends' log pane. */

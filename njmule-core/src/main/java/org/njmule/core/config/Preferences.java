@@ -63,7 +63,8 @@ public record Preferences(
         boolean addServersFromClients,
         boolean staticServersOnly,
         boolean manualServersHighPriority,
-        boolean updateServersAtStart) {
+        boolean updateServersAtStart,
+        int backupCopies) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -82,6 +83,10 @@ public record Preferences(
     public static final int DEFAULT_DEAD_SERVER_RETRIES = 1;
 
     public static final int MAX_DEAD_SERVER_RETRIES = 10;
+    /** Zip copies of the configuration kept, written at each exit and daily; 0 writes none. */
+    public static final int DEFAULT_BACKUP_COPIES = 3;
+
+    public static final int MAX_BACKUP_COPIES = 50;
 
     public Preferences {
         Objects.requireNonNull(nick, "nick");
@@ -106,6 +111,7 @@ public record Preferences(
         requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
         requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
+        requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -139,7 +145,8 @@ public record Preferences(
                 false,
                 false,
                 false,
-                false);
+                false,
+                DEFAULT_BACKUP_COPIES);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -201,6 +208,7 @@ public record Preferences(
         private boolean staticServersOnly;
         private boolean manualServersHighPriority;
         private boolean updateServersAtStart;
+        private int backupCopies;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -232,6 +240,7 @@ public record Preferences(
             this.staticServersOnly = p.staticServersOnly;
             this.manualServersHighPriority = p.manualServersHighPriority;
             this.updateServersAtStart = p.updateServersAtStart;
+            this.backupCopies = p.backupCopies;
         }
 
         public Builder nick(String value) {
@@ -408,6 +417,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder backupCopies(int value) {
+            this.backupCopies = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -439,7 +453,8 @@ public record Preferences(
                     this.addServersFromClients,
                     this.staticServersOnly,
                     this.manualServersHighPriority,
-                    this.updateServersAtStart);
+                    this.updateServersAtStart,
+                    this.backupCopies);
         }
     }
 }
