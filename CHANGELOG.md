@@ -148,6 +148,11 @@ All notable changes to this project are documented here. The format follows
   downloads stay listed until cleared. Kept in the part.met as other clients write them.
 - Upload priorities of shared files (Very low to Release, or Auto), which scale the queue scores of
   the clients waiting for them; kept in known.met as other clients write them.
+- Downloads wait while the temp disk has less free space than a minimum (512 MiB unless set) and
+  go on by themselves once there is room again; eMule's minimum is imported when its check is on.
+- Folders can be shared with their subfolders, those made later too, and stop being shared; shared
+  folders are watched, so new and changed files show within seconds. Sharing a disk's root, a
+  system folder or the documents, desktop or pictures asks first.
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
