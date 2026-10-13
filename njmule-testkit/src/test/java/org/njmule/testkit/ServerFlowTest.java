@@ -88,7 +88,11 @@ class ServerFlowTest {
                 new FakeServer.Config(
                         highId(local),
                         "server version 17.15\nWelcome to the fake server",
-                        List.of(FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50))));
+                        List.of(
+                                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50),
+                                // Unusable results, which must not reach the front ends.
+                                FakeServer.file("empty.bin", 0, 3),
+                                FakeServer.file(" ", 100, 1))));
         FakeServer other = this.server(
                 local,
                 new FakeServer.Config(

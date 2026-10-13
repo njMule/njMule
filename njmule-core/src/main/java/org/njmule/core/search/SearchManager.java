@@ -38,6 +38,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -150,7 +151,7 @@ public final class SearchManager {
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         boolean started = searches.search(keyword, expression, results -> {
             if (!search.ended) {
-                this.mergeResults(search, results);
+                this.mergeResults(search, results, false);
             }
         });
         if (!started) {
@@ -314,24 +315,39 @@ public final class SearchManager {
                     file.completeSources(),
                     file.type()));
         }
-        this.mergeResults(search, found);
+        this.mergeResults(search, found, true);
     }
 
-    private void mergeResults(Search search, List<SearchResult> found) {
+    /**
+     * Adds results to a search. Unusable ones (no name, a size of zero or beyond eD2K's limit, a known hash with
+     * another size) are left out. Servers count their own sources, so their counts add up; Kad nodes report the same
+     * sources, so the largest count is kept.
+     */
+    private void mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
         List<SearchResult> changed = new ArrayList<>();
         for (SearchResult file : found) {
+            if (file.name().isBlank() || file.size() <= 0 || file.size() > Ed2k.MAX_FILE_SIZE) {
+                continue;
+            }
             if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {
                 continue;
             }
             SearchResult known = search.results.get(file.hash());
+            if (known != null && known.size() != file.size()) {
+                continue;
+            }
             SearchResult merged = known == null
                     ? file
                     : new SearchResult(
                             known.hash(),
                             known.name(),
                             known.size(),
-                            saturatedAdd(known.sources(), file.sources()),
-                            saturatedAdd(known.completeSources(), file.completeSources()),
+                            addCounts
+                                    ? saturatedAdd(known.sources(), file.sources())
+                                    : Math.max(known.sources(), file.sources()),
+                            addCounts
+                                    ? saturatedAdd(known.completeSources(), file.completeSources())
+                                    : Math.max(known.completeSources(), file.completeSources()),
                             known.type().or(file::type));
             search.results.put(file.hash(), merged);
             changed.add(merged);
