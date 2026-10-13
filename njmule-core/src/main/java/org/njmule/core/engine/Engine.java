@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -73,6 +74,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
@@ -472,6 +474,27 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<List<UploadInfo>> uploads() {
         return this.loop.submit(this.network::uploads);
+    }
+
+    @Override
+    public CompletableFuture<List<SourceInfo>> sources() {
+        return this.loop.submit(this.network::sources);
+    }
+
+    @Override
+    public CompletableFuture<List<BanInfo>> bans() {
+        return this.loop.submit(this.network::bans);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> unban(String ip) {
+        InetAddress address;
+        try {
+            address = Inet4Address.ofLiteral(Objects.requireNonNull(ip, "ip").strip());
+        } catch (IllegalArgumentException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        return this.loop.submit(() -> this.network.unban(address));
     }
 
     @Override

@@ -35,11 +35,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -451,6 +453,24 @@ public final class UploadManager implements AutoCloseable {
         client.lastAsk = now;
         this.waiting.put(client.userHash, client);
         slot.session.sendRank(this.rank(client, now));
+    }
+
+    /** The banned addresses with the time left. */
+    public List<BanInfo> bans() {
+        long now = this.ticker.read();
+        List<BanInfo> all = new ArrayList<>();
+        for (Map.Entry<InetAddress, Long> ban : this.bans.entrySet()) {
+            long left = ban.getValue() - now;
+            if (left > 0) {
+                all.add(new BanInfo(ban.getKey().getHostAddress(), TimeUnit.NANOSECONDS.toSeconds(left)));
+            }
+        }
+        return all;
+    }
+
+    /** Lifts the ban on {@code ip}; false when it was not banned. */
+    public boolean unban(InetAddress ip) {
+        return this.bans.remove(ip) != null;
     }
 
     /** Whether {@code ip} is banned; from any thread. */

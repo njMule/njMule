@@ -44,11 +44,13 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
+import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -169,6 +171,7 @@ public final class DownloadManager implements AutoCloseable {
         private int cryptOptions;
         // The id of a firewalled source on our server, reached only by callbacks; 0 otherwise.
         private long lowId;
+        private long received;
 
         Source(InetSocketAddress address, long now) {
             this.address = address;
@@ -878,6 +881,43 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
+    /** The sources of every download, as the list of downloading clients shows them. */
+    public List<SourceInfo> sources() {
+        List<SourceInfo> all = new ArrayList<>();
+        for (Entry entry : this.entries.values()) {
+            PartFile file = entry.download.file();
+            for (Source source : entry.sources.values()) {
+                DownloadSession session = source.session;
+                Optional<Hello> hello = session == null ? Optional.empty() : session.peer();
+                BitSet parts = session != null && session.sourceParts().isPresent()
+                        ? session.sourceParts().get()
+                        : source.parts;
+                all.add(new SourceInfo(
+                        file.hash(),
+                        file.name(),
+                        source.address.getAddress().getHostAddress() + ":" + source.address.getPort(),
+                        hello.flatMap(Hello::nick),
+                        hello.map(PeerSoftware::describe).orElse(""),
+                        session == null ? SourceInfo.State.WAITING : state(session.state()),
+                        session == null ? 0 : session.queueRank(),
+                        source.received,
+                        parts == null ? 0 : parts.cardinality(),
+                        file.partCount()));
+            }
+        }
+        return all;
+    }
+
+    private static SourceInfo.State state(DownloadSession.State state) {
+        return switch (state) {
+            case CONNECTING -> SourceInfo.State.CONNECTING;
+            case GREETING, REQUESTING -> SourceInfo.State.ASKING;
+            case QUEUED -> SourceInfo.State.QUEUED;
+            case DOWNLOADING -> SourceInfo.State.DOWNLOADING;
+            case ENDED -> SourceInfo.State.WAITING;
+        };
+    }
+
     private DownloadInfo info(Entry entry) {
         PartFile file = entry.download.file();
         int transferring = 0;
@@ -982,6 +1022,10 @@ public final class DownloadManager implements AutoCloseable {
             Entry entry = DownloadManager.this.entries.get(session.download().hash());
             if (entry != null) {
                 entry.received += bytes;
+                Source source = entry.sources.get(session.address());
+                if (source != null) {
+                    source.received += bytes;
+                }
             }
             DownloadManager.this.rate.add(bytes, DownloadManager.this.ticker.read());
             if (session.trusted() && session.peerHash().isPresent()) {

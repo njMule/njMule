@@ -221,6 +221,13 @@ class DownloadFlowTest {
         DownloadInfo added = engine.addDownload(link).get(10, TimeUnit.SECONDS);
         assertThat(events.next(EngineEvent.DownloadAdded.class).download().name())
                 .isEqualTo("nowhere.bin");
+        assertThat(engine.sources().get(10, TimeUnit.SECONDS)).singleElement().satisfies(s -> {
+            assertThat(s.file()).isEqualTo(added.hash());
+            assertThat(s.fileName()).isEqualTo("nowhere.bin");
+            assertThat(s.address()).isEqualTo("127.0.0.1:" + closed);
+            assertThat(s.received()).isZero();
+            assertThat(s.partCount()).isEqualTo(1);
+        });
 
         assertThat(engine.pauseDownload(added.hash()).get()).isTrue();
         assertThat(engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.PAUSED);

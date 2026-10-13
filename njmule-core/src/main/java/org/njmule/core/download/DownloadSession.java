@@ -177,6 +177,11 @@ final class DownloadSession implements PeerLink.Role {
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
+    /** The source's hello, once it greeted us. */
+    Optional<Hello> peer() {
+        return this.peer;
+    }
+
     State state() {
         return this.state;
     }

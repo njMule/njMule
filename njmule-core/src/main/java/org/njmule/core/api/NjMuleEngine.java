@@ -108,6 +108,15 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The clients we upload to, then those waiting in our queue. */
     CompletableFuture<List<UploadInfo>> uploads();
 
+    /** The sources of our downloads. */
+    CompletableFuture<List<SourceInfo>> sources();
+
+    /** The addresses refused uploads for a while. */
+    CompletableFuture<List<BanInfo>> bans();
+
+    /** Lifts the ban on the IPv4 address {@code ip}; completes with {@code false} when it was not banned. */
+    CompletableFuture<Boolean> unban(String ip);
+
     /**
      * Connects to {@code server} (added to the list when new), or tries the known servers in turn when empty. The
      * future completes once the attempt has started; events tell the outcome.

@@ -41,6 +41,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
@@ -134,6 +135,16 @@ class UploadQueueTest {
         assertThat(status.uploaded()).isEqualTo(1000);
         assertThat(status.sharedFiles()).isEqualTo(1);
         assertThat(status.server()).isEmpty();
+
+        // The ban shows with its time left, and can be lifted.
+        List<BanInfo> bans = engine.bans().get(5, TimeUnit.SECONDS);
+        assertThat(bans)
+                .singleElement()
+                .satisfies(b -> assertThat(b.secondsLeft()).isPositive());
+        assertThat(engine.unban(bans.getFirst().address()).get(5, TimeUnit.SECONDS))
+                .isTrue();
+        assertThat(engine.bans().get(5, TimeUnit.SECONDS)).isEmpty();
+        assertThat(engine.unban("192.0.2.1").get(5, TimeUnit.SECONDS)).isFalse();
     }
 
     @Test

@@ -46,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -63,6 +64,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
@@ -503,6 +505,22 @@ final class Network {
 
     List<UploadInfo> uploads() {
         return this.uploads.uploads();
+    }
+
+    List<SourceInfo> sources() {
+        return this.downloads.sources();
+    }
+
+    List<BanInfo> bans() {
+        return this.uploads.bans();
+    }
+
+    boolean unban(InetAddress ip) {
+        boolean lifted = this.uploads.unban(ip);
+        if (lifted) {
+            this.userLog.log(LogLine.Level.INFO, "Ban lifted on " + ip.getHostAddress());
+        }
+        return lifted;
     }
 
     void sendMessage(InetSocketAddress to, String text) {
