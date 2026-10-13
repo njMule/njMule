@@ -26,6 +26,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -177,6 +178,36 @@ public final class SharedFiles implements AutoCloseable {
                     this.configDir.resolve(SHARED_DIRS), TextFiles.writeLines(lines));
         }
         this.scan();
+    }
+
+    /**
+     * Remembers the hashes of another client's known files, so the same files are not hashed again;
+     * returns how many were new. Only the AICH trees of those files are kept.
+     */
+    public int addKnown(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
+        Set<Hash20> wanted = new HashSet<>();
+        int added = 0;
+        for (KnownMet.KnownFile file : files) {
+            Optional<String> name = file.name();
+            if (name.isEmpty() || file.size().isEmpty() || !file.isConsistent()) {
+                continue;
+            }
+            Key key = new Key(name.get(), file.size().getAsLong(), file.mtime());
+            if (this.known.putIfAbsent(key, file) == null) {
+                added++;
+                file.aichHash().ifPresent(wanted::add);
+            }
+        }
+        for (Known2Met.Entry tree : trees) {
+            if (wanted.contains(tree.masterHash())) {
+                this.aich.putIfAbsent(tree.masterHash(), tree);
+            }
+        }
+        if (added > 0) {
+            this.saveSoon();
+            this.scan();
+        }
+        return added;
     }
 
     /** A finished download: its hashes are known, so it is shared without hashing it again. */
