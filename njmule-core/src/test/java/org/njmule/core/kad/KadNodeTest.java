@@ -132,6 +132,38 @@ class KadNodeTest {
     }
 
     @Test
+    void unusableResultsDoNotEndAKeywordSearch() throws Exception {
+        KadNode node = this.node();
+        UInt128 target = Keywords.id("ubuntu");
+        node.addContacts(new NodesDat.Contents(
+                2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+        this.answer(node, target);
+        this.time.addAndGet(4 * SECOND);
+        node.tick();
+        assertThat(this.sentToPeer).extracting(Packet::opcode).contains(Opcodes.Kad.SEARCH_KEY_REQ.code());
+
+        List<KadMessages.Entry> junk = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            junk.add(new KadMessages.Entry(UInt128.random(this.random), List.of()));
+        }
+        node.received(PEER, PORT, new KadMessages.SearchAnswer(target, target, junk).encode(), false, 0, 0);
+        node.tick();
+
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .as("the search still runs")
+                .isFalse();
+
+        // With no node left to ask, it ends after waiting a little for late answers.
+        this.time.addAndGet(16 * SECOND);
+        node.tick();
+        node.tick();
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+    }
+
+    @Test
     void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {
         KadNode node = this.node();
         node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));

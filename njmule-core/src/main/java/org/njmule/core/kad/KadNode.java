@@ -34,6 +34,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
+import java.util.function.ToIntFunction;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.NodesDat;
@@ -131,7 +132,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     private final SecureRandom random;
     private final Ticker ticker;
     private final Map<UInt128, Lookup> lookups = new LinkedHashMap<>();
-    private final Map<Lookup, Consumer<List<KadMessages.Entry>>> resultSinks = new HashMap<>();
+    // Where the results of a lookup go; each returns how many of them were usable.
+    private final Map<Lookup, ToIntFunction<List<KadMessages.Entry>>> resultSinks = new HashMap<>();
     private final Map<Lookup, Object> lookupData = new HashMap<>();
     private final Map<Integer, Long> firewallChecks = new HashMap<>();
     private final Set<Integer> firewallAcks = new HashSet<>();
@@ -312,7 +314,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return false;
         }
         this.lookupData.put(lookup, tree);
-        this.resultSinks.put(lookup, entries -> results.accept(fileResults(entries, keywords)));
+        this.resultSinks.put(lookup, entries -> {
+            List<FileResult> found = fileResults(entries, keywords);
+            results.accept(found);
+            return found.size();
+        });
         return true;
     }
 
@@ -339,7 +345,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return false;
         }
         this.lookupData.put(lookup, size);
-        this.resultSinks.put(lookup, entries -> sources.accept(sourceResults(entries)));
+        this.resultSinks.put(lookup, entries -> {
+            List<Source> found = sourceResults(entries);
+            sources.accept(found);
+            return found.size();
+        });
         return true;
     }
 
@@ -659,12 +669,12 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(packet);
         Lookup lookup = this.lookups.get(answer.target());
-        Consumer<List<KadMessages.Entry>> sink = lookup == null ? null : this.resultSinks.get(lookup);
+        ToIntFunction<List<KadMessages.Entry>> sink = lookup == null ? null : this.resultSinks.get(lookup);
         if (sink == null || lookup.isStopped()) {
             return;
         }
-        lookup.valueReceived(answer.results().size());
-        sink.accept(answer.results());
+        // Only usable results bring the lookup closer to its end: junk from one node must not stop it.
+        lookup.valueReceived(sink.applyAsInt(answer.results()));
     }
 
     private void keywordPublished(Peer peer, Packet packet) throws DecodeException {
