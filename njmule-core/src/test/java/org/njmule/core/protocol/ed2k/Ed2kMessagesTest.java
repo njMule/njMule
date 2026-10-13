@@ -347,9 +347,9 @@ class Ed2kMessagesTest {
 
     @Test
     void versionsCarryTheNjmuleCompatibleClientId() {
-        assertThat(ClientVersion.fromSemVer("0.0.1-alpha.1")).isEqualTo(0x4E00_0080);
-        assertThat(ClientVersion.fromSemVer("1.2.3")).isEqualTo(0x4E00_0000 | 1 << 17 | 2 << 10 | 3 << 7);
-        assertThat(ClientVersion.fromSemVer("garbage")).isEqualTo(0x4E00_0000);
+        assertThat(ClientVersion.fromSemVer("0.0.1-alpha.1")).isEqualTo(0x6E00_0080);
+        assertThat(ClientVersion.fromSemVer("1.2.3")).isEqualTo(0x6E00_0000 | 1 << 17 | 2 << 10 | 3 << 7);
+        assertThat(ClientVersion.fromSemVer("garbage")).isEqualTo(0x6E00_0000);
     }
 
     @Property

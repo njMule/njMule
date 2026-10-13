@@ -24,8 +24,8 @@ public final class ClientVersion {
     /** eDonkey protocol version announced by every current client. */
     public static final int EDONKEY = 0x3C;
 
-    /** Compatible-client id of njMule in the version tag; no other client uses it. */
-    public static final int NJMULE_COMPAT = 0x4E;
+    /** Compatible-client id of njMule in the version tag ('n'); the known clients use other ids. */
+    public static final int NJMULE_COMPAT = 0x6E;
 
     private ClientVersion() {}
 
