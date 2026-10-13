@@ -117,6 +117,21 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void takesLinksForTheRunningInstanceAsArguments() throws Exception {
+        String link = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/";
+
+        LaunchOptions cli = LaunchOptions.parse(link, "--log-level", "info");
+
+        assertThat(cli.action()).isEqualTo(Action.RUN);
+        assertThat(cli.links()).extracting(l -> l.name()).containsExactly("a.iso");
+        assertThat(cli.network().isOneShot())
+                .as("the links are not a download that ends the run")
+                .isFalse();
+        assertThatThrownBy(() -> LaunchOptions.parse("ed2k://|server|1.2.3.4|4661|/"))
+                .isInstanceOf(LaunchOptions.UsageException.class);
+    }
+
+    @Test
     void collectsAnEmuleImport() throws Exception {
         LaunchOptions cli =
                 LaunchOptions.parse("--import-emule", this.dir.toString(), "--dry-run", "--import-downloads");

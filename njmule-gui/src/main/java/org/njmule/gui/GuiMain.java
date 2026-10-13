@@ -16,10 +16,13 @@
  */
 package org.njmule.gui;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import javafx.application.Application;
 import org.njmule.app.LaunchOptions;
+import org.njmule.app.LinkHandoff;
 import org.njmule.app.Main;
+import org.njmule.core.api.Ed2kLink;
 
 /**
  * Desktop entry point. Informational options (--version, --license, ...), {@code --headless} runs and one-shot commands
@@ -41,6 +44,11 @@ public final class GuiMain {
                 || cli.headless()
                 || cli.network().isOneShot()) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
+        }
+        // A running njMule takes the links, or just shows its window, instead of failing on its lock.
+        List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
+        if (LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
+            System.exit(0);
         }
         if (MacMainThread.needed()) {
             MacMainThread.run(() -> Application.launch(NjMuleFxApp.class, args));

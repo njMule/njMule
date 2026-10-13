@@ -120,6 +120,40 @@ class MainTest {
     }
 
     @Test
+    void aSecondStartHandsItsLinksToTheRunningOne() throws Exception {
+        String config = this.dir.toString();
+        CompletableFuture<Void> stop = new CompletableFuture<>();
+        CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                new String[] {"--config-dir", config},
+                new PrintStream(this.out, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                stop));
+        Path handoff = this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME);
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (!Files.exists(handoff) && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+
+        ByteArrayOutputStream second = new ByteArrayOutputStream();
+        int code = Main.run(
+                new String[] {"--config-dir", config, "ed2k://|file|handed.iso|1000|" + "cd".repeat(16) + "|/"},
+                new PrintStream(second, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                CompletableFuture.completedFuture(null));
+
+        assertThat(code).isZero();
+        assertThat(second.toString(UTF_8)).contains("already running");
+        Path met = this.dir.resolve("temp").resolve("001.part.met");
+        while (!Files.exists(met) && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        stop.complete(null);
+        assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
+        assertThat(met).as("the running one added the download").exists();
+        assertThat(handoff).doesNotExist();
+    }
+
+    @Test
     void setsTheWebInterfacePasswordAndStartsTheInterface() throws Exception {
         String config = this.dir.toString();
         assertThat(this.runWith(List.of("short", "short"), "--config-dir", config, "--webui-password"))

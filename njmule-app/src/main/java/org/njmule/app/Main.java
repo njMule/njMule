@@ -30,6 +30,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.njmule.app.logging.LoggingSetup;
+import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.FileHashing;
@@ -205,8 +206,16 @@ public final class Main {
     }
 
     private static int runEngine(LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
-        out.println(NjMuleInfo.startupNotice("njmule --warranty", "njmule --license"));
         AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
+        // Links for the njMule already running go to it, instead of failing on its lock.
+        if (!cli.links().isEmpty()
+                && !cli.network().isOneShot()
+                && LinkHandoff.deliver(
+                        dirs.config(), cli.links().stream().map(Ed2kLink::toUri).toList())) {
+            out.println("The links went to the " + NjMuleInfo.NAME + " already running.");
+            return EXIT_OK;
+        }
+        out.println(NjMuleInfo.startupNotice("njmule --warranty", "njmule --license"));
         NjMuleEngine engine;
         try {
             dirs.createAll();
@@ -257,7 +266,12 @@ public final class Main {
         }
 
         Optional<WebUi> web = startWebUi(engine, dirs, out);
+        for (Ed2kLink.FileLink link : cli.links()) {
+            added(engine.addDownload(link), err);
+        }
+        Optional<LinkHandoff> handoff = listen(engine, dirs, err);
         Runnable shutdown = () -> {
+            handoff.ifPresent(LinkHandoff::close);
             web.ifPresent(WebUi::close);
             engine.close();
         };
@@ -278,6 +292,33 @@ public final class Main {
             LoggingSetup.disableFileLog();
         }
         return EXIT_OK;
+    }
+
+    // Later starts hand their links to this one.
+    private static Optional<LinkHandoff> listen(NjMuleEngine engine, AppDirectories dirs, PrintStream err) {
+        try {
+            return Optional.of(LinkHandoff.listen(dirs.config(), links -> {
+                for (String text : links) {
+                    if (Ed2kLink.tryParse(text).orElse(null) instanceof Ed2kLink.FileLink link) {
+                        added(engine.addDownload(link), err);
+                    }
+                }
+            }));
+        } catch (IOException e) {
+            logger.warn("Later starts cannot hand their links over: {}", e.toString());
+            return Optional.empty();
+        }
+    }
+
+    @SuppressWarnings("FutureReturnValueIgnored") // the follow-up reports its own outcome
+    private static void added(CompletableFuture<DownloadInfo> download, PrintStream err) {
+        download.whenComplete((info, failure) -> {
+            if (failure != null) {
+                err.println("Cannot add the download: " + failure.getMessage());
+            } else {
+                logger.info("Download added: {}", info.name());
+            }
+        });
     }
 
     // Only a native executable has a meaningful directory for the portable-mode marker; on the

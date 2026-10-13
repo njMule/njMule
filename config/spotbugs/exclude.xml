@@ -95,4 +95,15 @@
         </Or>
         <Package name="~org\.njmule\.gui(\..*)?"/>
     </Match>
+
+    <!-- Later starts hand their links to the running njMule over the loopback interface only, and
+         must prove they can read the secret in the user's configuration directory: nothing leaves
+         the computer, so TLS would protect nothing. -->
+    <Match>
+        <Or>
+            <Bug pattern="UNENCRYPTED_SOCKET"/>
+            <Bug pattern="UNENCRYPTED_SERVER_SOCKET"/>
+        </Or>
+        <Class name="org.njmule.app.LinkHandoff"/>
+    </Match>
 </FindBugsFilter>

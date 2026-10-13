@@ -30,6 +30,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Help;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Model.OptionSpec;
+import picocli.CommandLine.Model.PositionalParamSpec;
 import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.ParseResult;
 
@@ -44,10 +45,12 @@ public record LaunchOptions(
         List<Path> files,
         boolean headless,
         NetworkTasks network,
-        Optional<WebUiSetup> webUi) {
+        Optional<WebUiSetup> webUi,
+        List<Ed2kLink.FileLink> links) {
 
     public LaunchOptions {
         files = List.copyOf(files);
+        links = List.copyOf(links);
     }
 
     /**
@@ -203,7 +206,8 @@ public record LaunchOptions(
                 files,
                 result.hasMatchedOption(HEADLESS_OPTION),
                 network,
-                webUi(result));
+                webUi(result),
+                fileLinks(result.matchedPositionalValue(0, List.<String>of())));
     }
 
     /** The help text, without colours. */
@@ -308,6 +312,14 @@ public record LaunchOptions(
         spec.addOption(OptionSpec.builder("-h", "--help")
                 .usageHelp(true)
                 .description("print this help and exit")
+                .build());
+        spec.addPositional(PositionalParamSpec.builder()
+                .paramLabel("<ed2k link>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .arity("0..*")
+                .description("add these downloads, handing them to the njMule already running with the same"
+                        + " configuration, if any (as a browser does with a clicked link)")
                 .build());
         return new CommandLine(spec);
     }

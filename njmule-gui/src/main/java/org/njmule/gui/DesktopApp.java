@@ -17,6 +17,9 @@
 package org.njmule.gui;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import javafx.animation.Animation;
@@ -29,7 +32,9 @@ import javafx.scene.image.Image;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.njmule.app.LaunchOptions;
+import org.njmule.app.LinkHandoff;
 import org.njmule.app.logging.LoggingSetup;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -60,6 +65,10 @@ public final class DesktopApp implements AutoCloseable {
     private final AppDirectories directories;
     private final GuiSettings settings;
     private final Optional<WebUi> webUi;
+    // Links from the command line or a later start, until the window is there; FX thread.
+    private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
+    private LinkHandoff handoff;
+    private Stage stage;
     private EngineModel model;
     private Themes themes;
     private MainWindow window;
@@ -81,7 +90,47 @@ public final class DesktopApp implements AutoCloseable {
         LoggingSetup.enableFileLog(dirs.logs());
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
-        return new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
+        DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
+        app.pending.addAll(cli.links());
+        try {
+            app.handoff = LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
+        } catch (IOException e) {
+            logger.warn("Later starts cannot hand their links over: {}", e.toString());
+        }
+        return app;
+    }
+
+    /**
+     * The configuration directory a start with {@code cli} uses, where a running instance waits for links; any thread.
+     */
+    public static Path configDir(LaunchOptions cli) {
+        return AppDirectories.resolve(cli.configDir(), Optional.empty()).config();
+    }
+
+    // A later start handed over its links, or none when it only wants the window: FX thread.
+    private void handedOver(List<String> links) {
+        for (String text : links) {
+            if (Ed2kLink.tryParse(text).orElse(null) instanceof Ed2kLink.FileLink link) {
+                this.pending.add(link);
+            }
+        }
+        this.addPending();
+        if (this.stage != null) {
+            this.stage.setIconified(false);
+            this.stage.show();
+            this.stage.toFront();
+        }
+    }
+
+    private void addPending() {
+        if (this.model == null) {
+            return;
+        }
+        for (Ed2kLink.FileLink link : this.pending) {
+            this.model.addDownload(link);
+            this.window.message(this.gui.f("nj.transfers.added", link.name()));
+        }
+        this.pending.clear();
     }
 
     // The web interface runs beside the window when its settings ask for it.
@@ -104,6 +153,7 @@ public final class DesktopApp implements AutoCloseable {
 
     /** Shows the main window in {@code stage}; FX thread. */
     public void show(Stage stage) {
+        this.stage = stage;
         this.themes = new Themes(this.settings.theme(), this.settings.mode());
         this.model = new EngineModel(this.engine, Platform::runLater);
         this.scene = new Scene(this.build(), 1180, 760);
@@ -130,6 +180,7 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
         logger.info("Main window shown");
+        this.addPending();
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, Platform::exit);
         } else if (!this.settings.existed()) {
@@ -151,6 +202,9 @@ public final class DesktopApp implements AutoCloseable {
     public void close() {
         if (this.ticker != null) {
             this.ticker.stop();
+        }
+        if (this.handoff != null) {
+            this.handoff.close();
         }
         if (this.model != null) {
             this.model.close();

@@ -129,6 +129,9 @@ All notable changes to this project are documented here. The format follows
   PATH), deb and rpm packages with the desktop entry, AppStream metadata and icons, a macOS disk
   image, and portable archives; the release workflow builds them all and opens a draft release
   for a tag.
+- ed2k links given on the command line are added as downloads; a second start hands its links to
+  the njMule already running with the same configuration, as when a link is clicked in a browser,
+  and a second start without links brings the running window to the front.
 
 ### Changed
 
