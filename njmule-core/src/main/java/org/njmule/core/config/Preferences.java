@@ -65,7 +65,9 @@ public record Preferences(
         boolean manualServersHighPriority,
         boolean updateServersAtStart,
         int backupCopies,
-        int ipFilterLevel) {
+        int ipFilterLevel,
+        boolean rememberDownloadedFiles,
+        boolean rememberCancelledFiles) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -153,7 +155,9 @@ public record Preferences(
                 false,
                 false,
                 DEFAULT_BACKUP_COPIES,
-                DEFAULT_IP_FILTER_LEVEL);
+                DEFAULT_IP_FILTER_LEVEL,
+                true,
+                true);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -217,6 +221,8 @@ public record Preferences(
         private boolean updateServersAtStart;
         private int backupCopies;
         private int ipFilterLevel;
+        private boolean rememberDownloadedFiles;
+        private boolean rememberCancelledFiles;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -250,6 +256,8 @@ public record Preferences(
             this.updateServersAtStart = p.updateServersAtStart;
             this.backupCopies = p.backupCopies;
             this.ipFilterLevel = p.ipFilterLevel;
+            this.rememberDownloadedFiles = p.rememberDownloadedFiles;
+            this.rememberCancelledFiles = p.rememberCancelledFiles;
         }
 
         public Builder nick(String value) {
@@ -436,6 +444,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder rememberDownloadedFiles(boolean value) {
+            this.rememberDownloadedFiles = value;
+            return this;
+        }
+
+        public Builder rememberCancelledFiles(boolean value) {
+            this.rememberCancelledFiles = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -469,7 +487,9 @@ public record Preferences(
                     this.manualServersHighPriority,
                     this.updateServersAtStart,
                     this.backupCopies,
-                    this.ipFilterLevel);
+                    this.ipFilterLevel,
+                    this.rememberDownloadedFiles,
+                    this.rememberCancelledFiles);
         }
     }
 }

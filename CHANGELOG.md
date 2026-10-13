@@ -211,6 +211,8 @@ All notable changes to this project are documented here. The format follows
 - A part that fails its check is repaired with AICH recovery data from a source: only its bad
   blocks are downloaded again. The AICH hash comes from the link or, without one, from the
   agreement of the sources (at least ten networks and 92% of the announcements).
+- Search results show the files downloaded or cancelled before (known files and `cancelled.met`,
+  whose keys do not list the files); both lists can be turned off, and eMule's choices are imported.
 
 ### Changed
 

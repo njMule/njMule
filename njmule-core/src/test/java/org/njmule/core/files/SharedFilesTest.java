@@ -228,6 +228,39 @@ class SharedFilesTest {
         });
     }
 
+    @Test
+    void forgetsTheFilesNoLongerSharedWhenTheyAreNotToBeRemembered() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(20_000, 4);
+        byte[] b = bytes(30_000, 5);
+        Files.write(incoming.resolve("a.bin"), a);
+        Files.write(incoming.resolve("b.bin"), b);
+        Hash16 kept = Ed2k.md4(a, 0, a.length);
+        Hash16 gone = Ed2k.md4(b, 0, b.length);
+
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder("shared a.bin", "shared b.bin");
+        Files.delete(incoming.resolve("b.bin"));
+        this.onLoop(() -> {
+            shares.scan();
+            return null;
+        });
+        assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("unshared b.bin");
+        assertThat(this.onLoop(shares::knownHashes)).as("downloaded before").containsExactlyInAnyOrder(kept, gone);
+
+        this.onLoop(() -> {
+            shares.rememberDownloaded(false);
+            shares.close();
+            return null;
+        });
+
+        assertThat(KnownMet.read(Files.readAllBytes(config.resolve(SharedFiles.KNOWN_MET))))
+                .singleElement()
+                .satisfies(record -> assertThat(record.fileHash()).isEqualTo(kept));
+    }
+
     private SharedFiles open(Path config, Path incoming) throws Exception {
         return this.onLoop(() -> SharedFiles.open(
                 this.loop,

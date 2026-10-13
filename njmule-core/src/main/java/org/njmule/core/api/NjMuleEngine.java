@@ -108,6 +108,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The clients we upload to, then those waiting in our queue. */
     CompletableFuture<List<UploadInfo>> uploads();
 
+    /** The files downloaded or cancelled before, as remembered now. */
+    CompletableFuture<FileHistory> fileHistory();
+
     /** The search results marked as spam. */
     CompletableFuture<SpamMarks> spamMarks();
 

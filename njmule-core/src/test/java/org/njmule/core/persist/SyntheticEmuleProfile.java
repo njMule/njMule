@@ -108,6 +108,7 @@ public final class SyntheticEmuleProfile {
                         "MaxSourcesPerFile=400",
                         "Reconnect=1",
                         "Autoconnect=0",
+                        "RememberCancelledFiles=0",
                         "NetworkED2K=1",
                         "NetworkKademlia=0",
                         "SecureIdent=1",

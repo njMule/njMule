@@ -57,6 +57,8 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.FileHistory;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -103,11 +105,13 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** What we do with a result's file already: download it, or share it. */
+    /** What we did or do with a result's file: download it, share it, downloaded or cancelled it before. */
     enum Known {
         NONE,
         DOWNLOADING,
         SHARED,
+        DOWNLOADED,
+        CANCELLED,
         SPAM
     }
 
@@ -194,6 +198,7 @@ public final class SearchScreen implements Screen {
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded, shared or marked since shows so in every list.
         this.gui.model().spamMarksProperty().addListener((o, was, now) -> this.refreshAll());
+        this.gui.model().historyProperty().addListener((o, was, now) -> this.refreshAll());
         this.gui.model().downloads().rows().addListener((ListChangeListener<LiveList.Row<DownloadInfo>>)
                 this::knownChanged);
         this.gui.model().sharedFiles().rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
@@ -457,14 +462,20 @@ public final class SearchScreen implements Screen {
         };
     }
 
+    // What we did with a file tells more than a spam mark.
     private Known known(SearchResult result) {
-        if (this.gui.model().spamMarksProperty().get().isSpam(result)) {
-            return Known.SPAM;
-        }
-        if (this.gui.model().isDownloading(result.hash())) {
+        Hash16 hash = result.hash();
+        FileHistory history = this.gui.model().historyProperty().get();
+        if (this.gui.model().isDownloading(hash)) {
             return Known.DOWNLOADING;
+        } else if (this.gui.model().isShared(hash)) {
+            return Known.SHARED;
+        } else if (history.downloaded(hash)) {
+            return Known.DOWNLOADED;
+        } else if (history.cancelled(hash)) {
+            return Known.CANCELLED;
         }
-        return this.gui.model().isShared(result.hash()) ? Known.SHARED : Known.NONE;
+        return this.gui.model().spamMarksProperty().get().isSpam(result) ? Known.SPAM : Known.NONE;
     }
 
     // Only files coming or going matter, not their progress.
@@ -595,12 +606,14 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** "Downloading" or "Shared" on a tint of its own, with the text, so colour is not the only cue. */
+    /** What we did with the file, on a tint of its own, with the text, so colour is not the only cue. */
     private final class KnownCell extends TableCell<LiveList.Row<SearchResult>, Known> {
         @Override
         protected void updateItem(Known item, boolean empty) {
             super.updateItem(item, empty);
-            this.getStyleClass().removeAll("known-downloading", "known-shared", "known-spam");
+            this.getStyleClass()
+                    .removeAll(
+                            "known-downloading", "known-shared", "known-downloaded", "known-cancelled", "known-spam");
             if (empty || item == null || item == Known.NONE) {
                 this.setText(null);
                 return;
@@ -609,6 +622,8 @@ public final class SearchScreen implements Screen {
                     switch (item) {
                         case DOWNLOADING -> "IDS_DOWNLOADING";
                         case SHARED -> "IDS_SHARED";
+                        case DOWNLOADED -> "IDS_DOWNLOADED";
+                        case CANCELLED -> "IDS_CANCELLED";
                         case SPAM, NONE -> "IDS_SPAM";
                     }));
             this.getStyleClass()
@@ -616,6 +631,8 @@ public final class SearchScreen implements Screen {
                             switch (item) {
                                 case DOWNLOADING -> "known-downloading";
                                 case SHARED -> "known-shared";
+                                case DOWNLOADED -> "known-downloaded";
+                                case CANCELLED -> "known-cancelled";
                                 case SPAM, NONE -> "known-spam";
                             });
         }

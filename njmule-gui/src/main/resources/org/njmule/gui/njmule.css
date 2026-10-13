@@ -420,6 +420,16 @@
     -fx-text-fill: -color-fg-default;
 }
 
+.table-cell.known-downloaded {
+    -fx-background-color: -color-accent-subtle;
+    -fx-text-fill: -color-fg-default;
+}
+
+.table-cell.known-cancelled {
+    -fx-background-color: -color-neutral-muted;
+    -fx-text-fill: -color-fg-default;
+}
+
 .table-cell.known-spam {
     -fx-background-color: -color-warning-subtle;
     -fx-text-fill: -color-fg-default;

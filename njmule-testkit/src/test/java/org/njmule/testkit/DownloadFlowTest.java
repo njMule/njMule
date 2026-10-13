@@ -250,6 +250,9 @@ class DownloadFlowTest {
         assertThat(engine.cancelDownload(added.hash()).get()).isTrue();
         assertThat(events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(added.hash());
         assertThat(engine.downloads().get()).isEmpty();
+        assertThat(engine.fileHistory().get().cancelled(added.hash()))
+                .as("remembered as cancelled")
+                .isTrue();
         assertThat(engine.pauseDownload(added.hash()).get()).isFalse();
         try (Stream<Path> left = Files.list(engine.directories().temp())) {
             assertThat(left).isEmpty();

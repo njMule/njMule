@@ -53,6 +53,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
@@ -71,6 +72,7 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.download.DownloadManager;
+import org.njmule.core.files.CancelledFiles;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.SharedFiles;
 import org.njmule.core.kad.KadIdentity;
@@ -173,6 +175,7 @@ final class Network {
     private final Path staticServers;
     private final Path spamFile;
     private final SpamFilter spam;
+    private final CancelledFiles cancelled;
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
@@ -263,6 +266,10 @@ final class Network {
         this.spamFile = configDir.resolve(SpamFilter.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.spamFile);
         this.spam = loadSpam(this.spamFile);
+        this.cancelled = loadCancelled(configDir.resolve(CancelledFiles.FILE_NAME), random);
+        if (!preferences.get().rememberCancelledFiles()) {
+            this.forgetCancelled();
+        }
         this.ipFilter =
                 loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get().ipFilterLevel());
         this.servers.filter(ip -> this.ipFilter.blocks(ip));
@@ -385,6 +392,7 @@ final class Network {
         }
         this.shares = SharedFiles.open(
                 this.loop, this.configDir, this::incomingDirs, () -> List.of(this.tempDir()), new ShareEvents());
+        this.shares.rememberDownloaded(this.preferences.get().rememberDownloadedFiles());
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
@@ -668,7 +676,29 @@ final class Network {
     }
 
     boolean cancelDownload(Hash16 hash) {
-        return this.downloads.cancel(hash);
+        boolean cancelled = this.downloads.cancel(hash);
+        if (cancelled && this.preferences.get().rememberCancelledFiles()) {
+            try {
+                this.cancelled.add(hash);
+            } catch (IOException e) {
+                logger.warn("Cannot save {}", CancelledFiles.FILE_NAME, e);
+            }
+        }
+        return cancelled;
+    }
+
+    FileHistory history() {
+        return FileHistory.of(
+                this.shares == null ? Set.of() : this.shares.knownHashes(),
+                this.preferences.get().rememberCancelledFiles() ? this.cancelled.snapshot() : h -> false);
+    }
+
+    private void forgetCancelled() {
+        try {
+            this.cancelled.clear();
+        } catch (IOException e) {
+            logger.warn("Cannot save {}", CancelledFiles.FILE_NAME, e);
+        }
     }
 
     /** Downloads and uploads in detail, for diagnostics. */
@@ -968,6 +998,12 @@ final class Network {
             this.userLog.log(
                     LogLine.Level.INFO,
                     this.ipFilter.rangeCount() + " IP filter ranges at level " + now.ipFilterLevel());
+        }
+        if (was.rememberCancelledFiles() && !now.rememberCancelledFiles()) {
+            this.forgetCancelled();
+        }
+        if (this.shares != null) {
+            this.shares.rememberDownloaded(now.rememberDownloadedFiles());
         }
     }
 
@@ -1395,6 +1431,15 @@ final class Network {
             this.servers.save(this.serverMet);
         } catch (IOException e) {
             logger.warn("Cannot save {}", this.serverMet, e);
+        }
+    }
+
+    private static CancelledFiles loadCancelled(Path file, SecureRandom random) {
+        try {
+            return CancelledFiles.load(file, random);
+        } catch (IOException e) {
+            logger.warn("Cannot read {}, no cancelled files remembered", file, e);
+            return CancelledFiles.empty(file, random);
         }
     }
 

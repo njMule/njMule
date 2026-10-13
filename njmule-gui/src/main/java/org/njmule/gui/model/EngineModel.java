@@ -52,6 +52,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
@@ -131,6 +132,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final Executor fx;
     private final ObjectProperty<EngineStatus> status = new SimpleObjectProperty<>(NO_STATUS);
     private final ObjectProperty<SpamMarks> spamMarks = new SimpleObjectProperty<>(SpamMarks.NONE);
+    private final ObjectProperty<FileHistory> history = new SimpleObjectProperty<>(FileHistory.NONE);
     private final ObjectProperty<Connection> connection = new SimpleObjectProperty<>(Connection.DISCONNECTED);
     private final StringProperty serverName = new SimpleStringProperty("");
     private final StringProperty lastLog = new SimpleStringProperty("");
@@ -324,6 +326,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public LiveList<Hash16, DownloadInfo> downloads() {
         return this.downloads;
+    }
+
+    /** The files downloaded or cancelled before, as last read. */
+    public ReadOnlyObjectProperty<FileHistory> historyProperty() {
+        return this.history;
     }
 
     /** The spam markers, as last read; {@link #markSpam} changes them. */
@@ -632,8 +639,14 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 this.completed.accept(e.download());
             }
             case EngineEvent.DownloadFailed e -> this.downloads.put(e.download());
-            case EngineEvent.DownloadRemoved e -> this.downloads.remove(e.hash());
-            case EngineEvent.PreferencesChanged e -> this.preferences.set(e.preferences());
+            case EngineEvent.DownloadRemoved e -> {
+                this.downloads.remove(e.hash());
+                this.refreshHistory();
+            }
+            case EngineEvent.PreferencesChanged e -> {
+                this.preferences.set(e.preferences());
+                this.refreshHistory();
+            }
             case EngineEvent.MessageReceived e -> this.chats.received(e.address(), e.userHash(), e.nick(), e.text());
             case EngineEvent.CaptchaRequested e -> this.chats.captcha(e.address(), e.userHash(), e.image());
             case EngineEvent.CaptchaAnswered e ->
@@ -681,8 +694,14 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.servers(), this.servers::update);
     }
 
+    // Shared files are known files: the history may have grown too.
     private void refreshShared() {
         this.later(this.engine.sharedFiles(), this.shared::update);
+        this.refreshHistory();
+    }
+
+    private void refreshHistory() {
+        this.later(this.engine.fileHistory(), this.history::set);
     }
 
     private void refreshDownloads() {

@@ -59,6 +59,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
@@ -476,6 +477,11 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<List<UploadInfo>> uploads() {
         return this.loop.submit(this.network::uploads);
+    }
+
+    @Override
+    public CompletableFuture<FileHistory> fileHistory() {
+        return this.loop.submit(this.network::history);
     }
 
     @Override

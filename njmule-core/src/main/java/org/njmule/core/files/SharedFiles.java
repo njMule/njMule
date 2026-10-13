@@ -138,6 +138,7 @@ public final class SharedFiles implements AutoCloseable {
     private ScheduledFuture<?> rescan;
     private ScheduledFuture<?> pendingSave;
     private ScheduledFuture<?> pendingScan;
+    private boolean rememberDownloaded = true;
     private final Map<Path, WatchKey> watched = new HashMap<>();
     private WatchService watcher;
     private boolean closed;
@@ -180,6 +181,23 @@ public final class SharedFiles implements AutoCloseable {
 
     public Optional<SharedFile> get(Hash16 hash) {
         return Optional.ofNullable(this.byHash.get(hash));
+    }
+
+    /** The hashes of the known files, shared now or downloaded before. */
+    public Set<Hash16> knownHashes() {
+        Set<Hash16> hashes = new HashSet<>();
+        for (KnownMet.KnownFile file : this.known.values()) {
+            hashes.add(file.fileHash());
+        }
+        return hashes;
+    }
+
+    /** Whether known.met keeps the files no longer shared, which tells the files downloaded before. */
+    public void rememberDownloaded(boolean remember) {
+        if (this.rememberDownloaded != remember) {
+            this.rememberDownloaded = remember;
+            this.saveSoon();
+        }
     }
 
     /** The AICH tree of the file shared with {@code hash}, when its block hashes are kept. */
@@ -712,7 +730,13 @@ public final class SharedFiles implements AutoCloseable {
 
     private void save() {
         try {
-            AtomicFiles.writeBytes(this.configDir.resolve(KNOWN_MET), KnownMet.write(List.copyOf(this.known.values())));
+            List<KnownMet.KnownFile> kept = new ArrayList<>();
+            for (KnownMet.KnownFile file : this.known.values()) {
+                if (this.rememberDownloaded || this.byHash.containsKey(file.fileHash())) {
+                    kept.add(file);
+                }
+            }
+            AtomicFiles.writeBytes(this.configDir.resolve(KNOWN_MET), KnownMet.write(kept));
             AtomicFiles.writeBytes(
                     this.configDir.resolve(KNOWN2_MET), Known2Met.write(List.copyOf(this.aich.values())));
         } catch (IOException e) {
