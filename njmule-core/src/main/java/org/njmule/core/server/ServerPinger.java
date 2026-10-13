@@ -58,7 +58,7 @@ public final class ServerPinger {
     // Servers that announce obfuscation without ports use these defaults.
     private static final int OBFUSCATED_UDP_OFFSET = 12;
 
-    private record Pending(long challenge, long sentAt) {}
+    private record Pending(long challenge, long sentAt, long sentMillis) {}
 
     private final EngineLoop loop;
     private final ServerList servers;
@@ -124,7 +124,9 @@ public final class ServerPinger {
                     && isUdpPortOf(server, from.getPort())
                     && sent.challenge() == status.challenge()) {
                 this.pending.remove(address);
-                this.servers.update(address, s -> apply(s, status, this.publicIp.getAsInt()));
+                long ping = Math.max(0, this.clock.millis() - sent.sentMillis());
+                this.servers.update(
+                        address, s -> apply(s, status, this.publicIp.getAsInt()).with(intTag(ServerTag.PING, ping)));
                 this.servers.get(address).ifPresent(this.updated);
                 return;
             }
@@ -154,7 +156,7 @@ public final class ServerPinger {
                     new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
             try {
                 socket.get().send(target, ServerDatagrams.statusRequest(challenge));
-                this.pending.put(address, new Pending(challenge, now));
+                this.pending.put(address, new Pending(challenge, now, this.clock.millis()));
                 // Recorded on sending, so a silent server is not asked again at every start.
                 this.servers.update(address, s -> s.with(intTag(ServerTag.LASTPING, now)));
             } catch (IOException e) {

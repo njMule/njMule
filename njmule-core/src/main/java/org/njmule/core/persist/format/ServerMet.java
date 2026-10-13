@@ -109,6 +109,42 @@ public final class ServerMet {
             return Tags.intValue(this.tags, ServerTag.UDPPORTOBFUSCATION);
         }
 
+        /** How long the server took to answer a status request, in milliseconds. */
+        public OptionalLong ping() {
+            return Tags.intValue(this.tags, ServerTag.PING);
+        }
+
+        /** The number of files a client should offer at most. */
+        public OptionalLong softFiles() {
+            return Tags.intValue(this.tags, ServerTag.SOFTFILES);
+        }
+
+        /** The number of files beyond which the server drops a client. */
+        public OptionalLong hardFiles() {
+            return Tags.intValue(this.tags, ServerTag.HARDFILES);
+        }
+
+        public OptionalLong lowIdUsers() {
+            return Tags.intValue(this.tags, ServerTag.LOWIDUSERS);
+        }
+
+        /** The server software's version, kept as text or as {@code major << 16 | minor}. */
+        public Optional<String> version() {
+            Optional<String> text = Tags.stringValue(this.tags, ServerTag.VERSION);
+            if (text.isPresent()) {
+                return text;
+            }
+            OptionalLong number = Tags.intValue(this.tags, ServerTag.VERSION);
+            return number.isPresent()
+                    ? Optional.of(version(number.getAsLong() >>> 16, number.getAsLong() & 0xFFFF))
+                    : Optional.empty();
+        }
+
+        /** {@code major.minor} with two minor digits, as servers number their releases ("17.05"). */
+        public static String version(long major, long minor) {
+            return major + "." + (minor < 10 ? "0" : "") + minor;
+        }
+
         /** When the server was last asked for its status, in epoch seconds. */
         public OptionalLong lastPing() {
             return Tags.intValue(this.tags, ServerTag.LASTPING);

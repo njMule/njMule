@@ -23,15 +23,22 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.IntPredicate;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.persist.format.TextFiles;
+import org.njmule.core.protocol.ed2k.ServerDatagrams;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 /**
@@ -43,6 +50,7 @@ import org.njmule.core.util.Ipv4;
 public final class ServerList {
 
     public static final String FILE_NAME = "server.met";
+    public static final String STATIC_FILE_NAME = "staticservers.dat";
 
     // Values of the preference tag.
     static final int PRIORITY_NORMAL = 0;
@@ -58,6 +66,7 @@ public final class ServerList {
     }
 
     private final Map<Address, ServerMet.Server> servers = new LinkedHashMap<>();
+    private final Set<Address> statics = new LinkedHashSet<>();
     private IntPredicate blocked = ip -> false;
 
     /** Reads {@code file} (or its backup); a missing file gives an empty list. */
@@ -108,7 +117,92 @@ public final class ServerList {
     }
 
     public boolean remove(Address address) {
+        this.statics.remove(address);
         return this.servers.remove(address) != null;
+    }
+
+    /**
+     * Reads the static servers of {@code file} ({@code host:port,priority,name}): missing ones are added, and each
+     * takes the priority written there.
+     */
+    public void loadStatics(Path file) throws IOException {
+        if (!Files.exists(file) && !Files.exists(AtomicFiles.bakPath(file.toAbsolutePath()))) {
+            return;
+        }
+        for (TextFiles.StaticServer entry : AtomicFiles.read(file, in -> TextFiles.staticServers(in.readAllBytes()))) {
+            ServerMet.Server server = serverOf(entry);
+            Address address = addressOf(server);
+            this.add(server);
+            if (this.servers.containsKey(address)) {
+                this.servers.computeIfPresent(address, (key, s) -> {
+                    ServerMet.Server kept = s.with(preferenceTag(entry.priority()));
+                    return kept.name().isPresent() || entry.name().isBlank()
+                            ? kept
+                            : kept.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), entry.name()));
+                });
+                this.statics.add(address);
+            }
+        }
+    }
+
+    public void saveStatics(Path file) throws IOException {
+        List<TextFiles.StaticServer> entries = new ArrayList<>();
+        for (Address address : this.statics) {
+            ServerMet.Server server = this.servers.get(address);
+            if (server != null) {
+                String host = server.dynamicIp().orElse(Ipv4.format(server.ip()));
+                int priority = (int) server.preference().orElse(PRIORITY_NORMAL);
+                entries.add(new TextFiles.StaticServer(
+                        host, server.port(), priority, server.name().orElse(host)));
+            }
+        }
+        AtomicFiles.writeBytes(file, TextFiles.writeStaticServers(entries));
+    }
+
+    public boolean isStatic(Address address) {
+        return this.statics.contains(address);
+    }
+
+    /** Puts a known server in the static list or takes it out; false when unknown or already so. */
+    public boolean setStatic(Address address, boolean isStatic) {
+        if (!this.servers.containsKey(address)) {
+            return false;
+        }
+        return isStatic ? this.statics.add(address) : this.statics.remove(address);
+    }
+
+    /** Sets the priority a known server is tried with; false when unknown. */
+    public boolean setPriority(Address address, ServerInfo.Priority priority) {
+        int value = switch (priority) {
+            case HIGH -> PRIORITY_HIGH;
+            case NORMAL -> PRIORITY_NORMAL;
+            case LOW -> PRIORITY_LOW;
+        };
+        return this.servers.computeIfPresent(address, (key, s) -> s.with(preferenceTag(value))) != null;
+    }
+
+    /** Whether the server announced TCP obfuscation and the port it takes it on. */
+    public static boolean supportsObfuscation(ServerMet.Server server) {
+        long flags = server.udpFlags().orElse(0);
+        return server.obfuscatedTcpPort().orElse(0) > 0
+                && (flags & (ServerDatagrams.UDP_OBFUSCATION | ServerDatagrams.UDP_TCP_OBFUSCATION)) != 0;
+    }
+
+    private static ServerMet.Server serverOf(TextFiles.StaticServer entry) {
+        List<Tag> tags = new ArrayList<>();
+        tags.add(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), entry.name()));
+        int ip = 0;
+        try {
+            ip = Ipv4.parse(entry.host());
+        } catch (IllegalArgumentException e) {
+            // A host name: resolved when connecting.
+            tags.add(new Tag.StringTag(TagName.id(ServerTag.DYNIP), entry.host()));
+        }
+        return new ServerMet.Server(ip, entry.port(), tags);
+    }
+
+    private static Tag preferenceTag(int value) {
+        return new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), value);
     }
 
     public List<ServerMet.Server> all() {

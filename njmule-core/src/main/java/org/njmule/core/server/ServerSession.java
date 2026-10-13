@@ -27,6 +27,8 @@ import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
@@ -34,7 +36,6 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.persist.format.ServerMet;
-import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.ServerMessages.IdChange;
 import org.njmule.core.protocol.io.DecodeException;
@@ -81,6 +82,8 @@ public final class ServerSession {
     public static final Duration LOGIN_TIMEOUT = Duration.ofSeconds(25);
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
+    private static final String VERSION_LINE = "server version";
+    private static final Pattern VERSION_NUMBER = Pattern.compile("(\\d{1,5})\\.(\\d{1,5})");
 
     private enum State {
         IDLE,
@@ -258,6 +261,7 @@ public final class ServerSession {
                 case IDCHANGE -> this.idChanged(target, IdChange.decode(packet));
                 case SERVERMESSAGE -> {
                     for (String line : ServerMessages.decodeMessage(packet)) {
+                        version(line).ifPresent(v -> this.update(target, stringTag(ServerTag.VERSION, v)));
                         this.listener.message(target, line);
                     }
                 }
@@ -310,6 +314,19 @@ public final class ServerSession {
             this.servers.update(ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
             this.listener.connected(target, change);
         }
+    }
+
+    // Servers name their software in a message line: "server version 17.15 (lugdunum)".
+    static Optional<String> version(String line) {
+        if (!line.regionMatches(true, 0, VERSION_LINE, 0, VERSION_LINE.length())) {
+            return Optional.empty();
+        }
+        String version = line.substring(VERSION_LINE.length()).strip();
+        Matcher number = VERSION_NUMBER.matcher(version);
+        if (number.matches()) {
+            version = ServerMet.Server.version(Long.parseLong(number.group(1)), Long.parseLong(number.group(2)));
+        }
+        return version.isEmpty() ? Optional.empty() : Optional.of(version.substring(0, Math.min(64, version.length())));
     }
 
     private void update(ServerMet.Server target, Tag... tags) {
@@ -391,9 +408,7 @@ public final class ServerSession {
      */
     private Optional<Boolean> obfuscationFor(ServerMet.Server target) {
         ObfuscationMode mode = this.preferences.get().obfuscation();
-        long flags = target.udpFlags().orElse(0);
-        boolean serverCan = target.obfuscatedTcpPort().orElse(0) > 0
-                && (flags & (ServerDatagrams.UDP_OBFUSCATION | ServerDatagrams.UDP_TCP_OBFUSCATION)) != 0;
+        boolean serverCan = ServerList.supportsObfuscation(target);
         if (mode == ObfuscationMode.REQUIRED) {
             return serverCan ? Optional.of(true) : Optional.empty();
         }

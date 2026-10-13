@@ -30,6 +30,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
@@ -358,6 +361,39 @@ public final class Engine implements NjMuleEngine {
         return resolve(server.host())
                 .thenCompose(ip ->
                         this.loop.submit(() -> this.network.removeServer(new ServerList.Address(ip, server.port()))));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> addServer(ServerAddress server) {
+        return this.onServer(server, this.network::addServer);
+    }
+
+    @Override
+    public CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers) {
+        List<CompletableFuture<ServerList.Address>> addresses = new ArrayList<>();
+        for (ServerAddress server : servers) {
+            addresses.add(resolve(server.host()).thenApply(ip -> new ServerList.Address(ip, server.port())));
+        }
+        return CompletableFuture.allOf(addresses.toArray(CompletableFuture<?>[]::new))
+                .thenCompose(done -> this.loop.submit(() -> this.network.removeServers(
+                        addresses.stream().map(CompletableFuture::join).toList())));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setServerPriority(ServerAddress server, ServerInfo.Priority priority) {
+        Objects.requireNonNull(priority, "priority");
+        return this.onServer(server, address -> this.network.setServerPriority(address, priority));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setStaticServer(ServerAddress server, boolean isStatic) {
+        return this.onServer(server, address -> this.network.setStaticServer(address, isStatic));
+    }
+
+    private CompletableFuture<Boolean> onServer(ServerAddress server, Predicate<ServerList.Address> action) {
+        Objects.requireNonNull(server, "server");
+        return resolve(server.host())
+                .thenCompose(ip -> this.loop.submit(() -> action.test(new ServerList.Address(ip, server.port()))));
     }
 
     @Override

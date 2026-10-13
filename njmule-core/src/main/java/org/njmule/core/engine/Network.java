@@ -163,6 +163,7 @@ final class Network {
     private final UserLog userLog;
     private final Hash16 userHash;
     private final Path serverMet;
+    private final Path staticServers;
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
@@ -245,6 +246,10 @@ final class Network {
         this.serverMet = configDir.resolve(ServerList.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
         this.servers = ServerList.load(this.serverMet);
+        // eMule's list of servers to keep, taken over by the import.
+        this.staticServers = configDir.resolve(ServerList.STATIC_FILE_NAME);
+        AtomicFiles.cleanupInterruptedWrite(this.staticServers);
+        this.servers.loadStatics(this.staticServers);
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
         this.servers.filter(ip -> this.ipFilter.blocks(ip));
         this.session = new ServerSession(
@@ -380,23 +385,76 @@ final class Network {
     List<ServerInfo> servers() {
         List<ServerInfo> all = new ArrayList<>();
         for (ServerMet.Server server : this.servers.all()) {
-            all.add(info(server));
+            all.add(this.info(server));
         }
         return all;
     }
 
     boolean removeServer(ServerList.Address address) {
-        boolean removed = this.servers.remove(address);
-        if (removed) {
+        return this.removeServers(List.of(address)) == 1;
+    }
+
+    /** Removes the known ones of {@code addresses}, from the static list too; returns how many. */
+    int removeServers(List<ServerList.Address> addresses) {
+        int removed = 0;
+        boolean statics = false;
+        for (ServerList.Address address : addresses) {
+            statics |= this.servers.isStatic(address);
+            if (this.servers.remove(address)) {
+                removed++;
+            }
+        }
+        if (removed > 0) {
             this.saveServers();
         }
+        if (statics) {
+            this.saveStatics();
+        }
         return removed;
+    }
+
+    /** Adds a server without connecting to it; false when known or not usable. */
+    boolean addServer(ServerList.Address address) {
+        boolean added = this.servers.add(new ServerMet.Server(address.ip(), address.port(), List.of()));
+        if (added) {
+            this.saveServers();
+        }
+        return added;
+    }
+
+    /** False for an unknown server. */
+    boolean setServerPriority(ServerList.Address address, ServerInfo.Priority priority) {
+        if (!this.servers.setPriority(address, priority)) {
+            return false;
+        }
+        this.saveServers();
+        if (this.servers.isStatic(address)) {
+            this.saveStatics();
+        }
+        this.servers.get(address).ifPresent(this::serverChanged);
+        return true;
+    }
+
+    /** Puts a server in the static list or takes it out; false for an unknown server. */
+    boolean setStaticServer(ServerList.Address address, boolean isStatic) {
+        if (this.servers.get(address).isEmpty()) {
+            return false;
+        }
+        if (this.servers.setStatic(address, isStatic)) {
+            this.saveStatics();
+            this.servers.get(address).ifPresent(this::serverChanged);
+        }
+        return true;
+    }
+
+    private void serverChanged(ServerMet.Server server) {
+        this.publish.accept(new EngineEvent.ServerUpdated(this.info(server)));
     }
 
     EngineStatus status() {
         Optional<ServerMessages.IdChange> id = this.session.id();
         return new EngineStatus(
-                id.isPresent() ? this.session.server().map(Network::info) : Optional.empty(),
+                id.isPresent() ? this.session.server().map(this::info) : Optional.empty(),
                 id.map(ServerMessages.IdChange::clientId).orElse(0L),
                 id.map(ServerMessages.IdChange::isLowId).orElse(false),
                 this.session.isObfuscated(),
@@ -1198,7 +1256,7 @@ final class Network {
     }
 
     private void serverUpdated(ServerMet.Server server) {
-        this.publish.accept(new EngineEvent.ServerUpdated(info(server)));
+        this.publish.accept(new EngineEvent.ServerUpdated(this.info(server)));
         if (this.pendingSave == null || this.pendingSave.isDone()) {
             this.pendingSave = this.loop.schedule("save server.met", SAVE_DELAY, this::saveServers);
         }
@@ -1209,6 +1267,14 @@ final class Network {
             this.servers.save(this.serverMet);
         } catch (IOException e) {
             logger.warn("Cannot save {}", this.serverMet, e);
+        }
+    }
+
+    private void saveStatics() {
+        try {
+            this.servers.saveStatics(this.staticServers);
+        } catch (IOException e) {
+            logger.warn("Cannot save {}", this.staticServers, e);
         }
     }
 
@@ -1237,8 +1303,9 @@ final class Network {
         };
     }
 
-    static ServerInfo info(ServerMet.Server server) {
-        String address = ServerList.addressOf(server).toString();
+    ServerInfo info(ServerMet.Server server) {
+        ServerList.Address at = ServerList.addressOf(server);
+        String address = at.toString();
         return new ServerInfo(
                 address,
                 server.name().orElse(address),
@@ -1247,14 +1314,21 @@ final class Network {
                 server.files().orElse(0),
                 server.maxUsers().orElse(0),
                 (int) server.failedCount().orElse(0),
-                ServerList.priority(server));
+                ServerList.priority(server),
+                (int) Math.min(Integer.MAX_VALUE, server.ping().orElse(0)),
+                server.softFiles().orElse(0),
+                server.hardFiles().orElse(0),
+                server.lowIdUsers().orElse(0),
+                server.version().orElse(""),
+                ServerList.supportsObfuscation(server),
+                this.servers.isStatic(at));
     }
 
     private final class SessionEvents implements ServerSession.Listener {
         @Override
         public void connecting(ServerMet.Server server) {
             Network.this.serverIp = server.ip();
-            ServerInfo info = info(server);
+            ServerInfo info = Network.this.info(server);
             Network.this.userLog.log(LogLine.Level.INFO, "Connecting to " + describe(info));
             Network.this.publish.accept(new EngineEvent.ServerConnecting(info));
         }
@@ -1262,7 +1336,7 @@ final class Network {
         @Override
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
             Network.this.context = new ServerContext(id.clientId(), server.ip(), server.port());
-            ServerInfo info = info(server);
+            ServerInfo info = Network.this.info(server);
             boolean obfuscated = Network.this.session.isObfuscated();
             Network.this.userLog.log(
                     LogLine.Level.SUCCESS,
@@ -1286,7 +1360,7 @@ final class Network {
             Network.this.publisher.disconnected();
             Network.this.searches.serverLost();
             Network.this.pinger.stop();
-            Optional<ServerInfo> info = server.map(Network::info);
+            Optional<ServerInfo> info = server.map(Network.this::info);
             Network.this.userLog.log(
                     LogLine.Level.INFO,
                     info.map(i -> "Disconnected from " + describe(i)).orElse("Not connected") + ": " + reason);
@@ -1301,9 +1375,9 @@ final class Network {
             } else if (line.startsWith("WARNING")) {
                 Network.this.userLog.log(LogLine.Level.WARNING, line);
             } else {
-                logger.info("{}: {}", describe(info(server)), line);
+                logger.info("{}: {}", describe(Network.this.info(server)), line);
             }
-            Network.this.publish.accept(new EngineEvent.ServerMessage(info(server), line));
+            Network.this.publish.accept(new EngineEvent.ServerMessage(Network.this.info(server), line));
         }
 
         @Override

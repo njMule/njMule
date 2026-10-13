@@ -19,9 +19,13 @@ package org.njmule.core.api;
 import java.util.Objects;
 
 /**
- * What front ends show about a server; {@code address} is {@code ip:port}.
+ * What front ends show about a server; {@code address} is {@code ip:port}, zero or empty values are unknown.
  *
  * @param failed connection attempts that failed in a row
+ * @param ping milliseconds the server took to answer a status request
+ * @param softFiles the number of files a client should offer at most
+ * @param hardFiles the number of files beyond which the server drops a client
+ * @param isStatic kept in the static list: never dropped as dead, and written to {@code staticservers.dat}
  */
 public record ServerInfo(
         String address,
@@ -31,7 +35,14 @@ public record ServerInfo(
         long files,
         long maxUsers,
         int failed,
-        Priority priority) {
+        Priority priority,
+        int ping,
+        long softFiles,
+        long hardFiles,
+        long lowIdUsers,
+        String version,
+        boolean supportsObfuscation,
+        boolean isStatic) {
 
     /** The order servers are tried in. */
     public enum Priority {
@@ -45,5 +56,6 @@ public record ServerInfo(
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(description, "description");
         Objects.requireNonNull(priority, "priority");
+        Objects.requireNonNull(version, "version");
     }
 }

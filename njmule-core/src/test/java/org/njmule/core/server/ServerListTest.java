@@ -18,11 +18,15 @@ package org.njmule.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.persist.format.TextFiles;
+import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
@@ -90,6 +94,75 @@ class ServerListTest {
         assertThat(loaded.get(address).flatMap(ServerMet.Server::name)).contains("renamed");
         assertThat(loaded.remove(address)).isTrue();
         assertThat(loaded.get(address)).isEmpty();
+    }
+
+    @Test
+    void staticServersComeFromTheirFileWithTheirPriorityAndGoBackToIt() throws Exception {
+        Path file = this.dir.resolve(ServerList.STATIC_FILE_NAME);
+        Files.write(
+                file,
+                TextFiles.writeLines(List.of(
+                        "# kept servers", "5.6.7.8:4242,2,Five", "8.7.6.5:4661,Eight", "host.example:4661,0,Named")));
+        ServerList list = new ServerList();
+        list.add(server("5.6.7.8", 4242).with(tag(ServerTag.PREFERENCE, ServerList.PRIORITY_HIGH)));
+
+        list.loadStatics(file);
+
+        ServerList.Address five = new ServerList.Address(Ipv4.parse("5.6.7.8"), 4242);
+        ServerList.Address eight = new ServerList.Address(Ipv4.parse("8.7.6.5"), 4661);
+        assertThat(list.size()).isEqualTo(3);
+        assertThat(list.isStatic(five)).isTrue();
+        assertThat(list.isStatic(eight)).isTrue();
+        assertThat(list.get(five).map(ServerList::priority)).contains(ServerInfo.Priority.LOW);
+        assertThat(list.get(eight).map(ServerList::priority))
+                .as("no priority written: high")
+                .contains(ServerInfo.Priority.HIGH);
+        assertThat(list.get(eight).flatMap(ServerMet.Server::name)).contains("Eight");
+
+        assertThat(list.setStatic(eight, false)).isTrue();
+        assertThat(list.setPriority(five, ServerInfo.Priority.NORMAL)).isTrue();
+        assertThat(list.setPriority(new ServerList.Address(Ipv4.parse("9.9.9.9"), 1), ServerInfo.Priority.LOW))
+                .isFalse();
+        list.saveStatics(file);
+
+        assertThat(TextFiles.staticServers(Files.readAllBytes(file)))
+                .containsExactly(
+                        new TextFiles.StaticServer("5.6.7.8", 4242, TextFiles.PRIORITY_NORMAL, "Five"),
+                        new TextFiles.StaticServer("host.example", 4661, TextFiles.PRIORITY_NORMAL, "Named"));
+        assertThat(list.remove(five)).isTrue();
+        assertThat(list.isStatic(five)).isFalse();
+        assertThat(list.setStatic(five, true)).as("unknown servers stay out").isFalse();
+    }
+
+    @Test
+    void obfuscationNeedsTheFlagAndAPort() {
+        ServerMet.Server plain = server("1.2.3.4", 4661);
+        ServerMet.Server flagged = plain.with(tag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION));
+
+        assertThat(ServerList.supportsObfuscation(plain)).isFalse();
+        assertThat(ServerList.supportsObfuscation(flagged)).isFalse();
+        assertThat(ServerList.supportsObfuscation(flagged.with(tag(ServerTag.TCPPORTOBFUSCATION, 4662))))
+                .isTrue();
+    }
+
+    @Test
+    void versionsAreTextOrPackedNumbers() {
+        ServerMet.Server server = server("1.2.3.4", 4661);
+
+        assertThat(server.version()).isEmpty();
+        assertThat(server.with(tag(ServerTag.VERSION, (17L << 16) | 5)).version())
+                .contains("17.05");
+        assertThat(server.with(new Tag.StringTag(TagName.id(ServerTag.VERSION), "17.15 (lugdunum)"))
+                        .version())
+                .contains("17.15 (lugdunum)");
+    }
+
+    @Test
+    void serversTellTheirVersionInAMessageLine() {
+        assertThat(ServerSession.version("server version 17.15 (lugdunum)")).contains("17.15 (lugdunum)");
+        assertThat(ServerSession.version("Server Version 17.5")).contains("17.05");
+        assertThat(ServerSession.version("server version ")).isEmpty();
+        assertThat(ServerSession.version("Welcome to the server")).isEmpty();
     }
 
     private static ServerMet.Server server(String ip, int port) {

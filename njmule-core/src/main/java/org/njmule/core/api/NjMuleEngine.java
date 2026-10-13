@@ -19,6 +19,7 @@ package org.njmule.core.api;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -79,6 +80,21 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Completes with {@code false} for an unknown server. */
     CompletableFuture<Boolean> removeServer(ServerAddress server);
+
+    /** Removes the known ones of {@code servers}; completes with how many. */
+    CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers);
+
+    /** Adds a server to the list without connecting; completes with {@code false} when known or not usable. */
+    CompletableFuture<Boolean> addServer(ServerAddress server);
+
+    /** Sets the order a server is tried in; completes with {@code false} for an unknown server. */
+    CompletableFuture<Boolean> setServerPriority(ServerAddress server, ServerInfo.Priority priority);
+
+    /**
+     * Puts a server in the static list ({@code staticservers.dat}), whose servers are kept, or takes it out; completes
+     * with {@code false} for an unknown server.
+     */
+    CompletableFuture<Boolean> setStaticServer(ServerAddress server, boolean isStatic);
 
     /** Connections, rates and counts at this moment. */
     CompletableFuture<EngineStatus> status();

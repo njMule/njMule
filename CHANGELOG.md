@@ -166,6 +166,10 @@ All notable changes to this project are documented here. The format follows
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
+- Servers keep their ping time, soft and hard file limits, LowID users and software version (from
+  the "server version" line); eMule's static servers (`staticservers.dat`) are loaded, and servers
+  can be put in or taken out of the static list, given another priority, added from a link or
+  removed in bulk.
 - Port, network and UPnP changes in the settings apply at once: the new ports are listened on and
   announced again to the server, to Kad and through the router, without a restart.
 - Kad connects and disconnects by hand, starting from the contacts it knows; contacts taken from a
