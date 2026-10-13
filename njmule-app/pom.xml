@@ -29,6 +29,10 @@
             <artifactId>njmule-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.njmule</groupId>
+            <artifactId>njmule-webui</artifactId>
+        </dependency>
+        <dependency>
             <groupId>info.picocli</groupId>
             <artifactId>picocli</artifactId>
         </dependency>
@@ -76,6 +80,14 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- The tests reach the web interface with the JDK HTTP client. -->
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-modules java.net.http --add-reads org.njmule.app=java.net.http</argLine>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

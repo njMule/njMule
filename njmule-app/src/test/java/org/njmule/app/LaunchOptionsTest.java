@@ -151,4 +151,21 @@ class LaunchOptionsTest {
         assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "loud"))
                 .hasMessage("Invalid log level: loud");
     }
+
+    @Test
+    void parsesTheWebInterfacePassword() throws Exception {
+        LaunchOptions cli = LaunchOptions.parse("--webui-password", "--webui-port", "8080");
+        assertThat(cli.action()).isEqualTo(Action.WEBUI_PASSWORD);
+        assertThat(cli.webUi())
+                .contains(new LaunchOptions.WebUiSetup(java.util.Optional.of(8080), false));
+        assertThat(LaunchOptions.parse("--webui-password", "--webui-lan").webUi().orElseThrow())
+                .isEqualTo(new LaunchOptions.WebUiSetup(java.util.Optional.empty(), true));
+        assertThat(LaunchOptions.parse().webUi()).isEmpty();
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-lan"))
+                .hasMessageContaining("apply to --webui-password");
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "0"))
+                .hasMessage("Invalid port for --webui-port: 0");
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "x"))
+                .hasMessage("Invalid port for --webui-port: x");
+    }
 }

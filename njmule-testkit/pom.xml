@@ -39,8 +39,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <!-- The launcher is a test-only dependency: let the tests read its module. -->
-                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-reads org.njmule.testkit=org.njmule.app</argLine>
+                    <!-- The launcher and the web interface are test-only dependencies: let the tests read
+                         their modules, and the JDK HTTP client. -->
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 --add-modules java.net.http --add-reads org.njmule.testkit=org.njmule.app,org.njmule.webui,java.net.http</argLine>
                 </configuration>
             </plugin>
             <plugin>

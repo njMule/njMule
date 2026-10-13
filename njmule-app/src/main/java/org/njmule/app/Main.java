@@ -16,9 +16,15 @@
  */
 package org.njmule.app;
 
+import java.io.BufferedReader;
+import java.io.Console;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -30,6 +36,9 @@ import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.webui.Passwords;
+import org.njmule.webui.WebUi;
+import org.njmule.webui.WebUiSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +50,13 @@ public final class Main {
     public static final int EXIT_FAILURE = 1;
 
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
+    /** Where a password comes from: the terminal, or a line of standard input. */
+    @FunctionalInterface
+    interface PasswordSource {
+        /** The password typed after {@code prompt}, or null at the end of the input. */
+        char[] read(String prompt) throws IOException;
+    }
 
     private Main() {}
 
@@ -60,6 +76,15 @@ public final class Main {
      */
     public static int run(
             String[] args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
+        return run(args, out, err, stop, terminal(out));
+    }
+
+    static int run(
+            String[] args,
+            PrintStream out,
+            PrintStream err,
+            CompletableFuture<Void> stop,
+            PasswordSource passwords) {
         LaunchOptions cli;
         try {
             cli = LaunchOptions.parse(args);
@@ -83,6 +108,9 @@ public final class Main {
             case NOTICE -> out.println(NjMuleInfo.noticeText().stripTrailing());
             case HASH -> {
                 return hash(cli, out, err);
+            }
+            case WEBUI_PASSWORD -> {
+                return webUiPassword(cli, out, err, passwords);
             }
             case RUN -> {
                 return runEngine(cli, out, err, stop);
@@ -121,6 +149,86 @@ public final class Main {
             }
         }
         return code;
+    }
+
+    private static int webUiPassword(
+            LaunchOptions cli, PrintStream out, PrintStream err, PasswordSource passwords) {
+        LaunchOptions.WebUiSetup setup = cli.webUi().orElseThrow();
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
+        char[] first = null;
+        char[] second = null;
+        try {
+            first = passwords.read("Web interface password: ");
+            second = passwords.read("The same password again: ");
+            if (first == null || second == null || first.length < Passwords.MIN_LENGTH) {
+                err.println("The password needs at least " + Passwords.MIN_LENGTH + " characters.");
+                return EXIT_USAGE;
+            }
+            if (!Arrays.equals(first, second)) {
+                err.println("The two passwords differ.");
+                return EXIT_USAGE;
+            }
+            WebUiSettings old = WebUiSettings.load(dirs.config());
+            WebUiSettings settings =
+                    new WebUiSettings(
+                            true,
+                            setup.port().orElse(old.port()),
+                            setup.lan(),
+                            Passwords.hash(first, new SecureRandom()));
+            settings.save(dirs.config());
+            out.println(
+                    "The web interface starts with "
+                            + NjMuleInfo.NAME
+                            + " on port "
+                            + settings.port()
+                            + (settings.lan()
+                                    ? ", open to other computers."
+                                    : ": http://localhost:" + settings.port() + "/"));
+            return EXIT_OK;
+        } catch (IOException e) {
+            err.println("Cannot set the web interface password: " + e.getMessage());
+            return EXIT_FAILURE;
+        } finally {
+            if (first != null) {
+                Passwords.wipe(first);
+            }
+            if (second != null) {
+                Passwords.wipe(second);
+            }
+        }
+    }
+
+    // Reads passwords without echo on a terminal, otherwise one per line of standard input.
+    private static PasswordSource terminal(PrintStream out) {
+        Console console = System.console();
+        if (console != null && console.isTerminal()) {
+            return prompt -> console.readPassword("%s", prompt);
+        }
+        BufferedReader in =
+                new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        return prompt -> {
+            out.print(prompt);
+            out.flush();
+            String line = in.readLine();
+            return line == null ? null : line.toCharArray();
+        };
+    }
+
+    private static Optional<WebUi> startWebUi(
+            NjMuleEngine engine, AppDirectories dirs, PrintStream out) {
+        WebUiSettings settings = WebUiSettings.load(dirs.config());
+        if (!settings.usable()) {
+            return Optional.empty();
+        }
+        try {
+            WebUi ui = WebUi.start(engine, settings);
+            out.println("Web interface on port " + ui.port());
+            return Optional.of(ui);
+        } catch (IOException e) {
+            LOG.warn(
+                    "Cannot start the web interface on port {}: {}", settings.port(), e.toString());
+            return Optional.empty();
+        }
     }
 
     private static int runEngine(
@@ -176,18 +284,24 @@ public final class Main {
             Thread.currentThread().interrupt();
         }
 
+        Optional<WebUi> web = startWebUi(engine, dirs, out);
+        Runnable shutdown =
+                () -> {
+                    web.ifPresent(WebUi::close);
+                    engine.close();
+                };
         Thread hook =
                 Thread.ofPlatform()
                         .name("njmule-shutdown")
                         .unstarted(
                                 () -> {
-                                    engine.close();
+                                    shutdown.run();
                                     stop.complete(null);
                                 });
         Runtime.getRuntime().addShutdownHook(hook);
         try {
             stop.join();
-            engine.close();
+            shutdown.run();
             try {
                 Runtime.getRuntime().removeShutdownHook(hook);
             } catch (IllegalStateException e) {

@@ -43,7 +43,8 @@ public record LaunchOptions(
         Optional<String> logLevel,
         List<Path> files,
         boolean headless,
-        NetworkTasks network) {
+        NetworkTasks network,
+        Optional<WebUiSetup> webUi) {
 
     public LaunchOptions {
         files = List.copyOf(files);
@@ -91,6 +92,14 @@ public record LaunchOptions(
         }
     }
 
+    /**
+     * A new password for the web interface, which it also turns on.
+     *
+     * @param port the port to listen on, the current one when empty
+     * @param lan whether other computers may connect, instead of this one only
+     */
+    public record WebUiSetup(Optional<Integer> port, boolean lan) {}
+
     /** An import of the eMule profile in {@code dir}. */
     public record EmuleImport(Path dir, ImportOptions options) {}
 
@@ -102,7 +111,8 @@ public record LaunchOptions(
         LICENSE,
         WARRANTY,
         NOTICE,
-        HASH
+        HASH,
+        WEBUI_PASSWORD
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -131,6 +141,9 @@ public record LaunchOptions(
     private static final String DRY_RUN_OPTION = "--dry-run";
     private static final String IDENTITY_OPTION = "--adopt-emule-identity";
     private static final String IMPORT_DOWNLOADS_OPTION = "--import-downloads";
+    private static final String WEBUI_PASSWORD_OPTION = "--webui-password";
+    private static final String WEBUI_PORT_OPTION = "--webui-port";
+    private static final String WEBUI_LAN_OPTION = "--webui-lan";
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -192,7 +205,8 @@ public record LaunchOptions(
                 logLevel,
                 files,
                 result.hasMatchedOption(HEADLESS_OPTION),
-                network);
+                network,
+                webUi(result));
     }
 
     /** The help text, without colours. */
@@ -215,6 +229,9 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption("--notice")) {
             return Action.NOTICE;
+        }
+        if (result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
+            return Action.WEBUI_PASSWORD;
         }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
@@ -299,6 +316,22 @@ public record LaunchOptions(
                                 + IMPORT_OPTION
                                 + ": also copy eMule's downloads (paused ones while it runs)"));
         spec.addOption(
+                flag(
+                        WEBUI_PASSWORD_OPTION,
+                        "ask for a password for the web interface, turn the interface on (from"
+                                + " the next start) and exit"));
+        spec.addOption(
+                valued(
+                        WEBUI_PORT_OPTION,
+                        "<port>",
+                        "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
+        spec.addOption(
+                flag(
+                        WEBUI_LAN_OPTION,
+                        "with "
+                                + WEBUI_PASSWORD_OPTION
+                                + ": let other computers connect (otherwise only this one)"));
+        spec.addOption(
                 OptionSpec.builder("-V", "--version")
                         .versionHelp(true)
                         .description("print the version and exit")
@@ -349,6 +382,35 @@ public record LaunchOptions(
         } catch (IllegalArgumentException e) {
             throw new UsageException("Invalid address for " + option + ": " + value);
         }
+    }
+
+    private static Optional<WebUiSetup> webUi(ParseResult result) throws UsageException {
+        boolean port = result.hasMatchedOption(WEBUI_PORT_OPTION);
+        boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
+        if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
+            if (port || lan) {
+                throw new UsageException(
+                        WEBUI_PORT_OPTION
+                                + " and "
+                                + WEBUI_LAN_OPTION
+                                + " apply to "
+                                + WEBUI_PASSWORD_OPTION);
+            }
+            return Optional.empty();
+        }
+        Optional<Integer> number = Optional.empty();
+        if (port) {
+            String value = result.matchedOptionValue(WEBUI_PORT_OPTION, "");
+            try {
+                number = Optional.of(Integer.parseInt(value.strip()));
+            } catch (NumberFormatException e) {
+                number = Optional.of(-1);
+            }
+            if (number.get() < 1 || number.get() > 0xFFFF) {
+                throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
+            }
+        }
+        return Optional.of(new WebUiSetup(number, lan));
     }
 
     private static Optional<EmuleImport> emuleImport(ParseResult result) throws UsageException {
