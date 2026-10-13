@@ -130,7 +130,9 @@ class ScheduleTest {
                         OptionalInt.empty(),
                         OptionalInt.of(0),
                         OptionalInt.empty(),
-                        OptionalInt.of(10))));
+                        OptionalInt.of(10),
+                        OptionalInt.of(3),
+                        OptionalInt.of(0))));
 
         ScheduleCodec.save(file, schedule);
 

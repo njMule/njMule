@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -32,7 +33,9 @@ import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -42,6 +45,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.Category;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.gui.ui.Fx;
@@ -68,6 +72,9 @@ final class SchedulerPane extends VBox {
     private final TextField connections = new TextField();
     private final TextField sources = new TextField();
     private final CheckBox enabled = new CheckBox();
+    // A category id, 0 for the downloads in none; empty for no action.
+    private final ComboBox<OptionalInt> stopCategory = new ComboBox<>();
+    private final ComboBox<OptionalInt> resumeCategory = new ComboBox<>();
     private final Label active = new Label();
     private final Input<String> nameInput;
     private final Input<LocalTime> startInput;
@@ -139,6 +146,15 @@ final class SchedulerPane extends VBox {
         form.addRow(4, new Label(gui.t("nj.settings.download")), this.download);
         form.addRow(5, new Label(gui.t("IDS_PW_MAXC")), this.connections);
         form.addRow(6, new Label(gui.t("IDS_PW_MAXSOURCES")), this.sources);
+        for (ComboBox<OptionalInt> box : List.of(this.stopCategory, this.resumeCategory)) {
+            box.setCellFactory(l -> new CategoryCell());
+            box.setButtonCell(new CategoryCell());
+            box.setOnShowing(e -> this.fillCategories(box));
+            this.fillCategories(box);
+            box.setValue(OptionalInt.empty());
+        }
+        form.addRow(7, new Label(gui.t("IDS_SCHED_CATSTOP")), this.stopCategory);
+        form.addRow(8, new Label(gui.t("IDS_SCHED_CATRESUME")), this.resumeCategory);
         Button add = Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add);
         Button replace = Fx.button(gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace);
         add.disableProperty().bind(invalid);
@@ -207,6 +223,41 @@ final class SchedulerPane extends VBox {
         this.download.setText(text(rule.downloadKiBps()));
         this.connections.setText(text(rule.maxConnections()));
         this.sources.setText(text(rule.maxSourcesPerFile()));
+        this.stopCategory.setValue(rule.stopCategory());
+        this.resumeCategory.setValue(rule.resumeCategory());
+    }
+
+    // No action, the downloads in no category, then the categories.
+    private void fillCategories(ComboBox<OptionalInt> box) {
+        OptionalInt chosen = box.getValue();
+        List<OptionalInt> items = new ArrayList<>();
+        items.add(OptionalInt.empty());
+        items.add(OptionalInt.of(Category.NONE));
+        this.gui.model().categories().forEach(c -> items.add(OptionalInt.of(c.id())));
+        box.getItems().setAll(items);
+        box.setValue(chosen == null ? OptionalInt.empty() : chosen);
+    }
+
+    private String categoryName(OptionalInt id) {
+        if (id == null || id.isEmpty()) {
+            return "-";
+        }
+        if (id.getAsInt() == Category.NONE) {
+            return this.gui.t("IDS_ALLOTHERS");
+        }
+        return this.gui.model().categories().stream()
+                .filter(c -> c.id() == id.getAsInt())
+                .map(Category::name)
+                .findFirst()
+                .orElse("#" + id.getAsInt());
+    }
+
+    private final class CategoryCell extends ListCell<OptionalInt> {
+        @Override
+        protected void updateItem(OptionalInt item, boolean empty) {
+            super.updateItem(item, empty);
+            this.setText(empty ? null : SchedulerPane.this.categoryName(item));
+        }
     }
 
     /** The rule of the form; a message and nothing when it is not valid. */
@@ -227,7 +278,9 @@ final class SchedulerPane extends VBox {
                     this.uploadInput.value(),
                     this.downloadInput.value(),
                     this.connectionsInput.value(),
-                    this.sourcesInput.value()));
+                    this.sourcesInput.value(),
+                    orEmpty(this.stopCategory.getValue()),
+                    orEmpty(this.resumeCategory.getValue())));
         } catch (IllegalArgumentException e) {
             this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return Optional.empty();
@@ -239,6 +292,10 @@ final class SchedulerPane extends VBox {
                 .sorted()
                 .map(d -> d.getDisplayName(TextStyle.SHORT, this.gui.i18n().locale()))
                 .collect(Collectors.joining(" "));
+    }
+
+    private static OptionalInt orEmpty(OptionalInt value) {
+        return value == null ? OptionalInt.empty() : value;
     }
 
     private static String text(OptionalInt value) {
@@ -275,5 +332,9 @@ final class SchedulerPane extends VBox {
 
     Label activeLabel() {
         return this.active;
+    }
+
+    ComboBox<OptionalInt> stopCategoryBox() {
+        return this.stopCategory;
     }
 }

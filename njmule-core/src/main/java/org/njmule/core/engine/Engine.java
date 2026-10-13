@@ -196,6 +196,11 @@ public final class Engine implements NjMuleEngine {
                 .submit(() -> {
                     engine.refreshSchedule();
                     engine.network.start();
+                    // A rule that holds at start acts on the downloads once they are there.
+                    Schedule.Rule active = engine.activeRule;
+                    if (active != null) {
+                        engine.network.scheduleCategories(active.stopCategory(), active.resumeCategory());
+                    }
                     engine.loop.scheduleRepeating("scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
                     engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
                     return null;
@@ -279,6 +284,9 @@ public final class Engine implements NjMuleEngine {
         this.effective = rule == null ? base : rule.applyTo(base);
         if (!Objects.equals(rule, this.activeRule)) {
             this.activeRule = rule;
+            if (rule != null) {
+                this.network.scheduleCategories(rule.stopCategory(), rule.resumeCategory());
+            }
             this.userLog(
                     LogLine.Level.INFO,
                     rule == null

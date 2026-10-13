@@ -68,7 +68,9 @@ public final class ScheduleCodec {
                         number(p.getProperty(k + "uploadKiBps")),
                         number(p.getProperty(k + "downloadKiBps")),
                         number(p.getProperty(k + "maxConnections")),
-                        number(p.getProperty(k + "maxSourcesPerFile"))));
+                        number(p.getProperty(k + "maxSourcesPerFile")),
+                        number(p.getProperty(k + "stopCategory")),
+                        number(p.getProperty(k + "resumeCategory"))));
             } catch (IllegalArgumentException | DateTimeException e) {
                 logger.warn("Ignoring rule {} of {}: {}", n, file.getFileName(), e.getMessage());
             }
@@ -93,6 +95,8 @@ public final class ScheduleCodec {
             optional(text, k + "downloadKiBps", r.downloadKiBps());
             optional(text, k + "maxConnections", r.maxConnections());
             optional(text, k + "maxSourcesPerFile", r.maxSourcesPerFile());
+            optional(text, k + "stopCategory", r.stopCategory());
+            optional(text, k + "resumeCategory", r.resumeCategory());
         }
         AtomicFiles.writeBytes(file, text.toString().getBytes(StandardCharsets.UTF_8));
     }

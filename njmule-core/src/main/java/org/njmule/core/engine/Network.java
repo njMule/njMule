@@ -691,6 +691,22 @@ final class Network {
         return this.downloads.setPriority(hash, priority);
     }
 
+    /** Stops the downloads of one category and resumes those of another, as a scheduler rule asks when it begins. */
+    void scheduleCategories(OptionalInt stop, OptionalInt resume) {
+        for (DownloadInfo d : this.downloads.downloads()) {
+            if (stop.isPresent() && d.category() == stop.getAsInt() && d.status() != DownloadInfo.Status.STOPPED) {
+                this.downloads.stop(d.hash());
+            } else if (resume.isPresent()
+                    && d.category() == resume.getAsInt()
+                    && (d.status() == DownloadInfo.Status.PAUSED || d.status() == DownloadInfo.Status.STOPPED)) {
+                this.downloads.resume(d.hash());
+            }
+        }
+        stop.ifPresent(c -> this.userLog.log(LogLine.Level.INFO, "Scheduler: downloads of category " + c + " stopped"));
+        resume.ifPresent(
+                c -> this.userLog.log(LogLine.Level.INFO, "Scheduler: downloads of category " + c + " resumed"));
+    }
+
     boolean cancelDownload(Hash16 hash) {
         int category = this.downloads.download(hash).map(DownloadInfo::category).orElse(Category.NONE);
         boolean cancelled = this.downloads.cancel(hash);

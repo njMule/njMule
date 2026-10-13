@@ -27,18 +27,26 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
@@ -167,6 +175,43 @@ class EngineTest {
             assertThat(status.downloads()).isZero();
             assertThat(status.downloadBytesPerSecond()).isZero();
             assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
+        }
+    }
+
+    @Test
+    void aRuleStopsTheDownloadsOfOneCategoryAndResumesThoseOfAnother() throws Exception {
+        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
+        Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a2".repeat(16)));
+        Schedule.Rule night = new Schedule.Rule(
+                "night",
+                true,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.of(1),
+                OptionalInt.of(2));
+        try (Engine engine = (Engine) this.start()) {
+            engine.setCategories(List.of(
+                            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false),
+                            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false)))
+                    .get(5, TimeUnit.SECONDS);
+            engine.addDownload(film).get(5, TimeUnit.SECONDS);
+            engine.addDownload(song).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(film.hash(), 1).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(song.hash(), 2).get(5, TimeUnit.SECONDS);
+            engine.pauseDownload(song.hash()).get(5, TimeUnit.SECONDS);
+
+            engine.updateSchedule(new Schedule(List.of(night))).get(5, TimeUnit.SECONDS);
+
+            Map<Hash16, DownloadInfo.Status> statuses = engine.downloads().get(5, TimeUnit.SECONDS).stream()
+                    .collect(Collectors.toMap(DownloadInfo::hash, DownloadInfo::status));
+            assertThat(statuses)
+                    .containsEntry(film.hash(), DownloadInfo.Status.STOPPED)
+                    .containsEntry(song.hash(), DownloadInfo.Status.DOWNLOADING);
         }
     }
 

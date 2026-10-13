@@ -37,7 +37,8 @@ public record Schedule(List<Rule> rules) {
 
     /**
      * One window of the week and the limits it sets; a window that ends before it starts runs past midnight, one that
-     * ends when it starts lasts the whole day.
+     * ends when it starts lasts the whole day. When it begins, it can stop the downloads of one category and resume
+     * those of another ({@code 0} for the downloads in none).
      */
     public record Rule(
             String name,
@@ -48,7 +49,34 @@ public record Schedule(List<Rule> rules) {
             OptionalInt uploadKiBps,
             OptionalInt downloadKiBps,
             OptionalInt maxConnections,
-            OptionalInt maxSourcesPerFile) {
+            OptionalInt maxSourcesPerFile,
+            OptionalInt stopCategory,
+            OptionalInt resumeCategory) {
+
+        /** A rule that sets limits only. */
+        public Rule(
+                String name,
+                boolean enabled,
+                Set<DayOfWeek> days,
+                LocalTime start,
+                LocalTime end,
+                OptionalInt uploadKiBps,
+                OptionalInt downloadKiBps,
+                OptionalInt maxConnections,
+                OptionalInt maxSourcesPerFile) {
+            this(
+                    name,
+                    enabled,
+                    days,
+                    start,
+                    end,
+                    uploadKiBps,
+                    downloadKiBps,
+                    maxConnections,
+                    maxSourcesPerFile,
+                    OptionalInt.empty(),
+                    OptionalInt.empty());
+        }
 
         public Rule {
             name = Objects.requireNonNull(name, "name").strip();
@@ -59,6 +87,8 @@ public record Schedule(List<Rule> rules) {
             check("downloadKiBps", downloadKiBps, 0, Preferences.MAX_RATE_KIBPS);
             check("maxConnections", maxConnections, 1, Preferences.MAX_CONNECTIONS);
             check("maxSourcesPerFile", maxSourcesPerFile, 1, Preferences.MAX_SOURCES_PER_FILE);
+            check("stopCategory", stopCategory, 0, Integer.MAX_VALUE);
+            check("resumeCategory", resumeCategory, 0, Integer.MAX_VALUE);
         }
 
         /** Whether {@code now} falls in this rule's window. */

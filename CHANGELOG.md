@@ -234,6 +234,8 @@ All notable changes to this project are documented here. The format follows
   free space of the temp and incoming disks.
 - The connection settings take the new connections allowed in five seconds and the size of the
   upload queue (imported from eMule), and the maximum of connections now limits the incoming ones.
+- A scheduler rule can stop the downloads of one category and resume those of another when it
+  begins.
 
 ### Changed
 
