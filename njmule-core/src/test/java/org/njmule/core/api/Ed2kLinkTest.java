@@ -48,6 +48,14 @@ class Ed2kLinkTest {
     }
 
     @Test
+    void readsALinkWithTheSeparatorsABrowserEscaped() {
+        FileLink link = (FileLink) Ed2kLink.parse("ed2k://%7Cfile%7CUbuntu%2024.04.iso%7C5000%7C" + HASH + "%7c/");
+
+        assertThat(link.name()).isEqualTo("Ubuntu 24.04.iso");
+        assertThat(link.size()).isEqualTo(5000);
+    }
+
+    @Test
     void readsOptionalParametersAndDropsInvalidOnes() {
         FileLink link = (FileLink) Ed2kLink.parse("ed2k://|file|a.bin|19456001|"
                 + HASH

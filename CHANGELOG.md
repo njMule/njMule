@@ -179,3 +179,4 @@ All notable changes to this project are documented here. The format follows
 - A source whose file status has the wrong number of parts is dropped.
 - A client can download from us over the connection we download from it on, and a client
   connected to download from us is asked for our downloads over that same connection.
+- Links whose separators a browser escaped (`%7C`) are read.

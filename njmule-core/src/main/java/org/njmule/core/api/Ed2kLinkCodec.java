@@ -47,6 +47,10 @@ final class Ed2kLinkCodec {
         if (link.regionMatches(true, 0, "magnet:?", 0, 8)) {
             return magnet(link.substring(8));
         }
+        // Browsers hand links to the program they open with the separators escaped.
+        if (link.indexOf('|') < 0 && link.regionMatches(true, 0, "ed2k://%7C", 0, 10)) {
+            link = link.replace("%7C", "|").replace("%7c", "|");
+        }
         List<String> tokens = tokens(link, '|');
         if (tokens.isEmpty() || !tokens.getFirst().equalsIgnoreCase("ed2k://")) {
             throw new IllegalArgumentException("not an ed2k link");
