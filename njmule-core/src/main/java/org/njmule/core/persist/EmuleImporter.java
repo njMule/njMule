@@ -471,29 +471,48 @@ public final class EmuleImporter {
 
     // Downloads are copied, never moved, and only while eMule does not write them.
     private void downloads(Optional<IniFile> ini) {
-        Optional<Path> temp =
-                ini.flatMap(i -> i.get(SECTION, "TempDir"))
-                        .flatMap(EmuleImporter::path)
-                        .or(
-                                () ->
-                                        Optional.ofNullable(this.emule.getParent())
-                                                .map(p -> p.resolve("Temp")));
-        if (temp.isEmpty() || !Files.isDirectory(temp.get())) {
-            this.report(this.emule.resolve("Temp"), ImportReport.Outcome.MISSING, "");
+        List<Path> temps = this.tempDirectories(ini);
+        Path where = temps.isEmpty() ? this.emule.resolve("Temp") : temps.getFirst();
+        if (temps.isEmpty()) {
+            this.report(where, ImportReport.Outcome.MISSING, "");
             return;
         }
         if (!this.options.downloads()) {
-            this.report(temp.get(), ImportReport.Outcome.SKIPPED, "downloads were not asked for");
+            this.report(where, ImportReport.Outcome.SKIPPED, "downloads were not asked for");
             return;
         }
         boolean running = this.emuleRunning.getAsBoolean();
-        try (DirectoryStream<Path> mets = Files.newDirectoryStream(temp.get(), "*.part.met")) {
-            for (Path met : mets) {
-                this.with(met, (file, data) -> this.download(file, data, running));
+        int found = 0;
+        for (Path temp : temps) {
+            try (DirectoryStream<Path> mets = Files.newDirectoryStream(temp, "*.part.met")) {
+                for (Path met : mets) {
+                    found++;
+                    this.with(met, (file, data) -> this.download(file, data, running));
+                }
+            } catch (IOException e) {
+                this.report(temp, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             }
-        } catch (IOException e) {
-            this.report(temp.get(), ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
         }
+        if (found == 0) {
+            this.report(where, ImportReport.Outcome.MISSING, "no downloads in progress");
+        }
+    }
+
+    // TempDir, then the others of TempDirs separated by '|'; next to the config by default.
+    private List<Path> tempDirectories(Optional<IniFile> ini) {
+        Set<Path> dirs = new LinkedHashSet<>();
+        String listed =
+                ini.flatMap(i -> i.get(SECTION, "TempDir")).orElse("")
+                        + "|"
+                        + ini.flatMap(i -> i.get(SECTION, "TempDirs")).orElse("");
+        for (String entry : listed.split("\\|")) {
+            path(entry).filter(Files::isDirectory).ifPresent(dirs::add);
+        }
+        Path parent = this.emule.getParent();
+        if (dirs.isEmpty() && parent != null && Files.isDirectory(parent.resolve("Temp"))) {
+            dirs.add(parent.resolve("Temp"));
+        }
+        return List.copyOf(dirs);
     }
 
     private ImportReport.Item download(Path met, byte[] data, boolean running) throws IOException {

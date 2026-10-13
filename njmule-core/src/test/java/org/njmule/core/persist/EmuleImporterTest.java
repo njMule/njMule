@@ -314,6 +314,42 @@ class EmuleImporterTest {
         assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
     }
 
+    @Test
+    void downloadsComeFromEveryTempDirectory() throws IOException {
+        Path other = Files.createDirectories(this.dir.resolve("emule/Temp2"));
+        for (String name : List.of("002.part.met", "002.part")) {
+            Files.move(this.emule.temp.resolve(name), other.resolve(name));
+        }
+        Path ini = this.emule.config.resolve("preferences.ini");
+        Files.writeString(
+                ini,
+                Files.readString(ini, StandardCharsets.ISO_8859_1)
+                        + "TempDirs="
+                        + this.dir.resolve("gone")
+                        + "|"
+                        + other
+                        + "\r\n",
+                StandardCharsets.ISO_8859_1);
+
+        this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void anEmptyTempDirectoryIsReported() throws IOException {
+        try (var files = Files.list(this.emule.temp)) {
+            for (Path file : files.toList()) {
+                Files.delete(file);
+            }
+        }
+
+        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(outcomes(report)).containsEntry("Temp", Outcome.MISSING);
+        assertThat(detail(report, "Temp")).isEqualTo("no downloads in progress");
+    }
+
     private ImportReport run(ImportOptions options, boolean emuleRunning) {
         return new EmuleImporter(this.emule.config, options, this.target, () -> emuleRunning).run();
     }
