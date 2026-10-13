@@ -22,12 +22,14 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -37,12 +39,15 @@ import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportOptions;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
@@ -55,8 +60,12 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.EmuleImporter;
 import org.njmule.core.persist.PreferencesCodec;
 import org.njmule.core.persist.UserHashStore;
+import org.njmule.core.persist.format.Known2Met;
+import org.njmule.core.persist.format.KnownMet;
+import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -77,11 +86,17 @@ public final class Engine implements NjMuleEngine {
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
     private final Network network;
+    private final BooleanSupplier emuleRunning;
 
     private Engine(
-            AppDirectories directories, Preferences preferences, EngineLoop loop, Hash16 userHash)
+            AppDirectories directories,
+            Preferences preferences,
+            EngineLoop loop,
+            Hash16 userHash,
+            BooleanSupplier emuleRunning)
             throws IOException {
         this.directories = directories;
+        this.emuleRunning = emuleRunning;
         this.preferencesFile = directories.config().resolve(PreferencesCodec.FILE_NAME);
         this.preferences = preferences;
         this.loop = loop;
@@ -102,6 +117,11 @@ public final class Engine implements NjMuleEngine {
     }
 
     public static Engine start(EngineConfig config) throws IOException {
+        return start(config, EmuleImporter::isEmuleRunning);
+    }
+
+    /** As {@link #start(EngineConfig)}, telling whether an eMule runs as tests need. */
+    static Engine start(EngineConfig config, BooleanSupplier emuleRunning) throws IOException {
         Objects.requireNonNull(config, "config");
         AppDirectories dirs = config.directories();
         dirs.createAll();
@@ -109,12 +129,13 @@ public final class Engine implements NjMuleEngine {
         AtomicFiles.cleanupInterruptedWrite(prefsFile);
         Preferences prefs = PreferencesCodec.load(prefsFile);
         PreferencesCodec.save(prefsFile, prefs);
+        EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
 
         Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
         EngineLoop loop = EngineLoop.start();
         Engine engine;
         try {
-            engine = new Engine(dirs, prefs, loop, userHash);
+            engine = new Engine(dirs, prefs, loop, userHash, emuleRunning);
         } catch (IOException | RuntimeException e) {
             loop.close();
             throw e;
@@ -299,6 +320,92 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Optional<KadInfo>> kad() {
         return this.loop.submit(this.network::kadInfo);
+    }
+
+    @Override
+    public CompletableFuture<ImportReport> importFromEmule(
+            Path emuleConfigDir, ImportOptions options) {
+        Objects.requireNonNull(emuleConfigDir, "emuleConfigDir");
+        Objects.requireNonNull(options, "options");
+        CompletableFuture<ImportReport> report = new CompletableFuture<>();
+        // Reading the profile and copying downloads take long: the engine thread only applies.
+        Thread.ofVirtual()
+                .name("njmule-import")
+                .start(
+                        () -> {
+                            try {
+                                report.complete(
+                                        new EmuleImporter(
+                                                        emuleConfigDir,
+                                                        options,
+                                                        new ImportTarget(),
+                                                        this.emuleRunning)
+                                                .run());
+                            } catch (RuntimeException e) {
+                                report.completeExceptionally(e);
+                            }
+                        });
+        return report;
+    }
+
+    /** Applies an import on the engine thread; called from the import thread. */
+    private final class ImportTarget implements EmuleImporter.Target {
+        @Override
+        public Path configDir() {
+            return Engine.this.directories.config();
+        }
+
+        @Override
+        public void updatePreferences(UnaryOperator<Preferences> change) {
+            Engine.this.updatePreferences(change).join();
+        }
+
+        @Override
+        public int addServers(Path serverMet) {
+            return Engine.this.loop.submit(() -> Engine.this.network.addServers(serverMet)).join();
+        }
+
+        @Override
+        public int addKadContacts(NodesDat.Contents contacts) {
+            return Engine.this
+                    .loop
+                    .submit(() -> Engine.this.network.addKadContacts(contacts))
+                    .join();
+        }
+
+        @Override
+        public int addKnownFiles(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
+            return Engine.this
+                    .loop
+                    .submit(() -> Engine.this.network.addKnownFiles(files, trees))
+                    .join();
+        }
+
+        @Override
+        public void shareDirectory(Path directory) {
+            Engine.this.shareDirectory(directory).join();
+        }
+
+        @Override
+        public String adoptDownload(Path met, Path data) throws IOException {
+            Path temp = Engine.this.loop.submit(Engine.this.network::tempDir).join();
+            String stem = "import-" + UUID.randomUUID();
+            // Names the download loader ignores, until the engine takes the copy over.
+            Path stagedMet = temp.resolve(stem + ".met.tmp");
+            Path stagedData = temp.resolve(stem + ".tmp");
+            try {
+                Files.copy(met, stagedMet);
+                Files.copy(data, stagedData);
+                return Engine.this
+                        .loop
+                        .submit(() -> Engine.this.network.adoptDownload(stagedMet, stagedData))
+                        .join()
+                        .name();
+            } finally {
+                Files.deleteIfExists(stagedMet);
+                Files.deleteIfExists(stagedData);
+            }
+        }
     }
 
     @Override

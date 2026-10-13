@@ -28,7 +28,9 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -57,6 +59,7 @@ import org.njmule.core.kad.KadIdentity;
 import org.njmule.core.kad.KadNode;
 import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
+import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
@@ -65,6 +68,9 @@ import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.IpFilterDat;
+import org.njmule.core.persist.format.Known2Met;
+import org.njmule.core.persist.format.KnownMet;
+import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -411,6 +417,52 @@ final class Network {
             throw new IllegalStateException("the network is not started");
         }
         this.shares.addDirectory(directory);
+    }
+
+    /**
+     * Adds Kad contacts to the running node, or to {@code nodes.dat}; returns how many were new.
+     */
+    int addKadContacts(NodesDat.Contents contents) throws IOException {
+        if (this.kad != null) {
+            int added = this.kad.addContacts(contents);
+            this.kad.saveNodes();
+            return added;
+        }
+        Path file = this.configDir.resolve(KadNode.NODES_FILE);
+        Map<UInt128, NodesDat.Contact> merged = new LinkedHashMap<>();
+        if (Files.exists(file)) {
+            NodesDat.Contents ours = NodesDat.read(Files.readAllBytes(file));
+            if (!ours.bootstrap()) {
+                ours.contacts().forEach(c -> merged.put(c.id(), c));
+            }
+        }
+        int before = merged.size();
+        if (!contents.bootstrap()) {
+            contents.contacts().forEach(c -> merged.putIfAbsent(c.id(), c));
+        }
+        int added = merged.size() - before;
+        if (added > 0) {
+            AtomicFiles.writeBytes(file, NodesDat.write(List.copyOf(merged.values())));
+        }
+        return added;
+    }
+
+    int addKnownFiles(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
+        if (this.shares == null) {
+            throw new IllegalStateException("the network is not started");
+        }
+        return this.shares.addKnown(files, trees);
+    }
+
+    /** Where another client's download is copied before {@link #adoptDownload}. */
+    Path tempDir() {
+        return this.downloads.tempDir();
+    }
+
+    DownloadInfo adoptDownload(Path met, Path data) throws IOException {
+        DownloadInfo info = this.downloads.adopt(met, data);
+        this.userLog.log(LogLine.Level.INFO, "Downloading " + info.name() + ", taken from eMule");
+        return info;
     }
 
     /**

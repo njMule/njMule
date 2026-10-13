@@ -100,6 +100,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The state of Kad, empty when it does not run. */
     CompletableFuture<Optional<KadInfo>> kad();
 
+    /**
+     * Takes what njMule can use from the eMule profile in {@code emuleConfigDir}, which is only
+     * read; completes with what happened to each file.
+     */
+    CompletableFuture<ImportReport> importFromEmule(Path emuleConfigDir, ImportOptions options);
+
     boolean isRunning();
 
     /** Stops the engine and saves its state; idempotent. */
