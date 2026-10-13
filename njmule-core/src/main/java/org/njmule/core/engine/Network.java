@@ -37,8 +37,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
@@ -73,6 +75,8 @@ import org.njmule.core.net.TcpListener;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerGreetings;
+import org.njmule.core.peer.PeerLink;
+import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.persist.format.Known2Met;
@@ -129,6 +133,8 @@ final class Network {
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
 
     private static final Logger logger = LoggerFactory.getLogger(Network.class);
+    // How long a new connection waits for the engine to take it.
+    private static final Duration ROUTE_WAIT = Duration.ofSeconds(5);
 
     /** What our hello says about the server we are on. */
     private record ServerContext(long clientId, int serverIp, int serverPort) {
@@ -151,6 +157,7 @@ final class Network {
     private final SearchManager searches;
     private final ServerPinger pinger;
     private final PeerGreetings greetings;
+    private final PeerLinks links;
     private final IpFilter ipFilter;
     // Clients the server asked us to call back, by address and when; engine thread only.
     private final Map<InetSocketAddress, Long> callbacks = new HashMap<>();
@@ -246,6 +253,7 @@ final class Network {
                 () -> preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
                 this::isOurServer,
                 random);
+        this.links = new PeerLinks(loop, identities, this::uploadSide);
         this.downloads = DownloadManager.open(
                 loop,
                 tempDir,
@@ -260,7 +268,7 @@ final class Network {
                 ip -> this.ipFilter.blocks(ip),
                 random,
                 Ticker.systemTicker(),
-                identities,
+                this.links,
                 this.credits::downloaded,
                 () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
                 new DownloadEvents());
@@ -272,7 +280,7 @@ final class Network {
                 this::ourHello,
                 () -> new UploadManager.Settings(
                         preferences.get().maxUploadKiBps(), preferences.get().obfuscation()),
-                identities,
+                this.links,
                 this.credits,
                 ip -> {
                     if (this.kad != null) {
@@ -285,13 +293,34 @@ final class Network {
         this.messaging = new Messaging(loop, this::ourHello, random, new ChatEvents());
         this.uploads.onChat(this.messaging::incoming);
         this.publisher = new FilePublisher(this.session, this::offers, this::listenPort, Ticker.systemTicker());
-        PeerGreetings.Router forDownloads = this.downloads.router();
-        PeerGreetings.Router forUploads = this.uploads.router();
-        // A source calling back with a slot first; any other client may want our files.
-        this.greetings.routeTo((connection, peer) -> {
-            Optional<TcpConnection.Handler> handler = forDownloads.route(connection, peer);
-            return handler.isPresent() ? handler : forUploads.route(connection, peer);
-        });
+        this.greetings.routeTo(this::route);
+    }
+
+    // A client that greeted us over its own connection, on the connection's thread: a source calling
+    // back with a slot goes to its download; any other client may want our files.
+    private Optional<TcpConnection.Handler> route(TcpConnection connection, Hello peer) {
+        try {
+            return Optional.of(this.loop
+                    .submit(() -> {
+                        PeerLink link = this.links.incoming(connection, peer);
+                        if (!this.downloads.adopt(link)
+                                && this.uploads.attach(link).isEmpty()) {
+                            link.disconnect();
+                        }
+                        return link;
+                    })
+                    .get(ROUTE_WAIT.toMillis(), TimeUnit.MILLISECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        } catch (ExecutionException | TimeoutException e) {
+            logger.debug("Cannot take the connection from {}", connection.remoteAddress(), e);
+            return Optional.empty();
+        }
+    }
+
+    private Optional<PeerLink.Role> uploadSide(PeerLink link) {
+        return this.uploads.attach(link);
     }
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */

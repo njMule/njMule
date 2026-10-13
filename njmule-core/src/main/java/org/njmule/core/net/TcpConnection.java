@@ -38,7 +38,7 @@ import org.njmule.core.protocol.packet.TcpFraming;
  * A framed eD2K TCP connection over a blocking socket, served by a reading and a writing virtual thread. Sending never
  * blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected.
  */
-public final class TcpConnection implements AutoCloseable {
+public final class TcpConnection implements PeerChannel, AutoCloseable {
 
     /** Callbacks, invoked on the connection's reading thread. */
     public interface Handler {
@@ -103,6 +103,7 @@ public final class TcpConnection implements AutoCloseable {
      * Queues a packet; returns {@code false} if the connection is closed. A full queue closes the connection: the peer
      * is not reading.
      */
+    @Override
     public boolean send(Packet packet) {
         if (this.closed.get()) {
             return false;
@@ -120,10 +121,12 @@ public final class TcpConnection implements AutoCloseable {
     }
 
     /** Fails reads that wait longer than {@code timeout}; zero waits forever. */
+    @Override
     public void setReadTimeout(Duration timeout) throws SocketException {
         this.socket.setSoTimeout(Math.toIntExact(timeout.toMillis()));
     }
 
+    @Override
     public InetSocketAddress remoteAddress() {
         return this.remote;
     }
@@ -132,6 +135,7 @@ public final class TcpConnection implements AutoCloseable {
         return this.obfuscated;
     }
 
+    @Override
     public boolean isOpen() {
         return !this.closed.get();
     }
@@ -139,6 +143,11 @@ public final class TcpConnection implements AutoCloseable {
     @Override
     public void close() {
         this.shutdown(Optional.empty());
+    }
+
+    @Override
+    public void disconnect() {
+        this.close();
     }
 
     private void fail(IOException cause) {

@@ -33,10 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
@@ -47,9 +44,8 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
-import org.njmule.core.net.TcpConnection;
-import org.njmule.core.peer.Identities;
-import org.njmule.core.peer.PeerGreetings;
+import org.njmule.core.peer.PeerLink;
+import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -61,7 +57,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The downloads and their sources: sources come from links and from the server, each one is asked for a place in its
  * upload queue and asked again while it keeps us there, and data flows from those that give us a slot. Engine thread
- * only, except {@link #router()}.
+ * only.
  */
 public final class DownloadManager implements AutoCloseable {
 
@@ -114,7 +110,6 @@ public final class DownloadManager implements AutoCloseable {
     public static final Duration SERVER_SOURCES_INTERVAL = Duration.ofMinutes(20);
 
     private static final Duration TICK = Duration.ofSeconds(1);
-    private static final Duration ROUTE_WAIT = Duration.ofSeconds(5);
     private static final int MAX_STARTING = 8;
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
@@ -209,7 +204,7 @@ public final class DownloadManager implements AutoCloseable {
     private final IntPredicate blocked;
     private final SecureRandom random;
     private final Ticker ticker;
-    private final Identities identities;
+    private final PeerLinks links;
     private final BiConsumer<Hash16, Long> credit;
     private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
@@ -231,7 +226,7 @@ public final class DownloadManager implements AutoCloseable {
             IntPredicate blocked,
             SecureRandom random,
             Ticker ticker,
-            Identities identities,
+            PeerLinks links,
             BiConsumer<Hash16, Long> credit,
             Supplier<Optional<KadSources>> kad,
             Listener listener) {
@@ -242,7 +237,7 @@ public final class DownloadManager implements AutoCloseable {
         this.blocked = Objects.requireNonNull(blocked, "blocked");
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
-        this.identities = Objects.requireNonNull(identities, "identities");
+        this.links = Objects.requireNonNull(links, "links");
         this.credit = Objects.requireNonNull(credit, "credit");
         this.kad = Objects.requireNonNull(kad, "kad");
         this.listener = Objects.requireNonNull(listener, "listener");
@@ -265,13 +260,13 @@ public final class DownloadManager implements AutoCloseable {
             IntPredicate blocked,
             SecureRandom random,
             Ticker ticker,
-            Identities identities,
+            PeerLinks links,
             BiConsumer<Hash16, Long> credit,
             Supplier<Optional<KadSources>> kad,
             Listener listener)
             throws IOException {
         DownloadManager manager = new DownloadManager(
-                loop, ourHello, settings, server, blocked, random, ticker, identities, credit, kad, listener);
+                loop, ourHello, settings, server, blocked, random, ticker, links, credit, kad, listener);
         manager.queue = DownloadQueue.load(loop, tempDir, incomingDir, manager.new QueueEvents());
         long now = ticker.read();
         for (DownloadQueue.Download download : manager.queue.all()) {
@@ -451,26 +446,6 @@ public final class DownloadManager implements AutoCloseable {
                 entry.download.file().name());
     }
 
-    /**
-     * Hands an incoming connection to the download whose source opened it, as a source does when it has a slot for us.
-     * Called on the connection's thread; waits for the engine thread.
-     */
-    public PeerGreetings.Router router() {
-        return (connection, peer) -> {
-            try {
-                return this.loop
-                        .submit(() -> this.adopt(connection, peer))
-                        .get(ROUTE_WAIT.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return Optional.empty();
-            } catch (ExecutionException | TimeoutException | RuntimeException e) {
-                logger.debug("Cannot route the connection from {}", connection.remoteAddress(), e);
-                return Optional.empty();
-            }
-        };
-    }
-
     /** Ends every session and saves the downloads. */
     @Override
     public void close() {
@@ -513,31 +488,30 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     // A firewalled source we asked to call us, recognised by the LowID our server gave it.
-    private Optional<TcpConnection.Handler> adoptCallback(TcpConnection connection, Hello peer) {
+    private boolean adoptCallback(PeerLink link, Hello peer) {
         Callback callback = this.callbacks.get(peer.clientId());
         if (callback == null
                 || !callback.requested
                 || peer.serverIp() == 0
                 || peer.serverIp() != this.server.serverIp()
                 || !callback.userHash.map(peer.userHash()::equals).orElse(true)) {
-            return Optional.empty();
+            return false;
         }
         this.callbacks.remove(peer.clientId());
         Entry entry = this.entries.get(callback.file);
         if (entry == null || !entry.download.isActive()) {
-            return Optional.empty();
+            return false;
         }
-        InetSocketAddress address =
-                new InetSocketAddress(connection.remoteAddress().getAddress(), peer.tcpPort());
+        InetSocketAddress address = new InetSocketAddress(link.remoteAddress().getAddress(), peer.tcpPort());
         Source source = entry.sources.get(address);
         if (source == null) {
             source = this.addSource(entry, address);
             if (source == null) {
-                return Optional.empty();
+                return false;
             }
         }
         if (source.session != null) {
-            return Optional.empty();
+            return false;
         }
         long now = this.ticker.read();
         source.lowId = peer.clientId();
@@ -547,18 +521,23 @@ public final class DownloadManager implements AutoCloseable {
         source.lastAsk = now;
         source.nextAsk = now + REASK_INTERVAL.toNanos();
         DownloadSession session = new DownloadSession(
-                this.loop, this.queue, entry.download, address, this.ourHello, this.identities, this.sessionEvents);
+                this.loop, this.queue, entry.download, address, this.ourHello, this.links, this.sessionEvents);
         source.session = session;
         logger.debug("{} called us back for {}", address, entry.download.file().name());
-        return Optional.of(session.adopt(connection, peer, Optional.empty(), false));
+        session.adopt(link, Optional.empty(), false);
+        return true;
     }
 
-    private Optional<TcpConnection.Handler> adopt(TcpConnection connection, Hello peer) {
-        Optional<TcpConnection.Handler> called = this.adoptCallback(connection, peer);
-        if (called.isPresent()) {
-            return called;
+    /**
+     * Takes the download side of a link a client opened when it is one of our sources, as a source does when it has a
+     * slot for us or when we asked it through the server to connect; {@code false} if it is not.
+     */
+    public boolean adopt(PeerLink link) {
+        Hello peer = link.peer().orElseThrow();
+        if (this.adoptCallback(link, peer)) {
+            return true;
         }
-        InetAddress from = connection.remoteAddress().getAddress();
+        InetAddress from = link.remoteAddress().getAddress();
         for (Entry entry : this.entries.values()) {
             if (!entry.download.isActive()) {
                 continue;
@@ -571,7 +550,7 @@ public final class DownloadManager implements AutoCloseable {
                 }
                 DownloadSession old = source.session;
                 if (old != null && old.state() != DownloadSession.State.QUEUED) {
-                    return Optional.empty();
+                    return false;
                 }
                 if (old != null) {
                     source.session = null;
@@ -583,7 +562,7 @@ public final class DownloadManager implements AutoCloseable {
                         entry.download,
                         source.address,
                         this.ourHello,
-                        this.identities,
+                        this.links,
                         this.sessionEvents);
                 source.session = session;
                 source.userHash = Optional.of(peer.userHash());
@@ -591,10 +570,11 @@ public final class DownloadManager implements AutoCloseable {
                         "{} called back for {}",
                         source.address,
                         entry.download.file().name());
-                return Optional.of(session.adopt(connection, peer, Optional.ofNullable(source.parts)));
+                session.adopt(link, Optional.ofNullable(source.parts), true);
+                return true;
             }
         }
-        return Optional.empty();
+        return false;
     }
 
     private void tick() {
@@ -697,8 +677,14 @@ public final class DownloadManager implements AutoCloseable {
                     entry.download,
                     source.address,
                     this.ourHello,
-                    this.identities,
+                    this.links,
                     this.sessionEvents);
+            // A client connected to download from us is asked over the same connection.
+            Optional<PeerLink> open = this.links.find(source.address).filter(link -> !link.has(PeerLink.Side.DOWNLOAD));
+            if (open.isPresent()) {
+                source.session.adopt(open.get(), Optional.empty(), false);
+                continue;
+            }
             // Obfuscated only towards sources known to take it, which needs their user hash.
             boolean crypt = !disabled && (source.cryptOptions & CRYPT_SUPPORTED) != 0;
             source.session.connect(crypt ? source.userHash : Optional.empty(), this.random);

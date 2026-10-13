@@ -48,6 +48,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.util.Ipv4;
 
@@ -83,6 +84,40 @@ class DownloadFlowTest {
                 .containsSubsequence("HELLO", "SETREQFILEID", "HASHSETREQUEST", "STARTUPLOADREQ")
                 .contains("REQUESTPARTS");
         assertThat(Collections.frequency(peer.received(), "STARTUPLOADREQ")).isEqualTo(1);
+    }
+
+    @Test
+    void aSourceDownloadsFromUsOverTheConnectionWeDownloadOn() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
+        Files.write(incoming.resolve("ours.bin"), content(300_000, 9));
+        byte[] data = content(PART / 2, 10);
+        FakePeer peer = this.peer(data, FakePeer.Config.simple(hash(10)));
+        NjMuleEngine engine = this.engine();
+        peer.alsoAskFor(awaitShared(engine).hash());
+        Events events = new Events(engine);
+
+        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
+        events.completed(added.hash());
+
+        // The peer asked for our file on our connection and got a slot there.
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (!peer.received().contains("ACCEPTUPLOADREQ")) {
+            assertThat(System.nanoTime()).as("no slot for the peer").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        assertThat(peer.received()).contains("FILESTATUS");
+    }
+
+    private static SharedFileInfo awaitShared(NjMuleEngine engine) throws Exception {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (true) {
+            List<SharedFileInfo> files = engine.sharedFiles().get(10, TimeUnit.SECONDS);
+            if (!files.isEmpty()) {
+                return files.getFirst();
+            }
+            assertThat(System.nanoTime()).as("nothing shared").isLessThan(deadline);
+            Thread.sleep(50);
+        }
     }
 
     @Test

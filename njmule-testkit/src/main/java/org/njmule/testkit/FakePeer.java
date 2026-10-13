@@ -91,6 +91,7 @@ public final class FakePeer implements AutoCloseable {
     private final Config config;
     private final ServerSocket tcp;
     private volatile long lowId;
+    private volatile Hash16 wanted;
     private volatile int serverIp;
     private volatile int serverPort;
     private final List<String> received = new CopyOnWriteArrayList<>();
@@ -126,6 +127,14 @@ public final class FakePeer implements AutoCloseable {
                 List.of(),
                 List.of(new Ed2kLink.Source(this.tcp.getInetAddress().getHostAddress(), this.port())),
                 List.of());
+    }
+
+    /**
+     * Makes the peer download {@code file} too: over each connection a downloader opens, it asks for it as soon as the
+     * downloader asked for the file name, as clients do on a connection they already have.
+     */
+    public void alsoAskFor(Hash16 file) {
+        this.wanted = file;
     }
 
     /** The names of the opcodes received, in order. */
@@ -235,6 +244,7 @@ public final class FakePeer implements AutoCloseable {
         private final boolean calledBack;
         private int downloaderPort;
         private long sessionBytes;
+        private boolean askedForOurs;
 
         Session(Socket socket, RandomAccessFile data, boolean calledBack) throws IOException {
             this.socket = socket;
@@ -267,8 +277,15 @@ public final class FakePeer implements AutoCloseable {
                         this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                     }
                 }
-                case REQUESTFILENAME ->
+                case REQUESTFILENAME -> {
                     this.send(new ClientMessages.FileName(hash, FakePeer.this.link.name()).encode());
+                    Hash16 file = FakePeer.this.wanted;
+                    if (file != null && !this.askedForOurs) {
+                        this.askedForOurs = true;
+                        this.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
+                        this.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
+                    }
+                }
                 case SETREQFILEID -> this.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
                 case HASHSETREQUEST ->
                     this.send(new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes()).encode());

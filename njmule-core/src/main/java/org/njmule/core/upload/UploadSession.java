@@ -16,7 +16,6 @@
  */
 package org.njmule.core.upload;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.time.Duration;
@@ -29,16 +28,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
-import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
-import org.njmule.core.net.TcpConnection;
+import org.njmule.core.net.PeerChannel;
 import org.njmule.core.peer.Identities;
+import org.njmule.core.peer.PeerLink;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketWriter;
-import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
@@ -46,10 +44,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A client that may download from us, over one connection: it asks for a file, its parts and hash set and a place in
- * our queue; with a slot it asks for blocks. Engine thread only; connection callbacks are posted to it.
+ * A client that may download from us, over the upload side of its link: it asks for a file, its parts and hash set and
+ * a place in our queue; with a slot it asks for blocks. Engine thread only.
  */
-final class UploadSession {
+final class UploadSession implements PeerLink.Role {
 
     /** What the session needs from the queue, on the engine thread. */
     interface Queue {
@@ -90,8 +88,7 @@ final class UploadSession {
 
     private static final Logger logger = LoggerFactory.getLogger(UploadSession.class);
 
-    private final EngineLoop loop;
-    private final TcpConnection connection;
+    private PeerChannel connection;
     private final Supplier<Hello> ourHello;
     private final Queue queue;
     private final Deque<Block> pending = new ArrayDeque<>();
@@ -103,12 +100,18 @@ final class UploadSession {
     private boolean slot;
     private boolean closed;
 
-    UploadSession(EngineLoop loop, TcpConnection connection, Hello peer, Supplier<Hello> ourHello, Queue queue) {
-        this.loop = Objects.requireNonNull(loop, "loop");
-        this.connection = Objects.requireNonNull(connection, "connection");
+    private UploadSession(Hello peer, Supplier<Hello> ourHello, Queue queue) {
         this.peer = Objects.requireNonNull(peer, "peer");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.queue = Objects.requireNonNull(queue, "queue");
+    }
+
+    /** Takes the upload side of {@code link}, whose client greeted us. */
+    static UploadSession on(PeerLink link, Supplier<Hello> ourHello, Queue queue) {
+        UploadSession session = new UploadSession(link.peer().orElseThrow(), ourHello, queue);
+        session.connection = link.attach(PeerLink.Side.UPLOAD, session);
+        session.identity = link.identity();
+        return session;
     }
 
     Hello peer() {
@@ -159,34 +162,9 @@ final class UploadSession {
                 + this.sent.size();
     }
 
-    /** Runs the secure identification over this connection. */
-    void identify(Identities.Session session) {
-        this.identity = Optional.of(session);
-    }
-
     /** How far the client's user hash is trusted, for its credits. */
     Identities.Trust trust() {
         return this.identity.map(Identities.Session::trust).orElse(Identities.Trust.NEEDED);
-    }
-
-    /** The handler for the connection, which must already have exchanged hellos. */
-    TcpConnection.Handler handler() {
-        return new TcpConnection.Handler() {
-            @Override
-            public void onPacket(TcpConnection c, Packet packet) {
-                if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
-                    c.setFrameLimit(FrameLimits.CLIENT);
-                }
-                if (!UploadSession.this.loop.post(() -> UploadSession.this.received(packet))) {
-                    c.close();
-                }
-            }
-
-            @Override
-            public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                UploadSession.this.loop.postOutcome(UploadSession.this::gone);
-            }
-        };
     }
 
     /** Gives the client its slot. */
@@ -218,6 +196,7 @@ final class UploadSession {
         return !this.closed && this.connection.send(packet);
     }
 
+    /** Done with the client; a download from it over the same connection goes on. */
     void close() {
         if (!this.closed) {
             this.closed = true;
@@ -225,15 +204,18 @@ final class UploadSession {
         }
     }
 
-    /** A packet from the client, on the engine thread. */
-    void received(Packet packet) {
+    /** Closes the connection, also for a download from the client. */
+    void disconnect() {
+        this.closed = true;
+        this.connection.disconnect();
+    }
+
+    @Override
+    public void received(Packet packet) {
         if (this.closed) {
             return;
         }
         try {
-            if (this.identity.isPresent() && this.identity.get().received(packet)) {
-                return;
-            }
             if (packet.protocol() == Protocol.EDONKEY) {
                 this.basic(packet);
             } else if (packet.protocol() == Protocol.EMULE) {
@@ -241,7 +223,7 @@ final class UploadSession {
             }
         } catch (DecodeException | IllegalArgumentException e) {
             logger.debug("Bad packet from {}: {}", this.address(), e.getMessage());
-            this.close();
+            this.disconnect();
         } catch (RuntimeException e) {
             logger.warn("Failed handling a packet from {}", this.address(), e);
             this.close();
@@ -260,7 +242,7 @@ final class UploadSession {
                 // credits, place in the queue and slot.
                 if (!again.userHash().equals(this.peer.userHash())) {
                     this.queue.misbehaved(this, "changed its user hash");
-                    this.close();
+                    this.disconnect();
                     return;
                 }
                 this.peer = again;
@@ -370,6 +352,11 @@ final class UploadSession {
         if (!this.pending.isEmpty()) {
             this.queue.blocksRequested(this);
         }
+    }
+
+    @Override
+    public void closed(Optional<String> cause) {
+        this.gone();
     }
 
     /** The connection is closed, on the engine thread. */

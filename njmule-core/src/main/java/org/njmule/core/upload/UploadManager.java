@@ -34,10 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -53,16 +50,14 @@ import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.peer.Identities;
-import org.njmule.core.peer.PeerGreetings;
+import org.njmule.core.peer.PeerLink;
+import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
-import org.njmule.core.protocol.packet.FrameLimits;
-import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
-import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.util.Ipv4;
 import org.njmule.core.util.RateMeter;
@@ -72,7 +67,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Our upload queue: clients that ask for a file wait in it, the best scored (waiting time times credits times file
  * priority) get the slots the upload limit allows, and each slot gets about one part before the client goes back to
- * waiting. Engine thread only, except {@link #router()}.
+ * waiting. Engine thread only.
  */
 public final class UploadManager implements AutoCloseable {
 
@@ -100,7 +95,6 @@ public final class UploadManager implements AutoCloseable {
 
     private static final Duration TICK = Duration.ofMillis(100);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(45);
-    private static final Duration ROUTE_WAIT = Duration.ofSeconds(5);
     private static final Duration WAITING_TIMEOUT = Duration.ofSeconds(40);
     // Throttled slots may send nothing for a while; the client keeps its connection.
     private static final Duration SLOT_TIMEOUT = Duration.ofMinutes(5);
@@ -180,7 +174,7 @@ public final class UploadManager implements AutoCloseable {
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
     private final Supplier<Hello> ourHello;
     private final Supplier<Settings> settings;
-    private final Identities identities;
+    private final PeerLinks links;
     private final Credits credits;
     private final SecureRandom random;
     private final Ticker ticker;
@@ -225,7 +219,7 @@ public final class UploadManager implements AutoCloseable {
             Function<Hash16, List<SourceExchange.Source>> downloadSources,
             Supplier<Hello> ourHello,
             Supplier<Settings> settings,
-            Identities identities,
+            PeerLinks links,
             Credits credits,
             IntConsumer reachable,
             SecureRandom random,
@@ -236,7 +230,7 @@ public final class UploadManager implements AutoCloseable {
         this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.settings = Objects.requireNonNull(settings, "settings");
-        this.identities = Objects.requireNonNull(identities, "identities");
+        this.links = Objects.requireNonNull(links, "links");
         this.credits = Objects.requireNonNull(credits, "credits");
         this.reachable = Objects.requireNonNull(reachable, "reachable");
         this.random = Objects.requireNonNull(random, "random");
@@ -312,24 +306,12 @@ public final class UploadManager implements AutoCloseable {
         return this.slots.size();
     }
 
-    /**
-     * Takes every incoming connection that no one else wanted: the client may ask for our files. Called on the
-     * connection's thread; waits for the engine thread.
-     */
-    public PeerGreetings.Router router() {
-        return (connection, peer) -> {
-            try {
-                return this.loop
-                        .submit(() -> Optional.of(this.incoming(connection, peer)))
-                        .get(ROUTE_WAIT.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return Optional.empty();
-            } catch (ExecutionException | TimeoutException e) {
-                logger.debug("Cannot take the connection from {}", connection.remoteAddress(), e);
-                return Optional.empty();
-            }
-        };
+    /** Takes the upload side of a link whose client greeted us; empty for a banned client. */
+    public Optional<PeerLink.Role> attach(PeerLink link) {
+        if (this.isBanned(link.remoteAddress().getAddress())) {
+            return Optional.empty();
+        }
+        return Optional.of(UploadSession.on(link, this.ourHello, this.events));
     }
 
     @Override
@@ -343,17 +325,6 @@ public final class UploadManager implements AutoCloseable {
         this.slots.clear();
         this.waiting.clear();
         this.credits.save();
-    }
-
-    private TcpConnection.Handler incoming(TcpConnection connection, Hello peer) {
-        // We answered the hello: as the accepting side we ask for the identification now.
-        return this.session(connection, peer).handler();
-    }
-
-    private UploadSession session(TcpConnection connection, Hello peer) {
-        UploadSession session = new UploadSession(this.loop, connection, peer, this.ourHello, this.events);
-        session.identify(this.identities.start(peer, connection.remoteAddress().getAddress(), session::send));
-        return session;
     }
 
     private Optional<Uploadable> find(Hash16 hash) {
@@ -496,7 +467,7 @@ public final class UploadManager implements AutoCloseable {
                 return false;
             }
             if (c.session != null && this.slotOf(c.session).isEmpty()) {
-                c.session.close();
+                c.session.disconnect();
             }
             return true;
         });
@@ -626,69 +597,32 @@ public final class UploadManager implements AutoCloseable {
             connection.close();
             return;
         }
-        Outgoing greeting = new Outgoing(client, connection);
-        connection.start(greeting, UploadManager::unpack);
+        PeerLink link = this.links.outgoing(connection, new PeerLinks.Opener() {
+            @Override
+            public void greeted(PeerLink link) {
+                UploadManager.this.greeted(client, link);
+            }
+
+            @Override
+            public void failed(String reason) {
+                UploadManager.this.unreachable(client, reason);
+            }
+        });
+        connection.start(link, UploadManager::unpack);
         connection.send(this.ourHello.get().encode(false));
     }
 
-    /** Our connection to a client we give a slot to: its hello answer comes first. */
-    private final class Outgoing implements TcpConnection.Handler {
-        private final Client client;
-        private final TcpConnection connection;
-        private UploadSession session;
-
-        Outgoing(Client client, TcpConnection connection) {
-            this.client = client;
-            this.connection = connection;
+    // The client we called back to give it its slot answered our hello.
+    private void greeted(Client client, PeerLink link) {
+        client.connecting = false;
+        Hello peer = link.peer().orElseThrow();
+        if (!peer.userHash().equals(client.userHash) || this.waiting.get(client.userHash) != client) {
+            link.disconnect();
+            return;
         }
-
-        @Override
-        public void onPacket(TcpConnection c, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
-                c.setFrameLimit(FrameLimits.CLIENT);
-            }
-            if (!UploadManager.this.loop.post(() -> this.deliver(packet))) {
-                c.close();
-            }
-        }
-
-        @Override
-        public void onClosed(TcpConnection c, Optional<IOException> cause) {
-            UploadManager.this.loop.postOutcome(() -> {
-                if (this.session != null) {
-                    this.session.gone();
-                } else {
-                    UploadManager.this.unreachable(this.client, "closed before the hello");
-                }
-            });
-        }
-
-        private void deliver(Packet packet) {
-            if (this.session != null) {
-                this.session.received(packet);
-                return;
-            }
-            if (packet.protocol() != Protocol.EDONKEY || packet.opcode() != Opcodes.Client.HELLOANSWER.code()) {
-                return;
-            }
-            Hello peer;
-            try {
-                peer = Hello.decode(packet);
-            } catch (DecodeException e) {
-                this.connection.close();
-                return;
-            }
-            UploadManager manager = UploadManager.this;
-            this.client.connecting = false;
-            if (!peer.userHash().equals(this.client.userHash)
-                    || manager.waiting.get(this.client.userHash) != this.client) {
-                this.connection.close();
-                return;
-            }
-            this.session = manager.session(this.connection, peer);
-            manager.waiting.remove(this.client.userHash);
-            manager.open(this.client, this.session);
-        }
+        UploadSession session = UploadSession.on(link, this.ourHello, this.events);
+        this.waiting.remove(client.userHash);
+        this.open(client, session);
     }
 
     // A client may ask once, then again after 40 minutes for rare downloads or 160 for the rest.

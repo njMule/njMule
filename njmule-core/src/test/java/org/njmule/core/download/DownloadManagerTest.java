@@ -40,6 +40,7 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
+import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.util.Ipv4;
 
@@ -125,7 +126,7 @@ class DownloadManagerTest {
                 ip -> ip == BLOCKED_IP,
                 random,
                 Ticker.systemTicker(),
-                identities,
+                new PeerLinks(this.loop, identities, link -> Optional.empty()),
                 (hash, bytes) -> {},
                 () -> Optional.of(kad),
                 new Quiet()));

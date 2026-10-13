@@ -36,14 +36,16 @@ import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
+import org.njmule.core.net.PeerChannel;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.peer.Identities;
+import org.njmule.core.peer.PeerLink;
+import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
-import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
@@ -55,7 +57,7 @@ import org.slf4j.LoggerFactory;
  * One source of one download: the connection, the file request, the place in the source's upload queue and the transfer
  * of blocks. Engine thread only; connection callbacks are posted to it.
  */
-final class DownloadSession {
+final class DownloadSession implements PeerLink.Role {
 
     /** What a session reports, on the engine thread. */
     interface Listener {
@@ -141,12 +143,12 @@ final class DownloadSession {
     private final DownloadQueue.Download download;
     private final InetSocketAddress address;
     private final Supplier<Hello> ourHello;
-    private final Identities identities;
+    private final PeerLinks links;
     private final Listener listener;
     private final Map<Long, Pending> pending = new LinkedHashMap<>();
 
     private State state = State.CONNECTING;
-    private TcpConnection connection;
+    private PeerChannel connection;
     private Optional<Hash16> peerHash = Optional.empty();
     private BitSet sourceParts;
     private boolean uploadRequested;
@@ -154,6 +156,7 @@ final class DownloadSession {
     private int queueRank;
     private ScheduledFuture<?> idle;
     private Optional<Identities.Session> identity = Optional.empty();
+    private PeerLink link;
     private Optional<Hello> peer = Optional.empty();
     private boolean sourcesAsked;
 
@@ -163,14 +166,14 @@ final class DownloadSession {
             DownloadQueue.Download download,
             InetSocketAddress address,
             Supplier<Hello> ourHello,
-            Identities identities,
+            PeerLinks links,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.queue = Objects.requireNonNull(queue, "queue");
         this.download = Objects.requireNonNull(download, "download");
         this.address = Objects.requireNonNull(address, "address");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
-        this.identities = Objects.requireNonNull(identities, "identities");
+        this.links = Objects.requireNonNull(links, "links");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
@@ -237,27 +240,20 @@ final class DownloadSession {
     }
 
     /**
-     * Takes over a connection the source opened after we greeted each other, as a source does when it has a slot for
-     * us; returns the handler for the rest of the connection.
+     * Takes the download side of a link whose client greeted us. {@code slotOffered} tells a source that connected to
+     * give us a slot from one that still has to be asked for an upload: a firewalled source we asked through the server
+     * to connect, or a client already connected for another reason.
      */
-    TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
-        return this.adopt(incoming, peer, knownParts, true);
-    }
-
-    /**
-     * As above; {@code slotOffered} is false for a firewalled source that connected because we asked it to through the
-     * server, which still has to be asked for an upload.
-     */
-    TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts, boolean slotOffered) {
-        this.connection = incoming;
-        this.peer = Optional.of(peer);
-        this.peerHash = Optional.of(peer.userHash());
-        this.identity =
-                Optional.of(this.identities.start(peer, incoming.remoteAddress().getAddress(), incoming::send));
+    void adopt(PeerLink link, Optional<BitSet> knownParts, boolean slotOffered) {
+        Hello hello = link.peer().orElseThrow();
+        this.link = link;
+        this.connection = link.attach(PeerLink.Side.DOWNLOAD, this);
+        this.peer = Optional.of(hello);
+        this.peerHash = Optional.of(hello.userHash());
+        this.identity = link.identity();
         this.state = State.QUEUED;
         this.uploadRequested = slotOffered;
         knownParts.ifPresentOrElse(this::setParts, this::requestFile);
-        return this.handler(incoming);
     }
 
     /** Ends the session; a source that gave us a slot is told we leave it. */
@@ -285,41 +281,41 @@ final class DownloadSession {
             opened.close();
             return;
         }
-        this.connection = opened;
+        this.link = this.links.outgoing(opened, new PeerLinks.Opener() {
+            @Override
+            public void greeted(PeerLink link) {
+                DownloadSession.this.greeted(link);
+            }
+
+            @Override
+            public void failed(String reason) {
+                // The download side hears it as the connection closing.
+            }
+        });
+        this.connection = this.link.attach(PeerLink.Side.DOWNLOAD, this);
         this.state = State.GREETING;
-        opened.start(this.handler(opened), DownloadSession::unpack);
+        opened.start(this.link, DownloadSession::unpack);
         opened.send(this.ourHello.get().encode(false));
     }
 
-    private TcpConnection.Handler handler(TcpConnection mine) {
-        return new TcpConnection.Handler() {
-            @Override
-            public void onPacket(TcpConnection c, Packet packet) {
-                // The next frame is read right after this returns: lift the handshake limit here.
-                if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
-                    c.setFrameLimit(FrameLimits.CLIENT);
-                }
-                if (!DownloadSession.this.loop.post(() -> DownloadSession.this.received(mine, packet))) {
-                    c.close();
-                }
-            }
-
-            @Override
-            public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                DownloadSession.this.loop.postOutcome(
-                        () -> DownloadSession.this.closed(mine, cause.map(IOException::getMessage)));
-            }
-        };
+    private void greeted(PeerLink greeting) {
+        if (greeting != this.link || this.state != State.GREETING) {
+            return;
+        }
+        Hello hello = greeting.peer().orElseThrow();
+        this.peer = Optional.of(hello);
+        this.peerHash = Optional.of(hello.userHash());
+        this.identity = greeting.identity();
+        this.state = State.REQUESTING;
+        this.requestFile();
     }
 
-    private void received(TcpConnection from, Packet packet) {
-        if (from != this.connection || this.state == State.ENDED) {
+    @Override
+    public void received(Packet packet) {
+        if (this.state == State.ENDED) {
             return;
         }
         try {
-            if (this.identity.isPresent() && this.identity.get().received(packet)) {
-                return;
-            }
             if (packet.protocol() == Protocol.EMULE) {
                 this.receivedExtended(packet);
             } else if (packet.protocol() == Protocol.EDONKEY) {
@@ -342,19 +338,6 @@ final class DownloadSession {
         }
         Hash16 file = this.download.hash();
         switch (opcode.get()) {
-            case HELLOANSWER -> {
-                if (this.state == State.GREETING) {
-                    Hello peer = Hello.decode(packet);
-                    this.peer = Optional.of(peer);
-                    this.peerHash = Optional.of(peer.userHash());
-                    // As the side that connected, we ask for the identification first.
-                    this.identity = Optional.of(this.identities.start(
-                            peer, this.connection.remoteAddress().getAddress(), this.connection::send));
-                    this.state = State.REQUESTING;
-                    this.requestFile();
-                }
-            }
-            case HELLO -> this.connection.send(this.ourHello.get().encode(true));
             case FILESTATUS -> {
                 ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(packet);
                 long size = this.download.file().size();
@@ -566,8 +549,9 @@ final class DownloadSession {
         this.setReadTimeout(QUEUED_TIMEOUT);
     }
 
-    private void closed(TcpConnection which, Optional<String> cause) {
-        if (which != this.connection || this.state == State.ENDED) {
+    @Override
+    public void closed(Optional<String> cause) {
+        if (this.state == State.ENDED) {
             return;
         }
         // A queued source keeps our place when the idle connection closes; a lost slot is gone.
