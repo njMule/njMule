@@ -713,6 +713,19 @@ final class Network {
     }
 
     // Called from connection threads: reads only volatile state and the preferences.
+    // The id peers take us for: our address when Kad finds our port open, else the server's id, else
+    // 1, a LowID, while Kad is connected but firewalled. Zero would read as a HighID at our address.
+    private static long ourClientId(ServerContext server, KadNode node) {
+        boolean kad = node != null && node.isConnected();
+        if (kad && !node.isFirewalled() && node.publicIp() != 0) {
+            return Ipv4.toEd2k(node.publicIp());
+        }
+        if (server.clientId() != 0) {
+            return server.clientId();
+        }
+        return kad ? 1 : 0;
+    }
+
     private Hello ourHello() {
         Preferences prefs = this.preferences.get();
         ServerContext server = this.context;
@@ -722,7 +735,7 @@ final class Network {
         int kadPort = socket != null && node != null && node.isConnected() ? socket.port() : 0;
         return Hello.of(
                 this.userHash,
-                server.clientId(),
+                ourClientId(server, node),
                 this.listenPort(),
                 prefs.nick(),
                 kadPort,
