@@ -40,6 +40,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -98,10 +99,12 @@ public final class FakeServer implements AutoCloseable {
     private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
     private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
+    private volatile Function<SearchExpr, List<FileEntry>> answers;
 
     // The UDP socket listens on the TCP port + 4 of the same address.
     private FakeServer(Config config, ServerSocket tcp) throws SocketException {
         this.config = config;
+        this.answers = expression -> config.results();
         this.tcp = tcp;
         this.udp = new DatagramSocket(new InetSocketAddress(tcp.getInetAddress(), tcp.getLocalPort() + UDP_OFFSET));
     }
@@ -167,6 +170,11 @@ public final class FakeServer implements AutoCloseable {
 
     public List<SearchExpr> searches() {
         return List.copyOf(this.searches);
+    }
+
+    /** Answers TCP searches with what {@code answers} finds for each, instead of the fixed results. */
+    public void answerSearches(Function<SearchExpr, List<FileEntry>> answers) {
+        this.answers = Objects.requireNonNull(answers, "answers");
     }
 
     public List<SearchExpr> udpSearches() {
@@ -289,8 +297,9 @@ public final class FakeServer implements AutoCloseable {
             return List.of();
         }
         if (request.opcode() == Opcodes.Server.SEARCHREQUEST.code()) {
-            this.searches.add(SearchTreeCodec.read(request.reader()));
-            return List.of(new ServerMessages.SearchResults(this.config.results(), false).encode());
+            SearchExpr expression = SearchTreeCodec.read(request.reader());
+            this.searches.add(expression);
+            return List.of(new ServerMessages.SearchResults(this.answers.apply(expression), false).encode());
         }
         return List.of();
     }

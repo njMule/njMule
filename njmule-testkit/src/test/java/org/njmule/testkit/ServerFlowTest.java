@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -140,6 +141,29 @@ class ServerFlowTest {
         assertThat(results).containsKey("ubuntu notes.txt");
         assertThat(connected.searches()).hasSize(1);
         assertThat(other.udpSearches()).hasSize(1);
+    }
+
+    @Test
+    void anAnswerOfTheServerStaysWithTheSearchItAnswers() throws Exception {
+        InetAddress local = lanAddress();
+        FakeServer server = this.server(local, new FakeServer.Config(highId(local), "", List.of()));
+        server.answerSearches(expression -> List.of(
+                FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), server.port())))
+                .get();
+        events.next(EngineEvent.ServerConnected.class, e -> true);
+
+        // The second search goes out before the answer to the first comes in.
+        CompletableFuture<SearchId> first = engine.search(new SearchRequest("first", SearchRequest.Scope.SERVER));
+        SearchId second = engine.search(new SearchRequest("second", SearchRequest.Scope.SERVER))
+                .get();
+        first.get();
+
+        EngineEvent.SearchResults results =
+                events.next(EngineEvent.SearchResults.class, r -> r.search().equals(second));
+        assertThat(results.results()).extracting(SearchResult::name).containsExactly("second.bin");
     }
 
     @Test

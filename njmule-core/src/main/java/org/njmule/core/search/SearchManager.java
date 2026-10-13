@@ -100,10 +100,14 @@ public final class SearchManager {
     private final Supplier<Optional<ServerUdp>> udp;
     private final Supplier<Optional<KadSearches>> kad;
     private final Listener listener;
+    // Searches still running.
     private final Map<SearchId, Search> searches = new HashMap<>();
     private long nextId = 1;
-    // The search the connected server is answering.
-    private Search awaitingServer;
+    // Searches the connected server has yet to answer, in the order we asked: its answers carry no
+    // search id, so a late answer must not land in the search asked after it.
+    private final Deque<Search> serverQueue = new ArrayDeque<>();
+    // The search that a new one replaces on the server.
+    private Search serverSearch;
 
     public SearchManager(
             EngineLoop loop,
@@ -133,11 +137,12 @@ public final class SearchManager {
         }
         ServerMessages.IdChange id =
                 this.session.id().orElseThrow(() -> new IllegalStateException("not connected to a server"));
-        if (this.awaitingServer != null) {
-            this.end(this.awaitingServer);
+        if (this.serverSearch != null && this.serverQueue.contains(this.serverSearch)) {
+            this.end(this.serverSearch);
         }
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         this.searches.put(search.id, search);
+        this.serverSearch = search;
         this.session.send(ServerMessages.searchRequest(expression, id.has(ServerMessages.TCP_LARGEFILES)));
         this.waitForServer(search);
         return search.id;
@@ -202,14 +207,17 @@ public final class SearchManager {
         }
     }
 
-    /** Results from the connected server, for the search it is answering. */
+    /** Results from the connected server, for the oldest search it has yet to answer. */
     public void serverResults(ServerMet.Server server, ServerMessages.SearchResults results) {
-        Search search = this.awaitingServer;
-        if (search == null || search.ended) {
+        Search search = this.serverQueue.pollFirst();
+        if (search == null) {
             return;
         }
-        this.awaitingServer = null;
         search.serverTimer.cancel(false);
+        if (search.ended) {
+            logger.debug("Dropping the server's answer to an ended search");
+            return;
+        }
         search.moreAvailable = results.more();
         this.merge(search, results.files());
         this.afterServer(search);
@@ -229,21 +237,20 @@ public final class SearchManager {
 
     /** Ends every search, e.g. when the server connection is lost. */
     public void stopAll() {
+        this.serverQueue.clear();
         for (Search search : List.copyOf(this.searches.values())) {
-            if (!search.ended) {
-                this.end(search);
-            }
+            this.end(search);
         }
     }
 
     private void waitForServer(Search search) {
-        this.awaitingServer = search;
+        this.serverQueue.addLast(search);
         search.serverTimer = this.loop.schedule("search server wait", SERVER_WAIT, () -> this.serverSilent(search));
     }
 
+    // A server that does not answer in time is taken not to answer at all.
     private void serverSilent(Search search) {
-        if (this.awaitingServer == search && !search.ended) {
-            this.awaitingServer = null;
+        if (this.serverQueue.remove(search) && !search.ended) {
             this.afterServer(search);
         }
     }
@@ -362,14 +369,13 @@ public final class SearchManager {
             return;
         }
         search.ended = true;
-        if (search.serverTimer != null) {
+        this.searches.remove(search.id);
+        // The server's answer may still come, and its wait keeps the order of the answers.
+        if (search.serverTimer != null && !this.serverQueue.contains(search)) {
             search.serverTimer.cancel(false);
         }
         if (search.udpTimer != null) {
             search.udpTimer.cancel(false);
-        }
-        if (this.awaitingServer == search) {
-            this.awaitingServer = null;
         }
         this.listener.ended(search.id, search.results.size());
     }
