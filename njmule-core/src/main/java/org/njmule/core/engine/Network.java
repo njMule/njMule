@@ -471,7 +471,12 @@ final class Network {
                 this.totals.uploaded() + this.uploads.uploaded(),
                 this.totals.sessions() + 1,
                 this.sessionSeconds(),
-                this.totals.seconds() + this.sessionSeconds());
+                this.totals.seconds() + this.sessionSeconds(),
+                id.map(ServerMessages.IdChange::publicIp)
+                        .filter(ip -> ip != 0)
+                        .map(Ipv4::format)
+                        .orElse(""),
+                this.listenPort());
     }
 
     private long sessionSeconds() {
@@ -1081,7 +1086,9 @@ final class Network {
                 node.contacts(),
                 node.verifiedContacts(),
                 node.isFirewalled(),
-                node.id().toHex()));
+                node.id().toHex(),
+                node.publicIp() == 0 ? "" : Ipv4.format(node.publicIp()),
+                this.kadSocket.port()));
     }
 
     private void startKad() {

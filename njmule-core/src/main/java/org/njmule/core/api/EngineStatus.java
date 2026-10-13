@@ -28,6 +28,8 @@ import java.util.Optional;
  * @param uploaded payload bytes sent in this session
  * @param totalDownloaded payload bytes received in all sessions, this one included
  * @param sessions the sessions so far, this one included
+ * @param publicIp our address as the server sees it, empty when unknown
+ * @param tcpPort the port other clients reach us on
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -47,10 +49,13 @@ public record EngineStatus(
         long totalUploaded,
         long sessions,
         long sessionSeconds,
-        long totalSeconds) {
+        long totalSeconds,
+        String publicIp,
+        int tcpPort) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(kad, "kad");
+        Objects.requireNonNull(publicIp, "publicIp");
     }
 }

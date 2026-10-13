@@ -18,10 +18,23 @@ package org.njmule.core.api;
 
 import java.util.Objects;
 
-/** The state of our Kad node. */
-public record KadInfo(boolean connected, int contacts, int verifiedContacts, boolean firewalled, String id) {
+/**
+ * The state of our Kad node.
+ *
+ * @param publicIp our address as other nodes see it, empty when unknown
+ * @param udpPort the port Kad listens on
+ */
+public record KadInfo(
+        boolean connected,
+        int contacts,
+        int verifiedContacts,
+        boolean firewalled,
+        String id,
+        String publicIp,
+        int udpPort) {
 
     public KadInfo {
         Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(publicIp, "publicIp");
     }
 }
