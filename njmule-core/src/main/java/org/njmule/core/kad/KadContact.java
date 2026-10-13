@@ -166,12 +166,6 @@ final class KadContact {
         this.expires = now + 2 * MINUTE;
     }
 
-    /** The contact misbehaved: it goes at the next check. */
-    void expire() {
-        this.type = DEAD;
-        this.expires = 1;
-    }
-
     boolean isExpired(long now) {
         return this.expires > 0 && now - this.expires >= 0;
     }

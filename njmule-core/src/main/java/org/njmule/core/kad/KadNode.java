@@ -442,8 +442,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (opcode.isEmpty()) {
             return;
         }
+        // Only the packet is dropped: the sender's address may be forged, so its contact is kept.
         if (!this.tracking.allow(ip, opcode.get(), nowMs)) {
-            this.table.byAddress(ip).ifPresent(KadContact::expire);
             return;
         }
         this.lastPacket = this.ticker.read();
