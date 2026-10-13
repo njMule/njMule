@@ -19,11 +19,18 @@ package org.njmule.gui.shell;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
+import javafx.geometry.Dimension2D;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.ButtonBase;
+import javafx.scene.control.ScrollPane;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -101,6 +108,40 @@ class MainWindowTest {
     }
 
     @Test
+    void atItsMinimumSizeEveryButtonShowsWhole() throws Exception {
+        this.engine = FxTesting.engine(this.dir.resolve("njmule"));
+        this.model = new EngineModel(this.engine, Platform::runLater);
+        for (Locale language : I18n.LANGUAGES) {
+            MainWindow window = this.window(language, GuiSettings.Mode.LIGHT);
+            Dimension2D minimum = FxTesting.onFx(window::minimumSize);
+            for (String screen : SCREENS) {
+                List<String> cut = FxTesting.onFx(() -> {
+                    window.show(screen);
+                    Parent root = window.root();
+                    root.resize(minimum.getWidth(), minimum.getHeight());
+                    root.applyCss();
+                    root.layout();
+                    List<String> wrong = new ArrayList<>();
+                    for (Node node : root.lookupAll(".button")) {
+                        if (!(node instanceof ButtonBase button) || !button.isVisible() || button.getScene() == null) {
+                            continue;
+                        }
+                        Bounds bounds = button.localToScene(button.getBoundsInLocal());
+                        // Buttons in a scrolled pane are reached by scrolling down.
+                        boolean inside = bounds.getMaxX() <= minimum.getWidth() + 0.5
+                                && (scrolled(button) || bounds.getMaxY() <= minimum.getHeight() + 0.5);
+                        if (button.getWidth() + 0.5 < button.prefWidth(-1) || !inside) {
+                            wrong.add(screen + ": " + button.getText() + " " + bounds);
+                        }
+                    }
+                    return wrong;
+                });
+                assertThat(cut).as(language + " " + screen).isEmpty();
+            }
+        }
+    }
+
+    @Test
     void messagesComeAndGo() throws Exception {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
         this.model = new EngineModel(this.engine, Platform::runLater);
@@ -111,6 +152,15 @@ class MainWindowTest {
         assertThat(FxTesting.onFx(() -> window.messages().size())).isEqualTo(1);
         assertThat(FxTesting.onFx(() -> window.connectButton().getText())).isEqualTo("Connect");
         assertThat(FxTesting.onFx(() -> window.ed2kChip().getText())).contains("Not Connected");
+    }
+
+    private static boolean scrolled(Node node) {
+        for (Node up = node.getParent(); up != null; up = up.getParent()) {
+            if (up instanceof ScrollPane) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private MainWindow window(Locale language, GuiSettings.Mode mode) throws Exception {

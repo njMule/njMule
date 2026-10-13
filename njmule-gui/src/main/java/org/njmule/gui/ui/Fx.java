@@ -24,6 +24,8 @@ import javafx.collections.transformation.SortedList;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBase;
+import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
@@ -50,7 +52,7 @@ public final class Fx {
     public static Button button(String text, Ikon ikon, Runnable action) {
         Button button = new Button(text, icon(ikon));
         button.setOnAction(e -> action.run());
-        return button;
+        return whole(button);
     }
 
     /** A button showing only its icon, with the text as tooltip and accessible name. */
@@ -59,7 +61,13 @@ public final class Fx {
         button.setTooltip(new Tooltip(text));
         button.setAccessibleText(text);
         button.setOnAction(e -> action.run());
-        return button;
+        return whole(button);
+    }
+
+    /** Keeps {@code control} at least as wide as its content, so a narrow window never cuts its text. */
+    public static <T extends Region> T whole(T control) {
+        control.setMinWidth(Region.USE_PREF_SIZE);
+        return control;
     }
 
     public static Label title(String text) {
@@ -75,6 +83,11 @@ public final class Fx {
     }
 
     public static HBox toolRow(Node... nodes) {
+        for (Node node : nodes) {
+            if (node instanceof ButtonBase || node instanceof ComboBoxBase<?>) {
+                whole((Region) node);
+            }
+        }
         HBox row = new HBox(nodes);
         row.getStyleClass().add("tool-row");
         row.setAlignment(Pos.CENTER_LEFT);

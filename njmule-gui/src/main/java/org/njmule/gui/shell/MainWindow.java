@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javafx.animation.PauseTransition;
+import javafx.geometry.Dimension2D;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -36,6 +37,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -181,6 +183,27 @@ public final class MainWindow {
         return this.current;
     }
 
+    /**
+     * The smallest size of the content at which every screen still shows all its buttons, laid out once for each
+     * screen; FX thread, with the window shown.
+     */
+    public Dimension2D minimumSize() {
+        Screen shown = this.screens.get(this.current);
+        double width = 0;
+        double height = 0;
+        for (Screen screen : this.screens.values()) {
+            this.content.getChildren().setAll(screen.view());
+            this.root.applyCss();
+            this.root.layout();
+            width = Math.max(width, this.root.minWidth(-1));
+            height = Math.max(height, this.root.minHeight(-1));
+        }
+        if (shown != null) {
+            this.content.getChildren().setAll(shown.view());
+        }
+        return new Dimension2D(Math.ceil(width), Math.ceil(height));
+    }
+
     /** The ids of the screens, in rail order. */
     public List<String> screenIds() {
         return List.copyOf(this.screens.keySet());
@@ -213,6 +236,9 @@ public final class MainWindow {
         importer.setId("import");
         about.setId("about");
         MenuButton tools = new MenuButton(this.gui.t("nj.top.tools"), new FontIcon(Material2AL.BUILD), importer, about);
+        for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, tools)) {
+            Fx.whole(whole);
+        }
         HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), this.down, this.up, tools, theme);
         bar.getStyleClass().add("top-bar");
         return bar;

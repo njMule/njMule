@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -106,7 +107,10 @@ public final class StatisticsScreen implements Screen {
                 KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
-        return Fx.screen(this.title(), Fx.toolRow(), new VBox(10, graph, legend, cards));
+        // A short window scrolls the cards instead of setting a tall minimum for the whole window.
+        ScrollPane scroll = new ScrollPane(new VBox(10, graph, legend, cards));
+        scroll.setFitToWidth(true);
+        return Fx.screen(this.title(), Fx.toolRow(), scroll);
     }
 
     private void show(EngineStatus s) {

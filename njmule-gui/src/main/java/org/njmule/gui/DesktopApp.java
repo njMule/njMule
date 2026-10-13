@@ -26,6 +26,7 @@ import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
+import javafx.geometry.Dimension2D;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
@@ -180,6 +181,7 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
         logger.info("Main window shown");
+        this.keepButtonsVisible(stage);
         this.addPending();
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, Platform::exit);
@@ -187,6 +189,13 @@ public final class DesktopApp implements AutoCloseable {
             // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
         }
+    }
+
+    // The window never gets so small that buttons are cut or hidden; the frame adds its own borders.
+    private void keepButtonsVisible(Stage stage) {
+        Dimension2D content = this.window.minimumSize();
+        stage.setMinWidth(content.getWidth() + Math.max(0, stage.getWidth() - this.scene.getWidth()));
+        stage.setMinHeight(content.getHeight() + Math.max(0, stage.getHeight() - this.scene.getHeight()));
     }
 
     public MainWindow window() {
