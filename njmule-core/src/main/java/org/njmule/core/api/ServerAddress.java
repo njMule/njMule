@@ -17,6 +17,8 @@
 package org.njmule.core.api;
 
 import com.google.common.net.HostAndPort;
+import com.google.common.net.InetAddresses;
+import com.google.common.net.InternetDomainName;
 import java.util.Objects;
 
 /** A server to connect to, as the user gives it: a host name or IPv4 address and a port. */
@@ -27,6 +29,11 @@ public record ServerAddress(String host, int port) {
         if (host.isBlank() || port < 1 || port > 0xFFFF) {
             throw new IllegalArgumentException("invalid server address " + host + ":" + port);
         }
+    }
+
+    /** Whether {@code host} is an IP address or a well-formed host name. */
+    public static boolean isValidHost(String host) {
+        return InetAddresses.isInetAddress(host) || InternetDomainName.isValid(host);
     }
 
     /** Parses {@code host:port}. */

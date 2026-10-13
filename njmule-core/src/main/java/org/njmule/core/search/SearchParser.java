@@ -38,7 +38,7 @@ public final class SearchParser {
     /** Operators allowed in one expression (the request adds its own attributes). */
     public static final int MAX_OPERATORS = 10;
 
-    static final int MAX_LENGTH = 1024;
+    public static final int MAX_LENGTH = 1024;
     private static final int MAX_DEPTH = 32;
 
     private static final Pattern ED2K_FILE_LINK =

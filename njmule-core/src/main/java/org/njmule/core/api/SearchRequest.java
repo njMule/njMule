@@ -17,6 +17,7 @@
 package org.njmule.core.api;
 
 import java.util.Objects;
+import org.njmule.core.search.SearchParser;
 
 /** A search: an expression in the eMule syntax ({@code ubuntu iso @size>700m}) and how far it goes. */
 public record SearchRequest(String expression, Scope scope) {
@@ -29,6 +30,14 @@ public record SearchRequest(String expression, Scope scope) {
         GLOBAL,
         /** The Kad network, without servers; the first word of the expression is looked up. */
         KAD
+    }
+
+    /** The longest expression a search takes. */
+    public static final int MAX_EXPRESSION_LENGTH = SearchParser.MAX_LENGTH;
+
+    /** Checks the syntax of {@code expression}; the exception says what is wrong. */
+    public static void checkExpression(String expression) {
+        SearchParser.parse(expression);
     }
 
     public SearchRequest {
