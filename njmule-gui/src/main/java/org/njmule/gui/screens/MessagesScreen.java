@@ -135,7 +135,8 @@ public final class MessagesScreen implements Screen {
         none.visibleProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         SplitPane split = new SplitPane(left, new StackPane(none, this.tabs));
         split.setDividerPositions(0.26);
-        var tools = Fx.toolRow(this.address, Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat));
+        var tools = Fx.toolRow(
+                this.address, Fx.primary(Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat)));
         return Fx.screen(this.title(), tools, split);
     }
 
@@ -281,7 +282,7 @@ public final class MessagesScreen implements Screen {
             HBox row = new HBox(
                     8,
                     this.input,
-                    Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::send),
+                    Fx.primary(Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::send)),
                     Fx.button(MessagesScreen.this.gui.t("nj.chat.addFriend"), Material2MZ.PERSON_ADD, this::befriend));
             this.getChildren().addAll(lines, this.captchaBox, row);
         }

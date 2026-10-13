@@ -64,6 +64,12 @@ public final class Fx {
         return whole(button);
     }
 
+    /** Marks {@code button} as the main action of its screen, shown in the brand colour. */
+    public static Button primary(Button button) {
+        button.getStyleClass().add("accent");
+        return button;
+    }
+
     /** Keeps {@code control} at least as wide as its content, so a narrow window never cuts its text. */
     public static <T extends Region> T whole(T control) {
         control.setMinWidth(Region.USE_PREF_SIZE);

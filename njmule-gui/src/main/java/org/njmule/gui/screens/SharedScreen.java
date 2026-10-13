@@ -91,7 +91,7 @@ public final class SharedScreen implements Screen {
                                 this.gui.model().sharedFiles().size()),
                         this.gui.model().sharedFiles().rows()));
         var tools = Fx.toolRow(
-                Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory),
+                Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
                 Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.spacer(),
                 count);

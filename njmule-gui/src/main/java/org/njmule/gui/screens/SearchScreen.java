@@ -92,7 +92,7 @@ public final class SearchScreen implements Screen {
         var tools = Fx.toolRow(
                 this.query,
                 this.scope,
-                Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start),
+                Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start)),
                 Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
                 Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
                 Fx.spacer(),

@@ -73,7 +73,8 @@ public final class KadScreen implements Screen {
         this.node.setPromptText(this.gui.t("nj.kad.nodePrompt"));
         this.node.setPrefColumnCount(20);
         this.node.setOnAction(e -> this.bootstrap());
-        var tools = Fx.toolRow(this.node, Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
+        var tools = Fx.toolRow(
+                this.node, Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap)));
         FlowPane cards = new FlowPane(
                 12,
                 12,

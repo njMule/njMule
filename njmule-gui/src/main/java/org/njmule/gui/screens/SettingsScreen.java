@@ -205,7 +205,7 @@ public final class SettingsScreen implements Screen {
         grid.add(note, 0, row, 2, 1);
 
         var tools = Fx.toolRow(
-                Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply),
+                Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply)),
                 Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToWidth(true);

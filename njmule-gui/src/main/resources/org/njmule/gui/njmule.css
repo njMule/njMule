@@ -10,6 +10,13 @@
     -nj-brand: #24427A;
     -nj-brand-mark: #F4F6FB;
     -nj-brand-accent: #F5A65B;
+    /* The logo's orange as an accent: the strong tone keeps 3:1 or more on light surfaces, text on
+       orange is dark (6.6:1, 4.5:1 when pressed). */
+    -nj-accent-strong: #B35A12;
+    -nj-accent-soft: #FBE3CC;
+    -nj-accent-hover: #E8944A;
+    -nj-accent-pressed: #D9822B;
+    -nj-on-accent: #2E3440;
     -nj-bar-bg: #E5E9F0;
     -nj-bar-have: #4C566A;
     -nj-bar-missing: #BF616A;
@@ -25,6 +32,8 @@
 }
 
 .root.dark {
+    -nj-accent-strong: #F5A65B;
+    -nj-accent-soft: #4B3B2E;
     -nj-bar-bg: #3B4252;
     -nj-bar-have: #D8DEE9;
     -nj-bar-missing: #E39CA3;
@@ -68,19 +77,19 @@
 }
 
 .nav-rail .toggle-button:selected {
-    -fx-background-color: -color-accent-subtle;
+    -fx-background-color: -nj-accent-soft;
     -fx-text-fill: -color-fg-default;
 }
 
 .nav-rail .toggle-button:selected .ikonli-font-icon {
-    -fx-icon-color: -color-accent-fg;
+    -fx-icon-color: -nj-accent-strong;
 }
 
 /* Bars at the top and the bottom. */
 .top-bar {
     -fx-background-color: -color-bg-default;
-    -fx-border-color: -color-border-muted;
-    -fx-border-width: 0 0 1 0;
+    -fx-border-color: -nj-brand-accent;
+    -fx-border-width: 0 0 2 0;
     -fx-padding: 6 10 6 10;
     -fx-spacing: 10;
     -fx-alignment: center-left;
@@ -137,6 +146,31 @@
 .screen-title {
     -fx-font-size: 1.35em;
     -fx-font-weight: bold;
+    -fx-border-color: -nj-brand-accent;
+    -fx-border-width: 0 0 0 4;
+    -fx-padding: 0 0 0 8;
+}
+
+/* The main action of a screen, and of a dialog: the logo's orange with dark text. */
+.button.accent,
+.button:default {
+    -color-button-bg: -nj-brand-accent;
+    -color-button-fg: -nj-on-accent;
+    -color-button-border: -nj-brand-accent;
+    -color-button-bg-hover: -nj-accent-hover;
+    -color-button-fg-hover: -nj-on-accent;
+    -color-button-border-hover: -nj-accent-hover;
+    -color-button-bg-focused: -nj-accent-hover;
+    -color-button-fg-focused: -nj-on-accent;
+    -color-button-border-focused: -nj-accent-strong;
+    -color-button-bg-pressed: -nj-accent-pressed;
+    -color-button-fg-pressed: -nj-on-accent;
+    -color-button-border-pressed: transparent;
+}
+
+.button.accent .ikonli-font-icon,
+.button:default .ikonli-font-icon {
+    -fx-icon-color: -nj-on-accent;
 }
 
 .tool-row {

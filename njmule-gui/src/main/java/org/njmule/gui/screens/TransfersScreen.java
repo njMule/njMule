@@ -130,7 +130,7 @@ public final class TransfersScreen implements Screen {
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.spacer(),
                 this.link,
-                Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink));
+                Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink)));
 
         this.uploads = Fx.table(this.gui.model().uploads(), this.gui.t("nj.transfers.noUploads"));
         this.uploads

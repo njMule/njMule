@@ -119,7 +119,7 @@ public final class ServersScreen implements Screen {
                 Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
                 Fx.spacer(),
                 this.address,
-                Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress),
+                Fx.primary(Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress)),
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
         ListView<LogLine> log = new ListView<>(this.gui.model().log());
