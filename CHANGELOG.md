@@ -142,3 +142,40 @@ All notable changes to this project are documented here. The format follows
 - Connections no longer hang on Windows when a socket write misses its wakeup.
 - Compressed blocks are inflated to the end even when zlib holds output back.
 - Connections back to a client and to a source are obfuscated only when the peer supports it.
+- Pasted links whose file names contain spaces are kept whole.
+- Private folders (home, configuration, temporary files and any folder holding a client key) and
+  backup files are never shared.
+- CAPTCHAs are taken only in answer to a message of ours and only with a picture of sane size.
+- A client's credits, queue place and upload slot stay bound to its identity: another address
+  claiming its user hash gets none of them, and a client that changes its user hash is banned.
+- Ports read from Kad tags are taken only within 1..65535.
+- The IP filter applies to servers, to Kad contacts and to every source, from links too.
+- Kad keyword searches look up the longest word of the expression.
+- A second njMule cannot start on the same configuration.
+- Part files stay sparse, and a finished download never replaces another file in the incoming
+  folder, nor is left truncated there when it is copied to another volume.
+- The server's check of whether we are reachable gets through, so we keep a HighID; a server
+  cannot make us open any number of callback connections.
+- The macOS desktop app runs the main run loop the system needs.
+- Unusable search results (no name, no size, beyond the eD2K size limit, a known file with another
+  size) are dropped, Kad source counts are not added up, and each server answer goes to the search
+  it answers.
+- The Windows installer contains the programs.
+- At most 16 host names of a link are looked up, one after the other.
+- Kad: answers that a NAT sends from another port are taken; a flooding sender loses its packets,
+  not its place; a node that hears nothing reports itself disconnected; nodes.dat is not replaced
+  by a handful of contacts; contacts are learnt only from answers to our own lookups; searches wait
+  for late answers, count only usable results, outlive the server connection and can start again
+  at once after being stopped.
+- The engine never drops the completion of disk, hashing and network work, even with a full queue.
+- A failed save never leaves a file missing; a download of which only the part.met backup is left
+  is loaded again, and its number is never reused.
+- Writes and part checks that end after a download was cancelled are ignored.
+- Upload slots that their clients leave idle go back to the queue, a slot sends the file its
+  client switched to, and banned clients are refused everywhere while the ban lasts.
+- While Kad is firewalled our hello announces a LowID, as peers expect.
+- Byte-swapped LowIDs in source exchange answers are read as LowIDs.
+- njMule announces a compatible-client id that no other client uses.
+- A source whose file status has the wrong number of parts is dropped.
+- A client can download from us over the connection we download from it on, and a client
+  connected to download from us is asked for our downloads over that same connection.
