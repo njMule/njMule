@@ -32,6 +32,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -189,6 +190,10 @@ class ScreensTest {
         });
         assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
                 .startsWith("ed2k://|file|a.txt|3000|");
+        FxTesting.onFx(() -> screen.prioritize(UploadPriority.RELEASE));
+        FxTesting.await(
+                "the release priority",
+                () -> screen.table().getItems().getFirst().get().priority() == UploadPriority.RELEASE);
     }
 
     @Test

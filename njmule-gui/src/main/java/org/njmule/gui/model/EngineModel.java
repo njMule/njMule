@@ -58,6 +58,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 
@@ -320,6 +321,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public void cancel(Hash16 file) {
         this.later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
+    }
+
+    public void setUploadPriority(Hash16 file, UploadPriority priority) {
+        this.later(this.engine.setUploadPriority(file, priority), ok -> this.refreshShared());
     }
 
     public void shareDirectory(Path directory) {

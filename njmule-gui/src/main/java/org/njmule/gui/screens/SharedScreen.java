@@ -17,19 +17,25 @@
 package org.njmule.gui.screens;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import javafx.beans.binding.Bindings;
 import javafx.scene.Node;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableView;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UploadPriority;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -76,13 +82,20 @@ public final class SharedScreen implements Screen {
                 .addAll(List.of(
                         Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name),
                         Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size),
+                        Fx.column(this.gui.t("IDS_PRIORITY"), 100, SharedFileInfo::priority, this::priorityName),
                         Fx.column(
                                 this.gui.t("nj.shared.folder"),
                                 360,
                                 f -> String.valueOf(f.path().getParent()))));
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
-        this.table.setContextMenu(new ContextMenu(copy));
+        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));
+        priority.getItems().setAll(this.priorityItems());
+        this.table.setContextMenu(new ContextMenu(priority, copy));
+        MenuButton priorities = new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY));
+        priorities.getItems().setAll(this.priorityItems());
+        priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
+        priorities.setAccessibleText(this.gui.t("IDS_PRIORITY"));
         Label count = new Label();
         count.textProperty()
                 .bind(Bindings.createStringBinding(
@@ -93,6 +106,7 @@ public final class SharedScreen implements Screen {
         var tools = Fx.toolRow(
                 Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
                 Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                priorities,
                 Fx.spacer(),
                 count);
         return Fx.screen(this.title(), tools, this.table);
@@ -109,6 +123,32 @@ public final class SharedScreen implements Screen {
 
     void share(Path directory) {
         this.gui.model().shareDirectory(directory);
+    }
+
+    // Each level, for every selected file.
+    private List<MenuItem> priorityItems() {
+        List<MenuItem> items = new ArrayList<>();
+        for (UploadPriority priority : UploadPriority.values()) {
+            MenuItem item = new MenuItem(this.priorityName(priority));
+            item.setOnAction(e -> this.prioritize(priority));
+            items.add(item);
+        }
+        return items;
+    }
+
+    void prioritize(UploadPriority priority) {
+        Fx.selected(this.table).forEach(f -> this.gui.model().setUploadPriority(f.hash(), priority));
+    }
+
+    private String priorityName(UploadPriority priority) {
+        return switch (priority) {
+            case VERY_LOW -> this.gui.t("IDS_PRIOVERYLOW");
+            case LOW -> this.gui.t("IDS_PRIOLOW");
+            case NORMAL -> this.gui.t("IDS_PRIONORMAL");
+            case HIGH -> this.gui.t("IDS_PRIOHIGH");
+            case RELEASE -> this.gui.t("IDS_PRIORELEASE");
+            case AUTO -> this.gui.t("IDS_PRIOAUTO");
+        };
     }
 
     void copyLinks() {
