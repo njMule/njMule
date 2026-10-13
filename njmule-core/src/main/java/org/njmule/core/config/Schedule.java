@@ -55,10 +55,10 @@ public record Schedule(List<Rule> rules) {
             days = days.isEmpty() ? Set.of() : Set.copyOf(EnumSet.copyOf(days));
             Objects.requireNonNull(start, "start");
             Objects.requireNonNull(end, "end");
-            check("uploadKiBps", uploadKiBps, 0, 10_000_000);
-            check("downloadKiBps", downloadKiBps, 0, 10_000_000);
-            check("maxConnections", maxConnections, 1, 10_000);
-            check("maxSourcesPerFile", maxSourcesPerFile, 1, 10_000);
+            check("uploadKiBps", uploadKiBps, 0, Preferences.MAX_RATE_KIBPS);
+            check("downloadKiBps", downloadKiBps, 0, Preferences.MAX_RATE_KIBPS);
+            check("maxConnections", maxConnections, 1, Preferences.MAX_CONNECTIONS);
+            check("maxSourcesPerFile", maxSourcesPerFile, 1, Preferences.MAX_SOURCES_PER_FILE);
         }
 
         /** Whether {@code now} falls in this rule's window. */

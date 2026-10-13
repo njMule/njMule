@@ -38,7 +38,7 @@ public record ProxySettings(Type type, String host, int port, String user, Strin
         host = Objects.requireNonNull(host, "host").strip();
         Objects.requireNonNull(user, "user");
         Objects.requireNonNull(password, "password");
-        if (port < 1 || port > 65_535) {
+        if (port < 1 || port > Preferences.MAX_PORT) {
             throw new IllegalArgumentException("proxy port must be in [1, 65535]: " + port);
         }
         if (type != Type.NONE && host.isEmpty()) {

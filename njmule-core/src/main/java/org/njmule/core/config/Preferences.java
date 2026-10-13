@@ -58,6 +58,10 @@ public record Preferences(
         int uploadCapacityKiBps) {
 
     public static final int MAX_NICK_LENGTH = 50;
+    public static final int MAX_PORT = 65_535;
+    public static final int MAX_RATE_KIBPS = 10_000_000;
+    public static final int MAX_CONNECTIONS = 10_000;
+    public static final int MAX_SOURCES_PER_FILE = 10_000;
     public static final Set<String> LOG_LEVELS = Set.of("ERROR", "WARN", "INFO", "DEBUG", "TRACE");
     public static final int DEFAULT_TCP_PORT = 4662;
     public static final int DEFAULT_UDP_PORT = 4672;
@@ -71,12 +75,12 @@ public record Preferences(
         if (nick.isEmpty() || nick.length() > MAX_NICK_LENGTH || nick.chars().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("nick must be 1-" + MAX_NICK_LENGTH + " printable characters");
         }
-        requireRange("tcpPort", tcpPort, 1, 65_535);
-        requireRange("udpPort", udpPort, 1, 65_535);
-        requireRange("maxUploadKiBps", maxUploadKiBps, 0, 10_000_000);
-        requireRange("maxDownloadKiBps", maxDownloadKiBps, 0, 10_000_000);
-        requireRange("maxConnections", maxConnections, 1, 10_000);
-        requireRange("maxSourcesPerFile", maxSourcesPerFile, 1, 10_000);
+        requireRange("tcpPort", tcpPort, 1, MAX_PORT);
+        requireRange("udpPort", udpPort, 1, MAX_PORT);
+        requireRange("maxUploadKiBps", maxUploadKiBps, 0, MAX_RATE_KIBPS);
+        requireRange("maxDownloadKiBps", maxDownloadKiBps, 0, MAX_RATE_KIBPS);
+        requireRange("maxConnections", maxConnections, 1, MAX_CONNECTIONS);
+        requireRange("maxSourcesPerFile", maxSourcesPerFile, 1, MAX_SOURCES_PER_FILE);
         Objects.requireNonNull(obfuscation, "obfuscation");
         Objects.requireNonNull(incomingDir, "incomingDir").ifPresent(p -> requireAbsolute("incomingDir", p));
         Objects.requireNonNull(tempDir, "tempDir").ifPresent(p -> requireAbsolute("tempDir", p));
@@ -84,8 +88,8 @@ public record Preferences(
             throw new IllegalArgumentException("logLevel must be one of " + LOG_LEVELS);
         }
         Objects.requireNonNull(proxy, "proxy");
-        requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, 10_000_000);
-        requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, 10_000_000);
+        requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, MAX_RATE_KIBPS);
+        requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
