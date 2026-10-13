@@ -28,6 +28,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -88,26 +89,27 @@ public final class FakeServer implements AutoCloseable {
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
 
-    private FakeServer(Config config, ServerSocket tcp, DatagramSocket udp) {
+    // The UDP socket listens on the TCP port + 4 of the same address.
+    private FakeServer(Config config, ServerSocket tcp) throws SocketException {
         this.config = config;
         this.tcp = tcp;
-        this.udp = udp;
+        this.udp =
+                new DatagramSocket(
+                        new InetSocketAddress(
+                                tcp.getInetAddress(), tcp.getLocalPort() + UDP_OFFSET));
     }
 
     /** Listens on {@code address}, on a free TCP port whose + 4 UDP port is free too. */
     public static FakeServer start(InetAddress address, Config config) throws IOException {
         for (int attempt = 0; attempt < 20; attempt++) {
             ServerSocket tcp = new ServerSocket(0, 16, address);
-            DatagramSocket udp;
+            FakeServer server;
             try {
-                udp =
-                        new DatagramSocket(
-                                new InetSocketAddress(address, tcp.getLocalPort() + UDP_OFFSET));
+                server = new FakeServer(config, tcp);
             } catch (BindException e) {
                 tcp.close();
                 continue;
             }
-            FakeServer server = new FakeServer(config, tcp, udp);
             Thread.ofVirtual().name("fake-server-tcp").start(server::acceptLoop);
             Thread.ofVirtual().name("fake-server-udp").start(server::udpLoop);
             return server;
