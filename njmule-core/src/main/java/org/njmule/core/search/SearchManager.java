@@ -90,6 +90,9 @@ public final class SearchManager {
          * search for it now.
          */
         boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
+
+        /** Ends the search for {@code keyword}, so that it can start again at once. */
+        void stop(String keyword);
     }
 
     private static final Logger logger = LoggerFactory.getLogger(SearchManager.class);
@@ -154,6 +157,7 @@ public final class SearchManager {
         KadSearches searches = this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
         String keyword = kadKeyword(request.expression());
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
+        search.kadKeyword = keyword;
         boolean started = searches.search(keyword, expression, results -> {
             if (!search.ended) {
                 this.mergeResults(search, results, false);
@@ -235,11 +239,13 @@ public final class SearchManager {
         logger.debug("Unrequested search results from {}", from);
     }
 
-    /** Ends every search, e.g. when the server connection is lost. */
-    public void stopAll() {
+    /** Ends the server and global searches when the server connection is lost; Kad searches go on. */
+    public void serverLost() {
         this.serverQueue.clear();
         for (Search search : List.copyOf(this.searches.values())) {
-            this.end(search);
+            if (search.scope != SearchRequest.Scope.KAD) {
+                this.end(search);
+            }
         }
     }
 
@@ -377,6 +383,9 @@ public final class SearchManager {
         if (search.udpTimer != null) {
             search.udpTimer.cancel(false);
         }
+        if (search.kadKeyword != null) {
+            this.kad.get().ifPresent(k -> k.stop(search.kadKeyword));
+        }
         this.listener.ended(search.id, search.results.size());
     }
 
@@ -393,6 +402,7 @@ public final class SearchManager {
         final Set<Integer> askedOverUdp = new HashSet<>();
         ScheduledFuture<?> serverTimer;
         ScheduledFuture<?> udpTimer;
+        String kadKeyword;
         boolean globalStarted;
         boolean moreAvailable;
         int moreRequests;

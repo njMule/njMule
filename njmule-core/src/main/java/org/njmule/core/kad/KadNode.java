@@ -316,6 +316,18 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return true;
     }
 
+    /** Ends the keyword search for {@code words}, so that it can start again at once. */
+    public void stopKeywordSearch(String words) {
+        List<String> keywords = Keywords.of(words);
+        if (keywords.isEmpty()) {
+            return;
+        }
+        Lookup lookup = this.lookups.get(Keywords.id(keywords.getFirst()));
+        if (lookup != null && lookup.kind() == Lookup.Kind.KEYWORD) {
+            this.lookupEnded(lookup);
+        }
+    }
+
     /** Looks for sources of the file {@code hash} of {@code size} bytes. */
     public boolean findSources(Hash16 hash, long size, Consumer<List<Source>> sources) {
         UInt128 target = UInt128.of(hash);

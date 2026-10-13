@@ -90,6 +90,20 @@ class KadNodeTest {
     }
 
     @Test
+    void aStoppedKeywordSearchCanStartAgainAtOnce() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isFalse();
+        node.stopKeywordSearch("ubuntu");
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+    }
+
+    @Test
     void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {
         KadNode node = this.node();
         node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));

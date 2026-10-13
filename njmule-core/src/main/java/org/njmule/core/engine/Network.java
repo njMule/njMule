@@ -89,6 +89,7 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
@@ -836,13 +837,23 @@ final class Network {
     }
 
     private SearchManager.KadSearches kadSearches(KadNode node) {
-        return (keyword, expression, results) -> node.searchKeyword(keyword, Optional.of(expression), found -> {
-            List<SearchResult> converted = new ArrayList<>();
-            for (KadNode.FileResult r : found) {
-                converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type()));
+        return new SearchManager.KadSearches() {
+            @Override
+            public boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results) {
+                return node.searchKeyword(keyword, Optional.of(expression), found -> {
+                    List<SearchResult> converted = new ArrayList<>();
+                    for (KadNode.FileResult r : found) {
+                        converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type()));
+                    }
+                    results.accept(converted);
+                });
             }
-            results.accept(converted);
-        });
+
+            @Override
+            public void stop(String keyword) {
+                node.stopKeywordSearch(keyword);
+            }
+        };
     }
 
     private DownloadManager.KadSources kadSources(KadNode node) {
@@ -1009,7 +1020,7 @@ final class Network {
             Network.this.serverIp = 0;
             Network.this.context = ServerContext.NONE;
             Network.this.publisher.disconnected();
-            Network.this.searches.stopAll();
+            Network.this.searches.serverLost();
             Network.this.pinger.stop();
             Optional<ServerInfo> info = server.map(Network::info);
             Network.this.userLog.log(
