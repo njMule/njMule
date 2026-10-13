@@ -206,6 +206,28 @@ class EngineTest {
     }
 
     @Test
+    void totalsLastAcrossSessions() throws Exception {
+        try (NjMuleEngine engine = this.start()) {
+            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
+            assertThat(status.sessions()).isEqualTo(1);
+            assertThat(status.totalDownloaded()).isZero();
+            assertThat(status.totalSeconds()).isEqualTo(status.sessionSeconds());
+        }
+        try (NjMuleEngine engine = this.start()) {
+            assertThat(engine.status().get(5, TimeUnit.SECONDS).sessions()).isEqualTo(2);
+        }
+        Files.writeString(
+                this.root.resolve("config").resolve("statistics.properties"),
+                "downloaded=12\nuploaded=x\nsessions=-4\n");
+        try (NjMuleEngine engine = this.start()) {
+            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
+            assertThat(status.totalDownloaded()).isEqualTo(12);
+            assertThat(status.totalUploaded()).isZero();
+            assertThat(status.sessions()).isEqualTo(1);
+        }
+    }
+
+    @Test
     void closeIsIdempotent() throws IOException {
         NjMuleEngine engine = this.start();
         engine.close();

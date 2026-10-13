@@ -26,6 +26,8 @@ import java.util.Optional;
  * @param clientId our id on that server, 0 when not logged in
  * @param downloaded payload bytes received in this session
  * @param uploaded payload bytes sent in this session
+ * @param totalDownloaded payload bytes received in all sessions, this one included
+ * @param sessions the sessions so far, this one included
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -40,7 +42,12 @@ public record EngineStatus(
         int downloads,
         int uploads,
         int queued,
-        int sharedFiles) {
+        int sharedFiles,
+        long totalDownloaded,
+        long totalUploaded,
+        long sessions,
+        long sessionSeconds,
+        long totalSeconds) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");

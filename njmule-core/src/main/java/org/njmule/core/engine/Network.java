@@ -117,6 +117,7 @@ final class Network {
 
     // Server updates are saved together, at most this long after the first one.
     private static final Duration SAVE_DELAY = Duration.ofSeconds(30);
+    private static final Duration TOTALS_SAVE = Duration.ofMinutes(5);
 
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
@@ -147,6 +148,8 @@ final class Network {
     private KadNode kad;
     private KadSocket kadSocket;
     private PortForwarding forwarding;
+    private final Totals totals;
+    private final long started;
     private KadPublisher kadPublisher;
     private final Identities identities;
     private final SecureRandom random;
@@ -183,6 +186,8 @@ final class Network {
         this.configDir = configDir;
         this.incomingDir = incomingDir;
         this.credits = Credits.load(configDir, Clock.systemUTC());
+        this.totals = Totals.load(configDir.resolve(Totals.FILE_NAME));
+        this.started = System.nanoTime();
         this.random = random;
         Identities identities =
                 new Identities(
@@ -335,6 +340,7 @@ final class Network {
                                     this.loop.post(
                                             () -> this.userLog.log(LogLine.Level.INFO, line)));
         }
+        this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
                 "offer shared files",
                 Duration.ofSeconds(1),
@@ -378,7 +384,21 @@ final class Network {
                 this.downloads.downloads().size(),
                 this.uploads.slotCount(),
                 this.uploads.waitingCount(),
-                this.shares == null ? 0 : this.shares.all().size());
+                this.shares == null ? 0 : this.shares.all().size(),
+                this.totals.downloaded() + this.downloads.downloaded(),
+                this.totals.uploaded() + this.uploads.uploaded(),
+                this.totals.sessions() + 1,
+                this.sessionSeconds(),
+                this.totals.seconds() + this.sessionSeconds());
+    }
+
+    private long sessionSeconds() {
+        return (System.nanoTime() - this.started) / 1_000_000_000L;
+    }
+
+    private void saveTotals() {
+        this.totals.save(
+                this.downloads.downloaded(), this.uploads.uploaded(), this.sessionSeconds());
     }
 
     List<UploadInfo> uploads() {
@@ -654,6 +674,7 @@ final class Network {
     }
 
     void close() {
+        this.saveTotals();
         if (this.forwarding != null) {
             this.forwarding.close();
         }
