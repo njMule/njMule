@@ -32,6 +32,7 @@ import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -84,6 +85,7 @@ public final class FakeServer implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(FakeServer.class);
     private static final int UDP_OFFSET = 4;
+    private static final SecureRandom PORTS = new SecureRandom();
 
     private final Config config;
     private final ServerSocket tcp;
@@ -107,8 +109,15 @@ public final class FakeServer implements AutoCloseable {
 
     /** Listens on {@code address}, on a free TCP port whose + 4 UDP port is free too. */
     public static FakeServer start(InetAddress address, Config config) throws IOException {
-        for (int attempt = 0; attempt < 20; attempt++) {
-            ServerSocket tcp = new ServerSocket(0, 16, address);
+        // Random ports below the ephemeral range: the system hands out ephemeral ports in a row,
+        // and on Windows whole blocks of them may be reserved for UDP.
+        for (int attempt = 0; attempt < 50; attempt++) {
+            ServerSocket tcp;
+            try {
+                tcp = new ServerSocket(20_000 + PORTS.nextInt(20_000), 16, address);
+            } catch (BindException e) {
+                continue;
+            }
             FakeServer server;
             try {
                 server = new FakeServer(config, tcp);
