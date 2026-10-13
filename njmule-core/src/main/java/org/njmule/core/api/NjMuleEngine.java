@@ -108,6 +108,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The clients we upload to, then those waiting in our queue. */
     CompletableFuture<List<UploadInfo>> uploads();
 
+    /** The search results marked as spam. */
+    CompletableFuture<SpamMarks> spamMarks();
+
+    /** Marks {@code results} as spam, or clears them, as eMule's search does; completes with the marks now. */
+    CompletableFuture<SpamMarks> markSpam(List<SearchResult> results, boolean isSpam);
+
     /** The sources of our downloads. */
     CompletableFuture<List<SourceInfo>> sources();
 

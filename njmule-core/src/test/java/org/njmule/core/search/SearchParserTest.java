@@ -52,6 +52,12 @@ class SearchParserTest {
     }
 
     @Test
+    void aRelatedSearchIsOneWordForTheServer() {
+        String related = "related::" + "ab".repeat(16) + "::" + "cd".repeat(16);
+        assertThat(SearchParser.parse(related)).isEqualTo(kw(related));
+    }
+
+    @Test
     void notBindsTighterThanOrWhichBindsTighterThanAnd() {
         assertThat(SearchParser.parse("a OR b c")).isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
         assertThat(SearchParser.parse("a AND b OR c")).isEqualTo(new And(kw("a"), new Or(kw("b"), kw("c"))));

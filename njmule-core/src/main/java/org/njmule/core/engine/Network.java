@@ -65,6 +65,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
@@ -108,6 +109,7 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchManager;
+import org.njmule.core.search.SpamFilter;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
 import org.njmule.core.server.FilePublisher;
@@ -169,6 +171,8 @@ final class Network {
     private final Hash16 userHash;
     private final Path serverMet;
     private final Path staticServers;
+    private final Path spamFile;
+    private final SpamFilter spam;
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
@@ -255,6 +259,10 @@ final class Network {
         this.staticServers = configDir.resolve(ServerList.STATIC_FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.staticServers);
         this.servers.loadStatics(this.staticServers);
+        // Results marked as spam, eMule's file taken over by the import.
+        this.spamFile = configDir.resolve(SpamFilter.FILE_NAME);
+        AtomicFiles.cleanupInterruptedWrite(this.spamFile);
+        this.spam = loadSpam(this.spamFile);
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
         this.servers.filter(ip -> this.ipFilter.blocks(ip));
         this.session = new ServerSession(
@@ -492,7 +500,9 @@ final class Network {
                         .filter(ip -> ip != 0)
                         .map(Ipv4::format)
                         .orElse(""),
-                this.listenPort());
+                this.listenPort(),
+                id.map(i -> (i.serverFlags() & ServerMessages.TCP_RELATED_SEARCH) != 0)
+                        .orElse(false));
     }
 
     private long sessionSeconds() {
@@ -509,6 +519,22 @@ final class Network {
 
     List<SourceInfo> sources() {
         return this.downloads.sources();
+    }
+
+    SpamMarks spamMarks() {
+        return this.spam.marks();
+    }
+
+    SpamMarks markSpam(List<SearchResult> results, boolean isSpam) {
+        for (SearchResult result : results) {
+            this.spam.mark(result.hash(), result.name(), isSpam);
+        }
+        try {
+            this.spam.save(this.spamFile);
+        } catch (IOException e) {
+            logger.warn("Cannot save {}", this.spamFile, e);
+        }
+        return this.spam.marks();
     }
 
     List<BanInfo> bans() {
@@ -1359,6 +1385,15 @@ final class Network {
             this.servers.save(this.serverMet);
         } catch (IOException e) {
             logger.warn("Cannot save {}", this.serverMet, e);
+        }
+    }
+
+    private static SpamFilter loadSpam(Path file) {
+        try {
+            return SpamFilter.load(file);
+        } catch (IOException e) {
+            logger.warn("Cannot read {}, no spam markers", file, e);
+            return new SpamFilter();
         }
     }
 

@@ -30,6 +30,7 @@ import java.util.Optional;
  * @param sessions the sessions so far, this one included
  * @param publicIp our address as the server sees it, empty when unknown
  * @param tcpPort the port other clients reach us on
+ * @param relatedSearch whether the server we are on finds the files related to others
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -51,7 +52,8 @@ public record EngineStatus(
         long sessionSeconds,
         long totalSeconds,
         String publicIp,
-        int tcpPort) {
+        int tcpPort,
+        boolean relatedSearch) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");

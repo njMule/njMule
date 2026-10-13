@@ -70,11 +70,13 @@ import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
@@ -474,6 +476,17 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<List<UploadInfo>> uploads() {
         return this.loop.submit(this.network::uploads);
+    }
+
+    @Override
+    public CompletableFuture<SpamMarks> spamMarks() {
+        return this.loop.submit(this.network::spamMarks);
+    }
+
+    @Override
+    public CompletableFuture<SpamMarks> markSpam(List<SearchResult> results, boolean isSpam) {
+        List<SearchResult> marked = List.copyOf(results);
+        return this.loop.submit(() -> this.network.markSpam(marked, isSpam));
     }
 
     @Override

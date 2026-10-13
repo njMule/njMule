@@ -170,6 +170,9 @@ All notable changes to this project are documented here. The format follows
   sources, extension) and its Automatic method, which picks Kad or the server by what is connected;
   the words searched are offered again (eMule's history is imported). Each result tab has a filter
   box and its count, and results we download, share already show so.
+- Search results can be marked as spam or cleared again, by file hash and full name, kept in
+  eMule's `SearchSpam.met` (taken over by the import); the server's related search finds the files
+  downloaded along with the selected ones, when the server supports it.
 - The transfers screen shows eMule's client lists: clients we upload to, those waiting in our
   queue, the sources of our downloads (state, queue rank, parts, bytes received) and the banned
   addresses, whose ban can be lifted.
