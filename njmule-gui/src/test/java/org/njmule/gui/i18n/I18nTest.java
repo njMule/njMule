@@ -123,7 +123,29 @@ class I18nTest {
         Properties english = load("nj.properties");
         Properties italian = load("nj_it.properties");
 
-        assertThat(italian.stringPropertyNames()).isEqualTo(english.stringPropertyNames());
+        Properties emule = load("emule.properties");
+        Set<String> own = new TreeSet<>();
+        Set<String> reworded = new TreeSet<>();
+        for (String key : italian.stringPropertyNames()) {
+            (key.startsWith("IDS_") ? reworded : own).add(key);
+        }
+
+        assertThat(own).isEqualTo(english.stringPropertyNames());
+        assertThat(english.stringPropertyNames()).noneMatch(key -> key.startsWith("IDS_"));
+        assertThat(reworded).isNotEmpty().allMatch(emule::containsKey);
+    }
+
+    @Test
+    void italianKeepsUploadAndDownload() {
+        I18n english = I18n.of(Locale.ENGLISH);
+        I18n italian = I18n.of(Locale.ITALIAN);
+
+        assertThat(italian.t("IDS_PW_CON_UPLBL")).isEqualTo("Upload");
+        assertThat(italian.t("IDS_CD_DOWN")).isEqualTo("Download (sessione):");
+        assertThat(english.t("IDS_CD_DOWN")).isEqualTo("Downloaded (this session):");
+        assertThat(italian.t("IDS_DL_FILENAME"))
+                .as("eMule's translation elsewhere")
+                .isEqualTo("Nome file");
     }
 
     private static Properties load(String name) throws IOException {

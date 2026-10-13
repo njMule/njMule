@@ -25,7 +25,8 @@ import java.util.ResourceBundle;
 
 /**
  * The interface texts of one language: eMule's strings ({@code IDS_*} keys, converted from its string tables) and
- * njMule's own ({@code nj.*} keys). A missing translation falls back to English.
+ * njMule's own ({@code nj.*} keys, plus the eMule texts it words differently). A missing translation falls back to
+ * English.
  */
 public final class I18n {
 
@@ -65,9 +66,8 @@ public final class I18n {
 
     /** The text of {@code key}; an unknown key shows itself, so it is noticed. */
     public String t(String key) {
-        ResourceBundle bundle = key.startsWith("IDS_") ? this.emule : this.njmule;
         try {
-            return bundle.getString(key);
+            return this.bundle(key).getString(key);
         } catch (MissingResourceException e) {
             return "[" + key + "]";
         }
@@ -85,7 +85,11 @@ public final class I18n {
 
     /** Whether {@code key} has a text. */
     public boolean has(String key) {
-        ResourceBundle bundle = key.startsWith("IDS_") ? this.emule : this.njmule;
-        return bundle.containsKey(key);
+        return this.bundle(key).containsKey(key);
+    }
+
+    // A language may word an eMule text its own way; English keeps eMule's.
+    private ResourceBundle bundle(String key) {
+        return !key.startsWith("IDS_") || this.njmule.containsKey(key) ? this.njmule : this.emule;
     }
 }
