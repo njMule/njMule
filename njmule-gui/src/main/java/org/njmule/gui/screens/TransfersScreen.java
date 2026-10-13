@@ -18,11 +18,11 @@ package org.njmule.gui.screens;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -47,6 +47,8 @@ import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PartBar;
 import org.njmule.gui.ui.Screen;
 
@@ -54,13 +56,13 @@ import org.njmule.gui.ui.Screen;
 public final class TransfersScreen implements Screen {
 
     // Pasted links are separated by white space, which file names may contain too.
-    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
     private final Gui gui;
     private Node view;
     private TableView<LiveList.Row<DownloadInfo>> downloads;
     private TableView<LiveList.Row<UploadInfo>> uploads;
     private final TextField link = new TextField();
+    private Input<List<Ed2kLink.FileLink>> linkInput;
 
     public TransfersScreen(Gui gui) {
         this.gui = gui;
@@ -123,6 +125,11 @@ public final class TransfersScreen implements Screen {
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
         this.link.setOnAction(e -> this.addLink());
+        this.linkInput = new Inputs(this.gui)
+                .fileLinks(this.link, this.gui.t("IDS_DOWNLOAD"))
+                .quietWhenEmpty();
+        Button add = Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink));
+        add.disableProperty().bind(this.linkInput.validProperty().not());
         var tools = Fx.toolRow(
                 Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected),
                 Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected),
@@ -130,7 +137,7 @@ public final class TransfersScreen implements Screen {
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.spacer(),
                 this.link,
-                Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink)));
+                add);
 
         this.uploads = Fx.table(this.gui.model().uploads(), this.gui.t("nj.transfers.noUploads"));
         this.uploads
@@ -185,18 +192,11 @@ public final class TransfersScreen implements Screen {
     }
 
     void addLink() {
-        String text = this.link.getText().strip();
-        for (String one : LINKS.split(text, -1)) {
-            if (one.isEmpty()) {
-                continue;
-            }
-            if (Ed2kLink.tryParse(one).orElse(null) instanceof Ed2kLink.FileLink file) {
-                this.gui.model().addDownload(file);
-            } else {
-                this.gui.inform().accept(this.gui.t("nj.transfers.badLink"));
-                return;
-            }
+        if (!this.linkInput.isValid()) {
+            this.gui.inform().accept(this.gui.t("nj.transfers.badLink"));
+            return;
         }
+        this.linkInput.value().forEach(file -> this.gui.model().addDownload(file));
         this.link.clear();
     }
 

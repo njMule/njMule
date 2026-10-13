@@ -16,7 +16,6 @@
  */
 package org.njmule.gui.screens;
 
-import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
@@ -29,7 +28,9 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
@@ -41,15 +42,20 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 
 /**
  * The scheduler's rules: a list, a form for one rule, and saving them to the engine. Empty limit fields leave the
  * preferences' value.
  */
 final class SchedulerPane extends VBox {
+
+    private static final int MAX_NAME = 100;
 
     private final Gui gui;
     private final TableView<Schedule.Rule> rules = new TableView<>();
@@ -63,6 +69,13 @@ final class SchedulerPane extends VBox {
     private final TextField sources = new TextField();
     private final CheckBox enabled = new CheckBox();
     private final Label active = new Label();
+    private final Input<String> nameInput;
+    private final Input<LocalTime> startInput;
+    private final Input<LocalTime> endInput;
+    private final Input<OptionalInt> uploadInput;
+    private final Input<OptionalInt> downloadInput;
+    private final Input<OptionalInt> connectionsInput;
+    private final Input<OptionalInt> sourcesInput;
 
     SchedulerPane(Gui gui) {
         super(8);
@@ -93,23 +106,46 @@ final class SchedulerPane extends VBox {
         for (TextField f : List.of(this.start, this.end, this.upload, this.download, this.connections, this.sources)) {
             f.setPrefColumnCount(6);
         }
+        Inputs inputs = new Inputs(gui);
+        String window = gui.t("nj.scheduler.from") + " / " + gui.t("nj.scheduler.to");
+        this.nameInput = inputs.text(this.name, gui.t("nj.scheduler.name"), MAX_NAME, false);
+        this.startInput = inputs.time(this.start, window);
+        this.endInput = inputs.time(this.end, window);
+        this.uploadInput =
+                inputs.optionalNumber(this.upload, gui.t("nj.settings.upload"), 0, Preferences.MAX_RATE_KIBPS);
+        this.downloadInput =
+                inputs.optionalNumber(this.download, gui.t("nj.settings.download"), 0, Preferences.MAX_RATE_KIBPS);
+        this.connectionsInput =
+                inputs.optionalNumber(this.connections, gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
+        this.sourcesInput =
+                inputs.optionalNumber(this.sources, gui.t("IDS_PW_MAXSOURCES"), 1, Preferences.MAX_SOURCES_PER_FILE);
+        BooleanBinding invalid = Input.allValid(List.of(
+                        this.nameInput,
+                        this.startInput,
+                        this.endInput,
+                        this.uploadInput,
+                        this.downloadInput,
+                        this.connectionsInput,
+                        this.sourcesInput))
+                .not();
         GridPane form = new GridPane();
         form.setHgap(10);
         form.setVgap(6);
         form.addRow(0, new Label(gui.t("nj.scheduler.name")), this.name, this.enabled);
         form.addRow(1, new Label(gui.t("nj.scheduler.days")), dayBoxes);
         GridPane.setColumnSpan(dayBoxes, 2);
-        form.addRow(
-                2,
-                new Label(gui.t("nj.scheduler.from") + " / " + gui.t("nj.scheduler.to")),
-                new HBox(8, this.start, this.end));
+        form.addRow(2, new Label(window), new HBox(8, this.start, this.end));
         form.addRow(3, new Label(gui.t("nj.settings.upload")), this.upload);
         form.addRow(4, new Label(gui.t("nj.settings.download")), this.download);
         form.addRow(5, new Label(gui.t("IDS_PW_MAXC")), this.connections);
         form.addRow(6, new Label(gui.t("IDS_PW_MAXSOURCES")), this.sources);
+        Button add = Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add);
+        Button replace = Fx.button(gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace);
+        add.disableProperty().bind(invalid);
+        replace.disableProperty().bind(invalid);
         var tools = Fx.toolRow(
-                Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add),
-                Fx.button(gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace),
+                add,
+                replace,
                 Fx.button(gui.t("IDS_REMOVE"), Material2AL.DELETE, this::remove),
                 Fx.button(gui.t("nj.scheduler.save"), Material2MZ.SAVE, this::save),
                 Fx.spacer(),
@@ -183,16 +219,16 @@ final class SchedulerPane extends VBox {
         });
         try {
             return Optional.of(new Schedule.Rule(
-                    this.name.getText(),
+                    this.nameInput.value(),
                     this.enabled.isSelected(),
                     chosen,
-                    LocalTime.parse(this.start.getText().strip()),
-                    LocalTime.parse(this.end.getText().strip()),
-                    number(this.upload),
-                    number(this.download),
-                    number(this.connections),
-                    number(this.sources)));
-        } catch (IllegalArgumentException | DateTimeException e) {
+                    this.startInput.value(),
+                    this.endInput.value(),
+                    this.uploadInput.value(),
+                    this.downloadInput.value(),
+                    this.connectionsInput.value(),
+                    this.sourcesInput.value()));
+        } catch (IllegalArgumentException e) {
             this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return Optional.empty();
         }
@@ -203,11 +239,6 @@ final class SchedulerPane extends VBox {
                 .sorted()
                 .map(d -> d.getDisplayName(TextStyle.SHORT, this.gui.i18n().locale()))
                 .collect(Collectors.joining(" "));
-    }
-
-    private static OptionalInt number(TextField field) {
-        String text = field.getText().strip();
-        return text.isEmpty() ? OptionalInt.empty() : OptionalInt.of(Integer.parseInt(text));
     }
 
     private static String text(OptionalInt value) {

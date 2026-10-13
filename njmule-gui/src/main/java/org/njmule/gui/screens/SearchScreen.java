@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.ListCell;
@@ -39,6 +40,8 @@ import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 
 /** Searches on the server, all known servers or Kad, one tab each. */
@@ -47,6 +50,7 @@ public final class SearchScreen implements Screen {
     private final Gui gui;
     private Node view;
     private final TextField query = new TextField();
+    private Input<String> queryInput;
     private final ComboBox<SearchRequest.Scope> scope = new ComboBox<>();
     private final TabPane tabs = new TabPane();
     private final Map<Tab, Results> results = new HashMap<>();
@@ -85,6 +89,11 @@ public final class SearchScreen implements Screen {
         this.query.setPromptText(this.gui.t("IDS_SEARCH_TEXT"));
         this.query.setPrefColumnCount(30);
         this.query.setOnAction(e -> this.start());
+        this.queryInput = new Inputs(this.gui)
+                .searchExpression(this.query, this.gui.t("IDS_SEARCH_TEXT"))
+                .quietWhenEmpty();
+        Button start = Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start));
+        start.disableProperty().bind(this.queryInput.validProperty().not());
         this.scope.getItems().addAll(SearchRequest.Scope.values());
         this.scope.setValue(SearchRequest.Scope.SERVER);
         this.scope.setCellFactory(l -> new ScopeCell());
@@ -92,7 +101,7 @@ public final class SearchScreen implements Screen {
         var tools = Fx.toolRow(
                 this.query,
                 this.scope,
-                Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start)),
+                start,
                 Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
                 Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
                 Fx.spacer(),
@@ -110,11 +119,14 @@ public final class SearchScreen implements Screen {
     }
 
     void start() {
-        String expression = this.query.getText().strip();
-        if (expression.isEmpty()) {
+        if (this.query.getText().isBlank()) {
             return;
         }
-        SearchRequest request = new SearchRequest(expression, this.scope.getValue());
+        if (!this.queryInput.isValid()) {
+            this.gui.inform().accept(this.query.getTooltip().getText());
+            return;
+        }
+        SearchRequest request = new SearchRequest(this.queryInput.value(), this.scope.getValue());
         this.gui.model().search(request, this::opened);
     }
 

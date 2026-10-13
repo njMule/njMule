@@ -1,0 +1,209 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.gui.ui;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.DateTimeException;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.function.BooleanSupplier;
+import java.util.regex.Pattern;
+import javafx.scene.control.TextField;
+import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.ServerAddress;
+
+/** The kinds of values the interface asks for, each with its characters, its check and its hint. */
+public final class Inputs {
+
+    // Links pasted together, apart by spaces or lines; a name may hold spaces of its own.
+    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+
+    private static final int MAX_HOST = 253;
+    private static final int MAX_TEXT = 4096;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("H:mm");
+
+    private final Gui gui;
+
+    public Inputs(Gui gui) {
+        this.gui = gui;
+    }
+
+    /** A whole number in {@code [min, max]}. */
+    public Input<Integer> number(TextField field, String name, int min, int max) {
+        return Input.of(
+                field,
+                name,
+                this.gui.f("nj.input.number", min, max),
+                Inputs::digit,
+                digits(max),
+                t -> inRange(t, min, max));
+    }
+
+    /** Nothing, or a whole number in {@code [min, max]}. */
+    public Input<OptionalInt> optionalNumber(TextField field, String name, int min, int max) {
+        return Input.of(
+                field,
+                name,
+                this.gui.f("nj.input.optionalNumber", min, max),
+                Inputs::digit,
+                digits(max),
+                t -> t.isEmpty() ? OptionalInt.empty() : OptionalInt.of(inRange(t, min, max)));
+    }
+
+    /** A time of the day, {@code hh:mm}. */
+    public Input<LocalTime> time(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.time"), Inputs::timeChar, 5, t -> {
+            try {
+                return LocalTime.parse(t, TIME);
+            } catch (DateTimeException e) {
+                throw new IllegalArgumentException(t, e);
+            }
+        });
+    }
+
+    /** {@code host:port}. */
+    public Input<ServerAddress> address(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.address"), Inputs::addressChar, MAX_HOST + 8, t -> {
+            ServerAddress address = ServerAddress.parse(t);
+            if (!ServerAddress.isValidHost(address.host())) {
+                throw new IllegalArgumentException(t);
+            }
+            return address;
+        });
+    }
+
+    /** A host name or an IP address; empty only while {@code required} says no. */
+    public Input<String> host(TextField field, String name, BooleanSupplier required) {
+        return Input.of(field, name, this.gui.t("nj.input.host"), Inputs::addressChar, MAX_HOST, t -> {
+            if (t.isEmpty() ? required.getAsBoolean() : !ServerAddress.isValidHost(t)) {
+                throw new IllegalArgumentException(t);
+            }
+            return t;
+        });
+    }
+
+    /** Printable text of at most {@code maxLength} characters, which must not be empty when {@code required}. */
+    public Input<String> text(TextField field, String name, int maxLength, boolean required) {
+        String hint =
+                required ? this.gui.f("nj.input.name", maxLength) : this.gui.f("nj.input.optionalName", maxLength);
+        return Input.of(field, name, hint, Inputs::printable, maxLength, t -> {
+            if (required && t.isEmpty()) {
+                throw new IllegalArgumentException(name);
+            }
+            return t;
+        });
+    }
+
+    /** Nothing, for the default folder, or the path of a folder, which need not exist yet. */
+    public Input<Optional<Path>> folder(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
+            if (t.isEmpty()) {
+                return Optional.empty();
+            }
+            Path path = Path.of(t).toAbsolutePath();
+            if (Files.exists(path) && !Files.isDirectory(path)) {
+                throw new IllegalArgumentException(t);
+            }
+            return Optional.of(path);
+        });
+    }
+
+    /** The path of a folder that exists. */
+    public Input<Path> existingFolder(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {
+            Path path = Path.of(t);
+            if (t.isEmpty() || !Files.isDirectory(path)) {
+                throw new IllegalArgumentException(t);
+            }
+            return path;
+        });
+    }
+
+    /** One or more eD2K file links, apart by spaces or lines. */
+    public Input<List<Ed2kLink.FileLink>> fileLinks(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_TEXT * 4, t -> {
+            List<Ed2kLink.FileLink> links = new ArrayList<>();
+            for (String one : LINKS.split(t, -1)) {
+                if (one.isEmpty()) {
+                    continue;
+                }
+                if (Ed2kLink.tryParse(one).orElse(null) instanceof Ed2kLink.FileLink file) {
+                    links.add(file);
+                } else {
+                    throw new IllegalArgumentException(one);
+                }
+            }
+            if (links.isEmpty()) {
+                throw new IllegalArgumentException(t);
+            }
+            return links;
+        });
+    }
+
+    /** A search expression in the eMule syntax. */
+    public Input<String> searchExpression(TextField field, String name) {
+        return Input.of(
+                field,
+                name,
+                this.gui.t("nj.input.search"),
+                Inputs::printable,
+                SearchRequest.MAX_EXPRESSION_LENGTH,
+                t -> {
+                    if (t.isEmpty()) {
+                        throw new IllegalArgumentException(name);
+                    }
+                    SearchRequest.checkExpression(t);
+                    return t;
+                });
+    }
+
+    private static boolean digit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private static boolean timeChar(char c) {
+        return digit(c) || c == ':';
+    }
+
+    // Host names, IPv4 and IPv6 addresses, with a port.
+    private static boolean addressChar(char c) {
+        return (c < 128 && Character.isLetterOrDigit(c)) || c == '.' || c == '-' || c == ':' || c == '[' || c == ']';
+    }
+
+    private static boolean printable(char c) {
+        return !Character.isISOControl(c);
+    }
+
+    // Integer.parseInt fails with a NumberFormatException, itself an IllegalArgumentException.
+    private static int inRange(String text, int min, int max) {
+        int value = Integer.parseInt(text);
+        if (value < min || value > max) {
+            throw new IllegalArgumentException(text);
+        }
+        return value;
+    }
+
+    private static int digits(int max) {
+        return String.valueOf(max).length();
+    }
+}

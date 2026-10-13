@@ -328,7 +328,7 @@ class ScreensTest {
             screen.webUiPortField().setText("70000");
             screen.apply();
         });
-        assertThat(this.test.told).anyMatch(m -> m.contains("70000"));
+        assertThat(this.test.told).anyMatch(m -> m.contains("65535"));
         assertThat(WebUiSettings.load(config)).isEqualTo(WebUiSettings.DEFAULTS);
 
         FxTesting.onFx(() -> {

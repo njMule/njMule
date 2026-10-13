@@ -47,6 +47,8 @@ import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 
 /**
  * The menu of the notification area icon: the speed limits with their sliders, connecting and disconnecting, the
@@ -70,11 +72,13 @@ public final class TrayMenu {
     private final Slider up = new Slider();
     private final TextField downText = new TextField();
     private final TextField upText = new TextField();
+    private final Inputs inputs;
     private final Button connect;
     private final Button disconnect;
 
     public TrayMenu(Gui gui, Window owner, Actions actions) {
         this.gui = gui;
+        this.inputs = new Inputs(gui);
         this.stage = new Stage(StageStyle.UNDECORATED);
         this.stage.initOwner(owner);
         this.stage.setAlwaysOnTop(true);
@@ -208,6 +212,7 @@ public final class TrayMenu {
             BiFunction<Preferences, Integer, Preferences> change) {
         FontIcon arrow = new FontIcon(icon);
         arrow.getStyleClass().add(row == 0 ? "tray-down" : "tray-up");
+        Input<Integer> input = this.inputs.number(text, name, 0, Preferences.MAX_RATE_KIBPS);
         text.setPrefColumnCount(4);
         text.setAlignment(Pos.CENTER_RIGHT);
         slider.setPrefWidth(90);
@@ -222,21 +227,20 @@ public final class TrayMenu {
                 this.apply(change, (int) Math.round(now.doubleValue()));
             }
         });
-        text.setOnAction(e -> this.typed(slider, text));
+        text.setOnAction(e -> this.typed(slider, input));
         text.focusedProperty().addListener((o, was, now) -> {
             if (!now) {
-                this.typed(slider, text);
+                this.typed(slider, input);
             }
         });
         grid.addRow(row, arrow, new Label(name), slider, text, new Label(this.gui.t("IDS_KBYTESPERSEC")));
     }
 
-    private void typed(Slider slider, TextField text) {
-        try {
-            int value = Integer.parseInt(text.getText().strip());
-            slider.setValue(Math.clamp(value, 0, (long) slider.getMax()));
-        } catch (NumberFormatException e) {
-            text.setText(String.valueOf(Math.round(slider.getValue())));
+    private void typed(Slider slider, Input<Integer> input) {
+        if (input.isValid()) {
+            slider.setValue(Math.min(input.value(), slider.getMax()));
+        } else {
+            input.field().setText(String.valueOf(Math.round(slider.getValue())));
         }
     }
 

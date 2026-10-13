@@ -23,7 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringWrapper;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -45,6 +47,8 @@ import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 
 /**
  * Taking an eMule profile over: a check first shows what would be taken, then the import itself. The eMule directory is
@@ -55,6 +59,8 @@ public final class ImportDialog {
     private final Gui gui;
     private final Stage stage = new Stage();
     private final TextField directory = new TextField();
+    private final Input<Path> directoryInput;
+    private final BooleanProperty working = new SimpleBooleanProperty();
     private final CheckBox identity = new CheckBox();
     private final CheckBox downloads = new CheckBox();
     private final TableView<ImportReport.Item> report = new TableView<>();
@@ -71,7 +77,13 @@ public final class ImportDialog {
         guessEmuleDirectory().ifPresent(p -> this.directory.setText(p.toString()));
         this.identity.setText(gui.t("nj.import.identity"));
         this.downloads.setText(gui.t("nj.import.downloads"));
+        this.directoryInput = new Inputs(gui)
+                .existingFolder(this.directory, gui.t("nj.import.directory"))
+                .quietWhenEmpty();
         this.check = Fx.button(gui.t("nj.import.check"), Material2MZ.SEARCH, () -> this.run(true));
+        this.check
+                .disableProperty()
+                .bind(this.directoryInput.validProperty().not().or(this.working));
         this.take = Fx.button(gui.t("nj.import.run"), Material2AL.INPUT, () -> this.run(false));
         this.take.setDisable(true);
 
@@ -159,7 +171,7 @@ public final class ImportDialog {
             this.gui.inform().accept(this.gui.f("nj.import.notADirectory", dir));
             return;
         }
-        this.check.setDisable(true);
+        this.working.set(true);
         this.take.setDisable(true);
         this.summary.setText(this.gui.t("nj.import.working"));
         this.gui
@@ -176,7 +188,7 @@ public final class ImportDialog {
                                     dryRun ? "nj.import.checked" : "nj.import.done",
                                     result.items().size(),
                                     failed));
-                            this.check.setDisable(false);
+                            this.working.set(false);
                             this.take.setDisable(!dryRun);
                         });
     }

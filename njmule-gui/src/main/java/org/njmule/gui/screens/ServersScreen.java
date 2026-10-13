@@ -25,6 +25,7 @@ import java.util.Optional;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -42,6 +43,8 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 
 /** The known servers, connecting to one, and the log below. */
@@ -54,6 +57,7 @@ public final class ServersScreen implements Screen {
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
+    private Input<ServerAddress> addressInput;
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
@@ -114,12 +118,18 @@ public final class ServersScreen implements Screen {
         this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
         this.address.setPrefColumnCount(18);
         this.address.setOnAction(e -> this.connectToAddress());
+        this.addressInput = new Inputs(this.gui)
+                .address(this.address, this.gui.t("nj.servers.addConnect"))
+                .quietWhenEmpty();
+        Button connectTo =
+                Fx.primary(Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress));
+        connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         var tools = Fx.toolRow(
                 Fx.button(this.gui.t("IDS_MAIN_BTN_CONNECT"), Material2AL.LINK, this::connectSelected),
                 Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
                 Fx.spacer(),
                 this.address,
-                Fx.primary(Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress)),
+                connectTo,
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
         ListView<LogLine> log = new ListView<>(this.gui.model().log());
@@ -157,13 +167,15 @@ public final class ServersScreen implements Screen {
     }
 
     void connectToAddress() {
-        String text = this.address.getText().strip();
-        try {
-            this.gui.model().connect(Optional.of(ServerAddress.parse(text)));
-            this.address.clear();
-        } catch (IllegalArgumentException e) {
-            this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
+        if (!this.addressInput.isValid()) {
+            this.gui
+                    .inform()
+                    .accept(this.gui.f(
+                            "nj.servers.badAddress", this.address.getText().strip()));
+            return;
         }
+        this.gui.model().connect(Optional.of(this.addressInput.value()));
+        this.address.clear();
     }
 
     private void connectTo(ServerInfo server) {

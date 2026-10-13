@@ -17,16 +17,17 @@
 package org.njmule.gui.screens;
 
 import java.io.IOException;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -50,12 +51,17 @@ import org.njmule.gui.infra.Themes;
 import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 
 /** The engine's preferences and the look of the interface, applied together. */
 public final class SettingsScreen implements Screen {
+
+    private static final int MAX_PROXY_USER = 255;
+    private static final int MAX_PASSWORD = 1024;
 
     private final Gui gui;
     private Node view;
@@ -97,6 +103,23 @@ public final class SettingsScreen implements Screen {
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
+    private Input<String> nickInput;
+    private Input<Integer> tcpPortInput;
+    private Input<Integer> udpPortInput;
+    private Input<Integer> uploadInput;
+    private Input<Integer> downloadInput;
+    private Input<Integer> downloadCapacityInput;
+    private Input<Integer> uploadCapacityInput;
+    private Input<Integer> connectionsInput;
+    private Input<Integer> sourcesInput;
+    private Input<String> proxyHostInput;
+    private Input<Integer> proxyPortInput;
+    private Input<String> proxyUserInput;
+    private Input<Optional<Path>> incomingInput;
+    private Input<Optional<Path>> tempInput;
+    private Input<Integer> webUiPortInput;
+    private Input<String> webUiPasswordInput;
+    private Input<String> webUiAgainInput;
 
     public SettingsScreen(Gui gui) {
         this.gui = gui;
@@ -159,6 +182,7 @@ public final class SettingsScreen implements Screen {
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
+        this.inputs();
 
         GridPane grid = new GridPane();
         grid.setHgap(12);
@@ -214,13 +238,88 @@ public final class SettingsScreen implements Screen {
         note.getStyleClass().add("text-muted");
         grid.add(note, 0, row, 2, 1);
 
-        var tools = Fx.toolRow(
-                Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply)),
-                Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
+        Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply));
+        apply.disableProperty()
+                .bind(Input.allValid(List.of(
+                                this.nickInput,
+                                this.tcpPortInput,
+                                this.udpPortInput,
+                                this.uploadInput,
+                                this.downloadInput,
+                                this.downloadCapacityInput,
+                                this.uploadCapacityInput,
+                                this.connectionsInput,
+                                this.sourcesInput,
+                                this.proxyHostInput,
+                                this.proxyPortInput,
+                                this.proxyUserInput,
+                                this.incomingInput,
+                                this.tempInput,
+                                this.webUiPortInput,
+                                this.webUiPasswordInput,
+                                this.webUiAgainInput))
+                        .not());
+        var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToWidth(true);
         this.load(this.gui.model().preferencesProperty().get());
         return Fx.screen(this.title(), tools, scroll);
+    }
+
+    // Each box takes only its kind of value, within the limits the engine accepts.
+    private void inputs() {
+        Inputs inputs = new Inputs(this.gui);
+        this.nickInput = inputs.text(this.nick, this.gui.t("IDS_PW_NICK"), Preferences.MAX_NICK_LENGTH, true);
+        this.tcpPortInput = inputs.number(this.tcpPort, "TCP", 1, Preferences.MAX_PORT);
+        this.udpPortInput = inputs.number(this.udpPort, "UDP", 1, Preferences.MAX_PORT);
+        this.uploadInput = inputs.number(this.upload, this.gui.t("nj.settings.upload"), 0, Preferences.MAX_RATE_KIBPS);
+        this.downloadInput =
+                inputs.number(this.download, this.gui.t("nj.settings.download"), 0, Preferences.MAX_RATE_KIBPS);
+        this.downloadCapacityInput = inputs.number(
+                this.downloadCapacity, this.gui.t("nj.settings.downloadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
+        this.uploadCapacityInput = inputs.number(
+                this.uploadCapacity, this.gui.t("nj.settings.uploadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
+        this.connectionsInput =
+                inputs.number(this.connections, this.gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
+        this.sourcesInput =
+                inputs.number(this.sources, this.gui.t("IDS_PW_MAXSOURCES"), 1, Preferences.MAX_SOURCES_PER_FILE);
+        this.proxyHostInput = inputs.host(
+                this.proxyHost,
+                this.gui.t("nj.proxy.host"),
+                () -> this.proxyType.getValue() != ProxySettings.Type.NONE);
+        this.proxyType.valueProperty().addListener((o, was, now) -> this.proxyHostInput.check());
+        this.proxyPortInput = inputs.number(this.proxyPort, this.gui.t("nj.proxy.host"), 1, Preferences.MAX_PORT);
+        this.proxyUserInput = inputs.text(this.proxyUser, this.gui.t("nj.proxy.user"), MAX_PROXY_USER, false);
+        this.incomingInput = inputs.folder(this.incoming, this.gui.t("IDS_PW_INCOMING"));
+        this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
+        this.webUiPortInput = inputs.number(this.webUiPort, this.gui.t("nj.webui.port"), 1, Preferences.MAX_PORT);
+        this.webUiPasswordInput = Input.of(
+                        this.webUiPassword,
+                        this.gui.t("nj.webui.password"),
+                        this.gui.f("nj.input.password", Passwords.MIN_LENGTH),
+                        c -> !Character.isISOControl(c),
+                        MAX_PASSWORD,
+                        t -> {
+                            if (!t.isEmpty() && t.length() < Passwords.MIN_LENGTH) {
+                                throw new IllegalArgumentException(t);
+                            }
+                            return t;
+                        })
+                .keepSpaces();
+        this.webUiAgainInput = Input.of(
+                        this.webUiAgain,
+                        this.gui.t("nj.webui.password"),
+                        this.gui.t("nj.input.passwordAgain"),
+                        c -> !Character.isISOControl(c),
+                        MAX_PASSWORD,
+                        t -> {
+                            if (!t.equals(this.webUiPassword.getText())) {
+                                throw new IllegalArgumentException(t);
+                            }
+                            return t;
+                        })
+                .keepSpaces();
+        this.webUiPassword.textProperty().addListener((o, was, now) -> this.webUiAgainInput.check());
     }
 
     private SchedulerPane scheduler() {
@@ -369,15 +468,15 @@ public final class SettingsScreen implements Screen {
 
     private Preferences read(Preferences current) {
         return current.toBuilder()
-                .nick(this.nick.getText())
-                .tcpPort(number(this.tcpPort, "TCP"))
-                .udpPort(number(this.udpPort, "UDP"))
-                .maxUploadKiBps(number(this.upload, this.gui.t("nj.settings.upload")))
-                .maxDownloadKiBps(number(this.download, this.gui.t("nj.settings.download")))
-                .downloadCapacityKiBps(number(this.downloadCapacity, this.gui.t("nj.settings.downloadCapacity")))
-                .uploadCapacityKiBps(number(this.uploadCapacity, this.gui.t("nj.settings.uploadCapacity")))
-                .maxConnections(number(this.connections, this.gui.t("IDS_PW_MAXC")))
-                .maxSourcesPerFile(number(this.sources, this.gui.t("IDS_PW_MAXSOURCES")))
+                .nick(this.nickInput.value())
+                .tcpPort(this.tcpPortInput.value())
+                .udpPort(this.udpPortInput.value())
+                .maxUploadKiBps(this.uploadInput.value())
+                .maxDownloadKiBps(this.downloadInput.value())
+                .downloadCapacityKiBps(this.downloadCapacityInput.value())
+                .uploadCapacityKiBps(this.uploadCapacityInput.value())
+                .maxConnections(this.connectionsInput.value())
+                .maxSourcesPerFile(this.sourcesInput.value())
                 .obfuscation(this.obfuscation.getValue())
                 .ed2kEnabled(this.ed2k.isSelected())
                 .kadEnabled(this.kad.isSelected())
@@ -388,21 +487,18 @@ public final class SettingsScreen implements Screen {
                 .upnp(this.upnp.isSelected())
                 .proxy(new ProxySettings(
                         this.proxyType.getValue(),
-                        this.proxyHost.getText(),
-                        number(this.proxyPort, this.gui.t("nj.proxy.host")),
-                        this.proxyUser.getText().strip(),
+                        this.proxyHostInput.value(),
+                        this.proxyPortInput.value(),
+                        this.proxyUserInput.value(),
                         this.proxyPassword.getText()))
-                .incomingDir(path(this.incoming))
-                .tempDir(path(this.temp))
+                .incomingDir(this.incomingInput.value())
+                .tempDir(this.tempInput.value())
                 .build();
     }
 
     // A new password replaces the stored hash; an empty one keeps it.
     private WebUiSettings readWebUi(WebUiSettings current) {
-        int port = number(this.webUiPort, this.gui.t("nj.webui.port"));
-        if (port < 1 || port > 0xFFFF) {
-            throw new IllegalArgumentException(this.gui.t("nj.webui.port") + ": " + port);
-        }
+        int port = this.webUiPortInput.value();
         String hash = current.passwordHash();
         char[] password = this.webUiPassword.getText().toCharArray();
         char[] again = this.webUiAgain.getText().toCharArray();
@@ -424,26 +520,6 @@ public final class SettingsScreen implements Screen {
             throw new IllegalArgumentException(this.gui.t("nj.webui.needsPassword"));
         }
         return new WebUiSettings(this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash);
-    }
-
-    private static int number(TextField field, String name) {
-        try {
-            return Integer.parseInt(field.getText().strip());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(name + ": " + field.getText(), e);
-        }
-    }
-
-    private static Optional<Path> path(TextField field) {
-        String text = field.getText().strip();
-        if (text.isEmpty()) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(Path.of(text).toAbsolutePath());
-        } catch (InvalidPathException e) {
-            throw new IllegalArgumentException(text, e);
-        }
     }
 
     private String obfuscationName(ObfuscationMode m) {

@@ -29,6 +29,7 @@ import javafx.beans.binding.Bindings;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -54,6 +55,8 @@ import org.njmule.gui.model.Chats;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 
 /** Friends on the left, a tab for each conversation on the right. */
@@ -67,6 +70,7 @@ public final class MessagesScreen implements Screen {
     private final ListView<LiveList.Row<Friend>> friends = new ListView<>();
     private final TabPane tabs = new TabPane();
     private final TextField address = new TextField();
+    private Input<ServerAddress> addressInput;
     private final Map<Chats.Chat, Tab> open = new HashMap<>();
 
     public MessagesScreen(Gui gui) {
@@ -122,6 +126,11 @@ public final class MessagesScreen implements Screen {
         this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
         this.address.setPrefColumnCount(18);
         this.address.setOnAction(e -> this.startChat());
+        this.addressInput = new Inputs(this.gui)
+                .address(this.address, this.gui.t("nj.chat.start"))
+                .quietWhenEmpty();
+        Button start = Fx.primary(Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat));
+        start.disableProperty().bind(this.addressInput.validProperty().not());
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         Chats chats = this.gui.model().chats();
         chats.all().addListener((ListChangeListener<Chats.Chat>) c -> {
@@ -135,8 +144,7 @@ public final class MessagesScreen implements Screen {
         none.visibleProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         SplitPane split = new SplitPane(left, new StackPane(none, this.tabs));
         split.setDividerPositions(0.26);
-        var tools = Fx.toolRow(
-                this.address, Fx.primary(Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat)));
+        var tools = Fx.toolRow(this.address, start);
         return Fx.screen(this.title(), tools, split);
     }
 
@@ -149,13 +157,11 @@ public final class MessagesScreen implements Screen {
 
     void startChat() {
         String text = this.address.getText().strip();
-        try {
-            ServerAddress.parse(text);
-        } catch (IllegalArgumentException e) {
+        if (!this.addressInput.isValid()) {
             this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
             return;
         }
-        this.select(this.gui.model().chats().with(text));
+        this.select(this.gui.model().chats().with(this.addressInput.value().toString()));
         this.address.clear();
     }
 

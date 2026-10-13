@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import java.util.Optional;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
@@ -29,6 +30,8 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Input;
+import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 
 /** The state of our Kad node and joining Kad through a known node. */
@@ -41,6 +44,7 @@ public final class KadScreen implements Screen {
     private final Label verified = value();
     private final Label id = value();
     private final TextField node = new TextField();
+    private Input<ServerAddress> nodeInput;
 
     public KadScreen(Gui gui) {
         this.gui = gui;
@@ -73,8 +77,12 @@ public final class KadScreen implements Screen {
         this.node.setPromptText(this.gui.t("nj.kad.nodePrompt"));
         this.node.setPrefColumnCount(20);
         this.node.setOnAction(e -> this.bootstrap());
-        var tools = Fx.toolRow(
-                this.node, Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap)));
+        this.nodeInput = new Inputs(this.gui)
+                .address(this.node, this.gui.t("IDS_BOOTSTRAP"))
+                .quietWhenEmpty();
+        Button start = Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
+        start.disableProperty().bind(this.nodeInput.validProperty().not());
+        var tools = Fx.toolRow(this.node, start);
         FlowPane cards = new FlowPane(
                 12,
                 12,
@@ -110,13 +118,15 @@ public final class KadScreen implements Screen {
     }
 
     void bootstrap() {
-        String text = this.node.getText().strip();
-        try {
-            this.gui.model().kadBootstrap(ServerAddress.parse(text));
-            this.node.clear();
-        } catch (IllegalArgumentException e) {
-            this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
+        if (!this.nodeInput.isValid()) {
+            this.gui
+                    .inform()
+                    .accept(this.gui.f(
+                            "nj.servers.badAddress", this.node.getText().strip()));
+            return;
         }
+        this.gui.model().kadBootstrap(this.nodeInput.value());
+        this.node.clear();
     }
 
     Label stateLabel() {
