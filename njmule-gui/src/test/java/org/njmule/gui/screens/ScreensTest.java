@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -216,6 +217,56 @@ class ScreensTest {
 
         FxTesting.onFx(() -> screen.addServerMet(met));
         FxTesting.await("two servers", () -> screen.table().getItems().size() == 2);
+        assertThat(FxTesting.onFx(() -> screen.countLabel().getText())).isEqualTo("Servers (2)");
+        assertThat(FxTesting.onFx(() -> screen.table().getColumns().stream()
+                        .filter(c -> !c.isVisible())
+                        .map(c -> c.getText())
+                        .toList()))
+                .containsExactly("Hard File Limit", "Version");
+
+        // The box narrows the list as one types.
+        FxTesting.onFx(() -> screen.filterField().setText("2.3.5"));
+        assertThat(FxTesting.onFx(() -> screen.table().getItems().size())).isEqualTo(1);
+        assertThat(FxTesting.onFx(() -> screen.countLabel().getText())).isEqualTo("Servers (1/2)");
+        FxTesting.onFx(() -> screen.filterField().clear());
+        assertThat(FxTesting.onFx(() -> screen.table().getItems().size())).isEqualTo(2);
+
+        // Static list, priority and links, as in eMule's server menu.
+        Path statics = this.test.engine.directories().config().resolve("staticservers.dat");
+        FxTesting.onFx(() -> {
+            screen.table().getSelectionModel().clearSelection();
+            screen.table().getSelectionModel().select(0);
+            screen.setStatic(true);
+            screen.setPriority(ServerInfo.Priority.HIGH);
+            screen.copyLinks();
+        });
+        String firstAddress =
+                FxTesting.onFx(() -> screen.table().getItems().getFirst().get().address());
+        FxTesting.await(
+                "static and high",
+                () -> screen.table().getItems().stream()
+                        .map(r -> r.get())
+                        .anyMatch(s -> s.address().equals(firstAddress)
+                                && s.isStatic()
+                                && s.priority() == ServerInfo.Priority.HIGH));
+        assertThat(Files.exists(statics)).isTrue();
+        String link = FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString());
+        assertThat(link).isEqualTo("ed2k://|server|" + firstAddress.replace(":", "|") + "|/");
+        assertThat(ServersScreen.serverLinks("see " + link + " and ed2k://|server|5.6.7.8|4242|/ ed2k://|file|x|1|"
+                        + "0123456789ABCDEF0123456789ABCDEF|/"))
+                .hasSize(2);
+
+        FxTesting.onFx(() -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString("ed2k://|server|81.2.3.6|4663|/");
+            Clipboard.getSystemClipboard().setContent(content);
+            screen.pasteLinks();
+        });
+        FxTesting.await("pasted", () -> screen.table().getItems().size() == 3);
+        FxTesting.onFx(screen::removeAll);
+        FxTesting.await("none left", () -> screen.table().getItems().isEmpty());
+        FxTesting.onFx(() -> screen.addServerMet(met));
+        FxTesting.await("two again", () -> screen.table().getItems().size() == 2);
 
         // Connect becomes Disconnect on the server we are on, and stays Connect on the others.
         FxTesting.onFx(() -> {

@@ -398,3 +398,13 @@
     -fx-spacing: 4;
     -fx-padding: 0 0 4 0;
 }
+
+/* Numbers line up on the right, as in eMule's lists. */
+.table-cell.numeric {
+    -fx-alignment: center-right;
+}
+
+/* The entry a double click or Enter runs. */
+.menu-item.default-item .label {
+    -fx-font-weight: bold;
+}

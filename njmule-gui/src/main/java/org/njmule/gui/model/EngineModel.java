@@ -348,6 +348,22 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.removeServer(server), removed -> this.refreshServers());
     }
 
+    public void removeServers(List<ServerAddress> servers) {
+        this.later(this.engine.removeServers(servers), removed -> this.refreshServers());
+    }
+
+    public void addServer(ServerAddress server) {
+        this.later(this.engine.addServer(server), added -> this.refreshServers());
+    }
+
+    public void setServerPriority(ServerAddress server, ServerInfo.Priority priority) {
+        this.later(this.engine.setServerPriority(server, priority), done -> this.refreshServers());
+    }
+
+    public void setStaticServer(ServerAddress server, boolean isStatic) {
+        this.later(this.engine.setStaticServer(server, isStatic), done -> this.refreshServers());
+    }
+
     public void addDownload(Ed2kLink.FileLink link) {
         this.later(this.engine.addDownload(link), this.downloads::put);
     }

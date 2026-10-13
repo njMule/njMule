@@ -46,6 +46,7 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.i18n.I18n;
@@ -132,8 +133,9 @@ public final class DesktopApp implements AutoCloseable {
                 case Ed2kLink.FileLink link -> this.pending.add(link);
                 case Ed2kLink.ServerListLink list -> this.fromUrl(list.url(), true);
                 case Ed2kLink.NodesListLink list -> this.fromUrl(list.url(), false);
+                case Ed2kLink.ServerLink server -> this.addServer(server);
                 case null, default -> {
-                    // A server or search link is not acted upon yet.
+                    // A search link is not acted upon yet.
                 }
             }
         }
@@ -165,6 +167,13 @@ public final class DesktopApp implements AutoCloseable {
         } else {
             this.model.addKadContacts(
                     uri, added -> this.window.message(this.gui.f("nj.kad.fromUrl", added, uri.getHost())));
+        }
+    }
+
+    private void addServer(Ed2kLink.ServerLink server) {
+        if (this.model != null) {
+            this.model.addServer(new ServerAddress(server.host(), server.port()));
+            this.window.message(this.gui.f("nj.servers.added", server.host() + ":" + server.port()));
         }
     }
 

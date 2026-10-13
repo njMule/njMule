@@ -124,7 +124,8 @@ class EngineModelTest {
     @Test
     void eventsUpdateTheState() throws Exception {
         EngineModel m = this.start();
-        ServerInfo server = new ServerInfo("81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL);
+        ServerInfo server = new ServerInfo(
+                "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
 
         m.handle(new EngineEvent.ServerConnecting(server));
         assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTING);
@@ -167,8 +168,22 @@ class EngineModelTest {
         m.handle(new EngineEvent.PreferencesChanged(this.engine.preferences()));
         m.handle(new EngineEvent.Started("x"));
 
-        ServerInfo sunrise =
-                new ServerInfo("176.123.5.89:4725", "eMule Sunrise", "", 0, 0, 0, 0, ServerInfo.Priority.NORMAL);
+        ServerInfo sunrise = new ServerInfo(
+                "176.123.5.89:4725",
+                "eMule Sunrise",
+                "",
+                0,
+                0,
+                0,
+                0,
+                ServerInfo.Priority.NORMAL,
+                0,
+                0,
+                0,
+                0,
+                "",
+                true,
+                false);
         int logged = m.log().size();
         assertThat(m.serverInfo().getFirst().kind()).isEqualTo(EngineModel.ServerNote.Kind.TITLE);
         m.clearServerInfo();

@@ -16,27 +16,49 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.theme.Styles;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.RadioMenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Toggle;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -46,6 +68,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
@@ -62,6 +85,10 @@ import org.njmule.gui.ui.UrlBox;
 /** The known servers, connecting to one, and the log below. */
 public final class ServersScreen implements Screen {
 
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final KeyCombination COPY = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCombination PASTE = new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN);
+
     private final Gui gui;
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
@@ -70,6 +97,9 @@ public final class ServersScreen implements Screen {
     private UrlBox list;
     private TabPane logTabs;
     private final Button connectButton = new Button();
+    private final TextField filter = new TextField();
+    private final Label count = new Label();
+    private final ObjectProperty<Predicate<ServerInfo>> shown = new SimpleObjectProperty<>(server -> true);
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
@@ -99,19 +129,29 @@ public final class ServersScreen implements Screen {
     }
 
     private Node build() {
-        this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"));
+        this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"), this.shown);
+        // eMule's columns, in its order; the hard file limit and the version start hidden, as there.
         this.table
                 .getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 220, ServerInfo::name),
+                        Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 170, ServerInfo::name),
                         Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address),
-                        Fx.column(this.gui.t("IDS_DESCRIPTION"), 220, ServerInfo::description),
-                        Fx.column(this.gui.t("nj.servers.users"), 90, ServerInfo::users, this.gui.formats()::count),
-                        Fx.column(
-                                this.gui.t("nj.servers.maxUsers"), 90, ServerInfo::maxUsers, this.gui.formats()::count),
-                        Fx.column(this.gui.t("IDS_FILES"), 100, ServerInfo::files, this.gui.formats()::count),
+                        Fx.column(this.gui.t("IDS_DESCRIPTION"), 170, ServerInfo::description),
+                        numeric(Fx.column(this.gui.t("IDS_PING"), 70, ServerInfo::ping, ms -> this.known(ms))),
+                        numeric(Fx.column(this.gui.t("IDS_UUSERS"), 85, ServerInfo::users, this::known)),
+                        numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 95, ServerInfo::maxUsers, this::known)),
+                        numeric(Fx.column(this.gui.t("IDS_PW_FILES"), 95, ServerInfo::files, this::known)),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 80, ServerInfo::priority, this::priority),
-                        Fx.column(this.gui.t("nj.servers.failed"), 70, ServerInfo::failed)));
+                        numeric(Fx.column(this.gui.t("IDS_UFAILED"), 75, ServerInfo::failed)),
+                        Fx.column(this.gui.t("IDS_STATICSERVER"), 65, ServerInfo::isStatic, this::yesNo),
+                        numeric(Fx.column(this.gui.t("IDS_SOFTFILES"), 110, ServerInfo::softFiles, this::known)),
+                        hidden(numeric(
+                                Fx.column(this.gui.t("IDS_HARDFILES"), 110, ServerInfo::hardFiles, this::known))),
+                        hidden(Fx.column(this.gui.t("IDS_VERSION"), 90, ServerInfo::version)),
+                        numeric(Fx.column(this.gui.t("IDS_IDLOW"), 80, ServerInfo::lowIdUsers, this::known)),
+                        Fx.column(this.gui.t("IDS_OBFUSCATION"), 95, ServerInfo::supportsObfuscation, this::yesNo)));
+        this.table.setTableMenuButtonVisible(true);
+        this.table.setOnKeyPressed(this::key);
         this.table.setRowFactory(t -> {
             TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>();
             row.setOnMouseClicked(e -> {
@@ -121,12 +161,7 @@ public final class ServersScreen implements Screen {
             });
             return row;
         });
-        MenuItem connect = new MenuItem(this.gui.t("IDS_MAIN_BTN_CONNECT"));
-        connect.setOnAction(e -> this.connectOrDisconnect());
-        MenuItem remove = new MenuItem(this.gui.t("IDS_REMOVE"));
-        remove.setOnAction(e -> this.removeSelected());
-        this.table.setContextMenu(new ContextMenu(connect, remove));
-        this.table.getContextMenu().setOnShowing(e -> connect.setText(this.connectText()));
+        this.table.setContextMenu(this.menu());
 
         this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
         this.address.setPrefColumnCount(18);
@@ -150,7 +185,7 @@ public final class ServersScreen implements Screen {
                 connectTo,
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
-        SplitPane split = new SplitPane(this.table, this.logs());
+        SplitPane split = new SplitPane(this.listPane(), this.logs());
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
         VBox content = new VBox(8, this.listRow(), split);
@@ -257,6 +292,233 @@ public final class ServersScreen implements Screen {
         return this.list;
     }
 
+    // The count of servers, and the box that narrows the list as one types.
+    private Node listPane() {
+        this.filter.setPromptText(this.gui.t("nj.servers.filter"));
+        this.filter.setPrefColumnCount(18);
+        this.filter.textProperty().addListener((o, was, now) -> this.shown.set(matching(now)));
+        this.filter.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                this.filter.clear();
+            }
+        });
+        this.count.getStyleClass().add(Styles.TEXT_BOLD);
+        this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> this.showCount());
+        this.gui.model().servers().rows().addListener((ListChangeListener<LiveList.Row<ServerInfo>>)
+                c -> this.showCount());
+        this.showCount();
+        HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
+        head.setAlignment(Pos.CENTER_LEFT);
+        VBox pane = new VBox(6, head, this.table);
+        VBox.setVgrow(this.table, Priority.ALWAYS);
+        return pane;
+    }
+
+    private void showCount() {
+        int all = this.gui.model().servers().rows().size();
+        int visible = this.table.getItems().size();
+        this.count.setText(this.gui.t("IDS_SV_SERVERLIST")
+                + " ("
+                + (visible == all ? String.valueOf(all) : visible + "/" + all)
+                + ")");
+    }
+
+    /** Servers whose name, address, description or version hold every word of {@code text}, in any case. */
+    static Predicate<ServerInfo> matching(String text) {
+        List<String> words = WHITESPACE
+                .splitAsStream(text.strip().toLowerCase(Locale.ROOT))
+                .filter(w -> !w.isEmpty())
+                .toList();
+        if (words.isEmpty()) {
+            return server -> true;
+        }
+        return server -> {
+            String all = String.join(" ", server.name(), server.address(), server.description(), server.version())
+                    .toLowerCase(Locale.ROOT);
+            return words.stream().allMatch(all::contains);
+        };
+    }
+
+    // The server menu of eMule but Find, which the box above the list does as one types.
+    private ContextMenu menu() {
+        MenuItem connect = Fx.menuItem(this.gui.t("IDS_CONNECTTHIS"), Material2AL.LINK, this::connectOrDisconnect);
+        connect.getStyleClass().add("default-item");
+        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY));
+        ToggleGroup priorities = new ToggleGroup();
+        for (ServerInfo.Priority p :
+                List.of(ServerInfo.Priority.LOW, ServerInfo.Priority.NORMAL, ServerInfo.Priority.HIGH)) {
+            RadioMenuItem item = new RadioMenuItem(this.priority(p));
+            item.setUserData(p);
+            item.setToggleGroup(priorities);
+            item.setOnAction(e -> this.setPriority(p));
+            priority.getItems().add(item);
+        }
+        MenuItem addStatic =
+                Fx.menuItem(this.gui.t("IDS_ADDTOSTATIC"), Material2MZ.PLAYLIST_ADD, () -> this.setStatic(true));
+        MenuItem removeStatic = Fx.menuItem(
+                this.gui.t("IDS_REMOVEFROMSTATIC"), Material2MZ.REMOVE_CIRCLE_OUTLINE, () -> this.setStatic(false));
+        MenuItem copy = Fx.menuItem(this.gui.t("IDS_DL_LINK1"), Material2AL.CONTENT_COPY, this::copyLinks);
+        MenuItem paste = Fx.menuItem(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Material2AL.CONTENT_PASTE, this::pasteLinks);
+        MenuItem remove = Fx.menuItem(this.gui.t("IDS_REMOVETHIS"), Material2AL.DELETE, this::removeSelected);
+        MenuItem removeAll = Fx.menuItem(this.gui.t("IDS_REMOVEALL"), Material2AL.DELETE_SWEEP, this::askRemoveAll);
+        ContextMenu menu = new ContextMenu(
+                connect,
+                priority,
+                new SeparatorMenuItem(),
+                addStatic,
+                removeStatic,
+                new SeparatorMenuItem(),
+                copy,
+                paste,
+                remove,
+                removeAll);
+        menu.setOnShowing(e -> {
+            List<ServerInfo> selected = Fx.selected(this.table);
+            boolean none = selected.isEmpty();
+            connect.setText(
+                    this.isCurrent(none ? null : selected.getFirst())
+                            ? this.gui.t("IDS_MAIN_BTN_DISCONNECT")
+                            : this.gui.t("IDS_CONNECTTHIS"));
+            connect.setDisable(none);
+            priority.setDisable(none);
+            Set<ServerInfo.Priority> current =
+                    selected.stream().map(ServerInfo::priority).collect(Collectors.toSet());
+            for (Toggle t : priorities.getToggles()) {
+                t.setSelected(current.size() == 1 && current.contains((ServerInfo.Priority) t.getUserData()));
+            }
+            addStatic.setDisable(selected.stream().allMatch(ServerInfo::isStatic));
+            removeStatic.setDisable(selected.stream().noneMatch(ServerInfo::isStatic));
+            copy.setDisable(none);
+            paste.setDisable(
+                    serverLinks(Clipboard.getSystemClipboard().getString()).isEmpty());
+            remove.setDisable(none);
+            removeAll.setDisable(this.gui.model().servers().rows().isEmpty());
+        });
+        return menu;
+    }
+
+    private void key(KeyEvent e) {
+        if (e.getCode() == KeyCode.DELETE) {
+            this.removeSelected();
+        } else if (e.getCode() == KeyCode.ENTER) {
+            this.connectOrDisconnect();
+        } else if (COPY.match(e)) {
+            this.copyLinks();
+        } else if (PASTE.match(e)) {
+            this.pasteLinks();
+        } else {
+            return;
+        }
+        e.consume();
+    }
+
+    void setPriority(ServerInfo.Priority priority) {
+        for (ServerInfo server : Fx.selected(this.table)) {
+            this.gui.model().setServerPriority(ServerAddress.parse(server.address()), priority);
+        }
+    }
+
+    void setStatic(boolean isStatic) {
+        for (ServerInfo server : Fx.selected(this.table)) {
+            if (server.isStatic() != isStatic) {
+                this.gui.model().setStaticServer(ServerAddress.parse(server.address()), isStatic);
+            }
+        }
+    }
+
+    /** The ed2k links of the selected servers, one per line. */
+    void copyLinks() {
+        List<ServerInfo> selected = Fx.selected(this.table);
+        if (selected.isEmpty()) {
+            return;
+        }
+        List<String> links = new ArrayList<>();
+        for (ServerInfo server : selected) {
+            ServerAddress address = ServerAddress.parse(server.address());
+            links.add(new Ed2kLink.ServerLink(address.host(), address.port()).toUri());
+        }
+        ClipboardContent content = new ClipboardContent();
+        content.putString(String.join("\n", links));
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    /** Adds the servers of the ed2k server links on the clipboard, and fetches the server lists linked there. */
+    void pasteLinks() {
+        for (Ed2kLink link : serverLinks(Clipboard.getSystemClipboard().getString())) {
+            switch (link) {
+                case Ed2kLink.ServerLink server ->
+                    this.gui.model().addServer(new ServerAddress(server.host(), server.port()));
+                case Ed2kLink.ServerListLink linked -> {
+                    this.list.node().getEditor().setText(linked.url());
+                    this.updateFromUrl();
+                }
+                default -> {
+                    // Only server links are taken here.
+                }
+            }
+        }
+    }
+
+    /** The server and server list links in {@code text}, which may be null. */
+    static List<Ed2kLink> serverLinks(String text) {
+        if (text == null) {
+            return List.of();
+        }
+        List<Ed2kLink> links = new ArrayList<>();
+        for (String word : WHITESPACE.splitAsStream(text.strip()).toList()) {
+            if (word.regionMatches(true, 0, "ed2k://", 0, 7)) {
+                Ed2kLink.tryParse(word)
+                        .filter(l -> l instanceof Ed2kLink.ServerLink || l instanceof Ed2kLink.ServerListLink)
+                        .ifPresent(links::add);
+            }
+        }
+        return links;
+    }
+
+    private void askRemoveAll() {
+        Alert confirm = new Alert(
+                Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS"), ButtonType.YES, ButtonType.NO);
+        confirm.initOwner(this.view.getScene().getWindow());
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> this.removeAll());
+    }
+
+    void removeAll() {
+        if (this.gui.model().connectionProperty().get() == EngineModel.Connection.CONNECTING) {
+            this.gui.model().disconnect();
+        }
+        this.gui
+                .model()
+                .removeServers(this.gui.model().servers().rows().stream()
+                        .map(row -> ServerAddress.parse(row.get().address()))
+                        .toList());
+    }
+
+    private String known(long value) {
+        return value == 0 ? "" : this.gui.formats().count(value);
+    }
+
+    private String yesNo(boolean value) {
+        return this.gui.t(value ? "IDS_YES" : "IDS_NO");
+    }
+
+    private static <S, T> TableColumn<S, T> numeric(TableColumn<S, T> column) {
+        column.getStyleClass().add("numeric");
+        return column;
+    }
+
+    private static <S, T> TableColumn<S, T> hidden(TableColumn<S, T> column) {
+        column.setVisible(false);
+        return column;
+    }
+
+    TextField filterField() {
+        return this.filter;
+    }
+
+    Label countLabel() {
+        return this.count;
+    }
+
     private String priority(ServerInfo.Priority priority) {
         return switch (priority) {
             case HIGH -> this.gui.t("IDS_PRIOHIGH");
@@ -276,8 +538,11 @@ public final class ServersScreen implements Screen {
     }
 
     void removeSelected() {
-        for (ServerInfo server : Fx.selected(this.table)) {
-            this.gui.model().removeServer(ServerAddress.parse(server.address()));
+        List<ServerAddress> selected = Fx.selected(this.table).stream()
+                .map(server -> ServerAddress.parse(server.address()))
+                .toList();
+        if (!selected.isEmpty()) {
+            this.gui.model().removeServers(selected);
         }
     }
 

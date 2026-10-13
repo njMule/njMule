@@ -31,6 +31,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
@@ -71,6 +72,12 @@ public final class Fx {
     }
 
     /** A button showing only its icon, with the text as tooltip and accessible name. */
+    public static MenuItem menuItem(String text, Ikon ikon, Runnable action) {
+        MenuItem item = new MenuItem(text, icon(ikon));
+        item.setOnAction(e -> action.run());
+        return item;
+    }
+
     public static Button iconButton(String text, Ikon ikon, Runnable action) {
         Button button = new Button(null, icon(ikon));
         button.setTooltip(new Tooltip(text));
