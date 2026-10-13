@@ -16,6 +16,7 @@
  */
 package org.njmule.core.api;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.njmule.core.config.Preferences;
@@ -61,4 +62,21 @@ public sealed interface EngineEvent {
 
     /** A search ended; no more results will arrive for it. */
     record SearchEnded(SearchId search, int results) implements EngineEvent {}
+
+    /** A download was added. */
+    record DownloadAdded(DownloadInfo download) implements EngineEvent {}
+
+    /**
+     * Data arrived, sources changed or the download was paused or resumed; at most once a second.
+     */
+    record DownloadProgress(DownloadInfo download) implements EngineEvent {}
+
+    /** The download is verified and moved to {@code file}. */
+    record DownloadCompleted(DownloadInfo download, Path file) implements EngineEvent {}
+
+    /** The download stopped on an error, such as a full disk. */
+    record DownloadFailed(DownloadInfo download, String reason) implements EngineEvent {}
+
+    /** The download was cancelled and its data deleted. */
+    record DownloadRemoved(Hash16 hash) implements EngineEvent {}
 }

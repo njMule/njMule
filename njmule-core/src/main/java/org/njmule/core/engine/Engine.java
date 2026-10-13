@@ -25,6 +25,7 @@ import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -37,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.UnaryOperator;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
@@ -91,7 +94,9 @@ public final class Engine implements NjMuleEngine {
                         () -> this.preferences,
                         this::publish,
                         this::userLog,
-                        userHash);
+                        userHash,
+                        preferences.effectiveTempDir(directories),
+                        () -> this.preferences.effectiveIncomingDir(directories));
     }
 
     public static Engine start(EngineConfig config) throws IOException {
@@ -225,6 +230,35 @@ public final class Engine implements NjMuleEngine {
                         ip ->
                                 this.network.hello(
                                         new InetSocketAddress(Ipv4.format(ip), peer.port())));
+    }
+
+    @Override
+    public CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link) {
+        Objects.requireNonNull(link, "link");
+        return this.loop.submit(() -> this.network.addDownload(link));
+    }
+
+    @Override
+    public CompletableFuture<List<DownloadInfo>> downloads() {
+        return this.loop.submit(this.network::downloads);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> pauseDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.pauseDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> resumeDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.resumeDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> cancelDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.cancelDownload(hash));
     }
 
     @Override

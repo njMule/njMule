@@ -72,6 +72,9 @@ public final class ServerSession {
 
         /** A firewalled client asks, through the server, that we connect to it. */
         void callbackRequested(ServerMessages.CallbackRequested request);
+
+        /** The server's answer to a request for the sources of a file. */
+        void foundSources(ServerMessages.FoundSources sources);
     }
 
     /** From the start of an attempt to the id: connection, handshake and login. */
@@ -297,6 +300,8 @@ public final class ServerSession {
                 case SEARCHRESULT ->
                         this.listener.searchResults(
                                 target, ServerMessages.SearchResults.decode(packet));
+                case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
+                        this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
                 case REJECT ->
                         LOG.info("{} rejected our last request", ServerList.addressOf(target));
                 default -> LOG.debug("Ignoring server message {}", opcode.get());

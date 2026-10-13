@@ -1,0 +1,576 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.core.download;
+
+import com.google.common.collect.Range;
+import com.google.common.collect.RangeSet;
+import com.google.common.collect.TreeRangeSet;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketException;
+import java.security.SecureRandom;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
+import java.util.function.Supplier;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.PartFile;
+import org.njmule.core.net.TcpConnection;
+import org.njmule.core.net.TcpConnector;
+import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.packet.FrameLimits;
+import org.njmule.core.protocol.packet.Opcodes;
+import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Packing;
+import org.njmule.core.protocol.packet.Protocol;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * One source of one download: the connection, the file request, the place in the source's upload
+ * queue and the transfer of blocks. Engine thread only; connection callbacks are posted to it.
+ */
+final class DownloadSession {
+
+    /** What a session reports, on the engine thread. */
+    interface Listener {
+        /** The source sent us data that reached the download. */
+        void received(DownloadSession session, int bytes);
+
+        /** The session is over. */
+        void ended(DownloadSession session, Outcome outcome, String reason);
+    }
+
+    /** How a session ended, which decides when the source is asked again. */
+    enum Outcome {
+        /** The source keeps us in its upload queue. */
+        QUEUED,
+        /** Nothing to do with the source now; it may have more later. */
+        LATER,
+        /** The source could not be reached or greeted. */
+        UNREACHABLE,
+        /** The source lacks the file or broke the protocol. */
+        GONE
+    }
+
+    enum State {
+        CONNECTING,
+        GREETING,
+        REQUESTING,
+        QUEUED,
+        DOWNLOADING,
+        ENDED
+    }
+
+    /** Time to connect, greet and learn the parts of the source. */
+    static final Duration HANDSHAKE_TIMEOUT = Duration.ofSeconds(30);
+
+    /** A queued connection that stays silent this long is closed; our place in the queue stays. */
+    static final Duration QUEUED_TIMEOUT = Duration.ofSeconds(60);
+
+    /** A source that gave us a slot but sends nothing for this long is dropped. */
+    static final Duration DATA_TIMEOUT = Duration.ofSeconds(100);
+
+    /**
+     * A slot is kept this long with nothing to ask, while the data in flight is written and
+     * checked: a corrupt part is asked again.
+     */
+    static final Duration IDLE_SLOT = Duration.ofSeconds(30);
+
+    private static final Logger LOG = LoggerFactory.getLogger(DownloadSession.class);
+
+    /** One requested block and the bytes of it still to come. */
+    private static final class Pending {
+        private final PartFile.Block block;
+        private final RangeSet<Long> missing = TreeRangeSet.create();
+        private BlockInflater inflater;
+
+        Pending(PartFile.Block block) {
+            this.block = block;
+            this.missing.add(Range.closedOpen(block.start(), block.end()));
+        }
+
+        boolean contains(long start, long end) {
+            return start >= this.block.start() && end <= this.block.end();
+        }
+
+        void dispose() {
+            if (this.inflater != null) {
+                this.inflater.close();
+                this.inflater = null;
+            }
+        }
+    }
+
+    private final EngineLoop loop;
+    private final DownloadQueue queue;
+    private final DownloadQueue.Download download;
+    private final InetSocketAddress address;
+    private final Supplier<Hello> ourHello;
+    private final Listener listener;
+    private final Map<Long, Pending> pending = new LinkedHashMap<>();
+
+    private State state = State.CONNECTING;
+    private TcpConnection connection;
+    private Optional<Hash16> peerHash = Optional.empty();
+    private BitSet sourceParts;
+    private boolean uploadRequested;
+    private boolean accepted;
+    private int queueRank;
+    private ScheduledFuture<?> idle;
+
+    DownloadSession(
+            EngineLoop loop,
+            DownloadQueue queue,
+            DownloadQueue.Download download,
+            InetSocketAddress address,
+            Supplier<Hello> ourHello,
+            Listener listener) {
+        this.loop = Objects.requireNonNull(loop, "loop");
+        this.queue = Objects.requireNonNull(queue, "queue");
+        this.download = Objects.requireNonNull(download, "download");
+        this.address = Objects.requireNonNull(address, "address");
+        this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
+        this.listener = Objects.requireNonNull(listener, "listener");
+    }
+
+    State state() {
+        return this.state;
+    }
+
+    InetSocketAddress address() {
+        return this.address;
+    }
+
+    DownloadQueue.Download download() {
+        return this.download;
+    }
+
+    Optional<Hash16> peerHash() {
+        return this.peerHash;
+    }
+
+    /** Our place in the source's queue, once it told us. */
+    int queueRank() {
+        return this.queueRank;
+    }
+
+    /** Connects to the source, obfuscated with its user hash when known, and says hello. */
+    void connect(Optional<Hash16> obfuscateFor, SecureRandom random) {
+        Thread.ofVirtual()
+                .name("njmule-download-" + this.address)
+                .start(
+                        () -> {
+                            try {
+                                TcpConnection opened =
+                                        TcpConnector.connectToClient(
+                                                this.address,
+                                                obfuscateFor,
+                                                HANDSHAKE_TIMEOUT,
+                                                random);
+                                if (!this.loop.post(() -> this.opened(opened))) {
+                                    opened.close();
+                                }
+                            } catch (IOException e) {
+                                this.loop.post(
+                                        () ->
+                                                this.end(
+                                                        Outcome.UNREACHABLE,
+                                                        "cannot connect: " + e.getMessage()));
+                            }
+                        });
+    }
+
+    /**
+     * Takes over a connection the source opened after we greeted each other, as a source does when
+     * it has a slot for us; returns the handler for the rest of the connection.
+     */
+    TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
+        this.connection = incoming;
+        this.peerHash = Optional.of(peer.userHash());
+        this.state = State.QUEUED;
+        this.uploadRequested = true;
+        knownParts.ifPresentOrElse(this::setParts, this::requestFile);
+        return this.handler(incoming);
+    }
+
+    /** Ends the session; a source that gave us a slot is told we leave it. */
+    void close(String reason) {
+        if (this.state == State.DOWNLOADING && this.connection != null) {
+            this.connection.send(
+                    Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
+        }
+        this.end(Outcome.LATER, reason);
+    }
+
+    /** The download changed (data written, a part found corrupt): ask for blocks if idle. */
+    void wake() {
+        if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
+            this.requestBlocks();
+        }
+    }
+
+    /** The parts the source reported, if it did. */
+    Optional<BitSet> sourceParts() {
+        return Optional.ofNullable(this.sourceParts).map(parts -> (BitSet) parts.clone());
+    }
+
+    private void opened(TcpConnection opened) {
+        if (this.state != State.CONNECTING) {
+            opened.close();
+            return;
+        }
+        this.connection = opened;
+        this.state = State.GREETING;
+        opened.start(this.handler(opened), DownloadSession::unpack);
+        opened.send(this.ourHello.get().encode(false));
+    }
+
+    private TcpConnection.Handler handler(TcpConnection mine) {
+        return new TcpConnection.Handler() {
+            @Override
+            public void onPacket(TcpConnection c, Packet packet) {
+                // The next frame is read right after this returns: lift the handshake limit here.
+                if (packet.protocol() == Protocol.EDONKEY
+                        && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                    c.setFrameLimit(FrameLimits.CLIENT);
+                }
+                if (!DownloadSession.this.loop.post(
+                        () -> DownloadSession.this.received(mine, packet))) {
+                    c.close();
+                }
+            }
+
+            @Override
+            public void onClosed(TcpConnection c, Optional<IOException> cause) {
+                DownloadSession.this.loop.post(
+                        () ->
+                                DownloadSession.this.closed(
+                                        mine, cause.map(IOException::getMessage)));
+            }
+        };
+    }
+
+    private void received(TcpConnection from, Packet packet) {
+        if (from != this.connection || this.state == State.ENDED) {
+            return;
+        }
+        try {
+            if (packet.protocol() == Protocol.EMULE) {
+                this.receivedExtended(packet);
+            } else if (packet.protocol() == Protocol.EDONKEY) {
+                this.receivedBasic(packet);
+            }
+        } catch (DecodeException | IllegalArgumentException e) {
+            LOG.debug("Bad packet from {}: {}", this.address, e.getMessage());
+            this.end(Outcome.GONE, "protocol error: " + e.getMessage());
+        }
+    }
+
+    private void receivedBasic(Packet packet) throws DecodeException {
+        Optional<Opcodes.Client> opcode = Opcodes.Client.of(packet.opcode());
+        if (opcode.isEmpty()) {
+            return;
+        }
+        Hash16 file = this.download.hash();
+        switch (opcode.get()) {
+            case HELLOANSWER -> {
+                if (this.state == State.GREETING) {
+                    this.peerHash = Optional.of(Hello.decode(packet).userHash());
+                    this.state = State.REQUESTING;
+                    this.requestFile();
+                }
+            }
+            case HELLO -> this.connection.send(this.ourHello.get().encode(true));
+            case FILESTATUS -> {
+                ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(packet);
+                if (status.file().equals(file)) {
+                    this.setParts(status.dataParts(this.download.file().size()));
+                }
+            }
+            case FILEREQANSNOFIL -> {
+                if (ClientMessages.fileOf(packet).equals(file)) {
+                    this.end(Outcome.GONE, "the source does not have the file");
+                }
+            }
+            case HASHSETANSWER -> this.hashSet(ClientMessages.HashSet.decode(packet));
+            case ACCEPTUPLOADREQ -> {
+                this.accepted = true;
+                this.startDownloading();
+            }
+            case QUEUERANK -> this.queued((int) ClientMessages.decodeQueueRank(packet));
+            case SENDINGPART -> this.data(ClientMessages.SendingPart.decode(packet));
+            case OUTOFPARTREQS -> this.backToQueue("the source ended our upload session");
+            case CANCELTRANSFER -> this.backToQueue("the source cancelled the transfer");
+            default -> {
+                // File names and other messages need nothing from us.
+            }
+        }
+    }
+
+    private void receivedExtended(Packet packet) throws DecodeException {
+        Optional<Opcodes.Extended> opcode = Opcodes.Extended.of(packet.opcode());
+        if (opcode.isEmpty()) {
+            return;
+        }
+        switch (opcode.get()) {
+            case QUEUERANKING -> this.queued((int) ClientMessages.decodeQueueRank(packet));
+            case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
+            case COMPRESSEDPART, COMPRESSEDPART_I64 ->
+                    this.compressed(ClientMessages.CompressedPart.decode(packet));
+            default -> {
+                // Nothing else is expected from an uploader.
+            }
+        }
+    }
+
+    private void requestFile() {
+        Hash16 file = this.download.hash();
+        this.connection.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file));
+        this.connection.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
+        if (!this.download.file().hasHashSet()) {
+            this.connection.send(ClientMessages.forFile(Opcodes.Client.HASHSETREQUEST, file));
+        }
+    }
+
+    private void setParts(BitSet parts) {
+        PartFile file = this.download.file();
+        if (this.sourceParts != null) {
+            file.addAvailability(this.sourceParts, -1);
+        }
+        this.sourceParts = parts;
+        file.addAvailability(parts, 1);
+        if (!this.hasNeededParts()) {
+            this.close("the source has no part we need");
+            return;
+        }
+        if (!this.uploadRequested) {
+            this.uploadRequested = true;
+            this.state = State.QUEUED;
+            this.setReadTimeout(QUEUED_TIMEOUT);
+            this.connection.send(
+                    ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
+        }
+        this.startDownloading();
+    }
+
+    private void hashSet(ClientMessages.HashSet set) {
+        if (set.file().equals(this.download.hash()) && !this.download.file().hasHashSet()) {
+            this.download.file().setHashSet(set.parts());
+            this.queue.hashSetKnown(this.download);
+        }
+    }
+
+    private void queued(int rank) {
+        if (this.state == State.QUEUED) {
+            this.queueRank = rank;
+            LOG.debug("Queued at {} on {}", rank, this.address);
+        }
+    }
+
+    private void startDownloading() {
+        if (this.state != State.QUEUED || !this.accepted || this.sourceParts == null) {
+            return;
+        }
+        this.state = State.DOWNLOADING;
+        this.queueRank = 0;
+        this.setReadTimeout(DATA_TIMEOUT);
+        LOG.debug("Downloading {} from {}", this.download.file().name(), this.address);
+        this.requestBlocks();
+    }
+
+    private void requestBlocks() {
+        if (this.state != State.DOWNLOADING) {
+            return;
+        }
+        if (!this.download.isActive()) {
+            this.close("the download is not active");
+            return;
+        }
+        int wanted = ClientMessages.BLOCKS_PER_REQUEST - this.pending.size();
+        List<PartFile.Block> next =
+                wanted > 0 ? this.download.file().nextBlocks(this.sourceParts, wanted) : List.of();
+        if (next.isEmpty()) {
+            if (this.pending.isEmpty() && this.idle == null) {
+                this.idle =
+                        this.loop.schedule(
+                                "idle download slot",
+                                IDLE_SLOT,
+                                () -> {
+                                    this.idle = null;
+                                    if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
+                                        this.close("nothing more to download from this source");
+                                    }
+                                });
+            }
+            return;
+        }
+        this.stopIdle();
+        List<ClientMessages.Range> ranges = new ArrayList<>(ClientMessages.BLOCKS_PER_REQUEST);
+        boolean wide = false;
+        for (PartFile.Block block : next) {
+            this.pending.put(block.start(), new Pending(block));
+            ranges.add(new ClientMessages.Range(block.start(), block.end()));
+            wide |= block.end() > 0xFFFF_FFFFL;
+        }
+        while (ranges.size() < ClientMessages.BLOCKS_PER_REQUEST) {
+            ranges.add(new ClientMessages.Range(0, 0));
+        }
+        this.connection.send(
+                new ClientMessages.RequestParts(this.download.hash(), ranges).encode(wide));
+    }
+
+    private void data(ClientMessages.SendingPart part) {
+        if (part.file().equals(this.download.hash())) {
+            this.accept(part.start(), part.data());
+        }
+    }
+
+    private void compressed(ClientMessages.CompressedPart part) throws DecodeException {
+        Pending block = this.pending.get(part.blockStart());
+        if (this.state != State.DOWNLOADING
+                || block == null
+                || !part.file().equals(this.download.hash())) {
+            return;
+        }
+        if (block.inflater == null) {
+            block.inflater =
+                    new BlockInflater(block.block.start(), Math.toIntExact(block.block.length()));
+        }
+        long position = block.inflater.position();
+        byte[] data = block.inflater.inflate(part.chunk());
+        this.accept(position, data);
+    }
+
+    // Data counts only inside a block we asked for and still wait for.
+    private void accept(long start, byte[] data) {
+        if (this.state != State.DOWNLOADING || data.length == 0) {
+            return;
+        }
+        long end = start + data.length;
+        Pending target = null;
+        for (Pending candidate : this.pending.values()) {
+            if (candidate.contains(start, end)) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target == null) {
+            LOG.debug("Data {}-{} from {} was not requested", start, end, this.address);
+            return;
+        }
+        this.queue.received(this.download, start, data);
+        this.listener.received(this, data.length);
+        target.missing.remove(Range.closedOpen(start, end));
+        if (target.missing.isEmpty()) {
+            target.dispose();
+            this.pending.remove(target.block.start());
+            this.requestBlocks();
+        }
+    }
+
+    private void backToQueue(String reason) {
+        if (this.state != State.DOWNLOADING) {
+            return;
+        }
+        LOG.debug("{}: {}", this.address, reason);
+        this.releaseBlocks();
+        this.stopIdle();
+        this.accepted = false;
+        this.state = State.QUEUED;
+        this.setReadTimeout(QUEUED_TIMEOUT);
+    }
+
+    private void closed(TcpConnection which, Optional<String> cause) {
+        if (which != this.connection || this.state == State.ENDED) {
+            return;
+        }
+        // A queued source keeps our place when the idle connection closes; a lost slot is gone.
+        Outcome outcome =
+                switch (this.state) {
+                    case QUEUED -> Outcome.QUEUED;
+                    case DOWNLOADING -> Outcome.LATER;
+                    default -> Outcome.UNREACHABLE;
+                };
+        this.end(outcome, "the connection closed" + cause.map(c -> " (" + c + ")").orElse(""));
+    }
+
+    private void end(Outcome outcome, String reason) {
+        if (this.state == State.ENDED) {
+            return;
+        }
+        this.state = State.ENDED;
+        this.stopIdle();
+        this.releaseBlocks();
+        if (this.sourceParts != null) {
+            this.download.file().addAvailability(this.sourceParts, -1);
+        }
+        if (this.connection != null) {
+            this.connection.close();
+        }
+        this.listener.ended(this, outcome, reason);
+    }
+
+    private void stopIdle() {
+        if (this.idle != null) {
+            this.idle.cancel(false);
+            this.idle = null;
+        }
+    }
+
+    private void releaseBlocks() {
+        for (Pending block : this.pending.values()) {
+            block.dispose();
+            this.download.file().release(block.block);
+        }
+        this.pending.clear();
+    }
+
+    private boolean hasNeededParts() {
+        PartFile file = this.download.file();
+        for (int part = this.sourceParts.nextSetBit(0);
+                part >= 0 && part < file.partCount();
+                part = this.sourceParts.nextSetBit(part + 1)) {
+            if (!file.isComplete(part)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void setReadTimeout(Duration timeout) {
+        try {
+            this.connection.setReadTimeout(timeout);
+        } catch (SocketException e) {
+            this.connection.close();
+        }
+    }
+
+    /** Clients pack eMule packets: those inflate with the client cap. */
+    private static Packet unpack(Packet frame) throws DecodeException {
+        return Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED);
+    }
+}

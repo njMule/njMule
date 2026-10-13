@@ -31,6 +31,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.LogLine;
@@ -41,6 +43,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.download.DownloadManager;
 import org.njmule.core.net.TcpListener;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.persist.AtomicFiles;
@@ -65,8 +68,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The network side of the engine: the listening socket, the server session, server UDP queries,
- * searches and the hello exchange with peers. Engine thread only, except the methods marked
- * otherwise.
+ * searches, the hello exchange with peers and the downloads. Engine thread only, except the methods
+ * marked otherwise.
  */
 final class Network {
 
@@ -97,6 +100,7 @@ final class Network {
     private final ServerPinger pinger;
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
+    private final DownloadManager downloads;
     private TcpListener listener;
     private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
@@ -114,7 +118,9 @@ final class Network {
             Supplier<Preferences> preferences,
             Consumer<EngineEvent> publish,
             UserLog log,
-            Hash16 userHash)
+            Hash16 userHash,
+            Path tempDir,
+            Supplier<Path> incomingDir)
             throws IOException {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.preferences = Objects.requireNonNull(preferences, "preferences");
@@ -157,6 +163,25 @@ final class Network {
                         this::ourHello,
                         () -> preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
                         random);
+        this.downloads =
+                DownloadManager.open(
+                        loop,
+                        tempDir,
+                        incomingDir,
+                        this::ourHello,
+                        () -> {
+                            Preferences prefs = preferences.get();
+                            return new DownloadManager.Settings(
+                                    prefs.obfuscation(),
+                                    prefs.maxSourcesPerFile(),
+                                    this.listenPort());
+                        },
+                        new ServerLinkImpl(),
+                        ip -> this.ipFilter.blocks(ip),
+                        random,
+                        Ticker.systemTicker(),
+                        new DownloadEvents());
+        this.greetings.routeTo(this.downloads.router());
     }
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
@@ -242,12 +267,35 @@ final class Network {
         this.searches.stop(id);
     }
 
+    DownloadInfo addDownload(Ed2kLink.FileLink link) throws IOException {
+        DownloadInfo info = this.downloads.add(link);
+        this.userLog.log(LogLine.Level.INFO, "Downloading " + info.name());
+        return info;
+    }
+
+    List<DownloadInfo> downloads() {
+        return this.downloads.downloads();
+    }
+
+    boolean pauseDownload(Hash16 hash) {
+        return this.downloads.pause(hash);
+    }
+
+    boolean resumeDownload(Hash16 hash) {
+        return this.downloads.resume(hash);
+    }
+
+    boolean cancelDownload(Hash16 hash) {
+        return this.downloads.cancel(hash);
+    }
+
     /** Any thread: says hello to a client. */
     CompletableFuture<PeerInfo> hello(InetSocketAddress peer) {
         return this.greetings.greet(peer);
     }
 
     void close() {
+        this.downloads.close();
         this.session.disconnect();
         this.greetings.close();
         if (this.listener != null) {
@@ -279,8 +327,10 @@ final class Network {
                 prefs.nick(),
                 0,
                 0,
-                Hello.MISC1_UNICODE | Hello.MISC1_NO_VIEW_SHARED_FILES,
-                cryptOptions(prefs.obfuscation()),
+                Hello.MISC1_UNICODE
+                        | Hello.MISC1_DATA_COMPRESSION
+                        | Hello.MISC1_NO_VIEW_SHARED_FILES,
+                Hello.MISC2_LARGE_FILES | cryptOptions(prefs.obfuscation()),
                 server.serverIp(),
                 server.serverPort());
     }
@@ -376,6 +426,7 @@ final class Network {
                     new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
             Network.this.saveServers();
             Network.this.pinger.start();
+            Network.this.downloads.serverConnected();
         }
 
         @Override
@@ -442,10 +493,70 @@ final class Network {
                                                     : failure.getMessage()));
         }
 
+        @Override
+        public void foundSources(ServerMessages.FoundSources sources) {
+            Network.this.downloads.foundSources(sources);
+        }
+
         private static String describe(ServerInfo info) {
             return info.name().equals(info.address())
                     ? info.address()
                     : info.name() + " (" + info.address() + ")";
+        }
+    }
+
+    private final class ServerLinkImpl implements DownloadManager.ServerLink {
+        @Override
+        public boolean askSources(Hash16 file, long size) {
+            Optional<ServerMessages.IdChange> id = Network.this.session.id();
+            if (!Network.this.session.isConnected() || id.isEmpty()) {
+                return false;
+            }
+            int flags = id.get().serverFlags();
+            if (size > 0xFFFF_FFFFL && (flags & ServerMessages.TCP_LARGEFILES) == 0) {
+                return false;
+            }
+            boolean obfuscated =
+                    (flags & ServerMessages.TCP_OBFUSCATION) != 0
+                            && Network.this.preferences.get().obfuscation()
+                                    != ObfuscationMode.DISABLED;
+            return Network.this.session.send(ServerMessages.getSources(file, size, obfuscated));
+        }
+
+        @Override
+        public long clientId() {
+            return Network.this.context.clientId();
+        }
+    }
+
+    private final class DownloadEvents implements DownloadManager.Listener {
+        @Override
+        public void added(DownloadInfo download) {
+            Network.this.publish.accept(new EngineEvent.DownloadAdded(download));
+        }
+
+        @Override
+        public void progress(DownloadInfo download) {
+            Network.this.publish.accept(new EngineEvent.DownloadProgress(download));
+        }
+
+        @Override
+        public void completed(DownloadInfo download, Path file) {
+            Network.this.userLog.log(
+                    LogLine.Level.SUCCESS, "Finished downloading " + download.name());
+            Network.this.publish.accept(new EngineEvent.DownloadCompleted(download, file));
+        }
+
+        @Override
+        public void failed(DownloadInfo download, String reason) {
+            Network.this.userLog.log(
+                    LogLine.Level.ERROR, "Download " + download.name() + " stopped: " + reason);
+            Network.this.publish.accept(new EngineEvent.DownloadFailed(download, reason));
+        }
+
+        @Override
+        public void removed(Hash16 hash) {
+            Network.this.publish.accept(new EngineEvent.DownloadRemoved(hash));
         }
     }
 

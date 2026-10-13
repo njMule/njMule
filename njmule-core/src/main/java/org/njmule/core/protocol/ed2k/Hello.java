@@ -46,6 +46,7 @@ public record Hello(
 
     // Feature bits of the first options tag.
     public static final int MISC1_UNICODE = 1 << 28;
+    public static final int MISC1_DATA_COMPRESSION = 1 << 20;
     public static final int MISC1_NO_VIEW_SHARED_FILES = 1 << 2;
 
     // Feature bits of the second options tag.

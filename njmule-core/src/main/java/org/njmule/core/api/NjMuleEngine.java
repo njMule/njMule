@@ -18,6 +18,7 @@ package org.njmule.core.api;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
@@ -70,6 +71,22 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Says hello to the client at {@code peer} and completes with its answer. */
     CompletableFuture<PeerInfo> hello(ServerAddress peer);
+
+    /**
+     * Starts downloading the file of {@code link} into the temp directory; a file already being
+     * downloaded gets the link's sources.
+     */
+    CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link);
+
+    CompletableFuture<List<DownloadInfo>> downloads();
+
+    /** Completes with {@code false} for an unknown download. */
+    CompletableFuture<Boolean> pauseDownload(Hash16 hash);
+
+    CompletableFuture<Boolean> resumeDownload(Hash16 hash);
+
+    /** Stops the download and deletes its data. */
+    CompletableFuture<Boolean> cancelDownload(Hash16 hash);
 
     boolean isRunning();
 
