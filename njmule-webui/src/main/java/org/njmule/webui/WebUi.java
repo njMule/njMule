@@ -437,7 +437,9 @@ public final class WebUi implements AutoCloseable {
                     "Transfers", csrf, body.append("<p>No downloads.</p>").toString());
         }
         body.append("<table><tr><th>File</th><th>Size</th><th>Done</th><th>Speed</th>")
-                .append("<th>Sources</th><th>Status</th><th>Priority</th><th></th></tr>");
+                .append("<th>Sources</th><th>Status</th><th>Priority</th><th>Category</th><th></th></tr>");
+        Map<Integer, String> categories = new HashMap<>();
+        this.await(this.engine.categories()).forEach(c -> categories.put(c.id(), c.name()));
         for (DownloadInfo d : downloads) {
             int percent = d.size() <= 0 ? 0 : (int) (d.completed() * 100 / d.size());
             String hash = Html.hidden("hash", d.hash().toHex());
@@ -461,6 +463,8 @@ public final class WebUi implements AutoCloseable {
                     .append("</td><td>")
                     .append(Html.form(
                             TRANSFERS, csrf, Html.hidden(ACTION, "priority") + hash + priorities(d), "Set", false))
+                    .append("</td><td>")
+                    .append(Html.text(categories.getOrDefault(d.category(), "")))
                     .append("</td><td>")
                     .append(Html.form(
                             TRANSFERS,
