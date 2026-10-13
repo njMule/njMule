@@ -1211,6 +1211,16 @@ final class Network {
                 server.serverPort());
     }
 
+    /** Checks again whether Kad nodes can reach us; {@code false} when Kad does not run. */
+    boolean recheckKadFirewall() {
+        if (this.kad == null) {
+            return false;
+        }
+        this.kad.recheckFirewall();
+        this.userLog.log(LogLine.Level.INFO, "Kad: checking the firewall again");
+        return true;
+    }
+
     /** Asks the Kad node at {@code ip:port} for contacts. */
     void kadBootstrap(int ip, int port) {
         if (this.kad == null) {

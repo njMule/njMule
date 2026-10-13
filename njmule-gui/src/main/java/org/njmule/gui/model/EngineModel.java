@@ -521,6 +521,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.addKadContacts(url), done::accept);
     }
 
+    public void recheckKadFirewall() {
+        this.run(this.engine.recheckKadFirewall());
+    }
+
     public void kadBootstrap(ServerAddress node) {
         this.run(this.engine.kadBootstrap(node));
     }

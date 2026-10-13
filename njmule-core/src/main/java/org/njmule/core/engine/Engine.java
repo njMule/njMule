@@ -696,6 +696,11 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> recheckKadFirewall() {
+        return this.loop.submit(this.network::recheckKadFirewall);
+    }
+
+    @Override
     public CompletableFuture<Void> kadBootstrap(ServerAddress node) {
         Objects.requireNonNull(node, "node");
         return resolve(node.host())

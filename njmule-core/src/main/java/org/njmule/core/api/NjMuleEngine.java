@@ -212,6 +212,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Stops Kad until it is connected again or njMule starts again. */
     CompletableFuture<Void> disconnectKad();
 
+    /** Checks again whether Kad nodes can reach our TCP port; completes with {@code false} when Kad does not run. */
+    CompletableFuture<Boolean> recheckKadFirewall();
+
     /** Asks the Kad node at {@code node} (its UDP port) for contacts to join with. */
     CompletableFuture<Void> kadBootstrap(ServerAddress node);
 

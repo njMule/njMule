@@ -54,6 +54,7 @@ public final class KadScreen implements Screen {
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
     private final Button connect = new Button();
+    private final Button recheck = new Button();
 
     public KadScreen(Gui gui) {
         this.gui = gui;
@@ -92,7 +93,10 @@ public final class KadScreen implements Screen {
         Button start = Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
         start.disableProperty().bind(this.nodeInput.validProperty().not());
         this.connect.setOnAction(e -> this.connectOrDisconnect());
-        var tools = Fx.toolRow(this.connect, Fx.spacer(), this.node, start);
+        this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
+        this.recheck.setGraphic(new FontIcon(Material2MZ.SECURITY));
+        this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
+        var tools = Fx.toolRow(this.connect, this.recheck, Fx.spacer(), this.node, start);
         FlowPane cards = new FlowPane(
                 12,
                 12,
@@ -149,9 +153,14 @@ public final class KadScreen implements Screen {
         return this.connect;
     }
 
+    Button recheckButton() {
+        return this.recheck;
+    }
+
     private void show(EngineStatus status) {
         boolean running = status.kad().isPresent();
         this.connect.setText(this.gui.t(running ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
+        this.recheck.setDisable(!running);
         this.connect.setGraphic(new FontIcon(running ? Material2AL.LINK_OFF : Material2AL.LINK));
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {

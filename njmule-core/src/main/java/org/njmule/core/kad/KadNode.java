@@ -203,6 +203,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 && this.table.size() > 0;
     }
 
+    /** Checks again whether other nodes can reach our TCP port: the next contacts heard from are asked at once. */
+    public void recheckFirewall() {
+        this.nextFirewallCheck = this.ticker.read();
+    }
+
     /** Whether other nodes cannot connect to our TCP port, as far as we know. */
     @Override
     public boolean isFirewalled() {

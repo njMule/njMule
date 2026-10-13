@@ -394,11 +394,17 @@ class ScreensTest {
         KadScreen screen = new KadScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
         assertThat(FxTesting.onFx(() -> screen.connectButton().getText())).isEqualTo("Connect");
+        assertThat(FxTesting.onFx(() -> screen.recheckButton().isDisabled()))
+                .as("no firewall to check without Kad")
+                .isTrue();
 
         FxTesting.onFx(screen::connectOrDisconnect);
         this.tickUntil(() -> this.test.model.statusProperty().get().kad().isPresent());
         FxTesting.await(
                 "the button follows", () -> screen.connectButton().getText().equals("Disconnect"));
+        assertThat(this.test.engine.recheckKadFirewall().get(10, TimeUnit.SECONDS))
+                .isTrue();
+        FxTesting.onFx(() -> screen.recheckButton().fire());
         FxTesting.onFx(screen::connectOrDisconnect);
         this.tickUntil(() -> this.test.model.statusProperty().get().kad().isEmpty());
         assertThat(this.test.model.statusProperty().get().kad()).isEmpty();
