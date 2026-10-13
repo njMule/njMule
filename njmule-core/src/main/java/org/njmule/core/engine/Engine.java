@@ -215,6 +215,7 @@ public final class Engine implements NjMuleEngine {
                 this.preferences = next;
                 this.refreshSchedule();
                 this.publish(new EngineEvent.PreferencesChanged(next));
+                this.network.reconfigure(current, next);
             }
             return next;
         });
@@ -297,6 +298,22 @@ public final class Engine implements NjMuleEngine {
             }
         }
         return List.of();
+    }
+
+    @Override
+    public CompletableFuture<Void> connectKad() {
+        return this.loop.submit(() -> {
+            this.network.connectKad();
+            return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Void> disconnectKad() {
+        return this.loop.submit(() -> {
+            this.network.disconnectKad();
+            return null;
+        });
     }
 
     @Override

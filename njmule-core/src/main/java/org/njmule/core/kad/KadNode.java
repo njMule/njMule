@@ -264,6 +264,17 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return added;
     }
 
+    /** Looks for contacts at once rather than at the next rounds: when asked to connect, or after new ones came. */
+    public void lookForContacts() {
+        long now = this.ticker.read();
+        this.nextSmallTimer = now;
+        this.nextBigTimer = now;
+        this.nextSelfLookup = now;
+        for (RoutingTable.Zone zone : this.table.leaves()) {
+            zone.setNextBigTimer(now);
+        }
+    }
+
     /** Writes the best contacts to {@code nodes.dat}. */
     public void saveNodes() {
         List<NodesDat.Contact> records = new ArrayList<>();

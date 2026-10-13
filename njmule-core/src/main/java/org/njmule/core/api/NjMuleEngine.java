@@ -154,6 +154,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The directories shared besides the incoming one. */
     CompletableFuture<List<SharedDirectory>> sharedDirectories();
 
+    /** Starts Kad from the known contacts, or, when it runs, looks for contacts at once. */
+    CompletableFuture<Void> connectKad();
+
+    /** Stops Kad until it is connected again or njMule starts again. */
+    CompletableFuture<Void> disconnectKad();
+
     /** Asks the Kad node at {@code node} (its UDP port) for contacts to join with. */
     CompletableFuture<Void> kadBootstrap(ServerAddress node);
 

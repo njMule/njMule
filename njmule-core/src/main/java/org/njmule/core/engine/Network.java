@@ -195,6 +195,9 @@ final class Network {
     private final Supplier<Path> incomingDir;
     private SharedFiles shares;
     private TcpListener listener;
+    private ConnectionGuard guard;
+    private ScheduledFuture<?> kadTicking;
+    private volatile boolean closed;
     private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
     private volatile ServerContext context = ServerContext.NONE;
@@ -345,24 +348,13 @@ final class Network {
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
     void start() {
         ProxyRoute.install(() -> this.preferences.get().proxy());
-        int port = this.preferences.get().tcpPort();
-        ConnectionGuard guard = new ConnectionGuard(
+        this.guard = new ConnectionGuard(
                 () -> this.ipFilter,
                 this::isOurServer,
                 ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
                 ConnectionGuard.Limits.DEFAULT,
                 Ticker.systemTicker());
-        try {
-            this.listener = TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
-        } catch (IOException e) {
-            this.userLog.log(
-                    LogLine.Level.WARNING,
-                    "Cannot listen on TCP port "
-                            + port
-                            + " ("
-                            + e.getMessage()
-                            + "): other clients cannot connect, servers will give a LowID");
-        }
+        this.listen(this.preferences.get().tcpPort());
         try {
             this.udp = ServerUdp.open(0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
         } catch (IOException e) {
@@ -374,14 +366,7 @@ final class Network {
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
         }
-        if (this.preferences.get().upnp() && this.listener != null && !Boolean.getBoolean(NO_UPNP_PROPERTY)) {
-            OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
-            this.forwarding = PortForwarding.start(
-                    Igd.SSDP,
-                    this.listenPort(),
-                    udp,
-                    line -> this.loop.post(() -> this.userLog.log(LogLine.Level.INFO, line)));
-        }
+        this.restartForwarding();
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
                 "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
@@ -664,6 +649,7 @@ final class Network {
         if (this.kad != null) {
             int added = this.kad.addContacts(contents);
             this.kad.saveNodes();
+            this.kad.lookForContacts();
             return added;
         }
         Path file = this.configDir.resolve(KadNode.NODES_FILE);
@@ -807,7 +793,138 @@ final class Network {
         }
     }
 
+    // Other clients reach us on this port; a port that cannot be had leaves us unreachable, with a LowID.
+    private void listen(int port) {
+        try {
+            this.listener = TcpListener.open(new InetSocketAddress(port), this.guard, this.greetings::accepted);
+        } catch (IOException e) {
+            this.listener = null;
+            this.userLog.log(
+                    LogLine.Level.WARNING,
+                    "Cannot listen on TCP port "
+                            + port
+                            + " ("
+                            + e.getMessage()
+                            + "): other clients cannot connect, servers will give a LowID");
+        }
+    }
+
+    /**
+     * Applies changed preferences at once: new ports are listened on and announced again (to the server, to Kad and
+     * through the router), and the networks start or stop as turned on or off.
+     */
+    void reconfigure(Preferences was, Preferences now) {
+        if (this.closed || this.guard == null) {
+            return;
+        }
+        boolean tcp = was.tcpPort() != now.tcpPort();
+        boolean udp = was.udpPort() != now.udpPort();
+        if (tcp) {
+            this.closeListener();
+            this.listen(now.tcpPort());
+            this.userLog.log(LogLine.Level.INFO, "Listening on TCP port " + this.listenPort());
+            // The server learnt our port at login and checks it to give a HighID.
+            Optional<ServerMet.Server> server = this.session.server();
+            if (server.isPresent() && now.ed2kEnabled()) {
+                this.session.connect(server);
+            }
+        }
+        if (!now.kadEnabled()) {
+            this.stopKad();
+        } else if (this.kad == null ? !was.kadEnabled() : tcp || udp) {
+            // Kad tells other nodes our TCP port and listens on the UDP one.
+            this.stopKad();
+            this.startKad();
+        }
+        if (was.ed2kEnabled() && !now.ed2kEnabled()) {
+            this.session.disconnect();
+        }
+        if (tcp || udp || was.upnp() != now.upnp()) {
+            this.restartForwarding();
+        }
+    }
+
+    // The mappings follow the ports: the old ones are removed before new ones are asked for, off the engine thread.
+    private void restartForwarding() {
+        PortForwarding old = this.forwarding;
+        this.forwarding = null;
+        boolean wanted =
+                this.preferences.get().upnp() && this.listener != null && !Boolean.getBoolean(NO_UPNP_PROPERTY);
+        if (old == null && !wanted) {
+            return;
+        }
+        int tcp = this.listenPort();
+        OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
+        Thread.ofVirtual().name("njmule-upnp").start(() -> {
+            if (old != null) {
+                old.close();
+            }
+            if (!wanted) {
+                return;
+            }
+            PortForwarding started = PortForwarding.start(
+                    Igd.SSDP, tcp, udp, line -> this.loop.post(() -> this.userLog.log(LogLine.Level.INFO, line)));
+            boolean kept = this.loop.post(() -> {
+                if (this.closed) {
+                    Thread.ofVirtual().start(started::close);
+                } else {
+                    this.forwarding = started;
+                }
+            });
+            if (!kept) {
+                started.close();
+            }
+        });
+    }
+
+    /** Starts Kad, or looks for contacts at once when it runs: the Kad screen's Connect. */
+    void connectKad() {
+        if (this.kad == null) {
+            this.startKad();
+        } else {
+            this.kad.lookForContacts();
+        }
+        if (this.kad != null) {
+            this.restartForwarding();
+        }
+    }
+
+    /** Stops Kad until it is connected again or njMule starts again. */
+    void disconnectKad() {
+        if (this.kad != null) {
+            this.stopKad();
+            this.userLog.log(LogLine.Level.INFO, "Kad stopped");
+        }
+    }
+
+    private void stopKad() {
+        if (this.kad == null) {
+            return;
+        }
+        if (this.kadTicking != null) {
+            this.kadTicking.cancel(false);
+            this.kadTicking = null;
+        }
+        this.kad.close();
+        this.kadSocket.close();
+        this.kad = null;
+        this.kadSocket = null;
+        this.kadPublisher = null;
+    }
+
+    private void closeListener() {
+        if (this.listener != null) {
+            try {
+                this.listener.close();
+            } catch (IOException e) {
+                logger.debug("Cannot close the listening socket", e);
+            }
+            this.listener = null;
+        }
+    }
+
     void close() {
+        this.closed = true;
         this.saveTotals();
         this.messaging.close();
         if (this.forwarding != null) {
@@ -927,7 +1044,7 @@ final class Network {
             this.kadSocket.deliverTo(this.kad);
             this.kad.loadNodes();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, Ticker.systemTicker());
-            this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
+            this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
                 this.kad.tick();
                 this.kadPublisher.tick();
             });
@@ -1174,10 +1291,14 @@ final class Network {
 
         @Override
         public void message(ServerMet.Server server, String line) {
-            LogLine.Level level = line.startsWith("ERROR")
-                    ? LogLine.Level.ERROR
-                    : line.startsWith("WARNING") ? LogLine.Level.WARNING : LogLine.Level.INFO;
-            Network.this.userLog.log(level, line);
+            // Warnings and errors go to the event log too; the rest belongs to the server's information.
+            if (line.startsWith("ERROR")) {
+                Network.this.userLog.log(LogLine.Level.ERROR, line);
+            } else if (line.startsWith("WARNING")) {
+                Network.this.userLog.log(LogLine.Level.WARNING, line);
+            } else {
+                logger.info("{}: {}", describe(info(server)), line);
+            }
             Network.this.publish.accept(new EngineEvent.ServerMessage(info(server), line));
         }
 
