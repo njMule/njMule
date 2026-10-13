@@ -30,8 +30,11 @@ import javafx.geometry.Dimension2D;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
+import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import javafx.stage.Window;
+import javafx.stage.WindowEvent;
 import javafx.util.Duration;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
@@ -77,6 +80,7 @@ public final class DesktopApp implements AutoCloseable {
     private LinkHandoff handoff;
     private Stage stage;
     private NotificationArea tray;
+    private Stage trayOwner;
     private TrayMenu trayMenu;
     private MiniMule miniMule;
     private EngineModel model;
@@ -199,6 +203,11 @@ public final class DesktopApp implements AutoCloseable {
         if (NotificationArea.isSupported()) {
             this.attachTray(stage);
         }
+        stage.addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> {
+            if (this.tray == null || !this.tray.isHidden()) {
+                this.closeTheOthers(stage);
+            }
+        });
         this.addPending();
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, this.trayTour(stage), Platform::exit);
@@ -212,6 +221,7 @@ public final class DesktopApp implements AutoCloseable {
     // shows, so they get no button on the taskbar.
     private void attachTray(Stage stage) {
         Stage owner = new Stage(StageStyle.UTILITY);
+        this.trayOwner = owner;
         owner.setOpacity(0);
         owner.setWidth(1);
         owner.setHeight(1);
@@ -284,6 +294,33 @@ public final class DesktopApp implements AutoCloseable {
             }
         });
         this.window.whileHidden(this.tray::notify);
+    }
+
+    // Closing the main window ends njMule: its dialogs and the tray's windows go with it, or any of them left
+    // open (the tray's owner is never seen) would keep the toolkit running.
+    private void closeTheOthers(Stage stage) {
+        for (Window window : List.copyOf(Window.getWindows())) {
+            if (!window.equals(stage) && this.belongs(window, stage)) {
+                window.hide();
+            }
+        }
+    }
+
+    private boolean belongs(Window window, Stage stage) {
+        for (Window w = window; w != null; w = ownerOf(w)) {
+            if (w.equals(stage) || w.equals(this.trayOwner)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Window ownerOf(Window window) {
+        return switch (window) {
+            case Stage s -> s.getOwner();
+            case PopupWindow p -> p.getOwnerWindow();
+            default -> null;
+        };
     }
 
     // The tray's own windows in the tour, for the native metadata: the icon cannot be clicked there.

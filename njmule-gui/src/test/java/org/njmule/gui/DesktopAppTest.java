@@ -21,8 +21,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -51,6 +53,7 @@ class DesktopAppTest {
         Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         DesktopApp app = DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
         AtomicReference<Stage> stage = new AtomicReference<>();
+        List<Window> before = FxTesting.onFx(DesktopAppTest::showing);
         try {
             FxTesting.onFx(() -> {
                 stage.set(new Stage());
@@ -65,6 +68,9 @@ class DesktopAppTest {
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("search");
             assertThat(app.engine().isRunning()).isTrue();
             FxTesting.onFx(() -> stage.get().close());
+            assertThat(FxTesting.onFx(DesktopAppTest::showing))
+                    .as("no window of ours keeps njMule running")
+                    .containsExactlyInAnyOrderElementsOf(before);
         } finally {
             app.close();
         }
@@ -73,5 +79,9 @@ class DesktopAppTest {
         assertThat(saved.existed()).isTrue();
         assertThat(saved.screen()).isEqualTo("search");
         assertThat(saved.window()).isPresent();
+    }
+
+    private static List<Window> showing() {
+        return Window.getWindows().stream().filter(Window::isShowing).toList();
     }
 }
