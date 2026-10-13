@@ -106,4 +106,12 @@
         </Or>
         <Class name="org.njmule.app.LinkHandoff"/>
     </Match>
+
+    <!-- The link association runs fixed system tools (reg, xdg-mime) with arguments built from our
+         own paths and constants, never from the network; the command line is a list, so no shell
+         parses it. -->
+    <Match>
+        <Bug pattern="COMMAND_INJECTION"/>
+        <Class name="org.njmule.app.LinkAssociation"/>
+    </Match>
 </FindBugsFilter>

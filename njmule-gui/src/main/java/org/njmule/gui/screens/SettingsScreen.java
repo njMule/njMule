@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -39,6 +40,7 @@ import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.app.LinkAssociation;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -65,6 +67,10 @@ public final class SettingsScreen implements Screen {
     private final TextField sources = new TextField();
     private final ComboBox<ObfuscationMode> obfuscation = new ComboBox<>();
     private final CheckBox ed2k = new CheckBox();
+    private final CheckBox ed2kLinks = new CheckBox();
+    // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
+    private Optional<Boolean> linksWereOurs = Optional.empty();
+    private Optional<LinkAssociation> links = Optional.empty();
     private final CheckBox kad = new CheckBox();
     private final CheckBox autoConnect = new CheckBox();
     private final CheckBox reconnect = new CheckBox();
@@ -135,6 +141,8 @@ public final class SettingsScreen implements Screen {
         this.language.setCellFactory(l -> new NamedCell<>(this::languageName));
         this.language.setButtonCell(new NamedCell<>(this::languageName));
         this.ed2k.setText(this.gui.t("nj.settings.ed2k"));
+        this.ed2kLinks.setText(this.gui.t("nj.settings.ed2kLinks"));
+        this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
         this.reconnect.setText(this.gui.t("IDS_PW_RECON"));
@@ -155,6 +163,9 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_NICK"), this.nick);
         row = field(grid, row, this.gui.t("IDS_PW_LANG"), this.language);
         row = field(grid, row, this.gui.t("nj.settings.theme"), new HBox(8, this.theme, this.mode));
+        if (this.links.isPresent()) {
+            grid.add(this.ed2kLinks, 1, row++);
+        }
         row = section(grid, row, this.gui.t("nj.settings.connection"));
         row = field(grid, row, this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcpPort);
         row = field(grid, row, "UDP", this.udpPort);
@@ -257,6 +268,55 @@ public final class SettingsScreen implements Screen {
         this.webUiLan.setSelected(web.lan());
         this.webUiPassword.clear();
         this.webUiAgain.clear();
+        this.loadLinks();
+    }
+
+    // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile.
+    private void loadLinks() {
+        this.links.ifPresent(association -> {
+            this.ed2kLinks.setDisable(true);
+            Thread.ofVirtual().name("njmule-ed2k-links").start(() -> {
+                boolean ours;
+                try {
+                    ours = association.isOurs();
+                } catch (IOException e) {
+                    ours = false;
+                }
+                boolean now = ours;
+                Platform.runLater(() -> {
+                    this.linksWereOurs = Optional.of(now);
+                    this.ed2kLinks.setSelected(now);
+                    this.ed2kLinks.setDisable(false);
+                });
+            });
+        });
+    }
+
+    // Taking or giving back the links is a change to the system, done only when the box changed.
+    private void applyLinks() {
+        if (this.links.isEmpty() || this.linksWereOurs.isEmpty()) {
+            return;
+        }
+        boolean wanted = this.ed2kLinks.isSelected();
+        if (wanted == this.linksWereOurs.get()) {
+            return;
+        }
+        LinkAssociation association = this.links.get();
+        this.linksWereOurs = Optional.of(wanted);
+        Thread.ofVirtual().name("njmule-ed2k-links").start(() -> {
+            try {
+                if (wanted) {
+                    association.take();
+                } else {
+                    association.giveBack();
+                }
+            } catch (IOException e) {
+                Platform.runLater(() -> {
+                    this.gui.inform().accept(this.gui.f("nj.settings.ed2kLinksFailed", e.getMessage()));
+                    this.loadLinks();
+                });
+            }
+        });
     }
 
     /** Validates the form, then saves the preferences and the look; errors are shown. */
@@ -287,6 +347,7 @@ public final class SettingsScreen implements Screen {
         } catch (IOException e) {
             this.gui.inform().accept(e.getMessage());
         }
+        this.applyLinks();
         if (relaunch) {
             this.gui.relaunch().run();
         }

@@ -132,6 +132,8 @@ All notable changes to this project are documented here. The format follows
 - ed2k links given on the command line are added as downloads; a second start hands its links to
   the njMule already running with the same configuration, as when a link is clicked in a browser,
   and a second start without links brings the running window to the front.
+- An option of the settings, off by default, makes njMule open the ed2k links of the system on
+  Windows and Linux; turned off, it gives them back to what opened them before, such as eMule.
 
 ### Changed
 
