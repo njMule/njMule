@@ -87,6 +87,12 @@ public final class DownloadManager implements AutoCloseable {
 
         /** Our client id on the server, zero when not connected. */
         long clientId();
+
+        /** The server's address ({@code Ipv4} form), zero when not connected. */
+        int serverIp();
+
+        /** Asks the server to have the LowID client {@code lowId} connect to us. */
+        boolean requestCallback(long lowId);
     }
 
     /** Kad, when it runs: finds sources of a file. */
@@ -126,6 +132,26 @@ public final class DownloadManager implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadManager.class);
 
+    /** Firewalled sources asked for at once, and how long a callback is awaited. */
+    static final int MAX_CALLBACKS = 32;
+
+    static final Duration CALLBACK_WAIT = Duration.ofSeconds(60);
+
+    private static final class Callback {
+        private final Hash16 file;
+        private final Optional<Hash16> userHash;
+        private final int cryptOptions;
+        private long since;
+        private boolean requested;
+
+        Callback(Hash16 file, Optional<Hash16> userHash, int cryptOptions, long since) {
+            this.file = file;
+            this.userHash = userHash;
+            this.cryptOptions = cryptOptions;
+            this.since = since;
+        }
+    }
+
     private static final class Source {
         private final InetSocketAddress address;
         private Optional<Hash16> userHash = Optional.empty();
@@ -138,6 +164,8 @@ public final class DownloadManager implements AutoCloseable {
         private long sourcesAsked;
         private boolean sourcesEverAsked;
         private int cryptOptions;
+        // The id of a firewalled source on our server, reached only by callbacks; 0 otherwise.
+        private long lowId;
 
         Source(InetSocketAddress address, long now) {
             this.address = address;
@@ -187,6 +215,8 @@ public final class DownloadManager implements AutoCloseable {
     private final RateMeter rate = new RateMeter(5);
     private long nextKadStart;
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
+    // Firewalled sources asked, through the server, to connect to us: by their LowID.
+    private final Map<Long, Callback> callbacks = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
     private DownloadQueue queue;
     private ScheduledFuture<?> ticking;
@@ -404,7 +434,10 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
-    /** Sources the server found. LowID sources need a callback through the server: not yet. */
+    /**
+     * Sources the server found. A LowID source is asked through the server to connect to us, which
+     * needs a HighID of ours.
+     */
     public void foundSources(ServerMessages.FoundSources found) {
         Entry entry = this.entries.get(found.file());
         if (entry == null || !entry.download.isActive()) {
@@ -414,7 +447,14 @@ public final class DownloadManager implements AutoCloseable {
         int ourPort = this.settings.get().listenPort();
         int added = 0;
         for (ServerMessages.Source source : found.sources()) {
-            if (source.isLowId() || (source.clientId() == ourId && source.port() == ourPort)) {
+            if (source.isLowId()) {
+                if (ourId >= ServerMessages.LOW_ID_LIMIT && source.clientId() != 0) {
+                    this.askCallback(
+                            entry, source.clientId(), source.userHash(), source.cryptOptions());
+                }
+                continue;
+            }
+            if (source.clientId() == ourId && source.port() == ourPort) {
                 continue;
             }
             int ip = Ipv4.fromEd2k(source.clientId());
@@ -468,7 +508,90 @@ public final class DownloadManager implements AutoCloseable {
         this.queue.close();
     }
 
+    // Queues a callback request; one goes out each tick, and those not answered soon are dropped.
+    private void askCallback(Entry entry, long lowId, Optional<Hash16> userHash, int cryptOptions) {
+        if (this.callbacks.size() >= MAX_CALLBACKS
+                || this.callbacks.containsKey(lowId)
+                || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
+            return;
+        }
+        this.callbacks.put(
+                lowId,
+                new Callback(entry.download.hash(), userHash, cryptOptions, this.ticker.read()));
+    }
+
+    private void sendCallbacks(long now) {
+        boolean sent = false;
+        for (var it = this.callbacks.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Long, Callback> e = it.next();
+            Callback callback = e.getValue();
+            if (now - callback.since >= CALLBACK_WAIT.toNanos()) {
+                it.remove();
+            } else if (!sent && !callback.requested) {
+                sent = true;
+                if (this.server.requestCallback(e.getKey())) {
+                    callback.requested = true;
+                    callback.since = now;
+                } else {
+                    it.remove();
+                }
+            }
+        }
+    }
+
+    // A firewalled source we asked to call us, recognised by the LowID our server gave it.
+    private Optional<TcpConnection.Handler> adoptCallback(TcpConnection connection, Hello peer) {
+        Callback callback = this.callbacks.get(peer.clientId());
+        if (callback == null
+                || !callback.requested
+                || peer.serverIp() == 0
+                || peer.serverIp() != this.server.serverIp()
+                || !callback.userHash.map(peer.userHash()::equals).orElse(true)) {
+            return Optional.empty();
+        }
+        this.callbacks.remove(peer.clientId());
+        Entry entry = this.entries.get(callback.file);
+        if (entry == null || !entry.download.isActive()) {
+            return Optional.empty();
+        }
+        InetSocketAddress address =
+                new InetSocketAddress(connection.remoteAddress().getAddress(), peer.tcpPort());
+        Source source = entry.sources.get(address);
+        if (source == null) {
+            source = this.addSource(entry, address);
+            if (source == null) {
+                return Optional.empty();
+            }
+        }
+        if (source.session != null) {
+            return Optional.empty();
+        }
+        long now = this.ticker.read();
+        source.lowId = peer.clientId();
+        source.userHash = Optional.of(peer.userHash());
+        source.cryptOptions = callback.cryptOptions;
+        source.asked = true;
+        source.lastAsk = now;
+        source.nextAsk = now + REASK_INTERVAL.toNanos();
+        DownloadSession session =
+                new DownloadSession(
+                        this.loop,
+                        this.queue,
+                        entry.download,
+                        address,
+                        this.ourHello,
+                        this.identities,
+                        this.sessionEvents);
+        source.session = session;
+        logger.debug("{} called us back for {}", address, entry.download.file().name());
+        return Optional.of(session.adopt(connection, peer, Optional.empty(), false));
+    }
+
     private Optional<TcpConnection.Handler> adopt(TcpConnection connection, Hello peer) {
+        Optional<TcpConnection.Handler> called = this.adoptCallback(connection, peer);
+        if (called.isPresent()) {
+            return called;
+        }
         InetAddress from = connection.remoteAddress().getAddress();
         for (Entry entry : this.entries.values()) {
             if (!entry.download.isActive()) {
@@ -519,6 +642,7 @@ public final class DownloadManager implements AutoCloseable {
                 }
             }
         }
+        this.sendCallbacks(now);
         // One source request per tick, so the server is never flooded.
         boolean askedServer = false;
         for (Entry entry : this.entries.values()) {
@@ -590,6 +714,14 @@ public final class DownloadManager implements AutoCloseable {
                 continue;
             }
             if (required && source.userHash.isEmpty()) {
+                continue;
+            }
+            if (source.lowId != 0) {
+                // Firewalled: asked again through the server, while it keeps the same LowID.
+                source.nextAsk = now + REASK_INTERVAL.toNanos();
+                if (this.server.clientId() >= ServerMessages.LOW_ID_LIMIT) {
+                    this.askCallback(entry, source.lowId, source.userHash, source.cryptOptions);
+                }
                 continue;
             }
             source.asked = true;

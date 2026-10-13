@@ -252,6 +252,15 @@ final class DownloadSession {
      * it has a slot for us; returns the handler for the rest of the connection.
      */
     TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
+        return this.adopt(incoming, peer, knownParts, true);
+    }
+
+    /**
+     * As above; {@code slotOffered} is false for a firewalled source that connected because we
+     * asked it to through the server, which still has to be asked for an upload.
+     */
+    TcpConnection.Handler adopt(
+            TcpConnection incoming, Hello peer, Optional<BitSet> knownParts, boolean slotOffered) {
         this.connection = incoming;
         this.peer = Optional.of(peer);
         this.peerHash = Optional.of(peer.userHash());
@@ -260,7 +269,7 @@ final class DownloadSession {
                         this.identities.start(
                                 peer, incoming.remoteAddress().getAddress(), incoming::send));
         this.state = State.QUEUED;
-        this.uploadRequested = true;
+        this.uploadRequested = slotOffered;
         knownParts.ifPresentOrElse(this::setParts, this::requestFile);
         return this.handler(incoming);
     }

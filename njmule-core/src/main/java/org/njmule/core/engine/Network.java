@@ -1218,6 +1218,16 @@ final class Network {
         public long clientId() {
             return Network.this.context.clientId();
         }
+
+        @Override
+        public int serverIp() {
+            return Network.this.context.serverIp();
+        }
+
+        @Override
+        public boolean requestCallback(long lowId) {
+            return Network.this.session.send(ServerMessages.callbackRequest(lowId));
+        }
     }
 
     private final class DownloadEvents implements DownloadManager.Listener {

@@ -92,6 +92,8 @@ public final class FakeServer implements AutoCloseable {
     private final ServerSocket tcp;
     private final DatagramSocket udp;
     private final List<ServerMessages.Login> logins = new CopyOnWriteArrayList<>();
+    private final Map<Long, FakePeer> lowIds = new ConcurrentHashMap<>();
+    private final List<Long> callbackRequests = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
@@ -191,6 +193,23 @@ public final class FakeServer implements AutoCloseable {
                                 Ipv4.toEd2k(ip), peer.getPort(), 0, Optional.empty()));
     }
 
+    /**
+     * From now on, answers requests for the sources of {@code file} with {@code peer} as a
+     * firewalled client with the LowID {@code lowId}, which calls back the downloader that asks for
+     * it through a callback request.
+     */
+    public void addLowIdSource(Hash16 file, long lowId, FakePeer peer) {
+        this.lowIds.put(lowId, peer);
+        this.sources
+                .computeIfAbsent(file, f -> new CopyOnWriteArrayList<>())
+                .add(new ServerMessages.Source(lowId, peer.port(), 0, Optional.empty()));
+    }
+
+    /** The LowIDs clients asked us to have call them back. */
+    public List<Long> callbackRequests() {
+        return List.copyOf(this.callbackRequests);
+    }
+
     /** Sends {@code packet} to every logged-in client. */
     public void broadcast(Packet packet) throws IOException {
         byte[] frame = TcpFraming.encode(packet);
@@ -265,6 +284,20 @@ public final class FakeServer implements AutoCloseable {
             return known.isEmpty()
                     ? List.of()
                     : List.of(new ServerMessages.FoundSources(file, known).encode());
+        }
+        if (request.opcode() == Opcodes.Server.CALLBACKREQUEST.code()) {
+            long lowId = request.reader().u32();
+            this.callbackRequests.add(lowId);
+            FakePeer peer = this.lowIds.get(lowId);
+            int port = this.logins.isEmpty() ? 0 : this.logins.getLast().tcpPort();
+            if (peer != null && port != 0) {
+                peer.callAsLowId(
+                        new InetSocketAddress(client.getInetAddress(), port),
+                        lowId,
+                        Ipv4.fromBytes(this.address().getAddress()),
+                        this.port());
+            }
+            return List.of();
         }
         if (request.opcode() == Opcodes.Server.SEARCHREQUEST.code()) {
             this.searches.add(SearchTreeCodec.read(request.reader()));

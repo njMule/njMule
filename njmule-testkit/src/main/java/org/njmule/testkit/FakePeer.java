@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Path;
@@ -95,6 +96,9 @@ public final class FakePeer implements AutoCloseable {
     private final Ed2kLink.FileLink link;
     private final Config config;
     private final ServerSocket tcp;
+    private volatile long lowId;
+    private volatile int serverIp;
+    private volatile int serverPort;
     private final List<String> received = new CopyOnWriteArrayList<>();
     private final Set<Integer> corrupted = ConcurrentHashMap.newKeySet();
     private final AtomicLong sent = new AtomicLong();
@@ -138,6 +142,29 @@ public final class FakePeer implements AutoCloseable {
     }
 
     /** File bytes sent, before compression. */
+    /**
+     * Connects to {@code downloader} as a firewalled client with the LowID {@code lowId} on the
+     * server at {@code serverIp:serverPort} does when asked to call back; then serves as usual.
+     */
+    public void callAsLowId(
+            InetSocketAddress downloader, long lowId, int serverIp, int serverPort) {
+        this.lowId = lowId;
+        this.serverIp = serverIp;
+        this.serverPort = serverPort;
+        Thread.ofVirtual()
+                .name("fake-peer-lowid")
+                .start(
+                        () -> {
+                            try {
+                                this.serve(
+                                        new Socket(downloader.getAddress(), downloader.getPort()),
+                                        Answer.HELLO_ONLY);
+                            } catch (IOException e) {
+                                logger.debug("Cannot call as a LowID: {}", e.getMessage());
+                            }
+                        });
+    }
+
     public long bytesSent() {
         return this.sent.get();
     }
@@ -161,15 +188,28 @@ public final class FakePeer implements AutoCloseable {
     }
 
     private void serve(Socket client) {
-        this.serve(client, false);
+        this.serve(client, Answer.NONE);
     }
 
     private void serve(Socket client, boolean calledBack) {
+        this.serve(client, calledBack ? Answer.SLOT : Answer.NONE);
+    }
+
+    // What an outgoing connection says first: nothing (it was accepted), a hello and then a slot
+    // (a call back with a slot), or a hello only (a LowID calling back on request).
+    private enum Answer {
+        NONE,
+        SLOT,
+        HELLO_ONLY
+    }
+
+    private void serve(Socket client, Answer answer) {
+        boolean calledBack = answer == Answer.SLOT;
         try (client;
                 RandomAccessFile data = new RandomAccessFile(this.file.toFile(), "r")) {
             InputStream in = new BufferedInputStream(client.getInputStream());
             Session session = new Session(client, data, calledBack);
-            if (calledBack) {
+            if (answer != Answer.NONE) {
                 session.send(session.hello().encode(false));
             }
             while (!client.isClosed()) {
@@ -287,15 +327,15 @@ public final class FakePeer implements AutoCloseable {
         Hello hello() {
             return Hello.of(
                     FakePeer.this.config.userHash(),
-                    0,
+                    FakePeer.this.lowId,
                     FakePeer.this.port(),
                     "fake peer",
                     0,
                     0,
                     Hello.MISC1_UNICODE,
                     Hello.MISC2_LARGE_FILES,
-                    0,
-                    0);
+                    FakePeer.this.serverIp,
+                    FakePeer.this.serverPort);
         }
 
         private void slotLater() {

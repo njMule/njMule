@@ -155,6 +155,38 @@ class DownloadFlowTest {
     }
 
     @Test
+    void aFirewalledSourceTheServerKnowsIsAskedToCallUs() throws Exception {
+        InetAddress lan = ServerFlowTest.lanAddress();
+        byte[] data = content(800_000, 6);
+        Path shared = Files.createDirectories(this.dir.resolve("lowid")).resolve("firewalled.bin");
+        Files.write(shared, data);
+        FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(6)));
+        this.resources.add(peer);
+        FakeServer server =
+                FakeServer.start(
+                        lan,
+                        new FakeServer.Config(
+                                Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
+        this.resources.add(server);
+        long lowId = 4242;
+        server.addLowIdSource(peer.link().hash(), lowId, peer);
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port()))).get();
+
+        DownloadInfo added =
+                engine.addDownload(
+                                Ed2kLink.FileLink.of(
+                                        "firewalled.bin", data.length, peer.link().hash()))
+                        .get(10, TimeUnit.SECONDS);
+
+        Path file = events.completed(added.hash()).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(server.callbackRequests()).containsExactly(lowId);
+        assertThat(peer.received()).containsSubsequence("SETREQFILEID", "STARTUPLOADREQ");
+    }
+
+    @Test
     void pausesResumesAndCancelsDownloads() throws Exception {
         NjMuleEngine engine = this.engine();
         Events events = new Events(engine);
