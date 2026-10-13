@@ -37,6 +37,7 @@ import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.core.crypto.RsaKeys;
 import org.njmule.core.persist.format.CancelledMet;
 import org.njmule.core.persist.format.ClientsMet;
@@ -88,6 +89,7 @@ public final class EmuleImporter {
 
     private static final Logger LOG = LoggerFactory.getLogger(EmuleImporter.class);
     private static final String SECTION = "eMule";
+    private static final String PROXY = "Proxy";
     // Limits at or above this mean "no limit".
     private static final long UNLIMITED = 65_535;
     private static final String KAD_KEY_FILE = "kadudpkey.dat";
@@ -237,7 +239,31 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "SecureIdent").ifPresent(b::secureIdent);
         ini.getBoolean(SECTION, "UseCreditSystem").ifPresent(b::creditSystem);
         b.obfuscation(obfuscation(ini, current.obfuscation()));
+        proxy(ini).ifPresent(b::proxy);
         return b.build();
+    }
+
+    // eMule's proxy types: 1-3 SOCKS 4, 4a and 5, 4-5 HTTP 1.0 and 1.1.
+    private static Optional<ProxySettings> proxy(IniFile ini) {
+        if (!ini.getBoolean(PROXY, "ProxyEnableProxy").orElse(false)) {
+            return Optional.empty();
+        }
+        long type = ini.getLong(PROXY, "ProxyType").orElse(0);
+        if (type < 1 || type > 5) {
+            return Optional.empty();
+        }
+        boolean password = ini.getBoolean(PROXY, "ProxyEnablePassword").orElse(false);
+        try {
+            return Optional.of(
+                    new ProxySettings(
+                            type <= 3 ? ProxySettings.Type.SOCKS : ProxySettings.Type.HTTP,
+                            ini.get(PROXY, "ProxyName").orElse(""),
+                            (int) ini.getLong(PROXY, "ProxyPort").orElse(1080),
+                            password ? ini.get(PROXY, "ProxyUser").orElse("") : "",
+                            password ? ini.get(PROXY, "ProxyPassword").orElse("") : ""));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     private static OptionalLong limit(IniFile ini, String key) {

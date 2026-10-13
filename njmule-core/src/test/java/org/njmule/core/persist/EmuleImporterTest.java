@@ -36,6 +36,7 @@ import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.ImportReport.Outcome;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.core.persist.format.IniFile;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
@@ -300,6 +301,50 @@ class EmuleImporterTest {
                                         IniFile.parse(new byte[0]), Preferences.defaults())
                                 .obfuscation())
                 .isEqualTo(Preferences.defaults().obfuscation());
+    }
+
+    @Test
+    void theProxyIsTakenWhenEmuleUsesOne() {
+        String socks =
+                """
+                [eMule]
+                [Proxy]
+                ProxyEnableProxy=1
+                ProxyType=3
+                ProxyName=proxy.lan
+                ProxyPort=9050
+                ProxyEnablePassword=1
+                ProxyUser=me
+                ProxyPassword=pw
+                """;
+        assertThat(proxyOf(socks))
+                .isEqualTo(
+                        new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"));
+        String http =
+                """
+                [eMule]
+                [Proxy]
+                ProxyEnableProxy=1
+                ProxyType=5
+                ProxyName=h
+                ProxyUser=x
+                """;
+        assertThat(proxyOf(http))
+                .isEqualTo(new ProxySettings(ProxySettings.Type.HTTP, "h", 1080, "", ""));
+        for (String off :
+                List.of(
+                        "[Proxy]\nProxyEnableProxy=0\nProxyType=3\nProxyName=h\n",
+                        "[Proxy]\nProxyEnableProxy=1\nProxyType=9\nProxyName=h\n",
+                        "[Proxy]\nProxyEnableProxy=1\nProxyType=3\nProxyName=\n")) {
+            assertThat(proxyOf("[eMule]\n" + off)).isEqualTo(ProxySettings.NONE);
+        }
+    }
+
+    private static ProxySettings proxyOf(String ini) {
+        return EmuleImporter.mapPreferences(
+                        IniFile.parse(ini.getBytes(StandardCharsets.US_ASCII)),
+                        Preferences.defaults())
+                .proxy();
     }
 
     @Test
