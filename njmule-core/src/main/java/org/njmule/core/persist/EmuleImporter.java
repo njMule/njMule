@@ -243,7 +243,7 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "Reconnect").ifPresent(b::reconnect);
         ini.getBoolean(SECTION, "Autoconnect").ifPresent(b::autoConnect);
         ini.getLong(SECTION, "DeadServerRetry")
-                .ifPresent(v -> b.deadServerRetries((int) Math.clamp(v, 1, Preferences.MAX_DEAD_SERVER_RETRIES)));
+                .ifPresent(v -> b.deadServerRetries(Math.clamp(v, 1, Preferences.MAX_DEAD_SERVER_RETRIES)));
         ini.getBoolean(SECTION, "AddServersFromServer").ifPresent(b::addServersFromServer);
         ini.getBoolean(SECTION, "AddServersFromClient").ifPresent(b::addServersFromClients);
         ini.getBoolean(SECTION, "AutoConnectStaticOnly").ifPresent(b::staticServersOnly);

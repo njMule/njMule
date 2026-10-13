@@ -304,6 +304,7 @@ public final class Engine implements NjMuleEngine {
     }
 
     // The server lists of addresses.dat, taken again at each start when the preferences ask for it.
+    @SuppressWarnings("FutureReturnValueIgnored") // each fetch reports its own outcome in the log
     private void updateServerLists() {
         this.serverListAddresses().thenAccept(addresses -> {
             for (URI url : addresses) {
