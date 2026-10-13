@@ -329,7 +329,8 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         if (this.hashing.add(file)) {
-            CompletableFuture.supplyAsync(
+            this.loop.whenDone(
+                    CompletableFuture.supplyAsync(
                             () -> {
                                 try {
                                     return FileHasher.hash(file);
@@ -337,11 +338,8 @@ public final class SharedFiles implements AutoCloseable {
                                     throw new UncheckedIOException(e);
                                 }
                             },
-                            this.hasher)
-                    .whenComplete(
-                            (result, failure) ->
-                                    this.loop.post(
-                                            () -> this.hashed(file, mtime, result, failure)));
+                            this.hasher),
+                    (result, failure) -> this.hashed(file, mtime, result, failure));
         }
     }
 
@@ -393,7 +391,7 @@ public final class SharedFiles implements AutoCloseable {
 
     private void unshare(SharedFile file) {
         this.byPath.remove(file.path());
-        if (this.byHash.get(file.hash()) == file) {
+        if (file.equals(this.byHash.get(file.hash()))) {
             this.byHash.remove(file.hash());
             this.listener.unshared(file);
         }

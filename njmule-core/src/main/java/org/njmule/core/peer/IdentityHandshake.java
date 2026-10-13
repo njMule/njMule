@@ -42,6 +42,8 @@ import org.njmule.core.security.SecureIdent;
 public final class IdentityHandshake {
 
     /** Our own key, and what decides the address bound into version 2 signatures. */
+    // A value handed to the handshake, never compared.
+    @SuppressWarnings("ArrayRecordComponent")
     public record Identity(Rsa.PrivateKey key, byte[] publicKey) {
         public Identity {
             Objects.requireNonNull(key, "key");

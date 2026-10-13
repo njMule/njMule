@@ -295,7 +295,7 @@ public final class Igd implements AutoCloseable {
     }
 
     static Optional<URI> location(String answer) {
-        for (String line : answer.split("\r?\n")) {
+        for (String line : answer.split("\r?\n", -1)) {
             int colon = line.indexOf(':');
             if (colon > 0 && line.substring(0, colon).strip().equalsIgnoreCase("LOCATION")) {
                 try {

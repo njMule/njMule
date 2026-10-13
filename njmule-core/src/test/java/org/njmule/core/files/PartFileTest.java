@@ -157,8 +157,9 @@ class PartFileTest {
         Path target = this.dir.resolve("incoming").resolve("done.bin");
 
         try (PartFileStorage storage = PartFileStorage.open(part)) {
-            storage.write(100_000, Arrays.copyOfRange(data, 100_000, data.length));
-            storage.write(0, Arrays.copyOfRange(data, 0, 100_000));
+            storage.write(100_000, Arrays.copyOfRange(data, 100_000, data.length))
+                    .get(5, TimeUnit.SECONDS);
+            storage.write(0, Arrays.copyOfRange(data, 0, 100_000)).get(5, TimeUnit.SECONDS);
 
             assertThat(storage.hashPart(data.length, 0).get(5, TimeUnit.SECONDS))
                     .isEqualTo(Ed2k.md4(data, 0, data.length));

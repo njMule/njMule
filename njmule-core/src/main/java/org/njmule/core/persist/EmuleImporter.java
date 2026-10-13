@@ -229,9 +229,9 @@ public final class EmuleImporter {
         limit(ini, "MaxUpload").ifPresent(v -> b.maxUploadKiBps((int) v));
         limit(ini, "MaxDownload").ifPresent(v -> b.maxDownloadKiBps((int) v));
         ini.getLong(SECTION, "MaxConnections")
-                .ifPresent(v -> b.maxConnections((int) Math.clamp(v, 1, 10_000)));
+                .ifPresent(v -> b.maxConnections(Math.clamp(v, 1, 10_000)));
         ini.getLong(SECTION, "MaxSourcesPerFile")
-                .ifPresent(v -> b.maxSourcesPerFile((int) Math.clamp(v, 1, 10_000)));
+                .ifPresent(v -> b.maxSourcesPerFile(Math.clamp(v, 1, 10_000)));
         ini.getBoolean(SECTION, "Reconnect").ifPresent(b::reconnect);
         ini.getBoolean(SECTION, "Autoconnect").ifPresent(b::autoConnect);
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);
@@ -545,7 +545,7 @@ public final class EmuleImporter {
                 ini.flatMap(i -> i.get(SECTION, "TempDir")).orElse("")
                         + "|"
                         + ini.flatMap(i -> i.get(SECTION, "TempDirs")).orElse("");
-        for (String entry : listed.split("\\|")) {
+        for (String entry : listed.split("\\|", -1)) {
             path(entry).filter(Files::isDirectory).ifPresent(dirs::add);
         }
         Path parent = this.emule.getParent();

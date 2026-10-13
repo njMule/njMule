@@ -20,6 +20,7 @@ module org.njmule.core {
     // line, web UI) only use the exported packages: "api" (engine facade, events, application
     // information) and "config" (preferences and directory layout). Everything else is internal.
     requires com.google.common;
+    requires static com.google.errorprone.annotations;
     requires java.net.http;
     requires java.xml;
     requires org.bouncycastle.provider;

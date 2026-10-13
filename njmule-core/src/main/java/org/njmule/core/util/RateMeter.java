@@ -21,7 +21,7 @@ import java.util.Arrays;
 /** Bytes per second averaged over the last seconds, and the total. Not thread-safe. */
 public final class RateMeter {
 
-    private static final long SECOND = 1_000_000_000L;
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
     private final long[] perSecond;
     private long second = Long.MIN_VALUE;
@@ -40,7 +40,7 @@ public final class RateMeter {
     /** Counts {@code bytes} at {@code now} (monotonic nanoseconds). */
     public void add(long bytes, long now) {
         this.advance(now);
-        this.perSecond[(int) Math.floorMod(this.second, this.perSecond.length)] += bytes;
+        this.perSecond[Math.floorMod(this.second, this.perSecond.length)] += bytes;
         this.total += bytes;
     }
 
@@ -58,12 +58,12 @@ public final class RateMeter {
     }
 
     private void advance(long now) {
-        long current = Math.floorDiv(now, SECOND);
+        long current = Math.floorDiv(now, NANOS_PER_SECOND);
         if (this.second == Long.MIN_VALUE || current - this.second >= this.perSecond.length) {
             Arrays.fill(this.perSecond, 0);
         } else {
             for (long s = this.second + 1; s <= current; s++) {
-                this.perSecond[(int) Math.floorMod(s, this.perSecond.length)] = 0;
+                this.perSecond[Math.floorMod(s, this.perSecond.length)] = 0;
             }
         }
         if (this.second == Long.MIN_VALUE || current > this.second) {

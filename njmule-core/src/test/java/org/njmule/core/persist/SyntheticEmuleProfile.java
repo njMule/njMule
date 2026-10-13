@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 import org.njmule.core.api.Hash16;
@@ -209,7 +210,7 @@ public final class SyntheticEmuleProfile {
     }
 
     /** SHA-256 of every file below the profile, to prove an import left it untouched. */
-    public TreeMap<String, String> fingerprint() throws IOException {
+    public SortedMap<String, String> fingerprint() throws IOException {
         TreeMap<String, String> sums = new TreeMap<>();
         try (Stream<Path> files = Files.walk(this.root())) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {

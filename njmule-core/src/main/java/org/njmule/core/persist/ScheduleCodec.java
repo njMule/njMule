@@ -127,7 +127,7 @@ public final class ScheduleCodec {
 
     private static Set<DayOfWeek> days(String text) {
         Set<DayOfWeek> days = EnumSet.noneOf(DayOfWeek.class);
-        for (String day : text.split(",")) {
+        for (String day : text.split(",", -1)) {
             if (!day.isBlank()) {
                 days.add(DayOfWeek.valueOf(day.strip().toUpperCase(Locale.ROOT)));
             }

@@ -414,7 +414,7 @@ public final class DownloadManager implements AutoCloseable {
         int ourPort = this.settings.get().listenPort();
         int added = 0;
         for (ServerMessages.Source source : found.sources()) {
-            if (source.isLowId() || source.clientId() == ourId && source.port() == ourPort) {
+            if (source.isLowId() || (source.clientId() == ourId && source.port() == ourPort)) {
                 continue;
             }
             int ip = Ipv4.fromEd2k(source.clientId());
@@ -477,8 +477,8 @@ public final class DownloadManager implements AutoCloseable {
             for (Source source : entry.sources.values()) {
                 boolean same =
                         source.userHash.map(peer.userHash()::equals).orElse(false)
-                                || source.address.getAddress().equals(from)
-                                        && source.address.getPort() == peer.tcpPort();
+                                || (source.address.getAddress().equals(from)
+                                        && source.address.getPort() == peer.tcpPort());
                 if (!same || !source.asked) {
                     continue;
                 }
@@ -726,11 +726,11 @@ public final class DownloadManager implements AutoCloseable {
                 !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
         long sinceAnswer = entry.sourcesEverAnswered ? now - entry.sourcesAnswered : Long.MAX_VALUE;
         boolean allowed =
-                known <= SX_VERY_RARE && rareDue
-                        || known <= SX_RARE
+                (known <= SX_VERY_RARE && rareDue)
+                        || (known <= SX_RARE
                                 && rareDue
-                                && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos()
-                        || commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos();
+                                && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos())
+                        || (commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos());
         if (allowed) {
             source.sourcesEverAsked = true;
             source.sourcesAsked = now;
@@ -754,7 +754,7 @@ public final class DownloadManager implements AutoCloseable {
                     || s.port() == 0
                     || !Ipv4.isUnicastPublicCandidate(s.ip())
                     || this.blocked.test(s.ip())
-                    || Ipv4.toEd2k(s.ip()) == ourId && s.port() == ourPort) {
+                    || (Ipv4.toEd2k(s.ip()) == ourId && s.port() == ourPort)) {
                 continue;
             }
             Source fresh =

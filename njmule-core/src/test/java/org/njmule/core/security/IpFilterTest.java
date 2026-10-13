@@ -77,9 +77,11 @@ class IpFilterTest {
     @Test
     void readsAnIpFilterDatFile() {
         byte[] dat =
-                ("# comment\n"
-                                + "001.002.003.000 - 001.002.003.255 , 000 , test range\n"
-                                + "009.009.009.009 - 009.009.009.009 , 200 , harmless\n")
+                """
+                # comment
+                001.002.003.000 - 001.002.003.255 , 000 , test range
+                009.009.009.009 - 009.009.009.009 , 200 , harmless
+                """
                         .getBytes(StandardCharsets.US_ASCII);
 
         IpFilter filter = IpFilter.of(IpFilterDat.read(dat, "ipfilter.dat"), 127);

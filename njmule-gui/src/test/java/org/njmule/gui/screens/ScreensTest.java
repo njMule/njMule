@@ -249,6 +249,7 @@ class ScreensTest {
 
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("totals", () -> screen.downloadedLabel().getText().equals("0 B"));
+        assertThat(FxTesting.onFx(() -> screen.downloadedLabel().getText())).isEqualTo("0 B");
         FxTesting.onFx(
                 () -> {
                     FxTesting.snapshot(screen.view(), "statistics-alone");

@@ -85,6 +85,8 @@ public sealed interface EngineEvent {
             implements EngineEvent {}
 
     /** A client wants a CAPTCHA solved before it shows our messages; the picture is a BMP. */
+    // equals, hashCode and toString below compare and show the bytes
+    @SuppressWarnings("ArrayRecordComponent")
     record CaptchaRequested(String address, Hash16 userHash, byte[] image) implements EngineEvent {
         public CaptchaRequested {
             image = image.clone();

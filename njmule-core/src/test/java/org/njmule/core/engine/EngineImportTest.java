@@ -23,7 +23,7 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.TreeMap;
+import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -49,7 +49,7 @@ class EngineImportTest {
     @Test
     void importedDownloadsGoOnAndTheIdentityFollowsAtTheNextStart() throws Exception {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        TreeMap<String, String> before = emule.fingerprint();
+        SortedMap<String, String> before = emule.fingerprint();
         int port = freePort();
         AppDirectories dirs = this.directories(port);
 

@@ -105,7 +105,7 @@ public final class ChatMessages {
     }
 
     /** Whether a CAPTCHA result says solved. */
-    public static boolean solved(Packet packet) throws DecodeException {
+    public static boolean isSolved(Packet packet) throws DecodeException {
         return packet.reader().u8() == SOLVED;
     }
 

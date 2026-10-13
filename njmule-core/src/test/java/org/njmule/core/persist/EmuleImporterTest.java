@@ -25,9 +25,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.SortedMap;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -57,7 +58,6 @@ class EmuleImporterTest {
         final List<Path> servers = new ArrayList<>();
         int contacts;
         int known;
-        int trees;
         final List<Path> shared = new ArrayList<>();
         final List<Path> refused = new ArrayList<>();
         final List<String> adopted = new ArrayList<>();
@@ -87,7 +87,6 @@ class EmuleImporterTest {
         @Override
         public int addKnownFiles(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
             this.known += files.size();
-            this.trees += trees.size();
             return files.size();
         }
 
@@ -124,7 +123,7 @@ class EmuleImporterTest {
 
     @Test
     void aDryRunReportsEverythingAndChangesNothing() throws IOException {
-        TreeMap<String, String> before = this.emule.fingerprint();
+        SortedMap<String, String> before = this.emule.fingerprint();
 
         ImportReport report = this.run(new ImportOptions(true, true, true), false);
 
@@ -150,13 +149,15 @@ class EmuleImporterTest {
         assertThat(detail(report, "server.met")).isEqualTo("2 servers");
         assertThat(detail(report, "nodes.dat")).isEqualTo("3 Kad contacts");
         assertThat(this.target.untouched()).isTrue();
-        assertThat(Files.list(this.ours).count()).isZero();
+        try (Stream<Path> left = Files.list(this.ours)) {
+            assertThat(left.count()).isZero();
+        }
         assertThat(this.emule.fingerprint()).isEqualTo(before);
     }
 
     @Test
     void anImportTakesEverythingAndLeavesEmuleAlone() throws IOException {
-        TreeMap<String, String> before = this.emule.fingerprint();
+        SortedMap<String, String> before = this.emule.fingerprint();
 
         ImportReport report = this.run(new ImportOptions(false, true, true), false);
 

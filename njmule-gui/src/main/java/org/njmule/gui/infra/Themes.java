@@ -50,7 +50,7 @@ public final class Themes {
     }
 
     private static final String STYLESHEET = "/org/njmule/gui/njmule.css";
-    private static final String DARK = "dark";
+    private static final String DARK_CLASS = "dark";
 
     private Family family;
     private GuiSettings.Mode mode;
@@ -118,10 +118,10 @@ public final class Themes {
                 continue;
             }
             var classes = scene.getRoot().getStyleClass();
-            if (theme.isDarkMode() && !classes.contains(DARK)) {
-                classes.add(DARK);
+            if (theme.isDarkMode() && !classes.contains(DARK_CLASS)) {
+                classes.add(DARK_CLASS);
             } else if (!theme.isDarkMode()) {
-                classes.remove(DARK);
+                classes.remove(DARK_CLASS);
             }
         }
     }

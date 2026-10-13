@@ -294,9 +294,15 @@ public final class WebUi implements AutoCloseable {
                                                     + " SameSite=Strict");
                             yield "/login";
                         }
-                        case TRANSFERS -> this.transfer(form);
+                        case TRANSFERS -> {
+                            this.transfer(form);
+                            yield TRANSFERS;
+                        }
                         case SEARCH -> this.search(form);
-                        case SERVERS -> this.server(form);
+                        case SERVERS -> {
+                            this.server(form);
+                            yield SERVERS;
+                        }
                         default -> null;
                     };
         } catch (IllegalArgumentException | EngineFailure e) {
@@ -321,7 +327,7 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private String transfer(Map<String, String> form) {
+    private void transfer(Map<String, String> form) {
         String action = form.getOrDefault(ACTION, "");
         if (action.equals("add")) {
             for (String one : LINKS.split(form.getOrDefault("link", "").strip(), -1)) {
@@ -333,7 +339,7 @@ public final class WebUi implements AutoCloseable {
                 }
                 this.await(this.engine.addDownload(link));
             }
-            return TRANSFERS;
+            return;
         }
         Hash16 hash = Hash16.parseHex(form.getOrDefault("hash", ""));
         CompletableFuture<Boolean> done =
@@ -344,7 +350,6 @@ public final class WebUi implements AutoCloseable {
                     default -> throw new IllegalArgumentException("Unknown action.");
                 };
         this.await(done);
-        return TRANSFERS;
     }
 
     private String search(Map<String, String> form) {
@@ -384,7 +389,7 @@ public final class WebUi implements AutoCloseable {
         return found;
     }
 
-    private String server(Map<String, String> form) {
+    private void server(Map<String, String> form) {
         switch (form.getOrDefault(ACTION, "")) {
             case "connect" -> {
                 String address = form.getOrDefault("address", "").strip();
@@ -397,7 +402,6 @@ public final class WebUi implements AutoCloseable {
             case "disconnect" -> this.await(this.engine.disconnect());
             default -> throw new IllegalArgumentException("Unknown action.");
         }
-        return SERVERS;
     }
 
     private String statusPage(Sessions.Session session) {

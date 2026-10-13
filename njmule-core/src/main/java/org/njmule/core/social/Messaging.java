@@ -235,7 +235,7 @@ public final class Messaging implements AutoCloseable {
                 }
                 this.listener.captcha(from, ChatMessages.captcha(packet));
             } else {
-                this.listener.captchaResult(from, ChatMessages.solved(packet));
+                this.listener.captchaResult(from, ChatMessages.isSolved(packet));
             }
         } catch (DecodeException e) {
             logger.debug("Bad chat packet from {}: {}", address, e.getMessage());

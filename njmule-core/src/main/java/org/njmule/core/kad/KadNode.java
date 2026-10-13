@@ -133,7 +133,6 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     private final Map<Lookup, Object> lookupData = new HashMap<>();
     private final Map<Integer, Long> firewallChecks = new HashMap<>();
     private final Set<Integer> firewallAcks = new HashSet<>();
-    private final long started;
     private int publicIp;
     private int pendingIp;
     private long lastPacket;
@@ -164,7 +163,6 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.table = new RoutingTable(identity.id(), settings.trusted());
         long now = ticker.read();
-        this.started = now;
         this.nextSmallTimer = now + MINUTE;
         this.nextBigTimer = now + 10 * SECOND;
         this.nextConsolidate = now + 45 * MINUTE;
@@ -994,8 +992,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return true;
         }
         int a = ip >>> 24;
-        int b = ip >>> 16 & 0xFF;
-        boolean lan = a == 10 || a == 172 && b >= 16 && b < 32 || a == 192 && b == 168;
+        int b = (ip >>> 16) & 0xFF;
+        boolean lan = a == 10 || (a == 172 && b >= 16 && b < 32) || (a == 192 && b == 168);
         return Ipv4.isUnicastPublicCandidate(ip) && !lan;
     }
 

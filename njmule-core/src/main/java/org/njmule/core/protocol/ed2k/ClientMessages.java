@@ -225,6 +225,8 @@ public final class ClientMessages {
     }
 
     /** OP_SENDINGPART(_I64): data of {@code [start, end)}. */
+    // A message decoded or about to be sent, never compared; copying the data would cost.
+    @SuppressWarnings("ArrayRecordComponent")
     public record SendingPart(Hash16 file, long start, long end, byte[] data) {
         public SendingPart {
             if (end - start != data.length || start < 0) {
@@ -291,6 +293,8 @@ public final class ClientMessages {
      * OP_COMPRESSEDPART(_I64): one chunk of the zlib stream of the block that starts at {@code
      * blockStart}; every chunk repeats the stream's total size.
      */
+    // A message decoded or about to be sent, never compared; copying the data would cost.
+    @SuppressWarnings("ArrayRecordComponent")
     public record CompressedPart(Hash16 file, long blockStart, long compressedSize, byte[] chunk) {
         public CompressedPart {
             chunk = chunk.clone();

@@ -214,9 +214,9 @@ class ProxyRouteTest {
                                     }
                                     head.append((char) c);
                                 }
-                                String[] request = head.toString().split(" ");
+                                String[] request = head.toString().split(" ", -1);
                                 this.seen.add(request[0] + " " + request[1]);
-                                String[] hostPort = request[1].split(":");
+                                String[] hostPort = request[1].split(":", -1);
                                 Socket upstream =
                                         new Socket(hostPort[0], Integer.parseInt(hostPort[1]));
                                 this.resources.add(upstream);

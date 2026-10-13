@@ -28,6 +28,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -241,7 +242,9 @@ public final class Engine implements NjMuleEngine {
 
     // Engine thread: which rule holds now, and the preferences it gives.
     private void refreshSchedule() {
-        Schedule.Rule rule = this.schedule.active(LocalDateTime.now()).orElse(null);
+        // The rules are in the user's local time.
+        Schedule.Rule rule =
+                this.schedule.active(LocalDateTime.now(ZoneId.systemDefault())).orElse(null);
         Preferences base = this.preferences;
         this.effective = rule == null ? base : rule.applyTo(base);
         if (!Objects.equals(rule, this.activeRule)) {

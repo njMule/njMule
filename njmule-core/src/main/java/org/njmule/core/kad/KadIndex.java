@@ -309,7 +309,7 @@ final class KadIndex {
     private static boolean containsWords(String name, String words) {
         String haystack = KadLowerCase.toLowerCase(name);
         for (String part :
-                KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+")) {
+                KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
             if (!part.isEmpty() && !haystack.contains(part)) {
                 return false;
             }

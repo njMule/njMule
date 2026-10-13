@@ -229,11 +229,9 @@ public final class DownloadQueue implements AutoCloseable {
         if (!download.isActive() || end > download.file.size()) {
             return;
         }
-        download.storage
-                .write(start, data)
-                .whenComplete(
-                        (ok, failure) ->
-                                this.loop.post(() -> this.written(download, start, end, failure)));
+        this.loop.whenDone(
+                download.storage.write(start, data),
+                (ok, failure) -> this.written(download, start, end, failure));
     }
 
     /** The hash set arrived: parts finished before it can now be checked. */
@@ -309,18 +307,9 @@ public final class DownloadQueue implements AutoCloseable {
         if (expected.isEmpty()) {
             return;
         }
-        download.storage
-                .hashPart(download.file.size(), part)
-                .whenComplete(
-                        (actual, failure) ->
-                                this.loop.post(
-                                        () ->
-                                                this.checked(
-                                                        download,
-                                                        part,
-                                                        expected.get(),
-                                                        actual,
-                                                        failure)));
+        this.loop.whenDone(
+                download.storage.hashPart(download.file.size(), part),
+                (actual, failure) -> this.checked(download, part, expected.get(), actual, failure));
     }
 
     private void checked(
@@ -351,11 +340,9 @@ public final class DownloadQueue implements AutoCloseable {
             this.listener.failed(download, e.getMessage());
             return;
         }
-        download.storage
-                .finish(target)
-                .whenComplete(
-                        (moved, failure) ->
-                                this.loop.post(() -> this.finished(download, moved, failure)));
+        this.loop.whenDone(
+                download.storage.finish(target),
+                (moved, failure) -> this.finished(download, moved, failure));
     }
 
     private void finished(Download download, Path moved, Throwable failure) {

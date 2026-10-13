@@ -147,10 +147,17 @@ class ScheduleTest {
         assertThat(ScheduleCodec.load(this.dir.resolve("none"))).isEqualTo(Schedule.EMPTY);
         Files.writeString(
                 file,
-                "rule.1.name=good\nrule.1.days=MONDAY\nrule.1.start=01:00\nrule.1.end=02:00\n"
-                        + "rule.2.name=bad\nrule.2.start=25:00\n"
-                        + "rule.3.name=worse\nrule.3.days=FUNDAY\n"
-                        + "rule.x.name=odd\n");
+                """
+                rule.1.name=good
+                rule.1.days=MONDAY
+                rule.1.start=01:00
+                rule.1.end=02:00
+                rule.2.name=bad
+                rule.2.start=25:00
+                rule.3.name=worse
+                rule.3.days=FUNDAY
+                rule.x.name=odd
+                """);
         assertThat(ScheduleCodec.load(file).rules())
                 .extracting(Schedule.Rule::name)
                 .containsExactly("good");

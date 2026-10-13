@@ -118,7 +118,7 @@ public final class FilePublisher {
                 break;
             }
             if (this.offered.contains(offer.hash())
-                    || offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large) {
+                    || (offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large)) {
                 continue;
             }
             batch.add(this.entry(offer, id.get(), flags));

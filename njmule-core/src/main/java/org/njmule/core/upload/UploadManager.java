@@ -441,11 +441,10 @@ public final class UploadManager implements AutoCloseable {
         UploadSession.Block block = next.get();
         Uploadable file = slot.client.file;
         slot.reading = true;
-        Blocks.read(file.data(), block.start(), Math.toIntExact(block.end() - block.start()))
-                .whenComplete(
-                        (data, failure) ->
-                                this.loop.post(
-                                        () -> this.blockRead(slot, file, block, data, failure)));
+        this.loop.whenDone(
+                Blocks.read(
+                        file.data(), block.start(), Math.toIntExact(block.end() - block.start())),
+                (data, failure) -> this.blockRead(slot, file, block, data, failure));
     }
 
     private void blockRead(
@@ -489,7 +488,7 @@ public final class UploadManager implements AutoCloseable {
             double bestScore = -1;
             for (Client c : this.waiting.values()) {
                 boolean reachable = c.session != null && c.session.isOpen();
-                if (c.connecting || !reachable && c.lowId) {
+                if (c.connecting || (!reachable && c.lowId)) {
                     continue;
                 }
                 double score = this.score(c, now);

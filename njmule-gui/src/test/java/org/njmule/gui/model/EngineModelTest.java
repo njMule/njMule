@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
@@ -105,6 +106,7 @@ class EngineModelTest {
                                 == DownloadInfo.Status.DOWNLOADING);
         m.cancel(FILE);
         until(() -> m.downloads().size() == 0);
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 
     @Test

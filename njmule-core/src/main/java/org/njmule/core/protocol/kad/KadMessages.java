@@ -212,6 +212,8 @@ public final class KadMessages {
     }
 
     /** KADEMLIA2_SEARCH_KEY_REQ: files under a keyword, with an optional search expression. */
+    // A message decoded or about to be sent, never compared.
+    @SuppressWarnings("ArrayRecordComponent")
     public record KeywordSearch(UInt128 target, int start, byte[] expression) {
         public KeywordSearch {
             Objects.requireNonNull(target, "target");

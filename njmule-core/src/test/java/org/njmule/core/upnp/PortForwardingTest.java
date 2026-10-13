@@ -126,9 +126,11 @@ class PortForwardingTest {
     void answersCarryTheirLocation() {
         assertThat(
                         Igd.location(
-                                "HTTP/1.1 200 OK\r\n"
-                                        + "Cache-Control: max-age=120\r\n"
-                                        + "Location: http://10.0.0.1:5000/d.xml\r\n"))
+                                """
+                                HTTP/1.1 200 OK\r
+                                Cache-Control: max-age=120\r
+                                Location: http://10.0.0.1:5000/d.xml\r
+                                """))
                 .hasValueSatisfying(
                         u -> assertThat(u.toString()).isEqualTo("http://10.0.0.1:5000/d.xml"));
         assertThat(Igd.location("HTTP/1.1 200 OK\r\n")).isEmpty();
@@ -220,7 +222,7 @@ class PortForwardingTest {
         String request = head.toString(StandardCharsets.ISO_8859_1);
         int length = 0;
         String action = "";
-        for (String line : request.split("\r\n")) {
+        for (String line : request.split("\r\n", -1)) {
             String lower = line.toLowerCase(Locale.ROOT);
             if (lower.startsWith("content-length:")) {
                 length = Integer.parseInt(line.substring(15).strip());

@@ -32,8 +32,8 @@ public final class I18n {
     /** The languages of the interface; English first. */
     public static final List<Locale> LANGUAGES = List.of(Locale.ENGLISH, Locale.ITALIAN);
 
-    private static final String EMULE = "org.njmule.gui.i18n.emule";
-    private static final String NJMULE = "org.njmule.gui.i18n.nj";
+    private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
+    private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
 
     private final Locale locale;
     private final ResourceBundle emule;
@@ -44,8 +44,8 @@ public final class I18n {
         // English is the base bundle: asking for the root locale never falls back to the
         // system's language.
         Locale lookup = locale.getLanguage().equals("en") ? Locale.ROOT : locale;
-        this.emule = ResourceBundle.getBundle(EMULE, lookup);
-        this.njmule = ResourceBundle.getBundle(NJMULE, lookup);
+        this.emule = ResourceBundle.getBundle(EMULE_BUNDLE, lookup);
+        this.njmule = ResourceBundle.getBundle(NJMULE_BUNDLE, lookup);
     }
 
     /** The texts of {@code locale}'s language, or English when there is no translation. */

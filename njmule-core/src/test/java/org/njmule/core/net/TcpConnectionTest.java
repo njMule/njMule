@@ -140,7 +140,8 @@ class TcpConnectionTest {
     private void exchangeWithServer(boolean obfuscated) throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
             CompletableFuture<Packet> received = new CompletableFuture<>();
-            CompletableFuture.runAsync(() -> serveOnce(server, obfuscated, received));
+            CompletableFuture<Void> serving =
+                    CompletableFuture.runAsync(() -> serveOnce(server, obfuscated, received));
             Recorder recorder = new Recorder();
             TcpConnection connection =
                     TcpConnector.connectToServer(
@@ -156,6 +157,7 @@ class TcpConnectionTest {
             assertThat(recorder.next()).isEqualTo(Packet.of(Protocol.EDONKEY, 0x38, new byte[2]));
             assertThat(connection.isObfuscated()).isEqualTo(obfuscated);
             connection.close();
+            serving.get(5, TimeUnit.SECONDS);
         }
     }
 

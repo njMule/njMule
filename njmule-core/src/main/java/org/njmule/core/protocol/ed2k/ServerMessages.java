@@ -328,7 +328,7 @@ public final class ServerMessages {
     public static List<String> decodeMessage(Packet packet) throws DecodeException {
         String text = packet.reader().string16();
         List<String> lines = new ArrayList<>();
-        for (String line : text.split("[\\r\\n]+")) {
+        for (String line : text.split("[\\r\\n]+", -1)) {
             String stripped = line.strip();
             if (!stripped.isEmpty()) {
                 lines.add(stripped);

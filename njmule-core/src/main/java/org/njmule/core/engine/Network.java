@@ -1162,17 +1162,14 @@ final class Network {
                                     != ObfuscationMode.DISABLED;
             InetSocketAddress address =
                     new InetSocketAddress(Ipv4.format(ip), request.endpoint().port());
-            Network.this
-                    .greetings
-                    .greet(address, obfuscate ? request.userHash() : Optional.empty())
-                    .whenComplete(
-                            (peer, failure) ->
-                                    logger.debug(
-                                            "Callback to {}: {}",
-                                            address,
-                                            failure == null
-                                                    ? peer.software()
-                                                    : failure.getMessage()));
+            Network.this.loop.whenDone(
+                    Network.this.greetings.greet(
+                            address, obfuscate ? request.userHash() : Optional.empty()),
+                    (peer, failure) ->
+                            logger.debug(
+                                    "Callback to {}: {}",
+                                    address,
+                                    failure == null ? peer.software() : failure.getMessage()));
         }
 
         @Override

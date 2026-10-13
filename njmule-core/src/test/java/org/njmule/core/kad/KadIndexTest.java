@@ -104,7 +104,7 @@ class KadIndexTest {
             tags.add(
                     new Tag.StringTag(
                             TagName.id(FileTag.MEDIA_ARTIST), i % 2 == 0 ? "Even" : "Odd"));
-            tags.add(new Tag.IntTag(TagName.id(FileTag.MEDIA_BITRATE), 128 * (i + 1)));
+            tags.add(new Tag.IntTag(TagName.id(FileTag.MEDIA_BITRATE), 128L * (i + 1)));
             tags.add(new Tag.IntTag(TagName.id(FileTag.PUBLISHINFO), 7));
             this.index.publishKeyword(
                     this.keyword,
