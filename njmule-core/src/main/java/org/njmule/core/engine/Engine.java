@@ -18,26 +18,42 @@ package org.njmule.core.engine;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.PreferencesCodec;
+import org.njmule.core.persist.UserHashStore;
+import org.njmule.core.server.ServerList;
+import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,8 +71,11 @@ public final class Engine implements NjMuleEngine {
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
+    private final Network network;
 
-    private Engine(AppDirectories directories, Preferences preferences, EngineLoop loop) {
+    private Engine(
+            AppDirectories directories, Preferences preferences, EngineLoop loop, Hash16 userHash)
+            throws IOException {
         this.directories = directories;
         this.preferencesFile = directories.config().resolve(PreferencesCodec.FILE_NAME);
         this.preferences = preferences;
@@ -65,6 +84,14 @@ public final class Engine implements NjMuleEngine {
                 Executors.newSingleThreadExecutor(
                         Thread.ofPlatform().name("njmule-events").daemon(true).factory());
         this.events = new SubmissionPublisher<>(this.eventExecutor, EVENT_BUFFER);
+        this.network =
+                new Network(
+                        loop,
+                        directories.config(),
+                        () -> this.preferences,
+                        this::publish,
+                        this::userLog,
+                        userHash);
     }
 
     public static Engine start(EngineConfig config) throws IOException {
@@ -76,7 +103,22 @@ public final class Engine implements NjMuleEngine {
         Preferences prefs = PreferencesCodec.load(prefsFile);
         PreferencesCodec.save(prefsFile, prefs);
 
-        Engine engine = new Engine(dirs, prefs, EngineLoop.start());
+        Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
+        EngineLoop loop = EngineLoop.start();
+        Engine engine;
+        try {
+            engine = new Engine(dirs, prefs, loop, userHash);
+        } catch (IOException | RuntimeException e) {
+            loop.close();
+            throw e;
+        }
+        engine.loop
+                .submit(
+                        () -> {
+                            engine.network.start();
+                            return null;
+                        })
+                .join();
         engine.publish(new EngineEvent.Started(NjMuleInfo.version()));
         engine.userLog(
                 LogLine.Level.INFO, NjMuleInfo.NAME + " " + NjMuleInfo.version() + " started");
@@ -120,6 +162,72 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Integer> addServers(Path serverMet) {
+        Objects.requireNonNull(serverMet, "serverMet");
+        return this.loop.submit(() -> this.network.addServers(serverMet));
+    }
+
+    @Override
+    public CompletableFuture<Void> connect(Optional<ServerAddress> server) {
+        Objects.requireNonNull(server, "server");
+        if (server.isEmpty()) {
+            return this.loop.submit(
+                    () -> {
+                        this.network.connect(Optional.empty());
+                        return null;
+                    });
+        }
+        int port = server.get().port();
+        return resolve(server.get().host())
+                .thenCompose(
+                        ip ->
+                                this.loop.submit(
+                                        () -> {
+                                            this.network.connect(
+                                                    Optional.of(new ServerList.Address(ip, port)));
+                                            return null;
+                                        }));
+    }
+
+    @Override
+    public CompletableFuture<Void> disconnect() {
+        return this.loop.submit(
+                () -> {
+                    this.network.disconnect();
+                    return null;
+                });
+    }
+
+    @Override
+    public CompletableFuture<SearchId> search(SearchRequest request) {
+        Objects.requireNonNull(request, "request");
+        return this.loop.submit(() -> this.network.search(request));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> moreResults(SearchId search) {
+        return this.loop.submit(() -> this.network.moreResults(search));
+    }
+
+    @Override
+    public CompletableFuture<Void> stopSearch(SearchId search) {
+        return this.loop.submit(
+                () -> {
+                    this.network.stopSearch(search);
+                    return null;
+                });
+    }
+
+    @Override
+    public CompletableFuture<PeerInfo> hello(ServerAddress peer) {
+        return resolve(peer.host())
+                .thenCompose(
+                        ip ->
+                                this.network.hello(
+                                        new InetSocketAddress(Ipv4.format(ip), peer.port())));
+    }
+
+    @Override
     public boolean isRunning() {
         return !this.closed.get() && this.loop.isRunning();
     }
@@ -131,6 +239,19 @@ public final class Engine implements NjMuleEngine {
         }
         this.publish(new EngineEvent.Stopping());
         LOG.info("Stopping {}", NjMuleInfo.NAME);
+        try {
+            this.loop
+                    .submit(
+                            () -> {
+                                this.network.close();
+                                return null;
+                            })
+                    .get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            LOG.warn("Closing the network failed", e);
+        }
         this.loop.close();
         this.events.close();
         this.eventExecutor.shutdown();
@@ -153,6 +274,29 @@ public final class Engine implements NjMuleEngine {
             case ERROR -> LOG.error("{}", message);
         }
         this.publish(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
+    }
+
+    // Name lookups block, so they run on a virtual thread; the eD2K network is IPv4 only.
+    private static CompletableFuture<Integer> resolve(String host) {
+        CompletableFuture<Integer> ip = new CompletableFuture<>();
+        Thread.ofVirtual()
+                .name("njmule-resolve")
+                .start(
+                        () -> {
+                            try {
+                                for (InetAddress address : InetAddress.getAllByName(host)) {
+                                    if (address instanceof Inet4Address v4) {
+                                        ip.complete(Ipv4.fromBytes(v4.getAddress()));
+                                        return;
+                                    }
+                                }
+                                ip.completeExceptionally(
+                                        new UnknownHostException("no IPv4 address for " + host));
+                            } catch (UnknownHostException e) {
+                                ip.completeExceptionally(e);
+                            }
+                        });
+        return ip;
     }
 
     // Slow subscribers lose events instead of stalling the engine.

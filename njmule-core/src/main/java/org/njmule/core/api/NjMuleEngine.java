@@ -17,6 +17,8 @@
 package org.njmule.core.api;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.function.UnaryOperator;
@@ -44,6 +46,30 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<Preferences> updatePreferences(UnaryOperator<Preferences> change);
 
     Flow.Publisher<EngineEvent> events();
+
+    /**
+     * Adds the servers of a {@code server.met} (e.g. eMule's); completes with how many were new.
+     */
+    CompletableFuture<Integer> addServers(Path serverMet);
+
+    /**
+     * Connects to {@code server} (added to the list when new), or tries the known servers in turn
+     * when empty. The future completes once the attempt has started; events tell the outcome.
+     */
+    CompletableFuture<Void> connect(Optional<ServerAddress> server);
+
+    CompletableFuture<Void> disconnect();
+
+    /** Starts a search; fails for an invalid expression or without a server connection. */
+    CompletableFuture<SearchId> search(SearchRequest request);
+
+    /** Asks the server for more results; completes with {@code false} when it has none. */
+    CompletableFuture<Boolean> moreResults(SearchId search);
+
+    CompletableFuture<Void> stopSearch(SearchId search);
+
+    /** Says hello to the client at {@code peer} and completes with its answer. */
+    CompletableFuture<PeerInfo> hello(ServerAddress peer);
 
     boolean isRunning();
 
