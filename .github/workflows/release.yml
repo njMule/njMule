@@ -186,7 +186,9 @@ jobs:
                   $msi = (Resolve-Path "dist\njmule-$env:VERSION-windows-x64.msi").Path
                   $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn") -PassThru -Wait
                   if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
-                  $dir = "$env:LOCALAPPDATA\Programs\njMule"
+                  # Per user, or for all users when the account is an administrator.
+                  $dir = (Get-ItemProperty HKCU:\Software\njMule).InstallFolder
+                  "Installed in $dir"
                   & "$dir\njmule.exe" --version
                   $tour = "$env:RUNNER_TEMP\tour"
                   New-Item -ItemType Directory -Force "$tour\config" | Out-Null
