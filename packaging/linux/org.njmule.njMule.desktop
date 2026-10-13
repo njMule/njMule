@@ -13,4 +13,4 @@ Terminal=false
 Categories=Network;P2P;FileTransfer;
 MimeType=x-scheme-handler/ed2k;
 Keywords=ed2k;kad;emule;p2p;
-StartupWMClass=njMule
+StartupWMClass=org.njmule.gui.NjMuleFxApp
