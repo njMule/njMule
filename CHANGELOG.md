@@ -157,6 +157,9 @@ All notable changes to this project are documented here. The format follows
   downloads put in them and file name patterns that sort new downloads into them; the transfers
   screen shows one category at a time and moves downloads between them. eMule's categories are
   imported with their numbers, so its downloads stay in theirs.
+- A server.met or a nodes.dat can be taken from an address, as in eMule: the box offers the
+  addresses used before, and server list and nodes.dat links from the browser are followed. The
+  lists are fetched over http or https from public addresses only, within size and redirect limits.
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
@@ -219,5 +222,6 @@ All notable changes to this project are documented here. The format follows
   when a screen reader or another accessibility tool reads it.
 - Closing the main window ends njMule even while one of its dialogs is open.
 - The tray menu and the small status window follow a change of language at once.
+- Dialogs and alerts show the njMule icon.
 - A proxy keeps its type when the preferences are read again.
 - Italian texts that carry a translator's note are no longer lost.
