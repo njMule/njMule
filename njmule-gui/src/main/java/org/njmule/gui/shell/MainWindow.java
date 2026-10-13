@@ -189,6 +189,11 @@ public final class MainWindow {
         return this.current;
     }
 
+    /** The ids of the screens, in rail order. */
+    public List<String> screenIds() {
+        return List.copyOf(this.screens.keySet());
+    }
+
     /** The screen {@code id}, for tests. */
     public Optional<Screen> screen(String id) {
         return Optional.ofNullable(this.screens.get(id));

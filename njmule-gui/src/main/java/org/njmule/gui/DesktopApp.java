@@ -136,12 +136,14 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> this.model.tick()));
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
-        // At the first start an eMule on this computer is offered for import.
-        if (!this.settings.existed()) {
+        LOG.info("Main window shown");
+        if (GuiTour.requested()) {
+            GuiTour.start(this.gui, this.window, stage, Platform::exit);
+        } else if (!this.settings.existed()) {
+            // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory()
                     .ifPresent(dir -> new ImportDialog(this.gui, stage).show());
         }
-        LOG.info("Main window shown");
     }
 
     public MainWindow window() {
