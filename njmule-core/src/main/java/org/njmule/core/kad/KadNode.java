@@ -229,29 +229,40 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return;
         }
         try {
-            NodesDat.Contents contents = NodesDat.read(Files.readAllBytes(file));
-            boolean anyVerified = false;
-            for (NodesDat.Contact c : contents.contacts()) {
-                anyVerified |= c.verified();
-            }
-            long now = this.ticker.read();
-            for (NodesDat.Contact c : contents.contacts()) {
-                if (contents.bootstrap()) {
-                    this.bootstrap(c.ip(), c.udpPort());
-                    continue;
-                }
-                if (!this.isGoodAddress(c.ip())) {
-                    continue;
-                }
-                KadContact contact =
-                        new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
-                contact.setVerified(c.verified() || !anyVerified);
-                this.table.add(contact, false, c.udpKey(), this.publicIp, now);
-            }
+            this.addContacts(NodesDat.read(Files.readAllBytes(file)));
             LOG.info("{} Kad contacts from {}", this.table.size(), file.getFileName());
         } catch (IOException e) {
             LOG.warn("Cannot read {}", file, e);
         }
+    }
+
+    /**
+     * Adds the contacts of a {@code nodes.dat}, or bootstraps from them; returns how many were new.
+     */
+    public int addContacts(NodesDat.Contents contents) {
+        boolean anyVerified = false;
+        for (NodesDat.Contact c : contents.contacts()) {
+            anyVerified |= c.verified();
+        }
+        long now = this.ticker.read();
+        int added = 0;
+        for (NodesDat.Contact c : contents.contacts()) {
+            if (contents.bootstrap()) {
+                this.bootstrap(c.ip(), c.udpPort());
+                continue;
+            }
+            if (!this.isGoodAddress(c.ip())) {
+                continue;
+            }
+            KadContact contact =
+                    new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
+            contact.setVerified(c.verified() || !anyVerified);
+            if (this.table.add(contact, false, c.udpKey(), this.publicIp, now)
+                    == RoutingTable.Outcome.ADDED) {
+                added++;
+            }
+        }
+        return added;
     }
 
     /** Writes the best contacts to {@code nodes.dat}. */
