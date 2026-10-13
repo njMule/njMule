@@ -7,8 +7,10 @@
     to %LOCALAPPDATA%\Programs\njMule, which njMule never writes to; settings and downloads stay
     in the user's folders and survive an uninstall.
 
-    wix build packaging/windows/njmule.wxs -arch x64 -d Version=1.2.3 -d BinDir=<dir with the
-        executables> -d DocDir=<dir with LICENSE, NOTICE, README.md> -o njmule.msi
+    wix build packaging/windows/njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes
+        -d BinDir=<absolute dir with the executables> -d DocDir=<absolute dir with LICENSE, NOTICE,
+        README.md> -o njmule.msi
+    (WiX resolves relative directories from this file's own directory.)
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
     <Package

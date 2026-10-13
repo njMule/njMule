@@ -86,7 +86,15 @@ jobs:
                   $name = "njmule-$env:VERSION-windows-x64"
                   New-Item -ItemType Directory -Force "stage\$name", dist | Out-Null
                   Copy-Item njmule-app/target/njmule.exe, njmule-gui/target/native/* "stage\$name"
-                  wix build packaging/windows/njmule.wxs -arch x64 -d "Version=$env:NUMERIC" -d "BinDir=stage\$name" -d DocDir=. -d Gui=yes -o "dist\$name.msi"
+                  # Absolute paths: WiX resolves relative ones from the .wxs file's directory.
+                  $bin = (Resolve-Path "stage\$name").Path
+                  $docs = (Resolve-Path .).Path
+                  wix build packaging/windows/njmule.wxs -wx -arch x64 -d "Version=$env:NUMERIC" -d "BinDir=$bin" -d "DocDir=$docs" -d Gui=yes -o "dist\$name.msi"
+                  # The installer must carry the programs: unpack it and look.
+                  wix msi decompile "dist\$name.msi" -x "$env:RUNNER_TEMP\msi" -o "$env:RUNNER_TEMP\msi.wxs"
+                  foreach ($exe in "njmule.exe", "njmule-gui.exe") {
+                      if (-not (Select-String -Quiet -SimpleMatch $exe "$env:RUNNER_TEMP\msi.wxs")) { throw "$exe is missing from the MSI" }
+                  }
                   Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
