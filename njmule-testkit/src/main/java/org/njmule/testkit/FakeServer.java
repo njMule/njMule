@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -130,6 +131,18 @@ public final class FakeServer implements AutoCloseable {
             return server;
         }
         throw new BindException("no free TCP/UDP port pair");
+    }
+
+    /**
+     * A server that answers every search with the files {@code names}, each of {@code size} bytes;
+     * for callers that see only the public API.
+     */
+    public static Config finding(long clientId, String welcome, long size, String... names) {
+        List<FileEntry> files = new ArrayList<>();
+        for (String name : names) {
+            files.add(file(name, size, 5));
+        }
+        return new Config(clientId, welcome, files);
     }
 
     /** A search result with a hash derived from the name. */
