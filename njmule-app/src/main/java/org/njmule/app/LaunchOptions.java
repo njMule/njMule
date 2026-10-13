@@ -46,7 +46,7 @@ public record LaunchOptions(
         boolean headless,
         NetworkTasks network,
         Optional<WebUiSetup> webUi,
-        List<Ed2kLink.FileLink> links) {
+        List<Ed2kLink> links) {
 
     public LaunchOptions {
         files = List.copyOf(files);
@@ -207,7 +207,7 @@ public record LaunchOptions(
                 result.hasMatchedOption(HEADLESS_OPTION),
                 network,
                 webUi(result),
-                fileLinks(result.matchedPositionalValue(0, List.<String>of())));
+                links(result.matchedPositionalValue(0, List.<String>of())));
     }
 
     /** The help text, without colours. */
@@ -396,6 +396,14 @@ public record LaunchOptions(
                 throw new UsageException("Not an ed2k file link: " + value);
             }
             links.add(link);
+        }
+        return links;
+    }
+
+    private static List<Ed2kLink> links(List<String> values) throws UsageException {
+        List<Ed2kLink> links = new ArrayList<>(values.size());
+        for (String value : values) {
+            links.add(Ed2kLink.tryParse(value).orElseThrow(() -> new UsageException("Not an ed2k link: " + value)));
         }
         return links;
     }

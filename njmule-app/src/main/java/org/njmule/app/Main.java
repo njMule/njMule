@@ -21,6 +21,7 @@ import java.io.Console;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
@@ -266,8 +268,8 @@ public final class Main {
         }
 
         Optional<WebUi> web = startWebUi(engine, dirs, out);
-        for (Ed2kLink.FileLink link : cli.links()) {
-            added(engine.addDownload(link), err);
+        for (Ed2kLink link : cli.links()) {
+            follow(engine, link, err);
         }
         Optional<LinkHandoff> handoff = listen(engine, dirs, err);
         Runnable shutdown = () -> {
@@ -299,15 +301,45 @@ public final class Main {
         try {
             return Optional.of(LinkHandoff.listen(dirs.config(), links -> {
                 for (String text : links) {
-                    if (Ed2kLink.tryParse(text).orElse(null) instanceof Ed2kLink.FileLink link) {
-                        added(engine.addDownload(link), err);
-                    }
+                    Ed2kLink.tryParse(text).ifPresent(link -> follow(engine, link, err));
                 }
             }));
         } catch (IOException e) {
             logger.warn("Later starts cannot hand their links over: {}", e.toString());
             return Optional.empty();
         }
+    }
+
+    // A file link downloads, a server list or nodes.dat link takes the servers or the Kad contacts at its address.
+    @SuppressWarnings("FutureReturnValueIgnored") // the follow-ups report their own outcome
+    private static void follow(NjMuleEngine engine, Ed2kLink link, PrintStream err) {
+        switch (link) {
+            case Ed2kLink.FileLink file -> added(engine.addDownload(file), err);
+            case Ed2kLink.ServerListLink list ->
+                engine.addServers(URI.create(list.url())).whenComplete((n, failure) -> {
+                    if (failure != null) {
+                        err.println("Cannot take the server list: " + reason(failure));
+                    } else {
+                        logger.info("{} new servers from {}", n, list.url());
+                    }
+                });
+            case Ed2kLink.NodesListLink list ->
+                engine.addKadContacts(URI.create(list.url())).whenComplete((n, failure) -> {
+                    if (failure != null) {
+                        err.println("Cannot take the Kad contacts: " + reason(failure));
+                    } else {
+                        logger.info("{} new Kad contacts from {}", n, list.url());
+                    }
+                });
+            default -> logger.info("Not acting on {}", link.toUri());
+        }
+    }
+
+    // What went wrong, without the wrapping of the future.
+    private static String reason(Throwable failure) {
+        Throwable cause =
+                failure instanceof CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+        return String.valueOf(cause.getMessage());
     }
 
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-up reports its own outcome

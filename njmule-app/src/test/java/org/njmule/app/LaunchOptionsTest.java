@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions.Action;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
 
@@ -123,11 +124,16 @@ class LaunchOptionsTest {
         LaunchOptions cli = LaunchOptions.parse(link, "--log-level", "info");
 
         assertThat(cli.action()).isEqualTo(Action.RUN);
-        assertThat(cli.links()).extracting(l -> l.name()).containsExactly("a.iso");
+        assertThat(cli.links()).containsExactly(Ed2kLink.parse(link));
         assertThat(cli.network().isOneShot())
                 .as("the links are not a download that ends the run")
                 .isFalse();
-        assertThatThrownBy(() -> LaunchOptions.parse("ed2k://|server|1.2.3.4|4661|/"))
+        assertThat(LaunchOptions.parse("ed2k://|serverlist|https://example.org/server.met|/")
+                        .links())
+                .as("server list links too, for the instance to follow")
+                .singleElement()
+                .isInstanceOf(Ed2kLink.ServerListLink.class);
+        assertThatThrownBy(() -> LaunchOptions.parse("ed2k://nothing"))
                 .isInstanceOf(LaunchOptions.UsageException.class);
     }
 
