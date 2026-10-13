@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# deb and rpm packages (nfpm): VERSION and STAGE (the directory with the executables, the shared
+# libraries next to the desktop executable and the documents) come from the environment.
+#   VERSION=1.2.3 STAGE=stage nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+name: njmule
+arch: amd64
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: net
+priority: optional
+maintainer: njMule contributors <https://github.com/njMule/njMule/issues>
+vendor: njMule contributors
+homepage: https://github.com/njMule/njMule
+license: GPL-3.0-or-later
+description: |-
+  Next generation Java Mule: eD2K and Kad file sharing.
+  njMule is a file sharing client for the eD2K and Kad networks, compatible with
+  eMule: server and Kad searches, downloads checked part by part, uploads with
+  credits and secure identification, a desktop and a web interface, and the import
+  of an existing eMule profile.
+
+overrides:
+  deb:
+    depends:
+      - libgtk-3-0t64 | libgtk-3-0
+      - libxtst6
+  rpm:
+    depends:
+      - gtk3
+      - libXtst
+
+contents:
+  - src: ${STAGE}/njmule
+    dst: /usr/bin/njmule
+    file_info:
+      mode: 0755
+  # The desktop executable finds its shared libraries in its own directory.
+  - src: ${STAGE}/gui/
+    dst: /usr/lib/njmule/
+    type: tree
+  - src: /usr/lib/njmule/njmule-gui
+    dst: /usr/bin/njmule-gui
+    type: symlink
+  - src: packaging/linux/org.njmule.njMule.desktop
+    dst: /usr/share/applications/org.njmule.njMule.desktop
+  - src: packaging/linux/org.njmule.njMule.metainfo.xml
+    dst: /usr/share/metainfo/org.njmule.njMule.metainfo.xml
+  - src: branding/njmule-icon.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/org.njmule.njMule.svg
+  - src: branding/generated/njmule-16.png
+    dst: /usr/share/icons/hicolor/16x16/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-32.png
+    dst: /usr/share/icons/hicolor/32x32/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-64.png
+    dst: /usr/share/icons/hicolor/64x64/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-128.png
+    dst: /usr/share/icons/hicolor/128x128/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/org.njmule.njMule.png
+  - src: branding/generated/njmule-512.png
+    dst: /usr/share/icons/hicolor/512x512/apps/org.njmule.njMule.png
+  - src: LICENSE
+    dst: /usr/share/licenses/njmule/LICENSE
+  - src: ${STAGE}/doc/
+    dst: /usr/share/doc/njmule/
+    type: tree
+
+scripts:
+  postinstall: packaging/linux/refresh.sh
+  postremove: packaging/linux/refresh.sh

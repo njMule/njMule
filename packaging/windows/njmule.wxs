@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+    SPDX-License-Identifier: GPL-3.0-or-later
+
+    Windows installer (WiX 5): a per-user MSI that needs no administrator rights. The programs go
+    to %LOCALAPPDATA%\Programs\njMule, which njMule never writes to; settings and downloads stay
+    in the user's folders and survive an uninstall.
+
+    wix build packaging/windows/njmule.wxs -arch x64 -d Version=1.2.3 -d BinDir=<dir with the
+        executables> -d DocDir=<dir with LICENSE, NOTICE, README.md> -o njmule.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Package
+            Name="njMule"
+            Manufacturer="njMule contributors"
+            Version="$(var.Version)"
+            UpgradeCode="753516BB-36CF-406D-8D2B-DF38A0310EAF"
+            Scope="perUserOrMachine"
+            Language="1033">
+        <SummaryInformation Description="njMule $(var.Version): eD2K and Kad file sharing"/>
+        <MajorUpgrade DowngradeErrorMessage="A newer version of njMule is already installed."/>
+        <MediaTemplate EmbedCab="yes"/>
+        <!-- perUserOrMachine installs for the current user by default (no UAC prompt);
+             MSIINSTALLPERUSER="" installs for every user. -->
+
+        <Icon Id="njmule.ico" SourceFile="branding/generated/njmule.ico"/>
+        <Property Id="ARPPRODUCTICON" Value="njmule.ico"/>
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/njMule/njMule"/>
+        <Property Id="ARPHELPLINK" Value="https://github.com/njMule/njMule/issues"/>
+        <Property Id="ARPNOMODIFY" Value="1"/>
+
+        <!-- Windows redirects it to %LOCALAPPDATA%\Programs for a per-user installation. -->
+        <StandardDirectory Id="ProgramFiles6432Folder">
+            <Directory Id="INSTALLFOLDER" Name="njMule"/>
+        </StandardDirectory>
+
+        <ComponentGroup Id="Programs" Directory="INSTALLFOLDER">
+            <Files Include="$(var.BinDir)\**"/>
+            <File Source="$(var.DocDir)\LICENSE" Name="LICENSE.txt"/>
+            <File Source="$(var.DocDir)\NOTICE" Name="NOTICE.txt"/>
+            <File Source="$(var.DocDir)\README.md"/>
+            <!-- The command-line launcher on the user's PATH. -->
+            <Component Id="UserPath">
+                <Environment
+                        Id="UserPath"
+                        Name="PATH"
+                        Value="[INSTALLFOLDER]"
+                        Part="last"
+                        Action="set"
+                        System="no"/>
+                <RemoveFolder Id="RemoveInstallFolder" On="uninstall"/>
+                <RegistryValue
+                        Root="HKCU"
+                        Key="Software\njMule"
+                        Name="InstallFolder"
+                        Type="string"
+                        Value="[INSTALLFOLDER]"
+                        KeyPath="yes"/>
+            </Component>
+        </ComponentGroup>
+
+        <?if $(var.Gui) = yes ?>
+        <ComponentGroup Id="Desktop" Directory="ProgramMenuFolder">
+            <Component Id="StartMenuShortcut">
+                <Shortcut
+                        Id="StartMenuShortcut"
+                        Name="njMule"
+                        Description="eD2K and Kad file sharing"
+                        Target="[INSTALLFOLDER]njmule-gui.exe"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="njmule.ico">
+                    <ShortcutProperty Key="System.AppUserModel.ID" Value="org.njmule.njMule"/>
+                </Shortcut>
+                <RegistryValue
+                        Root="HKCU"
+                        Key="Software\njMule"
+                        Name="StartMenuShortcut"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes"/>
+            </Component>
+        </ComponentGroup>
+        <?endif?>
+
+        <Feature Id="Main" Title="njMule">
+            <ComponentGroupRef Id="Programs"/>
+            <?if $(var.Gui) = yes ?>
+            <ComponentGroupRef Id="Desktop"/>
+            <?endif?>
+        </Feature>
+    </Package>
+</Wix>
