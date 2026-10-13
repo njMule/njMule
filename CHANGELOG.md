@@ -238,6 +238,9 @@ All notable changes to this project are documented here. The format follows
   begins.
 - The Kad screen lists the contacts of the routing table (id, type, distance, address, version),
   closest first, and the lookups running now.
+- View Shared Files asks a client of the transfer lists for the files it shares, shown in a window
+  to download from; our own list is shown to everybody, friends or nobody (the default; eMule's
+  SeeShare setting is imported).
 
 ### Changed
 

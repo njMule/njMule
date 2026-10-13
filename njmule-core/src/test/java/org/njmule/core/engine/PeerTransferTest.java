@@ -41,8 +41,10 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.persist.format.ClientsMet;
 
 @Timeout(120)
@@ -97,6 +99,34 @@ class PeerTransferTest {
         assertThat(atUploader.publicKey().length()).isPositive();
         assertThat(atDownloader.downloaded()).isGreaterThan(5_000_000);
         assertThat(atDownloader.publicKey().length()).isPositive();
+    }
+
+    @Test
+    void anotherNjMuleSeesOurFilesOnlyWhenThePreferencesSaySo() throws Exception {
+        Path uploaderRoot = this.dir.resolve("browsed");
+        Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
+        Files.write(incoming.resolve("film.mkv"), new byte[300_000]);
+        NjMuleEngine browsed = this.engine(uploaderRoot);
+        SharedFileInfo shared = awaitShared(browsed);
+        NjMuleEngine browser = this.engine(this.dir.resolve("browser"));
+        ServerAddress address =
+                new ServerAddress("127.0.0.1", browsed.preferences().tcpPort());
+
+        assertThat(browser.browseSharedFiles(address).get(30, TimeUnit.SECONDS))
+                .as("nobody sees them by default")
+                .isEmpty();
+
+        browsed.updatePreferences(p -> p.toBuilder()
+                        .sharedFilesVisibility(SharedFilesVisibility.EVERYBODY)
+                        .build())
+                .get(10, TimeUnit.SECONDS);
+        assertThat(browser.browseSharedFiles(address).get(30, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(f -> {
+                    assertThat(f.hash()).isEqualTo(shared.hash());
+                    assertThat(f.name()).isEqualTo("film.mkv");
+                    assertThat(f.size()).isEqualTo(300_000);
+                });
     }
 
     private static ClientsMet.Credit onlyCredit(Path root) throws IOException {

@@ -35,6 +35,7 @@ import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,6 +100,11 @@ public final class PreferencesCodec {
                 Preferences::newConnectionsPerFiveSeconds,
                 Preferences.Builder::newConnectionsPerFiveSeconds);
         intKey("upload.queueSize", Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize);
+        key(
+                "share.visibleTo",
+                p -> p.sharedFilesVisibility().name(),
+                (b, v) -> b.sharedFilesVisibility(
+                        SharedFilesVisibility.valueOf(v.strip().toUpperCase(Locale.ROOT))));
         boolKey(
                 "files.rememberDownloaded",
                 Preferences::rememberDownloadedFiles,

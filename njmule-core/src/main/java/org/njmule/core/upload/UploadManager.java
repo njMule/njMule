@@ -176,6 +176,7 @@ public final class UploadManager implements AutoCloseable {
     private final EngineLoop loop;
     private final Function<Hash16, Optional<SharedFiles.SharedFile>> shared;
     private final Function<Hash16, Optional<AichTree>> aichTrees;
+    private final Function<Hash16, List<SharedFiles.SharedFile>> visibleTo;
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
     private final Supplier<Hello> ourHello;
     private final Supplier<Settings> settings;
@@ -222,6 +223,7 @@ public final class UploadManager implements AutoCloseable {
             EngineLoop loop,
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
             Function<Hash16, Optional<AichTree>> aichTrees,
+            Function<Hash16, List<SharedFiles.SharedFile>> visibleTo,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
             Function<Hash16, List<SourceExchange.Source>> downloadSources,
             Supplier<Hello> ourHello,
@@ -234,6 +236,7 @@ public final class UploadManager implements AutoCloseable {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.shared = Objects.requireNonNull(shared, "shared");
         this.aichTrees = Objects.requireNonNull(aichTrees, "aichTrees");
+        this.visibleTo = Objects.requireNonNull(visibleTo, "visibleTo");
         this.downloads = Objects.requireNonNull(downloads, "downloads");
         this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
@@ -738,6 +741,11 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public Optional<Uploadable> find(Hash16 file) {
             return UploadManager.this.find(file);
+        }
+
+        @Override
+        public List<SharedFiles.SharedFile> visibleTo(Hash16 userHash) {
+            return UploadManager.this.visibleTo.apply(userHash);
         }
 
         @Override

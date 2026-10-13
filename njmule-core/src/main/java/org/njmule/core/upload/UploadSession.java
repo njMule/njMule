@@ -20,20 +20,25 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.files.FileTypes;
+import org.njmule.core.files.SharedFiles;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.net.PeerChannel;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
@@ -42,6 +47,9 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,13 +91,22 @@ final class UploadSession implements PeerLink.Role {
 
         /** The AICH recovery data of {@code part} of {@code file}, when we have its tree with {@code master}. */
         Optional<byte[]> aichRecovery(Hash16 file, int part, Hash20 master);
+
+        /** The shared files the client with {@code userHash} may see; none when the preferences say so. */
+        List<SharedFiles.SharedFile> visibleTo(Hash16 userHash);
     }
+
+    /** The answer to a client browsing our files stays below this size, which every client takes. */
+    static final int MAX_SHARED_LIST = 1_000_000;
 
     /** One requested block of {@code file}, which the client chose for it. */
     record Block(Uploadable file, long start, long end) {}
 
     /** Blocks a client may have waiting at once. */
     static final int MAX_PENDING_BLOCKS = 32;
+
+    // Larger files need the large file support of the client.
+    private static final long MAX_SMALL_FILE = 0xFFFF_FFFFL;
 
     /** The largest block a client may ask for. */
     static final long MAX_BLOCK = 3L * Ed2k.EMBLOCKSIZE;
@@ -288,16 +305,36 @@ final class UploadSession implements PeerLink.Role {
                 this.pending.clear();
                 this.queue.stopped(this, "the client stopped downloading");
             }
-            // Our shared files are not for browsing: an empty list, and no directories.
-            case ASKSHAREDFILES ->
-                this.send(Packet.of(
-                        Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), new PacketWriter().u32(0)));
+            case ASKSHAREDFILES -> this.sharedFilesAsked();
+            // Shared directories are not listed: the files are, to those that may see them.
             case ASKSHAREDDIRS, ASKSHAREDFILESDIR ->
                 this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
         }
+    }
+
+    // The files the preferences let this client see, an empty list when they do not; large files only to those that
+    // take them.
+    private void sharedFilesAsked() {
+        boolean large = (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0;
+        PacketWriter entries = new PacketWriter();
+        int count = 0;
+        for (SharedFiles.SharedFile f : this.queue.visibleTo(this.peer.userHash())) {
+            if ((f.size() > MAX_SMALL_FILE && !large) || entries.size() > MAX_SHARED_LIST) {
+                continue;
+            }
+            List<Tag> tags = new ArrayList<>();
+            tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), f.name()));
+            tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), f.size()));
+            FileTypes.of(f.name()).ifPresent(t -> tags.add(new Tag.StringTag(TagName.id(FileTag.FILETYPE), t)));
+            new FileEntry(f.hash(), 0, 0, tags).write(entries);
+            count++;
+        }
+        logger.debug("{} of our files shown to {}", count, this.peer.nick().orElse("?"));
+        PacketWriter out = new PacketWriter().u32(count).bytes(entries.toByteArray());
+        this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), out));
     }
 
     private void extended(Packet packet) throws DecodeException {

@@ -60,9 +60,11 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.dialogs.CategoriesDialog;
+import org.njmule.gui.dialogs.ClientFilesDialog;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
@@ -491,7 +493,24 @@ public final class TransfersScreen implements Screen {
                         Fx.column(
                                 this.gui.t("nj.transfers.waited"), 90, UploadInfo::waitingSeconds, formats::duration)));
         TableLayout.remember(table, layout, this.gui.settings());
+        this.browseMenu(table, UploadInfo::address, u -> u.nick().orElse(u.address()));
         return table;
+    }
+
+    // View Shared Files: the client's list in a window of its own.
+    private <T> void browseMenu(
+            TableView<LiveList.Row<T>> table, Function<T, String> address, Function<T, String> name) {
+        MenuItem view = Fx.menuItem(this.gui.t("IDS_VIEWFILES"), Material2AL.FOLDER_OPEN, () -> {
+            List<T> selected = Fx.selected(table);
+            if (selected.size() == 1) {
+                T client = selected.getFirst();
+                new ClientFilesDialog(this.gui, table.getScene().getWindow(), name.apply(client))
+                        .show(ServerAddress.parse(address.apply(client)));
+            }
+        });
+        ContextMenu menu = new ContextMenu(view);
+        menu.setOnShowing(e -> view.setDisable(Fx.selected(table).size() != 1));
+        table.setContextMenu(menu);
     }
 
     private TableView<LiveList.Row<SourceInfo>> sourceTable() {
@@ -519,6 +538,7 @@ public final class TransfersScreen implements Screen {
                                 f -> Math.round(f * 100) + " %"),
                         Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size)));
         TableLayout.remember(table, "sources", this.gui.settings());
+        this.browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
         return table;
     }
 

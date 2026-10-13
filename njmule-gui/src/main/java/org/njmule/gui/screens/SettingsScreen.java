@@ -53,6 +53,7 @@ import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
@@ -116,6 +117,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox rememberDownloaded = new CheckBox();
     private final CheckBox rememberCancelled = new CheckBox();
     private final CheckBox storeSearches = new CheckBox();
+    private final ComboBox<SharedFilesVisibility> visibility = new ComboBox<>();
     private final CheckBox addPaused = new CheckBox();
     private final CheckBox startNext = new CheckBox();
     private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
@@ -229,6 +231,9 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setText(this.gui.t("IDS_PW_REMEMBERDOWNLOADED"));
         this.rememberCancelled.setText(this.gui.t("IDS_PW_REMEMBERCANCELLED"));
         this.storeSearches.setText(this.gui.t("IDS_STORESEARCHES"));
+        this.visibility.getItems().addAll(SharedFilesVisibility.values());
+        this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
+        this.visibility.setButtonCell(new NamedCell<>(this::visibilityName));
         this.addPaused.setText(this.gui.t("IDS_ADDNEWFILESPAUSED"));
         this.startNext.setText(this.gui.t("IDS_STARTNEXTFILE"));
         // Any category, the same first, or the same only.
@@ -315,6 +320,7 @@ public final class SettingsScreen implements Screen {
         grid.add(this.rememberDownloaded, 1, row++);
         grid.add(this.rememberCancelled, 1, row++);
         grid.add(this.storeSearches, 1, row++);
+        row = field(grid, row, this.gui.t("IDS_PW_SHARE"), this.visibility);
         grid.add(this.addPaused, 1, row++);
         HBox next = new HBox(8, this.startNext, this.nextCategory);
         next.setAlignment(Pos.CENTER_LEFT);
@@ -541,6 +547,7 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setSelected(p.rememberDownloadedFiles());
         this.rememberCancelled.setSelected(p.rememberCancelledFiles());
         this.storeSearches.setSelected(p.storeSearches());
+        this.visibility.setValue(p.sharedFilesVisibility());
         this.addPaused.setSelected(p.addDownloadsPaused());
         this.startNext.setSelected(p.nextDownload() != NextDownload.NONE);
         this.nextCategory.setValue(p.nextDownload() == NextDownload.NONE ? NextDownload.ANY : p.nextDownload());
@@ -691,6 +698,7 @@ public final class SettingsScreen implements Screen {
                 .rememberDownloadedFiles(this.rememberDownloaded.isSelected())
                 .rememberCancelledFiles(this.rememberCancelled.isSelected())
                 .storeSearches(this.storeSearches.isSelected())
+                .sharedFilesVisibility(this.visibility.getValue())
                 .addDownloadsPaused(this.addPaused.isSelected())
                 .nextDownload(this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
                 .build();
@@ -724,6 +732,15 @@ public final class SettingsScreen implements Screen {
 
     private String obfuscationName(ObfuscationMode m) {
         return this.gui.t("nj.obfuscation." + key(m));
+    }
+
+    private String visibilityName(SharedFilesVisibility v) {
+        return this.gui.t(
+                switch (v) {
+                    case EVERYBODY -> "IDS_PW_EVER";
+                    case FRIENDS -> "IDS_PW_FRIENDS";
+                    case NOBODY -> "IDS_PW_NOONE";
+                });
     }
 
     private String nextName(NextDownload next) {

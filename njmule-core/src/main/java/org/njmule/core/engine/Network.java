@@ -92,6 +92,7 @@ import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
+import org.njmule.core.peer.SharedFilesBrowser;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.CategoriesCodec;
 import org.njmule.core.persist.format.IpFilterDat;
@@ -181,6 +182,7 @@ final class Network {
     private final Path spamFile;
     private final SpamFilter spam;
     private final CancelledFiles cancelled;
+    private final SharedFilesBrowser browser;
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
@@ -332,6 +334,7 @@ final class Network {
                 loop,
                 hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
                 hash -> this.shares == null ? Optional.empty() : this.shares.aichTree(hash),
+                this::visibleSharedFiles,
                 this.downloads::find,
                 this.downloads::exchangeable,
                 this::ourHello,
@@ -349,6 +352,7 @@ final class Network {
                 random,
                 Ticker.systemTicker());
         this.identities = identities;
+        this.browser = new SharedFilesBrowser(loop, this::ourHello, random);
         this.messaging = new Messaging(
                 loop, this::ourHello, random, new ChatEvents(), this::chatFilter, h -> this.friends.contains(h));
         this.uploads.onChat(this.messaging::incoming);
@@ -1254,6 +1258,11 @@ final class Network {
     }
 
     /** The state of Kad, empty when it does not run. */
+    /** The files the client listening at {@code to} shares, when it shows them. */
+    CompletableFuture<List<SearchResult>> browse(InetSocketAddress to) {
+        return this.browser.browse(to);
+    }
+
     List<KadContactInfo> kadContacts() {
         return this.kad == null ? List.of() : this.kad.contactInfos();
     }
@@ -1531,6 +1540,16 @@ final class Network {
     private ChatFilter chatFilter() {
         Preferences p = this.preferences.get();
         return new ChatFilter(p.messagesFromFriendsOnly(), ChatFilter.words(p.messageFilter()), p.advancedSpamFilter());
+    }
+
+    // What a client browsing our files may see, as the preferences say.
+    private List<SharedFiles.SharedFile> visibleSharedFiles(Hash16 userHash) {
+        boolean visible = switch (this.preferences.get().sharedFilesVisibility()) {
+            case EVERYBODY -> true;
+            case FRIENDS -> this.friends.contains(userHash);
+            case NOBODY -> false;
+        };
+        return visible && this.shares != null ? this.shares.all() : List.of();
     }
 
     // Servers and clients at LAN addresses are left out unless the preferences let them in.

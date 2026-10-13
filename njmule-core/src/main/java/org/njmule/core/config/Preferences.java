@@ -76,7 +76,8 @@ public record Preferences(
         String messageFilter,
         boolean advancedSpamFilter,
         int newConnectionsPerFiveSeconds,
-        int uploadQueueSize) {
+        int uploadQueueSize,
+        SharedFilesVisibility sharedFilesVisibility) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -146,6 +147,7 @@ public record Preferences(
         Objects.requireNonNull(messageFilter, "messageFilter");
         requireRange("newConnectionsPerFiveSeconds", newConnectionsPerFiveSeconds, 1, MAX_NEW_CONNECTIONS);
         requireRange("uploadQueueSize", uploadQueueSize, MIN_UPLOAD_QUEUE, MAX_UPLOAD_QUEUE);
+        Objects.requireNonNull(sharedFilesVisibility, "sharedFilesVisibility");
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
@@ -195,7 +197,8 @@ public record Preferences(
                 DEFAULT_MESSAGE_FILTER,
                 true,
                 DEFAULT_NEW_CONNECTIONS,
-                DEFAULT_UPLOAD_QUEUE);
+                DEFAULT_UPLOAD_QUEUE,
+                SharedFilesVisibility.NOBODY);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -270,6 +273,7 @@ public record Preferences(
         private boolean advancedSpamFilter;
         private int newConnectionsPerFiveSeconds;
         private int uploadQueueSize;
+        private SharedFilesVisibility sharedFilesVisibility;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -314,6 +318,7 @@ public record Preferences(
             this.advancedSpamFilter = p.advancedSpamFilter;
             this.newConnectionsPerFiveSeconds = p.newConnectionsPerFiveSeconds;
             this.uploadQueueSize = p.uploadQueueSize;
+            this.sharedFilesVisibility = p.sharedFilesVisibility;
         }
 
         public Builder nick(String value) {
@@ -555,6 +560,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder sharedFilesVisibility(SharedFilesVisibility value) {
+            this.sharedFilesVisibility = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -599,7 +609,8 @@ public record Preferences(
                     this.messageFilter,
                     this.advancedSpamFilter,
                     this.newConnectionsPerFiveSeconds,
-                    this.uploadQueueSize);
+                    this.uploadQueueSize,
+                    this.sharedFilesVisibility);
         }
     }
 }

@@ -721,6 +721,15 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<List<SearchResult>> browseSharedFiles(ServerAddress client) {
+        Objects.requireNonNull(client, "client");
+        return resolve(client.host())
+                .thenCompose(ip -> this.loop.submit(
+                        () -> this.network.browse(new InetSocketAddress(Ipv4.format(ip), client.port()))))
+                .thenCompose(files -> files);
+    }
+
+    @Override
     public CompletableFuture<List<KadContactInfo>> kadContacts() {
         return this.loop.submit(this.network::kadContacts);
     }

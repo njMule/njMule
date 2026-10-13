@@ -42,6 +42,7 @@ import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.crypto.RsaKeys;
 import org.njmule.core.persist.format.CancelledMet;
 import org.njmule.core.persist.format.ClientsMet;
@@ -265,6 +266,8 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "AdvancedSpamFilter").ifPresent(b::advancedSpamFilter);
         ini.getLong(SECTION, "MaxConnectionsPerFiveSeconds")
                 .ifPresent(v -> b.newConnectionsPerFiveSeconds(Math.clamp(v, 1, Preferences.MAX_NEW_CONNECTIONS)));
+        // SeeShare: 0 everybody, 1 friends, 2 nobody.
+        ini.getLong(SECTION, "SeeShare").ifPresent(v -> b.sharedFilesVisibility(visibility(v)));
         ini.getLong(SECTION, "QueueSize")
                 .ifPresent(v ->
                         b.uploadQueueSize(Math.clamp(v, Preferences.MIN_UPLOAD_QUEUE, Preferences.MAX_UPLOAD_QUEUE)));
@@ -280,6 +283,12 @@ public final class EmuleImporter {
     }
 
     // eMule's proxy types: 1-3 SOCKS 4, 4a and 5, 4-5 HTTP 1.0 and 1.1.
+    private static SharedFilesVisibility visibility(long value) {
+        return value == 0
+                ? SharedFilesVisibility.EVERYBODY
+                : value == 1 ? SharedFilesVisibility.FRIENDS : SharedFilesVisibility.NOBODY;
+    }
+
     // StartNextFile: 0 none, 1 any, 2 the same category first, 3 the same category only.
     private static NextDownload nextDownload(long value) {
         return switch ((int) Math.clamp(value, 0L, 3L)) {

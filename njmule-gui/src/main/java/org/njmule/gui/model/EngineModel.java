@@ -538,6 +538,21 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.addKadContacts(url), done::accept);
     }
 
+    /** Asks a client for its shared files; {@code found} or {@code failed} gets the outcome on the FX thread. */
+    // The follow-up only hands the outcome to the FX thread, which shows a failure itself.
+    @SuppressWarnings("FutureReturnValueIgnored")
+    public void browse(ServerAddress client, Consumer<List<SearchResult>> found, Consumer<String> failed) {
+        this.engine
+                .browseSharedFiles(client)
+                .whenComplete((files, failure) -> this.fx.execute(() -> {
+                    if (failure == null) {
+                        found.accept(files);
+                    } else {
+                        failed.accept(message(failure));
+                    }
+                }));
+    }
+
     /** The Kad contacts, as last read with {@link #refreshKadLists}. */
     public LiveList<String, KadContactInfo> kadContacts() {
         return this.kadContacts;

@@ -224,6 +224,12 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addKadContacts(URI url);
 
+    /**
+     * The files the client listening at {@code client} shares, as it lists them when asked; fails when it does not show
+     * them or cannot be reached.
+     */
+    CompletableFuture<List<SearchResult>> browseSharedFiles(ServerAddress client);
+
     /** The contacts of the Kad routing table, closest first; none while Kad does not run. */
     CompletableFuture<List<KadContactInfo>> kadContacts();
 
