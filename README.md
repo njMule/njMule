@@ -28,11 +28,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Java 25, wire-compatible with the eMule network and able to import an existing eMule profile
 (downloads in progress, known files, credits, servers, Kad nodes).
 
-> **Status: pre-alpha (milestone M5).** njMule connects to eD2K servers (plain or obfuscated) and
+> **Status: pre-alpha (milestone M6).** njMule connects to eD2K servers (plain or obfuscated) and
 > to the Kad network, searches both, downloads files from other clients verifying every part, and
 > shares files in turn: an upload queue with credits, secure identification and source exchange.
-> The protocol codecs, file hashing and readers for every eMule data file are in place. The
-> import of an eMule profile and the user interface come in the next milestones.
+> It imports an eMule profile, reading it only: preferences, servers, Kad contacts, known and
+> shared files and, on request, the identity and the downloads in progress. The user interface
+> comes in the next milestone.
 
 ## Goals
 
@@ -57,6 +58,15 @@ On Windows use `mvnw.cmd`. Run the headless engine (on Windows separate the modu
 
 ```bash
 java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main --help
+```
+
+Import an eMule profile from its config directory (on Windows usually
+`%LOCALAPPDATA%\eMule\config`), which is only read; `--dry-run` reports what would be taken,
+`--adopt-emule-identity` and `--import-downloads` take the identity and copies of the downloads
+too:
+
+```bash
+njmule --import-emule <eMule config dir> --dry-run
 ```
 
 Build the native executable for the current OS with a local GraalVM Community for JDK 25

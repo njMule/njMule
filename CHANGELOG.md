@@ -91,6 +91,13 @@ All notable changes to this project are documented here. The format follows
 - Downloads find sources on Kad, searches may run on Kad, and shared files are published there
   while we are reachable; `--kad-bootstrap <host:port>` and `--search ... --kad` on the command
   line.
+- Import of an eMule profile, which is only read: preferences (nick, limits, networks,
+  obfuscation; ports and directories stay njMule's), servers, Kad contacts, known files, shared
+  directories, the IP filter and the lists kept for later features, each file checked first and
+  reported. On request the identity (user hash with its key, credits, Kad id), applied at the next
+  start and never while eMule runs, and copies of the downloads (paused ones while eMule runs),
+  whose complete parts are checked again. `njmule --import-emule <dir>` with `--dry-run`,
+  `--adopt-emule-identity` and `--import-downloads`.
 
 ### Changed
 
