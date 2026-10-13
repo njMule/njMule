@@ -156,6 +156,44 @@ class DownloadQueueTest {
         assertThat(reloaded.file().completedBytes()).isEqualTo(100_000);
     }
 
+    @Test
+    void checksTheCompletePartsOfAResumedDownload() throws Exception {
+        byte[] data = random(200_000, 4);
+        DownloadQueue first = this.queue();
+        DownloadQueue.Download download =
+                this.onLoop(
+                        () ->
+                                first.add(
+                                        Ed2kLink.FileLink.of(
+                                                "resumed.bin",
+                                                data.length,
+                                                Ed2k.md4(data, 0, data.length))));
+        byte[] bad = data.clone();
+        bad[7] ^= 1;
+        // Written, then closed before the check could run: as after a crash.
+        this.onLoop(
+                () -> {
+                    download.file().written(0, data.length);
+                    download.file().save();
+                    return null;
+                });
+        Files.write(this.dir.resolve("temp").resolve("001.part"), bad);
+        this.onLoop(
+                () -> {
+                    first.close();
+                    return null;
+                });
+
+        DownloadQueue second = this.queue();
+        DownloadQueue.Download reloaded = second.get(download.hash()).orElseThrow();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> reloaded.file().completedBytes()) != 0) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            this.events.poll(100, TimeUnit.MILLISECONDS);
+        }
+        assertThat(this.onLoop(() -> reloaded.verifiedParts().isEmpty())).isTrue();
+    }
+
     private void awaitCorruptPart0(DownloadQueue.Download download) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {

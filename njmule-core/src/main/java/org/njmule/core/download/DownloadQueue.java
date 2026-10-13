@@ -96,6 +96,11 @@ public final class DownloadQueue implements AutoCloseable {
         public boolean isActive() {
             return this.file.status() == PartFile.Status.DOWNLOADING && !this.finishing;
         }
+
+        /** The parts whose hash was checked: the ones other clients may download from us. */
+        public BitSet verifiedParts() {
+            return (BitSet) this.verified.clone();
+        }
     }
 
     private final EngineLoop loop;
@@ -129,8 +134,10 @@ public final class DownloadQueue implements AutoCloseable {
                 }
                 try {
                     PartFile file = PartFile.load(tempDir, Integer.parseInt(number));
-                    queue.downloads.put(
-                            file.hash(), new Download(file, PartFileStorage.open(file.dataFile())));
+                    Download download = new Download(file, PartFileStorage.open(file.dataFile()));
+                    queue.downloads.put(file.hash(), download);
+                    // A crash may have come between writing a part and checking it.
+                    queue.hashSetKnown(download);
                 } catch (IOException | RuntimeException e) {
                     LOG.warn("Cannot load the download {}", met, e);
                 }
