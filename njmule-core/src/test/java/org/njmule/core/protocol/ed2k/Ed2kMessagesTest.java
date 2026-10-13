@@ -349,6 +349,46 @@ class Ed2kMessagesTest {
     }
 
     @Test
+    void sourcesQueriesAndAnswers() throws DecodeException {
+        assertThat(HEX.formatHex(ServerMessages.getSources(HASH, 1000, false).payload()))
+                .isEqualTo("11".repeat(16) + "e8030000");
+        Packet large = ServerMessages.getSources(HASH, 5_000_000_000L, true);
+        assertThat(large.opcode()).isEqualTo(0x23);
+        assertThat(HEX.formatHex(large.payload()))
+                .isEqualTo("11".repeat(16) + "00000000" + "00f2052a01000000");
+
+        ServerMessages.FoundSources plain =
+                ServerMessages.FoundSources.decode(
+                        packet(
+                                0x42,
+                                "11".repeat(16)
+                                        + "02"
+                                        + "01020304"
+                                        + "3612"
+                                        + "39300000"
+                                        + "3712"));
+        assertThat(plain.sources())
+                .containsExactly(
+                        new ServerMessages.Source(0x04030201L, 4662, 0, Optional.empty()),
+                        new ServerMessages.Source(12_345, 4663, 0, Optional.empty()));
+        assertThat(plain.sources().get(1).isLowId()).isTrue();
+
+        ServerMessages.FoundSources obfuscated =
+                new ServerMessages.FoundSources(
+                        HASH,
+                        List.of(
+                                new ServerMessages.Source(
+                                        0x04030201L, 4662, 0x01, Optional.empty()),
+                                new ServerMessages.Source(7, 1, 0x83, Optional.of(HASH))));
+        assertThat(ServerMessages.FoundSources.decode(obfuscated.encode())).isEqualTo(obfuscated);
+        assertThatThrownBy(
+                        () ->
+                                ServerMessages.FoundSources.decode(
+                                        packet(0x42, "11".repeat(16) + "05" + "0102")))
+                .isInstanceOf(DecodeException.class);
+    }
+
+    @Test
     void versionsCarryTheNjmuleCompatibleClientId() {
         assertThat(ClientVersion.fromSemVer("0.0.1-alpha.1")).isEqualTo(0x4E00_0080);
         assertThat(ClientVersion.fromSemVer("1.2.3"))

@@ -70,6 +70,7 @@ public final class ServerMessages {
     public static final int MAX_RESULTS = 1_000;
 
     private static final int MAX_SERVER_LIST = 255;
+    private static final int MAX_SOURCES = 255;
     private static final int CALLBACK_WITH_HASH = 4 + 2 + 1 + 16;
 
     private ServerMessages() {}
@@ -252,6 +253,75 @@ public final class ServerMessages {
             int crypt = in.u8();
             return new CallbackRequested(endpoint, crypt, Optional.of(in.hash16()));
         }
+    }
+
+    /**
+     * A source for a file: a client id (its IP for a HighID), its port and, from servers that know
+     * them, its connect options and user hash.
+     */
+    public record Source(long clientId, int port, int cryptOptions, Optional<Hash16> userHash) {
+        /** Connect options flag: the user hash follows. */
+        public static final int HAS_USER_HASH = 0x80;
+
+        public boolean isLowId() {
+            return this.clientId < LOW_ID_LIMIT;
+        }
+    }
+
+    /** The sources a server knows for one file. */
+    public record FoundSources(Hash16 file, List<Source> sources) {
+        public FoundSources {
+            sources = List.copyOf(sources);
+        }
+
+        /** Decodes OP_FOUNDSOURCES, or with {@code obfuscated} OP_FOUNDSOURCES_OBFU. */
+        public static FoundSources decode(Packet packet) throws DecodeException {
+            boolean obfuscated = packet.opcode() == Opcodes.Server.FOUNDSOURCES_OBFU.code();
+            PacketReader in = packet.reader();
+            Hash16 file = in.hash16();
+            int count = in.count(in.u8(), obfuscated ? 7 : 6, MAX_SOURCES);
+            List<Source> sources = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                long id = in.u32();
+                int port = in.u16();
+                int crypt = 0;
+                Optional<Hash16> hash = Optional.empty();
+                if (obfuscated) {
+                    crypt = in.u8();
+                    if ((crypt & Source.HAS_USER_HASH) != 0) {
+                        hash = Optional.of(in.hash16());
+                    }
+                }
+                sources.add(new Source(id, port, crypt, hash));
+            }
+            return new FoundSources(file, sources);
+        }
+
+        /** OP_FOUNDSOURCES_OBFU, as servers answer clients that support obfuscation. */
+        public Packet encode() {
+            PacketWriter out = new PacketWriter().hash16(this.file).u8(this.sources.size());
+            for (Source source : this.sources) {
+                out.u32(source.clientId()).u16(source.port()).u8(source.cryptOptions());
+                source.userHash().ifPresent(out::hash16);
+            }
+            return Packet.of(Protocol.EDONKEY, Opcodes.Server.FOUNDSOURCES_OBFU.code(), out);
+        }
+    }
+
+    /**
+     * Asks for the sources of a file; files above 4 GB use the 64-bit form, which only servers with
+     * large file support understand.
+     */
+    public static Packet getSources(Hash16 file, long size, boolean obfuscated) {
+        PacketWriter out = new PacketWriter().hash16(file);
+        if (size > 0xFFFF_FFFFL) {
+            out.u32(0).u64(size);
+        } else {
+            out.u32(size);
+        }
+        Opcodes.Server opcode =
+                obfuscated ? Opcodes.Server.GETSOURCES_OBFU : Opcodes.Server.GETSOURCES;
+        return Packet.of(Protocol.EDONKEY, opcode.code(), out);
     }
 
     /** Lines of a server message: the text is split on line breaks and blank lines dropped. */
