@@ -16,24 +16,43 @@
  */
 package org.njmule.gui;
 
+import java.io.IOException;
 import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
 import javafx.stage.Stage;
 import org.njmule.app.LaunchOptions;
+import org.njmule.core.api.NjMuleInfo;
 
 /** The JavaFX application: hands over to {@link DesktopApp}. */
 public final class NjMuleFxApp extends Application {
 
     private DesktopApp app;
+    private IOException failure;
 
     @Override
     public void init() throws Exception {
-        this.app =
-                DesktopApp.open(
-                        LaunchOptions.parse(this.getParameters().getRaw().toArray(String[]::new)));
+        try {
+            this.app =
+                    DesktopApp.open(
+                            LaunchOptions.parse(
+                                    this.getParameters().getRaw().toArray(String[]::new)));
+        } catch (IOException e) {
+            // Shown once the toolkit runs, for instance when njMule is already open.
+            this.failure = e;
+        }
     }
 
     @Override
     public void start(Stage stage) {
+        if (this.failure != null) {
+            Alert alert = new Alert(Alert.AlertType.ERROR, this.failure.getMessage());
+            alert.setTitle(NjMuleInfo.NAME);
+            alert.setHeaderText(null);
+            alert.showAndWait();
+            Platform.exit();
+            return;
+        }
         this.app.show(stage);
     }
 

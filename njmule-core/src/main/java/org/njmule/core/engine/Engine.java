@@ -102,15 +102,18 @@ public final class Engine implements NjMuleEngine {
     private final Path scheduleFile;
     private final Network network;
     private final BooleanSupplier emuleRunning;
+    private final InstanceLock lock;
 
     private Engine(
             AppDirectories directories,
             Preferences preferences,
             EngineLoop loop,
             Hash16 userHash,
-            BooleanSupplier emuleRunning)
+            BooleanSupplier emuleRunning,
+            InstanceLock lock)
             throws IOException {
         this.directories = directories;
+        this.lock = lock;
         this.emuleRunning = emuleRunning;
         this.preferencesFile = directories.config().resolve(PreferencesCodec.FILE_NAME);
         this.preferences = preferences;
@@ -143,19 +146,26 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(config, "config");
         AppDirectories dirs = config.directories();
         dirs.createAll();
-        Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
-        AtomicFiles.cleanupInterruptedWrite(prefsFile);
-        Preferences prefs = PreferencesCodec.load(prefsFile);
-        PreferencesCodec.save(prefsFile, prefs);
-        EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
-
-        Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
-        EngineLoop loop = EngineLoop.start();
+        // Before touching any file: another engine may be using them.
+        InstanceLock lock = InstanceLock.acquire(dirs.config());
         Engine engine;
         try {
-            engine = new Engine(dirs, prefs, loop, userHash, emuleRunning);
+            Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
+            AtomicFiles.cleanupInterruptedWrite(prefsFile);
+            Preferences prefs = PreferencesCodec.load(prefsFile);
+            PreferencesCodec.save(prefsFile, prefs);
+            EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
+
+            Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
+            EngineLoop loop = EngineLoop.start();
+            try {
+                engine = new Engine(dirs, prefs, loop, userHash, emuleRunning, lock);
+            } catch (IOException | RuntimeException e) {
+                loop.close();
+                throw e;
+            }
         } catch (IOException | RuntimeException e) {
-            loop.close();
+            lock.close();
             throw e;
         }
         engine.loop
@@ -583,6 +593,7 @@ public final class Engine implements NjMuleEngine {
             Thread.currentThread().interrupt();
             this.eventExecutor.shutdownNow();
         }
+        this.lock.close();
     }
 
     /** Logs a message both to SLF4J and to the front ends' log pane. */

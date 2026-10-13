@@ -234,4 +234,17 @@ class EngineTest {
         engine.close();
         assertThat(engine.isRunning()).isFalse();
     }
+
+    @Test
+    void aSecondEngineCannotUseTheSameConfiguration() throws Exception {
+        AppDirectories dirs = AppDirectories.underRoot(this.root.resolve("locked"), false);
+        try (Engine first = Engine.start(new EngineConfig(dirs), () -> false)) {
+            assertThatThrownBy(() -> Engine.start(new EngineConfig(dirs), () -> false))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("already running");
+            assertThat(first.isRunning()).isTrue();
+        }
+        // Closing the first engine lets the next one start.
+        Engine.start(new EngineConfig(dirs), () -> false).close();
+    }
 }
