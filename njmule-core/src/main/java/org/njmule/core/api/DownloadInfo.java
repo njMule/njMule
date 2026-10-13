@@ -27,7 +27,8 @@ public record DownloadInfo(
         Status status,
         int sources,
         int transferring,
-        long bytesPerSecond) {
+        long bytesPerSecond,
+        PartMap parts) {
 
     public enum Status {
         DOWNLOADING,
@@ -40,6 +41,7 @@ public record DownloadInfo(
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(status, "status");
+        Objects.requireNonNull(parts, "parts");
     }
 
     /** The ed2k link of the file. */

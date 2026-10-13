@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.PartMap;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.PartMet;
@@ -273,6 +274,23 @@ public final class PartFile {
                 part = parts.nextSetBit(part + 1)) {
             this.availability[part] = Math.max(0, this.availability[part] + delta);
         }
+    }
+
+    /** The bytes still missing, the requested ones and the sources of each part, to show. */
+    public PartMap map() {
+        List<PartMap.Span> gaps = new ArrayList<>();
+        for (Range<Long> r : this.missing.asRanges()) {
+            gaps.add(new PartMap.Span(r.lowerEndpoint(), r.upperEndpoint()));
+        }
+        List<PartMap.Span> asked = new ArrayList<>();
+        for (Range<Long> r : this.requested.asRanges()) {
+            asked.add(new PartMap.Span(r.lowerEndpoint(), r.upperEndpoint()));
+        }
+        List<Integer> sources = new ArrayList<>(this.availability.length);
+        for (int count : this.availability) {
+            sources.add(count);
+        }
+        return new PartMap(this.size, gaps, asked, sources);
     }
 
     /**

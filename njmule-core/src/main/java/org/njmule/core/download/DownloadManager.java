@@ -694,7 +694,8 @@ public final class DownloadManager implements AutoCloseable {
                 status(file.status()),
                 entry.sources.size(),
                 transferring,
-                entry.rate());
+                entry.rate(),
+                file.map());
     }
 
     private static DownloadInfo.Status status(PartFile.Status status) {

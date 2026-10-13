@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.PartMap;
 import org.njmule.core.files.PartFile.Block;
 import org.njmule.core.files.hash.Ed2k;
 
@@ -85,6 +86,24 @@ class PartFileTest {
         file.corrupt(0);
         assertThat(file.isComplete(0)).isFalse();
         assertThat(file.completeParts().isEmpty()).isTrue();
+    }
+
+    @Test
+    void mapsWhatIsMissingRequestedAndAvailable() {
+        PartFile file = this.small(500_000);
+        BitSet all = all(file);
+        file.written(0, 100_000);
+        List<Block> asked = file.nextBlocks(all, 1);
+        file.addAvailability(all, 2);
+
+        PartMap map = file.map();
+
+        assertThat(map.size()).isEqualTo(500_000);
+        assertThat(map.missing()).containsExactly(new PartMap.Span(100_000, 500_000));
+        assertThat(map.requested())
+                .containsExactly(
+                        new PartMap.Span(asked.getFirst().start(), asked.getFirst().end()));
+        assertThat(map.sources()).containsExactly(2);
     }
 
     @Test
