@@ -236,6 +236,8 @@ All notable changes to this project are documented here. The format follows
   upload queue (imported from eMule), and the maximum of connections now limits the incoming ones.
 - A scheduler rule can stop the downloads of one category and resume those of another when it
   begins.
+- The Kad screen lists the contacts of the routing table (id, type, distance, address, version),
+  closest first, and the lookups running now.
 
 ### Changed
 

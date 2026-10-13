@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -36,6 +37,8 @@ import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.ToIntFunction;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadContactInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.io.DecodeException;
@@ -427,6 +430,45 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     /** Lookups running now. */
     public int runningLookups() {
         return this.lookups.size();
+    }
+
+    /** The contacts of the routing table, closest first. */
+    public List<KadContactInfo> contactInfos() {
+        List<KadContact> all = new ArrayList<>(this.table.all());
+        UInt128 us = this.identity.id();
+        all.sort(Comparator.comparing(c -> c.id().xor(us)));
+        List<KadContactInfo> infos = new ArrayList<>(all.size());
+        for (KadContact c : all) {
+            infos.add(new KadContactInfo(
+                    c.id().toHex(),
+                    Ipv4.format(c.ip()) + ":" + c.udpPort(),
+                    c.type(),
+                    c.id().xor(us).toHex(),
+                    c.version(),
+                    c.isVerified()));
+        }
+        return infos;
+    }
+
+    /** The lookups running now. */
+    public List<KadSearchInfo> lookupInfos() {
+        List<KadSearchInfo> infos = new ArrayList<>();
+        for (Lookup lookup : this.lookups.values()) {
+            if (!lookup.isStopped()) {
+                infos.add(new KadSearchInfo(lookup.target().toHex(), kind(lookup.kind()), lookup.answers()));
+            }
+        }
+        return infos;
+    }
+
+    private static KadSearchInfo.Kind kind(Lookup.Kind kind) {
+        return switch (kind) {
+            case NODE, NODE_COMPLETE -> KadSearchInfo.Kind.NODE;
+            case KEYWORD -> KadSearchInfo.Kind.KEYWORD;
+            case SOURCES -> KadSearchInfo.Kind.SOURCES;
+            case STORE_KEYWORD -> KadSearchInfo.Kind.STORE_KEYWORD;
+            case STORE_SOURCE -> KadSearchInfo.Kind.STORE_SOURCE;
+        };
     }
 
     /** A node we asked to check our TCP port connected and said so. */

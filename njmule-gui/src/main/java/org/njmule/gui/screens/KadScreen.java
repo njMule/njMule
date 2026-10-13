@@ -17,11 +17,15 @@
 package org.njmule.gui.screens;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
@@ -32,13 +36,17 @@ import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.UrlBox;
 
 /** The state of our Kad node and joining Kad through a known node. */
@@ -55,6 +63,7 @@ public final class KadScreen implements Screen {
     private UrlBox nodes;
     private final Button connect = new Button();
     private final Button recheck = new Button();
+    private int ticks;
 
     public KadScreen(Gui gui) {
         this.gui = gui;
@@ -108,7 +117,54 @@ public final class KadScreen implements Screen {
         hint.setWrapText(true);
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
-        return Fx.screen(this.title(), tools, new VBox(16, this.nodesRow(), cards, hint));
+        TabPane lists = this.lists();
+        VBox content = new VBox(16, this.nodesRow(), cards, hint, lists);
+        VBox.setVgrow(lists, Priority.ALWAYS);
+        return Fx.screen(this.title(), tools, content);
+    }
+
+    // The contacts of the routing table and the lookups running, read again while the screen shows.
+    private TabPane lists() {
+        TableView<LiveList.Row<KadContactInfo>> contacts =
+                Fx.table(this.gui.model().kadContacts(), this.gui.t("nj.kad.off"));
+        contacts.getColumns()
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_ID"), 260, KadContactInfo::id),
+                        Fx.column(this.gui.t("IDS_TYPE"), 60, KadContactInfo::type),
+                        Fx.column(this.gui.t("IDS_KADDISTANCE"), 260, KadContactInfo::distance),
+                        Fx.column(this.gui.t("IDS_IP"), 160, KadContactInfo::address),
+                        Fx.column("Kad", 50, KadContactInfo::version)));
+        TableLayout.remember(contacts, "kadContacts", this.gui.settings());
+        TableView<LiveList.Row<KadSearchInfo>> searches =
+                Fx.table(this.gui.model().kadSearches(), this.gui.t("nj.kad.noSearches"));
+        searches.getColumns()
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_KADID"), 260, KadSearchInfo::target),
+                        Fx.column(this.gui.t("IDS_TYPE"), 140, KadSearchInfo::kind, this::kindName),
+                        Fx.column(this.gui.t("nj.kad.answers"), 80, KadSearchInfo::answers)));
+        TableLayout.remember(searches, "kadSearches", this.gui.settings());
+        Tab contactsTab = new Tab(this.gui.t("IDS_KADCONTACTLAB"), contacts);
+        Tab searchesTab = new Tab(this.gui.t("IDS_KADSEARCHLAB"), searches);
+        TabPane tabs = new TabPane(contactsTab, searchesTab);
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.setMinHeight(180);
+        return tabs;
+    }
+
+    private String kindName(KadSearchInfo.Kind kind) {
+        return this.gui.t(
+                switch (kind) {
+                    case NODE -> "IDS_KAD_NODE";
+                    case KEYWORD -> "IDS_KAD_SEARCHKW";
+                    case SOURCES -> "IDS_KAD_SEARCHSRC";
+                    case STORE_KEYWORD -> "IDS_KAD_STOREKW";
+                    case STORE_SOURCE -> "IDS_KAD_STOREFILE";
+                });
+    }
+
+    @Override
+    public void shown() {
+        this.gui.model().refreshKadLists();
     }
 
     // Contacts from a nodes.dat on the web, from an address typed or used before.
@@ -159,6 +215,10 @@ public final class KadScreen implements Screen {
 
     private void show(EngineStatus status) {
         boolean running = status.kad().isPresent();
+        // The lists follow every few seconds while the screen shows.
+        if (this.view != null && this.view.getScene() != null && this.view.isVisible() && ++this.ticks % 3 == 0) {
+            this.gui.model().refreshKadLists();
+        }
         this.connect.setText(this.gui.t(running ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
         this.recheck.setDisable(!running);
         this.connect.setGraphic(new FontIcon(running ? Material2AL.LINK_OFF : Material2AL.LINK));

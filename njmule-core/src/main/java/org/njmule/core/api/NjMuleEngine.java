@@ -224,6 +224,12 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addKadContacts(URI url);
 
+    /** The contacts of the Kad routing table, closest first; none while Kad does not run. */
+    CompletableFuture<List<KadContactInfo>> kadContacts();
+
+    /** The Kad lookups running now. */
+    CompletableFuture<List<KadSearchInfo>> kadSearches();
+
     /** The state of Kad, empty when it does not run. */
     CompletableFuture<Optional<KadInfo>> kad();
 

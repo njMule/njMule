@@ -64,7 +64,9 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -716,6 +718,16 @@ public final class Engine implements NjMuleEngine {
                     this.network.kadBootstrap(ip, node.port());
                     return null;
                 }));
+    }
+
+    @Override
+    public CompletableFuture<List<KadContactInfo>> kadContacts() {
+        return this.loop.submit(this.network::kadContacts);
+    }
+
+    @Override
+    public CompletableFuture<List<KadSearchInfo>> kadSearches() {
+        return this.loop.submit(this.network::kadSearches);
     }
 
     @Override

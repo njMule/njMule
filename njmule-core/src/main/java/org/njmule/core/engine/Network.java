@@ -56,7 +56,9 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SavedSearch;
@@ -1252,6 +1254,14 @@ final class Network {
     }
 
     /** The state of Kad, empty when it does not run. */
+    List<KadContactInfo> kadContacts() {
+        return this.kad == null ? List.of() : this.kad.contactInfos();
+    }
+
+    List<KadSearchInfo> kadSearches() {
+        return this.kad == null ? List.of() : this.kad.lookupInfos();
+    }
+
     Optional<KadInfo> kadInfo() {
         KadNode node = this.kad;
         if (node == null) {

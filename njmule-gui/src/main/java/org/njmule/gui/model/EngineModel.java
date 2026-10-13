@@ -57,6 +57,8 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.KadContactInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -145,6 +147,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ObservableList<Category> categories = FXCollections.observableArrayList();
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
+    private final LiveList<String, KadContactInfo> kadContacts = new LiveList<>(KadContactInfo::id);
+    private final LiveList<String, KadSearchInfo> kadSearches = new LiveList<>(s -> s.kind() + ":" + s.target());
     private final LiveList<Hash16, DownloadInfo> downloads = new LiveList<>(DownloadInfo::hash);
     private final LiveList<String, UploadInfo> uploads = new LiveList<>(u -> u.userHash() + "@" + u.address());
     private final LiveList<String, SourceInfo> sources =
@@ -532,6 +536,21 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Adds the Kad contacts of the nodes.dat at {@code url}, then hands {@code done} how many were new. */
     public void addKadContacts(URI url, IntConsumer done) {
         this.later(this.engine.addKadContacts(url), done::accept);
+    }
+
+    /** The Kad contacts, as last read with {@link #refreshKadLists}. */
+    public LiveList<String, KadContactInfo> kadContacts() {
+        return this.kadContacts;
+    }
+
+    public LiveList<String, KadSearchInfo> kadSearches() {
+        return this.kadSearches;
+    }
+
+    /** Reads the Kad contacts and lookups again; the Kad screen asks while it shows. */
+    public void refreshKadLists() {
+        this.later(this.engine.kadContacts(), this.kadContacts::update);
+        this.later(this.engine.kadSearches(), this.kadSearches::update);
     }
 
     public void recheckKadFirewall() {

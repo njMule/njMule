@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadContactInfo;
+import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.packet.Opcodes;
@@ -90,6 +92,31 @@ class KadNodeTest {
         assertThat(node.findSources(this.hash(), 1000, sources -> {})).isTrue();
         this.answer(node, this.lastRequest().target(), this.contact(Ipv4.of(30, 1, 1, 1)), this.contact(blockedIp));
         assertThat(node.contacts()).as("the filtered address is left out").isEqualTo(2);
+    }
+
+    @Test
+    void listsItsContactsClosestFirstAndItsLookups() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(new NodesDat.Contents(
+                2,
+                false,
+                List.of(this.record(PEER), this.record(Ipv4.of(70, 1, 1, 1)), this.record(Ipv4.of(71, 1, 1, 1)))));
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+
+        List<KadContactInfo> contacts = node.contactInfos();
+        assertThat(contacts).hasSize(3);
+        assertThat(contacts)
+                .extracting(KadContactInfo::distance)
+                .as("closest first")
+                .isSorted();
+        assertThat(contacts.getFirst().distance())
+                .isEqualTo(UInt128.parseHex(contacts.getFirst().id())
+                        .xor(node.id())
+                        .toHex());
+        assertThat(node.lookupInfos())
+                .singleElement()
+                .satisfies(l -> assertThat(l.kind()).isEqualTo(KadSearchInfo.Kind.KEYWORD));
     }
 
     @Test
