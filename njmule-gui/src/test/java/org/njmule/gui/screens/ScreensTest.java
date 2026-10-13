@@ -35,6 +35,7 @@ import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.webui.WebUiSettings;
 
 @Timeout(120)
 class ScreensTest {
@@ -346,5 +347,64 @@ class ScreensTest {
                     screen.apply();
                 });
         assertThat(this.test.relaunches()).isEqualTo(1);
+    }
+
+    @Test
+    void webInterfaceSettingsNeedAMatchingPassword() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        SettingsScreen screen = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        Path config = this.test.engine.directories().config();
+
+        FxTesting.onFx(
+                () -> {
+                    screen.shown();
+                    screen.webUiBox().setSelected(true);
+                    screen.apply();
+                });
+        assertThat(this.test.told).contains("Not saved: the web interface needs a password");
+        FxTesting.onFx(
+                () -> {
+                    screen.webUiPasswordField().setText("short");
+                    screen.webUiAgainField().setText("short");
+                    screen.apply();
+                });
+        assertThat(this.test.told).anyMatch(m -> m.contains("at least 8 characters"));
+        FxTesting.onFx(
+                () -> {
+                    screen.webUiPasswordField().setText("long enough");
+                    screen.webUiAgainField().setText("long enough!");
+                    screen.apply();
+                });
+        assertThat(this.test.told).anyMatch(m -> m.contains("differ"));
+        FxTesting.onFx(
+                () -> {
+                    screen.webUiPortField().setText("70000");
+                    screen.apply();
+                });
+        assertThat(this.test.told).anyMatch(m -> m.contains("70000"));
+        assertThat(WebUiSettings.load(config)).isEqualTo(WebUiSettings.DEFAULTS);
+
+        FxTesting.onFx(
+                () -> {
+                    screen.webUiPortField().setText("4712");
+                    screen.webUiAgainField().setText("long enough");
+                    screen.apply();
+                });
+        WebUiSettings saved = WebUiSettings.load(config);
+        assertThat(saved.usable()).isTrue();
+        assertThat(saved.port()).isEqualTo(4712);
+        assertThat(FxTesting.onFx(() -> screen.webUiPasswordField().getText())).isEmpty();
+
+        FxTesting.onFx(
+                () -> {
+                    screen.webUiBox().setSelected(false);
+                    screen.apply();
+                });
+        WebUiSettings off = WebUiSettings.load(config);
+        assertThat(off.enabled()).isFalse();
+        assertThat(off.passwordHash()).isEqualTo(saved.passwordHash());
+        FxTesting.onFx(screen::shown);
+        assertThat(FxTesting.onFx(() -> screen.webUiPortField().getText())).isEqualTo("4712");
     }
 }

@@ -42,6 +42,8 @@ import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.ui.Gui;
+import org.njmule.webui.WebUi;
+import org.njmule.webui.WebUiSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +59,7 @@ public final class DesktopApp implements AutoCloseable {
     private final NjMuleEngine engine;
     private final AppDirectories directories;
     private final GuiSettings settings;
+    private final Optional<WebUi> webUi;
     private EngineModel model;
     private Themes themes;
     private MainWindow window;
@@ -64,10 +67,15 @@ public final class DesktopApp implements AutoCloseable {
     private Scene scene;
     private Timeline ticker;
 
-    private DesktopApp(NjMuleEngine engine, AppDirectories directories, GuiSettings settings) {
+    private DesktopApp(
+            NjMuleEngine engine,
+            AppDirectories directories,
+            GuiSettings settings,
+            Optional<WebUi> webUi) {
         this.engine = engine;
         this.directories = directories;
         this.settings = settings;
+        this.webUi = webUi;
     }
 
     /** Starts the engine as the command line says; any thread. */
@@ -77,7 +85,25 @@ public final class DesktopApp implements AutoCloseable {
         LoggingSetup.enableFileLog(dirs.logs());
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
-        return new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()));
+        return new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
+    }
+
+    // The web interface runs beside the window when its settings ask for it.
+    private static Optional<WebUi> startWebUi(NjMuleEngine engine, AppDirectories dirs) {
+        WebUiSettings web = WebUiSettings.load(dirs.config());
+        if (!web.usable()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(WebUi.start(engine, web));
+        } catch (IOException e) {
+            LOG.warn("Cannot start the web interface on port {}: {}", web.port(), e.toString());
+            return Optional.empty();
+        }
+    }
+
+    public Optional<WebUi> webUi() {
+        return this.webUi;
     }
 
     /** Shows the main window in {@code stage}; FX thread. */
@@ -135,6 +161,7 @@ public final class DesktopApp implements AutoCloseable {
         if (this.model != null) {
             this.model.close();
         }
+        this.webUi.ifPresent(WebUi::close);
         this.engine.close();
         LoggingSetup.disableFileLog();
     }

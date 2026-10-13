@@ -19,6 +19,8 @@ package org.njmule.gui.screens;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -46,6 +48,8 @@ import org.njmule.gui.infra.Themes;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
+import org.njmule.webui.Passwords;
+import org.njmule.webui.WebUiSettings;
 
 /** The engine's preferences and the look of the interface, applied together. */
 public final class SettingsScreen implements Screen {
@@ -77,6 +81,11 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
     private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
+    private final CheckBox webUi = new CheckBox();
+    private final TextField webUiPort = new TextField();
+    private final CheckBox webUiLan = new CheckBox();
+    private final PasswordField webUiPassword = new PasswordField();
+    private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
 
     public SettingsScreen(Gui gui) {
@@ -132,6 +141,8 @@ public final class SettingsScreen implements Screen {
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
         this.upnp.setText(this.gui.t("nj.settings.upnp"));
+        this.webUi.setText(this.gui.t("nj.webui.enabled"));
+        this.webUiLan.setText(this.gui.t("nj.webui.lan"));
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
@@ -178,6 +189,20 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
+        row = section(grid, row, this.gui.t("IDS_PW_WS"));
+        grid.add(this.webUi, 1, row++);
+        row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
+        grid.add(this.webUiLan, 1, row++);
+        row =
+                field(
+                        grid,
+                        row,
+                        this.gui.t("nj.webui.password"),
+                        new HBox(8, this.webUiPassword, this.webUiAgain));
+        Label webNote = new Label(this.gui.t("nj.webui.note"));
+        webNote.setWrapText(true);
+        webNote.getStyleClass().add("text-muted");
+        grid.add(webNote, 0, row++, 2, 1);
         Label note = new Label(this.gui.t("nj.settings.restartNote"));
         note.setWrapText(true);
         note.getStyleClass().add("text-muted");
@@ -248,13 +273,21 @@ public final class SettingsScreen implements Screen {
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
+        WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
+        this.webUi.setSelected(web.enabled());
+        this.webUiPort.setText(String.valueOf(web.port()));
+        this.webUiLan.setSelected(web.lan());
+        this.webUiPassword.clear();
+        this.webUiAgain.clear();
     }
 
     /** Validates the form, then saves the preferences and the look; errors are shown. */
     void apply() {
         Preferences changed;
+        WebUiSettings web;
         try {
             changed = this.read(this.gui.model().preferencesProperty().get());
+            web = this.readWebUi(WebUiSettings.load(this.gui.directories().config()));
         } catch (IllegalArgumentException e) {
             this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return;
@@ -272,6 +305,9 @@ public final class SettingsScreen implements Screen {
         this.gui.settings().setLanguage(this.language.getValue());
         try {
             this.gui.settings().save();
+            web.save(this.gui.directories().config());
+            this.webUiPassword.clear();
+            this.webUiAgain.clear();
         } catch (IOException e) {
             this.gui.inform().accept(e.getMessage());
         }
@@ -307,6 +343,36 @@ public final class SettingsScreen implements Screen {
                 .incomingDir(path(this.incoming))
                 .tempDir(path(this.temp))
                 .build();
+    }
+
+    // A new password replaces the stored hash; an empty one keeps it.
+    private WebUiSettings readWebUi(WebUiSettings current) {
+        int port = number(this.webUiPort, this.gui.t("nj.webui.port"));
+        if (port < 1 || port > 0xFFFF) {
+            throw new IllegalArgumentException(this.gui.t("nj.webui.port") + ": " + port);
+        }
+        String hash = current.passwordHash();
+        char[] password = this.webUiPassword.getText().toCharArray();
+        char[] again = this.webUiAgain.getText().toCharArray();
+        try {
+            if (password.length > 0 || again.length > 0) {
+                if (password.length < Passwords.MIN_LENGTH) {
+                    throw new IllegalArgumentException(
+                            this.gui.f("nj.webui.passwordShort", Passwords.MIN_LENGTH));
+                }
+                if (!Arrays.equals(password, again)) {
+                    throw new IllegalArgumentException(this.gui.t("nj.webui.passwordsDiffer"));
+                }
+                hash = Passwords.hash(password, new SecureRandom());
+            }
+        } finally {
+            Passwords.wipe(password);
+            Passwords.wipe(again);
+        }
+        if (this.webUi.isSelected() && hash.isEmpty()) {
+            throw new IllegalArgumentException(this.gui.t("nj.webui.needsPassword"));
+        }
+        return new WebUiSettings(this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash);
     }
 
     private static int number(TextField field, String name) {
@@ -377,6 +443,22 @@ public final class SettingsScreen implements Screen {
 
     ComboBox<Optional<Locale>> languageBox() {
         return this.language;
+    }
+
+    CheckBox webUiBox() {
+        return this.webUi;
+    }
+
+    TextField webUiPortField() {
+        return this.webUiPort;
+    }
+
+    PasswordField webUiPasswordField() {
+        return this.webUiPassword;
+    }
+
+    PasswordField webUiAgainField() {
+        return this.webUiAgain;
     }
 
     /** A cell showing a name for its item. */

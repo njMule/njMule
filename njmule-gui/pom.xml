@@ -29,6 +29,10 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.njmule</groupId>
+            <artifactId>njmule-webui</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
