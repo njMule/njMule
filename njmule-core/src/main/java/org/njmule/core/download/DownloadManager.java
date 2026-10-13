@@ -129,6 +129,8 @@ public final class DownloadManager implements AutoCloseable {
     private static final int SX_VERY_RARE = 10;
     private static final int SX_RARE = 50;
     private static final int SX_MAX_SOURCES = 750;
+    // Host names in one link that we look up; a link may name thousands.
+    private static final int MAX_LINK_HOSTS = 16;
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadManager.class);
 
@@ -283,9 +285,7 @@ public final class DownloadManager implements AutoCloseable {
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
         DownloadQueue.Download download = this.queue.add(link);
         Entry entry = this.entries.computeIfAbsent(download.hash(), hash -> new Entry(download, this.ticker.read()));
-        for (Ed2kLink.Source source : link.sources()) {
-            this.addLinkSource(entry, source);
-        }
+        this.addLinkSources(entry, link.sources());
         return this.info(entry);
     }
 
@@ -425,7 +425,6 @@ public final class DownloadManager implements AutoCloseable {
             return;
         }
         long ourId = this.server.clientId();
-        int ourPort = this.settings.get().listenPort();
         int added = 0;
         for (ServerMessages.Source source : found.sources()) {
             if (source.isLowId()) {
@@ -434,11 +433,8 @@ public final class DownloadManager implements AutoCloseable {
                 }
                 continue;
             }
-            if (source.clientId() == ourId && source.port() == ourPort) {
-                continue;
-            }
             int ip = Ipv4.fromEd2k(source.clientId());
-            if (!Ipv4.isUnicastPublicCandidate(ip) || this.blocked.test(ip) || source.port() == 0) {
+            if (!this.usable(ip, source.port())) {
                 continue;
             }
             Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
@@ -652,8 +648,13 @@ public final class DownloadManager implements AutoCloseable {
         Hash16 hash = entry.download.hash();
         boolean started = finder.get().find(hash, entry.download.file().size(), found -> {
             Entry current = this.entries.get(hash);
-            if (current != null) {
-                found.forEach(address -> this.addSource(current, address));
+            if (current == null) {
+                return;
+            }
+            for (InetSocketAddress address : found) {
+                if (this.usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
+                    this.addSource(current, address);
+                }
             }
         });
         if (started) {
@@ -713,29 +714,54 @@ public final class DownloadManager implements AutoCloseable {
         };
     }
 
-    private void addLinkSource(Entry entry, Ed2kLink.Source source) {
-        if (InetAddresses.isInetAddress(source.host())) {
-            InetAddress address = InetAddresses.forString(source.host());
-            if (address instanceof Inet4Address) {
-                this.addSource(entry, new InetSocketAddress(address, source.port()));
+    // The user chose these sources, so a LAN or loopback address is fine; the IP filter still applies.
+    private void addLinkSources(Entry entry, List<Ed2kLink.Source> sources) {
+        List<Ed2kLink.Source> named = new ArrayList<>();
+        for (Ed2kLink.Source source : sources) {
+            if (!InetAddresses.isInetAddress(source.host())) {
+                if (named.size() < MAX_LINK_HOSTS) {
+                    named.add(source);
+                }
+            } else if (InetAddresses.forString(source.host()) instanceof Inet4Address address) {
+                this.addLinkSource(entry, new InetSocketAddress(address, source.port()));
             }
+        }
+        if (named.isEmpty()) {
             return;
         }
         Hash16 hash = entry.download.hash();
-        Thread.ofVirtual().name("njmule-resolve-source").start(() -> {
-            try {
-                for (InetAddress address : InetAddress.getAllByName(source.host())) {
-                    if (address instanceof Inet4Address) {
-                        InetSocketAddress resolved = new InetSocketAddress(address, source.port());
-                        this.loop.post(() -> Optional.ofNullable(this.entries.get(hash))
-                                .ifPresent(e -> this.addSource(e, resolved)));
-                        return;
+        Thread.ofVirtual().name("njmule-resolve-sources").start(() -> {
+            for (Ed2kLink.Source source : named) {
+                try {
+                    for (InetAddress address : InetAddress.getAllByName(source.host())) {
+                        if (address instanceof Inet4Address) {
+                            InetSocketAddress resolved = new InetSocketAddress(address, source.port());
+                            this.loop.post(() -> Optional.ofNullable(this.entries.get(hash))
+                                    .ifPresent(e -> this.addLinkSource(e, resolved)));
+                            break;
+                        }
                     }
+                } catch (UnknownHostException e) {
+                    logger.debug("Cannot resolve the source {}", source.host());
                 }
-            } catch (UnknownHostException e) {
-                logger.debug("Cannot resolve the source {}", source.host());
             }
         });
+    }
+
+    private void addLinkSource(Entry entry, InetSocketAddress address) {
+        if (address.getPort() != 0
+                && !this.blocked.test(Ipv4.fromBytes(address.getAddress().getAddress()))) {
+            this.addSource(entry, address);
+        }
+    }
+
+    // A source the network told us about: a public-looking address the IP filter allows, not ourselves.
+    private boolean usable(int ip, int port) {
+        return port != 0
+                && Ipv4.isUnicastPublicCandidate(ip)
+                && !this.blocked.test(ip)
+                && !(Ipv4.toEd2k(ip) == this.server.clientId()
+                        && port == this.settings.get().listenPort());
     }
 
     // Returns the new source, or null if it was known or the list is full.
@@ -822,16 +848,10 @@ public final class DownloadManager implements AutoCloseable {
         }
         entry.sourcesEverAnswered = true;
         entry.sourcesAnswered = this.ticker.read();
-        long ourId = this.server.clientId();
-        int ourPort = this.settings.get().listenPort();
         int added = 0;
         for (SourceExchange.Source s : answer.sources()) {
             // A LowID would need a callback through its server; ours may differ.
-            if (s.isLowId()
-                    || s.port() == 0
-                    || !Ipv4.isUnicastPublicCandidate(s.ip())
-                    || this.blocked.test(s.ip())
-                    || (Ipv4.toEd2k(s.ip()) == ourId && s.port() == ourPort)) {
+            if (s.isLowId() || !this.usable(s.ip(), s.port())) {
                 continue;
             }
             Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
