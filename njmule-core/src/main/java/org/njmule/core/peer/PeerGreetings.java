@@ -46,8 +46,8 @@ import org.slf4j.LoggerFactory;
 /**
  * The hello exchange with other clients, in both directions. Incoming connections get our answer
  * (servers test our reachability this way before giving a HighID); outgoing greetings report what
- * the peer answered. Connections then stay open until they are idle; the later protocol arrives
- * with the downloads. Thread-safe.
+ * the peer answered. An incoming connection that a {@link Router} wants is handed over after the
+ * hello; the others stay open until they are idle. Thread-safe.
  */
 public final class PeerGreetings implements AutoCloseable {
 
@@ -59,11 +59,19 @@ public final class PeerGreetings implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(PeerGreetings.class);
 
+    /** Takes over incoming connections from clients something waits for, after their hello. */
+    @FunctionalInterface
+    public interface Router {
+        /** The handler for the rest of the connection, if it is wanted; on its reading thread. */
+        Optional<TcpConnection.Handler> route(TcpConnection connection, Hello peer);
+    }
+
     private final Hash16 userHash;
     private final Supplier<Hello> ourHello;
     private final Supplier<Boolean> plainAllowed;
     private final SecureRandom random;
     private final Set<TcpConnection> open = ConcurrentHashMap.newKeySet();
+    private volatile Router router = (connection, peer) -> Optional.empty();
 
     /**
      * @param ourHello builds our greeting from the current state (name, ports, server)
@@ -78,6 +86,11 @@ public final class PeerGreetings implements AutoCloseable {
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.plainAllowed = Objects.requireNonNull(plainAllowed, "plainAllowed");
         this.random = Objects.requireNonNull(random, "random");
+    }
+
+    /** Sets who may take over incoming connections. */
+    public void routeTo(Router incoming) {
+        this.router = Objects.requireNonNull(incoming, "incoming");
     }
 
     /** Serves an accepted socket (from a listener thread) until the connection ends. */
@@ -158,6 +171,7 @@ public final class PeerGreetings implements AutoCloseable {
     private class Handler implements TcpConnection.Handler {
         private final Optional<CompletableFuture<PeerInfo>> answer;
         private boolean greeted;
+        private TcpConnection.Handler next;
 
         Handler(Optional<CompletableFuture<PeerInfo>> answer) {
             this.answer = answer;
@@ -165,6 +179,10 @@ public final class PeerGreetings implements AutoCloseable {
 
         @Override
         public void onPacket(TcpConnection connection, Packet packet) {
+            if (this.next != null) {
+                this.next.onPacket(connection, packet);
+                return;
+            }
             if (packet.protocol() != Protocol.EDONKEY) {
                 return;
             }
@@ -186,6 +204,9 @@ public final class PeerGreetings implements AutoCloseable {
                             connection.remoteAddress(),
                             PeerSoftware.describe(peer));
                     this.answer.ifPresent(a -> a.complete(info(connection, peer)));
+                    if (this.answer.isEmpty()) {
+                        this.next = PeerGreetings.this.router.route(connection, peer).orElse(null);
+                    }
                 }
             } catch (IOException e) {
                 LOG.debug("Bad hello from {}: {}", connection.remoteAddress(), e.getMessage());
@@ -196,6 +217,9 @@ public final class PeerGreetings implements AutoCloseable {
         @Override
         public void onClosed(TcpConnection connection, Optional<IOException> cause) {
             PeerGreetings.this.open.remove(connection);
+            if (this.next != null) {
+                this.next.onClosed(connection, cause);
+            }
             this.answer.ifPresent(
                     a ->
                             a.completeExceptionally(
