@@ -145,11 +145,6 @@ public final class Igd implements AutoCloseable {
         this.http.close();
     }
 
-    /** Our address on the gateway's network, the one mappings point to. */
-    public InetAddress localAddress() {
-        return this.local;
-    }
-
     public URI controlUrl() {
         return this.control;
     }
