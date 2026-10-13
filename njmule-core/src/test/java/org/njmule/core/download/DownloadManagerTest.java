@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.config.ObfuscationMode;
@@ -106,7 +108,59 @@ class DownloadManagerTest {
         assertThat(info.sources()).isEqualTo(1);
     }
 
+    @Test
+    void stoppingForgetsTheSourcesAndKeepsThePriority() throws Exception {
+        DownloadManager manager = this.manager();
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
+                "ed2k://|file|stop.bin|5000|" + "56".repeat(16) + "|/|sources,192.0.2.10:" + PORT + "|/");
+
+        DownloadInfo stopped = this.onLoop(() -> {
+            manager.add(link);
+            manager.setPriority(link.hash(), DownloadPriority.HIGH);
+            manager.stop(link.hash());
+            return manager.download(link.hash()).orElseThrow();
+        });
+
+        assertThat(stopped.status()).isEqualTo(DownloadInfo.Status.STOPPED);
+        assertThat(stopped.sources()).isZero();
+        assertThat(stopped.priority()).isEqualTo(DownloadPriority.HIGH);
+        DownloadInfo resumed = this.onLoop(() -> {
+            manager.resume(link.hash());
+            DownloadInfo info = manager.download(link.hash()).orElseThrow();
+            manager.pause(link.hash());
+            return info;
+        });
+        assertThat(resumed.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
+        assertThat(this.onLoop(() -> manager.stop(Hash16.parseHex("00".repeat(16)))))
+                .isFalse();
+    }
+
+    @Test
+    void higherPrioritiesAskTheServerFirst() throws Exception {
+        HighIdServer server = new HighIdServer(true);
+        DownloadManager manager = this.manager(server);
+        Hash16 low = Hash16.parseHex("78".repeat(16));
+        Hash16 high = Hash16.parseHex("9a".repeat(16));
+
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("low.bin", 5000, low));
+            manager.setPriority(low, DownloadPriority.LOW);
+            manager.add(Ed2kLink.FileLink.of("high.bin", 5000, high));
+            manager.setPriority(high, DownloadPriority.HIGH);
+            return null;
+        });
+        for (int i = 0; i < 100 && server.asked.size() < 2; i++) {
+            Thread.sleep(100);
+        }
+
+        assertThat(server.asked).startsWith(high, low);
+    }
+
     private DownloadManager manager() throws Exception {
+        return this.manager(new HighIdServer(false));
+    }
+
+    private DownloadManager manager(HighIdServer server) throws Exception {
         SecureRandom random = new SecureRandom();
         Identities identities = new Identities(
                 IdentityHandshake.Identity.of(Identities.loadOrCreateKey(this.dir, random)),
@@ -122,7 +176,7 @@ class DownloadManagerTest {
                 () -> this.dir.resolve("incoming"),
                 () -> hello,
                 () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT),
-                new HighIdServer(),
+                server,
                 ip -> ip == BLOCKED_IP,
                 random,
                 Ticker.systemTicker(),
@@ -141,10 +195,21 @@ class DownloadManagerTest {
         return this.loop.submit(task).get(30, TimeUnit.SECONDS);
     }
 
+    // Answers source requests as asked to, and keeps the files they were for.
     private static final class HighIdServer implements DownloadManager.ServerLink {
+        private final boolean answers;
+        private final List<Hash16> asked = new CopyOnWriteArrayList<>();
+
+        HighIdServer(boolean answers) {
+            this.answers = answers;
+        }
+
         @Override
         public boolean askSources(Hash16 file, long size) {
-            return false;
+            if (this.answers) {
+                this.asked.add(file);
+            }
+            return this.answers;
         }
 
         @Override

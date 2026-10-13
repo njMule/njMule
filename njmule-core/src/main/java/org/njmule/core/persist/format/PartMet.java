@@ -55,6 +55,12 @@ public final class PartMet {
         }
     }
 
+    /** FT_STATUS of a paused file; other clients take any value but 0 as paused. */
+    public static final int PAUSED = 1;
+
+    /** FT_STATUS of a stopped file. */
+    public static final int STOPPED = 2;
+
     public record Contents(int version, long mtime, Hash16 fileHash, List<Hash16> partHashes, List<Tag> tags) {
         public Contents {
             Objects.requireNonNull(fileHash, "fileHash");
@@ -77,6 +83,16 @@ public final class PartMet {
         /** Paused or stopped (FT_STATUS ≠ 0). */
         public boolean paused() {
             return Tags.intValue(this.tags, FileTag.STATUS).orElse(0) != 0;
+        }
+
+        /** Stopped rather than only paused (FT_STATUS = 2). */
+        public boolean stopped() {
+            return Tags.intValue(this.tags, FileTag.STATUS).orElse(0) == STOPPED;
+        }
+
+        /** FT_DLPRIORITY: 0 low, 1 normal, 2 high, 5 auto. */
+        public OptionalLong downloadPriority() {
+            return Tags.intValue(this.tags, FileTag.DLPRIORITY);
         }
 
         public OptionalLong category() {

@@ -36,6 +36,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
@@ -247,11 +248,22 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
+    /** Pauses the download for good: the caller forgets its sources. */
+    public void stop(Download download) {
+        download.file.setStatus(PartFile.Status.STOPPED);
+        download.dirty = true;
+    }
+
     public void resume(Download download) {
-        if (download.file.status() == PartFile.Status.PAUSED) {
+        if (download.file.status() == PartFile.Status.PAUSED || download.file.status() == PartFile.Status.STOPPED) {
             download.file.setStatus(PartFile.Status.DOWNLOADING);
             download.dirty = true;
         }
+    }
+
+    public void setPriority(Download download, DownloadPriority priority) {
+        download.file.setPriority(priority);
+        download.dirty = true;
     }
 
     /** Stops the download and deletes its files. */

@@ -25,6 +25,7 @@ public record DownloadInfo(
         long size,
         long completed,
         Status status,
+        DownloadPriority priority,
         int sources,
         int transferring,
         long bytesPerSecond,
@@ -33,6 +34,8 @@ public record DownloadInfo(
     public enum Status {
         DOWNLOADING,
         PAUSED,
+        /** Paused, and its sources are forgotten. */
+        STOPPED,
         ERROR,
         COMPLETE
     }
@@ -41,6 +44,7 @@ public record DownloadInfo(
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(status, "status");
+        Objects.requireNonNull(priority, "priority");
         Objects.requireNonNull(parts, "parts");
     }
 

@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.api.PartMap;
@@ -48,6 +49,8 @@ public final class PartFile {
     public enum Status {
         DOWNLOADING,
         PAUSED,
+        /** Paused, and its sources are forgotten. */
+        STOPPED,
         /** Disk failure: the file waits for the user. */
         ERROR,
         COMPLETE
@@ -80,6 +83,7 @@ public final class PartFile {
     private String name;
     private List<Hash16> partHashes;
     private Status status = Status.DOWNLOADING;
+    private DownloadPriority priority = DownloadPriority.AUTO;
 
     private PartFile(
             int number,
@@ -136,9 +140,12 @@ public final class PartFile {
         for (PartMet.Gap gap : contents.gaps()) {
             file.missing.add(Range.closedOpen(gap.start(), gap.end()));
         }
-        if (contents.paused()) {
+        if (contents.stopped()) {
+            file.status = Status.STOPPED;
+        } else if (contents.paused()) {
             file.status = Status.PAUSED;
         }
+        contents.downloadPriority().ifPresent(code -> file.priority = priority(code));
         return file;
     }
 
@@ -148,7 +155,8 @@ public final class PartFile {
         tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), this.name));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), this.size));
         tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
-        tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), this.status == Status.PAUSED ? 1 : 0));
+        tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), statusCode(this.status)));
+        tags.add(new Tag.IntTag(TagName.id(FileTag.DLPRIORITY), priorityCode(this.priority)));
         this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
         for (Range<Long> gap : this.missing.asRanges()) {
@@ -190,6 +198,14 @@ public final class PartFile {
 
     public void setStatus(Status status) {
         this.status = Objects.requireNonNull(status, "status");
+    }
+
+    public DownloadPriority priority() {
+        return this.priority;
+    }
+
+    public void setPriority(DownloadPriority priority) {
+        this.priority = Objects.requireNonNull(priority, "priority");
     }
 
     public Path dataFile() {
@@ -346,6 +362,33 @@ public final class PartFile {
     /** {@code 001}, {@code 002}, ...: the base name of download number {@code n}. */
     public static String fileName(int number) {
         return String.format(Locale.ROOT, "%03d", number);
+    }
+
+    private static int statusCode(Status status) {
+        return switch (status) {
+            case PAUSED -> PartMet.PAUSED;
+            case STOPPED -> PartMet.STOPPED;
+            default -> 0;
+        };
+    }
+
+    // The values other clients write too, so imported downloads keep their priority.
+    private static int priorityCode(DownloadPriority priority) {
+        return switch (priority) {
+            case LOW -> 0;
+            case NORMAL -> 1;
+            case HIGH -> 2;
+            case AUTO -> 5;
+        };
+    }
+
+    private static DownloadPriority priority(long code) {
+        return switch ((int) code) {
+            case 0, 4 -> DownloadPriority.LOW;
+            case 2, 3 -> DownloadPriority.HIGH;
+            case 5 -> DownloadPriority.AUTO;
+            default -> DownloadPriority.NORMAL;
+        };
     }
 
     private String dataName() {

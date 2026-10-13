@@ -29,10 +29,12 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.files.PartFile.Block;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.PartMet;
 
 class PartFileTest {
 
@@ -131,6 +133,27 @@ class PartFileTest {
         assertThat(loaded.status()).isEqualTo(PartFile.Status.PAUSED);
         assertThat(loaded.partHash(2)).contains(hash(3));
         assertThat(loaded.metFile().getFileName().toString()).isEqualTo("007.part.met");
+    }
+
+    @Test
+    void keepsItsPriorityAndWhetherItIsStopped() throws Exception {
+        PartFile file = PartFile.create(3, this.dir, "a.bin", 5000, hash(1), Optional.empty(), List.of());
+        assertThat(file.priority()).as("new downloads follow their rarity").isEqualTo(DownloadPriority.AUTO);
+        for (DownloadPriority priority : DownloadPriority.values()) {
+            file.setPriority(priority);
+            file.save();
+            assertThat(PartFile.load(this.dir, 3).priority()).isEqualTo(priority);
+        }
+        file.setPriority(DownloadPriority.HIGH);
+        file.setStatus(PartFile.Status.STOPPED);
+        file.save();
+
+        PartFile loaded = PartFile.load(this.dir, 3);
+
+        assertThat(loaded.status()).isEqualTo(PartFile.Status.STOPPED);
+        PartMet.Contents met = PartMet.read(Files.readAllBytes(loaded.metFile()));
+        assertThat(met.paused()).as("other clients see a paused file").isTrue();
+        assertThat(met.downloadPriority()).as("the value other clients write").hasValue(2);
     }
 
     @Test

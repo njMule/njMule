@@ -28,6 +28,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,7 @@ import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.config.ObfuscationMode;
@@ -375,6 +377,30 @@ public final class DownloadManager implements AutoCloseable {
         return true;
     }
 
+    /** Pauses the download and forgets its sources: resumed, it looks for them again. */
+    public boolean stop(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        this.queue.stop(entry.download);
+        this.closeSessions(entry, "the download is stopped");
+        entry.sources.clear();
+        this.callbacks.values().removeIf(callback -> callback.file.equals(hash));
+        this.listener.progress(this.info(entry));
+        return true;
+    }
+
+    public boolean setPriority(Hash16 hash, DownloadPriority priority) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        this.queue.setPriority(entry.download, priority);
+        this.listener.progress(this.info(entry));
+        return true;
+    }
+
     public boolean resume(Hash16 hash) {
         Entry entry = this.entries.get(hash);
         if (entry == null) {
@@ -382,6 +408,8 @@ public final class DownloadManager implements AutoCloseable {
         }
         this.queue.resume(entry.download);
         long now = this.ticker.read();
+        entry.nextKadSearch = now;
+        entry.kadSearches = 0;
         for (Source source : entry.sources.values()) {
             source.nextAsk = source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
         }
@@ -590,7 +618,7 @@ public final class DownloadManager implements AutoCloseable {
         this.sendCallbacks(now);
         // One source request per tick, so the server is never flooded.
         boolean askedServer = false;
-        for (Entry entry : this.entries.values()) {
+        for (Entry entry : this.byPriority()) {
             entry.window[entry.slot] = entry.received;
             entry.slot = (entry.slot + 1) % RATE_WINDOW;
             if (entry.received > 0) {
@@ -615,6 +643,17 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
+    // Higher priorities first: they ask the server, start sessions and search Kad before the others.
+    private List<Entry> byPriority() {
+        List<Entry> sorted = new ArrayList<>(this.entries.values());
+        sorted.sort(Comparator.comparing(DownloadManager::priority).reversed());
+        return sorted;
+    }
+
+    private static DownloadPriority priority(Entry entry) {
+        return entry.download.file().priority().effective(entry.sources.size());
+    }
+
     // A few Kad searches at a time, one new a second; a file waits longer after each search.
     private void searchKad(Entry entry, long now) {
         Optional<KadSources> finder = this.kad.get();
@@ -628,7 +667,8 @@ public final class DownloadManager implements AutoCloseable {
         Hash16 hash = entry.download.hash();
         boolean started = finder.get().find(hash, entry.download.file().size(), found -> {
             Entry current = this.entries.get(hash);
-            if (current == null) {
+            // A stopped download has forgotten its sources and takes none until it is resumed.
+            if (current == null || current.download.file().status() == PartFile.Status.STOPPED) {
                 return;
             }
             for (InetSocketAddress address : found) {
@@ -786,6 +826,7 @@ public final class DownloadManager implements AutoCloseable {
                 file.size(),
                 file.completedBytes(),
                 status(file.status()),
+                file.priority(),
                 entry.sources.size(),
                 transferring,
                 entry.rate(),
@@ -796,6 +837,7 @@ public final class DownloadManager implements AutoCloseable {
         return switch (status) {
             case DOWNLOADING -> DownloadInfo.Status.DOWNLOADING;
             case PAUSED -> DownloadInfo.Status.PAUSED;
+            case STOPPED -> DownloadInfo.Status.STOPPED;
             case ERROR -> DownloadInfo.Status.ERROR;
             case COMPLETE -> DownloadInfo.Status.COMPLETE;
         };

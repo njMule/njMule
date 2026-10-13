@@ -44,6 +44,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
@@ -533,6 +534,14 @@ final class Network {
 
     boolean resumeDownload(Hash16 hash) {
         return this.downloads.resume(hash);
+    }
+
+    boolean stopDownload(Hash16 hash) {
+        return this.downloads.stop(hash);
+    }
+
+    boolean setDownloadPriority(Hash16 hash, DownloadPriority priority) {
+        return this.downloads.setPriority(hash, priority);
     }
 
     boolean cancelDownload(Hash16 hash) {

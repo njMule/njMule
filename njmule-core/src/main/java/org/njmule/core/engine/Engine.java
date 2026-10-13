@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
@@ -361,6 +362,19 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Boolean> resumeDownload(Hash16 hash) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.resumeDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> stopDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.stopDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority) {
+        Objects.requireNonNull(hash, "hash");
+        Objects.requireNonNull(priority, "priority");
+        return this.loop.submit(() -> this.network.setDownloadPriority(hash, priority));
     }
 
     @Override

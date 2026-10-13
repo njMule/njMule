@@ -105,6 +105,12 @@ public interface NjMuleEngine extends AutoCloseable {
 
     CompletableFuture<Boolean> resumeDownload(Hash16 hash);
 
+    /** Pauses the download and forgets its sources; resumed, it looks for them again. */
+    CompletableFuture<Boolean> stopDownload(Hash16 hash);
+
+    /** Sets how early the download asks for sources and starts transfers, before the others. */
+    CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority);
+
     /** Stops the download and deletes its data. */
     CompletableFuture<Boolean> cancelDownload(Hash16 hash);
 
