@@ -17,9 +17,11 @@
 package org.njmule.core.files;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.TextFiles;
 
 @Timeout(60)
 class SharedFilesTest {
@@ -103,6 +106,62 @@ class SharedFilesTest {
                 });
     }
 
+    @Test
+    void neverSharesPrivateDirectoriesOrBackups() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Path temp = Files.createDirectories(this.dir.resolve("temp"));
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path emule = Files.createDirectories(this.dir.resolve("emule-config"));
+        Files.write(config.resolve("cryptkey.dat"), bytes(300, 3));
+        Files.write(temp.resolve("x.bin"), bytes(300, 4));
+        Files.write(emule.resolve(SharedFiles.CLIENT_KEY), bytes(300, 5));
+        Files.write(emule.resolve("known.met"), bytes(300, 6));
+        Files.write(incoming.resolve("001.part.met.bak"), bytes(300, 7));
+        Files.write(incoming.resolve("real.bin"), bytes(300, 8));
+
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared real.bin");
+        for (Path dir :
+                List.of(
+                        config,
+                        config.resolve("sub"),
+                        temp,
+                        emule,
+                        Path.of(System.getProperty("user.home")))) {
+            assertThat(this.onLoop(() -> shares.isPrivate(dir))).as(dir.toString()).isTrue();
+            assertThatThrownBy(
+                            () ->
+                                    this.onLoop(
+                                            () -> {
+                                                shares.addDirectory(dir);
+                                                return null;
+                                            }))
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(this.onLoop(() -> shares.isPrivate(incoming))).isFalse();
+        assertThat(this.events.poll(2, TimeUnit.SECONDS)).isNull();
+        assertThat(this.onLoop(shares::all)).hasSize(1);
+        assertThat(this.onLoop(shares::directories)).isEmpty();
+        this.onLoop(
+                () -> {
+                    shares.close();
+                    return null;
+                });
+
+        // A private directory already in the list, from an older version, stays unshared.
+        Files.write(
+                config.resolve(SharedFiles.SHARED_DIRS),
+                TextFiles.writeLines(List.of(emule.toString())));
+        SharedFiles again = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared real.bin");
+        assertThat(this.events.poll(2, TimeUnit.SECONDS)).isNull();
+        this.onLoop(
+                () -> {
+                    again.close();
+                    return null;
+                });
+    }
+
     private SharedFiles open(Path config, Path incoming) throws Exception {
         return this.onLoop(
                 () ->
@@ -110,6 +169,7 @@ class SharedFilesTest {
                                 this.loop,
                                 config,
                                 () -> incoming,
+                                () -> List.of(this.dir.resolve("temp")),
                                 new SharedFiles.Listener() {
                                     @Override
                                     public void shared(SharedFiles.SharedFile file) {

@@ -347,13 +347,27 @@ public final class EmuleImporter {
             this.report(file, ImportReport.Outcome.WOULD_IMPORT, dirs.size() + " directories");
             return;
         }
-        try {
-            for (Path dir : dirs) {
+        // A directory refused (a private one) or failing does not stop the others.
+        int shared = 0;
+        String failure = "";
+        for (Path dir : dirs) {
+            try {
                 this.target.shareDirectory(dir);
+                shared++;
+            } catch (IOException | RuntimeException e) {
+                failure = String.valueOf(e.getMessage());
             }
-            this.report(file, ImportReport.Outcome.IMPORTED, dirs.size() + " directories");
-        } catch (IOException | RuntimeException e) {
-            this.report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+        }
+        if (shared == 0) {
+            this.report(file, ImportReport.Outcome.FAILED, failure);
+        } else {
+            int skipped = dirs.size() - shared;
+            this.report(
+                    file,
+                    ImportReport.Outcome.IMPORTED,
+                    shared
+                            + " directories"
+                            + (skipped == 0 ? "" : ", " + skipped + " not shared: " + failure));
         }
     }
 

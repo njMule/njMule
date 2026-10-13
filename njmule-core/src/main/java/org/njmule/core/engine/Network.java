@@ -329,7 +329,12 @@ final class Network {
                     LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
         this.shares =
-                SharedFiles.open(this.loop, this.configDir, this.incomingDir, new ShareEvents());
+                SharedFiles.open(
+                        this.loop,
+                        this.configDir,
+                        this.incomingDir,
+                        () -> List.of(this.tempDir()),
+                        new ShareEvents());
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             this.startKad();

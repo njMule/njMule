@@ -100,11 +100,15 @@ public final class SharedFiles implements AutoCloseable {
             Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
     private static final Logger LOG = LoggerFactory.getLogger(SharedFiles.class);
 
+    /** A client's private key: a directory holding one is a client's configuration. */
+    static final String CLIENT_KEY = "cryptkey.dat";
+
     private record Key(String name, long size, long mtime) {}
 
     private final EngineLoop loop;
     private final Path configDir;
     private final Supplier<Path> incomingDir;
+    private final Supplier<List<Path>> privateDirs;
     private final Listener listener;
     private final Map<Key, KnownMet.KnownFile> known = new LinkedHashMap<>();
     private final Map<Hash20, Known2Met.Entry> aich = new LinkedHashMap<>();
@@ -119,17 +123,30 @@ public final class SharedFiles implements AutoCloseable {
     private boolean closed;
 
     private SharedFiles(
-            EngineLoop loop, Path configDir, Supplier<Path> incomingDir, Listener listener) {
+            EngineLoop loop,
+            Path configDir,
+            Supplier<Path> incomingDir,
+            Supplier<List<Path>> privateDirs,
+            Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.configDir = Objects.requireNonNull(configDir, "configDir");
         this.incomingDir = Objects.requireNonNull(incomingDir, "incomingDir");
+        this.privateDirs = Objects.requireNonNull(privateDirs, "privateDirs");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
-    /** Reads the known files and starts looking at the shared directories. */
+    /**
+     * Reads the known files and starts looking at the shared directories.
+     *
+     * @param privateDirs directories never shared besides the config one, such as the temp one
+     */
     public static SharedFiles open(
-            EngineLoop loop, Path configDir, Supplier<Path> incomingDir, Listener listener) {
-        SharedFiles shares = new SharedFiles(loop, configDir, incomingDir, listener);
+            EngineLoop loop,
+            Path configDir,
+            Supplier<Path> incomingDir,
+            Supplier<List<Path>> privateDirs,
+            Listener listener) {
+        SharedFiles shares = new SharedFiles(loop, configDir, incomingDir, privateDirs, listener);
         shares.loadKnown();
         shares.rescan =
                 loop.scheduleRepeating(
@@ -166,9 +183,16 @@ public final class SharedFiles implements AutoCloseable {
         return dirs;
     }
 
-    /** Shares {@code directory} too, from now on. */
+    /**
+     * Shares {@code directory} too, from now on.
+     *
+     * @throws IllegalArgumentException for a private directory (see {@link #isPrivate})
+     */
     public void addDirectory(Path directory) throws IOException {
         Path dir = directory.toAbsolutePath().normalize();
+        if (this.isPrivate(dir)) {
+            throw new IllegalArgumentException("refusing to share the private directory " + dir);
+        }
         List<Path> dirs = new ArrayList<>(this.directories());
         if (!dirs.contains(dir)) {
             dirs.add(dir);
@@ -242,6 +266,10 @@ public final class SharedFiles implements AutoCloseable {
         Set<Path> seen = new LinkedHashSet<>();
         for (Path dir : dirs) {
             if (!Files.isDirectory(dir)) {
+                continue;
+            }
+            if (this.isPrivate(dir)) {
+                LOG.warn("Not sharing the private directory {}", dir);
                 continue;
             }
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
@@ -432,13 +460,33 @@ public final class SharedFiles implements AutoCloseable {
         }
     }
 
+    /**
+     * Whether the files of {@code dir} must never be shared: the user's home directory, our
+     * configuration and temp directories and what lies below them, and any directory holding a
+     * client's private key (another client's configuration).
+     */
+    boolean isPrivate(Path dir) {
+        Path d = dir.toAbsolutePath().normalize();
+        List<Path> roots = new ArrayList<>(this.privateDirs.get());
+        roots.add(this.configDir);
+        for (Path root : roots) {
+            if (d.startsWith(root.toAbsolutePath().normalize())) {
+                return true;
+            }
+        }
+        String home = System.getProperty("user.home");
+        return (home != null && d.equals(Path.of(home).toAbsolutePath().normalize()))
+                || Files.exists(d.resolve(CLIENT_KEY));
+    }
+
     private static boolean isSkipped(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
         return SKIPPED.contains(lower)
                 || lower.endsWith(".lnk")
                 || lower.endsWith(PartFile.DATA_SUFFIX)
                 || lower.endsWith(PartFile.MET_SUFFIX)
-                || lower.endsWith(".tmp");
+                || lower.endsWith(".tmp")
+                || lower.endsWith(".bak");
     }
 
     private static long mtime(Path file) throws IOException {

@@ -59,6 +59,7 @@ class EmuleImporterTest {
         int known;
         int trees;
         final List<Path> shared = new ArrayList<>();
+        final List<Path> refused = new ArrayList<>();
         final List<String> adopted = new ArrayList<>();
 
         @Override
@@ -92,6 +93,9 @@ class EmuleImporterTest {
 
         @Override
         public void shareDirectory(Path directory) {
+            if (this.refused.contains(directory)) {
+                throw new IllegalArgumentException("refusing " + directory);
+            }
             this.shared.add(directory);
         }
 
@@ -393,6 +397,22 @@ class EmuleImporterTest {
 
         assertThat(outcomes(report)).containsEntry("Temp", Outcome.MISSING);
         assertThat(detail(report, "Temp")).isEqualTo("no downloads in progress");
+    }
+
+    @Test
+    void aRefusedSharedDirectoryDoesNotStopTheOthers() throws IOException {
+        this.target.refused.add(this.emule.incoming);
+
+        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+
+        ImportReport.Item dirs =
+                report.items().stream()
+                        .filter(i -> i.file().equals("shareddir.dat"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(dirs.outcome()).isEqualTo(Outcome.IMPORTED);
+        assertThat(dirs.detail()).contains("1 directories", "1 not shared", "refusing");
+        assertThat(this.target.shared).containsExactly(this.emule.shared);
     }
 
     private ImportReport run(ImportOptions options, boolean emuleRunning) {
