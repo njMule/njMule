@@ -74,9 +74,23 @@ All notable changes to this project are documented here. The format follows
   `njmule --download <ed2k link>...` on the command line.
 - Test kit: a fake peer that shares a file, with queueing, short upload sessions and corrupt
   parts.
+- Shared files: the incoming directory and the directories listed in `shareddir.dat`, hashed once
+  and remembered in `known.met` and `known2_64.met`; finished downloads are shared at once.
+- Uploads: a queue scored by waiting time, credits and file priority, slots by upload limit,
+  bandwidth shared between slots, about one part per slot while others wait, compressed blocks,
+  bans for clients that ask too often; the checked parts of downloads are shared too.
+- Credits per user hash in `clients.met` and secure identification with our key in
+  `cryptkey.dat`, on download, upload and hello connections; `--hello` reports the outcome.
+- Source exchange with other clients (versions 1 to 4), asking and answering.
+- Shared files offered to the connected server.
+- `njmule --share <dir>...` on the command line, and engine API for the shared files.
 
 ### Changed
 
 - MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and
   command-line parsing now come from the JDK, Bouncy Castle, Guava and picocli instead of our own
   code.
+
+### Fixed
+
+- The complete parts of a download resumed after a crash are checked again.
