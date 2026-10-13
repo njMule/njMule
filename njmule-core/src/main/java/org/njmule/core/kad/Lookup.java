@@ -144,6 +144,11 @@ final class Lookup {
         return false;
     }
 
+    /** How many contacts a node we asked may send. */
+    int expectedContacts() {
+        return this.reAsked ? RE_ASK_COUNT : this.kind.count();
+    }
+
     /** Contacts sent by a node we asked. */
     void answered(int ip, int port, List<KadMessages.Contact> contacts, long now) {
         KadMessages.Contact responder = null;
@@ -156,8 +161,7 @@ final class Lookup {
         if (responder == null || this.stopped) {
             return;
         }
-        int allowed = this.reAsked ? RE_ASK_COUNT : this.kind.count();
-        if (contacts.size() > allowed) {
+        if (contacts.size() > this.expectedContacts()) {
             return;
         }
         this.lastAnswer = now;

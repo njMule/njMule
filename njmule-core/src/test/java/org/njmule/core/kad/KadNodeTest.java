@@ -26,6 +26,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,36 @@ class KadNodeTest {
     };
     private final List<Packet> sentToPeer = new ArrayList<>();
     private final Set<Integer> blocked = new HashSet<>();
+
+    @Test
+    void learnsContactsOnlyFromAnAnswerToOneOfItsLookups() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        int blockedIp = Ipv4.of(50, 1, 1, 1);
+        this.blocked.add(blockedIp);
+
+        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
+                .isTrue();
+        this.answer(
+                node,
+                UInt128.random(this.random),
+                this.contact(Ipv4.of(30, 1, 1, 1)),
+                this.contact(Ipv4.of(40, 1, 1, 1)));
+        assertThat(node.contacts()).as("an answer for another target").isEqualTo(1);
+
+        assertThat(node.findSources(this.hash(), 1000, sources -> {})).isTrue();
+        KadMessages.Request request = this.lastRequest();
+        List<KadMessages.Contact> tooMany = new ArrayList<>();
+        for (int i = 0; i <= request.count(); i++) {
+            tooMany.add(this.contact(Ipv4.of(60 + i, 1, 1, 1)));
+        }
+        this.answer(node, request.target(), tooMany.toArray(KadMessages.Contact[]::new));
+        assertThat(node.contacts()).as("more contacts than asked for").isEqualTo(1);
+
+        assertThat(node.findSources(this.hash(), 1000, sources -> {})).isTrue();
+        this.answer(node, this.lastRequest().target(), this.contact(Ipv4.of(30, 1, 1, 1)), this.contact(blockedIp));
+        assertThat(node.contacts()).as("the filtered address is left out").isEqualTo(2);
+    }
 
     @Test
     void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {

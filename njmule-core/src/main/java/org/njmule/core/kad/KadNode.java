@@ -595,6 +595,15 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         KadMessages.Answer answer = KadMessages.Answer.decode(packet);
         long now = this.ticker.read();
+        this.table.byAddress(peer.ip()).ifPresent(c -> this.table.alive(c, now));
+        // Contacts are learnt only from the answer to a lookup that asked this node for that many.
+        Lookup lookup = this.lookups.get(answer.target());
+        if (lookup == null
+                || !lookup.asked(peer.ip(), peer.port())
+                || answer.contacts().size() > lookup.expectedContacts()) {
+            logger.debug("Ignoring {} contacts from {}", answer.contacts().size(), Ipv4.format(peer.ip()));
+            return;
+        }
         List<KadMessages.Contact> usable = new ArrayList<>();
         for (KadMessages.Contact c : answer.contacts()) {
             if (c.version() >= 2 && this.isGoodAddress(c.ip()) && !(c.udpPort() == 53 && c.version() <= 5)) {
@@ -602,11 +611,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 usable.add(c);
             }
         }
-        this.table.byAddress(peer.ip()).ifPresent(c -> this.table.alive(c, now));
-        Lookup lookup = this.lookups.get(answer.target());
-        if (lookup != null) {
-            lookup.answered(peer.ip(), peer.port(), usable, now);
-        }
+        lookup.answered(peer.ip(), peer.port(), usable, now);
     }
 
     private void keywordSearchRequested(Peer peer, Packet packet) throws DecodeException {
