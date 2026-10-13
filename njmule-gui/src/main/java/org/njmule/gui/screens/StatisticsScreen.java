@@ -44,6 +44,10 @@ public final class StatisticsScreen implements Screen {
     private final Label uploads = value();
     private final Label queued = value();
     private final Label shared = value();
+    private final Label totalDown = value();
+    private final Label totalUp = value();
+    private final Label sessions = value();
+    private final Label runtime = value();
 
     public StatisticsScreen(Gui gui) {
         this.gui = gui;
@@ -97,7 +101,11 @@ public final class StatisticsScreen implements Screen {
                         KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
                         KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
                         KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
-                        KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared));
+                        KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared),
+                        KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
+                        KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
+                        KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions),
+                        KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         return Fx.screen(this.title(), Fx.toolRow(), new VBox(10, graph, legend, cards));
@@ -113,6 +121,11 @@ public final class StatisticsScreen implements Screen {
         this.uploads.setText(formats.count(s.uploads()));
         this.queued.setText(formats.count(s.queued()));
         this.shared.setText(formats.count(s.sharedFiles()));
+        this.totalDown.setText(formats.size(s.totalDownloaded()));
+        this.totalUp.setText(formats.size(s.totalUploaded()));
+        this.sessions.setText(formats.count(s.sessions()));
+        this.runtime.setText(
+                formats.duration(s.sessionSeconds()) + " / " + formats.duration(s.totalSeconds()));
     }
 
     Label downloadedLabel() {
