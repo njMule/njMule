@@ -28,6 +28,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,6 +133,11 @@ final class Network {
         static final ServerContext NONE = new ServerContext(0, 0, 0);
     }
 
+    /** Callback connections asked for by the server, open at once, and how soon one repeats. */
+    static final int MAX_CALLBACKS_OPEN = 8;
+
+    static final Duration CALLBACK_REPEAT = Duration.ofMinutes(1);
+
     private final EngineLoop loop;
     private final Supplier<Preferences> preferences;
     private final Consumer<EngineEvent> publish;
@@ -144,6 +150,9 @@ final class Network {
     private final ServerPinger pinger;
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
+    // Clients the server asked us to call back, by address and when; engine thread only.
+    private final Map<InetSocketAddress, Long> callbacks = new HashMap<>();
+    private int callbacksOpen;
     // The server logged in to or being tried, read by the listener's threads; 0 for none.
     private volatile int serverIp;
     private final DownloadManager downloads;
@@ -1030,10 +1039,25 @@ final class Network {
                     && Network.this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
             InetSocketAddress address =
                     new InetSocketAddress(Ipv4.format(ip), request.endpoint().port());
+            // A server could otherwise have us open any number of connections, or the same one
+            // again and again: a few at a time, each address once a minute.
+            long now = System.nanoTime();
+            Network.this.callbacks.values().removeIf(at -> now - at >= CALLBACK_REPEAT.toNanos());
+            if (Network.this.callbacksOpen >= MAX_CALLBACKS_OPEN || Network.this.callbacks.containsKey(address)) {
+                logger.debug("Not calling {} back now", address);
+                return;
+            }
+            Network.this.callbacks.put(address, now);
+            Network.this.callbacksOpen++;
             Network.this.loop.whenDone(
                     Network.this.greetings.greet(address, obfuscate ? request.userHash() : Optional.empty()),
-                    (peer, failure) -> logger.debug(
-                            "Callback to {}: {}", address, failure == null ? peer.software() : failure.getMessage()));
+                    (peer, failure) -> {
+                        Network.this.callbacksOpen--;
+                        logger.debug(
+                                "Callback to {}: {}",
+                                address,
+                                failure == null ? peer.software() : failure.getMessage());
+                    });
         }
 
         @Override

@@ -17,6 +17,7 @@
 package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
@@ -222,13 +223,18 @@ class ServerFlowTest {
                         && e.server().users() == 10);
         assertThat(pinged.server().files()).isEqualTo(20);
 
-        try (ServerSocket firewalled = new ServerSocket(0, 1, local)) {
-            connected.broadcast(callbackRequested(Ipv4.fromBytes(local.getAddress()), firewalled.getLocalPort()));
+        try (ServerSocket firewalled = new ServerSocket(0, 4, local)) {
+            Packet request = callbackRequested(Ipv4.fromBytes(local.getAddress()), firewalled.getLocalPort());
+            connected.broadcast(request);
+            // The same request again is not answered twice in a row.
+            connected.broadcast(request);
             try (Socket peer = firewalled.accept()) {
                 peer.setSoTimeout(10_000);
                 Packet hello = TcpFraming.read(peer.getInputStream(), FrameLimit.fixed(4096));
                 assertThat(hello.opcode()).isEqualTo(0x01);
             }
+            firewalled.setSoTimeout(2_000);
+            assertThatThrownBy(firewalled::accept).isInstanceOf(java.net.SocketTimeoutException.class);
         }
     }
 
