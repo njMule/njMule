@@ -61,6 +61,16 @@ class DesktopAppTest {
                 app.show(stage.get());
             });
             assertThat(FxTesting.onFx(() -> stage.get().getTitle())).startsWith("njMule");
+            assertThat(FxTesting.onFx(() -> {
+                        Stage dialog = new Stage();
+                        dialog.initOwner(stage.get());
+                        dialog.show();
+                        int icons = dialog.getIcons().size();
+                        dialog.close();
+                        return icons;
+                    }))
+                    .as("a dialog shows the app's icon too")
+                    .isPositive();
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("transfers");
             TrayMenu menu = FxTesting.onFx(app::trayMenu);
             FxTesting.onFx(() -> {

@@ -26,6 +26,7 @@ import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Dimension2D;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -180,6 +181,7 @@ public final class DesktopApp implements AutoCloseable {
                 stage.getIcons().add(new Image(icon.toExternalForm()));
             }
         }
+        iconEveryWindow(List.copyOf(stage.getIcons()));
         this.settings.window().ifPresent(b -> {
             stage.setX(b[0]);
             stage.setY(b[1]);
@@ -215,6 +217,19 @@ public final class DesktopApp implements AutoCloseable {
             // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
         }
+    }
+
+    // Dialogs and alerts do not take the icon of their owner: every window of ours that opens without one gets it.
+    private static void iconEveryWindow(List<Image> icons) {
+        Window.getWindows().addListener((ListChangeListener<Window>) change -> {
+            while (change.next()) {
+                for (Window window : change.getAddedSubList()) {
+                    if (window instanceof Stage s && s.getIcons().isEmpty()) {
+                        s.getIcons().setAll(icons);
+                    }
+                }
+            }
+        });
     }
 
     // The icon, its menu and the small status window. They belong to a window of their own that never
