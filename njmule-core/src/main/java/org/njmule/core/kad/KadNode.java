@@ -58,7 +58,7 @@ import org.slf4j.LoggerFactory;
  * publishes, indexes what others publish to us and checks whether we can be reached. Engine thread
  * only.
  */
-public final class KadNode implements AutoCloseable {
+public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     /** Sends Kad packets, obfuscated with the receiver's id or key when given. */
     public interface Transport {
@@ -193,6 +193,7 @@ public final class KadNode implements AutoCloseable {
         return verified;
     }
 
+    @Override
     public boolean isConnected() {
         return this.lastPacket != 0
                 && this.ticker.read() - this.lastPacket < CONNECTED_FOR.toNanos()
@@ -200,6 +201,7 @@ public final class KadNode implements AutoCloseable {
     }
 
     /** Whether other nodes cannot connect to our TCP port, as far as we know. */
+    @Override
     public boolean isFirewalled() {
         boolean open = this.firewallAcks.size() >= FIREWALL_ACKS;
         // While a recheck runs, the last outcome stands.
@@ -215,6 +217,7 @@ public final class KadNode implements AutoCloseable {
     }
 
     /** Whether the first lookup of our own id is done, which publishing waits for. */
+    @Override
     public boolean isReady() {
         return this.selfLookupDone;
     }
@@ -320,6 +323,7 @@ public final class KadNode implements AutoCloseable {
     }
 
     /** Publishes {@code files} under the keyword {@code word}. */
+    @Override
     public boolean publishKeyword(String word, List<KadMessages.Entry> files) {
         UInt128 target = Keywords.id(word);
         if (files.isEmpty() || this.lookups.containsKey(target)) {
@@ -333,6 +337,7 @@ public final class KadNode implements AutoCloseable {
     }
 
     /** Publishes us as a source of the file {@code hash} of {@code size} bytes. */
+    @Override
     public boolean publishSource(Hash16 hash, long size) {
         UInt128 target = UInt128.of(hash);
         if (this.lookups.containsKey(target)) {
@@ -351,12 +356,14 @@ public final class KadNode implements AutoCloseable {
     }
 
     /** Keyword publishes running now. */
-    int runningKeywordPublishes() {
+    @Override
+    public int runningKeywordPublishes() {
         return this.running(Lookup.Kind.STORE_KEYWORD);
     }
 
     /** Source publishes running now. */
-    int runningSourcePublishes() {
+    @Override
+    public int runningSourcePublishes() {
         return this.running(Lookup.Kind.STORE_SOURCE);
     }
 

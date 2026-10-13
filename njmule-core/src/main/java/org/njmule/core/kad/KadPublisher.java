@@ -47,6 +47,25 @@ public final class KadPublisher {
         }
     }
 
+    /** What publishing needs of the node. */
+    public interface Node {
+        boolean isReady();
+
+        boolean isConnected();
+
+        boolean isFirewalled();
+
+        int runningKeywordPublishes();
+
+        int runningSourcePublishes();
+
+        /** Starts publishing {@code files} under {@code word}; false when it cannot now. */
+        boolean publishKeyword(String word, List<KadMessages.Entry> files);
+
+        /** Starts publishing us as a source of a file; false when it cannot now. */
+        boolean publishSource(Hash16 hash, long size);
+    }
+
     public static final Duration KEYWORD_EVERY = Duration.ofHours(24);
     public static final Duration SOURCE_EVERY = Duration.ofHours(5);
 
@@ -57,7 +76,7 @@ public final class KadPublisher {
     private static final int MAX_KEYWORD_PUBLISHES = 3;
     private static final int MAX_SOURCE_PUBLISHES = 4;
 
-    private final KadNode node;
+    private final Node node;
     private final Supplier<List<Shared>> shared;
     private final Ticker ticker;
     private final Map<String, Long> keywordDone = new HashMap<>();
@@ -65,7 +84,7 @@ public final class KadPublisher {
     private long nextKeyword;
     private long nextSource;
 
-    public KadPublisher(KadNode node, Supplier<List<Shared>> shared, Ticker ticker) {
+    public KadPublisher(Node node, Supplier<List<Shared>> shared, Ticker ticker) {
         this.node = Objects.requireNonNull(node, "node");
         this.shared = Objects.requireNonNull(shared, "shared");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
