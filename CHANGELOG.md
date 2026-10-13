@@ -165,6 +165,7 @@ All notable changes to this project are documented here. The format follows
 - The Windows executable carries the njMule icon and version information, shown by Explorer and
   Task Manager; Linux desktops match the running window to its menu entry, icon and name.
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
+- The Windows installer also puts a shortcut on the desktop.
 - Port, network and UPnP changes in the settings apply at once: the new ports are listened on and
   announced again to the server, to Kad and through the router, without a restart.
 - Kad connects and disconnects by hand, starting from the contacts it knows; contacts taken from a

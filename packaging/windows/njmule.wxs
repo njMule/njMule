@@ -83,12 +83,33 @@
                         KeyPath="yes"/>
             </Component>
         </ComponentGroup>
+        <ComponentGroup Id="DesktopShortcut" Directory="DesktopFolder">
+            <Component Id="DesktopShortcut">
+                <Shortcut
+                        Id="DesktopShortcut"
+                        Name="njMule"
+                        Description="eD2K and Kad file sharing"
+                        Target="[INSTALLFOLDER]njmule-gui.exe"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="njmule.ico">
+                    <ShortcutProperty Key="System.AppUserModel.ID" Value="org.njmule.njMule"/>
+                </Shortcut>
+                <RegistryValue
+                        Root="HKCU"
+                        Key="Software\njMule"
+                        Name="DesktopShortcut"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes"/>
+            </Component>
+        </ComponentGroup>
         <?endif?>
 
         <Feature Id="Main" Title="njMule">
             <ComponentGroupRef Id="Programs"/>
             <?if $(var.Gui) = yes ?>
             <ComponentGroupRef Id="Desktop"/>
+            <ComponentGroupRef Id="DesktopShortcut"/>
             <?endif?>
         </Feature>
     </Package>
