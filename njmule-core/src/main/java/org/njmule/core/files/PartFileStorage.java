@@ -154,11 +154,18 @@ public final class PartFileStorage implements AutoCloseable {
                 this.io);
     }
 
-    // Another volume: a copy, then the part file goes; if it cannot, the copy is still complete.
+    // Another volume: a hidden copy, flushed, then renamed over the reserved name, so a crash never leaves a truncated
+    // file to share; then the part file goes, and if it cannot, the copy is still complete.
     private void copyTo(Path target) throws IOException {
+        Path copy = AtomicFiles.tmpPath(target);
         try {
-            Files.copy(this.path, target, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(this.path, copy, StandardCopyOption.REPLACE_EXISTING);
+            try (FileChannel channel = FileChannel.open(copy, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            AtomicFiles.move(copy, target);
         } catch (IOException e) {
+            Files.deleteIfExists(copy);
             Files.deleteIfExists(target);
             throw e;
         }
