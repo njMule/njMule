@@ -20,7 +20,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <br>
     <a href="https://www.conventionalcommits.org/en/v1.0.0/"><img alt="Conventional Commits 1.0.0" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-F5A65B?logo=conventionalcommits&logoColor=white&labelColor=24427A"></a>
     <a href="https://semver.org/spec/v2.0.0.html"><img alt="Semantic Versioning 2.0.0" src="https://img.shields.io/badge/SemVer-2.0.0-F5A65B?labelColor=24427A"></a>
-    <a href="https://github.com/google/google-java-format"><img alt="Code style: google-java-format" src="https://img.shields.io/badge/code%20style-google--java--format-F5A65B?labelColor=24427A"></a>
+    <a href="https://github.com/palantir/palantir-java-format"><img alt="Code style: palantir-java-format" src="https://img.shields.io/badge/code%20style-palantir--java--format-F5A65B?labelColor=24427A"></a>
     <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 2.1" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-F5A65B?labelColor=24427A"></a>
 </p>
 
@@ -53,7 +53,7 @@ Requirements: JDK 25. Maven is not needed — the Maven Wrapper downloads it.
 ```bash
 ./mvnw verify                                   # build, check formatting, run all tests
 ./mvnw -pl njmule-app -am package               # headless launcher (njmule-app/target)
-./mvnw spotless:apply                           # format the code (google-java-format, AOSP)
+./mvnw spotless:apply                           # format the code (palantir-java-format)
 ./mvnw -pl njmule-bench -am package -DskipTests # JMH benchmarks: java -jar njmule-bench/target/benchmarks.jar
 ```
 

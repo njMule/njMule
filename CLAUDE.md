@@ -124,7 +124,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `.github/workflows/release.yml` (manual run: packages only; tag `vX.Y.Z`: draft release).
 - Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
-  Known constraint: google-java-format is pinned to the newest version Spotless supports.
+  Known constraint: palantir-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
@@ -150,9 +150,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 ## Code style and formatting
 
 - Java code follows the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
-  and is formatted with [google-java-format](https://github.com/google/google-java-format) in its
-  **AOSP** variant: **4-space indent** (8 for continuations), 100 columns, sorted imports, no
-  wildcard imports.
+  and is formatted with [palantir-java-format](https://github.com/palantir/palantir-java-format) in
+  its **PALANTIR** style: **4-space indent** (8 for continuations), **120 columns**, compact lambdas
+  and call chains, Javadoc reflowed, sorted imports, no wildcard imports.
 - **Indentation: 4 spaces** in every file type (Java, XML/POM, YAML, scripts); tabs only in Makefiles.
 - **Line endings: LF (Linux style)** everywhere; the only exception is `*.cmd`/`*.bat` (CRLF,
   required by cmd.exe). Spotless rewrites Java sources with LF; `.gitattributes` normalises the rest.
@@ -162,7 +162,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `this.queue.offer(task)`, `this.publish(event)`), also where it is not needed to disambiguate.
   Checkstyle `RequireThis` enforces it (`config/checkstyle/checkstyle.xml`).
 - Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotless:check`).
-- IDEs: install the google-java-format plugin (IntelliJ / Eclipse) and honour `.editorconfig`.
+- IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
 - Markdown is wrapped at ~100 columns.
 
 ## Code comments

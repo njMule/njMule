@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Commits that only reformat the code; git blame skips them
+# (git config blame.ignoreRevsFile .git-blame-ignore-revs; GitHub reads this file by itself).
+
+# style: format the code with palantir-java-format at 120 columns
+abb4f699217d97e9bdc1e5e016e69b28657d4569

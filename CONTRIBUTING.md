@@ -40,8 +40,8 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 ## Code style
 
 - [Google Java Style](https://google.github.io/styleguide/javaguide.html) formatted by
-  [google-java-format](https://github.com/google/google-java-format) (AOSP variant, 4-space
-  indent): run `./mvnw spotless:apply`.
+  [palantir-java-format](https://github.com/palantir/palantir-java-format) (PALANTIR style: 4-space
+  indent, 120 columns): run `./mvnw spotless:apply`.
 - Always qualify instance members with `this.` (enforced by Checkstyle).
 - LF line endings, UTF-8, the SPDX header from `config/license/header-java.txt` on every Java file.
 - Comments explain *why*, not *what*; keep them short.

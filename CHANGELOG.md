@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format follows
 - Headless launcher with `--version`, `--license`, `--warranty`, `--notice`, `--config-dir` and
   `--log-level`; programmatic SLF4J/Logback configuration with a rolling log file.
 - Sober pastel colour palette and brand colours.
-- Quality gates: google-java-format (Spotless), Checkstyle, Error Prone, SpotBugs with
+- Quality gates: palantir-java-format (Spotless), Checkstyle, Error Prone, SpotBugs with
   FindSecBugs, JaCoCo coverage.
 - GPL-3.0-or-later licensing following REUSE: SPDX headers, `LICENSES/`, `NOTICE`, `AUTHORS`,
   contribution guide with DCO sign-off, code of conduct and security policy.
