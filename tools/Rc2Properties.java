@@ -40,9 +40,10 @@ import java.util.regex.Pattern;
  */
 public final class Rc2Properties {
 
+    // A comment may follow the string, as translators leave notes there.
     private static final Pattern ENTRY =
-            Pattern.compile("^\\s*(IDS_\\w+)\\s*(?:\"((?:[^\"]|\"\")*)\")?\\s*$");
-    private static final Pattern CONTINUATION = Pattern.compile("^\\s*\"((?:[^\"]|\"\")*)\"\\s*$");
+            Pattern.compile("^\\s*(IDS_\\w+)\\s*(?:\"((?:[^\"]|\"\")*)\")?\\s*(?://.*)?$");
+    private static final Pattern CONTINUATION = Pattern.compile("^\\s*\"((?:[^\"]|\"\")*)\"\\s*(?://.*)?$");
     private static final Pattern PRINTF =
             Pattern.compile("%([-+ 0#]*\\d*(?:\\.\\d+)?)(I64|ll|l|h)?([diuxXsScfgeE])");
     private static final String BUNDLE = "emule";
