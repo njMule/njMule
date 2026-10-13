@@ -1,0 +1,36 @@
+{
+  "reflection": [
+    {
+      "type": "com.sun.glass.ui.CommonDialogs",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "createFileChooserResult",
+          "parameterTypes": [
+            "java.lang.String[]",
+            "com.sun.glass.ui.CommonDialogs$ExtensionFilter[]",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.CommonDialogs$ExtensionFilter",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getDescription",
+          "parameterTypes": []
+        },
+        {
+          "name": "extensionsToArray",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.glass.ui.CommonDialogs$FileChooserResult",
+      "jniAccessible": true
+    }
+  ]
+}

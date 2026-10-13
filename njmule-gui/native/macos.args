@@ -1,0 +1,2 @@
+-H:+ReportExceptionStackTraces
+--enable-native-access=javafx.graphics

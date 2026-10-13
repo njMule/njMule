@@ -20,6 +20,13 @@
 
     <properties>
         <main.class>org.njmule.gui.GuiMain</main.class>
+        <!-- Native builds: GraalVM, the platform's argument file and launcher suffix (set per OS
+             below) and where the GUI tour merges the reachability metadata. -->
+        <graalvm.home>${env.GRAALVM_HOME}</graalvm.home>
+        <native.os>linux</native.os>
+        <native.cmd.suffix></native.cmd.suffix>
+        <native.tour.prism>es2</native.tour.prism>
+        <native.tour.metadata>${project.basedir}/src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour</native.tour.metadata>
     </properties>
 
     <dependencies>
@@ -121,4 +128,188 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>os-windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <native.os>windows</native.os>
+                <native.cmd.suffix>.cmd</native.cmd.suffix>
+                <native.tour.prism>d3d</native.tour.prism>
+            </properties>
+        </profile>
+        <profile>
+            <id>os-mac</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <native.os>macos</native.os>
+            </properties>
+        </profile>
+
+        <!-- Native executable of the desktop app with GraalVM, from the module path:
+             ./mvnw -Pnative -pl njmule-gui -am package -DskipTests (target/njmule-gui[.exe]).
+             JavaFX loads its own native libraries; the reachability metadata comes from the GUI
+             tour (profile native-tour) and a few hand-written JNI entries. -->
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>native-module-path</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>build-classpath</goal>
+                                </goals>
+                                <configuration>
+                                    <includeScope>runtime</includeScope>
+                                    <outputProperty>native.module.path</outputProperty>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>native-gui</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${graalvm.home}/bin/native-image${native.cmd.suffix}</executable>
+                                    <arguments>
+                                        <!-- The jar, not target/classes: on Windows native-image
+                                             misses the metadata of an exploded module. -->
+                                        <argument>--module-path</argument>
+                                        <argument>${project.build.directory}/${project.build.finalName}.jar${path.separator}${native.module.path}</argument>
+                                        <argument>--module</argument>
+                                        <argument>org.njmule.gui/${main.class}</argument>
+                                        <argument>-o</argument>
+                                        <argument>${project.build.directory}/native/njmule-gui</argument>
+                                        <argument>@${project.basedir}/native/${native.os}.args</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Regenerates the GUI's reachability metadata: the tour (GuiTour) runs with the
+             platform's accelerated pipeline and with software rendering under GraalVM's tracing
+             agent, merging into src/main/resources. Needs a display (xvfb-run on Linux CI).
+             ./mvnw -Pnative-tour -pl njmule-gui -am package -DskipTests -->
+        <profile>
+            <id>native-tour</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>native-module-path</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>build-classpath</goal>
+                                </goals>
+                                <configuration>
+                                    <includeScope>runtime</includeScope>
+                                    <outputProperty>native.module.path</outputProperty>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>tour-config</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/tour</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/native/tour</directory>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <configuration>
+                            <executable>${graalvm.home}/bin/java</executable>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>tour-accelerated</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>
+                                        <argument>-agentlib:native-image-agent=config-merge-dir=${native.tour.metadata}</argument>
+                                        <argument>-Dnjmule.gui.tour=true</argument>
+                                        <argument>-Dprism.order=${native.tour.prism}</argument>
+                                        <argument>--enable-native-access=javafx.graphics</argument>
+                                        <argument>--module-path</argument>
+                                        <argument>${project.build.outputDirectory}${path.separator}${native.module.path}</argument>
+                                        <argument>--module</argument>
+                                        <argument>org.njmule.gui/${main.class}</argument>
+                                        <argument>--config-dir</argument>
+                                        <argument>${project.build.directory}/tour</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>tour-software</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>
+                                        <argument>-agentlib:native-image-agent=config-merge-dir=${native.tour.metadata}</argument>
+                                        <argument>-Dnjmule.gui.tour=true</argument>
+                                        <argument>-Dprism.order=sw</argument>
+                                        <argument>--enable-native-access=javafx.graphics</argument>
+                                        <argument>--module-path</argument>
+                                        <argument>${project.build.outputDirectory}${path.separator}${native.module.path}</argument>
+                                        <argument>--module</argument>
+                                        <argument>org.njmule.gui/${main.class}</argument>
+                                        <argument>--config-dir</argument>
+                                        <argument>${project.build.directory}/tour</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
