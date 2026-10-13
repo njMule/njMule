@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import javafx.application.Platform;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -89,6 +90,11 @@ public final class SettingsScreen implements Screen {
     private final CheckBox secureIdent = new CheckBox();
     private final CheckBox credits = new CheckBox();
     private final CheckBox upnp = new CheckBox();
+    private final TextField deadRetries = new TextField();
+    private final CheckBox fromServer = new CheckBox();
+    private final CheckBox fromClients = new CheckBox();
+    private final CheckBox staticOnly = new CheckBox();
+    private final CheckBox manualHigh = new CheckBox();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
@@ -122,6 +128,7 @@ public final class SettingsScreen implements Screen {
     private Input<Optional<Path>> incomingInput;
     private Input<Optional<Path>> tempInput;
     private Input<Integer> minFreeSpaceInput;
+    private Input<Integer> deadRetriesInput;
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
@@ -179,6 +186,11 @@ public final class SettingsScreen implements Screen {
         this.kad.setText(this.gui.t("nj.settings.kad"));
         this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
         this.reconnect.setText(this.gui.t("IDS_PW_RECON"));
+        this.fromServer.setText(this.gui.t("IDS_PW_USC"));
+        this.fromClients.setText(this.gui.t("IDS_PW_UCC"));
+        this.staticOnly.setText(this.gui.t("IDS_PW_AUTOCONNECTSTATICONLY"));
+        this.manualHigh.setText(this.gui.t("IDS_MANUALSERVERHIGHPRIO"));
+        this.deadRetries.setPrefColumnCount(4);
         this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
         this.credits.setText(this.gui.t("nj.settings.credits"));
         this.upnp.setText(this.gui.t("nj.settings.upnp"));
@@ -220,6 +232,15 @@ public final class SettingsScreen implements Screen {
         grid.add(this.secureIdent, 1, row++);
         grid.add(this.credits, 1, row++);
         grid.add(this.upnp, 1, row++);
+        row = section(grid, row, this.gui.t("IDS_PW_SERVER"));
+        Label retries = new Label(this.gui.t("IDS_PW_RETRIES"));
+        HBox dead = new HBox(8, this.deadRetries, retries);
+        dead.setAlignment(Pos.CENTER_LEFT);
+        row = field(grid, row, this.gui.t("IDS_PW_RDEAD"), dead);
+        grid.add(this.fromServer, 1, row++);
+        grid.add(this.fromClients, 1, row++);
+        grid.add(this.staticOnly, 1, row++);
+        grid.add(this.manualHigh, 1, row++);
         row = section(grid, row, this.gui.t("IDS_PW_PROXY"));
         row = field(grid, row, this.gui.t("nj.proxy.type"), this.proxyType);
         row = field(grid, row, this.gui.t("nj.proxy.host"), new HBox(8, this.proxyHost, this.proxyPort));
@@ -264,6 +285,7 @@ public final class SettingsScreen implements Screen {
                                 this.incomingInput,
                                 this.tempInput,
                                 this.minFreeSpaceInput,
+                                this.deadRetriesInput,
                                 this.webUiPortInput,
                                 this.webUiPasswordInput,
                                 this.webUiAgainInput))
@@ -303,6 +325,8 @@ public final class SettingsScreen implements Screen {
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
         this.minFreeSpaceInput =
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
+        this.deadRetriesInput =
+                inputs.number(this.deadRetries, this.gui.t("IDS_PW_RDEAD"), 1, Preferences.MAX_DEAD_SERVER_RETRIES);
         this.webUiPortInput = inputs.number(this.webUiPort, this.gui.t("nj.webui.port"), 1, Preferences.MAX_PORT);
         this.webUiPasswordInput = Input.of(
                         this.webUiPassword,
@@ -408,6 +432,11 @@ public final class SettingsScreen implements Screen {
         this.incoming.setText(p.incomingDir().map(Path::toString).orElse(""));
         this.temp.setText(p.tempDir().map(Path::toString).orElse(""));
         this.minFreeSpace.setText(String.valueOf(p.minFreeSpaceMiB()));
+        this.deadRetries.setText(String.valueOf(p.deadServerRetries()));
+        this.fromServer.setSelected(p.addServersFromServer());
+        this.fromClients.setSelected(p.addServersFromClients());
+        this.staticOnly.setSelected(p.staticServersOnly());
+        this.manualHigh.setSelected(p.manualServersHighPriority());
         this.theme.setValue(this.gui.themes().family());
         this.mode.setValue(this.gui.themes().mode());
         this.language.setValue(this.gui.settings().language());
@@ -532,6 +561,11 @@ public final class SettingsScreen implements Screen {
                 .incomingDir(this.incomingInput.value())
                 .tempDir(this.tempInput.value())
                 .minFreeSpaceMiB(this.minFreeSpaceInput.value())
+                .deadServerRetries(this.deadRetriesInput.value())
+                .addServersFromServer(this.fromServer.isSelected())
+                .addServersFromClients(this.fromClients.isSelected())
+                .staticServersOnly(this.staticOnly.isSelected())
+                .manualServersHighPriority(this.manualHigh.isSelected())
                 .build();
     }
 

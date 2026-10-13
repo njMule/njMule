@@ -547,6 +547,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 this.serverName.set("");
             }
             case EngineEvent.ServerUpdated e -> this.servers.put(e.server());
+            case EngineEvent.ServersChanged e -> this.refreshServers();
             case EngineEvent.SearchResults e -> {
                 Search search = this.searches.get(e.search());
                 if (search != null) {
