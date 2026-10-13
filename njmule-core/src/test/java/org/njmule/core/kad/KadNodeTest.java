@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -56,6 +57,24 @@ class KadNodeTest {
     };
     private final List<Packet> sentToPeer = new ArrayList<>();
     private final Set<Integer> blocked = new HashSet<>();
+
+    @Test
+    void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        Path file = this.dir.resolve(KadNode.NODES_FILE);
+
+        node.saveNodes();
+        assertThat(NodesDat.read(Files.readAllBytes(file)).contacts()).hasSize(1);
+
+        List<NodesDat.Contact> many = new ArrayList<>();
+        for (int i = 0; i < KadNode.MIN_SAVED_CONTACTS; i++) {
+            many.add(this.record(Ipv4.of(70 + i, 1, 1, 1)));
+        }
+        Files.write(file, NodesDat.write(many));
+        node.saveNodes();
+        assertThat(NodesDat.read(Files.readAllBytes(file)).contacts()).hasSize(KadNode.MIN_SAVED_CONTACTS);
+    }
 
     @Test
     void isNoLongerConnectedWhenNothingArrivesForTwentyMinutes() throws Exception {

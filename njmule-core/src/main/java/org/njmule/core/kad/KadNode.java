@@ -98,6 +98,9 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     private static final Duration QUIET_FOR = Duration.ofMinutes(15);
 
+    // Fewer contacts than this do not replace a nodes.dat: a short outage must not lose a good one.
+    static final int MIN_SAVED_CONTACTS = 25;
+
     private static final Logger logger = LoggerFactory.getLogger(KadNode.class);
     private static final long SECOND = 1_000_000_000L;
     private static final long MINUTE = 60 * SECOND;
@@ -265,11 +268,13 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         for (KadContact c : this.table.bootstrapContacts(NodesDat.MAX_WRITTEN, this.random)) {
             records.add(c.record());
         }
-        if (records.isEmpty()) {
+        Path file = this.configDir.resolve(NODES_FILE);
+        if (records.isEmpty() || (records.size() < MIN_SAVED_CONTACTS && Files.exists(file))) {
+            logger.debug("Keeping {}: only {} contacts", file.getFileName(), records.size());
             return;
         }
         try {
-            AtomicFiles.writeBytes(this.configDir.resolve(NODES_FILE), NodesDat.write(records));
+            AtomicFiles.writeBytes(file, NodesDat.write(records));
         } catch (IOException e) {
             logger.warn("Cannot save the Kad contacts", e);
         }
