@@ -84,6 +84,13 @@ All notable changes to this project are documented here. The format follows
 - Source exchange with other clients (versions 1 to 4), asking and answering.
 - Shared files offered to the connected server.
 - `njmule --share <dir>...` on the command line, and engine API for the shared files.
+- Kad 2: a node with its id in `preferencesKad.dat`, a routing table of zones (one contact per
+  address, few per /24), contacts kept in `nodes.dat`, iterative lookups, keyword and source
+  searches and publishes with an index of what others publish to us, flood control and answers
+  taken only for our own requests, and a reachability check through other nodes.
+- Downloads find sources on Kad, searches may run on Kad, and shared files are published there
+  while we are reachable; `--kad-bootstrap <host:port>` and `--search ... --kad` on the command
+  line.
 
 ### Changed
 
@@ -94,3 +101,6 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - The complete parts of a download resumed after a crash are checked again.
+- Connections no longer hang on Windows when a socket write misses its wakeup.
+- Compressed blocks are inflated to the end even when zlib holds output back.
+- Connections back to a client and to a source are obfuscated only when the peer supports it.
