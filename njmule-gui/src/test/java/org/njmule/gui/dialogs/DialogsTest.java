@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -43,6 +45,28 @@ class DialogsTest {
         if (this.test != null) {
             this.test.close();
         }
+    }
+
+    @Test
+    void sharedFoldersAreListedAndUnshared() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        Path folder = Files.createDirectories(this.dir.resolve("films"));
+        this.test.engine.shareDirectory(folder, true).get(10, TimeUnit.SECONDS);
+        AtomicReference<SharedFoldersDialog> dialog = new AtomicReference<>();
+        FxTesting.onFx(() -> {
+            dialog.set(new SharedFoldersDialog(this.test.gui, new Stage()));
+            dialog.get().show();
+        });
+        FxTesting.await("the folder", () -> dialog.get().list().getItems().size() == 1);
+        assertThat(FxTesting.onFx(() -> dialog.get().list().getItems().getFirst()))
+                .isEqualTo(new SharedDirectory(folder.toAbsolutePath(), true));
+
+        FxTesting.onFx(() -> {
+            dialog.get().list().getSelectionModel().select(0);
+            dialog.get().unshareSelected();
+        });
+        FxTesting.await("no folder", () -> dialog.get().list().getItems().isEmpty());
+        FxTesting.onFx(() -> dialog.get().stage().close());
     }
 
     @Test

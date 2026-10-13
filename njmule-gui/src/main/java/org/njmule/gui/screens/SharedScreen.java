@@ -16,11 +16,15 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.theme.Styles;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.beans.binding.Bindings;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -30,12 +34,15 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -105,6 +112,7 @@ public final class SharedScreen implements Screen {
                         this.gui.model().sharedFiles().rows()));
         var tools = Fx.toolRow(
                 Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
+                Fx.button(this.gui.t("IDS_SHAREDFOLDERS"), Material2AL.FOLDER_SHARED, this::showFolders),
                 Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 priorities,
                 Fx.spacer(),
@@ -117,12 +125,41 @@ public final class SharedScreen implements Screen {
         chooser.setTitle(this.gui.t("IDS_SHAREDIR"));
         var dir = chooser.showDialog(this.view.getScene().getWindow());
         if (dir != null) {
-            this.share(dir.toPath());
+            this.confirmShare(dir.toPath());
         }
     }
 
-    void share(Path directory) {
-        this.gui.model().shareDirectory(directory);
+    // With its subfolders unless unticked; a folder where personal or system files may be gets a warning first.
+    private void confirmShare(Path directory) {
+        CheckBox subfolders = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
+        subfolders.setSelected(true);
+        VBox content = new VBox(8, new Label(directory.toString()), subfolders);
+        boolean sensitive = SharedDirectory.isSensitive(directory);
+        if (sensitive) {
+            Label warning = new Label(this.gui.f("nj.shared.sensitive", directory));
+            warning.setWrapText(true);
+            warning.getStyleClass().add(Styles.DANGER);
+            content.getChildren().add(warning);
+        }
+        Alert ask = new Alert(
+                sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION,
+                null,
+                ButtonType.OK,
+                ButtonType.CANCEL);
+        ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
+        ask.getDialogPane().setContent(content);
+        ask.initOwner(this.view.getScene().getWindow());
+        ask.showAndWait()
+                .filter(b -> b == ButtonType.OK)
+                .ifPresent(b -> this.share(directory, subfolders.isSelected()));
+    }
+
+    void share(Path directory, boolean subdirectories) {
+        this.gui.model().shareDirectory(directory, subdirectories);
+    }
+
+    private void showFolders() {
+        new SharedFoldersDialog(this.gui, this.view.getScene().getWindow()).show();
     }
 
     // Each level, for every selected file.

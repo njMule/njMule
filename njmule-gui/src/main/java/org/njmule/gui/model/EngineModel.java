@@ -56,6 +56,7 @@ import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -328,7 +329,25 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void shareDirectory(Path directory) {
-        this.later(this.engine.shareDirectory(directory), ok -> this.refreshShared());
+        this.shareDirectory(directory, false);
+    }
+
+    /** Shares {@code directory} with its subdirectories or alone. */
+    public void shareDirectory(Path directory, boolean subdirectories) {
+        this.later(this.engine.shareDirectory(directory, subdirectories), ok -> this.refreshShared());
+    }
+
+    /** Stops sharing {@code directory}, then runs {@code done}. */
+    public void unshareDirectory(Path directory, Runnable done) {
+        this.later(this.engine.unshareDirectory(directory), ok -> {
+            this.refreshShared();
+            done.run();
+        });
+    }
+
+    /** Hands the shared directories to {@code sink}, on the FX thread. */
+    public void sharedDirectories(Consumer<List<SharedDirectory>> sink) {
+        this.later(this.engine.sharedDirectories(), sink);
     }
 
     public void kadBootstrap(ServerAddress node) {

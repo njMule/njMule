@@ -175,7 +175,7 @@ class ScreensTest {
         Path folder = Files.createDirectories(this.dir.resolve("share"));
         Files.write(folder.resolve("a.txt"), new byte[3000]);
 
-        FxTesting.onFx(() -> screen.share(folder));
+        FxTesting.onFx(() -> screen.share(folder, true));
         for (int i = 0; i < 40 && FxTesting.onFx(() -> screen.table().getItems().isEmpty()); i++) {
             Thread.sleep(250);
             FxTesting.onFx(this.test.model::tick);
