@@ -254,9 +254,7 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "RememberCancelledFiles").ifPresent(b::rememberCancelledFiles);
         ini.getBoolean(SECTION, "StoreSearches").ifPresent(b::storeSearches);
         ini.getBoolean(SECTION, "AddNewFilesPaused").ifPresent(b::addDownloadsPaused);
-        // 0 none, 1 any, 2 the same category first, 3 the same category only.
-        ini.getLong(SECTION, "StartNextFile")
-                .ifPresent(v -> b.nextDownload(NextDownload.values()[(int) Math.clamp(v, 0, 3)]));
+        ini.getLong(SECTION, "StartNextFile").ifPresent(v -> b.nextDownload(nextDownload(v)));
         ini.getLong(SECTION, "FilterLevel")
                 .ifPresent(v -> b.ipFilterLevel(Math.clamp(v, 0, Preferences.MAX_IP_FILTER_LEVEL)));
         ini.getBoolean(SECTION, "NetworkED2K").ifPresent(b::ed2kEnabled);
@@ -269,6 +267,16 @@ public final class EmuleImporter {
     }
 
     // eMule's proxy types: 1-3 SOCKS 4, 4a and 5, 4-5 HTTP 1.0 and 1.1.
+    // StartNextFile: 0 none, 1 any, 2 the same category first, 3 the same category only.
+    private static NextDownload nextDownload(long value) {
+        return switch ((int) Math.clamp(value, 0L, 3L)) {
+            case 1 -> NextDownload.ANY;
+            case 2 -> NextDownload.SAME_CATEGORY_FIRST;
+            case 3 -> NextDownload.SAME_CATEGORY;
+            default -> NextDownload.NONE;
+        };
+    }
+
     private static Optional<ProxySettings> proxy(IniFile ini) {
         if (!ini.getBoolean(PROXY, "ProxyEnableProxy").orElse(false)) {
             return Optional.empty();
