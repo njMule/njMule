@@ -267,6 +267,49 @@ public final class ClientMessages {
         }
     }
 
+    /**
+     * OP_COMPRESSEDPART(_I64): one chunk of the zlib stream of the block that starts at {@code
+     * blockStart}; every chunk repeats the stream's total size.
+     */
+    public record CompressedPart(Hash16 file, long blockStart, long compressedSize, byte[] chunk) {
+        public CompressedPart {
+            chunk = chunk.clone();
+        }
+
+        @Override
+        public byte[] chunk() {
+            return this.chunk.clone();
+        }
+
+        public Packet encode(boolean wide) {
+            PacketWriter out = new PacketWriter().hash16(this.file);
+            if (wide) {
+                out.u64(this.blockStart);
+            } else {
+                out.u32(this.blockStart);
+            }
+            out.u32(this.compressedSize).bytes(this.chunk);
+            return Packet.of(
+                    Protocol.EMULE,
+                    wide
+                            ? Opcodes.Extended.COMPRESSEDPART_I64.code()
+                            : Opcodes.Extended.COMPRESSEDPART.code(),
+                    out);
+        }
+
+        public static CompressedPart decode(Packet packet) throws DecodeException {
+            boolean wide = packet.opcode() == Opcodes.Extended.COMPRESSEDPART_I64.code();
+            PacketReader in = packet.reader();
+            Hash16 file = in.hash16();
+            long start = wide ? in.u64() : in.u32();
+            long total = in.u32();
+            if (!isOffset(start) || in.remaining() == 0 || in.remaining() > total) {
+                throw new DecodeException("invalid compressed chunk at " + start);
+            }
+            return new CompressedPart(file, start, total, in.rest());
+        }
+    }
+
     // u64 values above 2^63 read as negative longs; no file is larger than the network maximum.
     private static boolean isOffset(long value) {
         return value >= 0 && value <= Ed2k.MAX_FILE_SIZE;

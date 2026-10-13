@@ -101,6 +101,33 @@ class ClientMessagesTest {
     }
 
     @Test
+    void compressedChunksRoundTripInBothWidths() throws DecodeException {
+        ClientMessages.CompressedPart chunk =
+                new ClientMessages.CompressedPart(FILE, 184_320, 5, new byte[] {9, 8, 7});
+        Packet narrow = chunk.encode(false);
+        Packet wide = chunk.encode(true);
+
+        assertThat(narrow.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART.code());
+        assertThat(HEX.formatHex(narrow.payload()))
+                .isEqualTo("ab".repeat(16) + "00d00200" + "05000000" + "090807");
+        assertThat(wide.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART_I64.code());
+        assertThat(wide.length()).isEqualTo(16 + 8 + 4 + 3);
+        for (Packet packet : List.of(narrow, wide)) {
+            ClientMessages.CompressedPart back = ClientMessages.CompressedPart.decode(packet);
+            assertThat(back.blockStart()).isEqualTo(184_320);
+            assertThat(back.compressedSize()).isEqualTo(5);
+            assertThat(back.chunk()).containsExactly(9, 8, 7);
+        }
+        assertThatThrownBy(
+                        () ->
+                                ClientMessages.CompressedPart.decode(
+                                        new ClientMessages.CompressedPart(
+                                                        FILE, 0, 2, new byte[] {1, 2, 3})
+                                                .encode(false)))
+                .isInstanceOf(DecodeException.class);
+    }
+
+    @Test
     void namesHashSetsAndQueueRanks() throws DecodeException {
         ClientMessages.FileName name = new ClientMessages.FileName(FILE, "ubuntu.iso");
         assertThat(ClientMessages.FileName.decode(name.encode())).isEqualTo(name);
@@ -131,6 +158,7 @@ class ClientMessagesTest {
             quietly(() -> ClientMessages.HashSet.decode(packet));
             quietly(() -> ClientMessages.RequestParts.decode(packet));
             quietly(() -> ClientMessages.SendingPart.decode(packet));
+            quietly(() -> ClientMessages.CompressedPart.decode(packet));
             quietly(() -> ClientMessages.FileName.decode(packet));
             quietly(() -> ClientMessages.decodeQueueRank(packet));
         }
