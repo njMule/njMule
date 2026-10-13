@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# A pushed tag vX.Y.Z builds the native launchers, packs them with the licence files, the Linux
+# desktop metadata and an SBOM, and opens a draft GitHub release for the maintainer to publish.
+name: Release
+
+on:
+    push:
+        tags: ["v*.*.*"]
+
+permissions:
+    contents: read
+
+jobs:
+    linux-x64:
+        name: native image (linux-x64)
+        runs-on: ubuntu-latest
+        container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Check the tag against the project version
+              run: |
+                  version="$(./mvnw -B -ntp -q help:evaluate -Dexpression=revision -DforceStdout)"
+                  if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+                      echo "Tag ${GITHUB_REF_NAME} does not match the version ${version}" >&2
+                      exit 1
+                  fi
+            - name: Build the native executable
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests
+            - name: Smoke test
+              run: njmule-app/target/njmule --version
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: njmule-linux-x64
+                  path: njmule-app/target/njmule
+
+    windows-x64:
+        name: native image (windows-x64)
+        runs-on: windows-latest
+        env:
+            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_windows-x64_bin.zip
+            GRAALVM_SHA256: 2733ea1331f1a98b05dd55a768b07347051dad48f030dbbfa191b11a2ccf4144
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+              with:
+                  distribution: temurin
+                  java-version: "25"
+                  cache: maven
+            - name: Install GraalVM
+              shell: pwsh
+              run: |
+                  Invoke-WebRequest $env:GRAALVM_URL -OutFile "$env:RUNNER_TEMP\graalvm.zip"
+                  if ((Get-FileHash "$env:RUNNER_TEMP\graalvm.zip" -Algorithm SHA256).Hash -ne $env:GRAALVM_SHA256) {
+                      throw "GraalVM checksum mismatch"
+                  }
+                  tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
+                  "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
+            - name: Build the native executable
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests
+            - name: Smoke test
+              shell: pwsh
+              run: njmule-app/target/njmule.exe --version
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: njmule-windows-x64
+                  path: njmule-app/target/njmule.exe
+
+    release:
+        name: draft release
+        needs: [linux-x64, windows-x64]
+        runs-on: ubuntu-latest
+        permissions:
+            actions: read
+            contents: write
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+              with:
+                  distribution: temurin
+                  java-version: "25"
+                  cache: maven
+            - name: Software bill of materials
+              run: ./mvnw -B -ntp -Plicenses package -DskipTests
+            - name: Fetch the executables
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: gh run download "${GITHUB_RUN_ID}" --dir binaries
+            - name: Pack the archives
+              run: |
+                  version="${GITHUB_REF_NAME#v}"
+                  docs=(LICENSE NOTICE README.md CHANGELOG.md THIRD-PARTY.txt)
+                  mkdir -p dist
+
+                  linux="njmule-${version}-linux-x64"
+                  mkdir -p "stage/${linux}/share"
+                  install -m 755 binaries/njmule-linux-x64/njmule "stage/${linux}/njmule"
+                  cp "${docs[@]}" "stage/${linux}/"
+                  cp packaging/linux/* branding/njmule-icon.svg "stage/${linux}/share/"
+                  tar -C stage -czf "dist/${linux}.tar.gz" "${linux}"
+
+                  windows="njmule-${version}-windows-x64"
+                  mkdir -p "stage/${windows}"
+                  cp binaries/njmule-windows-x64/njmule.exe "stage/${windows}/"
+                  cp "${docs[@]}" "stage/${windows}/"
+                  (cd stage && zip -qr "../dist/${windows}.zip" "${windows}")
+
+                  cp target/bom.json "dist/njmule-${version}-sbom.cdx.json"
+                  (cd dist && sha256sum -- * > SHA256SUMS)
+            - name: Create the draft release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  flags=(--draft --verify-tag --title "njMule ${GITHUB_REF_NAME}")
+                  if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+                      flags+=(--prerelease)
+                  fi
+                  awk -v v="${GITHUB_REF_NAME#v}" \
+                      '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' \
+                      CHANGELOG.md > notes.md
+                  gh release create "${GITHUB_REF_NAME}" "${flags[@]}" --notes-file notes.md dist/*

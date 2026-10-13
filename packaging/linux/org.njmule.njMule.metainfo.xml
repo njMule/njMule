@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+    SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<component type="desktop-application">
+    <id>org.njmule.njMule</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <name>njMule</name>
+    <summary>Next generation Java Mule: eD2K and Kad file sharing</summary>
+    <description>
+        <p>
+            njMule is a file sharing client for the eD2K and Kad networks, compatible with eMule.
+            It searches servers and Kad, downloads from many sources while checking every part,
+            shares files with credits and secure identification, and imports an existing eMule
+            profile without changing it.
+        </p>
+        <p>
+            Besides the desktop interface it offers a password-protected web interface, a proxy,
+            a weekly scheduler of the limits and UPnP port forwarding.
+        </p>
+    </description>
+    <launchable type="desktop-id">org.njmule.njMule.desktop</launchable>
+    <url type="homepage">https://github.com/njMule/njMule</url>
+    <url type="bugtracker">https://github.com/njMule/njMule/issues</url>
+    <developer id="org.njmule">
+        <name>Salvatore Coppola and the njMule contributors</name>
+    </developer>
+    <categories>
+        <category>Network</category>
+        <category>P2P</category>
+        <category>FileTransfer</category>
+    </categories>
+    <provides>
+        <binary>njmule</binary>
+    </provides>
+    <content_rating type="oars-1.1"/>
+</component>
