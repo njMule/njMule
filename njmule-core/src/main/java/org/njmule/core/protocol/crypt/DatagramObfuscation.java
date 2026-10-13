@@ -24,6 +24,7 @@ import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.UdpFraming;
+import org.njmule.core.util.Ipv4;
 
 /**
  * UDP obfuscation. An obfuscated datagram is {@code <marker 1><random part 2>} in clear followed by
@@ -66,6 +67,29 @@ public final class DatagramObfuscation {
     static final int MAGIC_FROM_SERVER = 0xA5;
 
     private DatagramObfuscation() {}
+
+    /**
+     * The verify key we give the Kad node at {@code peerIp} (host order), derived from our secret
+     * {@code udpKey}: 1 to 0xFFFFFFFE, and the same for that address until the secret changes.
+     */
+    public static int kadVerifyKey(int udpKey, int peerIp) {
+        byte[] material = concat(Ipv4.toBytes(peerIp), le32(udpKey));
+        byte[] digest = StreamObfuscation.md5(material);
+        long folded =
+                Integer.toUnsignedLong(
+                        readLe32(digest, 0)
+                                ^ readLe32(digest, 4)
+                                ^ readLe32(digest, 8)
+                                ^ readLe32(digest, 12));
+        return (int) (folded % 0xFFFF_FFFEL + 1);
+    }
+
+    private static int readLe32(byte[] b, int at) {
+        return (b[at] & 0xFF)
+                | (b[at + 1] & 0xFF) << 8
+                | (b[at + 2] & 0xFF) << 16
+                | (b[at + 3] & 0xFF) << 24;
+    }
 
     public static byte[] encryptForClient(
             byte[] datagram, Hash16 receiverUserHash, byte[] ownPublicIpv4, SecureRandom random) {
