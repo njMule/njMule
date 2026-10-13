@@ -39,6 +39,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -213,6 +214,7 @@ public final class DownloadManager implements AutoCloseable {
     private final BiConsumer<Hash16, Long> credit;
     private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
+    private final Supplier<List<Category>> categories;
     private int kadSearching;
     private final RateMeter rate = new RateMeter(5);
     private long nextKadStart;
@@ -234,8 +236,10 @@ public final class DownloadManager implements AutoCloseable {
             PeerLinks links,
             BiConsumer<Hash16, Long> credit,
             Supplier<Optional<KadSources>> kad,
+            Supplier<List<Category>> categories,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
+        this.categories = Objects.requireNonNull(categories, "categories");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.server = Objects.requireNonNull(server, "server");
@@ -254,6 +258,7 @@ public final class DownloadManager implements AutoCloseable {
      * @param blocked IP addresses (host order) that the IP filter refuses
      * @param credit credits a trusted source's user hash with the bytes it sent us
      * @param kad Kad, when it runs
+     * @param categories the download categories, with their incoming folders and the names they take
      */
     public static DownloadManager open(
             EngineLoop loop,
@@ -268,12 +273,19 @@ public final class DownloadManager implements AutoCloseable {
             PeerLinks links,
             BiConsumer<Hash16, Long> credit,
             Supplier<Optional<KadSources>> kad,
+            Supplier<List<Category>> categories,
             Listener listener)
             throws IOException {
         DownloadManager manager = new DownloadManager(
-                loop, ourHello, settings, server, blocked, random, ticker, links, credit, kad, listener);
+                loop, ourHello, settings, server, blocked, random, ticker, links, credit, kad, categories, listener);
         manager.queue = DownloadQueue.load(
-                loop, tempDir, incomingDir, () -> settings.get().minFreeSpace(), manager.new QueueEvents());
+                loop,
+                tempDir,
+                file -> manager.category(file.category())
+                        .flatMap(Category::incoming)
+                        .orElseGet(incomingDir),
+                () -> settings.get().minFreeSpace(),
+                manager.new QueueEvents());
         long now = ticker.read();
         for (DownloadQueue.Download download : manager.queue.all()) {
             manager.entries.put(download.hash(), new Entry(download, now));
@@ -282,9 +294,21 @@ public final class DownloadManager implements AutoCloseable {
         return manager;
     }
 
-    /** Adds a download, or the link's sources to the existing one. */
+    /**
+     * Adds a download, or the link's sources to the existing one. A new download goes in the first category whose names
+     * it matches, with that category's priority.
+     */
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
+        boolean fresh = this.queue.get(link.hash()).isEmpty();
         DownloadQueue.Download download = this.queue.add(link);
+        if (fresh) {
+            for (Category category : this.categories.get()) {
+                if (category.matches(download.file().name())) {
+                    this.putIn(download, category);
+                    break;
+                }
+            }
+        }
         Entry entry = this.entries.computeIfAbsent(download.hash(), hash -> new Entry(download, this.ticker.read()));
         this.addLinkSources(entry, link.sources());
         return this.info(entry);
@@ -393,6 +417,44 @@ public final class DownloadManager implements AutoCloseable {
         this.callbacks.values().removeIf(callback -> callback.file.equals(hash));
         this.listener.progress(this.info(entry));
         return true;
+    }
+
+    /** Puts the download in a category, with its priority; {@link Category#NONE} takes it out of any. */
+    public boolean setCategory(Hash16 hash, int id) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null || (id != Category.NONE && this.category(id).isEmpty())) {
+            return false;
+        }
+        Optional<Category> category = this.category(id);
+        if (category.isPresent()) {
+            this.putIn(entry.download, category.get());
+        } else {
+            this.queue.setCategory(entry.download, Category.NONE);
+        }
+        this.listener.progress(this.info(entry));
+        return true;
+    }
+
+    /** The categories changed: downloads in one that is gone have none. */
+    public void categoriesChanged() {
+        for (Entry entry : this.entries.values()) {
+            int id = entry.download.file().category();
+            if (id != Category.NONE && this.category(id).isEmpty()) {
+                this.queue.setCategory(entry.download, Category.NONE);
+                this.listener.progress(this.info(entry));
+            }
+        }
+    }
+
+    private void putIn(DownloadQueue.Download download, Category category) {
+        this.queue.setCategory(download, category.id());
+        if (category.priority() != DownloadPriority.AUTO) {
+            this.queue.setPriority(download, category.priority());
+        }
+    }
+
+    private Optional<Category> category(int id) {
+        return this.categories.get().stream().filter(c -> c.id() == id).findFirst();
     }
 
     public boolean setPriority(Hash16 hash, DownloadPriority priority) {
@@ -833,6 +895,7 @@ public final class DownloadManager implements AutoCloseable {
                         ? DownloadInfo.Status.NO_SPACE
                         : status(file.status()),
                 file.priority(),
+                file.category(),
                 entry.sources.size(),
                 transferring,
                 entry.rate(),

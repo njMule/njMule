@@ -146,9 +146,12 @@ class PartFileTest {
         }
         file.setPriority(DownloadPriority.HIGH);
         file.setStatus(PartFile.Status.STOPPED);
+        file.setCategory(4);
         file.save();
 
         PartFile loaded = PartFile.load(this.dir, 3);
+
+        assertThat(loaded.category()).isEqualTo(4);
 
         assertThat(loaded.status()).isEqualTo(PartFile.Status.STOPPED);
         PartMet.Contents met = PartMet.read(Files.readAllBytes(loaded.metFile()));

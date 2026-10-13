@@ -33,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -59,6 +60,7 @@ class DownloadManagerTest {
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final CompletableFuture<Consumer<List<InetSocketAddress>>> kadSearch = new CompletableFuture<>();
     private DownloadManager manager;
+    private List<Category> categories = List.of();
 
     @AfterEach
     void stop() throws Exception {
@@ -136,6 +138,42 @@ class DownloadManagerTest {
     }
 
     @Test
+    void newDownloadsGoInTheFirstCategoryTheirNameMatches() throws Exception {
+        this.categories = List.of(
+                new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "*.mkv", false),
+                new Category(2, "Video", Optional.empty(), "", 0, DownloadPriority.AUTO, "mkv|avi", false));
+        DownloadManager manager = this.manager();
+        Hash16 film = Hash16.parseHex("bc".repeat(16));
+        Hash16 other = Hash16.parseHex("cd".repeat(16));
+
+        DownloadInfo added = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("Film.MKV", 5000, film)));
+        DownloadInfo plain = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("notes.txt", 5000, other)));
+
+        assertThat(added.category()).isEqualTo(1);
+        assertThat(added.priority()).as("the category's priority").isEqualTo(DownloadPriority.HIGH);
+        assertThat(plain.category()).isEqualTo(Category.NONE);
+        assertThat(this.onLoop(() -> manager.setCategory(other, 2))).isTrue();
+        assertThat(this.onLoop(() -> manager.setCategory(other, 9)))
+                .as("no such category")
+                .isFalse();
+        assertThat(this.onLoop(() -> manager.download(other).orElseThrow().category()))
+                .isEqualTo(2);
+
+        this.categories = List.of(this.categories.getFirst());
+        this.onLoop(() -> {
+            manager.categoriesChanged();
+            manager.pause(film);
+            manager.pause(other);
+            return null;
+        });
+        assertThat(this.onLoop(() -> manager.download(other).orElseThrow().category()))
+                .as("its category is gone")
+                .isEqualTo(Category.NONE);
+        assertThat(this.onLoop(() -> manager.download(film).orElseThrow().category()))
+                .isEqualTo(1);
+    }
+
+    @Test
     void higherPrioritiesAskTheServerFirst() throws Exception {
         HighIdServer server = new HighIdServer(true);
         DownloadManager manager = this.manager(server);
@@ -183,6 +221,7 @@ class DownloadManagerTest {
                 new PeerLinks(this.loop, identities, link -> Optional.empty()),
                 (hash, bytes) -> {},
                 () -> Optional.of(kad),
+                () -> this.categories,
                 new Quiet()));
         return this.manager;
     }

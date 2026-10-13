@@ -29,13 +29,16 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
@@ -43,6 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -81,6 +85,7 @@ import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.CategoriesCodec;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
@@ -185,6 +190,7 @@ final class Network {
     private final Identities identities;
     private final SecureRandom random;
     private final Path configDir;
+    private List<Category> categories;
     private final Supplier<Path> incomingDir;
     private SharedFiles shares;
     private TcpListener listener;
@@ -219,6 +225,7 @@ final class Network {
         this.credits = Credits.load(configDir, Clock.systemUTC());
         this.totals = Totals.load(configDir.resolve(Totals.FILE_NAME));
         this.friends = Friends.load(configDir);
+        this.categories = CategoriesCodec.load(configDir.resolve(CategoriesCodec.FILE_NAME));
         this.started = System.nanoTime();
         this.random = random;
         Identities identities = new Identities(
@@ -280,6 +287,7 @@ final class Network {
                 this.links,
                 this.credits::downloaded,
                 () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
+                () -> this.categories,
                 new DownloadEvents());
         this.uploads = new UploadManager(
                 loop,
@@ -360,7 +368,7 @@ final class Network {
             this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
         this.shares = SharedFiles.open(
-                this.loop, this.configDir, this.incomingDir, () -> List.of(this.tempDir()), new ShareEvents());
+                this.loop, this.configDir, this::incomingDirs, () -> List.of(this.tempDir()), new ShareEvents());
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
@@ -567,6 +575,42 @@ final class Network {
             }
         }
         return all;
+    }
+
+    // The incoming folder of the preferences and those of the categories: their files are shared.
+    private List<Path> incomingDirs() {
+        List<Path> dirs = new ArrayList<>();
+        dirs.add(this.incomingDir.get());
+        for (Category category : this.categories) {
+            category.incoming().ifPresent(dirs::add);
+        }
+        return dirs;
+    }
+
+    List<Category> categories() {
+        return this.categories;
+    }
+
+    /** Replaces the categories, kept in categories.properties; the ids must differ. */
+    void setCategories(List<Category> categories) throws IOException {
+        Set<Integer> ids = new HashSet<>();
+        for (Category category : categories) {
+            if (!ids.add(category.id())) {
+                throw new IllegalArgumentException("two categories with the id " + category.id());
+            }
+        }
+        List<Category> sorted = new ArrayList<>(categories);
+        sorted.sort(Comparator.comparingInt(Category::id));
+        CategoriesCodec.save(this.configDir.resolve(CategoriesCodec.FILE_NAME), sorted);
+        this.categories = List.copyOf(sorted);
+        this.downloads.categoriesChanged();
+        if (this.shares != null) {
+            this.shares.scan();
+        }
+    }
+
+    boolean setDownloadCategory(Hash16 hash, int category) {
+        return this.downloads.setCategory(hash, category);
     }
 
     boolean setUploadPriority(Hash16 hash, UploadPriority priority) {

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.config.Preferences;
@@ -68,6 +69,11 @@ class EmuleImportDryRunTest {
 
             @Override
             public int addKadContacts(NodesDat.Contents contacts) {
+                return fail("a dry run changes nothing");
+            }
+
+            @Override
+            public int addCategories(List<Category> categories) {
                 return fail("a dry run changes nothing");
             }
 

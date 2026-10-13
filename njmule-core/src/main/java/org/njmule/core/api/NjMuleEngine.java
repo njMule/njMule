@@ -108,6 +108,15 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Pauses the download and forgets its sources; resumed, it looks for them again. */
     CompletableFuture<Boolean> stopDownload(Hash16 hash);
 
+    /** The download categories, in the order of their ids. */
+    CompletableFuture<List<Category>> categories();
+
+    /** Replaces the categories; downloads in one that is gone have none. */
+    CompletableFuture<Void> setCategories(List<Category> categories);
+
+    /** Puts a download in a category, with its priority; {@link Category#NONE} takes it out of any. */
+    CompletableFuture<Boolean> setDownloadCategory(Hash16 hash, int category);
+
     /** Sets how early the download asks for sources and starts transfers, before the others. */
     CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority);
 

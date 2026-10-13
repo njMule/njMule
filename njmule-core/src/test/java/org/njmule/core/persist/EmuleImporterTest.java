@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.SortedMap;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -32,6 +33,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.ImportReport.Outcome;
@@ -62,6 +64,7 @@ class EmuleImporterTest {
         final List<Path> shared = new ArrayList<>();
         final List<Path> refused = new ArrayList<>();
         final List<String> adopted = new ArrayList<>();
+        final List<Category> categories = new ArrayList<>();
 
         @Override
         public Path configDir() {
@@ -97,6 +100,12 @@ class EmuleImporterTest {
                 throw new IllegalArgumentException("refusing " + directory);
             }
             this.shared.add(directory);
+        }
+
+        @Override
+        public int addCategories(List<Category> taken) {
+            this.categories.addAll(taken);
+            return taken.size();
         }
 
         @Override
@@ -190,6 +199,43 @@ class EmuleImporterTest {
                         .u32())
                 .isEqualTo(SyntheticEmuleProfile.KAD_UDP_KEY);
         assertThat(this.emule.fingerprint()).isEqualTo(before);
+    }
+
+    @Test
+    void categoriesKeepTheirNumbersPatternsAndAColourOfOurs() throws IOException {
+        Files.writeString(
+                this.emule.config.resolve("Category.ini"),
+                String.join(
+                        "\r\n",
+                        "[General]",
+                        "Count=3",
+                        "[Cat#0]",
+                        "Title=all",
+                        "[Cat#1]",
+                        "Title=Films",
+                        "Incoming=" + this.emule.incoming,
+                        "Comment=evening",
+                        "Color=255",
+                        "AutoCat=*.mkv|*.avi",
+                        "[Cat#2]",
+                        "Title=",
+                        "[Cat#3]",
+                        "Title=Linux",
+                        "Color=16711680",
+                        "AutoCat=ubuntu|debian"));
+
+        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+
+        assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
+        assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 3);
+        Category films = this.target.categories.getFirst();
+        assertThat(films.name()).isEqualTo("Films");
+        assertThat(films.incoming()).contains(this.emule.incoming);
+        assertThat(films.color()).as("red").isEqualTo(1);
+        assertThat(films.matches("Big Buck Bunny.MKV")).isTrue();
+        assertThat(this.target.categories.get(1).color()).as("blue").isEqualTo(6);
+        assertThat(EmuleImporter.color(OptionalLong.of(0x808080))).as("grey").isZero();
+        assertThat(EmuleImporter.color(OptionalLong.of(0x00A5FF))).as("orange").isEqualTo(2);
     }
 
     @Test

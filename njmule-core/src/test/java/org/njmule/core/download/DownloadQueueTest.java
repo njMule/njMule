@@ -243,7 +243,7 @@ class DownloadQueueTest {
         return this.onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
-                () -> this.dir.resolve("incoming"),
+                file -> this.dir.resolve("incoming"),
                 this.minFree::get,
                 new DownloadQueue.Listener() {
                     @Override

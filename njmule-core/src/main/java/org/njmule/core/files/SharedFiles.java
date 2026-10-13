@@ -124,7 +124,7 @@ public final class SharedFiles implements AutoCloseable {
 
     private final EngineLoop loop;
     private final Path configDir;
-    private final Supplier<Path> incomingDir;
+    private final Supplier<List<Path>> incomingDirs;
     private final Supplier<List<Path>> privateDirs;
     private final Listener listener;
     private final Map<Key, KnownMet.KnownFile> known = new LinkedHashMap<>();
@@ -144,12 +144,12 @@ public final class SharedFiles implements AutoCloseable {
     private SharedFiles(
             EngineLoop loop,
             Path configDir,
-            Supplier<Path> incomingDir,
+            Supplier<List<Path>> incomingDirs,
             Supplier<List<Path>> privateDirs,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.configDir = Objects.requireNonNull(configDir, "configDir");
-        this.incomingDir = Objects.requireNonNull(incomingDir, "incomingDir");
+        this.incomingDirs = Objects.requireNonNull(incomingDirs, "incomingDirs");
         this.privateDirs = Objects.requireNonNull(privateDirs, "privateDirs");
         this.listener = Objects.requireNonNull(listener, "listener");
     }
@@ -162,10 +162,10 @@ public final class SharedFiles implements AutoCloseable {
     public static SharedFiles open(
             EngineLoop loop,
             Path configDir,
-            Supplier<Path> incomingDir,
+            Supplier<List<Path>> incomingDirs,
             Supplier<List<Path>> privateDirs,
             Listener listener) {
-        SharedFiles shares = new SharedFiles(loop, configDir, incomingDir, privateDirs, listener);
+        SharedFiles shares = new SharedFiles(loop, configDir, incomingDirs, privateDirs, listener);
         shares.loadKnown();
         try {
             shares.watcher = FileSystems.getDefault().newWatchService();
@@ -345,7 +345,9 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         Set<Path> dirs = new LinkedHashSet<>();
-        dirs.add(this.incomingDir.get().toAbsolutePath().normalize());
+        for (Path incoming : this.incomingDirs.get()) {
+            dirs.add(incoming.toAbsolutePath().normalize());
+        }
         for (Path dir : this.directories()) {
             dirs.add(dir.toAbsolutePath().normalize());
         }

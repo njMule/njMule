@@ -34,6 +34,8 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
+import org.njmule.core.api.Category;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.config.ObfuscationMode;
@@ -80,6 +82,9 @@ public final class EmuleImporter {
         int addKnownFiles(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees);
 
         void shareDirectory(Path directory) throws IOException;
+
+        /** Takes these categories when we have none of our own; returns how many were taken. */
+        int addCategories(List<Category> categories) throws IOException;
 
         /** Downloads on from a copy of another client's part file; returns the file name. */
         String adoptDownload(Path met, Path data) throws IOException;
@@ -164,7 +169,7 @@ public final class EmuleImporter {
         this.kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
         this.kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
         this.kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
-        this.kept("Category.ini", data -> IniFile.parse(data).sections().size() + " sections");
+        this.categories();
         this.kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
             Path file = this.emule.resolve(name);
@@ -389,6 +394,87 @@ public final class EmuleImporter {
         }
         AtomicFiles.writeBytes(ours, data);
         return item(file, ImportReport.Outcome.IMPORTED, ranges + " ranges, from the next start");
+    }
+
+    // eMule's categories keep their numbers, so downloads taken from its temp folder stay in theirs.
+    private void categories() {
+        this.with(this.emule.resolve("Category.ini"), (file, data) -> {
+            IniFile ini = IniFile.parse(data);
+            List<Category> found = new ArrayList<>();
+            for (String section : ini.sections()) {
+                OptionalInt id = categoryId(section);
+                // Cat#0 is the list of all downloads, not a category.
+                if (id.isEmpty() || id.getAsInt() < 1) {
+                    continue;
+                }
+                try {
+                    found.add(new Category(
+                            id.getAsInt(),
+                            ini.get(section, "Title").orElse(""),
+                            ini.get(section, "Incoming")
+                                    .flatMap(EmuleImporter::path)
+                                    .filter(Path::isAbsolute),
+                            ini.get(section, "Comment").orElse(""),
+                            color(ini.getLong(section, "Color")),
+                            DownloadPriority.AUTO,
+                            ini.get(section, "AutoCat").orElse(""),
+                            ini.getBoolean(section, "AutoCatAsRegularExpression")
+                                    .orElse(false)));
+                } catch (IllegalArgumentException e) {
+                    logger.info("Leaving out the category {} of {}: {}", section, file, e.getMessage());
+                }
+            }
+            if (found.isEmpty()) {
+                return item(file, ImportReport.Outcome.SKIPPED, "no category besides all downloads");
+            }
+            if (this.options.dryRun()) {
+                return item(file, ImportReport.Outcome.WOULD_IMPORT, found.size() + " categories");
+            }
+            int added = this.target.addCategories(found);
+            return added == 0
+                    ? item(file, ImportReport.Outcome.SKIPPED, found.size() + " categories; we have our own")
+                    : item(file, ImportReport.Outcome.IMPORTED, added + " categories");
+        });
+    }
+
+    private static OptionalInt categoryId(String section) {
+        if (!section.startsWith("Cat#")) {
+            return OptionalInt.empty();
+        }
+        try {
+            return OptionalInt.of(Integer.parseInt(section.substring(4).strip()));
+        } catch (NumberFormatException e) {
+            return OptionalInt.empty();
+        }
+    }
+
+    // eMule keeps any colour (0x00BBGGRR); ours are a few tints of the theme: the one of the nearest hue, none for
+    // greys.
+    static int color(OptionalLong value) {
+        if (value.isEmpty() || value.getAsLong() <= 0 || value.getAsLong() > 0xFFFFFF) {
+            return 0;
+        }
+        long c = value.getAsLong();
+        int r = (int) (c & 0xFF);
+        int g = (int) (c >> 8 & 0xFF);
+        int b = (int) (c >> 16 & 0xFF);
+        int max = Math.max(r, Math.max(g, b));
+        int min = Math.min(r, Math.min(g, b));
+        if (max - min < 24) {
+            return 0;
+        }
+        double delta = max - min;
+        double hue;
+        if (max == r) {
+            hue = 60 * (((g - b) / delta) % 6);
+        } else if (max == g) {
+            hue = 60 * ((b - r) / delta + 2);
+        } else {
+            hue = 60 * ((r - g) / delta + 4);
+        }
+        hue = (hue + 360) % 360;
+        // Red, orange, yellow, green, teal, blue, purple, pink: 45 degrees each, red around 0.
+        return 1 + (int) (((hue + 22.5) % 360) / 45);
     }
 
     /** Files for features to come: checked, then kept unless njMule has its own. */

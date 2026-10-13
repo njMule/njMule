@@ -44,6 +44,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -380,6 +381,26 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<List<Category>> categories() {
+        return this.loop.submit(this.network::categories);
+    }
+
+    @Override
+    public CompletableFuture<Void> setCategories(List<Category> categories) {
+        List<Category> copy = List.copyOf(categories);
+        return this.loop.submit(() -> {
+            this.network.setCategories(copy);
+            return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setDownloadCategory(Hash16 hash, int category) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.setDownloadCategory(hash, category));
+    }
+
+    @Override
     public CompletableFuture<Boolean> cancelDownload(Hash16 hash) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.cancelDownload(hash));
@@ -501,6 +522,20 @@ public final class Engine implements NjMuleEngine {
         @Override
         public void shareDirectory(Path directory) {
             Engine.this.shareDirectory(directory).join();
+        }
+
+        @Override
+        public int addCategories(List<Category> categories) {
+            return Engine.this
+                    .loop
+                    .submit(() -> {
+                        if (!Engine.this.network.categories().isEmpty()) {
+                            return 0;
+                        }
+                        Engine.this.network.setCategories(categories);
+                        return categories.size();
+                    })
+                    .join();
         }
 
         @Override

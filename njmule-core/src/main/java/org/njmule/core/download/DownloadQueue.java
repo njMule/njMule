@@ -33,8 +33,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.njmule.core.api.DownloadPriority;
@@ -122,7 +122,7 @@ public final class DownloadQueue implements AutoCloseable {
 
     private final EngineLoop loop;
     private final Path tempDir;
-    private final Supplier<Path> incomingDir;
+    private final Function<PartFile, Path> incomingDir;
     private final LongSupplier minFree;
     private final Listener listener;
     private final Map<Hash16, Download> downloads = new LinkedHashMap<>();
@@ -131,7 +131,11 @@ public final class DownloadQueue implements AutoCloseable {
     private boolean spaceShort;
 
     private DownloadQueue(
-            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, LongSupplier minFree, Listener listener) {
+            EngineLoop loop,
+            Path tempDir,
+            Function<PartFile, Path> incomingDir,
+            LongSupplier minFree,
+            Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.tempDir = Objects.requireNonNull(tempDir, "tempDir");
         this.incomingDir = Objects.requireNonNull(incomingDir, "incomingDir");
@@ -143,10 +147,15 @@ public final class DownloadQueue implements AutoCloseable {
      * Loads the part files of {@code tempDir}, also those of which only the {@code .bak} is left; unreadable ones are
      * left alone and logged.
      *
+     * @param incomingDir where each finished file goes
      * @param minFree the bytes the temp disk must keep free while downloads write to it; 0 = no minimum
      */
     public static DownloadQueue load(
-            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, LongSupplier minFree, Listener listener)
+            EngineLoop loop,
+            Path tempDir,
+            Function<PartFile, Path> incomingDir,
+            LongSupplier minFree,
+            Listener listener)
             throws IOException {
         DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, minFree, listener);
         Files.createDirectories(tempDir);
@@ -290,6 +299,11 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
+    public void setCategory(Download download, int category) {
+        download.file.setCategory(category);
+        download.dirty = true;
+    }
+
     /** Stops the download and deletes its files. */
     public void cancel(Download download) {
         this.downloads.remove(download.hash());
@@ -380,7 +394,7 @@ public final class DownloadQueue implements AutoCloseable {
     private void finish(Download download) {
         download.finishing = true;
         this.loop.whenDone(
-                download.storage.finish(this.incomingDir.get(), download.file.name()),
+                download.storage.finish(this.incomingDir.apply(download.file), download.file.name()),
                 (moved, failure) -> this.finished(download, moved, failure));
     }
 

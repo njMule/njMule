@@ -230,7 +230,11 @@ class SharedFilesTest {
 
     private SharedFiles open(Path config, Path incoming) throws Exception {
         return this.onLoop(() -> SharedFiles.open(
-                this.loop, config, () -> incoming, () -> List.of(this.dir.resolve("temp")), new SharedFiles.Listener() {
+                this.loop,
+                config,
+                () -> List.of(incoming),
+                () -> List.of(this.dir.resolve("temp")),
+                new SharedFiles.Listener() {
                     @Override
                     public void shared(SharedFiles.SharedFile file) {
                         SharedFilesTest.this.events.add("shared " + file.name());

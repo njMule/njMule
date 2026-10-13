@@ -26,6 +26,7 @@ public record DownloadInfo(
         long completed,
         Status status,
         DownloadPriority priority,
+        int category,
         int sources,
         int transferring,
         long bytesPerSecond,

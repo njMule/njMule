@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
@@ -84,6 +85,7 @@ public final class PartFile {
     private List<Hash16> partHashes;
     private Status status = Status.DOWNLOADING;
     private DownloadPriority priority = DownloadPriority.AUTO;
+    private int category = Category.NONE;
 
     private PartFile(
             int number,
@@ -146,6 +148,7 @@ public final class PartFile {
             file.status = Status.PAUSED;
         }
         contents.downloadPriority().ifPresent(code -> file.priority = priority(code));
+        contents.category().ifPresent(id -> file.category = Math.clamp(id, 0, Integer.MAX_VALUE));
         return file;
     }
 
@@ -157,6 +160,9 @@ public final class PartFile {
         tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), statusCode(this.status)));
         tags.add(new Tag.IntTag(TagName.id(FileTag.DLPRIORITY), priorityCode(this.priority)));
+        if (this.category != Category.NONE) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.CATEGORY), this.category));
+        }
         this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
         for (Range<Long> gap : this.missing.asRanges()) {
@@ -206,6 +212,18 @@ public final class PartFile {
 
     public void setPriority(DownloadPriority priority) {
         this.priority = Objects.requireNonNull(priority, "priority");
+    }
+
+    /** The id of its category, {@link Category#NONE} for none. */
+    public int category() {
+        return this.category;
+    }
+
+    public void setCategory(int category) {
+        if (category < 0) {
+            throw new IllegalArgumentException("no category has the id " + category);
+        }
+        this.category = category;
     }
 
     public Path dataFile() {
