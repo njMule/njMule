@@ -31,9 +31,8 @@ import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchTreeCodec;
 
 /**
- * UDP messages between a client and eD2K servers (server TCP port + 4, or the server's obfuscated
- * UDP port). Every decoder checks the length before reading, including datagrams too short to hold
- * a header.
+ * UDP messages between a client and eD2K servers (server TCP port + 4, or the server's obfuscated UDP port). Every
+ * decoder checks the length before reading, including datagrams too short to hold a header.
  */
 public final class ServerDatagrams {
 
@@ -76,19 +75,18 @@ public final class ServerDatagrams {
 
         /** The full answer, with every optional field. */
         public Packet encode() {
-            PacketWriter out =
-                    new PacketWriter()
-                            .u32(this.challenge)
-                            .u32(this.users)
-                            .u32(this.files)
-                            .u32(this.maxUsers)
-                            .u32(this.softFiles)
-                            .u32(this.hardFiles)
-                            .u32(Integer.toUnsignedLong(this.udpFlags))
-                            .u32(this.lowIdUsers)
-                            .u16(this.obfuscatedUdpPort)
-                            .u16(this.obfuscatedTcpPort)
-                            .u32(this.udpKey);
+            PacketWriter out = new PacketWriter()
+                    .u32(this.challenge)
+                    .u32(this.users)
+                    .u32(this.files)
+                    .u32(this.maxUsers)
+                    .u32(this.softFiles)
+                    .u32(this.hardFiles)
+                    .u32(Integer.toUnsignedLong(this.udpFlags))
+                    .u32(this.lowIdUsers)
+                    .u16(this.obfuscatedUdpPort)
+                    .u16(this.obfuscatedTcpPort)
+                    .u32(this.udpKey);
             return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), out);
         }
 
@@ -117,22 +115,17 @@ public final class ServerDatagrams {
                 tcpPort = in.u16();
                 key = in.u32();
             }
-            return new Status(
-                    challenge, users, files, maxUsers, soft, hard, flags, lowId, udpPort, tcpPort,
-                    key);
+            return new Status(challenge, users, files, maxUsers, soft, hard, flags, lowId, udpPort, tcpPort, key);
         }
     }
 
     public static Packet statusRequest(long challenge) {
-        return Packet.of(
-                Protocol.EDONKEY,
-                Opcodes.ServerUdp.GLOBSERVSTATREQ.code(),
-                new PacketWriter().u32(challenge));
+        return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATREQ.code(), new PacketWriter().u32(challenge));
     }
 
     /**
-     * The global search request for a server with {@code udpFlags}, or empty when the server cannot
-     * take the expression (64-bit sizes it does not understand).
+     * The global search request for a server with {@code udpFlags}, or empty when the server cannot take the expression
+     * (64-bit sizes it does not understand).
      */
     public static Optional<Packet> searchRequest(SearchExpr expression, int udpFlags) {
         boolean largeFiles = (udpFlags & UDP_LARGEFILES) != 0;
@@ -145,21 +138,19 @@ public final class ServerDatagrams {
                     .u8(ClientTag.SERVER_UDPSEARCH_FLAGS)
                     .u8(SEARCH_FLAG_NEWTAGS_LARGEFILES);
             SearchTreeCodec.write(out, tree, true);
-            return Optional.of(
-                    Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHREQ3.code(), out));
+            return Optional.of(Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHREQ3.code(), out));
         }
         if (needs64Bit(tree)) {
             return Optional.empty();
         }
         SearchTreeCodec.write(out, tree, false);
-        Opcodes.ServerUdp opcode =
-                extended ? Opcodes.ServerUdp.GLOBSEARCHREQ2 : Opcodes.ServerUdp.GLOBSEARCHREQ;
+        Opcodes.ServerUdp opcode = extended ? Opcodes.ServerUdp.GLOBSEARCHREQ2 : Opcodes.ServerUdp.GLOBSEARCHREQ;
         return Optional.of(Packet.of(Protocol.EDONKEY, opcode.code(), out));
     }
 
     /**
-     * The results of a global search answer. One datagram may carry several results, each after its
-     * own {@code E3 99} header; parsing stops at anything else.
+     * The results of a global search answer. One datagram may carry several results, each after its own {@code E3 99}
+     * header; parsing stops at anything else.
      */
     public static List<FileEntry> decodeSearchResults(Packet packet) throws DecodeException {
         PacketReader in = packet.reader();

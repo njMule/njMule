@@ -23,9 +23,9 @@ import java.util.List;
 import org.njmule.core.api.Hash20;
 
 /**
- * The AICH SHA-1 hash tree. Leaves are the 180 KiB blocks of each part; the tree is binary but
- * splits at whole PARTSIZE boundaries above the part level and gives the odd element to the left
- * subtree of a left branch and to the right subtree of a right branch.
+ * The AICH SHA-1 hash tree. Leaves are the 180 KiB blocks of each part; the tree is binary but splits at whole PARTSIZE
+ * boundaries above the part level and gives the odd element to the left subtree of a left branch and to the right
+ * subtree of a right branch.
  */
 public final class AichTree {
 
@@ -51,12 +51,7 @@ public final class AichTree {
         Ed2k.checkSize(size);
         if (blockHashes.size() != blockCount(size)) {
             throw new IllegalArgumentException(
-                    "a file of "
-                            + size
-                            + " bytes has "
-                            + blockCount(size)
-                            + " AICH blocks, got "
-                            + blockHashes.size());
+                    "a file of " + size + " bytes has " + blockCount(size) + " AICH blocks, got " + blockHashes.size());
         }
         return new AichTree(size, blockHashes);
     }

@@ -21,9 +21,9 @@ import org.njmule.core.protocol.packet.Opcodes.Client;
 import org.njmule.core.protocol.packet.Opcodes.Extended;
 
 /**
- * Frame size limits per connection state. Before the hello exchange a peer may only greet, in a
- * small frame, so an unauthenticated connection cannot make us allocate much; afterwards the caps
- * follow what each packet can legitimately carry.
+ * Frame size limits per connection state. Before the hello exchange a peer may only greet, in a small frame, so an
+ * unauthenticated connection cannot make us allocate much; afterwards the caps follow what each packet can legitimately
+ * carry.
  */
 public final class FrameLimits {
 
@@ -46,40 +46,35 @@ public final class FrameLimits {
     public static final int DATA_MAX = 16 + 8 + 8 + Ed2k.EMBLOCKSIZE;
 
     /** Until hello and hello answer are exchanged. */
-    public static final FrameLimit CLIENT_HANDSHAKE =
-            (protocol, opcode) ->
-                    protocol == Protocol.EDONKEY
-                                    && (opcode == Client.HELLO.code()
-                                            || opcode == Client.HELLOANSWER.code())
-                            ? HANDSHAKE_MAX
-                            : FrameLimit.REJECT;
+    public static final FrameLimit CLIENT_HANDSHAKE = (protocol, opcode) ->
+            protocol == Protocol.EDONKEY && (opcode == Client.HELLO.code() || opcode == Client.HELLOANSWER.code())
+                    ? HANDSHAKE_MAX
+                    : FrameLimit.REJECT;
 
     /** An identified client. */
-    public static final FrameLimit CLIENT =
-            (protocol, opcode) -> {
-                if (protocol == Protocol.EDONKEY) {
-                    if (opcode == Client.SENDINGPART.code()) {
-                        return DATA_MAX;
-                    }
-                    if (opcode == Client.ASKSHAREDFILESANSWER.code()
-                            || opcode == Client.ASKSHAREDFILESDIRANS.code()) {
-                        return SHARED_FILES_MAX;
-                    }
-                    if (opcode == Client.HASHSETANSWER.code()) {
-                        return HASHSET_MAX;
-                    }
-                } else if (protocol == Protocol.EMULE) {
-                    if (opcode == Extended.SENDINGPART_I64.code()
-                            || opcode == Extended.COMPRESSEDPART.code()
-                            || opcode == Extended.COMPRESSEDPART_I64.code()) {
-                        return DATA_MAX;
-                    }
-                    if (opcode == Extended.HASHSETANSWER2.code()) {
-                        return HASHSET_MAX;
-                    }
-                }
-                return CLIENT_MAX;
-            };
+    public static final FrameLimit CLIENT = (protocol, opcode) -> {
+        if (protocol == Protocol.EDONKEY) {
+            if (opcode == Client.SENDINGPART.code()) {
+                return DATA_MAX;
+            }
+            if (opcode == Client.ASKSHAREDFILESANSWER.code() || opcode == Client.ASKSHAREDFILESDIRANS.code()) {
+                return SHARED_FILES_MAX;
+            }
+            if (opcode == Client.HASHSETANSWER.code()) {
+                return HASHSET_MAX;
+            }
+        } else if (protocol == Protocol.EMULE) {
+            if (opcode == Extended.SENDINGPART_I64.code()
+                    || opcode == Extended.COMPRESSEDPART.code()
+                    || opcode == Extended.COMPRESSEDPART_I64.code()) {
+                return DATA_MAX;
+            }
+            if (opcode == Extended.HASHSETANSWER2.code()) {
+                return HASHSET_MAX;
+            }
+        }
+        return CLIENT_MAX;
+    };
 
     /** A server connection. */
     public static final FrameLimit SERVER = FrameLimit.fixed(SERVER_MAX);

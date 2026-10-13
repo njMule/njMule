@@ -29,26 +29,18 @@ import org.njmule.core.files.SharedFiles;
 import org.njmule.core.files.hash.Ed2k;
 
 /**
- * A file other clients may download from us: a shared file, or a download whose checked parts are
- * shared while it goes on.
+ * A file other clients may download from us: a shared file, or a download whose checked parts are shared while it goes
+ * on.
  *
  * @param parts the parts that can be sent, empty for a complete file
  */
-record Uploadable(
-        Hash16 hash,
-        String name,
-        long size,
-        List<Hash16> partHashes,
-        Optional<BitSet> parts,
-        Path data) {
+record Uploadable(Hash16 hash, String name, long size, List<Hash16> partHashes, Optional<BitSet> parts, Path data) {
 
     // Already compressed: zlib would only cost time.
-    private static final Set<String> PACKED =
-            Set.of(
-                    "7z", "aac", "ape", "avi", "bz2", "cab", "flac", "flv", "gif", "gz", "jpeg",
-                    "jpg", "m4a", "m4v", "mkv", "mov", "mp3", "mp4", "mpeg", "mpg", "ogg", "ogm",
-                    "opus", "png", "rar", "rm", "rmvb", "webm", "webp", "wma", "wmv", "xz", "zip",
-                    "zst");
+    private static final Set<String> PACKED = Set.of(
+            "7z", "aac", "ape", "avi", "bz2", "cab", "flac", "flv", "gif", "gz", "jpeg", "jpg", "m4a", "m4v", "mkv",
+            "mov", "mp3", "mp4", "mpeg", "mpg", "ogg", "ogm", "opus", "png", "rar", "rm", "rmvb", "webm", "webp", "wma",
+            "wmv", "xz", "zip", "zst");
 
     Uploadable {
         Objects.requireNonNull(hash, "hash");
@@ -59,13 +51,7 @@ record Uploadable(
     }
 
     static Uploadable of(SharedFiles.SharedFile file) {
-        return new Uploadable(
-                file.hash(),
-                file.name(),
-                file.size(),
-                file.partHashes(),
-                Optional.empty(),
-                file.path());
+        return new Uploadable(file.hash(), file.name(), file.size(), file.partHashes(), Optional.empty(), file.path());
     }
 
     static Uploadable of(DownloadQueue.Download download) {

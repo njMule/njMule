@@ -62,12 +62,7 @@ class ProxyRouteTest {
         ServerSocket target = this.listen();
         ServerSocket proxy = this.socks5(true);
         ProxySettings settings =
-                new ProxySettings(
-                        ProxySettings.Type.SOCKS,
-                        "127.0.0.1",
-                        proxy.getLocalPort(),
-                        "me",
-                        "secret");
+                new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret");
         ProxyRoute.install(() -> settings);
 
         TcpConnection connection = this.connect(target);
@@ -76,8 +71,7 @@ class ProxyRouteTest {
         }
         connection.close();
 
-        assertThat(this.seen)
-                .containsExactly("auth me:secret", "connect 127.0.0.1:" + target.getLocalPort());
+        assertThat(this.seen).containsExactly("auth me:secret", "connect 127.0.0.1:" + target.getLocalPort());
         assertThat(settings.toString()).doesNotContain("secret").contains("password=***");
     }
 
@@ -86,13 +80,7 @@ class ProxyRouteTest {
         ServerSocket target = this.listen();
         ServerSocket proxy = this.socks5(false);
         ProxyRoute.install(
-                () ->
-                        new ProxySettings(
-                                ProxySettings.Type.SOCKS,
-                                "127.0.0.1",
-                                proxy.getLocalPort(),
-                                "",
-                                ""));
+                () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "", ""));
 
         TcpConnection connection = this.connect(target);
         try (Socket accepted = target.accept()) {
@@ -107,14 +95,7 @@ class ProxyRouteTest {
     void connectionsGoThroughAnHttpProxy() throws Exception {
         ServerSocket target = this.listen();
         ServerSocket proxy = this.httpConnect();
-        ProxyRoute.install(
-                () ->
-                        new ProxySettings(
-                                ProxySettings.Type.HTTP,
-                                "127.0.0.1",
-                                proxy.getLocalPort(),
-                                "",
-                                ""));
+        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", proxy.getLocalPort(), "", ""));
 
         TcpConnection connection = this.connect(target);
         try (Socket accepted = target.accept()) {
@@ -153,83 +134,65 @@ class ProxyRouteTest {
     // A SOCKS 5 proxy (RFC 1928, user name and password per RFC 1929) that relays one connection.
     private ServerSocket socks5(boolean wantsPassword) throws IOException {
         ServerSocket server = this.listen();
-        Thread.ofVirtual()
-                .start(
-                        () -> {
-                            try (Socket client = server.accept()) {
-                                DataInputStream in = new DataInputStream(client.getInputStream());
-                                OutputStream out = client.getOutputStream();
-                                in.readUnsignedByte();
-                                in.readFully(new byte[in.readUnsignedByte()]);
-                                out.write(new byte[] {5, (byte) (wantsPassword ? 2 : 0)});
-                                if (wantsPassword) {
-                                    in.readUnsignedByte();
-                                    String user =
-                                            new String(
-                                                    in.readNBytes(in.readUnsignedByte()),
-                                                    StandardCharsets.US_ASCII);
-                                    String password =
-                                            new String(
-                                                    in.readNBytes(in.readUnsignedByte()),
-                                                    StandardCharsets.US_ASCII);
-                                    this.seen.add("auth " + user + ":" + password);
-                                    out.write(new byte[] {1, 0});
-                                }
-                                in.readFully(new byte[3]);
-                                int kind = in.readUnsignedByte();
-                                byte[] address = new byte[kind == 1 ? 4 : 16];
-                                in.readFully(address);
-                                int port = in.readUnsignedShort();
-                                this.seen.add(
-                                        "connect "
-                                                + InetAddress.getByAddress(address).getHostAddress()
-                                                + ":"
-                                                + port);
-                                Socket upstream =
-                                        new Socket(InetAddress.getByAddress(address), port);
-                                this.resources.add(upstream);
-                                out.write(new byte[] {5, 0, 0, 1, 127, 0, 0, 1, 0, 0});
-                                out.flush();
-                                relay(client.getInputStream(), upstream.getOutputStream());
-                            } catch (IOException e) {
-                                // The test closes everything at the end.
-                            }
-                        });
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = server.accept()) {
+                DataInputStream in = new DataInputStream(client.getInputStream());
+                OutputStream out = client.getOutputStream();
+                in.readUnsignedByte();
+                in.readFully(new byte[in.readUnsignedByte()]);
+                out.write(new byte[] {5, (byte) (wantsPassword ? 2 : 0)});
+                if (wantsPassword) {
+                    in.readUnsignedByte();
+                    String user = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+                    String password = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+                    this.seen.add("auth " + user + ":" + password);
+                    out.write(new byte[] {1, 0});
+                }
+                in.readFully(new byte[3]);
+                int kind = in.readUnsignedByte();
+                byte[] address = new byte[kind == 1 ? 4 : 16];
+                in.readFully(address);
+                int port = in.readUnsignedShort();
+                this.seen.add("connect " + InetAddress.getByAddress(address).getHostAddress() + ":" + port);
+                Socket upstream = new Socket(InetAddress.getByAddress(address), port);
+                this.resources.add(upstream);
+                out.write(new byte[] {5, 0, 0, 1, 127, 0, 0, 1, 0, 0});
+                out.flush();
+                relay(client.getInputStream(), upstream.getOutputStream());
+            } catch (IOException e) {
+                // The test closes everything at the end.
+            }
+        });
         return server;
     }
 
     // An HTTP proxy that accepts one CONNECT.
     private ServerSocket httpConnect() throws IOException {
         ServerSocket server = this.listen();
-        Thread.ofVirtual()
-                .start(
-                        () -> {
-                            try (Socket client = server.accept()) {
-                                InputStream in = client.getInputStream();
-                                StringBuilder head = new StringBuilder();
-                                while (!head.toString().endsWith("\r\n\r\n")) {
-                                    int c = in.read();
-                                    if (c < 0) {
-                                        return;
-                                    }
-                                    head.append((char) c);
-                                }
-                                String[] request = head.toString().split(" ", -1);
-                                this.seen.add(request[0] + " " + request[1]);
-                                String[] hostPort = request[1].split(":", -1);
-                                Socket upstream =
-                                        new Socket(hostPort[0], Integer.parseInt(hostPort[1]));
-                                this.resources.add(upstream);
-                                client.getOutputStream()
-                                        .write(
-                                                "HTTP/1.1 200 Connection established\r\n\r\n"
-                                                        .getBytes(StandardCharsets.US_ASCII));
-                                client.getOutputStream().flush();
-                                relay(in, upstream.getOutputStream());
-                            } catch (IOException e) {
-                                // The test closes everything at the end.
-                            }
-                        });
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = server.accept()) {
+                InputStream in = client.getInputStream();
+                StringBuilder head = new StringBuilder();
+                while (!head.toString().endsWith("\r\n\r\n")) {
+                    int c = in.read();
+                    if (c < 0) {
+                        return;
+                    }
+                    head.append((char) c);
+                }
+                String[] request = head.toString().split(" ", -1);
+                this.seen.add(request[0] + " " + request[1]);
+                String[] hostPort = request[1].split(":", -1);
+                Socket upstream = new Socket(hostPort[0], Integer.parseInt(hostPort[1]));
+                this.resources.add(upstream);
+                client.getOutputStream()
+                        .write("HTTP/1.1 200 Connection established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                client.getOutputStream().flush();
+                relay(in, upstream.getOutputStream());
+            } catch (IOException e) {
+                // The test closes everything at the end.
+            }
+        });
         return server;
     }
 

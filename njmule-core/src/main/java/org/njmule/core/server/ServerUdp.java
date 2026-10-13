@@ -30,8 +30,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The UDP socket for server queries, on a random port. A virtual thread receives; datagrams too
- * short for a header or not eDonkey ones are dropped before the receiver sees them.
+ * The UDP socket for server queries, on a random port. A virtual thread receives; datagrams too short for a header or
+ * not eDonkey ones are dropped before the receiver sees them.
  */
 public final class ServerUdp implements AutoCloseable {
 
@@ -57,9 +57,7 @@ public final class ServerUdp implements AutoCloseable {
 
     /** Binds {@code port} (0 picks one) on every interface and starts receiving. */
     public static ServerUdp open(int port, Receiver receiver) throws SocketException {
-        ServerUdp udp =
-                new ServerUdp(
-                        new DatagramSocket(port), Objects.requireNonNull(receiver, "receiver"));
+        ServerUdp udp = new ServerUdp(new DatagramSocket(port), Objects.requireNonNull(receiver, "receiver"));
         Thread.ofVirtual().name("njmule-server-udp").start(udp::run);
         return udp;
     }

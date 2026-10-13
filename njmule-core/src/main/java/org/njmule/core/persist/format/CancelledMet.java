@@ -27,10 +27,9 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.tag.TagCodec;
 
 /**
- * Cancelled downloads, {@code cancelled.met}: {@code <0x0F><version 1><seed u32><u32 count>} then
- * {@code <key 16><u8 tag count><tags>} per file, where the key is {@code MD5(<seed LE><file
- * hash>)}, so that the list does not reveal which files were cancelled. The old 0x0E format stored
- * the plain file hashes and has no version or seed.
+ * Cancelled downloads, {@code cancelled.met}: {@code <0x0F><version 1><seed u32><u32 count>} then {@code <key 16><u8
+ * tag count><tags>} per file, where the key is {@code MD5(<seed LE><file hash>)}, so that the list does not reveal
+ * which files were cancelled. The old 0x0E format stored the plain file hashes and has no version or seed.
  */
 public final class CancelledMet {
 

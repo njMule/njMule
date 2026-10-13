@@ -172,18 +172,8 @@ public final class SettingsScreen implements Screen {
         grid.add(this.upnp, 1, row++);
         row = section(grid, row, this.gui.t("IDS_PW_PROXY"));
         row = field(grid, row, this.gui.t("nj.proxy.type"), this.proxyType);
-        row =
-                field(
-                        grid,
-                        row,
-                        this.gui.t("nj.proxy.host"),
-                        new HBox(8, this.proxyHost, this.proxyPort));
-        row =
-                field(
-                        grid,
-                        row,
-                        this.gui.t("nj.proxy.user"),
-                        new HBox(8, this.proxyUser, this.proxyPassword));
+        row = field(grid, row, this.gui.t("nj.proxy.host"), new HBox(8, this.proxyHost, this.proxyPort));
+        row = field(grid, row, this.gui.t("nj.proxy.user"), new HBox(8, this.proxyUser, this.proxyPassword));
         row = section(grid, row, this.gui.t("IDS_PW_DIR"));
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
@@ -193,12 +183,7 @@ public final class SettingsScreen implements Screen {
         grid.add(this.webUi, 1, row++);
         row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
         grid.add(this.webUiLan, 1, row++);
-        row =
-                field(
-                        grid,
-                        row,
-                        this.gui.t("nj.webui.password"),
-                        new HBox(8, this.webUiPassword, this.webUiAgain));
+        row = field(grid, row, this.gui.t("nj.webui.password"), new HBox(8, this.webUiPassword, this.webUiAgain));
         Label webNote = new Label(this.gui.t("nj.webui.note"));
         webNote.setWrapText(true);
         webNote.getStyleClass().add("text-muted");
@@ -208,10 +193,9 @@ public final class SettingsScreen implements Screen {
         note.getStyleClass().add("text-muted");
         grid.add(note, 0, row, 2, 1);
 
-        var tools =
-                Fx.toolRow(
-                        Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply),
-                        Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
+        var tools = Fx.toolRow(
+                Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply),
+                Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToWidth(true);
         this.load(this.gui.model().preferencesProperty().get());
@@ -232,19 +216,13 @@ public final class SettingsScreen implements Screen {
     private HBox directory(TextField field) {
         field.setPrefColumnCount(32);
         field.setPromptText(this.gui.t("nj.settings.defaultDir"));
-        return new HBox(
-                6,
-                field,
-                Fx.button(
-                        this.gui.t("IDS_PW_BROWSE"),
-                        Material2AL.FOLDER_OPEN,
-                        () -> {
-                            DirectoryChooser chooser = new DirectoryChooser();
-                            var dir = chooser.showDialog(this.view.getScene().getWindow());
-                            if (dir != null) {
-                                field.setText(dir.getAbsolutePath());
-                            }
-                        }));
+        return new HBox(6, field, Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, () -> {
+            DirectoryChooser chooser = new DirectoryChooser();
+            var dir = chooser.showDialog(this.view.getScene().getWindow());
+            if (dir != null) {
+                field.setText(dir.getAbsolutePath());
+            }
+        }));
     }
 
     void load(Preferences p) {
@@ -294,9 +272,7 @@ public final class SettingsScreen implements Screen {
         }
         this.gui
                 .model()
-                .updatePreferences(
-                        p -> changed,
-                        p -> this.gui.inform().accept(this.gui.t("nj.settings.saved")));
+                .updatePreferences(p -> changed, p -> this.gui.inform().accept(this.gui.t("nj.settings.saved")));
         boolean relaunch =
                 !Objects.equals(this.language.getValue(), this.gui.settings().language());
         this.gui.themes().set(this.theme.getValue(), this.mode.getValue());
@@ -333,13 +309,12 @@ public final class SettingsScreen implements Screen {
                 .secureIdent(this.secureIdent.isSelected())
                 .creditSystem(this.credits.isSelected())
                 .upnp(this.upnp.isSelected())
-                .proxy(
-                        new ProxySettings(
-                                this.proxyType.getValue(),
-                                this.proxyHost.getText(),
-                                number(this.proxyPort, this.gui.t("nj.proxy.host")),
-                                this.proxyUser.getText().strip(),
-                                this.proxyPassword.getText()))
+                .proxy(new ProxySettings(
+                        this.proxyType.getValue(),
+                        this.proxyHost.getText(),
+                        number(this.proxyPort, this.gui.t("nj.proxy.host")),
+                        this.proxyUser.getText().strip(),
+                        this.proxyPassword.getText()))
                 .incomingDir(path(this.incoming))
                 .tempDir(path(this.temp))
                 .build();
@@ -357,8 +332,7 @@ public final class SettingsScreen implements Screen {
         try {
             if (password.length > 0 || again.length > 0) {
                 if (password.length < Passwords.MIN_LENGTH) {
-                    throw new IllegalArgumentException(
-                            this.gui.f("nj.webui.passwordShort", Passwords.MIN_LENGTH));
+                    throw new IllegalArgumentException(this.gui.f("nj.webui.passwordShort", Passwords.MIN_LENGTH));
                 }
                 if (!Arrays.equals(password, again)) {
                     throw new IllegalArgumentException(this.gui.t("nj.webui.passwordsDiffer"));
@@ -400,8 +374,7 @@ public final class SettingsScreen implements Screen {
     }
 
     private String languageName(Optional<Locale> l) {
-        return l.map(locale -> locale.getDisplayLanguage(locale))
-                .orElse(this.gui.t("nj.settings.systemLanguage"));
+        return l.map(locale -> locale.getDisplayLanguage(locale)).orElse(this.gui.t("nj.settings.systemLanguage"));
     }
 
     private static String key(Enum<?> e) {

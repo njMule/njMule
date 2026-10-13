@@ -46,9 +46,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A client that may download from us, over one connection: it asks for a file, its parts and hash
- * set and a place in our queue; with a slot it asks for blocks. Engine thread only; connection
- * callbacks are posted to it.
+ * A client that may download from us, over one connection: it asks for a file, its parts and hash set and a place in
+ * our queue; with a slot it asks for blocks. Engine thread only; connection callbacks are posted to it.
  */
 final class UploadSession {
 
@@ -104,12 +103,7 @@ final class UploadSession {
     private boolean slot;
     private boolean closed;
 
-    UploadSession(
-            EngineLoop loop,
-            TcpConnection connection,
-            Hello peer,
-            Supplier<Hello> ourHello,
-            Queue queue) {
+    UploadSession(EngineLoop loop, TcpConnection connection, Hello peer, Supplier<Hello> ourHello, Queue queue) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.connection = Objects.requireNonNull(connection, "connection");
         this.peer = Objects.requireNonNull(peer, "peer");
@@ -180,8 +174,7 @@ final class UploadSession {
         return new TcpConnection.Handler() {
             @Override
             public void onPacket(TcpConnection c, Packet packet) {
-                if (packet.protocol() == Protocol.EDONKEY
-                        && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                     c.setFrameLimit(FrameLimits.CLIENT);
                 }
                 if (!UploadSession.this.loop.post(() -> UploadSession.this.received(packet))) {
@@ -206,11 +199,10 @@ final class UploadSession {
 
     /** Tells the client its place in our queue. */
     void sendRank(int rank) {
-        this.send(
-                Packet.of(
-                        Protocol.EMULE,
-                        Opcodes.Extended.QUEUERANKING.code(),
-                        new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10])));
+        this.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.QUEUERANKING.code(),
+                new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10])));
     }
 
     /** Takes the slot away; the client goes back to waiting. */
@@ -276,12 +268,7 @@ final class UploadSession {
             }
             case REQUESTFILENAME -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.lookup(hash)
-                        .ifPresent(
-                                f ->
-                                        this.send(
-                                                new ClientMessages.FileName(hash, f.name())
-                                                        .encode()));
+                this.lookup(hash).ifPresent(f -> this.send(new ClientMessages.FileName(hash, f.name()).encode()));
             }
             case SETREQFILEID -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
@@ -296,11 +283,7 @@ final class UploadSession {
                 Hash16 hash = ClientMessages.fileOf(packet);
                 this.lookup(hash)
                         .filter(f -> !f.partHashes().isEmpty())
-                        .ifPresent(
-                                f ->
-                                        this.send(
-                                                new ClientMessages.HashSet(hash, f.partHashes())
-                                                        .encode()));
+                        .ifPresent(f -> this.send(new ClientMessages.HashSet(hash, f.partHashes()).encode()));
             }
             case STARTUPLOADREQ -> {
                 if (packet.length() >= Hash16.LENGTH) {
@@ -317,15 +300,10 @@ final class UploadSession {
             }
             // Our shared files are not for browsing: an empty list, and no directories.
             case ASKSHAREDFILES ->
-                    this.send(
-                            Packet.of(
-                                    Protocol.EDONKEY,
-                                    Opcodes.Client.ASKSHAREDFILESANSWER.code(),
-                                    new PacketWriter().u32(0)));
+                this.send(Packet.of(
+                        Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), new PacketWriter().u32(0)));
             case ASKSHAREDDIRS, ASKSHAREDFILESDIR ->
-                    this.send(
-                            Packet.empty(
-                                    Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+                this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
@@ -341,21 +319,18 @@ final class UploadSession {
             case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
             case KAD_FWTCPCHECK_ACK -> this.queue.reachabilityConfirmed(this);
             case CHATCAPTCHAREQ, CHATCAPTCHARES -> this.chat(packet);
-            case REQUESTSOURCES2 ->
-                    this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
+            case REQUESTSOURCES2 -> this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->
-                    this.send(
-                            Packet.of(
-                                    Protocol.EMULE,
-                                    Opcodes.Extended.PUBLICIP_ANSWER.code(),
-                                    this.address().getAddress().getAddress()));
+                this.send(Packet.of(
+                        Protocol.EMULE,
+                        Opcodes.Extended.PUBLICIP_ANSWER.code(),
+                        this.address().getAddress().getAddress()));
             // No AICH recovery data yet: the answer that says so is the file hash alone.
             case AICHREQUEST ->
-                    this.send(
-                            Packet.of(
-                                    Protocol.EMULE,
-                                    Opcodes.Extended.AICHANSWER.code(),
-                                    new PacketWriter().hash16(ClientMessages.fileOf(packet))));
+                this.send(Packet.of(
+                        Protocol.EMULE,
+                        Opcodes.Extended.AICHANSWER.code(),
+                        new PacketWriter().hash16(ClientMessages.fileOf(packet))));
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
@@ -371,7 +346,9 @@ final class UploadSession {
 
     // Only blocks of the file in upload, that we have, of at most one block size, are taken.
     private void blocks(ClientMessages.RequestParts request) {
-        if (!this.slot || this.file.isEmpty() || !request.file().equals(this.file.get().hash())) {
+        if (!this.slot
+                || this.file.isEmpty()
+                || !request.file().equals(this.file.get().hash())) {
             return;
         }
         Uploadable upload = this.file.get();
@@ -380,10 +357,8 @@ final class UploadSession {
                 continue;
             }
             Block block = new Block(range.start(), range.end());
-            if (range.end() - range.start() > MAX_BLOCK
-                    || !upload.has(range.start(), range.end())) {
-                logger.debug(
-                        "Refusing block {}-{} to {}", range.start(), range.end(), this.address());
+            if (range.end() - range.start() > MAX_BLOCK || !upload.has(range.start(), range.end())) {
+                logger.debug("Refusing block {}-{} to {}", range.start(), range.end(), this.address());
                 continue;
             }
             if (!this.pending.contains(block)

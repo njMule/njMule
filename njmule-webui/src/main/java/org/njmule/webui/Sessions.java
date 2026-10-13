@@ -28,9 +28,8 @@ import java.util.Optional;
 import java.util.function.LongSupplier;
 
 /**
- * Logged-in sessions: a random 128-bit token in a cookie, a separate token for forms against
- * cross-site requests, and an end after half an hour without use. Failed logins slow an address
- * down. Thread-safe.
+ * Logged-in sessions: a random 128-bit token in a cookie, a separate token for forms against cross-site requests, and
+ * an end after half an hour without use. Failed logins slow an address down. Thread-safe.
  */
 final class Sessions {
 
@@ -57,9 +56,7 @@ final class Sessions {
     private final Map<String, Entry> sessions = new HashMap<>();
     private final Map<String, Failures> failures = new HashMap<>();
 
-    /**
-     * @param clock monotonic nanoseconds
-     */
+    /** @param clock monotonic nanoseconds */
     Sessions(SecureRandom random, LongSupplier clock) {
         this.random = random;
         this.clock = clock;
@@ -90,8 +87,7 @@ final class Sessions {
     static boolean validForm(Session session, String given) {
         return given != null
                 && MessageDigest.isEqual(
-                        session.csrf().getBytes(StandardCharsets.US_ASCII),
-                        given.getBytes(StandardCharsets.US_ASCII));
+                        session.csrf().getBytes(StandardCharsets.US_ASCII), given.getBytes(StandardCharsets.US_ASCII));
     }
 
     /** Whether {@code address} may try to log in now. */
@@ -109,8 +105,7 @@ final class Sessions {
 
     synchronized void failed(String address) {
         Failures f = this.failures.get(address);
-        this.failures.put(
-                address, new Failures(f == null ? 1 : f.count() + 1, this.clock.getAsLong()));
+        this.failures.put(address, new Failures(f == null ? 1 : f.count() + 1, this.clock.getAsLong()));
     }
 
     synchronized void succeeded(String address) {

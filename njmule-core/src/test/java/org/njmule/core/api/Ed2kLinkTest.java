@@ -38,10 +38,7 @@ class Ed2kLinkTest {
 
     @Test
     void parsesAPlainFileLink() {
-        FileLink link =
-                (FileLink)
-                        Ed2kLink.parse(
-                                " ed2k://|file|Ubuntu%2024.04.iso|5000000000|" + HASH + "|/ ");
+        FileLink link = (FileLink) Ed2kLink.parse(" ed2k://|file|Ubuntu%2024.04.iso|5000000000|" + HASH + "|/ ");
 
         assertThat(link.name()).isEqualTo("Ubuntu 24.04.iso");
         assertThat(link.size()).isEqualTo(5_000_000_000L);
@@ -52,22 +49,16 @@ class Ed2kLinkTest {
 
     @Test
     void readsOptionalParametersAndDropsInvalidOnes() {
-        FileLink link =
-                (FileLink)
-                        Ed2kLink.parse(
-                                "ed2k://|file|a.bin|19456001|"
-                                        + HASH
-                                        + "|h="
-                                        + AICH
-                                        + "|p="
-                                        + HASH
-                                        + ":"
-                                        + HASH
-                                        + "|s=http://example.org/a.bin|x=ignored|/");
-        FileLink bad =
-                (FileLink)
-                        Ed2kLink.parse(
-                                "ed2k://|file|a.bin|1|" + HASH + "|h=short|p=" + HASH + ":zz|/");
+        FileLink link = (FileLink) Ed2kLink.parse("ed2k://|file|a.bin|19456001|"
+                + HASH
+                + "|h="
+                + AICH
+                + "|p="
+                + HASH
+                + ":"
+                + HASH
+                + "|s=http://example.org/a.bin|x=ignored|/");
+        FileLink bad = (FileLink) Ed2kLink.parse("ed2k://|file|a.bin|1|" + HASH + "|h=short|p=" + HASH + ":zz|/");
 
         assertThat(link.aichHash()).contains(Hash20.parseBase32(AICH));
         assertThat(link.partHashes()).hasSize(2);
@@ -79,14 +70,9 @@ class Ed2kLinkTest {
     @Test
     void readsSourcesAndHonoursTheirExpiry() {
         String base = "ed2k://|file|a.bin|100|" + HASH + "|/|";
-        FileLink link =
-                (FileLink)
-                        Ed2kLink.parse(
-                                base
-                                        + "sources,1.2.3.4:4662,host.example.org:4663,bad,5.6.7.8:0|/");
+        FileLink link = (FileLink) Ed2kLink.parse(base + "sources,1.2.3.4:4662,host.example.org:4663,bad,5.6.7.8:0|/");
 
-        assertThat(link.sources())
-                .containsExactly(new Source("1.2.3.4", 4662), new Source("host.example.org", 4663));
+        assertThat(link.sources()).containsExactly(new Source("1.2.3.4", 4662), new Source("host.example.org", 4663));
         assertThat(((FileLink) Ed2kLink.parse(base + "sources@000101,1.2.3.4:4662|/")).sources())
                 .isEmpty();
         assertThat(((FileLink) Ed2kLink.parse(base + "sources@991231,1.2.3.4:4662|/")).sources())
@@ -95,9 +81,7 @@ class Ed2kLinkTest {
 
     @Test
     void decodesUtf8NamesAndKeepsRawUnicode() {
-        assertThat(
-                        ((FileLink) Ed2kLink.parse("ed2k://|file|citt%C3%A0.txt|1|" + HASH + "|/"))
-                                .name())
+        assertThat(((FileLink) Ed2kLink.parse("ed2k://|file|citt%C3%A0.txt|1|" + HASH + "|/")).name())
                 .isEqualTo("città.txt");
         assertThat(((FileLink) Ed2kLink.parse("ed2k://|file|città.txt|1|" + HASH + "|/")).name())
                 .isEqualTo("città.txt");
@@ -112,14 +96,7 @@ class Ed2kLinkTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Ed2kLink.parse("ed2k://|file|a|0|" + HASH + "|/"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(
-                        () ->
-                                Ed2kLink.parse(
-                                        "ed2k://|file|a|"
-                                                + (Ed2kLink.MAX_FILE_SIZE + 1)
-                                                + "|"
-                                                + HASH
-                                                + "|/"))
+        assertThatThrownBy(() -> Ed2kLink.parse("ed2k://|file|a|" + (Ed2kLink.MAX_FILE_SIZE + 1) + "|" + HASH + "|/"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Ed2kLink.parse("ed2k://|file|a|1|1234|/"))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -138,22 +115,18 @@ class Ed2kLinkTest {
                 .isEqualTo(new Ed2kLink.ServerListLink("http://example.org/server.met"));
         assertThat(Ed2kLink.parse("ed2k://|nodeslist|https://example.org/nodes.dat|/"))
                 .isEqualTo(new Ed2kLink.NodesListLink("https://example.org/nodes.dat"));
-        assertThat(Ed2kLink.parse("ed2k://|search|free%20music|/"))
-                .isEqualTo(new Ed2kLink.SearchLink("free music"));
+        assertThat(Ed2kLink.parse("ed2k://|search|free%20music|/")).isEqualTo(new Ed2kLink.SearchLink("free music"));
     }
 
     @Test
     void parsesEd2kMagnetLinks() {
-        FileLink link =
-                (FileLink)
-                        Ed2kLink.parse(
-                                "magnet:?xt=urn:ed2k:"
-                                        + HASH
-                                        + "&xl=123&dn=a%20b.txt&xt=urn:aich:"
-                                        + AICH
-                                        + "&xs=ed2kftp://1.2.3.4:4662/"
-                                        + HASH
-                                        + "/123/&as=http://example.org/x&tr=ignored");
+        FileLink link = (FileLink) Ed2kLink.parse("magnet:?xt=urn:ed2k:"
+                + HASH
+                + "&xl=123&dn=a%20b.txt&xt=urn:aich:"
+                + AICH
+                + "&xs=ed2kftp://1.2.3.4:4662/"
+                + HASH
+                + "/123/&as=http://example.org/x&tr=ignored");
 
         assertThat(link.name()).isEqualTo("a b.txt");
         assertThat(link.size()).isEqualTo(123);
@@ -166,27 +139,21 @@ class Ed2kLinkTest {
 
     @Test
     void writesLinksThatParseBack() {
-        FileLink link =
-                new FileLink(
-                        "100% città | test.mkv",
-                        19_456_001,
-                        Hash16.parseHex(HASH),
-                        Optional.of(Hash20.parseBase32(AICH)),
-                        List.of(
-                                Hash16.parseHex(HASH),
-                                Hash16.parseHex(HASH),
-                                Hash16.parseHex(HASH)),
-                        List.of(new Source("1.2.3.4", 4662)),
-                        List.of());
+        FileLink link = new FileLink(
+                "100% città | test.mkv",
+                19_456_001,
+                Hash16.parseHex(HASH),
+                Optional.of(Hash20.parseBase32(AICH)),
+                List.of(Hash16.parseHex(HASH), Hash16.parseHex(HASH), Hash16.parseHex(HASH)),
+                List.of(new Source("1.2.3.4", 4662)),
+                List.of());
 
-        assertThat(link.toUri())
-                .startsWith("ed2k://|file|100%25%20citt%C3%A0%20%7C%20test.mkv|19456001|");
+        assertThat(link.toUri()).startsWith("ed2k://|file|100%25%20citt%C3%A0%20%7C%20test.mkv|19456001|");
         assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);
     }
 
     @Property
-    void fileLinksRoundTrip(
-            @ForAll("names") String name, @ForAll @LongRange(min = 1, max = 1L << 38) long size) {
+    void fileLinksRoundTrip(@ForAll("names") String name, @ForAll @LongRange(min = 1, max = 1L << 38) long size) {
         FileLink link = FileLink.of(name, size, Hash16.parseHex(HASH));
 
         assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);

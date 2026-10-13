@@ -20,8 +20,8 @@ package org.njmule.core.api;
  * What to take from an eMule profile.
  *
  * @param dryRun only report what would be imported
- * @param identity also take eMule's user hash, key, credits and Kad id, used from the next start;
- *     never while eMule runs, since two clients with one identity spoil each other's credits
+ * @param identity also take eMule's user hash, key, credits and Kad id, used from the next start; never while eMule
+ *     runs, since two clients with one identity spoil each other's credits
  * @param downloads also copy eMule's downloads in progress, which must be paused or eMule closed
  */
 public record ImportOptions(boolean dryRun, boolean identity, boolean downloads) {}

@@ -62,7 +62,8 @@ class UploadQueueTest {
 
     private static final Duration WAIT = Duration.ofSeconds(20);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
@@ -88,10 +89,8 @@ class UploadQueueTest {
             assertThat(c.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
         }
 
-        assertThat(first.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(second.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(first.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(second.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         Packet rank = third.ask(file.hash());
         assertThat(rank.protocol()).isEqualTo(Protocol.EMULE);
         assertThat(rank.opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
@@ -99,28 +98,23 @@ class UploadQueueTest {
         // Front ends see the slots, then the queue.
         assertThat(engine.uploads().get(5, TimeUnit.SECONDS))
                 .extracting(UploadInfo::state)
-                .containsExactly(
-                        UploadInfo.State.UPLOADING,
-                        UploadInfo.State.UPLOADING,
-                        UploadInfo.State.QUEUED);
+                .containsExactly(UploadInfo.State.UPLOADING, UploadInfo.State.UPLOADING, UploadInfo.State.QUEUED);
 
         // Asking again at once: three times are tolerated, the fourth bans the client.
         for (int i = 0; i < 3; i++) {
-            assertThat(third.ask(file.hash()).opcode())
-                    .isEqualTo(Opcodes.Extended.QUEUERANKING.code());
+            assertThat(third.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
         }
         third.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
         assertThat(third.poll(Duration.ofSeconds(1))).isEmpty();
 
         // A slot asks for a block and gets it, within the limit.
-        first.send(
-                new ClientMessages.RequestParts(
-                                file.hash(),
-                                List.of(
-                                        new ClientMessages.Range(0, 1000),
-                                        new ClientMessages.Range(0, 0),
-                                        new ClientMessages.Range(0, 0)))
-                        .encode(false));
+        first.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
         Packet data = first.next();
         assertThat(data.opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
         assertThat(ClientMessages.SendingPart.decode(data).end()).isEqualTo(1000);
@@ -165,19 +159,17 @@ class UploadQueueTest {
         assertThat(ip.opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
         assertThat(ip.payload()).containsExactly(127, 0, 0, 1);
 
-        client.send(
-                Packet.of(
-                        Protocol.EMULE,
-                        Opcodes.Extended.AICHREQUEST.code(),
-                        new PacketWriter().hash16(file.hash()).u16(0).bytes(new byte[20])));
+        client.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.AICHREQUEST.code(),
+                new PacketWriter().hash16(file.hash()).u16(0).bytes(new byte[20])));
         Packet aich = client.next();
         assertThat(aich.opcode()).isEqualTo(Opcodes.Extended.AICHANSWER.code());
         assertThat(aich.length()).isEqualTo(16);
 
         // Nobody else has the file, so a request for sources gets no answer; a slot still comes.
         client.send(SourceExchange.request(file.hash()));
-        assertThat(client.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
     }
 
@@ -188,14 +180,11 @@ class UploadQueueTest {
         int port = engine.preferences().tcpPort();
         Client first = this.client(port, 5);
         Client second = this.client(port, 6);
-        assertThat(first.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(second.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(first.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(second.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         try (ServerSocket listening = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             Client waiting = this.client(port, 7, listening.getLocalPort());
-            assertThat(waiting.ask(file.hash()).opcode())
-                    .isEqualTo(Opcodes.Extended.QUEUERANKING.code());
+            assertThat(waiting.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
             waiting.socket.close();
 
             first.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
@@ -219,22 +208,20 @@ class UploadQueueTest {
         Client victim = this.client(port, 7);
         victim.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
         assertThat(victim.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
-        assertThat(victim.ask(file.hash()).opcode())
-                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(victim.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
 
         Client impostor = this.clientFrom(InetAddress.getByName("127.0.0.2"), port, 7);
         impostor.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
         assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
 
         // The slot still serves the client that holds it.
-        victim.send(
-                new ClientMessages.RequestParts(
-                                file.hash(),
-                                List.of(
-                                        new ClientMessages.Range(0, 1000),
-                                        new ClientMessages.Range(0, 0),
-                                        new ClientMessages.Range(0, 0)))
-                        .encode(false));
+        victim.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
         assertThat(victim.next().opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
         assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).hasSize(1);
     }
@@ -309,8 +296,7 @@ class UploadQueueTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
+        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
         return engine;

@@ -32,9 +32,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * What the desktop interface remembers between runs: theme, language, window and screen. Kept in
- * {@code gui.properties} of the front-end directory; unknown or broken values fall back to the
- * defaults.
+ * What the desktop interface remembers between runs: theme, language, window and screen. Kept in {@code gui.properties}
+ * of the front-end directory; unknown or broken values fall back to the defaults.
  */
 public final class GuiSettings {
 
@@ -163,11 +162,7 @@ public final class GuiSettings {
         }
         Path tmp = this.file.resolveSibling(FILE_NAME + ".tmp");
         Files.writeString(tmp, text, StandardCharsets.UTF_8);
-        Files.move(
-                tmp,
-                this.file,
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE);
+        Files.move(tmp, this.file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String value, E fallback) {

@@ -47,10 +47,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The hello exchange with other clients, in both directions. Incoming connections get our answer
- * (servers test our reachability this way before giving a HighID); outgoing greetings report what
- * the peer answered. An incoming connection that a {@link Router} wants is handed over after the
- * hello; the others stay open until they are idle. Thread-safe.
+ * The hello exchange with other clients, in both directions. Incoming connections get our answer (servers test our
+ * reachability this way before giving a HighID); outgoing greetings report what the peer answered. An incoming
+ * connection that a {@link Router} wants is handed over after the hello; the others stay open until they are idle.
+ * Thread-safe.
  */
 public final class PeerGreetings implements AutoCloseable {
 
@@ -80,8 +80,8 @@ public final class PeerGreetings implements AutoCloseable {
     /**
      * @param ourHello builds our greeting from the current state (name, ports, server)
      * @param plainAllowed whether plain incoming connections are accepted
-     * @param serverTesting whether an address ({@code Ipv4} form) is the server we log in to, which
-     *     connects to tell whether we are reachable: it may come plain and takes a short padding
+     * @param serverTesting whether an address ({@code Ipv4} form) is the server we log in to, which connects to tell
+     *     whether we are reachable: it may come plain and takes a short padding
      */
     public PeerGreetings(
             Hash16 userHash,
@@ -104,25 +104,18 @@ public final class PeerGreetings implements AutoCloseable {
     /** Serves an accepted socket (from a listener thread) until the connection ends. */
     public void accepted(Socket socket, ConnectionGuard.Permit permit) {
         TcpConnection connection;
-        boolean server =
-                socket.getInetAddress() instanceof Inet4Address ip
-                        && this.serverTesting.test(Ipv4.fromBytes(ip.getAddress()));
+        boolean server = socket.getInetAddress() instanceof Inet4Address ip
+                && this.serverTesting.test(Ipv4.fromBytes(ip.getAddress()));
         try {
-            connection =
-                    TcpConnector.accept(
-                            socket,
-                            this.userHash,
-                            server || this.plainAllowed.get(),
-                            HELLO_TIMEOUT,
-                            this.random,
-                            server
-                                    ? TcpConnector.MAX_SERVER_TEST_PADDING
-                                    : TcpConnector.MAX_CLIENT_PADDING);
+            connection = TcpConnector.accept(
+                    socket,
+                    this.userHash,
+                    server || this.plainAllowed.get(),
+                    HELLO_TIMEOUT,
+                    this.random,
+                    server ? TcpConnector.MAX_SERVER_TEST_PADDING : TcpConnector.MAX_CLIENT_PADDING);
         } catch (IOException e) {
-            logger.debug(
-                    "Incoming connection from {} failed: {}",
-                    socket.getRemoteSocketAddress(),
-                    e.getMessage());
+            logger.debug("Incoming connection from {} failed: {}", socket.getRemoteSocketAddress(), e.getMessage());
             permit.close();
             return;
         }
@@ -139,33 +132,27 @@ public final class PeerGreetings implements AutoCloseable {
     }
 
     /**
-     * Connects to a client and says hello; the future completes with its answer. The connection
-     * stays open until the peer closes it or it is idle.
+     * Connects to a client and says hello; the future completes with its answer. The connection stays open until the
+     * peer closes it or it is idle.
      */
     public CompletableFuture<PeerInfo> greet(InetSocketAddress address) {
         return this.greet(address, Optional.empty());
     }
 
     /** As {@link #greet(InetSocketAddress)}, obfuscated with the peer's user hash when known. */
-    public CompletableFuture<PeerInfo> greet(
-            InetSocketAddress address, Optional<Hash16> obfuscateFor) {
+    public CompletableFuture<PeerInfo> greet(InetSocketAddress address, Optional<Hash16> obfuscateFor) {
         CompletableFuture<PeerInfo> answer = new CompletableFuture<>();
-        Thread.ofVirtual()
-                .name("njmule-greet-" + address)
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection connection =
-                                        TcpConnector.connectToClient(
-                                                address, obfuscateFor, HELLO_TIMEOUT, this.random);
-                                this.open.add(connection);
-                                connection.start(
-                                        new Handler(Optional.of(answer)), PeerGreetings::unpack);
-                                connection.send(this.ourHello.get().encode(false));
-                            } catch (IOException e) {
-                                answer.completeExceptionally(e);
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-greet-" + address).start(() -> {
+            try {
+                TcpConnection connection =
+                        TcpConnector.connectToClient(address, obfuscateFor, HELLO_TIMEOUT, this.random);
+                this.open.add(connection);
+                connection.start(new Handler(Optional.of(answer)), PeerGreetings::unpack);
+                connection.send(this.ourHello.get().encode(false));
+            } catch (IOException e) {
+                answer.completeExceptionally(e);
+            }
+        });
         return answer.orTimeout(HELLO_TIMEOUT.toSeconds() * 2, TimeUnit.SECONDS);
     }
 
@@ -213,13 +200,13 @@ public final class PeerGreetings implements AutoCloseable {
                     this.greeted = true;
                     connection.setFrameLimit(FrameLimits.CLIENT);
                     connection.setReadTimeout(IDLE_TIMEOUT);
-                    logger.debug(
-                            "Hello from {}: {}",
-                            connection.remoteAddress(),
-                            PeerSoftware.describe(peer));
+                    logger.debug("Hello from {}: {}", connection.remoteAddress(), PeerSoftware.describe(peer));
                     this.answer.ifPresent(a -> a.complete(info(connection, peer)));
                     if (this.answer.isEmpty()) {
-                        this.next = PeerGreetings.this.router.route(connection, peer).orElse(null);
+                        this.next = PeerGreetings.this
+                                .router
+                                .route(connection, peer)
+                                .orElse(null);
                     }
                 }
             } catch (IOException e) {
@@ -235,10 +222,7 @@ public final class PeerGreetings implements AutoCloseable {
                 this.next.onClosed(connection, cause);
             }
             this.answer.ifPresent(
-                    a ->
-                            a.completeExceptionally(
-                                    cause.orElseGet(
-                                            () -> new IOException("closed before the hello"))));
+                    a -> a.completeExceptionally(cause.orElseGet(() -> new IOException("closed before the hello"))));
         }
     }
 

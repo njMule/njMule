@@ -27,8 +27,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The user hash that identifies this client on the network, kept in an eMule-compatible {@code
- * preferences.dat}. It must stay stable: peers bind credits and keys to it.
+ * The user hash that identifies this client on the network, kept in an eMule-compatible {@code preferences.dat}. It
+ * must stay stable: peers bind credits and keys to it.
  */
 public final class UserHashStore {
 
@@ -45,8 +45,8 @@ public final class UserHashStore {
         Path file = configDir.resolve(FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(file);
         try {
-            Hash16 hash =
-                    AtomicFiles.read(file, in -> PreferencesDat.read(in.readAllBytes()).userHash());
+            Hash16 hash = AtomicFiles.read(
+                    file, in -> PreferencesDat.read(in.readAllBytes()).userHash());
             if (isUsable(hash)) {
                 return hash;
             }
@@ -58,9 +58,7 @@ public final class UserHashStore {
         }
         Hash16 hash = generate(random);
         AtomicFiles.writeBytes(
-                file,
-                PreferencesDat.write(
-                        new PreferencesDat.Contents(PreferencesDat.VERSION, hash, Bytes.EMPTY)));
+                file, PreferencesDat.write(new PreferencesDat.Contents(PreferencesDat.VERSION, hash, Bytes.EMPTY)));
         return hash;
     }
 

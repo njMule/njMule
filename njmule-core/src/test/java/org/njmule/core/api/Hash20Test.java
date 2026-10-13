@@ -33,10 +33,8 @@ class Hash20Test {
 
         assertThat(zero.toBase32()).isEqualTo("A".repeat(32));
         assertThat(Hash20.parseBase32("a".repeat(32))).isEqualTo(zero);
-        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31) + "1"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31)))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31) + "1")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31))).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Property

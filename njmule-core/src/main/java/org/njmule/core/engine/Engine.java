@@ -121,20 +121,18 @@ public final class Engine implements NjMuleEngine {
         this.schedule = ScheduleCodec.load(this.scheduleFile);
         this.effective = preferences;
         this.loop = loop;
-        this.eventExecutor =
-                Executors.newSingleThreadExecutor(
-                        Thread.ofPlatform().name("njmule-events").daemon(true).factory());
+        this.eventExecutor = Executors.newSingleThreadExecutor(
+                Thread.ofPlatform().name("njmule-events").daemon(true).factory());
         this.events = new SubmissionPublisher<>(this.eventExecutor, EVENT_BUFFER);
-        this.network =
-                new Network(
-                        loop,
-                        directories.config(),
-                        () -> this.effective,
-                        this::publish,
-                        this::userLog,
-                        userHash,
-                        preferences.effectiveTempDir(directories),
-                        () -> this.preferences.effectiveIncomingDir(directories));
+        this.network = new Network(
+                loop,
+                directories.config(),
+                () -> this.effective,
+                this::publish,
+                this::userLog,
+                userHash,
+                preferences.effectiveTempDir(directories),
+                () -> this.preferences.effectiveIncomingDir(directories));
     }
 
     public static Engine start(EngineConfig config) throws IOException {
@@ -169,21 +167,15 @@ public final class Engine implements NjMuleEngine {
             throw e;
         }
         engine.loop
-                .submit(
-                        () -> {
-                            engine.refreshSchedule();
-                            engine.network.start();
-                            engine.loop.scheduleRepeating(
-                                    "scheduler",
-                                    SCHEDULE_CHECK,
-                                    SCHEDULE_CHECK,
-                                    engine::refreshSchedule);
-                            return null;
-                        })
+                .submit(() -> {
+                    engine.refreshSchedule();
+                    engine.network.start();
+                    engine.loop.scheduleRepeating("scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
+                    return null;
+                })
                 .join();
         engine.publish(new EngineEvent.Started(NjMuleInfo.version()));
-        engine.userLog(
-                LogLine.Level.INFO, NjMuleInfo.NAME + " " + NjMuleInfo.version() + " started");
+        engine.userLog(LogLine.Level.INFO, NjMuleInfo.NAME + " " + NjMuleInfo.version() + " started");
         return engine;
     }
 
@@ -200,23 +192,21 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Preferences> updatePreferences(UnaryOperator<Preferences> change) {
         Objects.requireNonNull(change, "change");
-        return this.loop.submit(
-                () -> {
-                    Preferences current = this.preferences;
-                    Preferences next = Objects.requireNonNull(change.apply(current), "preferences");
-                    if (!next.equals(current)) {
-                        try {
-                            PreferencesCodec.save(this.preferencesFile, next);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(
-                                    "Cannot save " + this.preferencesFile, e);
-                        }
-                        this.preferences = next;
-                        this.refreshSchedule();
-                        this.publish(new EngineEvent.PreferencesChanged(next));
-                    }
-                    return next;
-                });
+        return this.loop.submit(() -> {
+            Preferences current = this.preferences;
+            Preferences next = Objects.requireNonNull(change.apply(current), "preferences");
+            if (!next.equals(current)) {
+                try {
+                    PreferencesCodec.save(this.preferencesFile, next);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Cannot save " + this.preferencesFile, e);
+                }
+                this.preferences = next;
+                this.refreshSchedule();
+                this.publish(new EngineEvent.PreferencesChanged(next));
+            }
+            return next;
+        });
     }
 
     @Override
@@ -227,17 +217,16 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Schedule> updateSchedule(Schedule changed) {
         Objects.requireNonNull(changed, "changed");
-        return this.loop.submit(
-                () -> {
-                    try {
-                        ScheduleCodec.save(this.scheduleFile, changed);
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("Cannot save " + this.scheduleFile, e);
-                    }
-                    this.schedule = changed;
-                    this.refreshSchedule();
-                    return changed;
-                });
+        return this.loop.submit(() -> {
+            try {
+                ScheduleCodec.save(this.scheduleFile, changed);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Cannot save " + this.scheduleFile, e);
+            }
+            this.schedule = changed;
+            this.refreshSchedule();
+            return changed;
+        });
     }
 
     /** The preferences the network uses now, for tests. */
@@ -287,13 +276,8 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Boolean> removeServer(ServerAddress server) {
         Objects.requireNonNull(server, "server");
         return resolve(server.host())
-                .thenCompose(
-                        ip ->
-                                this.loop.submit(
-                                        () ->
-                                                this.network.removeServer(
-                                                        new ServerList.Address(
-                                                                ip, server.port()))));
+                .thenCompose(ip ->
+                        this.loop.submit(() -> this.network.removeServer(new ServerList.Address(ip, server.port()))));
     }
 
     @Override
@@ -310,31 +294,25 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Void> connect(Optional<ServerAddress> server) {
         Objects.requireNonNull(server, "server");
         if (server.isEmpty()) {
-            return this.loop.submit(
-                    () -> {
-                        this.network.connect(Optional.empty());
-                        return null;
-                    });
+            return this.loop.submit(() -> {
+                this.network.connect(Optional.empty());
+                return null;
+            });
         }
         int port = server.get().port();
         return resolve(server.get().host())
-                .thenCompose(
-                        ip ->
-                                this.loop.submit(
-                                        () -> {
-                                            this.network.connect(
-                                                    Optional.of(new ServerList.Address(ip, port)));
-                                            return null;
-                                        }));
+                .thenCompose(ip -> this.loop.submit(() -> {
+                    this.network.connect(Optional.of(new ServerList.Address(ip, port)));
+                    return null;
+                }));
     }
 
     @Override
     public CompletableFuture<Void> disconnect() {
-        return this.loop.submit(
-                () -> {
-                    this.network.disconnect();
-                    return null;
-                });
+        return this.loop.submit(() -> {
+            this.network.disconnect();
+            return null;
+        });
     }
 
     @Override
@@ -350,20 +328,16 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> stopSearch(SearchId search) {
-        return this.loop.submit(
-                () -> {
-                    this.network.stopSearch(search);
-                    return null;
-                });
+        return this.loop.submit(() -> {
+            this.network.stopSearch(search);
+            return null;
+        });
     }
 
     @Override
     public CompletableFuture<PeerInfo> hello(ServerAddress peer) {
         return resolve(peer.host())
-                .thenCompose(
-                        ip ->
-                                this.network.hello(
-                                        new InetSocketAddress(Ipv4.format(ip), peer.port())));
+                .thenCompose(ip -> this.network.hello(new InetSocketAddress(Ipv4.format(ip), peer.port())));
     }
 
     @Override
@@ -403,11 +377,10 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Void> shareDirectory(Path directory) {
         Objects.requireNonNull(directory, "directory");
-        return this.loop.submit(
-                () -> {
-                    this.network.shareDirectory(directory);
-                    return null;
-                });
+        return this.loop.submit(() -> {
+            this.network.shareDirectory(directory);
+            return null;
+        });
     }
 
     /** Downloads and uploads in detail, for diagnosing tests. */
@@ -419,13 +392,10 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Void> kadBootstrap(ServerAddress node) {
         Objects.requireNonNull(node, "node");
         return resolve(node.host())
-                .thenCompose(
-                        ip ->
-                                this.loop.submit(
-                                        () -> {
-                                            this.network.kadBootstrap(ip, node.port());
-                                            return null;
-                                        }));
+                .thenCompose(ip -> this.loop.submit(() -> {
+                    this.network.kadBootstrap(ip, node.port());
+                    return null;
+                }));
     }
 
     @Override
@@ -434,28 +404,19 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
-    public CompletableFuture<ImportReport> importFromEmule(
-            Path emuleConfigDir, ImportOptions options) {
+    public CompletableFuture<ImportReport> importFromEmule(Path emuleConfigDir, ImportOptions options) {
         Objects.requireNonNull(emuleConfigDir, "emuleConfigDir");
         Objects.requireNonNull(options, "options");
         CompletableFuture<ImportReport> report = new CompletableFuture<>();
         // Reading the profile and copying downloads take long: the engine thread only applies.
-        Thread.ofVirtual()
-                .name("njmule-import")
-                .start(
-                        () -> {
-                            try {
-                                report.complete(
-                                        new EmuleImporter(
-                                                        emuleConfigDir,
-                                                        options,
-                                                        new ImportTarget(),
-                                                        this.emuleRunning)
-                                                .run());
-                            } catch (RuntimeException e) {
-                                report.completeExceptionally(e);
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-import").start(() -> {
+            try {
+                report.complete(
+                        new EmuleImporter(emuleConfigDir, options, new ImportTarget(), this.emuleRunning).run());
+            } catch (RuntimeException e) {
+                report.completeExceptionally(e);
+            }
+        });
         return report;
     }
 
@@ -473,7 +434,10 @@ public final class Engine implements NjMuleEngine {
 
         @Override
         public int addServers(Path serverMet) {
-            return Engine.this.loop.submit(() -> Engine.this.network.addServers(serverMet)).join();
+            return Engine.this
+                    .loop
+                    .submit(() -> Engine.this.network.addServers(serverMet))
+                    .join();
         }
 
         @Override
@@ -524,16 +488,10 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(to, "to");
         Objects.requireNonNull(text, "text");
         return resolve(to.host())
-                .thenCompose(
-                        ip ->
-                                this.loop.submit(
-                                        () -> {
-                                            this.network.sendMessage(
-                                                    new InetSocketAddress(
-                                                            Ipv4.format(ip), to.port()),
-                                                    text);
-                                            return null;
-                                        }));
+                .thenCompose(ip -> this.loop.submit(() -> {
+                    this.network.sendMessage(new InetSocketAddress(Ipv4.format(ip), to.port()), text);
+                    return null;
+                }));
     }
 
     @Override
@@ -544,11 +502,10 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Void> addFriend(Friend friend) {
         Objects.requireNonNull(friend, "friend");
-        return this.loop.submit(
-                () -> {
-                    this.network.addFriend(friend);
-                    return null;
-                });
+        return this.loop.submit(() -> {
+            this.network.addFriend(friend);
+            return null;
+        });
     }
 
     @Override
@@ -571,11 +528,10 @@ public final class Engine implements NjMuleEngine {
         logger.info("Stopping {}", NjMuleInfo.NAME);
         try {
             this.loop
-                    .submit(
-                            () -> {
-                                this.network.close();
-                                return null;
-                            })
+                    .submit(() -> {
+                        this.network.close();
+                        return null;
+                    })
                     .get(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -610,35 +566,29 @@ public final class Engine implements NjMuleEngine {
     // Name lookups block, so they run on a virtual thread; the eD2K network is IPv4 only.
     private static CompletableFuture<Integer> resolve(String host) {
         CompletableFuture<Integer> ip = new CompletableFuture<>();
-        Thread.ofVirtual()
-                .name("njmule-resolve")
-                .start(
-                        () -> {
-                            try {
-                                for (InetAddress address : InetAddress.getAllByName(host)) {
-                                    if (address instanceof Inet4Address v4) {
-                                        ip.complete(Ipv4.fromBytes(v4.getAddress()));
-                                        return;
-                                    }
-                                }
-                                ip.completeExceptionally(
-                                        new UnknownHostException("no IPv4 address for " + host));
-                            } catch (UnknownHostException e) {
-                                ip.completeExceptionally(e);
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-resolve").start(() -> {
+            try {
+                for (InetAddress address : InetAddress.getAllByName(host)) {
+                    if (address instanceof Inet4Address v4) {
+                        ip.complete(Ipv4.fromBytes(v4.getAddress()));
+                        return;
+                    }
+                }
+                ip.completeExceptionally(new UnknownHostException("no IPv4 address for " + host));
+            } catch (UnknownHostException e) {
+                ip.completeExceptionally(e);
+            }
+        });
         return ip;
     }
 
     // Slow subscribers lose events instead of stalling the engine.
     private void publish(EngineEvent event) {
         if (!this.events.isClosed()) {
-            this.events.offer(
-                    event,
-                    (subscriber, dropped) -> {
-                        logger.debug("Dropped {} for a slow subscriber", dropped);
-                        return false;
-                    });
+            this.events.offer(event, (subscriber, dropped) -> {
+                logger.debug("Dropped {} for a slow subscriber", dropped);
+                return false;
+            });
         }
     }
 }

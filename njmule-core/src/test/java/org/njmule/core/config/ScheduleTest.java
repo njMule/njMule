@@ -37,12 +37,12 @@ class ScheduleTest {
     // A Monday.
     private static final LocalDateTime MONDAY_NOON = LocalDateTime.of(2026, 10, 12, 12, 0);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void windowsHoldOnTheirDaysAndHours() {
-        Schedule.Rule office =
-                rule("office", EnumSet.range(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), "09:00", "18:00");
+        Schedule.Rule office = rule("office", EnumSet.range(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), "09:00", "18:00");
         Schedule.Rule night = rule("night", EnumSet.of(DayOfWeek.SUNDAY), "23:00", "07:00");
         Schedule.Rule saturday = rule("saturday", EnumSet.of(DayOfWeek.SATURDAY), "00:00", "00:00");
 
@@ -51,7 +51,8 @@ class ScheduleTest {
         assertThat(office.holds(MONDAY_NOON.withHour(9))).isTrue();
         assertThat(office.holds(MONDAY_NOON.minusDays(1))).isFalse();
         // Sunday 23:30 and the Monday morning after.
-        assertThat(night.holds(MONDAY_NOON.minusDays(1).withHour(23).withMinute(30))).isTrue();
+        assertThat(night.holds(MONDAY_NOON.minusDays(1).withHour(23).withMinute(30)))
+                .isTrue();
         assertThat(night.holds(MONDAY_NOON.withHour(6))).isTrue();
         assertThat(night.holds(MONDAY_NOON.withHour(7))).isFalse();
         assertThat(night.holds(MONDAY_NOON.minusDays(1).withHour(6))).isFalse();
@@ -61,17 +62,16 @@ class ScheduleTest {
 
     @Test
     void theFirstEnabledRuleThatHoldsWins() {
-        Schedule.Rule off =
-                new Schedule.Rule(
-                        "off",
-                        false,
-                        EnumSet.allOf(DayOfWeek.class),
-                        LocalTime.MIDNIGHT,
-                        LocalTime.MIDNIGHT,
-                        OptionalInt.of(1),
-                        OptionalInt.empty(),
-                        OptionalInt.empty(),
-                        OptionalInt.empty());
+        Schedule.Rule off = new Schedule.Rule(
+                "off",
+                false,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.of(1),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty());
         Schedule.Rule office = rule("office", EnumSet.allOf(DayOfWeek.class), "09:00", "18:00");
         Schedule.Rule always = rule("always", EnumSet.allOf(DayOfWeek.class), "00:00", "00:00");
         Schedule schedule = new Schedule(List.of(off, office, always));
@@ -83,17 +83,16 @@ class ScheduleTest {
 
     @Test
     void aRuleChangesOnlyItsOwnValues() {
-        Schedule.Rule rule =
-                new Schedule.Rule(
-                        "slow",
-                        true,
-                        Set.of(),
-                        LocalTime.NOON,
-                        LocalTime.MIDNIGHT,
-                        OptionalInt.of(5),
-                        OptionalInt.of(50),
-                        OptionalInt.of(100),
-                        OptionalInt.of(20));
+        Schedule.Rule rule = new Schedule.Rule(
+                "slow",
+                true,
+                Set.of(),
+                LocalTime.NOON,
+                LocalTime.MIDNIGHT,
+                OptionalInt.of(5),
+                OptionalInt.of(50),
+                OptionalInt.of(100),
+                OptionalInt.of(20));
         Preferences base = Preferences.defaults().toBuilder().nick("me").build();
 
         Preferences applied = rule.applyTo(base);
@@ -104,50 +103,40 @@ class ScheduleTest {
         assertThat(applied.maxSourcesPerFile()).isEqualTo(20);
         assertThat(applied.nick()).isEqualTo("me");
         assertThat(rule.holds(MONDAY_NOON)).as("no days").isFalse();
-        assertThatThrownBy(
-                        () ->
-                                new Schedule.Rule(
-                                        "x",
-                                        true,
-                                        Set.of(),
-                                        LocalTime.NOON,
-                                        LocalTime.NOON,
-                                        OptionalInt.empty(),
-                                        OptionalInt.empty(),
-                                        OptionalInt.of(0),
-                                        OptionalInt.empty()))
+        assertThatThrownBy(() -> new Schedule.Rule(
+                        "x",
+                        true,
+                        Set.of(),
+                        LocalTime.NOON,
+                        LocalTime.NOON,
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OptionalInt.of(0),
+                        OptionalInt.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void theScheduleSurvivesTheFileAndBrokenRulesAreLeftOut() throws Exception {
         Path file = this.dir.resolve(ScheduleCodec.FILE_NAME);
-        Schedule schedule =
-                new Schedule(
-                        List.of(
-                                rule(
-                                        "Night = slow",
-                                        EnumSet.of(DayOfWeek.FRIDAY, DayOfWeek.SATURDAY),
-                                        "23:30",
-                                        "06:15"),
-                                new Schedule.Rule(
-                                        "off",
-                                        false,
-                                        Set.of(),
-                                        LocalTime.MIDNIGHT,
-                                        LocalTime.NOON,
-                                        OptionalInt.empty(),
-                                        OptionalInt.of(0),
-                                        OptionalInt.empty(),
-                                        OptionalInt.of(10))));
+        Schedule schedule = new Schedule(List.of(
+                rule("Night = slow", EnumSet.of(DayOfWeek.FRIDAY, DayOfWeek.SATURDAY), "23:30", "06:15"),
+                new Schedule.Rule(
+                        "off",
+                        false,
+                        Set.of(),
+                        LocalTime.MIDNIGHT,
+                        LocalTime.NOON,
+                        OptionalInt.empty(),
+                        OptionalInt.of(0),
+                        OptionalInt.empty(),
+                        OptionalInt.of(10))));
 
         ScheduleCodec.save(file, schedule);
 
         assertThat(ScheduleCodec.load(file)).isEqualTo(schedule);
         assertThat(ScheduleCodec.load(this.dir.resolve("none"))).isEqualTo(Schedule.EMPTY);
-        Files.writeString(
-                file,
-                """
+        Files.writeString(file, """
                 rule.1.name=good
                 rule.1.days=MONDAY
                 rule.1.start=01:00

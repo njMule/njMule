@@ -28,12 +28,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Where njMule keeps its files, following each operating system's conventions (Known Folders,
- * {@code ~/Library}, XDG).
+ * Where njMule keeps its files, following each operating system's conventions (Known Folders, {@code ~/Library}, XDG).
  *
- * <p>An explicit root ({@code --config-dir}) or the portable mode ({@value #PORTABLE_MARKER} next
- * to the executable) puts everything below one directory. The installation directory is never
- * written.
+ * <p>An explicit root ({@code --config-dir}) or the portable mode ({@value #PORTABLE_MARKER} next to the executable)
+ * puts everything below one directory. The installation directory is never written.
  *
  * @param config preferences and the {@code .met}/{@code .dat} data files
  * @param data large persistent data (AICH hash sets, Kad indexes)
@@ -43,14 +41,7 @@ import org.slf4j.LoggerFactory;
  * @param downloads completed downloads
  */
 public record AppDirectories(
-        Path config,
-        Path data,
-        Path temp,
-        Path cache,
-        Path logs,
-        Path gui,
-        Path downloads,
-        boolean portable) {
+        Path config, Path data, Path temp, Path cache, Path logs, Path gui, Path downloads, boolean portable) {
 
     public static final String PORTABLE_MARKER = "portable.flag";
 
@@ -80,8 +71,7 @@ public record AppDirectories(
     }
 
     /** Resolves the layout for the running system. */
-    public static AppDirectories resolve(
-            Optional<Path> overrideRoot, Optional<Path> executableDir) {
+    public static AppDirectories resolve(Optional<Path> overrideRoot, Optional<Path> executableDir) {
         return resolve(
                 OsFamily.current(),
                 System.getenv(),
@@ -100,8 +90,7 @@ public record AppDirectories(
         if (overrideRoot.isPresent()) {
             return underRoot(overrideRoot.get(), false);
         }
-        if (executableDir.isPresent()
-                && Files.isRegularFile(executableDir.get().resolve(PORTABLE_MARKER))) {
+        if (executableDir.isPresent() && Files.isRegularFile(executableDir.get().resolve(PORTABLE_MARKER))) {
             return underRoot(executableDir.get().resolve("data"), true);
         }
         return switch (os) {
@@ -112,28 +101,18 @@ public record AppDirectories(
     }
 
     public void createAll() throws IOException {
-        for (Path p :
-                List.of(
-                        this.config,
-                        this.data,
-                        this.temp,
-                        this.cache,
-                        this.logs,
-                        this.gui,
-                        this.downloads)) {
+        for (Path p : List.of(this.config, this.data, this.temp, this.cache, this.logs, this.gui, this.downloads)) {
             Files.createDirectories(p);
         }
     }
 
     private static AppDirectories windows(Map<String, String> env, Path home) {
-        Path roaming =
-                absoluteEnv(env, "APPDATA")
-                        .orElse(home.resolve("AppData").resolve("Roaming"))
-                        .resolve(APP_DIR);
-        Path local =
-                absoluteEnv(env, "LOCALAPPDATA")
-                        .orElse(home.resolve("AppData").resolve("Local"))
-                        .resolve(APP_DIR);
+        Path roaming = absoluteEnv(env, "APPDATA")
+                .orElse(home.resolve("AppData").resolve("Roaming"))
+                .resolve(APP_DIR);
+        Path local = absoluteEnv(env, "LOCALAPPDATA")
+                .orElse(home.resolve("AppData").resolve("Local"))
+                .resolve(APP_DIR);
         Path profile = absoluteEnv(env, "USERPROFILE").orElse(home);
         return new AppDirectories(
                 roaming.resolve("config"),
@@ -171,10 +150,9 @@ public record AppDirectories(
                 absoluteEnv(env, "XDG_STATE_HOME").orElse(home.resolve(".local").resolve("state"));
         Path config = configHome.resolve(XDG_DIR);
         Path data = dataHome.resolve(XDG_DIR);
-        Path downloads =
-                absoluteEnv(env, "XDG_DOWNLOAD_DIR")
-                        .or(() -> userDirsDownload(configHome.resolve("user-dirs.dirs"), home))
-                        .orElse(home.resolve("Downloads"));
+        Path downloads = absoluteEnv(env, "XDG_DOWNLOAD_DIR")
+                .or(() -> userDirsDownload(configHome.resolve("user-dirs.dirs"), home))
+                .orElse(home.resolve("Downloads"));
         return new AppDirectories(
                 config,
                 data,

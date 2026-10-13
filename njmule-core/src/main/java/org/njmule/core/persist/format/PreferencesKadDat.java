@@ -23,8 +23,8 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 
 /**
- * {@code preferencesKad.dat}, 23 bytes: {@code <last IP u32><u16 0><Kad id 16><u8 0>}. A zero id is
- * invalid (old versions stored it) and must be replaced by a random one.
+ * {@code preferencesKad.dat}, 23 bytes: {@code <last IP u32><u16 0><Kad id 16><u8 0>}. A zero id is invalid (old
+ * versions stored it) and must be replaced by a random one.
  */
 public final class PreferencesKadDat {
 

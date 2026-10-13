@@ -47,8 +47,8 @@ public final class Ed2k {
     }
 
     /**
-     * Number of eD2K parts (part hashes, OP_FILESTATUS bits): {@code size / PARTSIZE + 1}, which
-     * counts an extra empty part when the size is an exact multiple of PARTSIZE.
+     * Number of eD2K parts (part hashes, OP_FILESTATUS bits): {@code size / PARTSIZE + 1}, which counts an extra empty
+     * part when the size is an exact multiple of PARTSIZE.
      */
     public static int ed2kPartCount(long size) {
         checkSize(size);

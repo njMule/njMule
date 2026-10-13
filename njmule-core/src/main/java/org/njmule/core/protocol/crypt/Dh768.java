@@ -36,23 +36,20 @@ import org.bouncycastle.util.BigIntegers;
 import org.njmule.core.protocol.io.DecodeException;
 
 /**
- * Diffie-Hellman over the fixed 768-bit group of the server obfuscation (g = 2, 128-bit private
- * exponents), on the JDK's key agreement, which also rejects degenerate public values. Public
- * values travel as 96-byte big-endian numbers.
+ * Diffie-Hellman over the fixed 768-bit group of the server obfuscation (g = 2, 128-bit private exponents), on the
+ * JDK's key agreement, which also rejects degenerate public values. Public values travel as 96-byte big-endian numbers.
  */
 public final class Dh768 {
 
     public static final int SIZE = 96;
 
-    static final BigInteger P =
-            new BigInteger(
-                    1,
-                    HexFormat.of()
-                            .parseHex(
-                                    "F2BF52C55F587ADD5371A936E886EB3C6217A33EC34CB40DC73A41A643AFFCE7"
-                                        + "21FC286366535BDBCE259F2286DA4A91B207CBAA5255D4F61CCEAED4"
-                                        + "5AD5E0747DF7781828105F340F762387F88B289142FB42688F05150F"
-                                        + "548B5F436AF70DF3"));
+    static final BigInteger P = new BigInteger(
+            1,
+            HexFormat.of()
+                    .parseHex("F2BF52C55F587ADD5371A936E886EB3C6217A33EC34CB40DC73A41A643AFFCE7"
+                            + "21FC286366535BDBCE259F2286DA4A91B207CBAA5255D4F61CCEAED4"
+                            + "5AD5E0747DF7781828105F340F762387F88B289142FB42688F05150F"
+                            + "548B5F436AF70DF3"));
 
     private static final BigInteger G = BigInteger.TWO;
     private static final int PRIVATE_BITS = 128;
@@ -87,10 +84,8 @@ public final class Dh768 {
             throw new DecodeException("DH public values have 96 bytes");
         }
         try {
-            PublicKey peer =
-                    KeyFactory.getInstance(ALGORITHM)
-                            .generatePublic(
-                                    new DHPublicKeySpec(new BigInteger(1, otherPublic), P, G));
+            PublicKey peer = KeyFactory.getInstance(ALGORITHM)
+                    .generatePublic(new DHPublicKeySpec(new BigInteger(1, otherPublic), P, G));
             KeyAgreement agreement = KeyAgreement.getInstance(ALGORITHM);
             agreement.init(this.privateKey);
             agreement.doPhase(peer, true);
@@ -108,8 +103,6 @@ public final class Dh768 {
 
     @Override
     public String toString() {
-        return "Dh768[public="
-                + HexFormat.of().formatHex(Arrays.copyOf(this.publicValue, 4))
-                + "…]";
+        return "Dh768[public=" + HexFormat.of().formatHex(Arrays.copyOf(this.publicValue, 4)) + "…]";
     }
 }

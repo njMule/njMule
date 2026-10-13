@@ -18,10 +18,7 @@ package org.njmule.core.search;
 
 import java.util.Objects;
 
-/**
- * A boolean search expression. {@code NOT} is binary: {@code a NOT b} matches {@code a} without
- * {@code b}.
- */
+/** A boolean search expression. {@code NOT} is binary: {@code a NOT b} matches {@code a} without {@code b}. */
 public sealed interface SearchExpr {
 
     /** Comparison operators of numeric attributes, with their wire values. */

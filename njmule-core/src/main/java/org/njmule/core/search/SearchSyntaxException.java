@@ -21,7 +21,8 @@ import java.io.Serial;
 /** An invalid search expression; {@link #reason()} lets front ends show a translated message. */
 public final class SearchSyntaxException extends IllegalArgumentException {
 
-    @Serial private static final long serialVersionUID = 1L;
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     /** Why the expression was refused. */
     public enum Reason {

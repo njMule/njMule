@@ -86,47 +86,25 @@ public final class ServersScreen implements Screen {
         this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"));
         this.table
                 .getColumns()
-                .addAll(
-                        List.of(
-                                Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 220, ServerInfo::name),
-                                Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address),
-                                Fx.column(
-                                        this.gui.t("IDS_DESCRIPTION"),
-                                        220,
-                                        ServerInfo::description),
-                                Fx.column(
-                                        this.gui.t("nj.servers.users"),
-                                        90,
-                                        ServerInfo::users,
-                                        this.gui.formats()::count),
-                                Fx.column(
-                                        this.gui.t("nj.servers.maxUsers"),
-                                        90,
-                                        ServerInfo::maxUsers,
-                                        this.gui.formats()::count),
-                                Fx.column(
-                                        this.gui.t("IDS_FILES"),
-                                        100,
-                                        ServerInfo::files,
-                                        this.gui.formats()::count),
-                                Fx.column(
-                                        this.gui.t("IDS_PRIORITY"),
-                                        80,
-                                        ServerInfo::priority,
-                                        this::priority),
-                                Fx.column(
-                                        this.gui.t("nj.servers.failed"), 70, ServerInfo::failed)));
-        this.table.setRowFactory(
-                t -> {
-                    TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>();
-                    row.setOnMouseClicked(
-                            e -> {
-                                if (e.getClickCount() == 2 && !row.isEmpty()) {
-                                    this.connectTo(row.getItem().get());
-                                }
-                            });
-                    return row;
-                });
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 220, ServerInfo::name),
+                        Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address),
+                        Fx.column(this.gui.t("IDS_DESCRIPTION"), 220, ServerInfo::description),
+                        Fx.column(this.gui.t("nj.servers.users"), 90, ServerInfo::users, this.gui.formats()::count),
+                        Fx.column(
+                                this.gui.t("nj.servers.maxUsers"), 90, ServerInfo::maxUsers, this.gui.formats()::count),
+                        Fx.column(this.gui.t("IDS_FILES"), 100, ServerInfo::files, this.gui.formats()::count),
+                        Fx.column(this.gui.t("IDS_PRIORITY"), 80, ServerInfo::priority, this::priority),
+                        Fx.column(this.gui.t("nj.servers.failed"), 70, ServerInfo::failed)));
+        this.table.setRowFactory(t -> {
+            TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>();
+            row.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2 && !row.isEmpty()) {
+                    this.connectTo(row.getItem().get());
+                }
+            });
+            return row;
+        });
         MenuItem connect = new MenuItem(this.gui.t("IDS_MAIN_BTN_CONNECT"));
         connect.setOnAction(e -> this.connectSelected());
         MenuItem remove = new MenuItem(this.gui.t("IDS_REMOVE"));
@@ -136,30 +114,18 @@ public final class ServersScreen implements Screen {
         this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
         this.address.setPrefColumnCount(18);
         this.address.setOnAction(e -> this.connectToAddress());
-        var tools =
-                Fx.toolRow(
-                        Fx.button(
-                                this.gui.t("IDS_MAIN_BTN_CONNECT"),
-                                Material2AL.LINK,
-                                this::connectSelected),
-                        Fx.button(
-                                this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
-                        Fx.spacer(),
-                        this.address,
-                        Fx.button(
-                                this.gui.t("nj.servers.addConnect"),
-                                Material2AL.ADD,
-                                this::connectToAddress),
-                        Fx.button(
-                                this.gui.t("nj.servers.addMet"),
-                                Material2AL.FOLDER_OPEN,
-                                this::chooseServerMet));
+        var tools = Fx.toolRow(
+                Fx.button(this.gui.t("IDS_MAIN_BTN_CONNECT"), Material2AL.LINK, this::connectSelected),
+                Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
+                Fx.spacer(),
+                this.address,
+                Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress),
+                Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
         ListView<LogLine> log = new ListView<>(this.gui.model().log());
         log.setCellFactory(l -> new LogCell());
-        log.getItems()
-                .addListener(
-                        (ListChangeListener<LogLine>) c -> log.scrollTo(log.getItems().size() - 1));
+        log.getItems().addListener((ListChangeListener<LogLine>)
+                c -> log.scrollTo(log.getItems().size() - 1));
         SplitPane split = new SplitPane(this.table, log);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
@@ -231,8 +197,7 @@ public final class ServersScreen implements Screen {
         @Override
         protected void updateItem(LogLine line, boolean empty) {
             super.updateItem(line, empty);
-            this.getStyleClass()
-                    .removeAll("log-line", "debug", "info", "success", "warning", "error");
+            this.getStyleClass().removeAll("log-line", "debug", "info", "success", "warning", "error");
             if (empty || line == null) {
                 this.setText(null);
                 return;

@@ -40,16 +40,9 @@ public final class PeerSoftware {
             // eMule writes its update as a letter: 0.72 + 0 = 0.72a.
             case 0 -> String.format(Locale.ROOT, "eMule v%d.%02d%c", major, minor, 'a' + update);
             case 3 -> String.format(Locale.ROOT, "aMule v%d.%d.%d", major, minor, update);
-            case ClientVersion.NJMULE_COMPAT ->
-                    String.format(Locale.ROOT, "njMule v%d.%d.%d", major, minor, update);
+            case ClientVersion.NJMULE_COMPAT -> String.format(Locale.ROOT, "njMule v%d.%d.%d", major, minor, update);
             default ->
-                    String.format(
-                            Locale.ROOT,
-                            "eMule compatible (client %d) v%d.%d.%d",
-                            compat,
-                            major,
-                            minor,
-                            update);
+                String.format(Locale.ROOT, "eMule compatible (client %d) v%d.%d.%d", compat, major, minor, update);
         };
     }
 }

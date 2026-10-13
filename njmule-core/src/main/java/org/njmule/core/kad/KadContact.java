@@ -21,8 +21,8 @@ import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.kad.KadMessages;
 
 /**
- * A node of our routing table. Its type ages from 3 (new) to 0 (known for hours) while it answers
- * and climbs to 4 (to be removed) while it does not. Engine thread only.
+ * A node of our routing table. Its type ages from 3 (new) to 0 (known for hours) while it answers and climbs to 4 (to
+ * be removed) while it does not. Engine thread only.
  */
 final class KadContact {
 
@@ -188,13 +188,6 @@ final class KadContact {
 
     NodesDat.Contact record() {
         return new NodesDat.Contact(
-                this.id,
-                this.ip,
-                this.udpPort,
-                this.tcpPort,
-                this.version,
-                this.type,
-                this.udpKey,
-                this.verified);
+                this.id, this.ip, this.udpPort, this.tcpPort, this.version, this.type, this.udpKey, this.verified);
     }
 }

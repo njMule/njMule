@@ -43,10 +43,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Asks the known servers for their status over UDP: one server every {@link #INTERVAL}, each at
- * most every {@link #REPING_AFTER}. An answer counts only from the pinged server's UDP ports with
- * the challenge that was sent; it updates the server's load, limits, UDP capabilities and
- * obfuscation key and ports. Engine thread only.
+ * Asks the known servers for their status over UDP: one server every {@link #INTERVAL}, each at most every
+ * {@link #REPING_AFTER}. An answer counts only from the pinged server's UDP ports with the challenge that was sent; it
+ * updates the server's load, limits, UDP capabilities and obfuscation key and ports. Engine thread only.
  */
 public final class ServerPinger {
 
@@ -95,9 +94,7 @@ public final class ServerPinger {
 
     public void start() {
         if (this.timer == null) {
-            this.timer =
-                    this.loop.scheduleRepeating(
-                            "server status pings", INTERVAL, INTERVAL, this::pingNext);
+            this.timer = this.loop.scheduleRepeating("server status pings", INTERVAL, INTERVAL, this::pingNext);
         }
     }
 
@@ -154,8 +151,7 @@ public final class ServerPinger {
             this.cursor = index + 1;
             long challenge = CHALLENGE_BASE | (this.random.nextInt() & 0xFFFF);
             InetSocketAddress target =
-                    new InetSocketAddress(
-                            Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+                    new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
             try {
                 socket.get().send(target, ServerDatagrams.statusRequest(challenge));
                 this.pending.put(address, new Pending(challenge, now));
@@ -174,8 +170,7 @@ public final class ServerPinger {
                 || port == server.obfuscatedUdpPort().orElse(-1);
     }
 
-    static ServerMet.Server apply(
-            ServerMet.Server server, ServerDatagrams.Status status, int ourIp) {
+    static ServerMet.Server apply(ServerMet.Server server, ServerDatagrams.Status status, int ourIp) {
         int tcpPort = status.obfuscatedTcpPort();
         int udpPort = status.obfuscatedUdpPort();
         if (status.has(ServerDatagrams.UDP_TCP_OBFUSCATION) && tcpPort == 0) {
@@ -184,21 +179,19 @@ public final class ServerPinger {
         if (status.has(ServerDatagrams.UDP_OBFUSCATION) && udpPort == 0) {
             udpPort = server.port() + OBFUSCATED_UDP_OFFSET;
         }
-        ServerMet.Server updated =
-                server.with(intTag(ServerTag.USERS, status.users()))
-                        .with(intTag(ServerTag.FILES, status.files()))
-                        .with(intTag(ServerTag.MAXUSERS, status.maxUsers()))
-                        .with(intTag(ServerTag.SOFTFILES, status.softFiles()))
-                        .with(intTag(ServerTag.HARDFILES, status.hardFiles()))
-                        .with(intTag(ServerTag.UDPFLAGS, Integer.toUnsignedLong(status.udpFlags())))
-                        .with(intTag(ServerTag.LOWIDUSERS, status.lowIdUsers()))
-                        .with(intTag(ServerTag.TCPPORTOBFUSCATION, tcpPort))
-                        .with(intTag(ServerTag.UDPPORTOBFUSCATION, udpPort))
-                        .with(intTag(ServerTag.FAIL, 0));
+        ServerMet.Server updated = server.with(intTag(ServerTag.USERS, status.users()))
+                .with(intTag(ServerTag.FILES, status.files()))
+                .with(intTag(ServerTag.MAXUSERS, status.maxUsers()))
+                .with(intTag(ServerTag.SOFTFILES, status.softFiles()))
+                .with(intTag(ServerTag.HARDFILES, status.hardFiles()))
+                .with(intTag(ServerTag.UDPFLAGS, Integer.toUnsignedLong(status.udpFlags())))
+                .with(intTag(ServerTag.LOWIDUSERS, status.lowIdUsers()))
+                .with(intTag(ServerTag.TCPPORTOBFUSCATION, tcpPort))
+                .with(intTag(ServerTag.UDPPORTOBFUSCATION, udpPort))
+                .with(intTag(ServerTag.FAIL, 0));
         if (status.udpKey() != 0) {
-            updated =
-                    updated.with(intTag(ServerTag.UDPKEY, status.udpKey()))
-                            .with(intTag(ServerTag.UDPKEYIP, Ipv4.toEd2k(ourIp)));
+            updated = updated.with(intTag(ServerTag.UDPKEY, status.udpKey()))
+                    .with(intTag(ServerTag.UDPKEYIP, Ipv4.toEd2k(ourIp)));
         }
         return updated;
     }

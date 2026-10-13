@@ -28,9 +28,9 @@ import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
 import org.bouncycastle.crypto.signers.RSADigestSigner;
 
 /**
- * RSA signatures with PKCS#1 v1.5 padding over SHA-1, for the secure identification of peers. The
- * network uses 384-bit keys, which the JDK refuses (its minimum is 512 bits), so the work is done
- * by Bouncy Castle. Such keys only identify a peer for credits; they protect nothing secret.
+ * RSA signatures with PKCS#1 v1.5 padding over SHA-1, for the secure identification of peers. The network uses 384-bit
+ * keys, which the JDK refuses (its minimum is 512 bits), so the work is done by Bouncy Castle. Such keys only identify
+ * a peer for credits; they protect nothing secret.
  */
 public final class Rsa {
 
@@ -121,9 +121,9 @@ public final class Rsa {
 
     public static PrivateKey generate(int bits, SecureRandom random) {
         RSAKeyPairGenerator generator = new RSAKeyPairGenerator();
-        generator.init(
-                new RSAKeyGenerationParameters(PUBLIC_EXPONENT, random, bits, PRIME_CERTAINTY));
-        return PrivateKey.of((RSAPrivateCrtKeyParameters) generator.generateKeyPair().getPrivate());
+        generator.init(new RSAKeyGenerationParameters(PUBLIC_EXPONENT, random, bits, PRIME_CERTAINTY));
+        return PrivateKey.of(
+                (RSAPrivateCrtKeyParameters) generator.generateKeyPair().getPrivate());
     }
 
     /** RSASSA-PKCS1-v1_5 with SHA-1; the signature has the size of the modulus. */

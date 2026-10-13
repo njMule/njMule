@@ -40,10 +40,10 @@ import org.njmule.webui.WebUiSettings;
 @Timeout(120)
 class ScreensTest {
 
-    private static final String LINK =
-            "ed2k://|file|test%20file.bin|10000|0123456789ABCDEF0123456789ABCDEF|/";
+    private static final String LINK = "ed2k://|file|test%20file.bin|10000|0123456789ABCDEF0123456789ABCDEF|/";
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private TestGui test;
 
@@ -60,61 +60,49 @@ class ScreensTest {
         TransfersScreen screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
 
-        FxTesting.onFx(
-                () -> {
-                    screen.linkField().setText(LINK);
-                    screen.addLink();
-                });
+        FxTesting.onFx(() -> {
+            screen.linkField().setText(LINK);
+            screen.addLink();
+        });
         FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
         assertThat(FxTesting.onFx(() -> screen.linkField().getText())).isEmpty();
 
-        FxTesting.onFx(
-                () -> {
-                    screen.downloads().getSelectionModel().select(0);
-                    screen.pauseSelected();
-                });
+        FxTesting.onFx(() -> {
+            screen.downloads().getSelectionModel().select(0);
+            screen.pauseSelected();
+        });
         FxTesting.await(
-                "paused",
-                () ->
-                        screen.downloads().getItems().getFirst().get().status()
-                                == DownloadInfo.Status.PAUSED);
+                "paused", () -> screen.downloads().getItems().getFirst().get().status() == DownloadInfo.Status.PAUSED);
         FxTesting.onFx(screen::resumeSelected);
         FxTesting.await(
                 "downloading again",
-                () ->
-                        screen.downloads().getItems().getFirst().get().status()
-                                == DownloadInfo.Status.DOWNLOADING);
+                () -> screen.downloads().getItems().getFirst().get().status() == DownloadInfo.Status.DOWNLOADING);
         FxTesting.onFx(screen::copyLinks);
         assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
                 .startsWith("ed2k://|file|test%20file.bin|10000|");
 
         List<DownloadInfo> selected =
-                FxTesting.onFx(
-                        () ->
-                                screen.downloads().getSelectionModel().getSelectedItems().stream()
-                                        .map(r -> r.get())
-                                        .toList());
+                FxTesting.onFx(() -> screen.downloads().getSelectionModel().getSelectedItems().stream()
+                        .map(r -> r.get())
+                        .toList());
         FxTesting.onFx(() -> screen.cancel(selected));
         FxTesting.await("no download", () -> screen.downloads().getItems().isEmpty());
 
-        FxTesting.onFx(
-                () -> {
-                    screen.linkField().setText("not a link");
-                    screen.addLink();
-                });
+        FxTesting.onFx(() -> {
+            screen.linkField().setText("not a link");
+            screen.addLink();
+        });
         assertThat(this.test.told).contains("Not an eD2K file link.");
-        assertThat(
-                        TransfersScreen.remaining(
-                                new DownloadInfo(
-                                        selected.getFirst().hash(),
-                                        "x",
-                                        1000,
-                                        400,
-                                        DownloadInfo.Status.DOWNLOADING,
-                                        1,
-                                        1,
-                                        100,
-                                        PartMap.EMPTY)))
+        assertThat(TransfersScreen.remaining(new DownloadInfo(
+                        selected.getFirst().hash(),
+                        "x",
+                        1000,
+                        400,
+                        DownloadInfo.Status.DOWNLOADING,
+                        1,
+                        1,
+                        100,
+                        PartMap.EMPTY)))
                 .isEqualTo(6);
     }
 
@@ -125,51 +113,23 @@ class ScreensTest {
         this.test.show(FxTesting.onFx(screen::view));
         Path met = this.dir.resolve("server.met");
         // Two public servers: version byte, count, then ip, port and no tags each.
-        Files.write(
-                met,
-                new byte[] {
-                    (byte) 0xE0,
-                    2,
-                    0,
-                    0,
-                    0,
-                    81,
-                    2,
-                    3,
-                    4,
-                    0x35,
-                    0x12,
-                    0,
-                    0,
-                    0,
-                    0,
-                    81,
-                    2,
-                    3,
-                    5,
-                    0x36,
-                    0x12,
-                    0,
-                    0,
-                    0,
-                    0
-                });
+        Files.write(met, new byte[] {
+            (byte) 0xE0, 2, 0, 0, 0, 81, 2, 3, 4, 0x35, 0x12, 0, 0, 0, 0, 81, 2, 3, 5, 0x36, 0x12, 0, 0, 0, 0
+        });
 
         FxTesting.onFx(() -> screen.addServerMet(met));
         FxTesting.await("two servers", () -> screen.table().getItems().size() == 2);
-        FxTesting.onFx(
-                () -> {
-                    screen.table().getSelectionModel().clearSelection();
-                    screen.table().getSelectionModel().select(0);
-                    screen.removeSelected();
-                });
+        FxTesting.onFx(() -> {
+            screen.table().getSelectionModel().clearSelection();
+            screen.table().getSelectionModel().select(0);
+            screen.removeSelected();
+        });
         FxTesting.await("one server", () -> screen.table().getItems().size() == 1);
 
-        FxTesting.onFx(
-                () -> {
-                    screen.addressField().setText("nowhere");
-                    screen.connectToAddress();
-                });
+        FxTesting.onFx(() -> {
+            screen.addressField().setText("nowhere");
+            screen.connectToAddress();
+        });
         assertThat(this.test.told).anyMatch(m -> m.contains("host:port: nowhere"));
     }
 
@@ -179,23 +139,21 @@ class ScreensTest {
         SearchScreen screen = new SearchScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
 
-        FxTesting.onFx(
-                () -> {
-                    screen.queryField().setText("ubuntu");
-                    screen.scopeBox().setValue(SearchRequest.Scope.SERVER);
-                    screen.start();
-                    screen.more();
-                    screen.stop();
-                    screen.downloadSelected();
-                });
+        FxTesting.onFx(() -> {
+            screen.queryField().setText("ubuntu");
+            screen.scopeBox().setValue(SearchRequest.Scope.SERVER);
+            screen.start();
+            screen.more();
+            screen.stop();
+            screen.downloadSelected();
+        });
 
         FxTesting.await("a refusal", () -> !this.test.told.isEmpty());
         assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().size())).isZero();
-        FxTesting.onFx(
-                () -> {
-                    screen.queryField().setText("  ");
-                    screen.start();
-                });
+        FxTesting.onFx(() -> {
+            screen.queryField().setText("  ");
+            screen.start();
+        });
     }
 
     @Test
@@ -212,13 +170,13 @@ class ScreensTest {
             FxTesting.onFx(this.test.model::tick);
         }
 
-        assertThat(FxTesting.onFx(() -> screen.table().getItems().getFirst().get().name()))
+        assertThat(FxTesting.onFx(
+                        () -> screen.table().getItems().getFirst().get().name()))
                 .isEqualTo("a.txt");
-        FxTesting.onFx(
-                () -> {
-                    screen.table().getSelectionModel().select(0);
-                    screen.copyLinks();
-                });
+        FxTesting.onFx(() -> {
+            screen.table().getSelectionModel().select(0);
+            screen.copyLinks();
+        });
         assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
                 .startsWith("ed2k://|file|a.txt|3000|");
     }
@@ -230,13 +188,12 @@ class ScreensTest {
         this.test.show(FxTesting.onFx(screen::view));
 
         assertThat(FxTesting.onFx(() -> screen.stateLabel().getText())).isEqualTo("Off");
-        FxTesting.onFx(
-                () -> {
-                    screen.nodeField().setText("bad");
-                    screen.bootstrap();
-                    screen.nodeField().setText("127.0.0.1:4672");
-                    screen.bootstrap();
-                });
+        FxTesting.onFx(() -> {
+            screen.nodeField().setText("bad");
+            screen.bootstrap();
+            screen.nodeField().setText("127.0.0.1:4672");
+            screen.bootstrap();
+        });
         FxTesting.await("two messages", () -> this.test.told.size() >= 2);
         assertThat(this.test.told).anyMatch(m -> m.contains("Kad is not running"));
     }
@@ -250,11 +207,10 @@ class ScreensTest {
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("totals", () -> screen.downloadedLabel().getText().equals("0 B"));
         assertThat(FxTesting.onFx(() -> screen.downloadedLabel().getText())).isEqualTo("0 B");
-        FxTesting.onFx(
-                () -> {
-                    FxTesting.snapshot(screen.view(), "statistics-alone");
-                    return null;
-                });
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(screen.view(), "statistics-alone");
+            return null;
+        });
     }
 
     @Test
@@ -264,36 +220,33 @@ class ScreensTest {
         this.test.show(FxTesting.onFx(settings::view));
         SchedulerPane pane = FxTesting.onFx(settings::schedulerPane);
 
-        FxTesting.onFx(
-                () -> {
-                    pane.nameField().setText("all week");
-                    pane.dayBoxes().values().forEach(b -> b.setSelected(true));
-                    pane.uploadField().setText("5");
-                    pane.add();
-                    pane.startField().setText("25:00");
-                    pane.add();
-                });
+        FxTesting.onFx(() -> {
+            pane.nameField().setText("all week");
+            pane.dayBoxes().values().forEach(b -> b.setSelected(true));
+            pane.uploadField().setText("5");
+            pane.add();
+            pane.startField().setText("25:00");
+            pane.add();
+        });
         assertThat(FxTesting.onFx(() -> pane.rulesTable().getItems().size())).isEqualTo(1);
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Not saved"));
 
-        FxTesting.onFx(
-                () -> {
-                    pane.rulesTable().getSelectionModel().select(0);
-                    pane.nameField().setText("every day");
-                    pane.startField().setText("00:00");
-                    pane.replace();
-                    pane.save();
-                });
+        FxTesting.onFx(() -> {
+            pane.rulesTable().getSelectionModel().select(0);
+            pane.nameField().setText("every day");
+            pane.startField().setText("00:00");
+            pane.replace();
+            pane.save();
+        });
         FxTesting.await("the rule applies", () -> this.test.engine.activeRule().isPresent());
         assertThat(this.test.engine.schedule().rules().getFirst().name()).isEqualTo("every day");
         FxTesting.await("shown", () -> pane.activeLabel().getText().equals("Now: every day"));
 
-        FxTesting.onFx(
-                () -> {
-                    pane.rulesTable().getSelectionModel().select(0);
-                    pane.remove();
-                    pane.save();
-                });
+        FxTesting.onFx(() -> {
+            pane.rulesTable().getSelectionModel().select(0);
+            pane.remove();
+            pane.save();
+        });
         FxTesting.await("no rule", () -> this.test.engine.activeRule().isEmpty());
         FxTesting.onFx(pane::load);
         assertThat(FxTesting.onFx(() -> pane.rulesTable().getItems().isEmpty())).isTrue();
@@ -305,48 +258,44 @@ class ScreensTest {
         SettingsScreen screen = new SettingsScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
 
-        FxTesting.onFx(
-                () -> {
-                    screen.shown();
-                    screen.nickField().setText("Tester");
-                    screen.modeBox().setValue(GuiSettings.Mode.DARK);
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.shown();
+            screen.nickField().setText("Tester");
+            screen.modeBox().setValue(GuiSettings.Mode.DARK);
+            screen.apply();
+        });
         FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
         assertThat(this.test.engine.preferences().nick()).isEqualTo("Tester");
 
-        FxTesting.onFx(
-                () -> {
-                    screen.proxyTypeBox().setValue(ProxySettings.Type.SOCKS);
-                    screen.proxyHostField().setText("proxy.lan");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.proxyTypeBox().setValue(ProxySettings.Type.SOCKS);
+            screen.proxyHostField().setText("proxy.lan");
+            screen.apply();
+        });
         FxTesting.await(
-                "the proxy",
-                () -> this.test.engine.preferences().proxy().host().equals("proxy.lan"));
-        FxTesting.onFx(
-                () -> {
-                    screen.proxyTypeBox().setValue(ProxySettings.Type.NONE);
-                    screen.apply();
-                });
-        FxTesting.await("no proxy", () -> !this.test.engine.preferences().proxy().isEnabled());
-        assertThat(FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get())).isTrue();
+                "the proxy", () -> this.test.engine.preferences().proxy().host().equals("proxy.lan"));
+        FxTesting.onFx(() -> {
+            screen.proxyTypeBox().setValue(ProxySettings.Type.NONE);
+            screen.apply();
+        });
+        FxTesting.await(
+                "no proxy", () -> !this.test.engine.preferences().proxy().isEnabled());
+        assertThat(FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get()))
+                .isTrue();
         assertThat(GuiSettings.load(this.test.engine.directories().gui()).mode())
                 .isEqualTo(GuiSettings.Mode.DARK);
 
-        FxTesting.onFx(
-                () -> {
-                    screen.tcpPortField().setText("port");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.tcpPortField().setText("port");
+            screen.apply();
+        });
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Not saved: TCP"));
 
-        FxTesting.onFx(
-                () -> {
-                    screen.load(this.test.engine.preferences());
-                    screen.languageBox().setValue(Optional.of(Locale.ITALIAN));
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.load(this.test.engine.preferences());
+            screen.languageBox().setValue(Optional.of(Locale.ITALIAN));
+            screen.apply();
+        });
         assertThat(this.test.relaunches()).isEqualTo(1);
     }
 
@@ -357,51 +306,45 @@ class ScreensTest {
         this.test.show(FxTesting.onFx(screen::view));
         Path config = this.test.engine.directories().config();
 
-        FxTesting.onFx(
-                () -> {
-                    screen.shown();
-                    screen.webUiBox().setSelected(true);
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.shown();
+            screen.webUiBox().setSelected(true);
+            screen.apply();
+        });
         assertThat(this.test.told).contains("Not saved: the web interface needs a password");
-        FxTesting.onFx(
-                () -> {
-                    screen.webUiPasswordField().setText("short");
-                    screen.webUiAgainField().setText("short");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.webUiPasswordField().setText("short");
+            screen.webUiAgainField().setText("short");
+            screen.apply();
+        });
         assertThat(this.test.told).anyMatch(m -> m.contains("at least 8 characters"));
-        FxTesting.onFx(
-                () -> {
-                    screen.webUiPasswordField().setText("long enough");
-                    screen.webUiAgainField().setText("long enough!");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.webUiPasswordField().setText("long enough");
+            screen.webUiAgainField().setText("long enough!");
+            screen.apply();
+        });
         assertThat(this.test.told).anyMatch(m -> m.contains("differ"));
-        FxTesting.onFx(
-                () -> {
-                    screen.webUiPortField().setText("70000");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.webUiPortField().setText("70000");
+            screen.apply();
+        });
         assertThat(this.test.told).anyMatch(m -> m.contains("70000"));
         assertThat(WebUiSettings.load(config)).isEqualTo(WebUiSettings.DEFAULTS);
 
-        FxTesting.onFx(
-                () -> {
-                    screen.webUiPortField().setText("4712");
-                    screen.webUiAgainField().setText("long enough");
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.webUiPortField().setText("4712");
+            screen.webUiAgainField().setText("long enough");
+            screen.apply();
+        });
         WebUiSettings saved = WebUiSettings.load(config);
         assertThat(saved.usable()).isTrue();
         assertThat(saved.port()).isEqualTo(4712);
         assertThat(FxTesting.onFx(() -> screen.webUiPasswordField().getText())).isEmpty();
 
-        FxTesting.onFx(
-                () -> {
-                    screen.webUiBox().setSelected(false);
-                    screen.apply();
-                });
+        FxTesting.onFx(() -> {
+            screen.webUiBox().setSelected(false);
+            screen.apply();
+        });
         WebUiSettings off = WebUiSettings.load(config);
         assertThat(off.enabled()).isFalse();
         assertThat(off.passwordHash()).isEqualTo(saved.passwordHash());
@@ -414,16 +357,14 @@ class ScreensTest {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         TransfersScreen screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
-        FxTesting.onFx(
-                () -> {
-                    screen.linkField()
-                            .setText(
-                                    "ed2k://|file|my holiday video.mkv|5000|"
-                                            + "00112233445566778899AABBCCDDEEFF|/\n"
-                                            + "  ed2k://|file|notes.txt|10|"
-                                            + "FFEEDDCCBBAA99887766554433221100|/");
-                    screen.addLink();
-                });
+        FxTesting.onFx(() -> {
+            screen.linkField()
+                    .setText("ed2k://|file|my holiday video.mkv|5000|"
+                            + "00112233445566778899AABBCCDDEEFF|/\n"
+                            + "  ed2k://|file|notes.txt|10|"
+                            + "FFEEDDCCBBAA99887766554433221100|/");
+            screen.addLink();
+        });
         FxTesting.await("both downloads", () -> screen.downloads().getItems().size() == 2);
         assertThat(this.test.told).isEmpty();
         assertThat(this.test.engine.downloads().get())

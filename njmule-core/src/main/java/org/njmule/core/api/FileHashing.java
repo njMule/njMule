@@ -29,8 +29,8 @@ public final class FileHashing {
     private FileHashing() {}
 
     /**
-     * The link of {@code file}: name, size, file hash, AICH hash and part hashes. {@code progress}
-     * receives the bytes hashed so far; interrupting the thread cancels.
+     * The link of {@code file}: name, size, file hash, AICH hash and part hashes. {@code progress} receives the bytes
+     * hashed so far; interrupting the thread cancels.
      */
     public static Ed2kLink.FileLink link(Path file, LongConsumer progress) throws IOException {
         Objects.requireNonNull(progress, "progress");

@@ -32,9 +32,9 @@ import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Ipv4;
 
 /**
- * Friends, {@code emfriends.met}: {@code <0x0E><u32 count>} then {@code <user hash 16><last IP
- * 4><last port 2><last seen u32><last chatted u32><u32 tag count><tags>}; the name (id 1) is an
- * old-encoding tag and the Kad id (id 2) a new-encoding hash tag.
+ * Friends, {@code emfriends.met}: {@code <0x0E><u32 count>} then {@code <user hash 16><last IP 4><last port 2><last
+ * seen u32><last chatted u32><u32 tag count><tags>}; the name (id 1) is an old-encoding tag and the Kad id (id 2) a
+ * new-encoding hash tag.
  */
 public final class FriendsMet {
 
@@ -43,13 +43,7 @@ public final class FriendsMet {
     public static final int KAD_ID = 0x02;
     private static final int MAX_FRIENDS = 100_000;
 
-    public record Friend(
-            Hash16 userHash,
-            int lastIp,
-            int lastPort,
-            long lastSeen,
-            long lastChatted,
-            List<Tag> tags) {
+    public record Friend(Hash16 userHash, int lastIp, int lastPort, long lastSeen, long lastChatted, List<Tag> tags) {
         public Friend {
             Objects.requireNonNull(userHash, "userHash");
             tags = List.copyOf(tags);
@@ -94,9 +88,7 @@ public final class FriendsMet {
                     .u32(f.tags().size());
             for (Tag tag : f.tags()) {
                 Ed2kTagFormat format =
-                        tag.name().isId() && tag.name().id() == KAD_ID
-                                ? Ed2kTagFormat.NEW
-                                : Ed2kTagFormat.OLD;
+                        tag.name().isId() && tag.name().id() == KAD_ID ? Ed2kTagFormat.NEW : Ed2kTagFormat.OLD;
                 TagCodec.writeEd2k(out, tag, format, StringEncoding.UTF8_BOM_IF_NEEDED);
             }
         }

@@ -37,9 +37,7 @@ public final class Bytes {
     }
 
     public static Bytes of(byte[] data, int offset, int length) {
-        return length == 0
-                ? EMPTY
-                : new Bytes(Arrays.copyOfRange(data, offset, Math.addExact(offset, length)));
+        return length == 0 ? EMPTY : new Bytes(Arrays.copyOfRange(data, offset, Math.addExact(offset, length)));
     }
 
     public int length() {
@@ -73,9 +71,6 @@ public final class Bytes {
         HexFormat hex = HexFormat.of();
         return this.data.length <= TO_STRING_LIMIT
                 ? hex.formatHex(this.data)
-                : hex.formatHex(this.data, 0, TO_STRING_LIMIT)
-                        + "…("
-                        + this.data.length
-                        + " bytes)";
+                : hex.formatHex(this.data, 0, TO_STRING_LIMIT) + "…(" + this.data.length + " bytes)";
     }
 }

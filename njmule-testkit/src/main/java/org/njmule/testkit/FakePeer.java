@@ -52,10 +52,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * An in-process client for tests that shares one file: it answers hellos and file requests, keeps
- * downloaders queued or gives them a slot (also by calling them back), and sends the blocks they
- * ask for, plain or compressed. It can end upload sessions early and send a corrupt copy of chosen
- * parts once. Plain connections only.
+ * An in-process client for tests that shares one file: it answers hellos and file requests, keeps downloaders queued or
+ * gives them a slot (also by calling them back), and sends the blocks they ask for, plain or compressed. It can end
+ * upload sessions early and send a corrupt copy of chosen parts once. Plain connections only.
  */
 public final class FakePeer implements AutoCloseable {
 
@@ -70,12 +69,7 @@ public final class FakePeer implements AutoCloseable {
     }
 
     /** How the peer behaves; a positive {@code sessionLimit} ends upload sessions early. */
-    public record Config(
-            Hash16 userHash,
-            boolean compress,
-            Slot slot,
-            long sessionLimit,
-            Set<Integer> corruptParts) {
+    public record Config(Hash16 userHash, boolean compress, Slot slot, long sessionLimit, Set<Integer> corruptParts) {
         public Config {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(slot, "slot");
@@ -130,9 +124,7 @@ public final class FakePeer implements AutoCloseable {
                 this.link.hash(),
                 this.link.aichHash(),
                 List.of(),
-                List.of(
-                        new Ed2kLink.Source(
-                                this.tcp.getInetAddress().getHostAddress(), this.port())),
+                List.of(new Ed2kLink.Source(this.tcp.getInetAddress().getHostAddress(), this.port())),
                 List.of());
     }
 
@@ -142,26 +134,20 @@ public final class FakePeer implements AutoCloseable {
     }
 
     /**
-     * Connects to {@code downloader} as a firewalled client with the LowID {@code lowId} on the
-     * server at {@code serverIp:serverPort} does when asked to call back; then serves as usual.
+     * Connects to {@code downloader} as a firewalled client with the LowID {@code lowId} on the server at
+     * {@code serverIp:serverPort} does when asked to call back; then serves as usual.
      */
-    public void callAsLowId(
-            InetSocketAddress downloader, long lowId, int serverIp, int serverPort) {
+    public void callAsLowId(InetSocketAddress downloader, long lowId, int serverIp, int serverPort) {
         this.lowId = lowId;
         this.serverIp = serverIp;
         this.serverPort = serverPort;
-        Thread.ofVirtual()
-                .name("fake-peer-lowid")
-                .start(
-                        () -> {
-                            try {
-                                this.serve(
-                                        new Socket(downloader.getAddress(), downloader.getPort()),
-                                        Answer.HELLO_ONLY);
-                            } catch (IOException e) {
-                                logger.debug("Cannot call as a LowID: {}", e.getMessage());
-                            }
-                        });
+        Thread.ofVirtual().name("fake-peer-lowid").start(() -> {
+            try {
+                this.serve(new Socket(downloader.getAddress(), downloader.getPort()), Answer.HELLO_ONLY);
+            } catch (IOException e) {
+                logger.debug("Cannot call as a LowID: {}", e.getMessage());
+            }
+        });
     }
 
     /** File bytes sent, before compression. */
@@ -222,19 +208,16 @@ public final class FakePeer implements AutoCloseable {
 
     // Connects to the downloader's listening port, as a peer with a free slot does.
     private void callBack(InetAddress address, int port) {
-        Thread.ofVirtual()
-                .name("fake-peer-callback")
-                .start(
-                        () -> {
-                            try {
-                                Thread.sleep(SLOT_DELAY_MILLIS);
-                                this.serve(new Socket(address, port), true);
-                            } catch (IOException e) {
-                                logger.debug("Cannot call back: {}", e.getMessage());
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                            }
-                        });
+        Thread.ofVirtual().name("fake-peer-callback").start(() -> {
+            try {
+                Thread.sleep(SLOT_DELAY_MILLIS);
+                this.serve(new Socket(address, port), true);
+            } catch (IOException e) {
+                logger.debug("Cannot call back: {}", e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     private static String name(Packet packet) {
@@ -263,8 +246,7 @@ public final class FakePeer implements AutoCloseable {
         void handle(Packet packet) throws IOException {
             FakePeer.this.received.add(name(packet));
             Hash16 hash = FakePeer.this.link.hash();
-            if (packet.protocol() == Protocol.EMULE
-                    && packet.opcode() == Opcodes.Extended.REQUESTPARTS_I64.code()) {
+            if (packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.REQUESTPARTS_I64.code()) {
                 this.blocks(ClientMessages.RequestParts.decode(packet));
                 return;
             }
@@ -282,29 +264,21 @@ public final class FakePeer implements AutoCloseable {
                 }
                 case HELLOANSWER -> {
                     if (this.calledBack) {
-                        this.send(
-                                Packet.empty(
-                                        Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                        this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                     }
                 }
                 case REQUESTFILENAME ->
-                        this.send(
-                                new ClientMessages.FileName(hash, FakePeer.this.link.name())
-                                        .encode());
-                case SETREQFILEID ->
-                        this.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
+                    this.send(new ClientMessages.FileName(hash, FakePeer.this.link.name()).encode());
+                case SETREQFILEID -> this.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
                 case HASHSETREQUEST ->
-                        this.send(
-                                new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes())
-                                        .encode());
+                    this.send(new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes()).encode());
                 case STARTUPLOADREQ -> {
                     Slot slot = this.calledBack ? Slot.NOW : FakePeer.this.config.slot();
                     if (slot != Slot.NOW) {
-                        this.send(
-                                Packet.of(
-                                        Protocol.EMULE,
-                                        Opcodes.Extended.QUEUERANKING.code(),
-                                        new PacketWriter().u16(1).bytes(new byte[10])));
+                        this.send(Packet.of(
+                                Protocol.EMULE,
+                                Opcodes.Extended.QUEUERANKING.code(),
+                                new PacketWriter().u16(1).bytes(new byte[10])));
                     }
                     if (slot == Slot.AFTER_QUEUE) {
                         this.slotLater();
@@ -312,9 +286,7 @@ public final class FakePeer implements AutoCloseable {
                         FakePeer.this.callBack(this.socket.getInetAddress(), this.downloaderPort);
                         this.socket.close();
                     } else {
-                        this.send(
-                                Packet.empty(
-                                        Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                        this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                     }
                 }
                 case REQUESTPARTS -> this.blocks(ClientMessages.RequestParts.decode(packet));
@@ -339,21 +311,16 @@ public final class FakePeer implements AutoCloseable {
         }
 
         private void slotLater() {
-            Thread.ofVirtual()
-                    .start(
-                            () -> {
-                                try {
-                                    Thread.sleep(SLOT_DELAY_MILLIS);
-                                    this.send(
-                                            Packet.empty(
-                                                    Protocol.EDONKEY,
-                                                    Opcodes.Client.ACCEPTUPLOADREQ.code()));
-                                } catch (IOException e) {
-                                    logger.debug("No slot given: {}", e.getMessage());
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                }
-                            });
+            Thread.ofVirtual().start(() -> {
+                try {
+                    Thread.sleep(SLOT_DELAY_MILLIS);
+                    this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                } catch (IOException e) {
+                    logger.debug("No slot given: {}", e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
         }
 
         private void blocks(ClientMessages.RequestParts request) throws IOException {
@@ -382,8 +349,7 @@ public final class FakePeer implements AutoCloseable {
 
         private void corrupt(long start, byte[] block) {
             int part = (int) (start / 9_728_000L);
-            if (FakePeer.this.config.corruptParts().contains(part)
-                    && FakePeer.this.corrupted.add(part)) {
+            if (FakePeer.this.config.corruptParts().contains(part) && FakePeer.this.corrupted.add(part)) {
                 block[0] ^= 0x55;
             }
         }
@@ -394,22 +360,15 @@ public final class FakePeer implements AutoCloseable {
             if (FakePeer.this.config.compress()) {
                 byte[] stream = Packing.deflate(block, 1);
                 for (int at = 0; at < stream.length; at += CHUNK) {
-                    byte[] chunk =
-                            Arrays.copyOfRange(stream, at, Math.min(stream.length, at + CHUNK));
-                    packets.add(
-                            new ClientMessages.CompressedPart(hash, start, stream.length, chunk)
-                                    .encode(false));
+                    byte[] chunk = Arrays.copyOfRange(stream, at, Math.min(stream.length, at + CHUNK));
+                    packets.add(new ClientMessages.CompressedPart(hash, start, stream.length, chunk).encode(false));
                 }
             } else {
                 for (int at = 0; at < block.length; at += CHUNK) {
                     int end = Math.min(block.length, at + CHUNK);
-                    packets.add(
-                            new ClientMessages.SendingPart(
-                                            hash,
-                                            start + at,
-                                            start + end,
-                                            Arrays.copyOfRange(block, at, end))
-                                    .encode(false));
+                    packets.add(new ClientMessages.SendingPart(
+                                    hash, start + at, start + end, Arrays.copyOfRange(block, at, end))
+                            .encode(false));
                 }
             }
             for (Packet packet : packets) {

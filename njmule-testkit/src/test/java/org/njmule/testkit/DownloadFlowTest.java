@@ -57,7 +57,8 @@ class DownloadFlowTest {
     private static final Duration WAIT = Duration.ofSeconds(90);
     private static final int PART = 9_728_000;
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
@@ -88,10 +89,7 @@ class DownloadFlowTest {
     void waitsInTheQueueAndGetsASlotAgainAfterTheSessionEnds() throws Exception {
         byte[] data = content(PART + 500_000, 2);
         FakePeer peer =
-                this.peer(
-                        data,
-                        new FakePeer.Config(
-                                hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
+                this.peer(data, new FakePeer.Config(hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
 
         Path file = this.download(peer);
 
@@ -102,9 +100,7 @@ class DownloadFlowTest {
     @Test
     void downloadsACorruptPartAgain() throws Exception {
         byte[] data = content(2 * PART + 1000, 3);
-        FakePeer peer =
-                this.peer(
-                        data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
+        FakePeer peer = this.peer(data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
 
         Path file = this.download(peer);
 
@@ -115,10 +111,7 @@ class DownloadFlowTest {
     @Test
     void getsTheSlotWhenTheSourceCallsBack() throws Exception {
         byte[] data = content(PART / 2, 4);
-        FakePeer peer =
-                this.peer(
-                        data,
-                        new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
+        FakePeer peer = this.peer(data, new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
 
         Path file = this.download(peer);
 
@@ -134,16 +127,14 @@ class DownloadFlowTest {
         Files.write(shared, data);
         FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(5)));
         this.resources.add(peer);
-        FakeServer server =
-                FakeServer.start(
-                        lan,
-                        new FakeServer.Config(
-                                Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
+        FakeServer server = FakeServer.start(
+                lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
         this.resources.add(server);
         server.addSource(peer.link().hash(), new InetSocketAddress(lan, peer.port()));
         NjMuleEngine engine = this.engine();
         Events events = new Events(engine);
-        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port()))).get();
+        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
+                .get();
 
         Ed2kLink.FileLink bare =
                 Ed2kLink.FileLink.of("served.bin", data.length, peer.link().hash());
@@ -162,23 +153,19 @@ class DownloadFlowTest {
         Files.write(shared, data);
         FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(6)));
         this.resources.add(peer);
-        FakeServer server =
-                FakeServer.start(
-                        lan,
-                        new FakeServer.Config(
-                                Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
+        FakeServer server = FakeServer.start(
+                lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
         this.resources.add(server);
         long lowId = 4242;
         server.addLowIdSource(peer.link().hash(), lowId, peer);
         NjMuleEngine engine = this.engine();
         Events events = new Events(engine);
-        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port()))).get();
+        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
+                .get();
 
-        DownloadInfo added =
-                engine.addDownload(
-                                Ed2kLink.FileLink.of(
-                                        "firewalled.bin", data.length, peer.link().hash()))
-                        .get(10, TimeUnit.SECONDS);
+        DownloadInfo added = engine.addDownload(Ed2kLink.FileLink.of(
+                        "firewalled.bin", data.length, peer.link().hash()))
+                .get(10, TimeUnit.SECONDS);
 
         Path file = events.completed(added.hash()).file();
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
@@ -194,24 +181,16 @@ class DownloadFlowTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             closed = probe.getLocalPort();
         }
-        Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink)
-                        Ed2kLink.parse(
-                                "ed2k://|file|nowhere.bin|5000|"
-                                        + "12".repeat(16)
-                                        + "|/|sources,127.0.0.1:"
-                                        + closed
-                                        + "|/");
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
+                "ed2k://|file|nowhere.bin|5000|" + "12".repeat(16) + "|/|sources,127.0.0.1:" + closed + "|/");
         DownloadInfo added = engine.addDownload(link).get(10, TimeUnit.SECONDS);
         assertThat(events.next(EngineEvent.DownloadAdded.class).download().name())
                 .isEqualTo("nowhere.bin");
 
         assertThat(engine.pauseDownload(added.hash()).get()).isTrue();
-        assertThat(engine.downloads().get().getFirst().status())
-                .isEqualTo(DownloadInfo.Status.PAUSED);
+        assertThat(engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.PAUSED);
         assertThat(engine.resumeDownload(added.hash()).get()).isTrue();
-        assertThat(engine.downloads().get().getFirst().status())
-                .isEqualTo(DownloadInfo.Status.DOWNLOADING);
+        assertThat(engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
 
         assertThat(engine.cancelDownload(added.hash()).get()).isTrue();
         assertThat(events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(added.hash());

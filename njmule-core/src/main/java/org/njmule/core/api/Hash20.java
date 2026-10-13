@@ -49,8 +49,7 @@ public final class Hash20 implements Comparable<Hash20> {
     /** Parses 32 Base32 characters (RFC 4648 alphabet, either case). */
     public static Hash20 parseBase32(CharSequence base32) {
         if (base32.length() != 32) {
-            throw new IllegalArgumentException(
-                    "an AICH hash needs 32 Base32 characters, got " + base32.length());
+            throw new IllegalArgumentException("an AICH hash needs 32 Base32 characters, got " + base32.length());
         }
         return new Hash20(BASE32.decode(base32));
     }

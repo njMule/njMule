@@ -48,12 +48,7 @@ public final class TestGui implements AutoCloseable {
     private final AtomicInteger relaunches;
     private Stage stage;
 
-    private TestGui(
-            NjMuleEngine engine,
-            EngineModel model,
-            Gui gui,
-            List<String> told,
-            AtomicInteger relaunches) {
+    private TestGui(NjMuleEngine engine, EngineModel model, Gui gui, List<String> told, AtomicInteger relaunches) {
         this.engine = engine;
         this.model = model;
         this.gui = gui;
@@ -68,18 +63,15 @@ public final class TestGui implements AutoCloseable {
         EngineModel model = new EngineModel(engine, Platform::runLater);
         List<String> told = new CopyOnWriteArrayList<>();
         AtomicInteger relaunches = new AtomicInteger();
-        Gui gui =
-                FxTesting.onFx(
-                        () ->
-                                new Gui(
-                                        I18n.of(Locale.ENGLISH),
-                                        new Formats(Locale.ENGLISH),
-                                        model,
-                                        new Themes(Themes.Family.NORD, GuiSettings.Mode.LIGHT),
-                                        GuiSettings.load(engine.directories().gui()),
-                                        engine.directories(),
-                                        told::add,
-                                        relaunches::incrementAndGet));
+        Gui gui = FxTesting.onFx(() -> new Gui(
+                I18n.of(Locale.ENGLISH),
+                new Formats(Locale.ENGLISH),
+                model,
+                new Themes(Themes.Family.NORD, GuiSettings.Mode.LIGHT),
+                GuiSettings.load(engine.directories().gui()),
+                engine.directories(),
+                told::add,
+                relaunches::incrementAndGet));
         model.onError(told::add);
         model.start();
         return new TestGui(engine, model, gui, told, relaunches);
@@ -91,17 +83,16 @@ public final class TestGui implements AutoCloseable {
 
     /** Shows {@code node} in a window, so it gets a scene, CSS and a size. */
     public void show(Node node) throws Exception {
-        FxTesting.onFx(
-                () -> {
-                    if (this.stage == null) {
-                        this.stage = new Stage();
-                    }
-                    Parent root = node instanceof Parent p ? p : new StackPane(node);
-                    Scene scene = new Scene(root, 1100, 720);
-                    this.gui.themes().attach(scene);
-                    this.stage.setScene(scene);
-                    this.stage.show();
-                });
+        FxTesting.onFx(() -> {
+            if (this.stage == null) {
+                this.stage = new Stage();
+            }
+            Parent root = node instanceof Parent p ? p : new StackPane(node);
+            Scene scene = new Scene(root, 1100, 720);
+            this.gui.themes().attach(scene);
+            this.stage.setScene(scene);
+            this.stage.show();
+        });
     }
 
     @Override

@@ -30,9 +30,9 @@ import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Ipv4;
 
 /**
- * The server list, {@code server.met}: {@code <0xE0><u32 count>} then {@code <IP 4><port 2><u32 tag
- * count><tags>} per server. The IP is in network order; 0 with an ST_DYNIP tag means a host name.
- * Unknown tags are kept, so that rewriting a file loses nothing.
+ * The server list, {@code server.met}: {@code <0xE0><u32 count>} then {@code <IP 4><port 2><u32 tag count><tags>} per
+ * server. The IP is in network order; 0 with an ST_DYNIP tag means a host name. Unknown tags are kept, so that
+ * rewriting a file loses nothing.
  */
 public final class ServerMet {
 

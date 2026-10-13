@@ -31,13 +31,12 @@ class PacketReaderWriterTest {
 
     @Test
     void writesLittleEndian() {
-        byte[] out =
-                new PacketWriter()
-                        .u8(0xE3)
-                        .u16(0x1234)
-                        .u32(0x89ABCDEFL)
-                        .u64(0x0102030405060708L)
-                        .toByteArray();
+        byte[] out = new PacketWriter()
+                .u8(0xE3)
+                .u16(0x1234)
+                .u32(0x89ABCDEFL)
+                .u64(0x0102030405060708L)
+                .toByteArray();
 
         assertThat(HEX.formatHex(out)).isEqualTo("e33412efcdab890807060504030201");
     }
@@ -106,11 +105,10 @@ class PacketReaderWriterTest {
     @Test
     void stringsAndHashesRoundTrip() throws DecodeException {
         Hash16 hash = Hash16.parseHex("31D6CFE0D16AE931B73C59D7E0C089C0");
-        byte[] out =
-                new PacketWriter()
-                        .string16("Ünïcødé", StringEncoding.UTF8)
-                        .hash16(hash)
-                        .toByteArray();
+        byte[] out = new PacketWriter()
+                .string16("Ünïcødé", StringEncoding.UTF8)
+                .hash16(hash)
+                .toByteArray();
 
         PacketReader in = PacketReader.of(out);
         assertThat(in.string16()).isEqualTo("Ünïcødé");
@@ -119,11 +117,10 @@ class PacketReaderWriterTest {
     }
 
     @Property
-    void integersRoundTrip(
-            @ForAll byte a, @ForAll short b, @ForAll int c, @ForAll long d, @ForAll float e)
+    void integersRoundTrip(@ForAll byte a, @ForAll short b, @ForAll int c, @ForAll long d, @ForAll float e)
             throws DecodeException {
-        PacketReader in =
-                PacketReader.of(new PacketWriter().u8(a).u16(b).u32(c).u64(d).f32(e).toByteArray());
+        PacketReader in = PacketReader.of(
+                new PacketWriter().u8(a).u16(b).u32(c).u64(d).f32(e).toByteArray());
 
         assertThat(in.u8()).isEqualTo(a & 0xFF);
         assertThat(in.u16()).isEqualTo(b & 0xFFFF);

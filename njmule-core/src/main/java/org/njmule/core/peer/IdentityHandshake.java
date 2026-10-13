@@ -35,9 +35,9 @@ import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.security.SecureIdent;
 
 /**
- * Secure identification over one connection, run by both sides independently: each asks the other
- * to sign a random challenge (sending its key first when the other may not know it) and checks the
- * signature with the key it pinned for that user hash. Engine thread only.
+ * Secure identification over one connection, run by both sides independently: each asks the other to sign a random
+ * challenge (sending its key first when the other may not know it) and checks the signature with the key it pinned for
+ * that user hash. Engine thread only.
  */
 public final class IdentityHandshake {
 
@@ -150,11 +150,10 @@ public final class IdentityHandshake {
         } while (challenge == 0);
         this.challengeFor = challenge;
         int state = this.peerKey == null ? STATE_KEY_AND_SIGNATURE : STATE_SIGNATURE;
-        this.send.accept(
-                Packet.of(
-                        Protocol.EMULE,
-                        Opcodes.Extended.SECIDENTSTATE.code(),
-                        new PacketWriter().u8(state).u32(Integer.toUnsignedLong(challenge))));
+        this.send.accept(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.SECIDENTSTATE.code(),
+                new PacketWriter().u8(state).u32(Integer.toUnsignedLong(challenge))));
     }
 
     /** Handles the packet if it belongs to the identification; returns whether it did. */
@@ -184,11 +183,10 @@ public final class IdentityHandshake {
         this.challengeFrom = (int) in.u32();
         if (state == STATE_KEY_AND_SIGNATURE) {
             byte[] key = this.own.publicKey();
-            this.send.accept(
-                    Packet.of(
-                            Protocol.EMULE,
-                            Opcodes.Extended.PUBLICKEY.code(),
-                            new PacketWriter().u8(key.length).bytes(key)));
+            this.send.accept(Packet.of(
+                    Protocol.EMULE,
+                    Opcodes.Extended.PUBLICKEY.code(),
+                    new PacketWriter().u8(key.length).bytes(key)));
         }
         if (state == STATE_SIGNATURE || state == STATE_KEY_AND_SIGNATURE) {
             this.signatureWanted = true;
@@ -216,11 +214,7 @@ public final class IdentityHandshake {
 
     private void signatureReceived(Packet packet) throws DecodeException {
         int size = packet.length();
-        if (this.done
-                || this.challengeFor == 0
-                || this.peerKey == null
-                || size < MIN_PACKET
-                || size > MAX_PACKET) {
+        if (this.done || this.challengeFor == 0 || this.peerKey == null || size < MIN_PACKET || size > MAX_PACKET) {
             return;
         }
         PacketReader in = packet.reader();
@@ -246,13 +240,8 @@ public final class IdentityHandshake {
         }
         boolean valid;
         try {
-            valid =
-                    SecureIdent.verify(
-                            RsaKeys.decodePublic(this.peerKey),
-                            signature,
-                            this.own.publicKey(),
-                            this.challengeFor,
-                            binding);
+            valid = SecureIdent.verify(
+                    RsaKeys.decodePublic(this.peerKey), signature, this.own.publicKey(), this.challengeFor, binding);
         } catch (DecodeException | IllegalArgumentException e) {
             valid = false;
         }
@@ -263,8 +252,7 @@ public final class IdentityHandshake {
     private Optional<SecureIdent.IpBinding> bindingOf(SecureIdent.IpKind kind) {
         return switch (kind) {
             case LOCAL_CLIENT -> Optional.of(new SecureIdent.IpBinding(this.peerAddress, kind));
-            case REMOTE_CLIENT ->
-                    this.ourPublicAddress.map(ip -> new SecureIdent.IpBinding(ip, kind));
+            case REMOTE_CLIENT -> this.ourPublicAddress.map(ip -> new SecureIdent.IpBinding(ip, kind));
             case NONE -> Optional.empty();
         };
     }
@@ -284,23 +272,13 @@ public final class IdentityHandshake {
         }
         this.signatureWanted = false;
         // Version 2 only for peers that do not take version 1.
-        Optional<SecureIdent.IpBinding> binding =
-                (versions(this.peer) & V1) != 0
-                        ? Optional.empty()
-                        : Optional.of(
-                                this.ourPublicAddress
-                                        .map(
-                                                ip ->
-                                                        new SecureIdent.IpBinding(
-                                                                ip,
-                                                                SecureIdent.IpKind.LOCAL_CLIENT))
-                                        .orElseGet(
-                                                () ->
-                                                        new SecureIdent.IpBinding(
-                                                                this.peerAddress,
-                                                                SecureIdent.IpKind.REMOTE_CLIENT)));
-        byte[] signature =
-                SecureIdent.sign(this.own.key(), this.peerKey, this.challengeFrom, binding);
+        Optional<SecureIdent.IpBinding> binding = (versions(this.peer) & V1) != 0
+                ? Optional.empty()
+                : Optional.of(this.ourPublicAddress
+                        .map(ip -> new SecureIdent.IpBinding(ip, SecureIdent.IpKind.LOCAL_CLIENT))
+                        .orElseGet(
+                                () -> new SecureIdent.IpBinding(this.peerAddress, SecureIdent.IpKind.REMOTE_CLIENT)));
+        byte[] signature = SecureIdent.sign(this.own.key(), this.peerKey, this.challengeFrom, binding);
         PacketWriter out = new PacketWriter().u8(signature.length).bytes(signature);
         binding.ifPresent(b -> out.u8(b.kind().code()));
         this.send.accept(Packet.of(Protocol.EMULE, Opcodes.Extended.SIGNATURE.code(), out));

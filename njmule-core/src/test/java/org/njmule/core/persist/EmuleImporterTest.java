@@ -46,7 +46,8 @@ import org.njmule.core.protocol.io.PacketReader;
 
 class EmuleImporterTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private SyntheticEmuleProfile emule;
     private Path ours;
@@ -185,7 +186,8 @@ class EmuleImporterTest {
         assertThat(pending.resolve("cryptkey.dat")).exists();
         assertThat(pending.resolve("clients.met")).exists();
         assertThat(pending.resolve("preferencesKad.dat")).exists();
-        assertThat(PacketReader.of(Files.readAllBytes(pending.resolve("kadudpkey.dat"))).u32())
+        assertThat(PacketReader.of(Files.readAllBytes(pending.resolve("kadudpkey.dat")))
+                        .u32())
                 .isEqualTo(SyntheticEmuleProfile.KAD_UDP_KEY);
         assertThat(this.emule.fingerprint()).isEqualTo(before);
     }
@@ -195,8 +197,7 @@ class EmuleImporterTest {
         Files.writeString(this.ours.resolve("ipfilter.dat"), "");
         Files.writeString(this.ours.resolve("cancelled.met"), "");
 
-        Map<String, Outcome> outcomes =
-                outcomes(this.run(new ImportOptions(false, false, false), false));
+        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
 
         assertThat(outcomes)
                 .containsEntry("ipfilter.dat", Outcome.SKIPPED)
@@ -237,8 +238,7 @@ class EmuleImporterTest {
         ImportReport report = this.run(new ImportOptions(false, true, false), false);
 
         assertThat(outcomes(report)).containsEntry("cryptkey.dat", Outcome.FAILED);
-        assertThat(report.items())
-                .anyMatch(i -> i.detail().contains("the user hash and the key are taken only"));
+        assertThat(report.items()).anyMatch(i -> i.detail().contains("the user hash and the key are taken only"));
         assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
     }
 
@@ -274,17 +274,15 @@ class EmuleImporterTest {
 
     @Test
     void preferencesTakeOnlyUsableValues() {
-        IniFile ini =
-                IniFile.parse(
-                        String.join(
-                                        "\n",
-                                        "[eMule]",
-                                        "Nick=" + "x".repeat(Preferences.MAX_NICK_LENGTH + 1),
-                                        "MaxUpload=-1",
-                                        "MaxDownload=0",
-                                        "MaxConnections=999999",
-                                        "CryptLayerRequired=1")
-                                .getBytes(StandardCharsets.US_ASCII));
+        IniFile ini = IniFile.parse(String.join(
+                        "\n",
+                        "[eMule]",
+                        "Nick=" + "x".repeat(Preferences.MAX_NICK_LENGTH + 1),
+                        "MaxUpload=-1",
+                        "MaxDownload=0",
+                        "MaxConnections=999999",
+                        "CryptLayerRequired=1")
+                .getBytes(StandardCharsets.US_ASCII));
 
         Preferences p = EmuleImporter.mapPreferences(ini, Preferences.defaults());
 
@@ -293,25 +291,19 @@ class EmuleImporterTest {
         assertThat(p.maxDownloadKiBps()).isZero();
         assertThat(p.maxConnections()).isEqualTo(10_000);
         assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUIRED);
-        assertThat(
-                        EmuleImporter.mapPreferences(
-                                        IniFile.parse(
-                                                "[eMule]\nCryptLayerSupported=0"
-                                                        .getBytes(StandardCharsets.US_ASCII)),
-                                        Preferences.defaults())
-                                .obfuscation())
+        assertThat(EmuleImporter.mapPreferences(
+                                IniFile.parse("[eMule]\nCryptLayerSupported=0".getBytes(StandardCharsets.US_ASCII)),
+                                Preferences.defaults())
+                        .obfuscation())
                 .isEqualTo(ObfuscationMode.DISABLED);
-        assertThat(
-                        EmuleImporter.mapPreferences(
-                                        IniFile.parse(new byte[0]), Preferences.defaults())
-                                .obfuscation())
+        assertThat(EmuleImporter.mapPreferences(IniFile.parse(new byte[0]), Preferences.defaults())
+                        .obfuscation())
                 .isEqualTo(Preferences.defaults().obfuscation());
     }
 
     @Test
     void theProxyIsTakenWhenEmuleUsesOne() {
-        String socks =
-                """
+        String socks = """
                 [eMule]
                 [Proxy]
                 ProxyEnableProxy=1
@@ -323,10 +315,8 @@ class EmuleImporterTest {
                 ProxyPassword=pw
                 """;
         assertThat(proxyOf(socks))
-                .isEqualTo(
-                        new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"));
-        String http =
-                """
+                .isEqualTo(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"));
+        String http = """
                 [eMule]
                 [Proxy]
                 ProxyEnableProxy=1
@@ -334,21 +324,18 @@ class EmuleImporterTest {
                 ProxyName=h
                 ProxyUser=x
                 """;
-        assertThat(proxyOf(http))
-                .isEqualTo(new ProxySettings(ProxySettings.Type.HTTP, "h", 1080, "", ""));
-        for (String off :
-                List.of(
-                        "[Proxy]\nProxyEnableProxy=0\nProxyType=3\nProxyName=h\n",
-                        "[Proxy]\nProxyEnableProxy=1\nProxyType=9\nProxyName=h\n",
-                        "[Proxy]\nProxyEnableProxy=1\nProxyType=3\nProxyName=\n")) {
+        assertThat(proxyOf(http)).isEqualTo(new ProxySettings(ProxySettings.Type.HTTP, "h", 1080, "", ""));
+        for (String off : List.of(
+                "[Proxy]\nProxyEnableProxy=0\nProxyType=3\nProxyName=h\n",
+                "[Proxy]\nProxyEnableProxy=1\nProxyType=9\nProxyName=h\n",
+                "[Proxy]\nProxyEnableProxy=1\nProxyType=3\nProxyName=\n")) {
             assertThat(proxyOf("[eMule]\n" + off)).isEqualTo(ProxySettings.NONE);
         }
     }
 
     private static ProxySettings proxyOf(String ini) {
         return EmuleImporter.mapPreferences(
-                        IniFile.parse(ini.getBytes(StandardCharsets.US_ASCII)),
-                        Preferences.defaults())
+                        IniFile.parse(ini.getBytes(StandardCharsets.US_ASCII)), Preferences.defaults())
                 .proxy();
     }
 
@@ -406,11 +393,10 @@ class EmuleImporterTest {
 
         ImportReport report = this.run(new ImportOptions(false, false, false), false);
 
-        ImportReport.Item dirs =
-                report.items().stream()
-                        .filter(i -> i.file().equals("shareddir.dat"))
-                        .findFirst()
-                        .orElseThrow();
+        ImportReport.Item dirs = report.items().stream()
+                .filter(i -> i.file().equals("shareddir.dat"))
+                .findFirst()
+                .orElseThrow();
         assertThat(dirs.outcome()).isEqualTo(Outcome.IMPORTED);
         assertThat(dirs.detail()).contains("1 directories", "1 not shared", "refusing");
         assertThat(this.target.shared).containsExactly(this.emule.shared);
@@ -422,9 +408,7 @@ class EmuleImporterTest {
 
     private static Map<String, Outcome> outcomes(ImportReport report) {
         return report.items().stream()
-                .collect(
-                        Collectors.toMap(
-                                ImportReport.Item::file, ImportReport.Item::outcome, (a, b) -> a));
+                .collect(Collectors.toMap(ImportReport.Item::file, ImportReport.Item::outcome, (a, b) -> a));
     }
 
     private static String detail(ImportReport report, String file) {

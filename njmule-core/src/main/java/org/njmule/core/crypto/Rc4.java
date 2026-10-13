@@ -22,8 +22,8 @@ import javax.crypto.ShortBufferException;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * RC4 key stream of the eD2K protocol obfuscation (not for security), on the JDK's {@code ARCFOUR}
- * cipher. Not thread-safe: each direction of a connection owns one.
+ * RC4 key stream of the eD2K protocol obfuscation (not for security), on the JDK's {@code ARCFOUR} cipher. Not
+ * thread-safe: each direction of a connection owns one.
  */
 public final class Rc4 {
 
@@ -43,8 +43,7 @@ public final class Rc4 {
     public Rc4(byte[] key, int offset, int length) {
         try {
             this.cipher = Cipher.getInstance(ALGORITHM);
-            this.cipher.init(
-                    Cipher.ENCRYPT_MODE, new SecretKeySpec(key, offset, length, ALGORITHM));
+            this.cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, offset, length, ALGORITHM));
         } catch (GeneralSecurityException e) {
             throw new IllegalArgumentException("cannot set up RC4: " + e.getMessage(), e);
         }

@@ -30,9 +30,8 @@ import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.util.Ipv4;
 
 /**
- * Source exchange, second form: clients ask each other for more sources of a file. Answers of
- * version 1 and 2 carry eD2K ids, versions 3 and 4 the address in host order; version 2 adds the
- * user hash and version 4 the connect options.
+ * Source exchange, second form: clients ask each other for more sources of a file. Answers of version 1 and 2 carry
+ * eD2K ids, versions 3 and 4 the address in host order; version 2 adds the user hash and version 4 the connect options.
  */
 public final class SourceExchange {
 
@@ -46,13 +45,7 @@ public final class SourceExchange {
 
     /** A source; {@code ip} is in host order, zero for a LowID with {@code lowId} set. */
     public record Source(
-            int ip,
-            long lowId,
-            int port,
-            int serverIp,
-            int serverPort,
-            Optional<Hash16> userHash,
-            int cryptOptions) {
+            int ip, long lowId, int port, int serverIp, int serverPort, Optional<Hash16> userHash, int cryptOptions) {
         public Source {
             Objects.requireNonNull(userHash, "userHash");
         }

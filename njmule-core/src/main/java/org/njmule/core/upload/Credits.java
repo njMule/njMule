@@ -35,9 +35,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * What we uploaded to and downloaded from each client, by user hash, kept in {@code clients.met}
- * with the public key a client proved it owns. Clients that gave us data get a better place in our
- * upload queue. Engine thread only.
+ * What we uploaded to and downloaded from each client, by user hash, kept in {@code clients.met} with the public key a
+ * client proved it owns. Clients that gave us data get a better place in our upload queue. Engine thread only.
  */
 public final class Credits {
 
@@ -94,23 +93,16 @@ public final class Credits {
     /** Reads {@code clients.met} of {@code configDir}, dropping expired clients. */
     public static Credits load(Path configDir, Clock clock) {
         Credits store = new Credits(configDir.resolve(FILE_NAME), Objects.requireNonNull(clock));
-        if (!Files.exists(store.file)
-                && !Files.exists(AtomicFiles.bakPath(store.file.toAbsolutePath()))) {
+        if (!Files.exists(store.file) && !Files.exists(AtomicFiles.bakPath(store.file.toAbsolutePath()))) {
             return store;
         }
         long oldest = store.now() - EXPIRY.toSeconds();
         try {
-            for (ClientsMet.Credit c :
-                    AtomicFiles.read(store.file, in -> ClientsMet.read(in.readAllBytes()))) {
+            for (ClientsMet.Credit c : AtomicFiles.read(store.file, in -> ClientsMet.read(in.readAllBytes()))) {
                 if (c.lastSeen() >= oldest) {
                     store.credits.put(
                             c.userHash(),
-                            new Credit(
-                                    c.userHash(),
-                                    c.uploaded(),
-                                    c.downloaded(),
-                                    c.lastSeen(),
-                                    c.publicKey()));
+                            new Credit(c.userHash(), c.uploaded(), c.downloaded(), c.lastSeen(), c.publicKey()));
                 }
             }
         } catch (IOException e) {
@@ -136,8 +128,8 @@ public final class Credits {
     }
 
     /**
-     * The client proved it owns {@code key}. The first key is pinned; credit gathered under the
-     * user hash before that, by anyone, starts again from nothing.
+     * The client proved it owns {@code key}. The first key is pinned; credit gathered under the user hash before that,
+     * by anyone, starts again from nothing.
      */
     public void identified(Hash16 userHash, Bytes key) {
         Credit credit = this.credit(userHash);
@@ -152,8 +144,8 @@ public final class Credits {
     }
 
     /**
-     * The factor a client's waiting time is multiplied by in our queue: from 1 to 10, growing with
-     * what it gave us compared with what it got. Clients whose identity is in doubt get 1.
+     * The factor a client's waiting time is multiplied by in our queue: from 1 to 10, growing with what it gave us
+     * compared with what it got. Clients whose identity is in doubt get 1.
      */
     public double ratio(Hash16 userHash, boolean trusted) {
         Credit credit = this.credits.get(userHash);
@@ -163,9 +155,7 @@ public final class Credits {
         double given = credit.uploaded == 0 ? 10 : credit.downloaded * 2.0 / credit.uploaded;
         double bySize = Math.sqrt(credit.downloaded / (double) MIB + 2);
         double ramp =
-                credit.downloaded < RAMP_END
-                        ? (credit.downloaded - MIB) / (double) (RAMP_END - MIB) * 2.34 + 1
-                        : 10;
+                credit.downloaded < RAMP_END ? (credit.downloaded - MIB) / (double) (RAMP_END - MIB) * 2.34 + 1 : 10;
         return Math.clamp(Math.min(given, Math.min(bySize, ramp)), 1.0, 10.0);
     }
 
@@ -179,9 +169,7 @@ public final class Credits {
             if (c.uploaded == 0 && c.downloaded == 0) {
                 continue;
             }
-            all.add(
-                    new ClientsMet.Credit(
-                            c.userHash, c.uploaded, c.downloaded, c.lastSeen, c.publicKey));
+            all.add(new ClientsMet.Credit(c.userHash, c.uploaded, c.downloaded, c.lastSeen, c.publicKey));
         }
         try {
             AtomicFiles.writeBytes(this.file, ClientsMet.write(all));
@@ -192,9 +180,7 @@ public final class Credits {
     }
 
     private Credit credit(Hash16 userHash) {
-        Credit credit =
-                this.credits.computeIfAbsent(
-                        userHash, h -> new Credit(h, 0, 0, this.now(), Bytes.EMPTY));
+        Credit credit = this.credits.computeIfAbsent(userHash, h -> new Credit(h, 0, 0, this.now(), Bytes.EMPTY));
         credit.lastSeen = this.now();
         return credit;
     }

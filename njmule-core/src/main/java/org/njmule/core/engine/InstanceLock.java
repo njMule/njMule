@@ -24,8 +24,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 /**
- * Keeps a second engine off a configuration directory in use: two would write the same downloads
- * and lists. The operating system releases the lock when the process ends, even after a crash.
+ * Keeps a second engine off a configuration directory in use: two would write the same downloads and lists. The
+ * operating system releases the lock when the process ends, even after a crash.
  */
 final class InstanceLock implements AutoCloseable {
 
@@ -42,10 +42,7 @@ final class InstanceLock implements AutoCloseable {
     /** Takes the lock of {@code configDir}; fails when another engine holds it. */
     static InstanceLock acquire(Path configDir) throws IOException {
         FileChannel channel =
-                FileChannel.open(
-                        configDir.resolve(FILE_NAME),
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.WRITE);
+                FileChannel.open(configDir.resolve(FILE_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         FileLock lock;
         try {
             lock = channel.tryLock();
@@ -57,8 +54,7 @@ final class InstanceLock implements AutoCloseable {
         }
         if (lock == null) {
             channel.close();
-            throw new IOException(
-                    "njMule is already running with the configuration in " + configDir);
+            throw new IOException("njMule is already running with the configuration in " + configDir);
         }
         return new InstanceLock(channel, lock);
     }

@@ -42,13 +42,12 @@ class SourceExchangeTest {
     @Test
     void idsAreEd2kUpToVersionTwoAndHostOrderFromThree() {
         SourceExchange.Source high =
-                new SourceExchange.Source(
-                        IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.of(USER), 3);
+                new SourceExchange.Source(IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.of(USER), 3);
 
-        String v2 =
-                HEX.formatHex(new SourceExchange.Answer(2, FILE, List.of(high)).encode().payload());
-        String v4 =
-                HEX.formatHex(new SourceExchange.Answer(4, FILE, List.of(high)).encode().payload());
+        String v2 = HEX.formatHex(
+                new SourceExchange.Answer(2, FILE, List.of(high)).encode().payload());
+        String v4 = HEX.formatHex(
+                new SourceExchange.Answer(4, FILE, List.of(high)).encode().payload());
 
         assertThat(v2).startsWith("02" + "ab".repeat(16) + "0100" + "01020304" + "3612");
         assertThat(v4).startsWith("04" + "ab".repeat(16) + "0100" + "04030201" + "3612");
@@ -58,22 +57,18 @@ class SourceExchangeTest {
     @Test
     void answersRoundTripInEveryVersion() throws DecodeException {
         SourceExchange.Source high =
-                new SourceExchange.Source(
-                        IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.of(USER), 1);
-        SourceExchange.Source low =
-                new SourceExchange.Source(0, 1234, 4663, 0, 0, Optional.of(USER), 0);
+                new SourceExchange.Source(IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.of(USER), 1);
+        SourceExchange.Source low = new SourceExchange.Source(0, 1234, 4663, 0, 0, Optional.of(USER), 0);
         for (int version = 1; version <= SourceExchange.VERSION; version++) {
             SourceExchange.Answer back =
-                    SourceExchange.Answer.decode(
-                            new SourceExchange.Answer(version, FILE, List.of(high, low)).encode());
+                    SourceExchange.Answer.decode(new SourceExchange.Answer(version, FILE, List.of(high, low)).encode());
             assertThat(back.version()).isEqualTo(version);
             assertThat(back.sources().get(0).ip()).isEqualTo(IP);
             assertThat(back.sources().get(0).port()).isEqualTo(4662);
             assertThat(back.sources().get(0).serverIp()).isEqualTo(Ipv4.of(9, 9, 9, 9));
             assertThat(back.sources().get(1).isLowId()).isTrue();
             assertThat(back.sources().get(1).lowId()).isEqualTo(1234);
-            assertThat(back.sources().get(0).userHash())
-                    .isEqualTo(version >= 2 ? Optional.of(USER) : Optional.empty());
+            assertThat(back.sources().get(0).userHash()).isEqualTo(version >= 2 ? Optional.of(USER) : Optional.empty());
             assertThat(back.sources().get(0).cryptOptions()).isEqualTo(version >= 4 ? 1 : 0);
         }
     }
@@ -82,23 +77,16 @@ class SourceExchangeTest {
     void requestsCarryVersionOptionsThenTheFile() throws DecodeException {
         Packet request = SourceExchange.request(FILE);
         assertThat(HEX.formatHex(request.payload())).isEqualTo("04" + "0000" + "ab".repeat(16));
-        assertThat(SourceExchange.Request.decode(request))
-                .isEqualTo(new SourceExchange.Request(4, FILE));
+        assertThat(SourceExchange.Request.decode(request)).isEqualTo(new SourceExchange.Request(4, FILE));
     }
 
     @Test
     void refusesAnswersWhoseSizeDoesNotMatch() {
         byte[] payload = HEX.parseHex("04" + "ab".repeat(16) + "0200" + "00".repeat(29));
-        assertThatThrownBy(
-                        () ->
-                                SourceExchange.Answer.decode(
-                                        Packet.of(Protocol.EMULE, 0x84, payload)))
+        assertThatThrownBy(() -> SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, payload)))
                 .isInstanceOf(DecodeException.class);
         byte[] version = HEX.parseHex("07" + "ab".repeat(16) + "0000");
-        assertThatThrownBy(
-                        () ->
-                                SourceExchange.Answer.decode(
-                                        Packet.of(Protocol.EMULE, 0x84, version)))
+        assertThatThrownBy(() -> SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, version)))
                 .isInstanceOf(DecodeException.class);
     }
 

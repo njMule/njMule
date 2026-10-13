@@ -61,19 +61,13 @@ public final class AboutDialog {
         emule.getStyleClass().add(Styles.TEXT_SMALL);
         HBox header = new HBox(16, logo, new VBox(4, name, tagline));
         header.setAlignment(Pos.CENTER_LEFT);
-        VBox root =
-                new VBox(
-                        12,
-                        header,
-                        copyright,
-                        license,
-                        emule,
-                        Fx.toolRow(
-                                Fx.spacer(),
-                                Fx.button(
-                                        gui.t("IDS_FD_CLOSE"),
-                                        Material2AL.CLOSE,
-                                        this.stage::close)));
+        VBox root = new VBox(
+                12,
+                header,
+                copyright,
+                license,
+                emule,
+                Fx.toolRow(Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
         root.setPadding(new Insets(18));
         root.setPrefWidth(520);
         Scene scene = new Scene(root);

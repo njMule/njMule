@@ -54,21 +54,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Our Kad node: answers other nodes, keeps the routing table fresh, runs lookups for searches and
- * publishes, indexes what others publish to us and checks whether we can be reached. Engine thread
- * only.
+ * Our Kad node: answers other nodes, keeps the routing table fresh, runs lookups for searches and publishes, indexes
+ * what others publish to us and checks whether we can be reached. Engine thread only.
  */
 public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     /** Sends Kad packets, obfuscated with the receiver's id or key when given. */
     public interface Transport {
-        void send(
-                int ip,
-                int port,
-                Packet packet,
-                Optional<UInt128> receiverId,
-                int receiverKey,
-                int senderKey);
+        void send(int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey, int senderKey);
     }
 
     /** What the node needs from the client around it. */
@@ -81,8 +74,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     public record Source(Hash16 userHash, int ip, int tcpPort, int connectOptions) {}
 
     /** A file a keyword search found. */
-    public record FileResult(
-            Hash16 hash, String name, long size, int sources, Optional<String> type) {}
+    public record FileResult(Hash16 hash, String name, long size, int sources, Optional<String> type) {}
 
     /** Settings that are not the protocol's. */
     public record Settings(int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted) {
@@ -234,9 +226,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
     }
 
-    /**
-     * Adds the contacts of a {@code nodes.dat}, or bootstraps from them; returns how many were new.
-     */
+    /** Adds the contacts of a {@code nodes.dat}, or bootstraps from them; returns how many were new. */
     public int addContacts(NodesDat.Contents contents) {
         boolean anyVerified = false;
         for (NodesDat.Contact c : contents.contacts()) {
@@ -252,11 +242,9 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             if (!this.isGoodAddress(c.ip())) {
                 continue;
             }
-            KadContact contact =
-                    new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
+            KadContact contact = new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
             contact.setVerified(c.verified() || !anyVerified);
-            if (this.table.add(contact, false, c.udpKey(), this.publicIp, now)
-                    == RoutingTable.Outcome.ADDED) {
+            if (this.table.add(contact, false, c.udpKey(), this.publicIp, now) == RoutingTable.Outcome.ADDED) {
                 added++;
             }
         }
@@ -291,8 +279,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     /** Looks for files under the first keyword of {@code words}, filtered by {@code expression}. */
-    public boolean searchKeyword(
-            String words, Optional<SearchExpr> expression, Consumer<List<FileResult>> results) {
+    public boolean searchKeyword(String words, Optional<SearchExpr> expression, Consumer<List<FileResult>> results) {
         List<String> keywords = Keywords.of(words);
         if (keywords.isEmpty()) {
             return false;
@@ -446,8 +433,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     /** A Kad packet from {@code ip:port}; the keys come from its obfuscation (0 when plain). */
-    public void received(
-            int ip, int port, Packet packet, boolean obfuscated, int receiverKey, int senderKey) {
+    public void received(int ip, int port, Packet packet, boolean obfuscated, int receiverKey, int senderKey) {
         long nowMs = this.nowMs();
         if (this.tracking.isBanned(ip, nowMs)) {
             return;
@@ -461,12 +447,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return;
         }
         this.lastPacket = this.ticker.read();
-        Peer peer =
-                new Peer(
-                        ip,
-                        port,
-                        receiverKey != 0 && receiverKey == this.identity.verifyKey(ip),
-                        senderKey);
+        Peer peer = new Peer(ip, port, receiverKey != 0 && receiverKey == this.identity.verifyKey(ip), senderKey);
         try {
             switch (opcode.get()) {
                 case BOOTSTRAP_REQ -> this.bootstrapRequested(peer);
@@ -506,30 +487,27 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     private void bootstrapRequested(Peer peer) {
         List<KadMessages.Contact> contacts = new ArrayList<>();
-        for (KadContact c :
-                this.table.bootstrapContacts(KadMessages.MAX_BOOTSTRAP_CONTACTS, this.random)) {
+        for (KadContact c : this.table.bootstrapContacts(KadMessages.MAX_BOOTSTRAP_CONTACTS, this.random)) {
             contacts.add(c.message());
         }
         this.answer(peer, new KadMessages.BootstrapAnswer(this.self(), contacts).encode());
     }
 
     private void bootstrapAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(
-                peer.ip(), peer.port(), Opcodes.Kad.BOOTSTRAP_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.BOOTSTRAP_RES, this.nowMs())) {
             return;
         }
         KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(packet);
         long now = this.ticker.read();
         boolean empty = this.table.size() == 0;
         if (this.isGoodAddress(peer.ip())) {
-            KadContact sender =
-                    new KadContact(
-                            answer.sender().id(),
-                            peer.ip(),
-                            peer.port(),
-                            answer.sender().tcpPort(),
-                            answer.sender().version(),
-                            now);
+            KadContact sender = new KadContact(
+                    answer.sender().id(),
+                    peer.ip(),
+                    peer.port(),
+                    answer.sender().tcpPort(),
+                    answer.sender().version(),
+                    now);
             sender.setVerified(true);
             this.table.add(sender, true, peer.key(this.publicIp), this.publicIp, now);
         }
@@ -539,9 +517,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private void helloReceived(Peer peer, Packet packet, boolean answer) throws DecodeException {
-        if (answer
-                && !this.tracking.expected(
-                        peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES, this.nowMs())) {
+        if (answer && !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES, this.nowMs())) {
             return;
         }
         KadMessages.Hello hello = KadMessages.Hello.decode(packet);
@@ -551,28 +527,16 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         long now = this.ticker.read();
         RoutingTable.Outcome outcome = RoutingTable.Outcome.REFUSED;
         if (this.isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
-            KadContact contact =
-                    new KadContact(
-                            hello.sender().id(),
-                            peer.ip(),
-                            udpPort,
-                            hello.sender().tcpPort(),
-                            version,
-                            now);
+            KadContact contact = new KadContact(
+                    hello.sender().id(), peer.ip(), udpPort, hello.sender().tcpPort(), version, now);
             contact.setVerified(peer.validKey());
             outcome = this.table.add(contact, true, peer.key(this.publicIp), this.publicIp, now);
             this.table.get(contact.id()).ifPresent(KadContact::setHelloReceived);
         }
         boolean verified =
-                this.table
-                        .get(hello.sender().id())
-                        .map(KadContact::isVerified)
-                        .orElse(peer.validKey());
+                this.table.get(hello.sender().id()).map(KadContact::isVerified).orElse(peer.validKey());
         if (!answer) {
-            boolean askAck =
-                    outcome != RoutingTable.Outcome.REFUSED
-                            && !verified
-                            && version >= HELLO_ACK_VERSION;
+            boolean askAck = outcome != RoutingTable.Outcome.REFUSED && !verified && version >= HELLO_ACK_VERSION;
             Packet reply = this.hello(version, askAck).encode(true);
             Optional<UInt128> key =
                     version >= OBFUSCATION_VERSION && !hello.sender().id().isZero()
@@ -582,9 +546,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             if (askAck) {
                 this.tracking.sent(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES, this.nowMs());
             }
-        } else if ((misc & MISC_ACK_REQUESTED) != 0
-                && version >= HELLO_ACK_VERSION
-                && peer.senderKey() != 0) {
+        } else if ((misc & MISC_ACK_REQUESTED) != 0 && version >= HELLO_ACK_VERSION && peer.senderKey() != 0) {
             this.answer(peer, KadMessages.helloAck(this.identity.id()));
         }
         this.maybeCheckFirewall(peer, version);
@@ -592,8 +554,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
 
     private void helloAcknowledged(Peer peer, Packet packet) throws DecodeException {
         if (!peer.validKey()
-                || !this.tracking.expected(
-                        peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
+                || !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
             return;
         }
         UInt128 id = KadMessages.decodeHelloAck(packet);
@@ -621,9 +582,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         long now = this.ticker.read();
         List<KadMessages.Contact> usable = new ArrayList<>();
         for (KadMessages.Contact c : answer.contacts()) {
-            if (c.version() >= 2
-                    && this.isGoodAddress(c.ip())
-                    && !(c.udpPort() == 53 && c.version() <= 5)) {
+            if (c.version() >= 2 && this.isGoodAddress(c.ip()) && !(c.udpPort() == 53 && c.version() <= 5)) {
                 this.addUnverified(c, false, now);
                 usable.add(c);
             }
@@ -642,16 +601,14 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             expression = Optional.of(SearchTreeCodec.read(PacketReader.of(search.expression())));
         }
         List<KadMessages.Entry> results =
-                this.index.searchKeyword(
-                        search.target(), expression, search.start(), this.ticker.read());
+                this.index.searchKeyword(search.target(), expression, search.start(), this.ticker.read());
         this.answerResults(peer, search.target(), results);
     }
 
     private void sourceSearchRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.SourceSearch search = KadMessages.SourceSearch.decode(packet);
         List<KadMessages.Entry> results =
-                this.index.searchSources(
-                        search.target(), search.size(), search.start(), this.ticker.read());
+                this.index.searchSources(search.target(), search.size(), search.start(), this.ticker.read());
         this.answerResults(peer, search.target(), results);
     }
 
@@ -659,8 +616,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (results.isEmpty()) {
             return;
         }
-        for (Packet p :
-                KadMessages.SearchAnswer.split(this.identity.id(), target, results, UDP_FRAGMENT)) {
+        for (Packet p : KadMessages.SearchAnswer.split(this.identity.id(), target, results, UDP_FRAGMENT)) {
             this.answer(peer, p);
         }
     }
@@ -671,8 +627,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(packet);
         Lookup lookup = this.lookups.get(answer.target());
-        Consumer<List<KadMessages.Entry>> sink =
-                lookup == null ? null : this.resultSinks.get(lookup);
+        Consumer<List<KadMessages.Entry>> sink = lookup == null ? null : this.resultSinks.get(lookup);
         if (sink == null || lookup.isStopped()) {
             return;
         }
@@ -698,24 +653,15 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (!this.inTolerance(publish.file())) {
             return;
         }
-        OptionalLong load =
-                this.index.publishSource(
-                        publish.file(),
-                        publish.source(),
-                        publish.tags(),
-                        peer.ip(),
-                        peer.port(),
-                        this.ticker.read());
+        OptionalLong load = this.index.publishSource(
+                publish.file(), publish.source(), publish.tags(), peer.ip(), peer.port(), this.ticker.read());
         if (load.isPresent()) {
-            this.answer(
-                    peer,
-                    new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
+            this.answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
         }
     }
 
     private void publishAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(
-                peer.ip(), peer.port(), Opcodes.Kad.PUBLISH_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.PUBLISH_RES, this.nowMs())) {
             return;
         }
         KadMessages.PublishAnswer answer = KadMessages.PublishAnswer.decode(packet);
@@ -732,14 +678,12 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return;
         }
         this.answer(peer, KadMessages.firewallAnswer(peer.ip()));
-        this.host.checkReachable(
-                peer.ip(), check.tcpPort(), check.userHash().toHash16(), check.connectOptions());
+        this.host.checkReachable(peer.ip(), check.tcpPort(), check.userHash().toHash16(), check.connectOptions());
     }
 
     private void firewallAnswered(Peer peer, Packet packet) throws DecodeException {
         if (!this.firewallChecks.containsKey(peer.ip())
-                || !this.tracking.expected(
-                        peer.ip(), peer.port(), Opcodes.Kad.FIREWALLED_RES, this.nowMs())) {
+                || !this.tracking.expected(peer.ip(), peer.port(), Opcodes.Kad.FIREWALLED_RES, this.nowMs())) {
             return;
         }
         int ip = KadMessages.decodeFirewallAnswer(packet);
@@ -764,29 +708,15 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             return;
         }
         this.firewallChecks.put(peer.ip(), this.ticker.read());
-        Packet request =
-                new KadMessages.FirewallCheck(
-                                this.settings.tcpPort(),
-                                UInt128.of(this.settings.userHash()),
-                                this.settings.connectOptions())
-                        .encode();
+        Packet request = new KadMessages.FirewallCheck(
+                        this.settings.tcpPort(), UInt128.of(this.settings.userHash()), this.settings.connectOptions())
+                .encode();
         this.table
                 .byAddress(peer.ip())
-                .ifPresentOrElse(
-                        c -> this.request(c, request, Opcodes.Kad.FIREWALLED2_REQ),
-                        () -> {
-                            this.send(
-                                    peer.ip(),
-                                    peer.port(),
-                                    request,
-                                    Optional.empty(),
-                                    peer.senderKey());
-                            this.tracking.sent(
-                                    peer.ip(),
-                                    peer.port(),
-                                    Opcodes.Kad.FIREWALLED2_REQ,
-                                    this.nowMs());
-                        });
+                .ifPresentOrElse(c -> this.request(c, request, Opcodes.Kad.FIREWALLED2_REQ), () -> {
+                    this.send(peer.ip(), peer.port(), request, Optional.empty(), peer.senderKey());
+                    this.tracking.sent(peer.ip(), peer.port(), Opcodes.Kad.FIREWALLED2_REQ, this.nowMs());
+                });
     }
 
     // Each minute a bin checks its oldest contact; contacts that keep failing are dropped.
@@ -810,10 +740,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 continue;
             }
             oldest.checking(now);
-            this.request(
-                    oldest,
-                    this.hello(oldest.version(), false).encode(false),
-                    Opcodes.Kad.HELLO_REQ);
+            this.request(oldest, this.hello(oldest.version(), false).encode(false), Opcodes.Kad.HELLO_REQ);
         }
     }
 
@@ -868,27 +795,21 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             Object data = node.lookupData.get(lookup);
             switch (lookup.kind()) {
                 case KEYWORD ->
-                        node.requestTo(
-                                contact,
-                                new KadMessages.KeywordSearch(lookup.target(), 0, (byte[]) data)
-                                        .encode(),
-                                Opcodes.Kad.SEARCH_KEY_REQ);
+                    node.requestTo(
+                            contact,
+                            new KadMessages.KeywordSearch(lookup.target(), 0, (byte[]) data).encode(),
+                            Opcodes.Kad.SEARCH_KEY_REQ);
                 case SOURCES ->
-                        node.requestTo(
-                                contact,
-                                new KadMessages.SourceSearch(lookup.target(), 0, (Long) data)
-                                        .encode(),
-                                Opcodes.Kad.SEARCH_SOURCE_REQ);
+                    node.requestTo(
+                            contact,
+                            new KadMessages.SourceSearch(lookup.target(), 0, (Long) data).encode(),
+                            Opcodes.Kad.SEARCH_SOURCE_REQ);
                 case STORE_KEYWORD -> {
                     @SuppressWarnings("unchecked")
                     List<KadMessages.Entry> files = (List<KadMessages.Entry>) data;
                     for (int at = 0; at < files.size(); at += KadMessages.MAX_PUBLISHED_FILES) {
                         List<KadMessages.Entry> batch =
-                                files.subList(
-                                        at,
-                                        Math.min(
-                                                files.size(),
-                                                at + KadMessages.MAX_PUBLISHED_FILES));
+                                files.subList(at, Math.min(files.size(), at + KadMessages.MAX_PUBLISHED_FILES));
                         node.requestTo(
                                 contact,
                                 new KadMessages.KeywordPublish(lookup.target(), batch).encode(),
@@ -896,14 +817,14 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                     }
                 }
                 case STORE_SOURCE ->
-                        node.requestTo(
-                                contact,
-                                new KadMessages.SourcePublish(
-                                                lookup.target(),
-                                                UInt128.of(node.settings.userHash()),
-                                                node.sourceTags((Long) data))
-                                        .encode(),
-                                Opcodes.Kad.PUBLISH_SOURCE_REQ);
+                    node.requestTo(
+                            contact,
+                            new KadMessages.SourcePublish(
+                                            lookup.target(),
+                                            UInt128.of(node.settings.userHash()),
+                                            node.sourceTags((Long) data))
+                                    .encode(),
+                            Opcodes.Kad.PUBLISH_SOURCE_REQ);
                 default -> {
                     // Node lookups only collect contacts.
                 }
@@ -927,19 +848,13 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             this.request(known.get(), request, kind);
             return;
         }
-        Optional<UInt128> key =
-                contact.version() >= OBFUSCATION_VERSION
-                        ? Optional.of(contact.id())
-                        : Optional.empty();
+        Optional<UInt128> key = contact.version() >= OBFUSCATION_VERSION ? Optional.of(contact.id()) : Optional.empty();
         this.send(contact.ip(), contact.udpPort(), request, key, 0);
         this.tracking.sent(contact.ip(), contact.udpPort(), kind, this.nowMs());
     }
 
     private void request(KadContact contact, Packet request, Opcodes.Kad kind) {
-        Optional<UInt128> key =
-                contact.version() >= OBFUSCATION_VERSION
-                        ? Optional.of(contact.id())
-                        : Optional.empty();
+        Optional<UInt128> key = contact.version() >= OBFUSCATION_VERSION ? Optional.of(contact.id()) : Optional.empty();
         NodesDat.UdpKey stored = contact.udpKey();
         int receiverKey = stored.ip() == this.publicIp ? stored.key() : 0;
         this.send(contact.ip(), contact.udpPort(), request, key, receiverKey);
@@ -950,8 +865,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         this.send(peer.ip(), peer.port(), answer, Optional.empty(), peer.senderKey());
     }
 
-    private void send(
-            int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey) {
+    private void send(int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey) {
         this.transport.send(ip, port, packet, receiverId, receiverKey, this.identity.verifyKey(ip));
     }
 
@@ -969,8 +883,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     }
 
     private KadMessages.Self self() {
-        return new KadMessages.Self(
-                this.identity.id(), this.settings.tcpPort(), KadMessages.VERSION);
+        return new KadMessages.Self(this.identity.id(), this.settings.tcpPort(), KadMessages.VERSION);
     }
 
     private void addUnverified(KadMessages.Contact c, boolean verified, long now) {
@@ -1001,8 +914,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return this.ticker.read() / 1_000_000L;
     }
 
-    private static List<FileResult> fileResults(
-            List<KadMessages.Entry> entries, List<String> keywords) {
+    private static List<FileResult> fileResults(List<KadMessages.Entry> entries, List<String> keywords) {
         List<FileResult> results = new ArrayList<>();
         for (KadMessages.Entry e : entries) {
             Optional<String> name = Tags.stringValue(e.tags(), FileTag.FILENAME);
@@ -1010,13 +922,12 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             if (name.isEmpty() || size <= 0 || !Keywords.of(name.get()).containsAll(keywords)) {
                 continue;
             }
-            results.add(
-                    new FileResult(
-                            e.id().toHash16(),
-                            name.get(),
-                            size,
-                            (int) Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0),
-                            Tags.stringValue(e.tags(), FileTag.FILETYPE)));
+            results.add(new FileResult(
+                    e.id().toHash16(),
+                    name.get(),
+                    size,
+                    (int) Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0),
+                    Tags.stringValue(e.tags(), FileTag.FILETYPE)));
         }
         return results;
     }
@@ -1033,12 +944,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             if (ip == 0 || port == 0) {
                 continue;
             }
-            sources.add(
-                    new Source(
-                            e.id().toHash16(),
-                            ip,
-                            port,
-                            (int) Tags.intValue(e.tags(), FileTag.ENCRYPTION).orElse(0)));
+            sources.add(new Source(e.id().toHash16(), ip, port, (int)
+                    Tags.intValue(e.tags(), FileTag.ENCRYPTION).orElse(0)));
         }
         return sources;
     }

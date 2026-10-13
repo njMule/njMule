@@ -296,8 +296,6 @@ public final class Opcodes {
     }
 
     private static <T> Optional<T> lookup(T[] byCode, int code) {
-        return code >= 0 && code < byCode.length
-                ? Optional.ofNullable(byCode[code])
-                : Optional.empty();
+        return code >= 0 && code < byCode.length ? Optional.ofNullable(byCode[code]) : Optional.empty();
     }
 }

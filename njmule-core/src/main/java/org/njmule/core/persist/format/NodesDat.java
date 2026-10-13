@@ -25,11 +25,10 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 
 /**
- * Kad contacts, {@code nodes.dat}. Version 0: {@code <count ≠ 0>} then 25-byte records ending with
- * a contact type; version 1: {@code <0><1><count>} with a Kad version instead; version 2 (written):
- * {@code <0><2><count>}, 34-byte records adding the UDP key and the verified flag; version 3:
- * {@code <0><3><edition>}, edition 1 being a bootstrap list of 25-byte records. IPs are stored as
- * little-endian numbers.
+ * Kad contacts, {@code nodes.dat}. Version 0: {@code <count ≠ 0>} then 25-byte records ending with a contact type;
+ * version 1: {@code <0><1><count>} with a Kad version instead; version 2 (written): {@code <0><2><count>}, 34-byte
+ * records adding the UDP key and the verified flag; version 3: {@code <0><3><edition>}, edition 1 being a bootstrap
+ * list of 25-byte records. IPs are stored as little-endian numbers.
  */
 public final class NodesDat {
 
@@ -39,14 +38,7 @@ public final class NodesDat {
     }
 
     public record Contact(
-            UInt128 id,
-            int ip,
-            int udpPort,
-            int tcpPort,
-            int version,
-            int type,
-            UdpKey udpKey,
-            boolean verified) {
+            UInt128 id, int ip, int udpPort, int tcpPort, int version, int type, UdpKey udpKey, boolean verified) {
 
         public Contact {
             Objects.requireNonNull(id, "id");

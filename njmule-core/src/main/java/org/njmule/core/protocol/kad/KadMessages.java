@@ -31,8 +31,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
 
 /**
- * Kad 2 messages. Ids are 128-bit numbers written as four little-endian words, most significant
- * first; addresses are host-order numbers written little-endian.
+ * Kad 2 messages. Ids are 128-bit numbers written as four little-endian words, most significant first; addresses are
+ * host-order numbers written little-endian.
  */
 public final class KadMessages {
 
@@ -353,8 +353,7 @@ public final class KadMessages {
         }
 
         /** Answers no larger than {@code maxBytes} each that together carry {@code results}. */
-        public static List<Packet> split(
-                UInt128 sender, UInt128 target, List<Entry> results, int maxBytes) {
+        public static List<Packet> split(UInt128 sender, UInt128 target, List<Entry> results, int maxBytes) {
             List<Packet> packets = new ArrayList<>();
             List<Entry> batch = new ArrayList<>();
             int size = 2 + 16 + 16 + 2;
@@ -465,9 +464,7 @@ public final class KadMessages {
     /** KADEMLIA_FIREWALLED_RES: the address the helper sees us at. */
     public static Packet firewallAnswer(int ip) {
         return Packet.of(
-                Protocol.KAD,
-                Opcodes.Kad.FIREWALLED_RES.code(),
-                new PacketWriter().u32(Integer.toUnsignedLong(ip)));
+                Protocol.KAD, Opcodes.Kad.FIREWALLED_RES.code(), new PacketWriter().u32(Integer.toUnsignedLong(ip)));
     }
 
     public static int decodeFirewallAnswer(Packet packet) throws DecodeException {

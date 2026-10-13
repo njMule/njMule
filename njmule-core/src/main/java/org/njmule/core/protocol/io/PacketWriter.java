@@ -150,13 +150,7 @@ public final class PacketWriter {
     private void ensure(int extra) {
         if (extra > this.maxSize - this.size) {
             throw new IllegalStateException(
-                    "packet would exceed "
-                            + this.maxSize
-                            + " bytes ("
-                            + this.size
-                            + " + "
-                            + extra
-                            + ")");
+                    "packet would exceed " + this.maxSize + " bytes (" + this.size + " + " + extra + ")");
         }
         int needed = this.size + extra;
         if (needed > this.data.length) {

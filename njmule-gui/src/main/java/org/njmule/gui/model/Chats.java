@@ -40,10 +40,7 @@ public final class Chats {
         NOTICE
     }
 
-    /**
-     * One line of a conversation; a notice's text is the key of its translation, with {@code
-     * detail} to fill in.
-     */
+    /** One line of a conversation; a notice's text is the key of its translation, with {@code detail} to fill in. */
     public record Line(Instant time, Author author, String text, String detail) {}
 
     /** The conversation with the client at {@code address} (IP and listening port). */

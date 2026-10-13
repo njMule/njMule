@@ -63,14 +63,13 @@ public final class FxTesting {
     /** Runs {@code task} on the FX thread and waits for its result. */
     public static <T> T onFx(Callable<T> task) throws Exception {
         CompletableFuture<T> result = new CompletableFuture<>();
-        Platform.runLater(
-                () -> {
-                    try {
-                        result.complete(task.call());
-                    } catch (Exception | AssertionError e) {
-                        result.completeExceptionally(e);
-                    }
-                });
+        Platform.runLater(() -> {
+            try {
+                result.complete(task.call());
+            } catch (Exception | AssertionError e) {
+                result.completeExceptionally(e);
+            }
+        });
         try {
             return result.get(30, TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
@@ -82,11 +81,10 @@ public final class FxTesting {
     }
 
     public static void onFx(Runnable task) throws Exception {
-        onFx(
-                () -> {
-                    task.run();
-                    return null;
-                });
+        onFx(() -> {
+            task.run();
+            return null;
+        });
     }
 
     /** Waits until {@code condition}, checked on the FX thread, holds. */
@@ -109,8 +107,7 @@ public final class FxTesting {
             port = probe.getLocalPort();
         }
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         return NjMuleEngine.start(new EngineConfig(dirs));
     }
 

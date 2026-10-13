@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Rejects commits with code that is not google-java-format formatted or lacks the license header.
+# Rejects commits with code that is not palantir-java-format formatted or lacks the license header.
 # Enable with: git config core.hooksPath .githooks
 root="$(git rev-parse --show-toplevel)" || exit 1
 cd "$root" || exit 1

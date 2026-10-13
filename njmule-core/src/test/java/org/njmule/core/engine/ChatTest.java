@@ -59,7 +59,8 @@ class ChatTest {
 
     private static final Duration WAIT = Duration.ofSeconds(20);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
@@ -98,31 +99,18 @@ class ChatTest {
     void aClientWeWroteToAsksForACaptchaAndTellsTheResult() throws Exception {
         NjMuleEngine engine = this.engine("me");
         Events seen = new Events(engine);
-        Hello asker =
-                Hello.of(
-                        Hash16.parseHex("11223344556677889900AABBCCDDEEFF"),
-                        0,
-                        4999,
-                        "asker",
-                        0,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0);
+        Hello asker = Hello.of(Hash16.parseHex("11223344556677889900AABBCCDDEEFF"), 0, 4999, "asker", 0, 0, 0, 0, 0, 0);
 
         // A CAPTCHA nobody asked for, on a connection the other side opened, is ignored.
-        try (Socket socket =
-                new Socket(InetAddress.getLoopbackAddress(), engine.preferences().tcpPort())) {
+        try (Socket socket = new Socket(
+                InetAddress.getLoopbackAddress(), engine.preferences().tcpPort())) {
             socket.setSoTimeout((int) WAIT.toMillis());
             InputStream in = new BufferedInputStream(socket.getInputStream());
             socket.getOutputStream().write(TcpFraming.encode(asker.encode(false)));
             assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
                     .isEqualTo(Opcodes.Client.HELLOANSWER.code());
-            socket.getOutputStream()
-                    .write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(40, 24))));
-            socket.getOutputStream()
-                    .write(TcpFraming.encode(ChatMessages.message("unasked", true)));
+            socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(40, 24))));
+            socket.getOutputStream().write(TcpFraming.encode(ChatMessages.message("unasked", true)));
             assertThat(seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo("unasked");
         }
 
@@ -140,32 +128,23 @@ class ChatTest {
                         .isEqualTo(Opcodes.Client.MESSAGE.code());
 
                 // A picture declaring a huge size is refused; a plausible one is shown.
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(30_000, 24))));
+                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(30_000, 24))));
                 byte[] image = bmp(40, 24);
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(ChatMessages.captchaRequest(image)));
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(ChatMessages.captchaResult(ChatMessages.SOLVED)));
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(ChatMessages.message("x".repeat(500), true)));
+                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(image)));
+                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaResult(ChatMessages.SOLVED)));
+                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.message("x".repeat(500), true)));
 
                 EngineEvent.CaptchaRequested asked = seen.next(EngineEvent.CaptchaRequested.class);
                 assertThat(asked.image()).isEqualTo(image);
                 assertThat(asked.address()).endsWith(":" + peer.getLocalPort());
-                assertThat(asked)
-                        .isEqualTo(
-                                new EngineEvent.CaptchaRequested(
-                                        asked.address(), asked.userHash(), image));
+                assertThat(asked).isEqualTo(new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image));
                 assertThat(asked.hashCode())
                         .isEqualTo(
-                                new EngineEvent.CaptchaRequested(
-                                                asked.address(), asked.userHash(), image)
-                                        .hashCode());
+                                new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image).hashCode());
                 assertThat(asked.toString()).contains("300 bytes");
-                assertThat(seen.next(EngineEvent.CaptchaAnswered.class).solved()).isTrue();
-                assertThat(seen.next(EngineEvent.MessageReceived.class).text())
-                        .hasSize(ChatMessages.MAX_LENGTH);
+                assertThat(seen.next(EngineEvent.CaptchaAnswered.class).solved())
+                        .isTrue();
+                assertThat(seen.next(EngineEvent.MessageReceived.class).text()).hasSize(ChatMessages.MAX_LENGTH);
             }
         }
     }
@@ -186,11 +165,9 @@ class ChatTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             closed = probe.getLocalPort();
         }
-        engine.sendMessage(new ServerAddress("127.0.0.1", closed), "anyone?")
-                .get(5, TimeUnit.SECONDS);
+        engine.sendMessage(new ServerAddress("127.0.0.1", closed), "anyone?").get(5, TimeUnit.SECONDS);
 
-        assertThat(seen.next(EngineEvent.MessageFailed.class).address())
-                .isEqualTo("127.0.0.1:" + closed);
+        assertThat(seen.next(EngineEvent.MessageFailed.class).address()).isEqualTo("127.0.0.1:" + closed);
     }
 
     @Test
@@ -199,11 +176,7 @@ class ChatTest {
         NjMuleEngine engine = this.engine("me");
         engine.addFriend(new Friend(hash, "pal", Optional.of(new ServerAddress("10.0.0.7", 4662))))
                 .get(5, TimeUnit.SECONDS);
-        engine.addFriend(
-                        new Friend(
-                                hash,
-                                "pal again",
-                                Optional.of(new ServerAddress("pal.example", 1))))
+        engine.addFriend(new Friend(hash, "pal again", Optional.of(new ServerAddress("pal.example", 1))))
                 .get(5, TimeUnit.SECONDS);
         engine.close();
 
@@ -229,9 +202,7 @@ class ChatTest {
             try (ServerSocket probe = new ServerSocket(0)) {
                 port = probe.getLocalPort();
             }
-            Files.writeString(
-                    props,
-                    "net.tcpPort=" + port + "\nnet.kad.enabled=false\nuser.nick=" + nick + "\n");
+            Files.writeString(props, "net.tcpPort=" + port + "\nnet.kad.enabled=false\nuser.nick=" + nick + "\n");
         }
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);

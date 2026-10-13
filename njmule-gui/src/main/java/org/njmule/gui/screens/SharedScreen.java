@@ -73,42 +73,28 @@ public final class SharedScreen implements Screen {
         this.table = Fx.table(this.gui.model().sharedFiles(), this.gui.t("nj.shared.none"));
         this.table
                 .getColumns()
-                .addAll(
-                        List.of(
-                                Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SIZE"),
-                                        90,
-                                        SharedFileInfo::size,
-                                        this.gui.formats()::size),
-                                Fx.column(
-                                        this.gui.t("nj.shared.folder"),
-                                        360,
-                                        f -> String.valueOf(f.path().getParent()))));
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name),
+                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size),
+                        Fx.column(
+                                this.gui.t("nj.shared.folder"),
+                                360,
+                                f -> String.valueOf(f.path().getParent()))));
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
         this.table.setContextMenu(new ContextMenu(copy));
         Label count = new Label();
         count.textProperty()
-                .bind(
-                        Bindings.createStringBinding(
-                                () ->
-                                        this.gui.f(
-                                                "IDS_SHAREDFILESCOUNT",
-                                                this.gui.model().sharedFiles().size()),
-                                this.gui.model().sharedFiles().rows()));
-        var tools =
-                Fx.toolRow(
-                        Fx.button(
-                                this.gui.t("IDS_SHAREDIR"),
-                                Material2AL.FOLDER_OPEN,
-                                this::chooseDirectory),
-                        Fx.button(
-                                this.gui.t("nj.copyLink"),
-                                Material2AL.CONTENT_COPY,
-                                this::copyLinks),
-                        Fx.spacer(),
-                        count);
+                .bind(Bindings.createStringBinding(
+                        () -> this.gui.f(
+                                "IDS_SHAREDFILESCOUNT",
+                                this.gui.model().sharedFiles().size()),
+                        this.gui.model().sharedFiles().rows()));
+        var tools = Fx.toolRow(
+                Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory),
+                Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                Fx.spacer(),
+                count);
         return Fx.screen(this.title(), tools, this.table);
     }
 
@@ -129,8 +115,8 @@ public final class SharedScreen implements Screen {
         List<SharedFileInfo> selected = Fx.selected(this.table);
         if (!selected.isEmpty()) {
             ClipboardContent content = new ClipboardContent();
-            content.putString(
-                    String.join("\n", selected.stream().map(f -> f.link().toUri()).toList()));
+            content.putString(String.join(
+                    "\n", selected.stream().map(f -> f.link().toUri()).toList()));
             Clipboard.getSystemClipboard().setContent(content);
         }
     }

@@ -27,8 +27,8 @@ import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 /**
- * Admission control for incoming TCP connections: the IP filter first, then caps on the total and
- * per-address connections and on the accept rate. Thread-safe.
+ * Admission control for incoming TCP connections: the IP filter first, then caps on the total and per-address
+ * connections and on the accept rate. Thread-safe.
  */
 public final class ConnectionGuard {
 
@@ -73,11 +73,10 @@ public final class ConnectionGuard {
     }
 
     /**
-     * @param exempt addresses never held back by the accept rate or the total, such as the server
-     *     testing whether we are reachable: refusing it would leave us with a LowID
+     * @param exempt addresses never held back by the accept rate or the total, such as the server testing whether we
+     *     are reachable: refusing it would leave us with a LowID
      */
-    public ConnectionGuard(
-            Supplier<IpFilter> filter, IntPredicate exempt, Limits limits, Ticker ticker) {
+    public ConnectionGuard(Supplier<IpFilter> filter, IntPredicate exempt, Limits limits, Ticker ticker) {
         this.filter = Objects.requireNonNull(filter, "filter");
         this.exempt = Objects.requireNonNull(exempt, "exempt");
         this.limits = Objects.requireNonNull(limits, "limits");

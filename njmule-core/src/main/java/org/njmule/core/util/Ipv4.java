@@ -21,9 +21,9 @@ import com.google.common.primitives.Ints;
 import java.net.Inet4Address;
 
 /**
- * IPv4 addresses as {@code int}s holding {@code a.b.c.d} as {@code a<<24 | b<<16 | c<<8 | d}. Kad
- * files store this value little-endian; eD2K files store the four bytes in network order, which
- * read as a little-endian u32 gives the byte-swapped value ({@link #fromEd2k}).
+ * IPv4 addresses as {@code int}s holding {@code a.b.c.d} as {@code a<<24 | b<<16 | c<<8 | d}. Kad files store this
+ * value little-endian; eD2K files store the four bytes in network order, which read as a little-endian u32 gives the
+ * byte-swapped value ({@link #fromEd2k}).
  */
 public final class Ipv4 {
 

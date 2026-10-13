@@ -26,10 +26,9 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * A read-only INI file as written by the reference client: case-insensitive sections and keys, the
- * first occurrence of a key winning, spaces around {@code =} ignored, values decoded as UTF-8 when
- * valid and as Windows-1252 otherwise. Booleans are {@code 0}/{@code 1}; the unlimited marker is
- * stored as {@code -1}.
+ * A read-only INI file as written by the reference client: case-insensitive sections and keys, the first occurrence of
+ * a key winning, spaces around {@code =} ignored, values decoded as UTF-8 when valid and as Windows-1252 otherwise.
+ * Booleans are {@code 0}/{@code 1}; the unlimited marker is stored as {@code -1}.
  */
 public final class IniFile {
 
@@ -50,14 +49,10 @@ public final class IniFile {
         sections.put(GLOBAL, current);
         for (String raw : TextFiles.lines(data)) {
             String line = raw.strip();
-            if (line.length() > 2
-                    && line.charAt(0) == '['
-                    && line.charAt(line.length() - 1) == ']') {
+            if (line.length() > 2 && line.charAt(0) == '[' && line.charAt(line.length() - 1) == ']') {
                 String name = line.substring(1, line.length() - 1).strip();
                 String key = name.toLowerCase(Locale.ROOT);
-                current =
-                        sections.computeIfAbsent(
-                                key, k -> new Section(name, new LinkedHashMap<>()));
+                current = sections.computeIfAbsent(key, k -> new Section(name, new LinkedHashMap<>()));
                 continue;
             }
             int eq = line.indexOf('=');
@@ -86,9 +81,7 @@ public final class IniFile {
 
     public Optional<String> get(String section, String key) {
         Section s = this.sections.get(section.toLowerCase(Locale.ROOT));
-        return s == null
-                ? Optional.empty()
-                : Optional.ofNullable(s.values().get(key.toLowerCase(Locale.ROOT)));
+        return s == null ? Optional.empty() : Optional.ofNullable(s.values().get(key.toLowerCase(Locale.ROOT)));
     }
 
     /** A decimal integer, signed; values that do not parse are absent. */

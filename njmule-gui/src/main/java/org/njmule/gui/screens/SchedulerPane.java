@@ -46,8 +46,8 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 
 /**
- * The scheduler's rules: a list, a form for one rule, and saving them to the engine. Empty limit
- * fields leave the preferences' value.
+ * The scheduler's rules: a list, a form for one rule, and saving them to the engine. Empty limit fields leave the
+ * preferences' value.
  */
 final class SchedulerPane extends VBox {
 
@@ -69,44 +69,28 @@ final class SchedulerPane extends VBox {
         this.gui = gui;
         this.rules
                 .getColumns()
-                .addAll(
-                        List.of(
-                                column(gui.t("nj.scheduler.name"), 150, Schedule.Rule::name),
-                                column(gui.t("nj.scheduler.days"), 170, this::dayNames),
-                                column(gui.t("nj.scheduler.from"), 70, r -> r.start().toString()),
-                                column(gui.t("nj.scheduler.to"), 70, r -> r.end().toString()),
-                                column(gui.t("nj.settings.upload"), 90, r -> text(r.uploadKiBps())),
-                                column(
-                                        gui.t("nj.settings.download"),
-                                        90,
-                                        r -> text(r.downloadKiBps())),
-                                column(
-                                        gui.t("nj.scheduler.enabled"),
-                                        70,
-                                        r -> r.enabled() ? "✓" : "")));
+                .addAll(List.of(
+                        column(gui.t("nj.scheduler.name"), 150, Schedule.Rule::name),
+                        column(gui.t("nj.scheduler.days"), 170, this::dayNames),
+                        column(gui.t("nj.scheduler.from"), 70, r -> r.start().toString()),
+                        column(gui.t("nj.scheduler.to"), 70, r -> r.end().toString()),
+                        column(gui.t("nj.settings.upload"), 90, r -> text(r.uploadKiBps())),
+                        column(gui.t("nj.settings.download"), 90, r -> text(r.downloadKiBps())),
+                        column(gui.t("nj.scheduler.enabled"), 70, r -> r.enabled() ? "✓" : "")));
         this.rules.setPrefHeight(160);
         this.rules.setPlaceholder(new Label(gui.t("nj.scheduler.none")));
         this.rules.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        this.rules
-                .getSelectionModel()
-                .selectedItemProperty()
-                .addListener((o, was, now) -> this.edit(now));
+        this.rules.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.edit(now));
         FlowPane dayBoxes = new FlowPane(8, 4);
         for (DayOfWeek day : DayOfWeek.values()) {
-            CheckBox box = new CheckBox(day.getDisplayName(TextStyle.SHORT, gui.i18n().locale()));
+            CheckBox box =
+                    new CheckBox(day.getDisplayName(TextStyle.SHORT, gui.i18n().locale()));
             this.days.put(day, box);
             dayBoxes.getChildren().add(box);
         }
         this.enabled.setText(gui.t("nj.scheduler.enabled"));
         this.enabled.setSelected(true);
-        for (TextField f :
-                List.of(
-                        this.start,
-                        this.end,
-                        this.upload,
-                        this.download,
-                        this.connections,
-                        this.sources)) {
+        for (TextField f : List.of(this.start, this.end, this.upload, this.download, this.connections, this.sources)) {
             f.setPrefColumnCount(6);
         }
         GridPane form = new GridPane();
@@ -123,15 +107,13 @@ final class SchedulerPane extends VBox {
         form.addRow(4, new Label(gui.t("nj.settings.download")), this.download);
         form.addRow(5, new Label(gui.t("IDS_PW_MAXC")), this.connections);
         form.addRow(6, new Label(gui.t("IDS_PW_MAXSOURCES")), this.sources);
-        var tools =
-                Fx.toolRow(
-                        Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add),
-                        Fx.button(
-                                gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace),
-                        Fx.button(gui.t("IDS_REMOVE"), Material2AL.DELETE, this::remove),
-                        Fx.button(gui.t("nj.scheduler.save"), Material2MZ.SAVE, this::save),
-                        Fx.spacer(),
-                        this.active);
+        var tools = Fx.toolRow(
+                Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add),
+                Fx.button(gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace),
+                Fx.button(gui.t("IDS_REMOVE"), Material2AL.DELETE, this::remove),
+                Fx.button(gui.t("nj.scheduler.save"), Material2MZ.SAVE, this::save),
+                Fx.spacer(),
+                this.active);
         this.getChildren().addAll(this.rules, form, tools);
         this.load();
     }
@@ -143,13 +125,12 @@ final class SchedulerPane extends VBox {
     }
 
     private void showActive() {
-        this.active.setText(
-                this.gui
-                        .model()
-                        .engine()
-                        .activeRule()
-                        .map(r -> this.gui.f("nj.scheduler.active", r.name()))
-                        .orElse(this.gui.t("nj.scheduler.inactive")));
+        this.active.setText(this.gui
+                .model()
+                .engine()
+                .activeRule()
+                .map(r -> this.gui.f("nj.scheduler.active", r.name()))
+                .orElse(this.gui.t("nj.scheduler.inactive")));
     }
 
     void add() {
@@ -171,14 +152,10 @@ final class SchedulerPane extends VBox {
     }
 
     void save() {
-        this.gui
-                .model()
-                .updateSchedule(
-                        new Schedule(List.copyOf(this.rules.getItems())),
-                        s -> {
-                            this.showActive();
-                            this.gui.inform().accept(this.gui.t("nj.settings.saved"));
-                        });
+        this.gui.model().updateSchedule(new Schedule(List.copyOf(this.rules.getItems())), s -> {
+            this.showActive();
+            this.gui.inform().accept(this.gui.t("nj.settings.saved"));
+        });
     }
 
     private void edit(Schedule.Rule rule) {
@@ -199,24 +176,22 @@ final class SchedulerPane extends VBox {
     /** The rule of the form; a message and nothing when it is not valid. */
     Optional<Schedule.Rule> read() {
         Set<DayOfWeek> chosen = EnumSet.noneOf(DayOfWeek.class);
-        this.days.forEach(
-                (day, box) -> {
-                    if (box.isSelected()) {
-                        chosen.add(day);
-                    }
-                });
+        this.days.forEach((day, box) -> {
+            if (box.isSelected()) {
+                chosen.add(day);
+            }
+        });
         try {
-            return Optional.of(
-                    new Schedule.Rule(
-                            this.name.getText(),
-                            this.enabled.isSelected(),
-                            chosen,
-                            LocalTime.parse(this.start.getText().strip()),
-                            LocalTime.parse(this.end.getText().strip()),
-                            number(this.upload),
-                            number(this.download),
-                            number(this.connections),
-                            number(this.sources)));
+            return Optional.of(new Schedule.Rule(
+                    this.name.getText(),
+                    this.enabled.isSelected(),
+                    chosen,
+                    LocalTime.parse(this.start.getText().strip()),
+                    LocalTime.parse(this.end.getText().strip()),
+                    number(this.upload),
+                    number(this.download),
+                    number(this.connections),
+                    number(this.sources)));
         } catch (IllegalArgumentException | DateTimeException e) {
             this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return Optional.empty();

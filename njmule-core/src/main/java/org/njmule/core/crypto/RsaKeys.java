@@ -39,9 +39,8 @@ import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.protocol.io.DecodeException;
 
 /**
- * DER encodings of RSA keys: public keys as X.509 SubjectPublicKeyInfo (what peers exchange, at
- * most 80 bytes for 384-bit keys), private keys as PKCS#8 (PKCS#1 is accepted too), and the Base64
- * key file {@code cryptkey.dat}.
+ * DER encodings of RSA keys: public keys as X.509 SubjectPublicKeyInfo (what peers exchange, at most 80 bytes for
+ * 384-bit keys), private keys as PKCS#8 (PKCS#1 is accepted too), and the Base64 key file {@code cryptkey.dat}.
  */
 public final class RsaKeys {
 
@@ -84,8 +83,7 @@ public final class RsaKeys {
 
     public static byte[] encodePrivate(PrivateKey key) {
         try {
-            return PrivateKeyInfoFactory.createPrivateKeyInfo(key.parameters())
-                    .getEncoded(ASN1Encoding.DER);
+            return PrivateKeyInfoFactory.createPrivateKeyInfo(key.parameters()).getEncoded(ASN1Encoding.DER);
         } catch (IOException e) {
             throw new IllegalStateException("cannot encode an RSA private key", e);
         }

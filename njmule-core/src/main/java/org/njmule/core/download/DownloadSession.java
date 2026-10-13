@@ -52,16 +52,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * One source of one download: the connection, the file request, the place in the source's upload
- * queue and the transfer of blocks. Engine thread only; connection callbacks are posted to it.
+ * One source of one download: the connection, the file request, the place in the source's upload queue and the transfer
+ * of blocks. Engine thread only; connection callbacks are posted to it.
  */
 final class DownloadSession {
 
     /** What a session reports, on the engine thread. */
     interface Listener {
         /**
-         * The source sent us data that reached the download: {@code bytes} of the file, carried in
-         * {@code transferred} bytes (compressed or not).
+         * The source sent us data that reached the download: {@code bytes} of the file, carried in {@code transferred}
+         * bytes (compressed or not).
          */
         void received(DownloadSession session, int bytes, int transferred);
 
@@ -106,8 +106,8 @@ final class DownloadSession {
     static final Duration DATA_TIMEOUT = Duration.ofSeconds(100);
 
     /**
-     * A slot is kept this long with nothing to ask, while the data in flight is written and
-     * checked: a corrupt part is asked again.
+     * A slot is kept this long with nothing to ask, while the data in flight is written and checked: a corrupt part is
+     * asked again.
      */
     static final Duration IDLE_SLOT = Duration.ofSeconds(30);
 
@@ -223,51 +223,37 @@ final class DownloadSession {
 
     /** Connects to the source, obfuscated with its user hash when known, and says hello. */
     void connect(Optional<Hash16> obfuscateFor, SecureRandom random) {
-        Thread.ofVirtual()
-                .name("njmule-download-" + this.address)
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection opened =
-                                        TcpConnector.connectToClient(
-                                                this.address,
-                                                obfuscateFor,
-                                                HANDSHAKE_TIMEOUT,
-                                                random);
-                                if (!this.loop.post(() -> this.opened(opened))) {
-                                    opened.close();
-                                }
-                            } catch (IOException e) {
-                                this.loop.post(
-                                        () ->
-                                                this.end(
-                                                        Outcome.UNREACHABLE,
-                                                        "cannot connect: " + e.getMessage()));
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-download-" + this.address).start(() -> {
+            try {
+                TcpConnection opened =
+                        TcpConnector.connectToClient(this.address, obfuscateFor, HANDSHAKE_TIMEOUT, random);
+                if (!this.loop.post(() -> this.opened(opened))) {
+                    opened.close();
+                }
+            } catch (IOException e) {
+                this.loop.post(() -> this.end(Outcome.UNREACHABLE, "cannot connect: " + e.getMessage()));
+            }
+        });
     }
 
     /**
-     * Takes over a connection the source opened after we greeted each other, as a source does when
-     * it has a slot for us; returns the handler for the rest of the connection.
+     * Takes over a connection the source opened after we greeted each other, as a source does when it has a slot for
+     * us; returns the handler for the rest of the connection.
      */
     TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts) {
         return this.adopt(incoming, peer, knownParts, true);
     }
 
     /**
-     * As above; {@code slotOffered} is false for a firewalled source that connected because we
-     * asked it to through the server, which still has to be asked for an upload.
+     * As above; {@code slotOffered} is false for a firewalled source that connected because we asked it to through the
+     * server, which still has to be asked for an upload.
      */
-    TcpConnection.Handler adopt(
-            TcpConnection incoming, Hello peer, Optional<BitSet> knownParts, boolean slotOffered) {
+    TcpConnection.Handler adopt(TcpConnection incoming, Hello peer, Optional<BitSet> knownParts, boolean slotOffered) {
         this.connection = incoming;
         this.peer = Optional.of(peer);
         this.peerHash = Optional.of(peer.userHash());
         this.identity =
-                Optional.of(
-                        this.identities.start(
-                                peer, incoming.remoteAddress().getAddress(), incoming::send));
+                Optional.of(this.identities.start(peer, incoming.remoteAddress().getAddress(), incoming::send));
         this.state = State.QUEUED;
         this.uploadRequested = slotOffered;
         knownParts.ifPresentOrElse(this::setParts, this::requestFile);
@@ -277,8 +263,7 @@ final class DownloadSession {
     /** Ends the session; a source that gave us a slot is told we leave it. */
     void close(String reason) {
         if (this.state == State.DOWNLOADING && this.connection != null) {
-            this.connection.send(
-                    Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
+            this.connection.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
         }
         this.end(Outcome.LATER, reason);
     }
@@ -311,12 +296,10 @@ final class DownloadSession {
             @Override
             public void onPacket(TcpConnection c, Packet packet) {
                 // The next frame is read right after this returns: lift the handshake limit here.
-                if (packet.protocol() == Protocol.EDONKEY
-                        && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                     c.setFrameLimit(FrameLimits.CLIENT);
                 }
-                if (!DownloadSession.this.loop.post(
-                        () -> DownloadSession.this.received(mine, packet))) {
+                if (!DownloadSession.this.loop.post(() -> DownloadSession.this.received(mine, packet))) {
                     c.close();
                 }
             }
@@ -324,9 +307,7 @@ final class DownloadSession {
             @Override
             public void onClosed(TcpConnection c, Optional<IOException> cause) {
                 DownloadSession.this.loop.post(
-                        () ->
-                                DownloadSession.this.closed(
-                                        mine, cause.map(IOException::getMessage)));
+                        () -> DownloadSession.this.closed(mine, cause.map(IOException::getMessage)));
             }
         };
     }
@@ -367,12 +348,8 @@ final class DownloadSession {
                     this.peer = Optional.of(peer);
                     this.peerHash = Optional.of(peer.userHash());
                     // As the side that connected, we ask for the identification first.
-                    this.identity =
-                            Optional.of(
-                                    this.identities.start(
-                                            peer,
-                                            this.connection.remoteAddress().getAddress(),
-                                            this.connection::send));
+                    this.identity = Optional.of(this.identities.start(
+                            peer, this.connection.remoteAddress().getAddress(), this.connection::send));
                     this.state = State.REQUESTING;
                     this.requestFile();
                 }
@@ -412,8 +389,7 @@ final class DownloadSession {
         switch (opcode.get()) {
             case QUEUERANKING -> this.queued((int) ClientMessages.decodeQueueRank(packet));
             case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
-            case COMPRESSEDPART, COMPRESSEDPART_I64 ->
-                    this.compressed(ClientMessages.CompressedPart.decode(packet));
+            case COMPRESSEDPART, COMPRESSEDPART_I64 -> this.compressed(ClientMessages.CompressedPart.decode(packet));
             case ANSWERSOURCES2 -> {
                 SourceExchange.Answer answer = SourceExchange.Answer.decode(packet);
                 // Only answers we asked for, about this file.
@@ -435,10 +411,9 @@ final class DownloadSession {
         if (!this.download.file().hasHashSet()) {
             this.connection.send(ClientMessages.forFile(Opcodes.Client.HASHSETREQUEST, file));
         }
-        boolean exchanges =
-                this.peer
-                        .map(p -> (p.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0)
-                        .orElse(false);
+        boolean exchanges = this.peer
+                .map(p -> (p.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0)
+                .orElse(false);
         if (exchanges && this.listener.maySourcesBeAsked(this)) {
             this.sourcesAsked = true;
             this.connection.send(SourceExchange.request(file));
@@ -460,8 +435,7 @@ final class DownloadSession {
             this.uploadRequested = true;
             this.state = State.QUEUED;
             this.setReadTimeout(QUEUED_TIMEOUT);
-            this.connection.send(
-                    ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
+            this.connection.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
         }
         this.startDownloading();
     }
@@ -500,20 +474,15 @@ final class DownloadSession {
             return;
         }
         int wanted = ClientMessages.BLOCKS_PER_REQUEST - this.pending.size();
-        List<PartFile.Block> next =
-                wanted > 0 ? this.download.file().nextBlocks(this.sourceParts, wanted) : List.of();
+        List<PartFile.Block> next = wanted > 0 ? this.download.file().nextBlocks(this.sourceParts, wanted) : List.of();
         if (next.isEmpty()) {
             if (this.pending.isEmpty() && this.idle == null) {
-                this.idle =
-                        this.loop.schedule(
-                                "idle download slot",
-                                IDLE_SLOT,
-                                () -> {
-                                    this.idle = null;
-                                    if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
-                                        this.close("nothing more to download from this source");
-                                    }
-                                });
+                this.idle = this.loop.schedule("idle download slot", IDLE_SLOT, () -> {
+                    this.idle = null;
+                    if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
+                        this.close("nothing more to download from this source");
+                    }
+                });
             }
             return;
         }
@@ -528,8 +497,7 @@ final class DownloadSession {
         while (ranges.size() < ClientMessages.BLOCKS_PER_REQUEST) {
             ranges.add(new ClientMessages.Range(0, 0));
         }
-        this.connection.send(
-                new ClientMessages.RequestParts(this.download.hash(), ranges).encode(wide));
+        this.connection.send(new ClientMessages.RequestParts(this.download.hash(), ranges).encode(wide));
     }
 
     private void data(ClientMessages.SendingPart part) {
@@ -541,14 +509,11 @@ final class DownloadSession {
 
     private void compressed(ClientMessages.CompressedPart part) throws DecodeException {
         Pending block = this.pending.get(part.blockStart());
-        if (this.state != State.DOWNLOADING
-                || block == null
-                || !part.file().equals(this.download.hash())) {
+        if (this.state != State.DOWNLOADING || block == null || !part.file().equals(this.download.hash())) {
             return;
         }
         if (block.inflater == null) {
-            block.inflater =
-                    new BlockInflater(block.block.start(), Math.toIntExact(block.block.length()));
+            block.inflater = new BlockInflater(block.block.start(), Math.toIntExact(block.block.length()));
         }
         long position = block.inflater.position();
         byte[] chunk = part.chunk();
@@ -600,13 +565,14 @@ final class DownloadSession {
             return;
         }
         // A queued source keeps our place when the idle connection closes; a lost slot is gone.
-        Outcome outcome =
-                switch (this.state) {
-                    case QUEUED -> Outcome.QUEUED;
-                    case DOWNLOADING -> Outcome.LATER;
-                    default -> Outcome.UNREACHABLE;
-                };
-        this.end(outcome, "the connection closed" + cause.map(c -> " (" + c + ")").orElse(""));
+        Outcome outcome = switch (this.state) {
+            case QUEUED -> Outcome.QUEUED;
+            case DOWNLOADING -> Outcome.LATER;
+            default -> Outcome.UNREACHABLE;
+        };
+        this.end(
+                outcome,
+                "the connection closed" + cause.map(c -> " (" + c + ")").orElse(""));
     }
 
     private void end(Outcome outcome, String reason) {

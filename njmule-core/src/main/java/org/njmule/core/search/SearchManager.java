@@ -51,10 +51,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Searches on the eD2K servers: the connected server first over TCP, then, for global searches, the
- * other known servers over UDP, one every {@link #GLOBAL_INTERVAL}. Results with the same hash are
- * merged and their sources add up. UDP answers count only from servers this search asked. Used on
- * the engine thread only.
+ * Searches on the eD2K servers: the connected server first over TCP, then, for global searches, the other known servers
+ * over UDP, one every {@link #GLOBAL_INTERVAL}. Results with the same hash are merged and their sources add up. UDP
+ * answers count only from servers this search asked. Used on the engine thread only.
  */
 public final class SearchManager {
 
@@ -86,8 +85,8 @@ public final class SearchManager {
     /** Kad, when it runs. */
     public interface KadSearches {
         /**
-         * Looks for files under {@code keyword}, filtered by {@code expression}; returns {@code
-         * false} when Kad cannot search for it now.
+         * Looks for files under {@code keyword}, filtered by {@code expression}; returns {@code false} when Kad cannot
+         * search for it now.
          */
         boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
     }
@@ -132,16 +131,13 @@ public final class SearchManager {
             return this.startKad(request, expression);
         }
         ServerMessages.IdChange id =
-                this.session
-                        .id()
-                        .orElseThrow(() -> new IllegalStateException("not connected to a server"));
+                this.session.id().orElseThrow(() -> new IllegalStateException("not connected to a server"));
         if (this.awaitingServer != null) {
             this.end(this.awaitingServer);
         }
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         this.searches.put(search.id, search);
-        this.session.send(
-                ServerMessages.searchRequest(expression, id.has(ServerMessages.TCP_LARGEFILES)));
+        this.session.send(ServerMessages.searchRequest(expression, id.has(ServerMessages.TCP_LARGEFILES)));
         this.waitForServer(search);
         return search.id;
     }
@@ -149,19 +145,14 @@ public final class SearchManager {
     // The longest word of the expression is the keyword looked up, as short common words land on
     // overloaded nodes; the whole expression filters.
     private SearchId startKad(SearchRequest request, SearchExpr expression) {
-        KadSearches searches =
-                this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
+        KadSearches searches = this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
         String keyword = kadKeyword(request.expression());
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
-        boolean started =
-                searches.search(
-                        keyword,
-                        expression,
-                        results -> {
-                            if (!search.ended) {
-                                this.mergeResults(search, results);
-                            }
-                        });
+        boolean started = searches.search(keyword, expression, results -> {
+            if (!search.ended) {
+                this.mergeResults(search, results);
+            }
+        });
         if (!started) {
             throw new IllegalStateException("Kad cannot search for \"" + keyword + "\" now");
         }
@@ -176,9 +167,7 @@ public final class SearchManager {
         for (String token : expression.strip().split("\\s+", -1)) {
             String word = token.replace("\"", "").replace("(", "").replace(")", "");
             boolean operator =
-                    word.equalsIgnoreCase("AND")
-                            || word.equalsIgnoreCase("OR")
-                            || word.equalsIgnoreCase("NOT");
+                    word.equalsIgnoreCase("AND") || word.equalsIgnoreCase("OR") || word.equalsIgnoreCase("NOT");
             if (operator || word.startsWith("@") || word.matches(".*[=<>].*")) {
                 continue;
             }
@@ -248,9 +237,7 @@ public final class SearchManager {
 
     private void waitForServer(Search search) {
         this.awaitingServer = search;
-        search.serverTimer =
-                this.loop.schedule(
-                        "search server wait", SERVER_WAIT, () -> this.serverSilent(search));
+        search.serverTimer = this.loop.schedule("search server wait", SERVER_WAIT, () -> this.serverSilent(search));
     }
 
     private void serverSilent(Search search) {
@@ -282,12 +269,8 @@ public final class SearchManager {
             this.end(search);
             return;
         }
-        search.udpTimer =
-                this.loop.scheduleRepeating(
-                        "global search",
-                        Duration.ZERO,
-                        GLOBAL_INTERVAL,
-                        () -> this.queryNext(search));
+        search.udpTimer = this.loop.scheduleRepeating(
+                "global search", Duration.ZERO, GLOBAL_INTERVAL, () -> this.queryNext(search));
     }
 
     private void queryNext(Search search) {
@@ -301,14 +284,13 @@ public final class SearchManager {
             return;
         }
         ServerMet.Server server = search.udpQueue.poll();
-        Optional<Packet> request =
-                ServerDatagrams.searchRequest(search.expression, (int) server.udpFlags().orElse(0));
+        Optional<Packet> request = ServerDatagrams.searchRequest(
+                search.expression, (int) server.udpFlags().orElse(0));
         if (request.isEmpty()) {
             return;
         }
         InetSocketAddress address =
-                new InetSocketAddress(
-                        Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+                new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
         try {
             socket.get().send(address, request.get());
             search.askedOverUdp.add(server.ip());
@@ -324,14 +306,13 @@ public final class SearchManager {
             if (name.isEmpty() || file.size().isEmpty()) {
                 continue;
             }
-            found.add(
-                    new SearchResult(
-                            file.hash(),
-                            name.get(),
-                            file.size().getAsLong(),
-                            file.sources(),
-                            file.completeSources(),
-                            file.type()));
+            found.add(new SearchResult(
+                    file.hash(),
+                    name.get(),
+                    file.size().getAsLong(),
+                    file.sources(),
+                    file.completeSources(),
+                    file.type()));
         }
         this.mergeResults(search, found);
     }
@@ -343,16 +324,15 @@ public final class SearchManager {
                 continue;
             }
             SearchResult known = search.results.get(file.hash());
-            SearchResult merged =
-                    known == null
-                            ? file
-                            : new SearchResult(
-                                    known.hash(),
-                                    known.name(),
-                                    known.size(),
-                                    saturatedAdd(known.sources(), file.sources()),
-                                    saturatedAdd(known.completeSources(), file.completeSources()),
-                                    known.type().or(file::type));
+            SearchResult merged = known == null
+                    ? file
+                    : new SearchResult(
+                            known.hash(),
+                            known.name(),
+                            known.size(),
+                            saturatedAdd(known.sources(), file.sources()),
+                            saturatedAdd(known.completeSources(), file.completeSources()),
+                            known.type().or(file::type));
             search.results.put(file.hash(), merged);
             changed.add(merged);
         }

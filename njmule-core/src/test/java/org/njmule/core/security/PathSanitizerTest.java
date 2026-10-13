@@ -30,7 +30,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class PathSanitizerTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @ParameterizedTest
     @CsvSource(
@@ -61,8 +62,7 @@ class PathSanitizerTest {
         String name = PathSanitizer.fileName("è".repeat(300) + ".mkv");
 
         assertThat(name).endsWith(".mkv");
-        assertThat(name.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+        assertThat(name.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
     }
 
     @Test
@@ -70,8 +70,7 @@ class PathSanitizerTest {
         Files.createFile(this.dir.resolve("file.iso"));
         Files.createFile(this.dir.resolve("file (2).iso"));
 
-        assertThat(PathSanitizer.unique(this.dir, "file.iso"))
-                .isEqualTo(this.dir.resolve("file (3).iso"));
+        assertThat(PathSanitizer.unique(this.dir, "file.iso")).isEqualTo(this.dir.resolve("file (3).iso"));
         assertThat(PathSanitizer.resolveInside(this.dir, "../x").getParent())
                 .isEqualTo(this.dir.toAbsolutePath().normalize());
     }

@@ -22,8 +22,8 @@ import java.util.zip.Inflater;
 import org.njmule.core.protocol.io.DecodeException;
 
 /**
- * Inflates the zlib stream of one compressed block as its chunks arrive. The output may not grow
- * beyond the block that was requested, so a small stream cannot claim large amounts of memory.
+ * Inflates the zlib stream of one compressed block as its chunks arrive. The output may not grow beyond the block that
+ * was requested, so a small stream cannot claim large amounts of memory.
  */
 final class BlockInflater implements AutoCloseable {
 
@@ -71,9 +71,7 @@ final class BlockInflater implements AutoCloseable {
                 this.produced += n;
                 if (this.produced > this.maxOutput) {
                     throw new DecodeException(
-                            "compressed block inflates beyond the "
-                                    + this.maxOutput
-                                    + " bytes requested");
+                            "compressed block inflates beyond the " + this.maxOutput + " bytes requested");
                 }
                 out.write(this.chunk, 0, n);
             }

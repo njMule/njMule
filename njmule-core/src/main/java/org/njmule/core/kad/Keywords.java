@@ -22,8 +22,8 @@ import java.util.List;
 import org.njmule.core.files.hash.Ed2k;
 
 /**
- * The keywords Kad indexes a file name under, and their ids: words of at least three bytes, in the
- * network's fixed lower case, without the extension; the id is the MD4 hash of the word in UTF-8.
+ * The keywords Kad indexes a file name under, and their ids: words of at least three bytes, in the network's fixed
+ * lower case, without the extension; the id is the MD4 hash of the word in UTF-8.
  */
 public final class Keywords {
 
@@ -51,9 +51,7 @@ public final class Keywords {
             }
         }
         // A last part of three single-byte characters is taken for the extension.
-        if (words.size() > 1
-                && last.length() == 3
-                && last.getBytes(StandardCharsets.UTF_8).length == 3) {
+        if (words.size() > 1 && last.length() == 3 && last.getBytes(StandardCharsets.UTF_8).length == 3) {
             words.removeLast();
         }
         return words;

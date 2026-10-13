@@ -29,13 +29,12 @@ class IpFilterTest {
 
     @Test
     void blocksOnlyRangesBelowTheLevel() {
-        IpFilter filter =
-                IpFilter.of(
-                        List.of(
-                                range("10.0.0.0", "10.255.255.255", 0, "private"),
-                                range("20.0.0.0", "20.0.0.255", 127, "allowed"),
-                                range("200.1.2.0", "200.1.2.255", 100, "high")),
-                        IpFilter.DEFAULT_LEVEL);
+        IpFilter filter = IpFilter.of(
+                List.of(
+                        range("10.0.0.0", "10.255.255.255", 0, "private"),
+                        range("20.0.0.0", "20.0.0.255", 127, "allowed"),
+                        range("200.1.2.0", "200.1.2.255", 100, "high")),
+                IpFilter.DEFAULT_LEVEL);
 
         assertThat(filter.blocks(Ipv4.parse("10.1.2.3"))).isTrue();
         assertThat(filter.match(Ipv4.parse("10.255.255.255"))).contains("private");
@@ -48,14 +47,13 @@ class IpFilterTest {
 
     @Test
     void laterRangesWinWhereTheyOverlap() {
-        IpFilter filter =
-                IpFilter.of(
-                        List.of(
-                                range("1.0.0.10", "1.0.0.20", 0, "b"),
-                                range("1.0.0.0", "1.0.0.15", 0, "a"),
-                                range("1.0.0.21", "1.0.0.30", 50, "c"),
-                                range("1.0.0.40", "1.0.0.50", 0, "d")),
-                        IpFilter.DEFAULT_LEVEL);
+        IpFilter filter = IpFilter.of(
+                List.of(
+                        range("1.0.0.10", "1.0.0.20", 0, "b"),
+                        range("1.0.0.0", "1.0.0.15", 0, "a"),
+                        range("1.0.0.21", "1.0.0.30", 50, "c"),
+                        range("1.0.0.40", "1.0.0.50", 0, "d")),
+                IpFilter.DEFAULT_LEVEL);
 
         assertThat(filter.rangeCount()).isEqualTo(4);
         assertThat(filter.match(Ipv4.parse("1.0.0.12"))).contains("a");
@@ -76,13 +74,11 @@ class IpFilterTest {
 
     @Test
     void readsAnIpFilterDatFile() {
-        byte[] dat =
-                """
+        byte[] dat = """
                 # comment
                 001.002.003.000 - 001.002.003.255 , 000 , test range
                 009.009.009.009 - 009.009.009.009 , 200 , harmless
-                """
-                        .getBytes(StandardCharsets.US_ASCII);
+                """.getBytes(StandardCharsets.US_ASCII);
 
         IpFilter filter = IpFilter.of(IpFilterDat.read(dat, "ipfilter.dat"), 127);
 

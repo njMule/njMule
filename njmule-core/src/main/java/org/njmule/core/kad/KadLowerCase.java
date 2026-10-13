@@ -19,9 +19,8 @@ package org.njmule.core.kad;
 import java.util.Arrays;
 
 /**
- * The fixed lower-case mapping Kad nodes apply to keywords before hashing them: a table of UTF-16
- * code units frozen in 2008, which differs from current Unicode for about 300 units, so keyword ids
- * stay the same across the network.
+ * The fixed lower-case mapping Kad nodes apply to keywords before hashing them: a table of UTF-16 code units frozen in
+ * 2008, which differs from current Unicode for about 300 units, so keyword ids stay the same across the network.
  */
 final class KadLowerCase {
 

@@ -48,26 +48,23 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 /**
- * An Internet gateway device found with UPnP: discovery over SSDP, its description, and the WAN
- * connection service's port mappings over SOAP. Blocking; run it off the engine thread. A gateway
- * is only believed when it describes itself from its own LAN address.
+ * An Internet gateway device found with UPnP: discovery over SSDP, its description, and the WAN connection service's
+ * port mappings over SOAP. Blocking; run it off the engine thread. A gateway is only believed when it describes itself
+ * from its own LAN address.
  */
 public final class Igd implements AutoCloseable {
 
     /** Where gateways listen for discovery. */
-    public static final InetSocketAddress SSDP =
-            new InetSocketAddress(InetAddress.ofLiteral("239.255.255.250"), 1900);
+    public static final InetSocketAddress SSDP = new InetSocketAddress(InetAddress.ofLiteral("239.255.255.250"), 1900);
 
     private static final Logger logger = LoggerFactory.getLogger(Igd.class);
     private static final int MAX_DESCRIPTION = 256 * 1024;
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
     private static final String[] DEVICES = {
-        "urn:schemas-upnp-org:device:InternetGatewayDevice:2",
-        "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+        "urn:schemas-upnp-org:device:InternetGatewayDevice:2", "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
     };
     private static final String[] SERVICES = {
-        "urn:schemas-upnp-org:service:WANIPConnection:",
-        "urn:schemas-upnp-org:service:WANPPPConnection:"
+        "urn:schemas-upnp-org:service:WANIPConnection:", "urn:schemas-upnp-org:service:WANPPPConnection:"
     };
 
     private final URI control;
@@ -83,14 +80,12 @@ public final class Igd implements AutoCloseable {
     }
 
     /** Asks {@code target} (normally {@link #SSDP}) for a gateway and waits up to {@code wait}. */
-    public static Optional<Igd> discover(InetSocketAddress target, Duration wait)
-            throws IOException {
-        HttpClient http =
-                HttpClient.newBuilder()
-                        .connectTimeout(HTTP_TIMEOUT)
-                        .followRedirects(HttpClient.Redirect.NEVER)
-                        .proxy(ProxySelector.of(null))
-                        .build();
+    public static Optional<Igd> discover(InetSocketAddress target, Duration wait) throws IOException {
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(HTTP_TIMEOUT)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .proxy(ProxySelector.of(null))
+                .build();
         Set<URI> seen = new LinkedHashSet<>();
         boolean found = false;
         try (DatagramSocket socket = new DatagramSocket()) {
@@ -110,20 +105,12 @@ public final class Igd implements AutoCloseable {
                     break;
                 }
                 Optional<URI> location =
-                        location(
-                                new String(
-                                        answer.getData(),
-                                        0,
-                                        answer.getLength(),
-                                        StandardCharsets.ISO_8859_1));
+                        location(new String(answer.getData(), 0, answer.getLength(), StandardCharsets.ISO_8859_1));
                 if (location.isEmpty() || !seen.add(location.get())) {
                     continue;
                 }
                 if (!trusted(location.get(), answer.getAddress())) {
-                    logger.debug(
-                            "UPnP: ignoring {} announced by {}",
-                            location.get(),
-                            answer.getAddress());
+                    logger.debug("UPnP: ignoring {} announced by {}", location.get(), answer.getAddress());
                     continue;
                 }
                 Optional<Igd> gateway = describe(location.get(), http);
@@ -187,29 +174,26 @@ public final class Igd implements AutoCloseable {
     }
 
     private boolean call(String action, String arguments) throws IOException {
-        String body =
-                "<?xml version=\"1.0\"?>"
-                        + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\""
-                        + " s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
-                        + "<s:Body><u:"
-                        + action
-                        + " xmlns:u=\""
-                        + this.service
-                        + "\">"
-                        + arguments
-                        + "</u:"
-                        + action
-                        + "></s:Body></s:Envelope>";
-        HttpRequest request =
-                HttpRequest.newBuilder(this.control)
-                        .timeout(HTTP_TIMEOUT)
-                        .header("Content-Type", "text/xml; charset=\"utf-8\"")
-                        .header("SOAPAction", "\"" + this.service + "#" + action + "\"")
-                        .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                        .build();
+        String body = "<?xml version=\"1.0\"?>"
+                + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\""
+                + " s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
+                + "<s:Body><u:"
+                + action
+                + " xmlns:u=\""
+                + this.service
+                + "\">"
+                + arguments
+                + "</u:"
+                + action
+                + "></s:Body></s:Envelope>";
+        HttpRequest request = HttpRequest.newBuilder(this.control)
+                .timeout(HTTP_TIMEOUT)
+                .header("Content-Type", "text/xml; charset=\"utf-8\"")
+                .header("SOAPAction", "\"" + this.service + "#" + action + "\"")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
         try {
-            HttpResponse<String> response =
-                    this.http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = this.http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 logger.debug("UPnP {} refused: {}", action, response.statusCode());
                 return false;
@@ -222,11 +206,11 @@ public final class Igd implements AutoCloseable {
     }
 
     private static Optional<Igd> describe(URI location, HttpClient http) throws IOException {
-        HttpRequest request = HttpRequest.newBuilder(location).timeout(HTTP_TIMEOUT).GET().build();
+        HttpRequest request =
+                HttpRequest.newBuilder(location).timeout(HTTP_TIMEOUT).GET().build();
         byte[] xml;
         try {
-            HttpResponse<byte[]> response =
-                    http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != 200 || response.body().length > MAX_DESCRIPTION) {
                 return Optional.empty();
             }
@@ -278,9 +262,7 @@ public final class Igd implements AutoCloseable {
         try {
             InetAddress host = InetAddress.ofLiteral(uri.getHost());
             return host.equals(responder)
-                    && (host.isSiteLocalAddress()
-                            || host.isLinkLocalAddress()
-                            || host.isLoopbackAddress());
+                    && (host.isSiteLocalAddress() || host.isLinkLocalAddress() || host.isLoopbackAddress());
         } catch (IllegalArgumentException e) {
             return false;
         }

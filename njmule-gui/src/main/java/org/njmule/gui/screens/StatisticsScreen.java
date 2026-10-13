@@ -80,32 +80,30 @@ public final class StatisticsScreen implements Screen {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
         RateGraph graph = new RateGraph(this.gui.model().rates(), downSwatch, upSwatch);
-        HBox legend =
-                new HBox(
-                        8,
-                        downSwatch,
-                        new Label(this.gui.t("IDS_PW_CON_DOWNLBL")),
-                        upSwatch,
-                        new Label(this.gui.t("IDS_PW_CON_UPLBL")),
-                        Fx.spacer(),
-                        new Label(this.gui.f("nj.stats.span", RateGraph.SPAN / 60)));
+        HBox legend = new HBox(
+                8,
+                downSwatch,
+                new Label(this.gui.t("IDS_PW_CON_DOWNLBL")),
+                upSwatch,
+                new Label(this.gui.t("IDS_PW_CON_UPLBL")),
+                Fx.spacer(),
+                new Label(this.gui.f("nj.stats.span", RateGraph.SPAN / 60)));
         legend.setAlignment(Pos.CENTER_LEFT);
-        FlowPane cards =
-                new FlowPane(
-                        12,
-                        12,
-                        KadScreen.card(this.gui.t("nj.stats.downRate"), this.downRate),
-                        KadScreen.card(this.gui.t("nj.stats.upRate"), this.upRate),
-                        KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
-                        KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
-                        KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
-                        KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
-                        KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
-                        KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared),
-                        KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
-                        KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
-                        KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions),
-                        KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
+        FlowPane cards = new FlowPane(
+                12,
+                12,
+                KadScreen.card(this.gui.t("nj.stats.downRate"), this.downRate),
+                KadScreen.card(this.gui.t("nj.stats.upRate"), this.upRate),
+                KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
+                KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
+                KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
+                KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
+                KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
+                KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared),
+                KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
+                KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
+                KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions),
+                KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         return Fx.screen(this.title(), Fx.toolRow(), new VBox(10, graph, legend, cards));
@@ -124,8 +122,7 @@ public final class StatisticsScreen implements Screen {
         this.totalDown.setText(formats.size(s.totalDownloaded()));
         this.totalUp.setText(formats.size(s.totalUploaded()));
         this.sessions.setText(formats.count(s.sessions()));
-        this.runtime.setText(
-                formats.duration(s.sessionSeconds()) + " / " + formats.duration(s.totalSeconds()));
+        this.runtime.setText(formats.duration(s.sessionSeconds()) + " / " + formats.duration(s.totalSeconds()));
     }
 
     Label downloadedLabel() {

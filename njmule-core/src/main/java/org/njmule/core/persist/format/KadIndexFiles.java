@@ -29,9 +29,9 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
 
 /**
- * The Kad index a node keeps for others: {@code load_index.dat} (publish load per key), {@code
- * src_index.dat} (sources per file) and {@code key_index.dat} (files per keyword, with publish
- * tracking). Each file starts with a version and a time; entries carry their own lifetime.
+ * The Kad index a node keeps for others: {@code load_index.dat} (publish load per key), {@code src_index.dat} (sources
+ * per file) and {@code key_index.dat} (files per keyword, with publish tracking). Each file starts with a version and a
+ * time; entries carry their own lifetime.
  */
 public final class KadIndexFiles {
 
@@ -80,8 +80,7 @@ public final class KadIndexFiles {
     /** A publisher; {@code aichIndex} points into {@link Tracking#aichHashes} or is 0xFFFF. */
     public record Publisher(int ip, long time, int aichIndex) {}
 
-    public record Tracking(
-            List<Hash20> aichHashes, List<PublishedName> names, List<Publisher> publishers) {
+    public record Tracking(List<Hash20> aichHashes, List<PublishedName> names, List<Publisher> publishers) {
         public static final Tracking NONE = new Tracking(List.of(), List.of(), List.of());
 
         public Tracking {

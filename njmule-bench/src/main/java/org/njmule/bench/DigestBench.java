@@ -33,9 +33,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 
-/**
- * Single-thread throughput of the per-byte primitives; one operation is 1 MiB, so ops/s = MiB/s.
- */
+/** Single-thread throughput of the per-byte primitives; one operation is 1 MiB, so ops/s = MiB/s. */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)

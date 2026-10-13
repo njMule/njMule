@@ -12,7 +12,7 @@ indent_style = space
 indent_size = 4
 
 [*.java]
-max_line_length = 100
+max_line_length = 120
 
 # cmd.exe mis-parses labels in batch files with LF endings: the only CRLF exception.
 [*.{cmd,bat}]

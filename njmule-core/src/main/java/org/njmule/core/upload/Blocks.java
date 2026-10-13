@@ -67,8 +67,8 @@ final class Blocks {
     }
 
     /**
-     * The packets carrying {@code data} of {@code file} from {@code start}: zlib-compressed when
-     * asked and smaller, 64-bit offsets when the block ends above 4 GB.
+     * The packets carrying {@code data} of {@code file} from {@code start}: zlib-compressed when asked and smaller,
+     * 64-bit offsets when the block ends above 4 GB.
      */
     static List<Packet> packets(Hash16 file, long start, byte[] data, boolean compress) {
         boolean wide = start + data.length > 0xFFFF_FFFFL;
@@ -78,22 +78,15 @@ final class Blocks {
             if (stream.length < data.length) {
                 for (int at = 0; at < stream.length; at = next(at, stream.length)) {
                     byte[] chunk = Arrays.copyOfRange(stream, at, next(at, stream.length));
-                    packets.add(
-                            new ClientMessages.CompressedPart(file, start, stream.length, chunk)
-                                    .encode(wide));
+                    packets.add(new ClientMessages.CompressedPart(file, start, stream.length, chunk).encode(wide));
                 }
                 return packets;
             }
         }
         for (int at = 0; at < data.length; at = next(at, data.length)) {
             int end = next(at, data.length);
-            packets.add(
-                    new ClientMessages.SendingPart(
-                                    file,
-                                    start + at,
-                                    start + end,
-                                    Arrays.copyOfRange(data, at, end))
-                            .encode(wide));
+            packets.add(new ClientMessages.SendingPart(file, start + at, start + end, Arrays.copyOfRange(data, at, end))
+                    .encode(wide));
         }
         return packets;
     }

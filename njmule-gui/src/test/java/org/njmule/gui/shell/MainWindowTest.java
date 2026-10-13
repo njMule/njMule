@@ -44,17 +44,10 @@ import org.njmule.gui.ui.Gui;
 class MainWindowTest {
 
     private static final List<String> SCREENS =
-            List.of(
-                    "servers",
-                    "kad",
-                    "transfers",
-                    "search",
-                    "shared",
-                    "messages",
-                    "statistics",
-                    "settings");
+            List.of("servers", "kad", "transfers", "search", "shared", "messages", "statistics", "settings");
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private NjMuleEngine engine;
     private EngineModel model;
@@ -86,24 +79,22 @@ class MainWindowTest {
             for (GuiSettings.Mode mode : List.of(GuiSettings.Mode.LIGHT, GuiSettings.Mode.DARK)) {
                 MainWindow window = this.window(language, mode);
                 for (String screen : SCREENS) {
-                    FxTesting.onFx(
-                            () -> {
-                                window.show(screen);
-                                assertThat(window.current()).isEqualTo(screen);
-                                window.root().applyCss();
-                                window.root().layout();
-                            });
-                    FxTesting.onFx(
-                            () -> {
-                                FxTesting.snapshot(
-                                        window.root(),
-                                        screen
-                                                + "-"
-                                                + language.getLanguage()
-                                                + "-"
-                                                + mode.name().toLowerCase(Locale.ROOT));
-                                return null;
-                            });
+                    FxTesting.onFx(() -> {
+                        window.show(screen);
+                        assertThat(window.current()).isEqualTo(screen);
+                        window.root().applyCss();
+                        window.root().layout();
+                    });
+                    FxTesting.onFx(() -> {
+                        FxTesting.snapshot(
+                                window.root(),
+                                screen
+                                        + "-"
+                                        + language.getLanguage()
+                                        + "-"
+                                        + mode.name().toLowerCase(Locale.ROOT));
+                        return null;
+                    });
                 }
             }
         }
@@ -125,31 +116,29 @@ class MainWindowTest {
     private MainWindow window(Locale language, GuiSettings.Mode mode) throws Exception {
         AppDirectories dirs = this.engine.directories();
         AtomicReference<MainWindow> created = new AtomicReference<>();
-        FxTesting.onFx(
-                () -> {
-                    GuiSettings settings = GuiSettings.load(dirs.gui());
-                    Themes themes = new Themes(Themes.Family.NORD, mode);
-                    I18n i18n = I18n.of(language);
-                    Gui gui =
-                            new Gui(
-                                    i18n,
-                                    new Formats(i18n.locale()),
-                                    this.model,
-                                    themes,
-                                    settings,
-                                    dirs,
-                                    text -> created.get().message(text),
-                                    () -> {});
-                    MainWindow window = new MainWindow(gui);
-                    created.set(window);
-                    if (this.stage == null) {
-                        this.stage = new Stage();
-                    }
-                    Scene scene = new Scene(window.root(), 1200, 760);
-                    themes.attach(scene);
-                    this.stage.setScene(scene);
-                    this.stage.show();
-                });
+        FxTesting.onFx(() -> {
+            GuiSettings settings = GuiSettings.load(dirs.gui());
+            Themes themes = new Themes(Themes.Family.NORD, mode);
+            I18n i18n = I18n.of(language);
+            Gui gui = new Gui(
+                    i18n,
+                    new Formats(i18n.locale()),
+                    this.model,
+                    themes,
+                    settings,
+                    dirs,
+                    text -> created.get().message(text),
+                    () -> {});
+            MainWindow window = new MainWindow(gui);
+            created.set(window);
+            if (this.stage == null) {
+                this.stage = new Stage();
+            }
+            Scene scene = new Scene(window.root(), 1200, 760);
+            themes.attach(scene);
+            this.stage.setScene(scene);
+            this.stage.show();
+        });
         this.model.start();
         return created.get();
     }

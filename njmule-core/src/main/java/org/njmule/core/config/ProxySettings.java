@@ -19,9 +19,8 @@ package org.njmule.core.config;
 import java.util.Objects;
 
 /**
- * The proxy outgoing TCP connections go through: SOCKS (4 or 5, with optional user name and
- * password) or an HTTP proxy that allows CONNECT. UDP (server pings, global searches, Kad) does not
- * go through it.
+ * The proxy outgoing TCP connections go through: SOCKS (4 or 5, with optional user name and password) or an HTTP proxy
+ * that allows CONNECT. UDP (server pings, global searches, Kad) does not go through it.
  */
 public record ProxySettings(Type type, String host, int port, String user, String password) {
 

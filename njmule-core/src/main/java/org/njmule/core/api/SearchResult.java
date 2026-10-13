@@ -21,12 +21,7 @@ import java.util.Optional;
 
 /** A file found by a search; the source counts add up over the servers that reported it. */
 public record SearchResult(
-        Hash16 hash,
-        String name,
-        long size,
-        int sources,
-        int completeSources,
-        Optional<String> type) {
+        Hash16 hash, String name, long size, int sources, int completeSources, Optional<String> type) {
 
     public SearchResult {
         Objects.requireNonNull(hash, "hash");

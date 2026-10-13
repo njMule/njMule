@@ -22,9 +22,8 @@ import org.njmule.app.LaunchOptions;
 import org.njmule.app.Main;
 
 /**
- * Desktop entry point. Informational options (--version, --license, ...), {@code --headless} runs
- * and one-shot commands (a search, a download, an import) go to the headless launcher; a plain
- * start opens the window.
+ * Desktop entry point. Informational options (--version, --license, ...), {@code --headless} runs and one-shot commands
+ * (a search, a download, an import) go to the headless launcher; a plain start opens the window.
  */
 public final class GuiMain {
 

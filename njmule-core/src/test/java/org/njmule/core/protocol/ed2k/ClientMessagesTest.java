@@ -45,29 +45,26 @@ class ClientMessagesTest {
         parts.set(9);
         ClientMessages.FileStatus status = new ClientMessages.FileStatus(FILE, 10, parts);
 
-        assertThat(HEX.formatHex(status.encode().payload()))
-                .isEqualTo("ab".repeat(16) + "0a00" + "05" + "02");
+        assertThat(HEX.formatHex(status.encode().payload())).isEqualTo("ab".repeat(16) + "0a00" + "05" + "02");
         ClientMessages.FileStatus decoded = ClientMessages.FileStatus.decode(status.encode());
         assertThat(decoded.has(2)).isTrue();
         assertThat(decoded.has(1)).isFalse();
         assertThat(decoded.has(9)).isTrue();
 
         ClientMessages.FileStatus complete =
-                ClientMessages.FileStatus.decode(
-                        new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
+                ClientMessages.FileStatus.decode(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
         assertThat(complete.has(123)).isTrue();
         assertThat(complete.dataParts(3 * 9_728_000L).cardinality()).isEqualTo(3);
     }
 
     @Test
     void requestsAndDataRoundTripInBothWidths() throws DecodeException {
-        ClientMessages.RequestParts request =
-                new ClientMessages.RequestParts(
-                        FILE,
-                        List.of(
-                                new ClientMessages.Range(0, 184_320),
-                                new ClientMessages.Range(184_320, 368_640),
-                                new ClientMessages.Range(0, 0)));
+        ClientMessages.RequestParts request = new ClientMessages.RequestParts(
+                FILE,
+                List.of(
+                        new ClientMessages.Range(0, 184_320),
+                        new ClientMessages.Range(184_320, 368_640),
+                        new ClientMessages.Range(0, 0)));
         Packet narrow = request.encode(false);
         Packet wide = request.encode(true);
 
@@ -78,38 +75,26 @@ class ClientMessagesTest {
         assertThat(ClientMessages.RequestParts.decode(narrow)).isEqualTo(request);
         assertThat(ClientMessages.RequestParts.decode(wide)).isEqualTo(request);
 
-        ClientMessages.SendingPart data =
-                new ClientMessages.SendingPart(FILE, 10, 13, new byte[] {1, 2, 3});
+        ClientMessages.SendingPart data = new ClientMessages.SendingPart(FILE, 10, 13, new byte[] {1, 2, 3});
         for (boolean w : new boolean[] {false, true}) {
             ClientMessages.SendingPart back = ClientMessages.SendingPart.decode(data.encode(w));
             assertThat(back.start()).isEqualTo(10);
             assertThat(back.end()).isEqualTo(13);
             assertThat(back.data()).containsExactly(1, 2, 3);
         }
-        assertThatThrownBy(
-                        () ->
-                                ClientMessages.SendingPart.decode(
-                                        Packet.of(
-                                                Protocol.EDONKEY,
-                                                0x46,
-                                                HEX.parseHex(
-                                                        "ab".repeat(16)
-                                                                + "0a000000"
-                                                                + "0d000000"
-                                                                + "01"))))
+        assertThatThrownBy(() -> ClientMessages.SendingPart.decode(Packet.of(
+                        Protocol.EDONKEY, 0x46, HEX.parseHex("ab".repeat(16) + "0a000000" + "0d000000" + "01"))))
                 .isInstanceOf(DecodeException.class);
     }
 
     @Test
     void compressedChunksRoundTripInBothWidths() throws DecodeException {
-        ClientMessages.CompressedPart chunk =
-                new ClientMessages.CompressedPart(FILE, 184_320, 5, new byte[] {9, 8, 7});
+        ClientMessages.CompressedPart chunk = new ClientMessages.CompressedPart(FILE, 184_320, 5, new byte[] {9, 8, 7});
         Packet narrow = chunk.encode(false);
         Packet wide = chunk.encode(true);
 
         assertThat(narrow.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART.code());
-        assertThat(HEX.formatHex(narrow.payload()))
-                .isEqualTo("ab".repeat(16) + "00d00200" + "05000000" + "090807");
+        assertThat(HEX.formatHex(narrow.payload())).isEqualTo("ab".repeat(16) + "00d00200" + "05000000" + "090807");
         assertThat(wide.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART_I64.code());
         assertThat(wide.length()).isEqualTo(16 + 8 + 4 + 3);
         for (Packet packet : List.of(narrow, wide)) {
@@ -118,12 +103,8 @@ class ClientMessagesTest {
             assertThat(back.compressedSize()).isEqualTo(5);
             assertThat(back.chunk()).containsExactly(9, 8, 7);
         }
-        assertThatThrownBy(
-                        () ->
-                                ClientMessages.CompressedPart.decode(
-                                        new ClientMessages.CompressedPart(
-                                                        FILE, 0, 2, new byte[] {1, 2, 3})
-                                                .encode(false)))
+        assertThatThrownBy(() -> ClientMessages.CompressedPart.decode(
+                        new ClientMessages.CompressedPart(FILE, 0, 2, new byte[] {1, 2, 3}).encode(false)))
                 .isInstanceOf(DecodeException.class);
     }
 
@@ -135,16 +116,10 @@ class ClientMessagesTest {
         ClientMessages.HashSet set = new ClientMessages.HashSet(FILE, List.of(FILE, Hash16.ZERO));
         assertThat(ClientMessages.HashSet.decode(set.encode())).isEqualTo(set);
 
-        assertThat(
-                        ClientMessages.decodeQueueRank(
-                                Packet.of(Protocol.EDONKEY, 0x5C, HEX.parseHex("2a000000"))))
+        assertThat(ClientMessages.decodeQueueRank(Packet.of(Protocol.EDONKEY, 0x5C, HEX.parseHex("2a000000"))))
                 .isEqualTo(42);
-        assertThat(
-                        ClientMessages.decodeQueueRank(
-                                Packet.of(
-                                        Protocol.EMULE,
-                                        0x60,
-                                        HEX.parseHex("0700" + "00".repeat(10)))))
+        assertThat(ClientMessages.decodeQueueRank(
+                        Packet.of(Protocol.EMULE, 0x60, HEX.parseHex("0700" + "00".repeat(10)))))
                 .isEqualTo(7);
         assertThat(ClientMessages.fileOf(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, FILE)))
                 .isEqualTo(FILE);

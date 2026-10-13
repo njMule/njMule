@@ -20,8 +20,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The state of a download's bytes, for drawing its bar: what is still missing, what is being
- * requested from sources, and how many known sources have each part.
+ * The state of a download's bytes, for drawing its bar: what is still missing, what is being requested from sources,
+ * and how many known sources have each part.
  *
  * @param sources the sources that have each part, part by part
  */

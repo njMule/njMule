@@ -61,11 +61,8 @@ public record Preferences(
     public Preferences {
         Objects.requireNonNull(nick, "nick");
         nick = nick.strip();
-        if (nick.isEmpty()
-                || nick.length() > MAX_NICK_LENGTH
-                || nick.chars().anyMatch(Character::isISOControl)) {
-            throw new IllegalArgumentException(
-                    "nick must be 1-" + MAX_NICK_LENGTH + " printable characters");
+        if (nick.isEmpty() || nick.length() > MAX_NICK_LENGTH || nick.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("nick must be 1-" + MAX_NICK_LENGTH + " printable characters");
         }
         requireRange("tcpPort", tcpPort, 1, 65_535);
         requireRange("udpPort", udpPort, 1, 65_535);
@@ -74,8 +71,7 @@ public record Preferences(
         requireRange("maxConnections", maxConnections, 1, 10_000);
         requireRange("maxSourcesPerFile", maxSourcesPerFile, 1, 10_000);
         Objects.requireNonNull(obfuscation, "obfuscation");
-        Objects.requireNonNull(incomingDir, "incomingDir")
-                .ifPresent(p -> requireAbsolute("incomingDir", p));
+        Objects.requireNonNull(incomingDir, "incomingDir").ifPresent(p -> requireAbsolute("incomingDir", p));
         Objects.requireNonNull(tempDir, "tempDir").ifPresent(p -> requireAbsolute("tempDir", p));
         if (!LOG_LEVELS.contains(Objects.requireNonNull(logLevel, "logLevel"))) {
             throw new IllegalArgumentException("logLevel must be one of " + LOG_LEVELS);
@@ -122,8 +118,7 @@ public record Preferences(
 
     private static void requireRange(String name, int value, int min, int max) {
         if (value < min || value > max) {
-            throw new IllegalArgumentException(
-                    name + " must be in [" + min + ", " + max + "]: " + value);
+            throw new IllegalArgumentException(name + " must be in [" + min + ", " + max + "]: " + value);
         }
     }
 
@@ -333,11 +328,7 @@ public record Preferences(
                     this.tempDir,
                     this.logLevel,
                     new ProxySettings(
-                            this.proxyType,
-                            this.proxyHost,
-                            this.proxyPort,
-                            this.proxyUser,
-                            this.proxyPassword),
+                            this.proxyType, this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword),
                     this.upnp);
         }
     }

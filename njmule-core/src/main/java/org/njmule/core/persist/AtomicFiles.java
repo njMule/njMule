@@ -34,10 +34,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Crash-safe file replacement: write {@code name.tmp} + fsync, rename {@code name} to {@code
- * name.bak}, rename {@code name.tmp} to {@code name}. At any instant either the file or its backup
- * is complete, and {@link #read} falls back to the backup; a file rewritten in place would be
- * corrupted by a crash.
+ * Crash-safe file replacement: write {@code name.tmp} + fsync, rename {@code name} to {@code name.bak}, rename
+ * {@code name.tmp} to {@code name}. At any instant either the file or its backup is complete, and {@link #read} falls
+ * back to the backup; a file rewritten in place would be corrupted by a crash.
  */
 public final class AtomicFiles {
 
@@ -85,15 +84,12 @@ public final class AtomicFiles {
         }
         Path tmp = tmpPath(absolute);
         try {
-            try (FileChannel channel =
-                            FileChannel.open(
-                                    tmp,
-                                    StandardOpenOption.CREATE,
-                                    StandardOpenOption.TRUNCATE_EXISTING,
-                                    StandardOpenOption.WRITE);
-                    OutputStream out =
-                            new BufferedOutputStream(
-                                    Channels.newOutputStream(channel), 64 * 1024)) {
+            try (FileChannel channel = FileChannel.open(
+                            tmp,
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.TRUNCATE_EXISTING,
+                            StandardOpenOption.WRITE);
+                    OutputStream out = new BufferedOutputStream(Channels.newOutputStream(channel), 64 * 1024)) {
                 writer.write(out);
                 out.flush();
                 channel.force(true);
@@ -114,8 +110,7 @@ public final class AtomicFiles {
     }
 
     /**
-     * Reads {@code target}, falling back to its backup when it is missing or rejected by {@code
-     * reader}.
+     * Reads {@code target}, falling back to its backup when it is missing or rejected by {@code reader}.
      *
      * @throws NoSuchFileException if neither file exists
      */
@@ -164,18 +159,14 @@ public final class AtomicFiles {
     }
 
     /**
-     * Moves {@code from} over {@code to} atomically, retrying because on Windows antivirus scanners
-     * and indexers briefly hold files open; fails at once when the move needs a copy.
+     * Moves {@code from} over {@code to} atomically, retrying because on Windows antivirus scanners and indexers
+     * briefly hold files open; fails at once when the move needs a copy.
      */
     public static void move(Path from, Path to) throws IOException {
         long delay = FIRST_RETRY_DELAY_MILLIS;
         for (int attempt = 1; ; attempt++) {
             try {
-                Files.move(
-                        from,
-                        to,
-                        StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.ATOMIC_MOVE);
+                Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 return;
             } catch (FileSystemException e) {
                 if (attempt >= MOVE_ATTEMPTS

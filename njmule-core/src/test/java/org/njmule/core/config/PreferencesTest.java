@@ -26,7 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class PreferencesTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void defaultsAreValidAndUseNjMulePorts() {
@@ -41,27 +42,26 @@ class PreferencesTest {
     void builderChangesEveryField() {
         Path incoming = this.dir.resolve("in");
         Path temp = this.dir.resolve("tmp");
-        Preferences p =
-                Preferences.defaults().toBuilder()
-                        .nick("  Tester  ")
-                        .tcpPort(1)
-                        .udpPort(65_535)
-                        .udpEnabled(false)
-                        .ed2kEnabled(false)
-                        .kadEnabled(false)
-                        .autoConnect(false)
-                        .reconnect(false)
-                        .maxUploadKiBps(10)
-                        .maxDownloadKiBps(20)
-                        .maxConnections(30)
-                        .maxSourcesPerFile(40)
-                        .obfuscation(ObfuscationMode.REQUIRED)
-                        .secureIdent(false)
-                        .creditSystem(false)
-                        .incomingDir(Optional.of(incoming))
-                        .tempDir(Optional.of(temp))
-                        .logLevel("DEBUG")
-                        .build();
+        Preferences p = Preferences.defaults().toBuilder()
+                .nick("  Tester  ")
+                .tcpPort(1)
+                .udpPort(65_535)
+                .udpEnabled(false)
+                .ed2kEnabled(false)
+                .kadEnabled(false)
+                .autoConnect(false)
+                .reconnect(false)
+                .maxUploadKiBps(10)
+                .maxDownloadKiBps(20)
+                .maxConnections(30)
+                .maxSourcesPerFile(40)
+                .obfuscation(ObfuscationMode.REQUIRED)
+                .secureIdent(false)
+                .creditSystem(false)
+                .incomingDir(Optional.of(incoming))
+                .tempDir(Optional.of(temp))
+                .logLevel("DEBUG")
+                .build();
 
         assertThat(p.nick()).isEqualTo("Tester");
         assertThat(p.udpEnabled()).isFalse();
@@ -76,35 +76,34 @@ class PreferencesTest {
     void rejectsInvalidValues() {
         Preferences.Builder b = Preferences.defaults().toBuilder();
         assertThatThrownBy(() -> b.nick(" ").build()).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().nick("a\u0001b").build())
+        assertThatThrownBy(() ->
+                        Preferences.defaults().toBuilder().nick("a\u0001b").build())
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().nick("x".repeat(51)).build())
+        assertThatThrownBy(() ->
+                        Preferences.defaults().toBuilder().nick("x".repeat(51)).build())
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Preferences.defaults().toBuilder().tcpPort(0).build())
                 .hasMessageContaining("tcpPort");
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().udpPort(70_000).build())
-                .hasMessageContaining("udpPort");
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().maxConnections(0).build())
-                .hasMessageContaining("maxConnections");
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().logLevel("LOUD").build())
-                .hasMessageContaining("logLevel");
         assertThatThrownBy(
-                        () ->
-                                Preferences.defaults().toBuilder()
-                                        .tempDir(Optional.of(Path.of("rel")))
-                                        .build())
+                        () -> Preferences.defaults().toBuilder().udpPort(70_000).build())
+                .hasMessageContaining("udpPort");
+        assertThatThrownBy(() ->
+                        Preferences.defaults().toBuilder().maxConnections(0).build())
+                .hasMessageContaining("maxConnections");
+        assertThatThrownBy(() ->
+                        Preferences.defaults().toBuilder().logLevel("LOUD").build())
+                .hasMessageContaining("logLevel");
+        assertThatThrownBy(() -> Preferences.defaults().toBuilder()
+                        .tempDir(Optional.of(Path.of("rel")))
+                        .build())
                 .hasMessageContaining("tempDir");
     }
 
     @Test
     void mapsObfuscationFlags() {
-        assertThat(ObfuscationMode.fromFlags(false, true, true))
-                .isEqualTo(ObfuscationMode.DISABLED);
-        assertThat(ObfuscationMode.fromFlags(true, false, false))
-                .isEqualTo(ObfuscationMode.SUPPORTED);
-        assertThat(ObfuscationMode.fromFlags(true, true, false))
-                .isEqualTo(ObfuscationMode.REQUESTED);
-        assertThat(ObfuscationMode.fromFlags(true, false, true))
-                .isEqualTo(ObfuscationMode.REQUIRED);
+        assertThat(ObfuscationMode.fromFlags(false, true, true)).isEqualTo(ObfuscationMode.DISABLED);
+        assertThat(ObfuscationMode.fromFlags(true, false, false)).isEqualTo(ObfuscationMode.SUPPORTED);
+        assertThat(ObfuscationMode.fromFlags(true, true, false)).isEqualTo(ObfuscationMode.REQUESTED);
+        assertThat(ObfuscationMode.fromFlags(true, false, true)).isEqualTo(ObfuscationMode.REQUIRED);
     }
 }

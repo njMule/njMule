@@ -116,9 +116,7 @@ public final class SearchParser {
         while (this.peek().kind == Kind.NOT) {
             this.take();
             this.operators++;
-            left =
-                    new SearchExpr.Not(
-                            left, this.operand(Reason.MISSING_NOT_OPERAND, this::primary));
+            left = new SearchExpr.Not(left, this.operand(Reason.MISSING_NOT_OPERAND, this::primary));
         }
         return left;
     }
@@ -179,10 +177,7 @@ public final class SearchParser {
     }
 
     private boolean startsExpression(Token t) {
-        return t.kind == Kind.STRING
-                || t.kind == Kind.ATTRIBUTE
-                || t.kind == Kind.LPAREN
-                || t.kind == Kind.OPERATOR;
+        return t.kind == Kind.STRING || t.kind == Kind.ATTRIBUTE || t.kind == Kind.LPAREN || t.kind == Kind.OPERATOR;
     }
 
     private Token peek() {
@@ -255,12 +250,7 @@ public final class SearchParser {
     }
 
     private record Token(
-            Kind kind,
-            String text,
-            long number,
-            Comparison comparison,
-            Attribute attribute,
-            int position) {
+            Kind kind, String text, long number, Comparison comparison, Attribute attribute, int position) {
 
         static Token of(Kind kind, String text, int position) {
             return new Token(kind, text, 0, null, null, position);
@@ -309,8 +299,7 @@ public final class SearchParser {
             }
             if (c == '(' || c == ')') {
                 this.pos++;
-                this.out.add(
-                        Token.of(c == '(' ? Kind.LPAREN : Kind.RPAREN, String.valueOf(c), start));
+                this.out.add(Token.of(c == '(' ? Kind.LPAREN : Kind.RPAREN, String.valueOf(c), start));
                 return;
             }
             if (c == '=') {
@@ -319,8 +308,7 @@ public final class SearchParser {
                 return;
             }
             if (c == '<' || c == '>') {
-                throw new SearchSyntaxException(
-                        Reason.OPERATOR_WITHOUT_ATTRIBUTE, start, String.valueOf(c));
+                throw new SearchSyntaxException(Reason.OPERATOR_WITHOUT_ATTRIBUTE, start, String.valueOf(c));
             }
             int wordEnd = this.wordEnd(start);
             String word = this.in.substring(start, wordEnd);
@@ -348,9 +336,7 @@ public final class SearchParser {
 
         private void attribute(int start, String word) {
             int end = start + 1;
-            while (end < this.in.length()
-                    && this.in.charAt(end) >= 'a'
-                    && this.in.charAt(end) <= 'z') {
+            while (end < this.in.length() && this.in.charAt(end) >= 'a' && this.in.charAt(end) <= 'z') {
                 end++;
             }
             String name = this.in.substring(start + 1, end);
@@ -366,9 +352,7 @@ public final class SearchParser {
 
         private static Attribute find(String name) {
             for (Attribute a : Attribute.values()) {
-                if (name.length() >= 3
-                        && name.length() <= a.name.length()
-                        && a.name.startsWith(name)) {
+                if (name.length() >= 3 && name.length() <= a.name.length() && a.name.startsWith(name)) {
                     return a;
                 }
             }
@@ -385,10 +369,7 @@ public final class SearchParser {
                 if (hms.lookingAt()) {
                     long a = Long.parseLong(hms.group(1));
                     long b = Long.parseLong(hms.group(2));
-                    long seconds =
-                            hms.group(3) == null
-                                    ? a * 60 + b
-                                    : a * 3600 + b * 60 + Long.parseLong(hms.group(3));
+                    long seconds = hms.group(3) == null ? a * 60 + b : a * 3600 + b * 60 + Long.parseLong(hms.group(3));
                     this.pos = hms.end();
                     this.numberToken(seconds, start);
                     return;
@@ -396,44 +377,41 @@ public final class SearchParser {
             }
             int end = this.numberEnd(start);
             if (end == start) {
-                throw new SearchSyntaxException(
-                        Reason.INVALID_ATTRIBUTE_VALUE, start, "number expected");
+                throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number expected");
             }
             double value = Double.parseDouble(this.in.substring(start, end));
             this.pos = end;
             char unit = this.pos < this.in.length() ? this.in.charAt(this.pos) : ' ';
-            double factor =
-                    switch (this.state) {
-                        case NUMBER ->
-                                switch (unit) {
-                                    case 'k' -> 1_000;
-                                    case 'm' -> 1_000_000;
-                                    case 'g' -> 1_000_000_000;
-                                    default -> 0;
-                                };
-                        case SIZE ->
-                                switch (Character.toLowerCase(unit)) {
-                                    case 'b' -> 1;
-                                    case 'k' -> 1024;
-                                    case 'm' -> 1024 * 1024;
-                                    case 'g' -> 1024 * 1024 * 1024;
-                                    default -> -1024 * 1024; // no unit: megabytes
-                                };
-                        default ->
-                                switch (unit) {
-                                    case 's' -> 1;
-                                    case 'm' -> 60;
-                                    case 'h' -> 3600;
-                                    default -> 0;
-                                };
+            double factor = switch (this.state) {
+                case NUMBER ->
+                    switch (unit) {
+                        case 'k' -> 1_000;
+                        case 'm' -> 1_000_000;
+                        case 'g' -> 1_000_000_000;
+                        default -> 0;
                     };
+                case SIZE ->
+                    switch (Character.toLowerCase(unit)) {
+                        case 'b' -> 1;
+                        case 'k' -> 1024;
+                        case 'm' -> 1024 * 1024;
+                        case 'g' -> 1024 * 1024 * 1024;
+                        default -> -1024 * 1024; // no unit: megabytes
+                    };
+                default ->
+                    switch (unit) {
+                        case 's' -> 1;
+                        case 'm' -> 60;
+                        case 'h' -> 3600;
+                        default -> 0;
+                    };
+            };
             if (factor > 0) {
                 this.pos++;
             }
             double scaled = value * (factor == 0 ? 1 : Math.abs(factor));
             if (!(scaled < 0x1p63)) {
-                throw new SearchSyntaxException(
-                        Reason.INVALID_ATTRIBUTE_VALUE, start, "number too large");
+                throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number too large");
             }
             this.numberToken((long) (scaled + 0.5), start);
         }
@@ -455,8 +433,7 @@ public final class SearchParser {
             }
             if (i < this.in.length() && (this.in.charAt(i) == 'e' || this.in.charAt(i) == 'E')) {
                 int j = i + 1;
-                if (j < this.in.length()
-                        && (this.in.charAt(j) == '+' || this.in.charAt(j) == '-')) {
+                if (j < this.in.length() && (this.in.charAt(j) == '+' || this.in.charAt(j) == '-')) {
                     j++;
                 }
                 int k = this.digits(j);
@@ -476,33 +453,25 @@ public final class SearchParser {
         }
 
         private void numberToken(long value, int start) {
-            this.out.add(
-                    new Token(
-                            Kind.NUMBER,
-                            this.in.substring(start, this.pos),
-                            value,
-                            null,
-                            null,
-                            start));
+            this.out.add(new Token(Kind.NUMBER, this.in.substring(start, this.pos), value, null, null, start));
             this.state = State.INITIAL;
         }
 
         private boolean operator() {
             int start = this.pos;
             String two = this.in.substring(start, Math.min(this.in.length(), start + 2));
-            Comparison c =
-                    switch (two) {
-                        case ">=" -> Comparison.GREATER_EQUAL;
-                        case "<=" -> Comparison.LESS_EQUAL;
-                        case "<>" -> Comparison.NOT_EQUAL;
-                        default ->
-                                switch (this.in.charAt(start)) {
-                                    case '=' -> Comparison.EQUAL;
-                                    case '>' -> Comparison.GREATER;
-                                    case '<' -> Comparison.LESS;
-                                    default -> null;
-                                };
+            Comparison c = switch (two) {
+                case ">=" -> Comparison.GREATER_EQUAL;
+                case "<=" -> Comparison.LESS_EQUAL;
+                case "<>" -> Comparison.NOT_EQUAL;
+                default ->
+                    switch (this.in.charAt(start)) {
+                        case '=' -> Comparison.EQUAL;
+                        case '>' -> Comparison.GREATER;
+                        case '<' -> Comparison.LESS;
+                        default -> null;
                     };
+            };
             if (c == null) {
                 return false;
             }
@@ -519,9 +488,7 @@ public final class SearchParser {
                 return;
             }
             int end = start;
-            while (end < this.in.length()
-                    && Character.isLetter(this.in.charAt(end))
-                    && this.in.charAt(end) < 0x80) {
+            while (end < this.in.length() && Character.isLetter(this.in.charAt(end)) && this.in.charAt(end) < 0x80) {
                 end++;
             }
             String word = this.in.substring(start, end).toLowerCase(Locale.ROOT);
@@ -578,8 +545,7 @@ public final class SearchParser {
             }
             int end = this.wordEnd(start);
             if (end == start) {
-                throw new SearchSyntaxException(
-                        Reason.INVALID_ATTRIBUTE_VALUE, start, "value expected");
+                throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "value expected");
             }
             this.emit(Kind.STRING, this.in.substring(start, end), start, end);
             this.state = State.INITIAL;
@@ -610,9 +576,7 @@ public final class SearchParser {
                         case 'x' -> {
                             int value = 0;
                             int digits = 0;
-                            while (digits < 3
-                                    && i < this.in.length()
-                                    && Character.digit(this.in.charAt(i), 16) >= 0) {
+                            while (digits < 3 && i < this.in.length() && Character.digit(this.in.charAt(i), 16) >= 0) {
                                 value = value * 16 + Character.digit(this.in.charAt(i), 16);
                                 i++;
                                 digits++;
@@ -629,9 +593,7 @@ public final class SearchParser {
             if (text.isEmpty()) {
                 return;
             }
-            this.out.add(
-                    Token.of(
-                            Kind.STRING, keepQuotes ? "\"" + text + "\"" : text.toString(), start));
+            this.out.add(Token.of(Kind.STRING, keepQuotes ? "\"" + text + "\"" : text.toString(), start));
         }
 
         private int wordEnd(int start) {

@@ -26,8 +26,8 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Turns file names received from the network into names that are safe on every supported system and
- * paths that stay inside their directory.
+ * Turns file names received from the network into names that are safe on every supported system and paths that stay
+ * inside their directory.
  */
 public final class PathSanitizer {
 
@@ -36,26 +36,22 @@ public final class PathSanitizer {
 
     private static final String FORBIDDEN = "\\/:*?\"<>|";
     private static final int MAX_EXTENSION = 16;
-    private static final Set<String> RESERVED =
-            Set.of(
-                    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",
-                    "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7",
-                    "LPT8", "LPT9");
+    private static final Set<String> RESERVED = Set.of(
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
+            "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
 
     private PathSanitizer() {}
 
     /** A file name without separators, control or forbidden characters, nor a reserved name. */
     public static String fileName(String name) {
         StringBuilder out = new StringBuilder(name.length());
-        name.codePoints()
-                .forEach(
-                        c -> {
-                            if (c < 0x20 || c == 0x7F || FORBIDDEN.indexOf(c) >= 0) {
-                                out.append('_');
-                            } else {
-                                out.appendCodePoint(c);
-                            }
-                        });
+        name.codePoints().forEach(c -> {
+            if (c < 0x20 || c == 0x7F || FORBIDDEN.indexOf(c) >= 0) {
+                out.append('_');
+            } else {
+                out.appendCodePoint(c);
+            }
+        });
         // Windows drops trailing dots and spaces, which would make two names collide.
         String cleaned = out.toString().strip();
         int end = cleaned.length();
@@ -108,8 +104,8 @@ public final class PathSanitizer {
     }
 
     /**
-     * As {@link #unique}, but the empty file is created at once and atomically, so two callers
-     * never get the same name; the caller replaces it.
+     * As {@link #unique}, but the empty file is created at once and atomically, so two callers never get the same name;
+     * the caller replaces it.
      */
     public static Path reserve(Path directory, String name) throws IOException {
         Path first = resolveInside(directory, name);
@@ -124,8 +120,7 @@ public final class PathSanitizer {
         String extension = dot > 0 ? safe.substring(dot) : "";
         for (int n = 2; n < 10_000; n++) {
             try {
-                return Files.createFile(
-                        resolveInside(directory, stem + " (" + n + ")" + extension));
+                return Files.createFile(resolveInside(directory, stem + " (" + n + ")" + extension));
             } catch (FileAlreadyExistsException e) {
                 // Taken too.
             }
@@ -139,8 +134,7 @@ public final class PathSanitizer {
             return name;
         }
         int dot = name.lastIndexOf('.');
-        String extension =
-                dot > 0 && name.length() - dot <= MAX_EXTENSION ? name.substring(dot) : "";
+        String extension = dot > 0 && name.length() - dot <= MAX_EXTENSION ? name.substring(dot) : "";
         String stem = extension.isEmpty() ? name : name.substring(0, dot);
         int budget = MAX_NAME_BYTES - extension.getBytes(StandardCharsets.UTF_8).length;
         StringBuilder kept = new StringBuilder();

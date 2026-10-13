@@ -29,7 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class AppDirectoriesTest {
 
-    @TempDir Path home;
+    @TempDir
+    Path home;
 
     private AppDirectories resolve(OsFamily os, Map<String, String> env) {
         return AppDirectories.resolve(os, env, this.home, Optional.empty(), Optional.empty());
@@ -39,13 +40,12 @@ class AppDirectoriesTest {
     void windowsUsesRoamingForConfigAndLocalForBulkData() {
         Path roaming = this.home.resolve("AppData/Roaming");
         Path local = this.home.resolve("AppData/Local");
-        AppDirectories d =
-                this.resolve(
-                        OsFamily.WINDOWS,
-                        Map.of(
-                                "APPDATA", roaming.toString(),
-                                "LOCALAPPDATA", local.toString(),
-                                "USERPROFILE", this.home.toString()));
+        AppDirectories d = this.resolve(
+                OsFamily.WINDOWS,
+                Map.of(
+                        "APPDATA", roaming.toString(),
+                        "LOCALAPPDATA", local.toString(),
+                        "USERPROFILE", this.home.toString()));
 
         assertThat(d.config()).isEqualTo(roaming.resolve("njMule/config"));
         assertThat(d.gui()).isEqualTo(roaming.resolve("njMule/gui"));
@@ -91,9 +91,7 @@ class AppDirectoriesTest {
     void linuxHonoursAbsoluteXdgVariablesAndIgnoresRelativeOnes() {
         Path cfg = this.home.resolve("cfg");
         AppDirectories d =
-                this.resolve(
-                        OsFamily.LINUX,
-                        Map.of("XDG_CONFIG_HOME", cfg.toString(), "XDG_CACHE_HOME", "rel"));
+                this.resolve(OsFamily.LINUX, Map.of("XDG_CONFIG_HOME", cfg.toString(), "XDG_CACHE_HOME", "rel"));
 
         assertThat(d.config()).isEqualTo(cfg.resolve("njmule"));
         assertThat(d.cache()).isEqualTo(this.home.resolve(".cache/njmule"));
@@ -102,9 +100,7 @@ class AppDirectoriesTest {
     @Test
     void linuxReadsTheDownloadDirectoryFromUserDirs() throws IOException {
         Path config = Files.createDirectories(this.home.resolve(".config"));
-        Files.writeString(
-                config.resolve("user-dirs.dirs"),
-                """
+        Files.writeString(config.resolve("user-dirs.dirs"), """
                 # comment
                 XDG_DESKTOP_DIR="$HOME/Desktop"
                 XDG_DOWNLOAD_DIR="$HOME/Scaricati"
@@ -132,8 +128,7 @@ class AppDirectoriesTest {
     void overrideRootPutsEverythingBelowIt() {
         Path root = this.home.resolve("custom");
         AppDirectories d =
-                AppDirectories.resolve(
-                        OsFamily.WINDOWS, Map.of(), this.home, Optional.of(root), Optional.empty());
+                AppDirectories.resolve(OsFamily.WINDOWS, Map.of(), this.home, Optional.of(root), Optional.empty());
 
         assertThat(d.config()).isEqualTo(root.resolve("config"));
         assertThat(d.downloads()).isEqualTo(root.resolve("incoming"));
@@ -146,8 +141,7 @@ class AppDirectoriesTest {
         Files.createFile(exeDir.resolve(AppDirectories.PORTABLE_MARKER));
 
         AppDirectories d =
-                AppDirectories.resolve(
-                        OsFamily.LINUX, Map.of(), this.home, Optional.empty(), Optional.of(exeDir));
+                AppDirectories.resolve(OsFamily.LINUX, Map.of(), this.home, Optional.empty(), Optional.of(exeDir));
 
         assertThat(d.portable()).isTrue();
         assertThat(d.config()).isEqualTo(exeDir.resolve("data/config"));

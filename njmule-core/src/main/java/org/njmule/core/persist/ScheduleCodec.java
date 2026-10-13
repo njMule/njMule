@@ -40,8 +40,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Reads and writes the schedule as {@code scheduler.properties}: {@code rule.N.*} keys, rules in
- * the order of N. A broken rule is left out and logged.
+ * Reads and writes the schedule as {@code scheduler.properties}: {@code rule.N.*} keys, rules in the order of N. A
+ * broken rule is left out and logged.
  */
 public final class ScheduleCodec {
 
@@ -56,16 +56,13 @@ public final class ScheduleCodec {
         if (!Files.exists(file) && !Files.exists(AtomicFiles.bakPath(file.toAbsolutePath()))) {
             return Schedule.EMPTY;
         }
-        Properties p =
-                AtomicFiles.read(
-                        file,
-                        in -> {
-                            Properties props = new Properties();
-                            try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                                props.load(r);
-                            }
-                            return props;
-                        });
+        Properties p = AtomicFiles.read(file, in -> {
+            Properties props = new Properties();
+            try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                props.load(r);
+            }
+            return props;
+        });
         TreeSet<Integer> numbers = new TreeSet<>();
         for (String key : p.stringPropertyNames()) {
             if (key.startsWith(PREFIX)) {
@@ -83,17 +80,16 @@ public final class ScheduleCodec {
         for (int n : numbers) {
             String k = PREFIX + n + ".";
             try {
-                rules.add(
-                        new Schedule.Rule(
-                                p.getProperty(k + "name", ""),
-                                Boolean.parseBoolean(p.getProperty(k + "enabled", "true")),
-                                days(p.getProperty(k + "days", "")),
-                                LocalTime.parse(p.getProperty(k + "start", "00:00").strip()),
-                                LocalTime.parse(p.getProperty(k + "end", "00:00").strip()),
-                                number(p.getProperty(k + "uploadKiBps")),
-                                number(p.getProperty(k + "downloadKiBps")),
-                                number(p.getProperty(k + "maxConnections")),
-                                number(p.getProperty(k + "maxSourcesPerFile"))));
+                rules.add(new Schedule.Rule(
+                        p.getProperty(k + "name", ""),
+                        Boolean.parseBoolean(p.getProperty(k + "enabled", "true")),
+                        days(p.getProperty(k + "days", "")),
+                        LocalTime.parse(p.getProperty(k + "start", "00:00").strip()),
+                        LocalTime.parse(p.getProperty(k + "end", "00:00").strip()),
+                        number(p.getProperty(k + "uploadKiBps")),
+                        number(p.getProperty(k + "downloadKiBps")),
+                        number(p.getProperty(k + "maxConnections")),
+                        number(p.getProperty(k + "maxSourcesPerFile"))));
             } catch (IllegalArgumentException | DateTimeException e) {
                 logger.warn("Ignoring rule {} of {}: {}", n, file.getFileName(), e.getMessage());
             }
@@ -111,10 +107,7 @@ public final class ScheduleCodec {
             line(
                     text,
                     k + "days",
-                    r.days().stream()
-                            .sorted()
-                            .map(DayOfWeek::name)
-                            .collect(Collectors.joining(",")));
+                    r.days().stream().sorted().map(DayOfWeek::name).collect(Collectors.joining(",")));
             line(text, k + "start", r.start().toString());
             line(text, k + "end", r.end().toString());
             optional(text, k + "uploadKiBps", r.uploadKiBps());
@@ -136,9 +129,7 @@ public final class ScheduleCodec {
     }
 
     private static OptionalInt number(String text) {
-        return text == null || text.isBlank()
-                ? OptionalInt.empty()
-                : OptionalInt.of(Integer.parseInt(text.strip()));
+        return text == null || text.isBlank() ? OptionalInt.empty() : OptionalInt.of(Integer.parseInt(text.strip()));
     }
 
     private static void optional(StringBuilder text, String key, OptionalInt value) {

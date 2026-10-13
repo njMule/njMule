@@ -60,51 +60,29 @@ class OtherFilesTest {
     @Test
     void kadIndexesRoundTrip() throws DecodeException {
         LoadIndex load = new LoadIndex(1_700_000_000L, List.of(new Load(K1, 1_700_000_100L)));
-        SourceIndex sources =
-                new SourceIndex(
-                        2,
-                        1_700_018_000L,
-                        List.of(
-                                new IndexKey(
-                                        K1,
-                                        List.of(
-                                                new Source(
-                                                        K2,
-                                                        List.of(
-                                                                new Entry(
-                                                                        1_700_001_000L,
-                                                                        List.of(
-                                                                                Tag.of(
-                                                                                        FileTag
-                                                                                                .SOURCEPORT,
-                                                                                        4662)))))))));
-        Tracking tracking =
-                new Tracking(
-                        List.of(Hash20.of(new byte[20])),
-                        List.of(new PublishedName("Città.mkv", 3)),
-                        List.of(
-                                new Publisher(Ipv4.of(1, 2, 3, 4), 1_700_000_500L, 0),
-                                new Publisher(Ipv4.of(5, 6, 7, 8), 1_700_000_600L, 0xFFFF)));
-        KeywordIndex keywords =
-                new KeywordIndex(
-                        4,
-                        1_700_086_400L,
-                        K2,
-                        List.of(
-                                new Keyword(
-                                        K1,
-                                        List.of(
-                                                new KeywordSource(
-                                                        K2,
-                                                        List.of(
-                                                                new KeywordEntry(
-                                                                        1_700_002_000L,
-                                                                        tracking,
-                                                                        List.of(
-                                                                                Tag.of(
-                                                                                        FileTag
-                                                                                                .FILENAME,
-                                                                                        "a.mkv")))))))));
+        SourceIndex sources = new SourceIndex(
+                2,
+                1_700_018_000L,
+                List.of(new IndexKey(
+                        K1,
+                        List.of(new Source(
+                                K2, List.of(new Entry(1_700_001_000L, List.of(Tag.of(FileTag.SOURCEPORT, 4662)))))))));
+        Tracking tracking = new Tracking(
+                List.of(Hash20.of(new byte[20])),
+                List.of(new PublishedName("Città.mkv", 3)),
+                List.of(
+                        new Publisher(Ipv4.of(1, 2, 3, 4), 1_700_000_500L, 0),
+                        new Publisher(Ipv4.of(5, 6, 7, 8), 1_700_000_600L, 0xFFFF)));
+        KeywordIndex keywords = new KeywordIndex(
+                4,
+                1_700_086_400L,
+                K2,
+                List.of(new Keyword(
+                        K1,
+                        List.of(new KeywordSource(
+                                K2,
+                                List.of(new KeywordEntry(
+                                        1_700_002_000L, tracking, List.of(Tag.of(FileTag.FILENAME, "a.mkv")))))))));
 
         assertThat(KadIndexFiles.readLoad(KadIndexFiles.writeLoad(load))).isEqualTo(load);
         assertThat(KadIndexFiles.readSources(KadIndexFiles.writeSources(sources)))
@@ -116,47 +94,45 @@ class OtherFilesTest {
     @Test
     void readsKeywordIndexVersion3WithoutAichHashes() throws DecodeException {
         String id = HEX.formatHex(K1.toWireBytes());
-        byte[] file =
-                HEX.parseHex(
-                        "03000000"
-                                + "10000000"
-                                + id
-                                + "01000000"
-                                + id
-                                + "01000000"
-                                + id
-                                + "01000000"
-                                + "20000000" // lifetime
-                                + "00000000" // names
-                                + "01000000"
-                                + "04030201"
-                                + "30000000" // one publisher, no AICH index
-                                + "00"); // no tags
+        byte[] file = HEX.parseHex("03000000"
+                + "10000000"
+                + id
+                + "01000000"
+                + id
+                + "01000000"
+                + id
+                + "01000000"
+                + "20000000" // lifetime
+                + "00000000" // names
+                + "01000000"
+                + "04030201"
+                + "30000000" // one publisher, no AICH index
+                + "00"); // no tags
 
         KeywordIndex index = KadIndexFiles.readKeywords(file);
 
-        Tracking t =
-                index.keywords().getFirst().sources().getFirst().entries().getFirst().tracking();
+        Tracking t = index.keywords()
+                .getFirst()
+                .sources()
+                .getFirst()
+                .entries()
+                .getFirst()
+                .tracking();
         assertThat(index.version()).isEqualTo(3);
         assertThat(t.aichHashes()).isEmpty();
-        assertThat(t.publishers())
-                .containsExactly(new Publisher(Ipv4.of(1, 2, 3, 4), 0x30, 0xFFFF));
+        assertThat(t.publishers()).containsExactly(new Publisher(Ipv4.of(1, 2, 3, 4), 0x30, 0xFFFF));
     }
 
     @Test
     void storedSearchesAndSpamRoundTrip() throws DecodeException {
-        Result result =
-                new Result(
-                        Hash16.parseHex("000102030405060708090A0B0C0D0E0F"),
-                        Ipv4.toEd2k(Ipv4.of(1, 2, 3, 4)),
-                        4662,
-                        List.of(Tag.of(FileTag.FILENAME, "x.iso"), Tag.of(FileTag.FILESIZE, 123)));
-        StoredSearch search =
-                new StoredSearch(7, 3, false, "", "linux iso", "Pro", List.of(result));
+        Result result = new Result(
+                Hash16.parseHex("000102030405060708090A0B0C0D0E0F"),
+                Ipv4.toEd2k(Ipv4.of(1, 2, 3, 4)),
+                4662,
+                List.of(Tag.of(FileTag.FILENAME, "x.iso"), Tag.of(FileTag.FILESIZE, 123)));
+        StoredSearch search = new StoredSearch(7, 3, false, "", "linux iso", "Pro", List.of(result));
         List<Tag> spam =
-                List.of(
-                        Tag.of(SearchFiles.SPAM_FULL_NAME, "fake.exe"),
-                        Tag.of(SearchFiles.SPAM_SIZE, 1L << 33));
+                List.of(Tag.of(SearchFiles.SPAM_FULL_NAME, "fake.exe"), Tag.of(SearchFiles.SPAM_SIZE, 1L << 33));
 
         assertThat(SearchFiles.readStored(SearchFiles.writeStored(List.of(search))))
                 .containsExactly(search);
@@ -175,25 +151,18 @@ class OtherFilesTest {
 
     @Test
     void staticServersFollowTheirLineFormat() {
-        byte[] file =
-                TextFiles.writeLines(
-                        List.of(
-                                "# comment",
-                                "server.example.org:4661,0,Normal one",
-                                "1.2.3.4:4242,5,Bad priority",
-                                "5.6.7.8:4243,Name, with comma",
-                                "nohostport"));
+        byte[] file = TextFiles.writeLines(List.of(
+                "# comment",
+                "server.example.org:4661,0,Normal one",
+                "1.2.3.4:4242,5,Bad priority",
+                "5.6.7.8:4243,Name, with comma",
+                "nohostport"));
 
         assertThat(TextFiles.staticServers(file))
                 .containsExactly(
-                        new StaticServer(
-                                "server.example.org",
-                                4661,
-                                TextFiles.PRIORITY_NORMAL,
-                                "Normal one"),
+                        new StaticServer("server.example.org", 4661, TextFiles.PRIORITY_NORMAL, "Normal one"),
                         new StaticServer("1.2.3.4", 4242, TextFiles.PRIORITY_HIGH, "Bad priority"),
-                        new StaticServer(
-                                "5.6.7.8", 4243, TextFiles.PRIORITY_HIGH, "Name, with comma"));
+                        new StaticServer("5.6.7.8", 4243, TextFiles.PRIORITY_HIGH, "Name, with comma"));
         List<StaticServer> servers = List.of(new StaticServer("a.org", 1, 2, "x"));
         assertThat(TextFiles.staticServers(TextFiles.writeStaticServers(servers)))
                 .isEqualTo(servers);
@@ -201,25 +170,20 @@ class OtherFilesTest {
 
     @Test
     void sharedFilesMarkExclusions() {
-        assertThat(
-                        TextFiles.sharedFiles(
-                                TextFiles.writeLines(List.of("C:\\a.txt", "-C:\\b.txt", ""))))
-                .containsExactly(
-                        new SharedFile("C:\\a.txt", false), new SharedFile("C:\\b.txt", true));
+        assertThat(TextFiles.sharedFiles(TextFiles.writeLines(List.of("C:\\a.txt", "-C:\\b.txt", ""))))
+                .containsExactly(new SharedFile("C:\\a.txt", false), new SharedFile("C:\\b.txt", true));
     }
 
     @Test
     void ipFilterDatLinesWithLevelsAndDescriptions() {
-        byte[] file =
-                """
+        byte[] file = """
                 # comment
                 001.002.003.000 - 001.002.003.255 , 000 , Bad people
                 10.0.0.0 - 10.0.0.255
                 10.0.1.0 - 10.0.1.255 , 100 , adjacent, same level
                 10.0.2.0 - 10.0.2.255 , 050 , adjacent, other level
                 1.2.3.0 - 1.2.3.255 , 020 , identical
-                """
-                        .getBytes(StandardCharsets.US_ASCII);
+                """.getBytes(StandardCharsets.US_ASCII);
 
         List<Range> ranges = IpFilterDat.read(file, "ipfilter.dat");
 
@@ -227,35 +191,25 @@ class OtherFilesTest {
                 .containsExactly(
                         new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 0, "Bad people"),
                         new Range(Ipv4.of(10, 0, 0, 0), Ipv4.of(10, 0, 1, 255), 100, ""),
-                        new Range(
-                                Ipv4.of(10, 0, 2, 0),
-                                Ipv4.of(10, 0, 2, 255),
-                                50,
-                                "adjacent, other level"));
+                        new Range(Ipv4.of(10, 0, 2, 0), Ipv4.of(10, 0, 2, 255), 50, "adjacent, other level"));
         assertThat(ranges.getFirst().contains(Ipv4.of(1, 2, 3, 77))).isTrue();
         assertThat(IpFilterDat.read(IpFilterDat.write(ranges), "ipfilter.dat")).isEqualTo(ranges);
     }
 
     @Test
     void ipFilterPeerGuardianFormats() {
-        byte[] text =
-                "<b>Some list</b>Evil Corp PGIPDB:3.0.0.0-3.255.255.255\n"
-                        .getBytes(StandardCharsets.US_ASCII);
+        byte[] text = "<b>Some list</b>Evil Corp PGIPDB:3.0.0.0-3.255.255.255\n".getBytes(StandardCharsets.US_ASCII);
         byte[] p2b = HEX.parseHex("ffffffff503242" + "02" + "4e616d6500" + "05000000" + "050000ff");
 
         assertThat(IpFilterDat.read(text, "list.txt"))
-                .containsExactly(
-                        new Range(
-                                Ipv4.of(3, 0, 0, 0), Ipv4.of(3, 255, 255, 255), 100, "Evil Corp"));
+                .containsExactly(new Range(Ipv4.of(3, 0, 0, 0), Ipv4.of(3, 255, 255, 255), 100, "Evil Corp"));
         assertThat(IpFilterDat.read(p2b, "list.p2b"))
-                .containsExactly(
-                        new Range(Ipv4.of(5, 0, 0, 0), Ipv4.of(5, 0, 0, 255), 100, "Name"));
+                .containsExactly(new Range(Ipv4.of(5, 0, 0, 0), Ipv4.of(5, 0, 0, 255), 100, "Name"));
     }
 
     @Test
     void iniFilesAreCaseInsensitiveAndDecodeAnsi() {
-        byte[] file =
-                """
+        byte[] file = """
                 Global=1
                 [eMule]
                 Nick = someone
@@ -264,8 +218,7 @@ class OtherFilesTest {
                 ; comment
                 [Proxy]
                 Name=caf\u00e9
-                """
-                        .getBytes(StandardCharsets.UTF_8);
+                """.getBytes(StandardCharsets.UTF_8);
         byte[] ansi = new byte[] {'[', 'x', ']', '\n', 'k', '=', (byte) 0xE9};
 
         IniFile ini = IniFile.parse(file);

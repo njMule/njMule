@@ -41,9 +41,7 @@ class OpcodesTest {
     void handshakeAcceptsOnlySmallGreetings() {
         assertThat(FrameLimits.CLIENT_HANDSHAKE.maxPayload(Protocol.EDONKEY, Client.HELLO.code()))
                 .isEqualTo(FrameLimits.HANDSHAKE_MAX);
-        assertThat(
-                        FrameLimits.CLIENT_HANDSHAKE.maxPayload(
-                                Protocol.EDONKEY, Client.SENDINGPART.code()))
+        assertThat(FrameLimits.CLIENT_HANDSHAKE.maxPayload(Protocol.EDONKEY, Client.SENDINGPART.code()))
                 .isEqualTo(FrameLimit.REJECT);
         assertThat(FrameLimits.CLIENT_HANDSHAKE.maxPayload(Protocol.PACKED, Client.HELLO.code()))
                 .isEqualTo(FrameLimit.REJECT);
@@ -53,9 +51,7 @@ class OpcodesTest {
     void identifiedClientsGetPerPacketCaps() {
         assertThat(FrameLimits.CLIENT.maxPayload(Protocol.EMULE, Extended.COMPRESSEDPART.code()))
                 .isEqualTo(FrameLimits.DATA_MAX);
-        assertThat(
-                        FrameLimits.CLIENT.maxPayload(
-                                Protocol.EDONKEY, Client.ASKSHAREDFILESANSWER.code()))
+        assertThat(FrameLimits.CLIENT.maxPayload(Protocol.EDONKEY, Client.ASKSHAREDFILESANSWER.code()))
                 .isEqualTo(FrameLimits.SHARED_FILES_MAX);
         assertThat(FrameLimits.CLIENT.maxPayload(Protocol.EDONKEY, Client.MESSAGE.code()))
                 .isEqualTo(FrameLimits.CLIENT_MAX);

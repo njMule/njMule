@@ -70,21 +70,16 @@ public final class Main {
     /**
      * Executes the command line.
      *
-     * @param stop completed by tests to end a {@code RUN}; in production only the shutdown hook
-     *     (Ctrl+C, SIGTERM, logoff) stops the engine
+     * @param stop completed by tests to end a {@code RUN}; in production only the shutdown hook (Ctrl+C, SIGTERM,
+     *     logoff) stops the engine
      * @return the process exit code
      */
-    public static int run(
-            String[] args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
+    public static int run(String[] args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
         return run(args, out, err, stop, terminal(out));
     }
 
     static int run(
-            String[] args,
-            PrintStream out,
-            PrintStream err,
-            CompletableFuture<Void> stop,
-            PasswordSource passwords) {
+            String[] args, PrintStream out, PrintStream err, CompletableFuture<Void> stop, PasswordSource passwords) {
         LaunchOptions cli;
         try {
             cli = LaunchOptions.parse(args);
@@ -96,13 +91,7 @@ public final class Main {
         switch (cli.action()) {
             case HELP -> out.print(LaunchOptions.usage());
             case VERSION ->
-                    out.println(
-                            NjMuleInfo.NAME
-                                    + " "
-                                    + NjMuleInfo.version()
-                                    + " ("
-                                    + NjMuleInfo.LICENSE_ID
-                                    + ")");
+                out.println(NjMuleInfo.NAME + " " + NjMuleInfo.version() + " (" + NjMuleInfo.LICENSE_ID + ")");
             case LICENSE -> out.println(NjMuleInfo.licenseText().stripTrailing());
             case WARRANTY -> out.println(NjMuleInfo.warrantyText());
             case NOTICE -> out.println(NjMuleInfo.noticeText().stripTrailing());
@@ -127,15 +116,8 @@ public final class Main {
             try {
                 Ed2kLink.FileLink link = FileHashing.link(file, bytes -> {});
                 double seconds = Math.max(1e-9, (System.nanoTime() - start) / 1e9);
-                Ed2kLink.FileLink shown =
-                        new Ed2kLink.FileLink(
-                                link.name(),
-                                link.size(),
-                                link.hash(),
-                                link.aichHash(),
-                                List.of(),
-                                List.of(),
-                                List.of());
+                Ed2kLink.FileLink shown = new Ed2kLink.FileLink(
+                        link.name(), link.size(), link.hash(), link.aichHash(), List.of(), List.of(), List.of());
                 out.println(shown.toUri());
                 out.printf(
                         Locale.ROOT,
@@ -151,8 +133,7 @@ public final class Main {
         return code;
     }
 
-    private static int webUiPassword(
-            LaunchOptions cli, PrintStream out, PrintStream err, PasswordSource passwords) {
+    private static int webUiPassword(LaunchOptions cli, PrintStream out, PrintStream err, PasswordSource passwords) {
         LaunchOptions.WebUiSetup setup = cli.webUi().orElseThrow();
         AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
         char[] first = null;
@@ -169,21 +150,14 @@ public final class Main {
                 return EXIT_USAGE;
             }
             WebUiSettings old = WebUiSettings.load(dirs.config());
-            WebUiSettings settings =
-                    new WebUiSettings(
-                            true,
-                            setup.port().orElse(old.port()),
-                            setup.lan(),
-                            Passwords.hash(first, new SecureRandom()));
+            WebUiSettings settings = new WebUiSettings(
+                    true, setup.port().orElse(old.port()), setup.lan(), Passwords.hash(first, new SecureRandom()));
             settings.save(dirs.config());
-            out.println(
-                    "The web interface starts with "
-                            + NjMuleInfo.NAME
-                            + " on port "
-                            + settings.port()
-                            + (settings.lan()
-                                    ? ", open to other computers."
-                                    : ": http://localhost:" + settings.port() + "/"));
+            out.println("The web interface starts with "
+                    + NjMuleInfo.NAME
+                    + " on port "
+                    + settings.port()
+                    + (settings.lan() ? ", open to other computers." : ": http://localhost:" + settings.port() + "/"));
             return EXIT_OK;
         } catch (IOException e) {
             err.println("Cannot set the web interface password: " + e.getMessage());
@@ -201,14 +175,12 @@ public final class Main {
     // Reads passwords without echo on a terminal, otherwise one per line of standard input.
     private static PasswordSource terminal(PrintStream out) {
         // Since JDK 22 there is a console even without a terminal; isTerminal() tells them apart.
-        Optional<Console> console =
-                Optional.ofNullable(System.console()).filter(Console::isTerminal);
+        Optional<Console> console = Optional.ofNullable(System.console()).filter(Console::isTerminal);
         if (console.isPresent()) {
             Console terminal = console.get();
             return prompt -> terminal.readPassword("%s", prompt);
         }
-        BufferedReader in =
-                new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         return prompt -> {
             out.print(prompt);
             out.flush();
@@ -217,8 +189,7 @@ public final class Main {
         };
     }
 
-    private static Optional<WebUi> startWebUi(
-            NjMuleEngine engine, AppDirectories dirs, PrintStream out) {
+    private static Optional<WebUi> startWebUi(NjMuleEngine engine, AppDirectories dirs, PrintStream out) {
         WebUiSettings settings = WebUiSettings.load(dirs.config());
         if (!settings.usable()) {
             return Optional.empty();
@@ -228,14 +199,12 @@ public final class Main {
             out.println("Web interface on port " + ui.port());
             return Optional.of(ui);
         } catch (IOException e) {
-            logger.warn(
-                    "Cannot start the web interface on port {}: {}", settings.port(), e.toString());
+            logger.warn("Cannot start the web interface on port {}: {}", settings.port(), e.toString());
             return Optional.empty();
         }
     }
 
-    private static int runEngine(
-            LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
+    private static int runEngine(LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
         out.println(NjMuleInfo.startupNotice("njmule --warranty", "njmule --license"));
         AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
         NjMuleEngine engine;
@@ -288,19 +257,14 @@ public final class Main {
         }
 
         Optional<WebUi> web = startWebUi(engine, dirs, out);
-        Runnable shutdown =
-                () -> {
-                    web.ifPresent(WebUi::close);
-                    engine.close();
-                };
-        Thread hook =
-                Thread.ofPlatform()
-                        .name("njmule-shutdown")
-                        .unstarted(
-                                () -> {
-                                    shutdown.run();
-                                    stop.complete(null);
-                                });
+        Runnable shutdown = () -> {
+            web.ifPresent(WebUi::close);
+            engine.close();
+        };
+        Thread hook = Thread.ofPlatform().name("njmule-shutdown").unstarted(() -> {
+            shutdown.run();
+            stop.complete(null);
+        });
         Runtime.getRuntime().addShutdownHook(hook);
         try {
             stop.join();

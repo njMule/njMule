@@ -59,9 +59,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The downloads and their sources: sources come from links and from the server, each one is asked
- * for a place in its upload queue and asked again while it keeps us there, and data flows from
- * those that give us a slot. Engine thread only, except {@link #router()}.
+ * The downloads and their sources: sources come from links and from the server, each one is asked for a place in its
+ * upload queue and asked again while it keeps us there, and data flows from those that give us a slot. Engine thread
+ * only, except {@link #router()}.
  */
 public final class DownloadManager implements AutoCloseable {
 
@@ -268,19 +268,8 @@ public final class DownloadManager implements AutoCloseable {
             Supplier<Optional<KadSources>> kad,
             Listener listener)
             throws IOException {
-        DownloadManager manager =
-                new DownloadManager(
-                        loop,
-                        ourHello,
-                        settings,
-                        server,
-                        blocked,
-                        random,
-                        ticker,
-                        identities,
-                        credit,
-                        kad,
-                        listener);
+        DownloadManager manager = new DownloadManager(
+                loop, ourHello, settings, server, blocked, random, ticker, identities, credit, kad, listener);
         manager.queue = DownloadQueue.load(loop, tempDir, incomingDir, manager.new QueueEvents());
         long now = ticker.read();
         for (DownloadQueue.Download download : manager.queue.all()) {
@@ -293,9 +282,7 @@ public final class DownloadManager implements AutoCloseable {
     /** Adds a download, or the link's sources to the existing one. */
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
         DownloadQueue.Download download = this.queue.add(link);
-        Entry entry =
-                this.entries.computeIfAbsent(
-                        download.hash(), hash -> new Entry(download, this.ticker.read()));
+        Entry entry = this.entries.computeIfAbsent(download.hash(), hash -> new Entry(download, this.ticker.read()));
         for (Ed2kLink.Source source : link.sources()) {
             this.addLinkSource(entry, source);
         }
@@ -331,8 +318,8 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     /**
-     * Sources of an active download that we spoke with, for other clients asking for sources:
-     * HighIDs with a known user hash.
+     * Sources of an active download that we spoke with, for other clients asking for sources: HighIDs with a known user
+     * hash.
      */
     public List<SourceExchange.Source> exchangeable(Hash16 hash) {
         Entry entry = this.entries.get(hash);
@@ -344,15 +331,14 @@ public final class DownloadManager implements AutoCloseable {
             if (source.userHash.isPresent()
                     && source.parts != null
                     && source.address.getAddress() instanceof Inet4Address ip) {
-                sources.add(
-                        new SourceExchange.Source(
-                                Ipv4.fromBytes(ip.getAddress()),
-                                0,
-                                source.address.getPort(),
-                                0,
-                                0,
-                                source.userHash,
-                                source.cryptOptions));
+                sources.add(new SourceExchange.Source(
+                        Ipv4.fromBytes(ip.getAddress()),
+                        0,
+                        source.address.getPort(),
+                        0,
+                        0,
+                        source.userHash,
+                        source.cryptOptions));
             }
         }
         return sources;
@@ -367,11 +353,7 @@ public final class DownloadManager implements AutoCloseable {
                     .append(entry.download.file().missingBytes())
                     .append(':');
             for (Source source : entry.sources.values()) {
-                text.append(' ')
-                        .append(
-                                source.session == null
-                                        ? source.address
-                                        : source.session.describe());
+                text.append(' ').append(source.session == null ? source.address : source.session.describe());
             }
             text.append('\n');
         }
@@ -406,8 +388,7 @@ public final class DownloadManager implements AutoCloseable {
         this.queue.resume(entry.download);
         long now = this.ticker.read();
         for (Source source : entry.sources.values()) {
-            source.nextAsk =
-                    source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
+            source.nextAsk = source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
         }
         entry.nextServerAsk = now;
         this.listener.progress(this.info(entry));
@@ -435,8 +416,8 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     /**
-     * Sources the server found. A LowID source is asked through the server to connect to us, which
-     * needs a HighID of ours.
+     * Sources the server found. A LowID source is asked through the server to connect to us, which needs a HighID of
+     * ours.
      */
     public void foundSources(ServerMessages.FoundSources found) {
         Entry entry = this.entries.get(found.file());
@@ -449,8 +430,7 @@ public final class DownloadManager implements AutoCloseable {
         for (ServerMessages.Source source : found.sources()) {
             if (source.isLowId()) {
                 if (ourId >= ServerMessages.LOW_ID_LIMIT && source.clientId() != 0) {
-                    this.askCallback(
-                            entry, source.clientId(), source.userHash(), source.cryptOptions());
+                    this.askCallback(entry, source.clientId(), source.userHash(), source.cryptOptions());
                 }
                 continue;
             }
@@ -461,8 +441,7 @@ public final class DownloadManager implements AutoCloseable {
             if (!Ipv4.isUnicastPublicCandidate(ip) || this.blocked.test(ip) || source.port() == 0) {
                 continue;
             }
-            Source fresh =
-                    this.addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
+            Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
             if (fresh != null) {
                 fresh.userHash = source.userHash();
                 fresh.cryptOptions = source.cryptOptions();
@@ -477,8 +456,8 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     /**
-     * Hands an incoming connection to the download whose source opened it, as a source does when it
-     * has a slot for us. Called on the connection's thread; waits for the engine thread.
+     * Hands an incoming connection to the download whose source opened it, as a source does when it has a slot for us.
+     * Called on the connection's thread; waits for the engine thread.
      */
     public PeerGreetings.Router router() {
         return (connection, peer) -> {
@@ -515,9 +494,7 @@ public final class DownloadManager implements AutoCloseable {
                 || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
             return;
         }
-        this.callbacks.put(
-                lowId,
-                new Callback(entry.download.hash(), userHash, cryptOptions, this.ticker.read()));
+        this.callbacks.put(lowId, new Callback(entry.download.hash(), userHash, cryptOptions, this.ticker.read()));
     }
 
     private void sendCallbacks(long now) {
@@ -573,15 +550,8 @@ public final class DownloadManager implements AutoCloseable {
         source.asked = true;
         source.lastAsk = now;
         source.nextAsk = now + REASK_INTERVAL.toNanos();
-        DownloadSession session =
-                new DownloadSession(
-                        this.loop,
-                        this.queue,
-                        entry.download,
-                        address,
-                        this.ourHello,
-                        this.identities,
-                        this.sessionEvents);
+        DownloadSession session = new DownloadSession(
+                this.loop, this.queue, entry.download, address, this.ourHello, this.identities, this.sessionEvents);
         source.session = session;
         logger.debug("{} called us back for {}", address, entry.download.file().name());
         return Optional.of(session.adopt(connection, peer, Optional.empty(), false));
@@ -598,10 +568,8 @@ public final class DownloadManager implements AutoCloseable {
                 continue;
             }
             for (Source source : entry.sources.values()) {
-                boolean same =
-                        source.userHash.map(peer.userHash()::equals).orElse(false)
-                                || (source.address.getAddress().equals(from)
-                                        && source.address.getPort() == peer.tcpPort());
+                boolean same = source.userHash.map(peer.userHash()::equals).orElse(false)
+                        || (source.address.getAddress().equals(from) && source.address.getPort() == peer.tcpPort());
                 if (!same || !source.asked) {
                     continue;
                 }
@@ -613,20 +581,21 @@ public final class DownloadManager implements AutoCloseable {
                     source.session = null;
                     old.close("the source called back");
                 }
-                DownloadSession session =
-                        new DownloadSession(
-                                this.loop,
-                                this.queue,
-                                entry.download,
-                                source.address,
-                                this.ourHello,
-                                this.identities,
-                                this.sessionEvents);
+                DownloadSession session = new DownloadSession(
+                        this.loop,
+                        this.queue,
+                        entry.download,
+                        source.address,
+                        this.ourHello,
+                        this.identities,
+                        this.sessionEvents);
                 source.session = session;
                 source.userHash = Optional.of(peer.userHash());
-                logger.debug("{} called back for {}", source.address, entry.download.file().name());
-                return Optional.of(
-                        session.adopt(connection, peer, Optional.ofNullable(source.parts)));
+                logger.debug(
+                        "{} called back for {}",
+                        source.address,
+                        entry.download.file().name());
+                return Optional.of(session.adopt(connection, peer, Optional.ofNullable(source.parts)));
             }
         }
         return Optional.empty();
@@ -681,24 +650,18 @@ public final class DownloadManager implements AutoCloseable {
             return;
         }
         Hash16 hash = entry.download.hash();
-        boolean started =
-                finder.get()
-                        .find(
-                                hash,
-                                entry.download.file().size(),
-                                found -> {
-                                    Entry current = this.entries.get(hash);
-                                    if (current != null) {
-                                        found.forEach(address -> this.addSource(current, address));
-                                    }
-                                });
+        boolean started = finder.get().find(hash, entry.download.file().size(), found -> {
+            Entry current = this.entries.get(hash);
+            if (current != null) {
+                found.forEach(address -> this.addSource(current, address));
+            }
+        });
         if (started) {
             this.kadSearching++;
             this.nextKadStart = now + 1_000_000_000L;
             entry.kadSearches = Math.min(entry.kadSearches + 1, KAD_SEARCH_MAX_STEPS);
             entry.nextKadSearch = now + KAD_SEARCH_STEP.toNanos() * entry.kadSearches;
-            this.loop.schedule(
-                    "Kad source search", Duration.ofSeconds(45), () -> this.kadSearching--);
+            this.loop.schedule("Kad source search", Duration.ofSeconds(45), () -> this.kadSearching--);
         }
     }
 
@@ -727,15 +690,14 @@ public final class DownloadManager implements AutoCloseable {
             source.asked = true;
             source.lastAsk = now;
             source.nextAsk = now + REASK_INTERVAL.toNanos();
-            source.session =
-                    new DownloadSession(
-                            this.loop,
-                            this.queue,
-                            entry.download,
-                            source.address,
-                            this.ourHello,
-                            this.identities,
-                            this.sessionEvents);
+            source.session = new DownloadSession(
+                    this.loop,
+                    this.queue,
+                    entry.download,
+                    source.address,
+                    this.ourHello,
+                    this.identities,
+                    this.sessionEvents);
             // Obfuscated only towards sources known to take it, which needs their user hash.
             boolean crypt = !disabled && (source.cryptOptions & CRYPT_SUPPORTED) != 0;
             source.session.connect(crypt ? source.userHash : Optional.empty(), this.random);
@@ -760,31 +722,20 @@ public final class DownloadManager implements AutoCloseable {
             return;
         }
         Hash16 hash = entry.download.hash();
-        Thread.ofVirtual()
-                .name("njmule-resolve-source")
-                .start(
-                        () -> {
-                            try {
-                                for (InetAddress address :
-                                        InetAddress.getAllByName(source.host())) {
-                                    if (address instanceof Inet4Address) {
-                                        InetSocketAddress resolved =
-                                                new InetSocketAddress(address, source.port());
-                                        this.loop.post(
-                                                () ->
-                                                        Optional.ofNullable(this.entries.get(hash))
-                                                                .ifPresent(
-                                                                        e ->
-                                                                                this.addSource(
-                                                                                        e,
-                                                                                        resolved)));
-                                        return;
-                                    }
-                                }
-                            } catch (UnknownHostException e) {
-                                logger.debug("Cannot resolve the source {}", source.host());
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-resolve-source").start(() -> {
+            try {
+                for (InetAddress address : InetAddress.getAllByName(source.host())) {
+                    if (address instanceof Inet4Address) {
+                        InetSocketAddress resolved = new InetSocketAddress(address, source.port());
+                        this.loop.post(() -> Optional.ofNullable(this.entries.get(hash))
+                                .ifPresent(e -> this.addSource(e, resolved)));
+                        return;
+                    }
+                }
+            } catch (UnknownHostException e) {
+                logger.debug("Cannot resolve the source {}", source.host());
+            }
+        });
     }
 
     // Returns the new source, or null if it was known or the list is full.
@@ -813,8 +764,7 @@ public final class DownloadManager implements AutoCloseable {
         PartFile file = entry.download.file();
         int transferring = 0;
         for (Source source : entry.sources.values()) {
-            if (source.session != null
-                    && source.session.state() == DownloadSession.State.DOWNLOADING) {
+            if (source.session != null && source.session.state() == DownloadSession.State.DOWNLOADING) {
                 transferring++;
             }
         }
@@ -852,17 +802,12 @@ public final class DownloadManager implements AutoCloseable {
             return false;
         }
         long now = this.ticker.read();
-        boolean rareDue =
-                !source.sourcesEverAsked || now - source.sourcesAsked >= SX_RARE_INTERVAL.toNanos();
-        boolean commonDue =
-                !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
+        boolean rareDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_RARE_INTERVAL.toNanos();
+        boolean commonDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
         long sinceAnswer = entry.sourcesEverAnswered ? now - entry.sourcesAnswered : Long.MAX_VALUE;
-        boolean allowed =
-                (known <= SX_VERY_RARE && rareDue)
-                        || (known <= SX_RARE
-                                && rareDue
-                                && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos())
-                        || (commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos());
+        boolean allowed = (known <= SX_VERY_RARE && rareDue)
+                || (known <= SX_RARE && rareDue && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos())
+                || (commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos());
         if (allowed) {
             source.sourcesEverAsked = true;
             source.sourcesAsked = now;
@@ -889,8 +834,7 @@ public final class DownloadManager implements AutoCloseable {
                     || (Ipv4.toEd2k(s.ip()) == ourId && s.port() == ourPort)) {
                 continue;
             }
-            Source fresh =
-                    this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
+            Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
             if (fresh != null) {
                 fresh.userHash = s.userHash().filter(h -> !h.equals(Hash16.ZERO));
                 fresh.cryptOptions = s.cryptOptions();
@@ -990,8 +934,7 @@ public final class DownloadManager implements AutoCloseable {
                 return;
             }
             DownloadManager.this.closeSessions(entry, "the download is complete");
-            DownloadManager.this.listener.completed(
-                    DownloadManager.this.info(entry), file, download.file());
+            DownloadManager.this.listener.completed(DownloadManager.this.info(entry), file, download.file());
         }
 
         @Override

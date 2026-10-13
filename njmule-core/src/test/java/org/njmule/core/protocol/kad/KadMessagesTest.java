@@ -41,25 +41,23 @@ class KadMessagesTest {
 
     @Test
     void contactsCarryIdsByWordsAndAddressesInHostOrder() throws DecodeException {
-        KadMessages.Contact contact =
-                new KadMessages.Contact(OTHER, Ipv4.of(1, 2, 3, 4), 4672, 4662, 10);
+        KadMessages.Contact contact = new KadMessages.Contact(OTHER, Ipv4.of(1, 2, 3, 4), 4672, 4662, 10);
         KadMessages.Answer answer = new KadMessages.Answer(ID, List.of(contact));
 
         assertThat(HEX.formatHex(answer.encode().payload()))
-                .isEqualTo(
-                        "33221100"
-                                + "77665544"
-                                + "bbaa9988"
-                                + "ffeeddcc"
-                                + "01"
-                                + "ccddeeff"
-                                + "8899aabb"
-                                + "44556677"
-                                + "00112233"
-                                + "04030201"
-                                + "4012"
-                                + "3612"
-                                + "0a");
+                .isEqualTo("33221100"
+                        + "77665544"
+                        + "bbaa9988"
+                        + "ffeeddcc"
+                        + "01"
+                        + "ccddeeff"
+                        + "8899aabb"
+                        + "44556677"
+                        + "00112233"
+                        + "04030201"
+                        + "4012"
+                        + "3612"
+                        + "0a");
         assertThat(KadMessages.Answer.decode(answer.encode())).isEqualTo(answer);
     }
 
@@ -68,24 +66,19 @@ class KadMessagesTest {
         KadMessages.Request request = new KadMessages.Request(11, ID, OTHER);
         assertThat(KadMessages.Request.decode(request.encode())).isEqualTo(request);
 
-        KadMessages.Hello hello =
-                new KadMessages.Hello(
-                        new KadMessages.Self(ID, 4662, KadMessages.VERSION),
-                        List.of(new Tag.IntTag(TagName.id(0xFC), 4672)));
+        KadMessages.Hello hello = new KadMessages.Hello(
+                new KadMessages.Self(ID, 4662, KadMessages.VERSION), List.of(new Tag.IntTag(TagName.id(0xFC), 4672)));
         assertThat(KadMessages.Hello.decode(hello.encode(false))).isEqualTo(hello);
         assertThat(hello.encode(true).opcode()).isEqualTo(0x19);
 
-        KadMessages.BootstrapAnswer bootstrap =
-                new KadMessages.BootstrapAnswer(
-                        new KadMessages.Self(ID, 4662, 10),
-                        List.of(new KadMessages.Contact(OTHER, Ipv4.of(5, 6, 7, 8), 1, 2, 9)));
+        KadMessages.BootstrapAnswer bootstrap = new KadMessages.BootstrapAnswer(
+                new KadMessages.Self(ID, 4662, 10),
+                List.of(new KadMessages.Contact(OTHER, Ipv4.of(5, 6, 7, 8), 1, 2, 9)));
         assertThat(KadMessages.BootstrapAnswer.decode(bootstrap.encode())).isEqualTo(bootstrap);
 
         assertThat(KadMessages.decodeHelloAck(KadMessages.helloAck(ID))).isEqualTo(ID);
         assertThat(KadMessages.decodePong(KadMessages.pong(4672))).isEqualTo(4672);
-        assertThat(
-                        KadMessages.decodeFirewallAnswer(
-                                KadMessages.firewallAnswer(Ipv4.of(9, 8, 7, 6))))
+        assertThat(KadMessages.decodeFirewallAnswer(KadMessages.firewallAnswer(Ipv4.of(9, 8, 7, 6))))
                 .isEqualTo(Ipv4.of(9, 8, 7, 6));
         KadMessages.FirewallCheck check = new KadMessages.FirewallCheck(4662, OTHER, 1);
         assertThat(KadMessages.FirewallCheck.decode(check.encode())).isEqualTo(check);
@@ -93,8 +86,7 @@ class KadMessagesTest {
 
     @Test
     void searchesPublishesAndTheirAnswersRoundTrip() throws DecodeException {
-        KadMessages.KeywordSearch keyword =
-                new KadMessages.KeywordSearch(ID, 0, new byte[] {1, 3, 0, 'a', 'b', 'c'});
+        KadMessages.KeywordSearch keyword = new KadMessages.KeywordSearch(ID, 0, new byte[] {1, 3, 0, 'a', 'b', 'c'});
         KadMessages.KeywordSearch back = KadMessages.KeywordSearch.decode(keyword.encode());
         assertThat(back).isEqualTo(keyword);
         assertThat(HEX.formatHex(keyword.encode().payload())).contains("0080");
@@ -112,8 +104,7 @@ class KadMessagesTest {
         assertThat(KadMessages.PublishAnswer.decode(published.encode())).isEqualTo(published);
 
         List<Packet> answers =
-                KadMessages.SearchAnswer.split(
-                        OTHER, ID, java.util.Collections.nCopies(100, entry), 1420);
+                KadMessages.SearchAnswer.split(OTHER, ID, java.util.Collections.nCopies(100, entry), 1420);
         assertThat(answers).hasSizeGreaterThan(1);
         int total = 0;
         for (Packet p : answers) {
@@ -130,32 +121,26 @@ class KadMessagesTest {
         byte[] payload = HEX.parseHex("00".repeat(16) + "02" + "00".repeat(25));
         assertThatThrownBy(() -> KadMessages.Answer.decode(Packet.of(Protocol.KAD, 0x29, payload)))
                 .isInstanceOf(DecodeException.class);
-        assertThatThrownBy(
-                        () ->
-                                KadMessages.Request.decode(
-                                        Packet.of(
-                                                Protocol.KAD,
-                                                0x21,
-                                                HEX.parseHex("00" + "00".repeat(32)))))
+        assertThatThrownBy(() ->
+                        KadMessages.Request.decode(Packet.of(Protocol.KAD, 0x21, HEX.parseHex("00" + "00".repeat(32)))))
                 .isInstanceOf(DecodeException.class);
     }
 
     @Property
     void garbageOnlyFailsWithDecodeException(@ForAll @Size(max = 120) byte[] data) {
         Packet packet = Packet.of(Protocol.KAD, 0x29, data);
-        for (Decoder d :
-                List.<Decoder>of(
-                        () -> KadMessages.Answer.decode(packet),
-                        () -> KadMessages.Request.decode(packet),
-                        () -> KadMessages.Hello.decode(packet),
-                        () -> KadMessages.BootstrapAnswer.decode(packet),
-                        () -> KadMessages.SearchAnswer.decode(packet),
-                        () -> KadMessages.KeywordPublish.decode(packet),
-                        () -> KadMessages.SourcePublish.decode(packet),
-                        () -> KadMessages.KeywordSearch.decode(packet),
-                        () -> KadMessages.SourceSearch.decode(packet),
-                        () -> KadMessages.PublishAnswer.decode(packet),
-                        () -> KadMessages.FirewallCheck.decode(packet))) {
+        for (Decoder d : List.<Decoder>of(
+                () -> KadMessages.Answer.decode(packet),
+                () -> KadMessages.Request.decode(packet),
+                () -> KadMessages.Hello.decode(packet),
+                () -> KadMessages.BootstrapAnswer.decode(packet),
+                () -> KadMessages.SearchAnswer.decode(packet),
+                () -> KadMessages.KeywordPublish.decode(packet),
+                () -> KadMessages.SourcePublish.decode(packet),
+                () -> KadMessages.KeywordSearch.decode(packet),
+                () -> KadMessages.SourceSearch.decode(packet),
+                () -> KadMessages.PublishAnswer.decode(packet),
+                () -> KadMessages.FirewallCheck.decode(packet))) {
             try {
                 d.decode();
             } catch (DecodeException expected) {

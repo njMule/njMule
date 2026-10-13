@@ -51,9 +51,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Walks through every screen, popup, dialog and theme once and exits, so that the native-image
- * tracing agent sees what the interface reaches by reflection, JNI and resources. Started by the
- * system property {@code njmule.gui.tour}.
+ * Walks through every screen, popup, dialog and theme once and exits, so that the native-image tracing agent sees what
+ * the interface reaches by reflection, JNI and resources. Started by the system property {@code njmule.gui.tour}.
  */
 final class GuiTour {
 
@@ -107,11 +106,10 @@ final class GuiTour {
         this.steps.add(GuiTour::languages);
         this.steps.add(GuiTour::picture);
         this.steps.add(GuiTour::clipboard);
-        this.steps.add(
-                () -> {
-                    logger.info("Tour finished");
-                    this.done.run();
-                });
+        this.steps.add(() -> {
+            logger.info("Tour finished");
+            this.done.run();
+        });
         Timeline timeline = new Timeline();
         for (int i = 0; i < this.steps.size(); i++) {
             Runnable step = this.steps.get(i);
@@ -184,9 +182,8 @@ final class GuiTour {
     // content are left alone.
     private static void clipboard() {
         Clipboard clipboard = Clipboard.getSystemClipboard();
-        boolean onlyText =
-                clipboard.getContentTypes().isEmpty()
-                        || (clipboard.hasString() && clipboard.getContentTypes().size() == 1);
+        boolean onlyText = clipboard.getContentTypes().isEmpty()
+                || (clipboard.hasString() && clipboard.getContentTypes().size() == 1);
         if (!onlyText) {
             return;
         }

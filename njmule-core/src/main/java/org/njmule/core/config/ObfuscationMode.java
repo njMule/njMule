@@ -16,10 +16,7 @@
  */
 package org.njmule.core.config;
 
-/**
- * Protocol obfuscation policy: the supported, requested and required flags folded into one ordered
- * level.
- */
+/** Protocol obfuscation policy: the supported, requested and required flags folded into one ordered level. */
 public enum ObfuscationMode {
     DISABLED,
     SUPPORTED,
@@ -28,8 +25,7 @@ public enum ObfuscationMode {
     /** Refuse plain connections. */
     REQUIRED;
 
-    public static ObfuscationMode fromFlags(
-            boolean supported, boolean requested, boolean required) {
+    public static ObfuscationMode fromFlags(boolean supported, boolean requested, boolean required) {
         if (!supported) {
             return DISABLED;
         }

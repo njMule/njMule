@@ -38,30 +38,28 @@ class I18nTest {
 
     private static final Path SOURCES = Path.of("src/main/java");
     private static final Path BUNDLES = Path.of("src/main/resources/org/njmule/gui/i18n");
-    private static final Pattern KEY =
-            Pattern.compile("\"((?:IDS_[A-Z0-9_]+)|(?:nj\\.[A-Za-z0-9.]+[A-Za-z0-9]))\"");
+    private static final Pattern KEY = Pattern.compile("\"((?:IDS_[A-Z0-9_]+)|(?:nj\\.[A-Za-z0-9.]+[A-Za-z0-9]))\"");
     // Keys built at run time: a prefix followed by an enum constant in lower case.
-    private static final List<String> DYNAMIC =
-            List.of(
-                    "nj.theme.nord",
-                    "nj.theme.primer",
-                    "nj.theme.cupertino",
-                    "nj.theme.dracula",
-                    "nj.mode.system",
-                    "nj.mode.light",
-                    "nj.mode.dark",
-                    "nj.obfuscation.disabled",
-                    "nj.obfuscation.supported",
-                    "nj.obfuscation.requested",
-                    "nj.obfuscation.required",
-                    "nj.import.outcome.imported",
-                    "nj.import.outcome.would_import",
-                    "nj.import.outcome.skipped",
-                    "nj.import.outcome.missing",
-                    "nj.import.outcome.failed",
-                    "nj.proxy.none",
-                    "nj.proxy.socks",
-                    "nj.proxy.http");
+    private static final List<String> DYNAMIC = List.of(
+            "nj.theme.nord",
+            "nj.theme.primer",
+            "nj.theme.cupertino",
+            "nj.theme.dracula",
+            "nj.mode.system",
+            "nj.mode.light",
+            "nj.mode.dark",
+            "nj.obfuscation.disabled",
+            "nj.obfuscation.supported",
+            "nj.obfuscation.requested",
+            "nj.obfuscation.required",
+            "nj.import.outcome.imported",
+            "nj.import.outcome.would_import",
+            "nj.import.outcome.skipped",
+            "nj.import.outcome.missing",
+            "nj.import.outcome.failed",
+            "nj.proxy.none",
+            "nj.proxy.socks",
+            "nj.proxy.http");
 
     @Test
     void englishAndItalianTextsLoad() {

@@ -47,8 +47,8 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 
 /**
- * Taking an eMule profile over: a check first shows what would be taken, then the import itself.
- * The eMule directory is only read.
+ * Taking an eMule profile over: a check first shows what would be taken, then the import itself. The eMule directory is
+ * only read.
  */
 public final class ImportDialog {
 
@@ -78,13 +78,11 @@ public final class ImportDialog {
         TableColumn<ImportReport.Item, String> file = new TableColumn<>(gui.t("IDS_DL_FILENAME"));
         file.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().file()));
         file.setPrefWidth(170);
-        TableColumn<ImportReport.Item, String> outcome =
-                new TableColumn<>(gui.t("nj.import.outcome"));
+        TableColumn<ImportReport.Item, String> outcome = new TableColumn<>(gui.t("nj.import.outcome"));
         outcome.setCellValueFactory(
                 c -> new ReadOnlyStringWrapper(this.outcome(c.getValue().outcome())));
         outcome.setPrefWidth(130);
-        TableColumn<ImportReport.Item, String> detail =
-                new TableColumn<>(gui.t("nj.import.detail"));
+        TableColumn<ImportReport.Item, String> detail = new TableColumn<>(gui.t("nj.import.detail"));
         detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().detail()));
         detail.setPrefWidth(420);
         this.report.getColumns().addAll(List.of(file, outcome, detail));
@@ -93,28 +91,19 @@ public final class ImportDialog {
 
         Label intro = new Label(gui.t("nj.import.intro"));
         intro.setWrapText(true);
-        HBox dir =
-                new HBox(
-                        8,
-                        new Label(gui.t("nj.import.directory")),
-                        this.directory,
-                        Fx.button(gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::browse));
+        HBox dir = new HBox(
+                8,
+                new Label(gui.t("nj.import.directory")),
+                this.directory,
+                Fx.button(gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::browse));
         HBox.setHgrow(this.directory, Priority.ALWAYS);
-        HBox buttons =
-                Fx.toolRow(
-                        this.check,
-                        this.take,
-                        Fx.spacer(),
-                        this.summary,
-                        Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
-        VBox root =
-                new VBox(
-                        10,
-                        intro,
-                        dir,
-                        new HBox(16, this.identity, this.downloads),
-                        this.report,
-                        buttons);
+        HBox buttons = Fx.toolRow(
+                this.check,
+                this.take,
+                Fx.spacer(),
+                this.summary,
+                Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+        VBox root = new VBox(10, intro, dir, new HBox(16, this.identity, this.downloads), this.report, buttons);
         VBox.setVgrow(this.report, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 820, 520);
@@ -177,19 +166,16 @@ public final class ImportDialog {
                 .model()
                 .importFromEmule(
                         dir,
-                        new ImportOptions(
-                                dryRun, this.identity.isSelected(), this.downloads.isSelected()),
+                        new ImportOptions(dryRun, this.identity.isSelected(), this.downloads.isSelected()),
                         result -> {
                             this.report.getItems().setAll(result.items());
-                            long failed =
-                                    result.items().stream()
-                                            .filter(i -> i.outcome() == ImportReport.Outcome.FAILED)
-                                            .count();
-                            this.summary.setText(
-                                    this.gui.f(
-                                            dryRun ? "nj.import.checked" : "nj.import.done",
-                                            result.items().size(),
-                                            failed));
+                            long failed = result.items().stream()
+                                    .filter(i -> i.outcome() == ImportReport.Outcome.FAILED)
+                                    .count();
+                            this.summary.setText(this.gui.f(
+                                    dryRun ? "nj.import.checked" : "nj.import.done",
+                                    result.items().size(),
+                                    failed));
                             this.check.setDisable(false);
                             this.take.setDisable(!dryRun);
                         });

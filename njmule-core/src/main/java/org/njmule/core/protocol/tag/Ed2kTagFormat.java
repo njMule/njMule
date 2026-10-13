@@ -18,14 +18,11 @@ package org.njmule.core.protocol.tag;
 
 /** The two eD2K tag encodings; readers accept both. */
 public enum Ed2kTagFormat {
-    /**
-     * {@code <type><u16 name length><name><value>} with u32/u64 integers: .met files and the Hello
-     * packet.
-     */
+    /** {@code <type><u16 name length><name><value>} with u32/u64 integers: .met files and the Hello packet. */
     OLD,
     /**
-     * {@code <type|0x80><id><value>} with the smallest integer type and STR1-16 strings: search
-     * results and peers or servers that support new tags.
+     * {@code <type|0x80><id><value>} with the smallest integer type and STR1-16 strings: search results and peers or
+     * servers that support new tags.
      */
     NEW
 }

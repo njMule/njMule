@@ -48,40 +48,32 @@ class SearchParserTest {
     @Test
     void adjacentWordsAreAndedFromTheRight() {
         assertThat(SearchParser.parse("linux iso")).isEqualTo(new And(kw("linux"), kw("iso")));
-        assertThat(SearchParser.parse("a b c"))
-                .isEqualTo(new And(kw("a"), new And(kw("b"), kw("c"))));
+        assertThat(SearchParser.parse("a b c")).isEqualTo(new And(kw("a"), new And(kw("b"), kw("c"))));
     }
 
     @Test
     void notBindsTighterThanOrWhichBindsTighterThanAnd() {
-        assertThat(SearchParser.parse("a OR b c"))
-                .isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
-        assertThat(SearchParser.parse("a AND b OR c"))
-                .isEqualTo(new And(kw("a"), new Or(kw("b"), kw("c"))));
-        assertThat(SearchParser.parse("a OR b NOT c"))
-                .isEqualTo(new Or(kw("a"), new Not(kw("b"), kw("c"))));
-        assertThat(SearchParser.parse("(a OR b) AND c"))
-                .isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
+        assertThat(SearchParser.parse("a OR b c")).isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
+        assertThat(SearchParser.parse("a AND b OR c")).isEqualTo(new And(kw("a"), new Or(kw("b"), kw("c"))));
+        assertThat(SearchParser.parse("a OR b NOT c")).isEqualTo(new Or(kw("a"), new Not(kw("b"), kw("c"))));
+        assertThat(SearchParser.parse("(a OR b) AND c")).isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
     }
 
     @Test
     void aLeadingMinusMeansNot() {
-        assertThat(SearchParser.parse("linux -windows"))
-                .isEqualTo(new Not(kw("linux"), kw("windows")));
+        assertThat(SearchParser.parse("linux -windows")).isEqualTo(new Not(kw("linux"), kw("windows")));
         assertThat(SearchParser.parse("x-ray")).isEqualTo(kw("x-ray"));
     }
 
     @Test
     void operatorsAreUpperCaseWords() {
-        assertThat(SearchParser.parse("rock or roll"))
-                .isEqualTo(new And(kw("rock"), new And(kw("or"), kw("roll"))));
+        assertThat(SearchParser.parse("rock or roll")).isEqualTo(new And(kw("rock"), new And(kw("or"), kw("roll"))));
         assertThat(SearchParser.parse("ORANGE")).isEqualTo(kw("ORANGE"));
     }
 
     @Test
     void quotedPhrasesKeepTheirQuotesAndEscapes() {
-        assertThat(SearchParser.parse("\"exact phrase\" x"))
-                .isEqualTo(new And(kw("\"exact phrase\""), kw("x")));
+        assertThat(SearchParser.parse("\"exact phrase\" x")).isEqualTo(new And(kw("\"exact phrase\""), kw("x")));
         assertThat(SearchParser.parse("\"a\\\"b\"")).isEqualTo(kw("\"a\"b\""));
         assertThat(SearchParser.parse("\"\" x")).isEqualTo(kw("x"));
     }
@@ -98,8 +90,7 @@ class SearchParserTest {
                 "@size<>3m;NOT_EQUAL;3145728"
             })
     void sizesUseBinaryUnitsAndDefaultToMegabytes(String text, Comparison op, long bytes) {
-        assertThat(SearchParser.parse(text))
-                .isEqualTo(new NumericAttr(FileTag.FILESIZE, op, bytes));
+        assertThat(SearchParser.parse(text)).isEqualTo(new NumericAttr(FileTag.FILESIZE, op, bytes));
     }
 
     @Test
@@ -124,27 +115,19 @@ class SearchParserTest {
 
     @Test
     void stringAttributesAndFileTypes() {
-        assertThat(SearchParser.parse("@type=video"))
-                .isEqualTo(new StringAttr(FileTag.FILETYPE, "Video"));
-        assertThat(SearchParser.parse("@typ=img"))
-                .isEqualTo(new StringAttr(FileTag.FILETYPE, "Image"));
-        assertThat(SearchParser.parse("@type=doc"))
-                .isEqualTo(new StringAttr(FileTag.FILETYPE, "Doc"));
-        assertThat(SearchParser.parse("@type=cd"))
-                .isEqualTo(new StringAttr(FileTag.FILETYPE, "Iso"));
-        assertThat(SearchParser.parse("@ext=mkv"))
-                .isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mkv"));
-        assertThat(SearchParser.parse("@ext=\"mp3\""))
-                .isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mp3"));
+        assertThat(SearchParser.parse("@type=video")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Video"));
+        assertThat(SearchParser.parse("@typ=img")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Image"));
+        assertThat(SearchParser.parse("@type=doc")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Doc"));
+        assertThat(SearchParser.parse("@type=cd")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Iso"));
+        assertThat(SearchParser.parse("@ext=mkv")).isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mkv"));
+        assertThat(SearchParser.parse("@ext=\"mp3\"")).isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mp3"));
         assertThat(SearchParser.parse("@artist=Queen song"))
                 .isEqualTo(new And(new StringAttr(FileTag.MEDIA_ARTIST, "Queen"), kw("song")));
     }
 
     @Test
     void ed2kLinksBecomeHashTerms() {
-        assertThat(
-                        SearchParser.parse(
-                                "ed2k://|file|My File.iso|123|31d6cfe0d16ae931b73c59d7e0c089c0|/"))
+        assertThat(SearchParser.parse("ed2k://|file|My File.iso|123|31d6cfe0d16ae931b73c59d7e0c089c0|/"))
                 .isEqualTo(kw("ed2k::31D6CFE0D16AE931B73C59D7E0C089C0"));
     }
 
@@ -177,10 +160,7 @@ class SearchParserTest {
     @Test
     void serverTreesArePrefixEncoded() {
         PacketWriter out = new PacketWriter();
-        SearchTreeCodec.write(
-                out,
-                new And(kw("a"), new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 5)),
-                false);
+        SearchTreeCodec.write(out, new And(kw("a"), new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 5)), false);
 
         assertThat(HexFormat.of().formatHex(out.toByteArray()))
                 .isEqualTo("0000" + "01010061" + "0305000000" + "01" + "0100" + "02");
@@ -188,8 +168,7 @@ class SearchParserTest {
 
     @Test
     void largeValuesNeed64BitServers() throws DecodeException {
-        NumericAttr big =
-                new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 5_000_000_000L);
+        NumericAttr big = new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 5_000_000_000L);
         PacketWriter wide = new PacketWriter();
         SearchTreeCodec.write(wide, big, true);
         PacketWriter narrow = new PacketWriter();
@@ -197,8 +176,7 @@ class SearchParserTest {
 
         assertThat(SearchTreeCodec.read(PacketReader.of(wide.toByteArray()))).isEqualTo(big);
         assertThat(SearchTreeCodec.read(PacketReader.of(narrow.toByteArray())))
-                .isEqualTo(
-                        new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 0xFFFF_FFFFL));
+                .isEqualTo(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 0xFFFF_FFFFL));
     }
 
     @Test
@@ -239,31 +217,27 @@ class SearchParserTest {
 
     @Provide
     Arbitrary<SearchExpr> trees() {
-        Arbitrary<SearchExpr> leaf =
-                Arbitraries.oneOf(
-                        Arbitraries.strings()
-                                .withCharRange('a', 'z')
-                                .ofMinLength(1)
-                                .ofMaxLength(8)
-                                .map(Keyword::new),
-                        Combinators.combine(
-                                        Arbitraries.integers().between(0, 255),
-                                        Arbitraries.strings()
-                                                .withCharRange(' ', '퟿')
-                                                .ofMaxLength(8))
-                                .as(StringAttr::new),
-                        Combinators.combine(
-                                        Arbitraries.integers().between(0, 255),
-                                        Arbitraries.of(Comparison.class),
-                                        Arbitraries.longs().between(0, Long.MAX_VALUE))
-                                .as(NumericAttr::new));
+        Arbitrary<SearchExpr> leaf = Arbitraries.oneOf(
+                Arbitraries.strings()
+                        .withCharRange('a', 'z')
+                        .ofMinLength(1)
+                        .ofMaxLength(8)
+                        .map(Keyword::new),
+                Combinators.combine(
+                                Arbitraries.integers().between(0, 255),
+                                Arbitraries.strings().withCharRange(' ', '퟿').ofMaxLength(8))
+                        .as(StringAttr::new),
+                Combinators.combine(
+                                Arbitraries.integers().between(0, 255),
+                                Arbitraries.of(Comparison.class),
+                                Arbitraries.longs().between(0, Long.MAX_VALUE))
+                        .as(NumericAttr::new));
         return Arbitraries.recursive(
                 () -> leaf,
-                inner ->
-                        Arbitraries.oneOf(
-                                Combinators.combine(inner, inner).as(And::new),
-                                Combinators.combine(inner, inner).as(Or::new),
-                                Combinators.combine(inner, inner).as(Not::new)),
+                inner -> Arbitraries.oneOf(
+                        Combinators.combine(inner, inner).as(And::new),
+                        Combinators.combine(inner, inner).as(Or::new),
+                        Combinators.combine(inner, inner).as(Not::new)),
                 0,
                 4);
     }

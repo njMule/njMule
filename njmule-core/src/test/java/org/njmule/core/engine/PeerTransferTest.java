@@ -50,7 +50,8 @@ class PeerTransferTest {
 
     private static final Duration WAIT = Duration.ofSeconds(60);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
@@ -78,12 +79,10 @@ class PeerTransferTest {
         NjMuleEngine downloader = this.engine(downloaderRoot);
         BlockingQueue<EngineEvent> events = events(downloader);
         Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink)
-                        Ed2kLink.parse(
-                                shared.link().toUri()
-                                        + "|sources,127.0.0.1:"
-                                        + uploader.preferences().tcpPort()
-                                        + "|/");
+                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
+                        + "|sources,127.0.0.1:"
+                        + uploader.preferences().tcpPort()
+                        + "|/");
         DownloadInfo added = downloader.addDownload(link).get(10, TimeUnit.SECONDS);
 
         Path file = completed(events, added, downloader, uploader).file();
@@ -120,10 +119,7 @@ class PeerTransferTest {
     }
 
     private static EngineEvent.DownloadCompleted completed(
-            BlockingQueue<EngineEvent> events,
-            DownloadInfo download,
-            NjMuleEngine engine,
-            NjMuleEngine source)
+            BlockingQueue<EngineEvent> events, DownloadInfo download, NjMuleEngine engine, NjMuleEngine source)
             throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -136,17 +132,16 @@ class PeerTransferTest {
                 throw new AssertionError("download failed: " + failed.reason());
             }
         }
-        throw new AssertionError(
-                "no download completed within "
-                        + WAIT
-                        + ": "
-                        + engine.downloads().get(10, TimeUnit.SECONDS)
-                        + "\ndownloader "
-                        + ((Engine) engine).describe()
-                        + "\nuploader "
-                        + ((Engine) source).describe()
-                        + "\nthreads:\n"
-                        + connectionThreads());
+        throw new AssertionError("no download completed within "
+                + WAIT
+                + ": "
+                + engine.downloads().get(10, TimeUnit.SECONDS)
+                + "\ndownloader "
+                + ((Engine) engine).describe()
+                + "\nuploader "
+                + ((Engine) source).describe()
+                + "\nthreads:\n"
+                + connectionThreads());
     }
 
     // The stacks of the connection threads, virtual ones included, to see where a transfer hangs.
@@ -155,15 +150,14 @@ class PeerTransferTest {
             Path dump = Files.createTempFile("njmule-threads", ".txt");
             Files.delete(dump);
             Path jcmd = Path.of(System.getProperty("java.home"), "bin", "jcmd");
-            Process process =
-                    new ProcessBuilder(
-                                    jcmd.toString(),
-                                    Long.toString(ProcessHandle.current().pid()),
-                                    "Thread.dump_to_file",
-                                    "-format=text",
-                                    dump.toString())
-                            .redirectErrorStream(true)
-                            .start();
+            Process process = new ProcessBuilder(
+                            jcmd.toString(),
+                            Long.toString(ProcessHandle.current().pid()),
+                            "Thread.dump_to_file",
+                            "-format=text",
+                            dump.toString())
+                    .redirectErrorStream(true)
+                    .start();
             process.getInputStream().readAllBytes();
             process.waitFor(30, TimeUnit.SECONDS);
             StringBuilder text = new StringBuilder();
@@ -196,25 +190,23 @@ class PeerTransferTest {
 
     private static BlockingQueue<EngineEvent> events(NjMuleEngine engine) {
         BlockingQueue<EngineEvent> queue = new LinkedBlockingQueue<>();
-        engine.events()
-                .subscribe(
-                        new Flow.Subscriber<>() {
-                            @Override
-                            public void onSubscribe(Flow.Subscription subscription) {
-                                subscription.request(Long.MAX_VALUE);
-                            }
+        engine.events().subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
 
-                            @Override
-                            public void onNext(EngineEvent item) {
-                                queue.add(item);
-                            }
+            @Override
+            public void onNext(EngineEvent item) {
+                queue.add(item);
+            }
 
-                            @Override
-                            public void onError(Throwable throwable) {}
+            @Override
+            public void onError(Throwable throwable) {}
 
-                            @Override
-                            public void onComplete() {}
-                        });
+            @Override
+            public void onComplete() {}
+        });
         return queue;
     }
 }

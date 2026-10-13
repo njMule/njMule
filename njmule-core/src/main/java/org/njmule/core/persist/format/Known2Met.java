@@ -25,9 +25,8 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 
 /**
- * AICH recovery hash sets, {@code known2_64.met}: {@code <0x02>} then, appended per file, {@code
- * <master hash 20><u32 count><leaf hash 20 × count>}. The older {@code known2.met} has no header
- * and u16 counts.
+ * AICH recovery hash sets, {@code known2_64.met}: {@code <0x02>} then, appended per file, {@code <master hash 20><u32
+ * count><leaf hash 20 × count>}. The older {@code known2.met} has no header and u16 counts.
  */
 public final class Known2Met {
 

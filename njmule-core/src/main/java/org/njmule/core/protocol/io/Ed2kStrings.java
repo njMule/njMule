@@ -24,8 +24,8 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
- * String encoding on the eD2K network and in its data files: a UTF-8 BOM marks UTF-8, valid UTF-8
- * is taken as such, anything else is the Windows ANSI code page (Windows-1252).
+ * String encoding on the eD2K network and in its data files: a UTF-8 BOM marks UTF-8, valid UTF-8 is taken as such,
+ * anything else is the Windows ANSI code page (Windows-1252).
  */
 public final class Ed2kStrings {
 
@@ -42,10 +42,7 @@ public final class Ed2kStrings {
     }
 
     public static String decode(byte[] raw, int offset, int length) {
-        if (length >= 3
-                && raw[offset] == BOM[0]
-                && raw[offset + 1] == BOM[1]
-                && raw[offset + 2] == BOM[2]) {
+        if (length >= 3 && raw[offset] == BOM[0] && raw[offset + 1] == BOM[1] && raw[offset + 2] == BOM[2]) {
             String utf8 = strictUtf8(raw, offset + 3, length - 3);
             return utf8 != null ? utf8 : latin1(raw, offset + 3, length - 3);
         }
@@ -56,8 +53,7 @@ public final class Ed2kStrings {
     public static byte[] encode(String value, StringEncoding encoding) {
         return switch (encoding) {
             case UTF8 -> value.getBytes(StandardCharsets.UTF_8);
-            case UTF8_BOM_IF_NEEDED ->
-                    isAscii(value) ? value.getBytes(StandardCharsets.US_ASCII) : withBom(value);
+            case UTF8_BOM_IF_NEEDED -> isAscii(value) ? value.getBytes(StandardCharsets.US_ASCII) : withBom(value);
         };
     }
 
@@ -80,12 +76,11 @@ public final class Ed2kStrings {
 
     private static String strictUtf8(byte[] raw, int offset, int length) {
         try {
-            CharBuffer chars =
-                    StandardCharsets.UTF_8
-                            .newDecoder()
-                            .onMalformedInput(CodingErrorAction.REPORT)
-                            .onUnmappableCharacter(CodingErrorAction.REPORT)
-                            .decode(ByteBuffer.wrap(raw, offset, length));
+            CharBuffer chars = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(raw, offset, length));
             return chars.toString();
         } catch (CharacterCodingException e) {
             return null;

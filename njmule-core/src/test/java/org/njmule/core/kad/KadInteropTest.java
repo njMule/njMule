@@ -41,8 +41,8 @@ import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.UdpFraming;
 
 /**
- * Talks Kad with an eMule on this computer, without changing anything in it: bootstrap, hello,
- * lookup and ping. Its UDP port comes from {@code -Dnjmule.interop.kadPort} (default 14897).
+ * Talks Kad with an eMule on this computer, without changing anything in it: bootstrap, hello, lookup and ping. Its UDP
+ * port comes from {@code -Dnjmule.interop.kadPort} (default 14897).
  */
 @Tag("interop")
 @Timeout(60)
@@ -58,39 +58,31 @@ class KadInteropTest {
             socket.setSoTimeout(5_000);
             UInt128 own = this.own;
 
-            Optional<Packet> bootstrap =
-                    this.ask(socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
+            Optional<Packet> bootstrap = this.ask(socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
             assumeTrue(bootstrap.isPresent(), "no eMule Kad answering on UDP port " + PORT);
-            KadMessages.BootstrapAnswer answer =
-                    KadMessages.BootstrapAnswer.decode(bootstrap.get());
+            KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(bootstrap.get());
             assertThat(answer.sender().version()).isGreaterThanOrEqualTo(8);
-            assertThat(answer.contacts())
-                    .hasSizeLessThanOrEqualTo(KadMessages.MAX_BOOTSTRAP_CONTACTS);
+            assertThat(answer.contacts()).hasSizeLessThanOrEqualTo(KadMessages.MAX_BOOTSTRAP_CONTACTS);
             for (KadMessages.Contact c : answer.contacts()) {
                 assertThat(c.ip() >>> 24).as("no loopback contacts").isNotEqualTo(127);
             }
             UInt128 emule = answer.sender().id();
 
             KadMessages.Hello hello =
-                    new KadMessages.Hello(
-                            new KadMessages.Self(own, 4662, KadMessages.VERSION), List.of());
-            KadMessages.Hello reply =
-                    KadMessages.Hello.decode(
-                            this.ask(socket, hello.encode(false), Opcodes.Kad.HELLO_RES)
-                                    .orElseThrow());
+                    new KadMessages.Hello(new KadMessages.Self(own, 4662, KadMessages.VERSION), List.of());
+            KadMessages.Hello reply = KadMessages.Hello.decode(
+                    this.ask(socket, hello.encode(false), Opcodes.Kad.HELLO_RES).orElseThrow());
             assertThat(reply.sender().id()).isEqualTo(emule);
             assertThat(reply.sender().version()).isEqualTo(KadMessages.VERSION);
 
             KadMessages.Request request = new KadMessages.Request(11, own, emule);
-            KadMessages.Answer contacts =
-                    KadMessages.Answer.decode(
-                            this.ask(socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
+            KadMessages.Answer contacts = KadMessages.Answer.decode(
+                    this.ask(socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
             assertThat(contacts.target()).isEqualTo(own);
             assertThat(contacts.contacts()).hasSizeLessThanOrEqualTo(11);
 
-            int port =
-                    KadMessages.decodePong(
-                            this.ask(socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
+            int port = KadMessages.decodePong(
+                    this.ask(socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
             assertThat(port).isEqualTo(socket.getLocalPort());
         }
     }
@@ -110,16 +102,15 @@ class KadInteropTest {
                 return Optional.empty();
             }
             // Answers to a hello come obfuscated with our id.
-            Packet packet =
-                    DatagramObfuscation.decodeFromClient(
-                                    buffer,
-                                    0,
-                                    in.getLength(),
-                                    Hash16.ZERO,
-                                    in.getAddress().getAddress(),
-                                    Optional.of(Hash16.of(this.own.toWireBytes())),
-                                    0)
-                            .packet();
+            Packet packet = DatagramObfuscation.decodeFromClient(
+                            buffer,
+                            0,
+                            in.getLength(),
+                            Hash16.ZERO,
+                            in.getAddress().getAddress(),
+                            Optional.of(Hash16.of(this.own.toWireBytes())),
+                            0)
+                    .packet();
             if (packet.protocol() == Protocol.KAD_PACKED) {
                 packet = Packing.unpack(packet, 250_000);
             }

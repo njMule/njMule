@@ -48,10 +48,8 @@ class FramingTest {
 
         assertThat(TcpFraming.read(in, FrameLimit.fixed(10)))
                 .isEqualTo(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {0x10}));
-        assertThat(TcpFraming.read(in, FrameLimit.fixed(10)))
-                .isEqualTo(Packet.empty(Protocol.EMULE, 0x4C));
-        assertThatThrownBy(() -> TcpFraming.read(in, FrameLimit.fixed(10)))
-                .isInstanceOf(EOFException.class);
+        assertThat(TcpFraming.read(in, FrameLimit.fixed(10))).isEqualTo(Packet.empty(Protocol.EMULE, 0x4C));
+        assertThatThrownBy(() -> TcpFraming.read(in, FrameLimit.fixed(10))).isInstanceOf(EOFException.class);
     }
 
     @Test
@@ -66,15 +64,9 @@ class FramingTest {
 
     @Test
     void rejectsUnknownProtocolsZeroLengthsAndDisallowedOpcodes() {
-        assertThatThrownBy(() -> read("e4020000000110", FrameLimit.fixed(10)))
-                .isInstanceOf(DecodeException.class);
-        assertThatThrownBy(() -> read("e30000000001", FrameLimit.fixed(10)))
-                .isInstanceOf(DecodeException.class);
-        assertThatThrownBy(
-                        () ->
-                                read(
-                                        "e3020000004c10",
-                                        (p, op) -> op == 0x01 ? 10 : FrameLimit.REJECT))
+        assertThatThrownBy(() -> read("e4020000000110", FrameLimit.fixed(10))).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> read("e30000000001", FrameLimit.fixed(10))).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> read("e3020000004c10", (p, op) -> op == 0x01 ? 10 : FrameLimit.REJECT))
                 .isInstanceOf(DecodeException.class)
                 .hasMessageContaining("not allowed");
         assertThatThrownBy(() -> read("e305000000011011", FrameLimit.fixed(10)))
@@ -86,8 +78,7 @@ class FramingTest {
     void udpNeedsAtLeastAHeader() throws DecodeException {
         assertThatThrownBy(() -> UdpFraming.decode(new byte[] {(byte) 0xE3}, 0, 1))
                 .isInstanceOf(DecodeException.class);
-        assertThat(UdpFraming.decode(HEX.parseHex("e396"), 0, 2))
-                .isEqualTo(Packet.empty(Protocol.EDONKEY, 0x96));
+        assertThat(UdpFraming.decode(HEX.parseHex("e396"), 0, 2)).isEqualTo(Packet.empty(Protocol.EDONKEY, 0x96));
     }
 
     @Test
@@ -100,11 +91,8 @@ class FramingTest {
         assertThat(packed.length()).isLessThan(100);
         assertThat(Packing.unpack(packed, 4000)).isEqualTo(big);
         assertThat(Packing.pack(tiny)).isSameAs(tiny);
-        assertThat(
-                        Packing.unpack(
-                                        Packing.pack(Packet.of(Protocol.KAD, 0x3B, new byte[500])),
-                                        500)
-                                .protocol())
+        assertThat(Packing.unpack(Packing.pack(Packet.of(Protocol.KAD, 0x3B, new byte[500])), 500)
+                        .protocol())
                 .isEqualTo(Protocol.KAD);
     }
 

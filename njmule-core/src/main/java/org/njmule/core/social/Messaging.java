@@ -46,9 +46,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Chats with other clients, one conversation per client address (its IP and listening port).
- * Messages go over the connection the client opened to us when there is one, otherwise over a
- * connection of our own, opened with a hello. Engine thread only, except where noted.
+ * Chats with other clients, one conversation per client address (its IP and listening port). Messages go over the
+ * connection the client opened to us when there is one, otherwise over a connection of our own, opened with a hello.
+ * Engine thread only, except where noted.
  */
 public final class Messaging implements AutoCloseable {
 
@@ -99,8 +99,7 @@ public final class Messaging implements AutoCloseable {
     private final Listener listener;
     private final Map<InetSocketAddress, Conversation> conversations = new HashMap<>();
 
-    public Messaging(
-            EngineLoop loop, Supplier<Hello> ourHello, SecureRandom random, Listener listener) {
+    public Messaging(EngineLoop loop, Supplier<Hello> ourHello, SecureRandom random, Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.random = Objects.requireNonNull(random, "random");
@@ -127,15 +126,11 @@ public final class Messaging implements AutoCloseable {
     }
 
     /**
-     * A chat packet that came on a connection opened for something else (an upload): the
-     * conversation answers on it. Returns whether the packet was a chat packet.
+     * A chat packet that came on a connection opened for something else (an upload): the conversation answers on it.
+     * Returns whether the packet was a chat packet.
      */
     public boolean incoming(
-            InetSocketAddress connection,
-            Hello peer,
-            Consumer<Packet> reply,
-            BooleanSupplier open,
-            Packet packet) {
+            InetSocketAddress connection, Hello peer, Consumer<Packet> reply, BooleanSupplier open, Packet packet) {
         if (!isChat(packet)) {
             return false;
         }
@@ -167,22 +162,15 @@ public final class Messaging implements AutoCloseable {
     }
 
     private void connect(InetSocketAddress to, Conversation c) {
-        Thread.ofVirtual()
-                .name("njmule-chat")
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection connection =
-                                        TcpConnector.connectToClient(
-                                                to, Optional.empty(), CONNECT_TIMEOUT, this.random);
-                                this.loop.post(() -> this.connected(to, c, connection));
-                            } catch (IOException e) {
-                                this.loop.post(
-                                        () ->
-                                                this.unreachable(
-                                                        to, c, String.valueOf(e.getMessage())));
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-chat").start(() -> {
+            try {
+                TcpConnection connection =
+                        TcpConnector.connectToClient(to, Optional.empty(), CONNECT_TIMEOUT, this.random);
+                this.loop.post(() -> this.connected(to, c, connection));
+            } catch (IOException e) {
+                this.loop.post(() -> this.unreachable(to, c, String.valueOf(e.getMessage())));
+            }
+        });
     }
 
     private void connected(InetSocketAddress to, Conversation c, TcpConnection connection) {
@@ -243,8 +231,7 @@ public final class Messaging implements AutoCloseable {
     }
 
     private static boolean isChat(Packet packet) {
-        return (packet.protocol() == Protocol.EDONKEY
-                        && packet.opcode() == Opcodes.Client.MESSAGE.code())
+        return (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.MESSAGE.code())
                 || (packet.protocol() == Protocol.EMULE
                         && (packet.opcode() == Opcodes.Extended.CHATCAPTCHAREQ.code()
                                 || packet.opcode() == Opcodes.Extended.CHATCAPTCHARES.code()));
@@ -270,8 +257,7 @@ public final class Messaging implements AutoCloseable {
 
         @Override
         public void onPacket(TcpConnection connection, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY
-                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 connection.setFrameLimit(FrameLimits.CLIENT);
             }
             Messaging.this.loop.post(() -> this.received(connection, packet));
@@ -280,8 +266,7 @@ public final class Messaging implements AutoCloseable {
         private void received(TcpConnection connection, Packet packet) {
             Conversation c = this.conversation;
             try {
-                if (packet.protocol() == Protocol.EDONKEY
-                        && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                     c.peer = Hello.decode(packet);
                     c.sender = connection::send;
                     c.open = connection::isOpen;
@@ -297,15 +282,14 @@ public final class Messaging implements AutoCloseable {
 
         @Override
         public void onClosed(TcpConnection connection, Optional<IOException> cause) {
-            Messaging.this.loop.post(
-                    () -> {
-                        Conversation c = this.conversation;
-                        if (c.own == connection) {
-                            c.own = null;
-                            c.peer = null;
-                            Messaging.this.unreachable(this.to, c, "the connection closed");
-                        }
-                    });
+            Messaging.this.loop.post(() -> {
+                Conversation c = this.conversation;
+                if (c.own == connection) {
+                    c.own = null;
+                    c.peer = null;
+                    Messaging.this.unreachable(this.to, c, "the connection closed");
+                }
+            });
         }
     }
 }

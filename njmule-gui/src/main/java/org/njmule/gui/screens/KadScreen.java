@@ -73,18 +73,14 @@ public final class KadScreen implements Screen {
         this.node.setPromptText(this.gui.t("nj.kad.nodePrompt"));
         this.node.setPrefColumnCount(20);
         this.node.setOnAction(e -> this.bootstrap());
-        var tools =
-                Fx.toolRow(
-                        this.node,
-                        Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
-        FlowPane cards =
-                new FlowPane(
-                        12,
-                        12,
-                        card(this.gui.t("nj.kad.state"), this.state),
-                        card(this.gui.t("IDS_KADCONTACTLAB"), this.contacts),
-                        card(this.gui.t("nj.kad.verified"), this.verified),
-                        card(this.gui.t("IDS_KADID"), this.id));
+        var tools = Fx.toolRow(this.node, Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
+        FlowPane cards = new FlowPane(
+                12,
+                12,
+                card(this.gui.t("nj.kad.state"), this.state),
+                card(this.gui.t("IDS_KADCONTACTLAB"), this.contacts),
+                card(this.gui.t("nj.kad.verified"), this.verified),
+                card(this.gui.t("IDS_KADID"), this.id));
         Label hint = new Label(this.gui.t("nj.kad.hint"));
         hint.setWrapText(true);
         this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
@@ -105,8 +101,7 @@ public final class KadScreen implements Screen {
         if (!k.connected()) {
             this.state.setText(this.gui.t("IDS_NOTCONNECTED"));
         } else {
-            this.state.setText(
-                    k.firewalled() ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN"));
+            this.state.setText(k.firewalled() ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN"));
         }
         this.contacts.setText(this.gui.formats().count(k.contacts()));
         this.verified.setText(this.gui.formats().count(k.verifiedContacts()));

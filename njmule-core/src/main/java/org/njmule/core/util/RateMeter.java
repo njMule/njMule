@@ -27,9 +27,7 @@ public final class RateMeter {
     private long second = Long.MIN_VALUE;
     private long total;
 
-    /**
-     * @param seconds how many seconds the average spans
-     */
+    /** @param seconds how many seconds the average spans */
     public RateMeter(int seconds) {
         if (seconds < 1) {
             throw new IllegalArgumentException("seconds must be positive");

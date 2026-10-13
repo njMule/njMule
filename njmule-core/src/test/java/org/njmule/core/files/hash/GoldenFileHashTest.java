@@ -51,16 +51,15 @@ class GoldenFileHashTest {
         AichTree aich = result.aich().orElseThrow();
         assertThat(aich.masterHash()).isEqualTo(Hash20.parseBase32(v.get("aich")));
         assertThat(aich.partHashes())
-                .isEqualTo(list(v.get("aichparts")).stream().map(Hash20::parseBase32).toList());
+                .isEqualTo(list(v.get("aichparts")).stream()
+                        .map(Hash20::parseBase32)
+                        .toList());
     }
 
     static Stream<Arguments> vectors() throws IOException {
-        try (InputStream in =
-                        Objects.requireNonNull(
-                                GoldenFileHashTest.class.getResourceAsStream(
-                                        "/golden/file-hashes.txt"));
-                BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(in, StandardCharsets.US_ASCII))) {
+        try (InputStream in = Objects.requireNonNull(
+                        GoldenFileHashTest.class.getResourceAsStream("/golden/file-hashes.txt"));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.US_ASCII))) {
             return reader
                     .lines()
                     .filter(line -> !line.isBlank() && !line.startsWith("#"))

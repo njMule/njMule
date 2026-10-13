@@ -35,8 +35,8 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * Throughput of the one-pass eD2K hash set and AICH tree over data already in memory, so disk speed
- * does not count; ops/s = MiB/s.
+ * Throughput of the one-pass eD2K hash set and AICH tree over data already in memory, so disk speed does not count;
+ * ops/s = MiB/s.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.Throughput)

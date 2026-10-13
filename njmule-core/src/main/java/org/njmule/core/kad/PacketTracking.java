@@ -26,9 +26,9 @@ import java.util.Optional;
 import org.njmule.core.protocol.packet.Opcodes.Kad;
 
 /**
- * Flood control and answer checking for Kad datagrams: each address may send each kind of request
- * only so often (a long burst bans it for two hours), and an answer is taken only from an address
- * and port we sent the matching request to in the last three minutes. Engine thread only.
+ * Flood control and answer checking for Kad datagrams: each address may send each kind of request only so often (a long
+ * burst bans it for two hours), and an answer is taken only from an address and port we sent the matching request to in
+ * the last three minutes. Engine thread only.
  */
 final class PacketTracking {
 
@@ -39,22 +39,21 @@ final class PacketTracking {
 
     private static final long MINUTE_MS = 60_000;
     private static final long BAN_DEBT_MS = 3 * MINUTE_MS;
-    private static final Map<Kad, Integer> PER_MINUTE =
-            Map.ofEntries(
-                    Map.entry(Kad.BOOTSTRAP_REQ, 2),
-                    Map.entry(Kad.HELLO_REQ, 3),
-                    Map.entry(Kad.REQ, 10),
-                    Map.entry(Kad.SEARCH_KEY_REQ, 3),
-                    Map.entry(Kad.SEARCH_SOURCE_REQ, 3),
-                    Map.entry(Kad.SEARCH_NOTES_REQ, 3),
-                    Map.entry(Kad.PUBLISH_KEY_REQ, 4),
-                    Map.entry(Kad.PUBLISH_SOURCE_REQ, 3),
-                    Map.entry(Kad.PUBLISH_NOTES_REQ, 2),
-                    Map.entry(Kad.FIREWALLED_REQ, 2),
-                    Map.entry(Kad.FIREWALLED2_REQ, 2),
-                    Map.entry(Kad.FINDBUDDY_REQ, 2),
-                    Map.entry(Kad.CALLBACK_REQ, 1),
-                    Map.entry(Kad.PING, 2));
+    private static final Map<Kad, Integer> PER_MINUTE = Map.ofEntries(
+            Map.entry(Kad.BOOTSTRAP_REQ, 2),
+            Map.entry(Kad.HELLO_REQ, 3),
+            Map.entry(Kad.REQ, 10),
+            Map.entry(Kad.SEARCH_KEY_REQ, 3),
+            Map.entry(Kad.SEARCH_SOURCE_REQ, 3),
+            Map.entry(Kad.SEARCH_NOTES_REQ, 3),
+            Map.entry(Kad.PUBLISH_KEY_REQ, 4),
+            Map.entry(Kad.PUBLISH_SOURCE_REQ, 3),
+            Map.entry(Kad.PUBLISH_NOTES_REQ, 2),
+            Map.entry(Kad.FIREWALLED_REQ, 2),
+            Map.entry(Kad.FIREWALLED2_REQ, 2),
+            Map.entry(Kad.FINDBUDDY_REQ, 2),
+            Map.entry(Kad.CALLBACK_REQ, 1),
+            Map.entry(Kad.PING, 2));
 
     private record Key(int ip, Kad kind) {}
 
@@ -107,10 +106,7 @@ final class PacketTracking {
         this.sent.addLast(new Sent(ip, port, request, nowMs));
     }
 
-    /**
-     * Whether {@code answer} from {@code ip:port} answers a request of ours; the request is
-     * consumed.
-     */
+    /** Whether {@code answer} from {@code ip:port} answers a request of ours; the request is consumed. */
     boolean expected(int ip, int port, Kad answer, long nowMs) {
         this.expire(nowMs);
         Optional<Kad[]> requests = requestsOf(answer);
@@ -156,8 +152,7 @@ final class PacketTracking {
     }
 
     private void expire(long nowMs) {
-        while (!this.sent.isEmpty()
-                && nowMs - this.sent.peekFirst().at() > ANSWER_WINDOW.toMillis()) {
+        while (!this.sent.isEmpty() && nowMs - this.sent.peekFirst().at() > ANSWER_WINDOW.toMillis()) {
             this.sent.removeFirst();
         }
     }
@@ -169,14 +164,8 @@ final class PacketTracking {
                     case HELLO_RES -> new Kad[] {Kad.HELLO_REQ};
                     case HELLO_RES_ACK -> new Kad[] {Kad.HELLO_RES};
                     case RES -> new Kad[] {Kad.REQ};
-                    case SEARCH_RES ->
-                            new Kad[] {
-                                Kad.SEARCH_KEY_REQ, Kad.SEARCH_SOURCE_REQ, Kad.SEARCH_NOTES_REQ
-                            };
-                    case PUBLISH_RES ->
-                            new Kad[] {
-                                Kad.PUBLISH_KEY_REQ, Kad.PUBLISH_SOURCE_REQ, Kad.PUBLISH_NOTES_REQ
-                            };
+                    case SEARCH_RES -> new Kad[] {Kad.SEARCH_KEY_REQ, Kad.SEARCH_SOURCE_REQ, Kad.SEARCH_NOTES_REQ};
+                    case PUBLISH_RES -> new Kad[] {Kad.PUBLISH_KEY_REQ, Kad.PUBLISH_SOURCE_REQ, Kad.PUBLISH_NOTES_REQ};
                     case FIREWALLED_RES -> new Kad[] {Kad.FIREWALLED_REQ, Kad.FIREWALLED2_REQ};
                     case FINDBUDDY_RES -> new Kad[] {Kad.FINDBUDDY_REQ};
                     case PONG -> new Kad[] {Kad.PING};

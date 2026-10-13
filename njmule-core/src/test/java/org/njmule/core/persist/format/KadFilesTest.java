@@ -44,7 +44,8 @@ class KadFilesTest {
     void idsUseLittleEndianWordsOnTheWireAndBigEndianForHashes() throws DecodeException {
         assertThat(HEX.formatHex(ID.toWireBytes())).isEqualToIgnoringCase(ID_WIRE);
         assertThat(UInt128.fromWireBytes(HEX.parseHex(ID_WIRE))).isEqualTo(ID);
-        assertThat(UInt128.of(Hash16.parseHex("00112233445566778899AABBCCDDEEFF"))).isEqualTo(ID);
+        assertThat(UInt128.of(Hash16.parseHex("00112233445566778899AABBCCDDEEFF")))
+                .isEqualTo(ID);
         assertThat(ID.toHash16().toHex()).isEqualTo("00112233445566778899AABBCCDDEEFF");
     }
 
@@ -78,15 +79,7 @@ class KadFilesTest {
     @Test
     void readsVersionOneWithKadVersions() throws DecodeException {
         byte[] file =
-                HEX.parseHex(
-                        "00000000"
-                                + "01000000"
-                                + "01000000"
-                                + ID_WIRE
-                                + "04030201"
-                                + "3612"
-                                + "3712"
-                                + "08");
+                HEX.parseHex("00000000" + "01000000" + "01000000" + ID_WIRE + "04030201" + "3612" + "3712" + "08");
 
         Contact c = NodesDat.read(file).contacts().getFirst();
 
@@ -96,16 +89,8 @@ class KadFilesTest {
 
     @Test
     void writesAndReadsVersionTwo() throws DecodeException {
-        Contact c =
-                new Contact(
-                        ID,
-                        Ipv4.of(5, 6, 7, 8),
-                        4672,
-                        4662,
-                        10,
-                        0,
-                        new UdpKey(0x12345678, Ipv4.of(9, 9, 9, 9)),
-                        true);
+        Contact c = new Contact(
+                ID, Ipv4.of(5, 6, 7, 8), 4672, 4662, 10, 0, new UdpKey(0x12345678, Ipv4.of(9, 9, 9, 9)), true);
 
         byte[] file = NodesDat.write(List.of(c));
 
@@ -119,28 +104,21 @@ class KadFilesTest {
     @Test
     void recognisesBootstrapLists() throws DecodeException {
         String record = ID_WIRE + "04030201" + "3612" + "3712" + "08";
-        byte[] file =
-                HEX.parseHex("00000000" + "03000000" + "01000000" + "02000000" + record + record);
+        byte[] file = HEX.parseHex("00000000" + "03000000" + "01000000" + "02000000" + record + record);
 
         Contents contents = NodesDat.read(file);
 
         assertThat(contents.bootstrap()).isTrue();
         assertThat(contents.contacts()).hasSize(2);
         assertThatThrownBy(
-                        () ->
-                                NodesDat.read(
-                                        HEX.parseHex(
-                                                "00000000"
-                                                        + "03000000"
-                                                        + "01000000"
-                                                        + "02000000"
-                                                        + record)))
+                        () -> NodesDat.read(HEX.parseHex("00000000" + "03000000" + "01000000" + "02000000" + record)))
                 .isInstanceOf(DecodeException.class);
     }
 
     @Test
     void ignoresUnknownVersionsAndRejectsImpossibleCounts() throws DecodeException {
-        assertThat(NodesDat.read(HEX.parseHex("00000000" + "09000000")).contacts()).isEmpty();
+        assertThat(NodesDat.read(HEX.parseHex("00000000" + "09000000")).contacts())
+                .isEmpty();
         assertThat(NodesDat.read(HEX.parseHex("00000000")).contacts()).isEmpty();
         assertThatThrownBy(() -> NodesDat.read(HEX.parseHex("ffffff7f" + ID_WIRE)))
                 .isInstanceOf(DecodeException.class);

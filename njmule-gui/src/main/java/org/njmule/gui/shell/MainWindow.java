@@ -63,22 +63,21 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
 
 /**
- * The window's content: the top bar with the connection and the rates, the navigation rail, the
- * current screen, the status strip, and messages floating over it all.
+ * The window's content: the top bar with the connection and the rates, the navigation rail, the current screen, the
+ * status strip, and messages floating over it all.
  */
 public final class MainWindow {
 
     private static final Duration MESSAGE_TIME = Duration.seconds(6);
-    private static final List<KeyCode> DIGITS =
-            List.of(
-                    KeyCode.DIGIT1,
-                    KeyCode.DIGIT2,
-                    KeyCode.DIGIT3,
-                    KeyCode.DIGIT4,
-                    KeyCode.DIGIT5,
-                    KeyCode.DIGIT6,
-                    KeyCode.DIGIT7,
-                    KeyCode.DIGIT8);
+    private static final List<KeyCode> DIGITS = List.of(
+            KeyCode.DIGIT1,
+            KeyCode.DIGIT2,
+            KeyCode.DIGIT3,
+            KeyCode.DIGIT4,
+            KeyCode.DIGIT5,
+            KeyCode.DIGIT6,
+            KeyCode.DIGIT7,
+            KeyCode.DIGIT8);
 
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
@@ -98,21 +97,18 @@ public final class MainWindow {
 
     public MainWindow(Gui gui) {
         this.gui = gui;
-        for (Screen screen :
-                List.of(
-                        new ServersScreen(gui),
-                        new KadScreen(gui),
-                        new TransfersScreen(gui),
-                        new SearchScreen(gui),
-                        new SharedScreen(gui),
-                        new MessagesScreen(gui),
-                        new StatisticsScreen(gui),
-                        new SettingsScreen(gui))) {
+        for (Screen screen : List.of(
+                new ServersScreen(gui),
+                new KadScreen(gui),
+                new TransfersScreen(gui),
+                new SearchScreen(gui),
+                new SharedScreen(gui),
+                new MessagesScreen(gui),
+                new StatisticsScreen(gui),
+                new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
         }
-        BorderPane frame =
-                new BorderPane(
-                        this.content, this.topBar(), null, this.statusStrip(), this.navRail());
+        BorderPane frame = new BorderPane(this.content, this.topBar(), null, this.statusStrip(), this.navRail());
         this.messages.setAlignment(Pos.TOP_RIGHT);
         this.messages.setPickOnBounds(false);
         this.messages.setPadding(new Insets(56, 16, 16, 16));
@@ -121,32 +117,28 @@ public final class MainWindow {
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
         // Ctrl+1 ... Ctrl+8 (Cmd on macOS) open the screens in rail order.
-        this.root.setOnKeyPressed(
-                e -> {
-                    int index = DIGITS.indexOf(e.getCode());
-                    List<String> ids = List.copyOf(this.screens.keySet());
-                    if (e.isShortcutDown() && index >= 0 && index < ids.size()) {
-                        this.show(ids.get(index));
-                        e.consume();
-                    }
-                });
+        this.root.setOnKeyPressed(e -> {
+            int index = DIGITS.indexOf(e.getCode());
+            List<String> ids = List.copyOf(this.screens.keySet());
+            if (e.isShortcutDown() && index >= 0 && index < ids.size()) {
+                this.show(ids.get(index));
+                e.consume();
+            }
+        });
         EngineModel model = gui.model();
         model.connectionProperty().addListener((o, was, now) -> this.showConnection());
         model.serverNameProperty().addListener((o, was, now) -> this.showConnection());
         model.statusProperty().addListener((o, was, now) -> this.showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> this.message(gui.f("nj.transfers.completed", d.name())));
-        model.chats()
-                .onMessage(
-                        chat -> {
-                            if (!this.current.equals("messages")) {
-                                String who =
-                                        chat.nickProperty().get().isEmpty()
-                                                ? chat.address()
-                                                : chat.nickProperty().get();
-                                this.message(gui.f("nj.chat.from", who));
-                            }
-                        });
+        model.chats().onMessage(chat -> {
+            if (!this.current.equals("messages")) {
+                String who = chat.nickProperty().get().isEmpty()
+                        ? chat.address()
+                        : chat.nickProperty().get();
+                this.message(gui.f("nj.chat.from", who));
+            }
+        });
         this.showConnection();
         this.showStatus(model.statusProperty().get());
         this.show(
@@ -211,13 +203,8 @@ public final class MainWindow {
         this.connect.setId("connect");
         this.connect.setOnAction(e -> this.toggleConnection());
         this.connect.getStyleClass().add("accent");
-        Button theme =
-                Fx.iconButton(
-                        this.gui.t("nj.top.theme"),
-                        Material2AL.BRIGHTNESS_MEDIUM,
-                        this::toggleTheme);
-        MenuItem importer =
-                new MenuItem(this.gui.t("nj.import.title"), new FontIcon(Material2AL.INPUT));
+        Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Material2AL.BRIGHTNESS_MEDIUM, this::toggleTheme);
+        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), new FontIcon(Material2AL.INPUT));
         importer.setOnAction(
                 e -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
         MenuItem about = new MenuItem(this.gui.t("nj.about.title"), new FontIcon(Material2AL.INFO));
@@ -225,22 +212,8 @@ public final class MainWindow {
         theme.setId("theme");
         importer.setId("import");
         about.setId("about");
-        MenuButton tools =
-                new MenuButton(
-                        this.gui.t("nj.top.tools"),
-                        new FontIcon(Material2AL.BUILD),
-                        importer,
-                        about);
-        HBox bar =
-                new HBox(
-                        this.connect,
-                        this.ed2k,
-                        this.kad,
-                        Fx.spacer(),
-                        this.down,
-                        this.up,
-                        tools,
-                        theme);
+        MenuButton tools = new MenuButton(this.gui.t("nj.top.tools"), new FontIcon(Material2AL.BUILD), importer, about);
+        HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), this.down, this.up, tools, theme);
         bar.getStyleClass().add("top-bar");
         return bar;
     }
@@ -252,11 +225,10 @@ public final class MainWindow {
         for (Screen screen : this.screens.values()) {
             ToggleButton button = new ToggleButton(screen.title(), new FontIcon(screen.icon()));
             button.setToggleGroup(group);
-            button.setOnAction(
-                    e -> {
-                        // A rail button stays selected while its screen shows.
-                        this.show(screen.id());
-                    });
+            button.setOnAction(e -> {
+                // A rail button stays selected while its screen shows.
+                this.show(screen.id());
+            });
             button.setMaxWidth(Double.MAX_VALUE);
             this.rail.put(screen.id(), button);
             box.getChildren().add(button);
@@ -297,17 +269,13 @@ public final class MainWindow {
                     case CONNECTING -> this.gui.t("IDS_MAIN_BTN_CANCEL");
                     case CONNECTED -> this.gui.t("IDS_MAIN_BTN_DISCONNECT");
                 });
-        this.connect.setGraphic(
-                new FontIcon(
-                        state == EngineModel.Connection.DISCONNECTED
-                                ? Material2AL.LINK
-                                : Material2MZ.POWER_SETTINGS_NEW));
-        String text =
-                switch (state) {
-                    case DISCONNECTED -> this.gui.t("IDS_NOTCONNECTED");
-                    case CONNECTING -> this.gui.t("IDS_CONNECTING") + " " + name;
-                    case CONNECTED -> name;
-                };
+        this.connect.setGraphic(new FontIcon(
+                state == EngineModel.Connection.DISCONNECTED ? Material2AL.LINK : Material2MZ.POWER_SETTINGS_NEW));
+        String text = switch (state) {
+            case DISCONNECTED -> this.gui.t("IDS_NOTCONNECTED");
+            case CONNECTING -> this.gui.t("IDS_CONNECTING") + " " + name;
+            case CONNECTED -> name;
+        };
         this.state(
                 this.ed2k,
                 "eD2K: " + text,
@@ -324,9 +292,7 @@ public final class MainWindow {
                     this.ed2k,
                     "eD2K: "
                             + this.gui.model().serverNameProperty().get()
-                            + (status.lowId()
-                                    ? " (LowID)"
-                                    : status.clientId() != 0 ? " (HighID)" : ""),
+                            + (status.lowId() ? " (LowID)" : status.clientId() != 0 ? " (HighID)" : ""),
                     true,
                     false);
         }
@@ -339,29 +305,15 @@ public final class MainWindow {
             boolean firewalled = kadInfo.get().firewalled();
             this.state(
                     this.kad,
-                    "Kad: "
-                            + (firewalled
-                                    ? this.gui.t("IDS_FIREWALLED")
-                                    : this.gui.t("IDS_KADOPEN")),
+                    "Kad: " + (firewalled ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN")),
                     !firewalled,
                     firewalled);
         }
-        this.server.setText(
-                status.server()
-                        .map(
-                                s ->
-                                        this.gui.f(
-                                                "nj.status.server",
-                                                formats.count(s.users()),
-                                                formats.count(s.files())))
-                        .orElse(""));
-        this.counts.setText(
-                this.gui.f(
-                        "nj.status.counts",
-                        status.downloads(),
-                        status.uploads(),
-                        status.queued(),
-                        status.sharedFiles()));
+        this.server.setText(status.server()
+                .map(s -> this.gui.f("nj.status.server", formats.count(s.users()), formats.count(s.files())))
+                .orElse(""));
+        this.counts.setText(this.gui.f(
+                "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
     }
 
     private void state(Label chip, String text, boolean on, boolean partly) {

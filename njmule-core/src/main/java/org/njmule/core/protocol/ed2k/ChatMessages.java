@@ -28,9 +28,8 @@ import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.tag.TagCodec;
 
 /**
- * Chat between clients: a message is {@code <u16 length><text>}; a client that wants proof of a
- * human sends a CAPTCHA picture ({@code <u8 tag count>[tags]<BMP>}), whose solution comes back as a
- * message, and answers with a status byte.
+ * Chat between clients: a message is {@code <u16 length><text>}; a client that wants proof of a human sends a CAPTCHA
+ * picture ({@code <u8 tag count>[tags]<BMP>}), whose solution comes back as a message, and answers with a status byte.
  */
 public final class ChatMessages {
 
@@ -61,10 +60,7 @@ public final class ChatMessages {
         return Packet.of(
                 Protocol.EDONKEY,
                 Opcodes.Client.MESSAGE.code(),
-                new PacketWriter()
-                        .string16(
-                                cut,
-                                unicode ? StringEncoding.UTF8 : StringEncoding.UTF8_BOM_IF_NEEDED));
+                new PacketWriter().string16(cut, unicode ? StringEncoding.UTF8 : StringEncoding.UTF8_BOM_IF_NEEDED));
     }
 
     /** The text of a message, cut to {@link #MAX_LENGTH} characters. */
@@ -78,9 +74,9 @@ public final class ChatMessages {
     }
 
     /**
-     * The picture of a CAPTCHA request: a BMP file of a plausible size whose header declares at
-     * most {@value #MAX_WIDTH}×{@value #MAX_HEIGHT} pixels, so that a small compressed file cannot
-     * unpack into a huge picture.
+     * The picture of a CAPTCHA request: a BMP file of a plausible size whose header declares at most
+     * {@value #MAX_WIDTH}×{@value #MAX_HEIGHT} pixels, so that a small compressed file cannot unpack into a huge
+     * picture.
      */
     public static byte[] captcha(Packet packet) throws DecodeException {
         PacketReader in = packet.reader();
@@ -93,12 +89,7 @@ public final class ChatMessages {
         ByteBuffer header = ByteBuffer.wrap(image).order(ByteOrder.LITTLE_ENDIAN);
         int width = header.getInt(BMP_WIDTH);
         int height = Math.abs(header.getInt(BMP_HEIGHT));
-        if (image[0] != 'B'
-                || image[1] != 'M'
-                || width < 1
-                || width > MAX_WIDTH
-                || height < 1
-                || height > MAX_HEIGHT) {
+        if (image[0] != 'B' || image[1] != 'M' || width < 1 || width > MAX_WIDTH || height < 1 || height > MAX_HEIGHT) {
             throw new DecodeException("a CAPTCHA picture of " + width + "x" + height + " pixels");
         }
         return image;
@@ -119,9 +110,6 @@ public final class ChatMessages {
 
     /** A CAPTCHA result, as a peer sends it. */
     public static Packet captchaResult(int status) {
-        return Packet.of(
-                Protocol.EMULE,
-                Opcodes.Extended.CHATCAPTCHARES.code(),
-                new PacketWriter().u8(status));
+        return Packet.of(Protocol.EMULE, Opcodes.Extended.CHATCAPTCHARES.code(), new PacketWriter().u8(status));
     }
 }

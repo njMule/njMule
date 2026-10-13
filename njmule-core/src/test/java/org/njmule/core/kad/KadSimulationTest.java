@@ -51,17 +51,17 @@ class KadSimulationTest {
     private static final int PUBLISH_WAIT = 150;
     private static final int SEARCHES = 3;
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final SecureRandom random = new SecureRandom();
     private final AtomicLong time = new AtomicLong(1_000 * SECOND);
-    private final Ticker ticker =
-            new Ticker() {
-                @Override
-                public long read() {
-                    return KadSimulationTest.this.time.get();
-                }
-            };
+    private final Ticker ticker = new Ticker() {
+        @Override
+        public long read() {
+            return KadSimulationTest.this.time.get();
+        }
+    };
     private final Map<Integer, KadNode> byIp = new HashMap<>();
     private final List<KadNode> nodes = new ArrayList<>();
     private final List<Integer> ips = new ArrayList<>();
@@ -106,8 +106,7 @@ class KadSimulationTest {
         assertThat(lonely)
                 .as(
                         "nodes not connected (index:contacts), %d open, %d checks",
-                        this.nodes.stream().filter(n -> !n.isFirewalled()).count(),
-                        this.reachabilityChecks.size())
+                        this.nodes.stream().filter(n -> !n.isFirewalled()).count(), this.reachabilityChecks.size())
                 .isEmpty();
         assertThat(connected).isEqualTo(NODES);
         assertThat(total / NODES)
@@ -122,16 +121,12 @@ class KadSimulationTest {
         // picked so that some node is close enough to store it.
         String word = this.wordNearSomeNode("pictures");
         Hash16 file = this.hashNearSomeNode();
-        List<Tag> tags =
-                List.of(
-                        new Tag.StringTag(
-                                TagName.id(FileTag.FILENAME), "Night Sky " + word + ".zip"),
-                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 123_456),
-                        new Tag.IntTag(TagName.id(FileTag.SOURCES), 3));
+        List<Tag> tags = List.of(
+                new Tag.StringTag(TagName.id(FileTag.FILENAME), "Night Sky " + word + ".zip"),
+                new Tag.IntTag(TagName.id(FileTag.FILESIZE), 123_456),
+                new Tag.IntTag(TagName.id(FileTag.SOURCES), 3));
         KadNode publisher = this.nodes.get(17);
-        assertThat(
-                        publisher.publishKeyword(
-                                word, List.of(new KadMessages.Entry(UInt128.of(file), tags))))
+        assertThat(publisher.publishKeyword(word, List.of(new KadMessages.Entry(UInt128.of(file), tags))))
                 .isTrue();
         this.run(PUBLISH_WAIT);
         assertThat(this.nodes.stream().filter(n -> n.indexed()[0] > 0).count())
@@ -156,7 +151,8 @@ class KadSimulationTest {
         this.run(PUBLISH_WAIT);
         List<KadNode.Source> sources = new ArrayList<>();
         for (int attempt = 0; attempt < SEARCHES && sources.isEmpty(); attempt++) {
-            assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll)).isTrue();
+            assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll))
+                    .isTrue();
             this.run(60);
         }
         assertThat(sources).isNotEmpty();
@@ -179,15 +175,14 @@ class KadSimulationTest {
         first.saveNodes();
         Path config = this.dir.resolve("node5");
         assertThat(config.resolve(KadNode.NODES_FILE)).exists();
-        KadNode again =
-                new KadNode(
-                        KadIdentity.loadOrCreate(config, this.random),
-                        (ip, port, packet, id, rk, sk) -> {},
-                        (ip, port, hash, options) -> {},
-                        new KadNode.Settings(4662, Hash16.ZERO, 0, ip -> false),
-                        config,
-                        this.random,
-                        this.ticker);
+        KadNode again = new KadNode(
+                KadIdentity.loadOrCreate(config, this.random),
+                (ip, port, packet, id, rk, sk) -> {},
+                (ip, port, hash, options) -> {},
+                new KadNode.Settings(4662, Hash16.ZERO, 0, ip -> false),
+                config,
+                this.random,
+                this.ticker);
         again.loadNodes();
         assertThat(again.contacts()).isGreaterThan(10);
         assertThat(again.id()).isEqualTo(first.id());
@@ -227,28 +222,19 @@ class KadSimulationTest {
         Path config = Files.createDirectories(this.dir.resolve("node" + i));
         byte[] hash = new byte[16];
         this.random.nextBytes(hash);
-        KadNode node =
-                new KadNode(
-                        KadIdentity.loadOrCreate(config, this.random),
-                        (to, port, packet, receiverId, receiverKey, senderKey) ->
-                                this.wire.add(
-                                        () ->
-                                                this.arrive(
-                                                        ip,
-                                                        to,
-                                                        port,
-                                                        packet,
-                                                        receiverKey,
-                                                        senderKey)),
-                        (to, port, userHash, options) -> {
-                            // The helper connects back and the requester hears it worked.
-                            this.reachabilityChecks.add(new int[] {ip, to});
-                            this.wire.add(() -> this.byIp.get(to).reachableConfirmed(ip));
-                        },
-                        new KadNode.Settings(4662, Hash16.of(hash), 1, x -> false),
-                        config,
-                        this.random,
-                        this.ticker);
+        KadNode node = new KadNode(
+                KadIdentity.loadOrCreate(config, this.random),
+                (to, port, packet, receiverId, receiverKey, senderKey) ->
+                        this.wire.add(() -> this.arrive(ip, to, port, packet, receiverKey, senderKey)),
+                (to, port, userHash, options) -> {
+                    // The helper connects back and the requester hears it worked.
+                    this.reachabilityChecks.add(new int[] {ip, to});
+                    this.wire.add(() -> this.byIp.get(to).reachableConfirmed(ip));
+                },
+                new KadNode.Settings(4662, Hash16.of(hash), 1, x -> false),
+                config,
+                this.random,
+                this.ticker);
         this.byIp.put(ip, node);
         this.nodes.add(node);
         this.ips.add(ip);

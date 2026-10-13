@@ -32,8 +32,8 @@ import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.Tags;
 
 /**
- * A file as servers describe it in search results: hash, the client offering it and its tags.
- * Layout: {@code <hash 16><client id u32><port u16><tag count u32><tags>}.
+ * A file as servers describe it in search results: hash, the client offering it and its tags. Layout: {@code <hash
+ * 16><client id u32><port u16><tag count u32><tags>}.
  */
 public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
 
@@ -84,15 +84,14 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
     }
 
     public int sources() {
-        return (int)
-                Math.min(Integer.MAX_VALUE, Tags.intValue(this.tags, FileTag.SOURCES).orElse(0));
+        return (int) Math.min(
+                Integer.MAX_VALUE, Tags.intValue(this.tags, FileTag.SOURCES).orElse(0));
     }
 
     public int completeSources() {
-        return (int)
-                Math.min(
-                        Integer.MAX_VALUE,
-                        Tags.intValue(this.tags, FileTag.COMPLETE_SOURCES).orElse(0));
+        return (int) Math.min(
+                Integer.MAX_VALUE,
+                Tags.intValue(this.tags, FileTag.COMPLETE_SOURCES).orElse(0));
     }
 
     /** The type servers report, e.g. {@code Video} or {@code Pro}. */

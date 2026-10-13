@@ -24,15 +24,13 @@ import java.lang.invoke.MethodHandle;
 import java.util.Locale;
 
 /**
- * On macOS AppKit, and so JavaFX, hands work to the process's first thread, which must run the main
- * run loop. The java launcher keeps that thread free for it; a native executable starts the
- * application on it, so the application moves to a thread of its own and the first one runs the run
- * loop until the process exits.
+ * On macOS AppKit, and so JavaFX, hands work to the process's first thread, which must run the main run loop. The java
+ * launcher keeps that thread free for it; a native executable starts the application on it, so the application moves to
+ * a thread of its own and the first one runs the run loop until the process exits.
  */
 final class MacMainThread {
 
-    private static final String CORE_FOUNDATION =
-            "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+    private static final String CORE_FOUNDATION = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
 
     private MacMainThread() {}
 
@@ -46,22 +44,18 @@ final class MacMainThread {
     /** Runs {@code app} on another thread and the run loop here; exits when {@code app} ends. */
     @SuppressWarnings("restricted") // the native call is the point; access is granted at build
     static void run(Runnable app) {
-        Thread.ofPlatform()
-                .name("njmule-app")
-                .start(
-                        () -> {
-                            try {
-                                app.run();
-                            } finally {
-                                System.exit(0);
-                            }
-                        });
-        MethodHandle runLoop =
-                Linker.nativeLinker()
-                        .downcallHandle(
-                                SymbolLookup.libraryLookup(CORE_FOUNDATION, Arena.global())
-                                        .findOrThrow("CFRunLoopRun"),
-                                FunctionDescriptor.ofVoid());
+        Thread.ofPlatform().name("njmule-app").start(() -> {
+            try {
+                app.run();
+            } finally {
+                System.exit(0);
+            }
+        });
+        MethodHandle runLoop = Linker.nativeLinker()
+                .downcallHandle(
+                        SymbolLookup.libraryLookup(CORE_FOUNDATION, Arena.global())
+                                .findOrThrow("CFRunLoopRun"),
+                        FunctionDescriptor.ofVoid());
         try {
             runLoop.invokeExact();
         } catch (Throwable e) {

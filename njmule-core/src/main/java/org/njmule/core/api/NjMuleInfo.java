@@ -24,8 +24,8 @@ import java.util.Optional;
 import java.util.Properties;
 
 /**
- * Application identity, version and the legal notices the GPL asks interactive programs to show;
- * shared by every front end so that the wording is identical everywhere.
+ * Application identity, version and the legal notices the GPL asks interactive programs to show; shared by every front
+ * end so that the wording is identical everywhere.
  */
 public final class NjMuleInfo {
 
@@ -34,8 +34,7 @@ public final class NjMuleInfo {
     public static final String APP_ID = "org.njmule.njMule";
     public static final String HOMEPAGE = "https://github.com/njMule/njMule";
     public static final String LICENSE_ID = "GPL-3.0-or-later";
-    public static final String COPYRIGHT =
-            "Copyright (C) 2026 Salvatore Coppola and the njMule contributors";
+    public static final String COPYRIGHT = "Copyright (C) 2026 Salvatore Coppola and the njMule contributors";
 
     private static final String UNKNOWN_VERSION = "0.0.0-unknown";
     private static final String VERSION = loadVersion();
@@ -76,9 +75,7 @@ public final class NjMuleInfo {
     /** Full GPL v3 text, bundled next to this class (unambiguous on the class path). */
     public static String licenseText() {
         return readResource("LICENSE")
-                .orElse(
-                        "GNU General Public License v3.0 or later:"
-                                + " https://www.gnu.org/licenses/gpl-3.0");
+                .orElse("GNU General Public License v3.0 or later:" + " https://www.gnu.org/licenses/gpl-3.0");
     }
 
     /** The NOTICE file: copyright, attribution and third-party components. */
@@ -113,9 +110,7 @@ public final class NjMuleInfo {
 
     private static Optional<String> readResource(String name) {
         try (InputStream in = NjMuleInfo.class.getResourceAsStream(name)) {
-            return in == null
-                    ? Optional.empty()
-                    : Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            return in == null ? Optional.empty() : Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
             return Optional.empty();
         }

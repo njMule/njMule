@@ -41,7 +41,8 @@ import org.njmule.gui.model.Chats;
 @Timeout(90)
 class MessagesScreenTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private TestGui test;
     private NjMuleEngine bob;
@@ -66,21 +67,16 @@ class MessagesScreenTest {
         this.test.show(FxTesting.onFx(screen::view));
         String bobAddress = "127.0.0.1:" + this.bob.preferences().tcpPort();
 
-        FxTesting.onFx(
-                () -> {
-                    screen.addressField().setText(bobAddress);
-                    screen.startChat();
-                });
-        MessagesScreen.ChatPane pane =
-                FxTesting.onFx(
-                        () ->
-                                (MessagesScreen.ChatPane)
-                                        screen.tabs().getTabs().getFirst().getContent());
-        FxTesting.onFx(
-                () -> {
-                    pane.inputField().setText("hello bob");
-                    pane.send();
-                });
+        FxTesting.onFx(() -> {
+            screen.addressField().setText(bobAddress);
+            screen.startChat();
+        });
+        MessagesScreen.ChatPane pane = FxTesting.onFx(() ->
+                (MessagesScreen.ChatPane) screen.tabs().getTabs().getFirst().getContent());
+        FxTesting.onFx(() -> {
+            pane.inputField().setText("hello bob");
+            pane.send();
+        });
         EngineEvent.MessageReceived got = null;
         while (got == null) {
             EngineEvent e = bobSees.poll(20, TimeUnit.SECONDS);
@@ -91,37 +87,30 @@ class MessagesScreenTest {
         }
         assertThat(got.text()).isEqualTo("hello bob");
 
-        this.bob
-                .sendMessage(ServerAddress.parse(got.address()), "hi there")
-                .get(5, TimeUnit.SECONDS);
+        this.bob.sendMessage(ServerAddress.parse(got.address()), "hi there").get(5, TimeUnit.SECONDS);
         Chats.Chat chat = FxTesting.onFx(() -> this.test.model.chats().all().getFirst());
-        FxTesting.await(
-                "the answer",
-                () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.THEM));
+        FxTesting.await("the answer", () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.THEM));
         assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().size())).isEqualTo(1);
         assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().getFirst().getText()))
                 .isEqualTo(this.bob.preferences().nick());
-        FxTesting.onFx(
-                () -> {
-                    FxTesting.snapshot(screen.view(), "messages-chat");
-                    pane.befriend();
-                    return null;
-                });
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(screen.view(), "messages-chat");
+            pane.befriend();
+            return null;
+        });
         FxTesting.await("a friend", () -> screen.friendsList().getItems().size() == 1);
-        FxTesting.onFx(
-                () -> {
-                    screen.friendsList().getSelectionModel().select(0);
-                    screen.chatWithFriend();
-                    screen.removeFriend();
-                });
+        FxTesting.onFx(() -> {
+            screen.friendsList().getSelectionModel().select(0);
+            screen.chatWithFriend();
+            screen.removeFriend();
+        });
         FxTesting.await("no friend", () -> screen.friendsList().getItems().isEmpty());
 
-        FxTesting.onFx(
-                () -> {
-                    screen.addressField().setText("nowhere");
-                    screen.startChat();
-                    screen.chatWithFriend();
-                });
+        FxTesting.onFx(() -> {
+            screen.addressField().setText("nowhere");
+            screen.startChat();
+            screen.chatWithFriend();
+        });
         assertThat(this.test.told).anyMatch(m -> m.contains("host:port: nowhere"));
     }
 
@@ -135,38 +124,28 @@ class MessagesScreenTest {
         ImageIO.write(picture, "bmp", bmp);
 
         Chats.Chat chat = FxTesting.onFx(() -> this.test.model.chats().with("127.0.0.1:1"));
-        MessagesScreen.ChatPane pane =
-                FxTesting.onFx(
-                        () ->
-                                (MessagesScreen.ChatPane)
-                                        screen.tabs().getTabs().getFirst().getContent());
+        MessagesScreen.ChatPane pane = FxTesting.onFx(() ->
+                (MessagesScreen.ChatPane) screen.tabs().getTabs().getFirst().getContent());
         assertThat(FxTesting.onFx(pane::showsCaptcha)).isFalse();
         // Who wrote is not known before the first packet from them.
         FxTesting.onFx(pane::befriend);
-        FxTesting.onFx(
-                () ->
-                        this.test.model.handle(
-                                new EngineEvent.CaptchaRequested(
-                                        "127.0.0.1:1", Hash16.ZERO, bmp.toByteArray())));
+        FxTesting.onFx(() -> this.test.model.handle(
+                new EngineEvent.CaptchaRequested("127.0.0.1:1", Hash16.ZERO, bmp.toByteArray())));
         assertThat(FxTesting.onFx(pane::showsCaptcha)).isTrue();
         assertThat(MessagesScreen.picture(new byte[] {1, 2, 3})).isEmpty();
-        FxTesting.onFx(
-                () -> {
-                    pane.solutionField().setText("ABCD");
-                    pane.solve();
-                });
+        FxTesting.onFx(() -> {
+            pane.solutionField().setText("ABCD");
+            pane.solve();
+        });
         assertThat(FxTesting.onFx(pane::showsCaptcha)).isFalse();
         assertThat(FxTesting.onFx(() -> chat.lines().getFirst().text())).isEqualTo("ABCD");
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Wait for an answer"));
-        FxTesting.await(
-                "the failure",
-                () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.NOTICE));
+        FxTesting.await("the failure", () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.NOTICE));
         FxTesting.onFx(() -> screen.tabs().getTabs().getFirst().getOnClosed().handle(null));
         assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().isEmpty())).isTrue();
     }
 
-    private record Collector(BlockingQueue<EngineEvent> queue)
-            implements Flow.Subscriber<EngineEvent> {
+    private record Collector(BlockingQueue<EngineEvent> queue) implements Flow.Subscriber<EngineEvent> {
         @Override
         public void onSubscribe(Flow.Subscription s) {
             s.request(Long.MAX_VALUE);

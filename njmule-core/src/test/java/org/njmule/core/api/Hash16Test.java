@@ -45,15 +45,12 @@ class Hash16Test {
 
     @Test
     void comparesUnsigned() {
-        assertThat(Hash16.parseHex("80" + "00".repeat(15)))
-                .isGreaterThan(Hash16.parseHex("7F" + "FF".repeat(15)));
+        assertThat(Hash16.parseHex("80" + "00".repeat(15))).isGreaterThan(Hash16.parseHex("7F" + "FF".repeat(15)));
     }
 
     @Test
     void rejectsWrongLengths() {
-        assertThatThrownBy(() -> Hash16.of(new byte[15]))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Hash16.parseHex("00"))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Hash16.of(new byte[15])).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Hash16.parseHex("00")).isInstanceOf(IllegalArgumentException.class);
     }
 }

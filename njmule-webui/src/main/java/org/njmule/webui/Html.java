@@ -22,8 +22,7 @@ import org.njmule.core.api.NjMuleInfo;
 /** The pages' frame and escaping: every text that is not ours goes through {@link #text}. */
 final class Html {
 
-    static final String STYLE =
-            """
+    static final String STYLE = """
             :root { color-scheme: light dark; --bg: #f4f6fb; --fg: #2e3440; --muted: #4c566a;
               --card: #ffffff; --accent: #24427a; --border: #d8dee9; }
             @media (prefers-color-scheme: dark) {
@@ -79,9 +78,7 @@ final class Html {
                 .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
                 .append("<title>")
                 .append(text(title))
-                .append(
-                        " - njMule</title><link rel=\"stylesheet\""
-                                + " href=\"/style.css\"></head><body><header>")
+                .append(" - njMule</title><link rel=\"stylesheet\"" + " href=\"/style.css\"></head><body><header>")
                 .append("<strong>")
                 .append(text(NjMuleInfo.NAME + " " + NjMuleInfo.version()))
                 .append("</strong>");

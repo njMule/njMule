@@ -51,8 +51,7 @@ class FileHasherTest {
         assertThat(one.fileHash()).isEqualTo(Ed2k.fileHash(one.partHashes()));
         assertThat(Ed2k.EMPTY_PART_HASH).isEqualTo(hex("31D6CFE0D16AE931B73C59D7E0C089C0"));
 
-        assertThat(zeros(2 * P).ed2k().partHashes())
-                .containsExactly(zeroPart, zeroPart, Ed2k.EMPTY_PART_HASH);
+        assertThat(zeros(2 * P).ed2k().partHashes()).containsExactly(zeroPart, zeroPart, Ed2k.EMPTY_PART_HASH);
     }
 
     @Test
@@ -96,8 +95,7 @@ class FileHasherTest {
 
     @Test
     void rejectsShortDataAndWrongLeafCounts() {
-        assertThatThrownBy(() -> FileHasher.hash(new Zeros(10), 11, b -> {}))
-                .isInstanceOf(EOFException.class);
+        assertThatThrownBy(() -> FileHasher.hash(new Zeros(10), 11, b -> {})).isInstanceOf(EOFException.class);
         assertThatThrownBy(() -> AichTree.fromBlockHashes(P + 1, List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }

@@ -38,9 +38,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 
 /**
- * Tells the connected server which files we share, so that it gives us as a source to the clients
- * that look for them: the files not offered yet, in batches, at most one batch a minute. Engine
- * thread only.
+ * Tells the connected server which files we share, so that it gives us as a source to the clients that look for them:
+ * the files not offered yet, in batches, at most one batch a minute. Engine thread only.
  */
 public final class FilePublisher {
 
@@ -73,11 +72,7 @@ public final class FilePublisher {
     private boolean needed;
     private long next;
 
-    public FilePublisher(
-            ServerSession session,
-            Supplier<List<Offer>> files,
-            IntSupplier listenPort,
-            Ticker ticker) {
+    public FilePublisher(ServerSession session, Supplier<List<Offer>> files, IntSupplier listenPort, Ticker ticker) {
         this.session = Objects.requireNonNull(session, "session");
         this.files = Objects.requireNonNull(files, "files");
         this.listenPort = Objects.requireNonNull(listenPort, "listenPort");
@@ -117,8 +112,7 @@ public final class FilePublisher {
             if (batch.size() >= BATCH) {
                 break;
             }
-            if (this.offered.contains(offer.hash())
-                    || (offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large)) {
+            if (this.offered.contains(offer.hash()) || (offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large)) {
                 continue;
             }
             batch.add(this.entry(offer, id.get(), flags));
@@ -158,15 +152,10 @@ public final class FilePublisher {
             tags.add(new Tag.IntTag(TagName.id(FILESIZE_HI), offer.size() >>> 32));
         }
         FileTypes.of(offer.name())
-                .ifPresent(
-                        type ->
-                                tags.add(
-                                        (flags & ServerMessages.TCP_TYPE_TAG_INTEGER) != 0
-                                                ? new Tag.IntTag(
-                                                        TagName.id(FileTag.FILETYPE),
-                                                        FileTypes.code(type))
-                                                : new Tag.StringTag(
-                                                        TagName.id(FileTag.FILETYPE), type)));
+                .ifPresent(type -> tags.add(
+                        (flags & ServerMessages.TCP_TYPE_TAG_INTEGER) != 0
+                                ? new Tag.IntTag(TagName.id(FileTag.FILETYPE), FileTypes.code(type))
+                                : new Tag.StringTag(TagName.id(FileTag.FILETYPE), type)));
         return new FileEntry(offer.hash(), clientId, port, tags);
     }
 }

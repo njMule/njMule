@@ -124,65 +124,45 @@ public final class SyntheticEmuleProfile {
                 StandardCharsets.ISO_8859_1);
         Files.write(
                 p.config.resolve("server.met"),
-                ServerMet.write(
-                        List.of(
-                                new ServerMet.Server(Ipv4.of(10, 1, 2, 3), 4661, List.of()),
-                                new ServerMet.Server(Ipv4.of(10, 1, 2, 4), 4242, List.of()))));
+                ServerMet.write(List.of(
+                        new ServerMet.Server(Ipv4.of(10, 1, 2, 3), 4661, List.of()),
+                        new ServerMet.Server(Ipv4.of(10, 1, 2, 4), 4242, List.of()))));
         Files.write(
                 p.config.resolve("nodes.dat"),
-                NodesDat.write(
-                        List.of(
-                                contact(random, Ipv4.of(10, 2, 0, 1)),
-                                contact(random, Ipv4.of(10, 3, 0, 1)),
-                                contact(random, Ipv4.of(10, 4, 0, 1)))));
+                NodesDat.write(List.of(
+                        contact(random, Ipv4.of(10, 2, 0, 1)),
+                        contact(random, Ipv4.of(10, 3, 0, 1)),
+                        contact(random, Ipv4.of(10, 4, 0, 1)))));
         Ed2kHashSet hashes = FileHasher.hash(p.sharedFile).ed2k();
         Files.write(
                 p.config.resolve("known.met"),
-                KnownMet.write(
+                KnownMet.write(List.of(new KnownMet.KnownFile(
+                        Files.getLastModifiedTime(p.sharedFile).toMillis() / 1000,
+                        hashes.fileHash(),
+                        hashes.partHashes(),
                         List.of(
-                                new KnownMet.KnownFile(
-                                        Files.getLastModifiedTime(p.sharedFile).toMillis() / 1000,
-                                        hashes.fileHash(),
-                                        hashes.partHashes(),
-                                        List.of(
-                                                new Tag.StringTag(
-                                                        TagName.id(FileTag.FILENAME), "shared.bin"),
-                                                new Tag.IntTag(
-                                                        TagName.id(FileTag.FILESIZE),
-                                                        SHARED_SIZE))))));
+                                new Tag.StringTag(TagName.id(FileTag.FILENAME), "shared.bin"),
+                                new Tag.IntTag(TagName.id(FileTag.FILESIZE), SHARED_SIZE))))));
         Files.write(
                 p.config.resolve("shareddir.dat"),
                 TextFiles.writeLines(
                         List.of(p.shared.toString(), p.root().resolve("gone").toString())));
+        Files.write(p.config.resolve("sharedfiles.dat"), TextFiles.writeLines(List.of(p.sharedFile.toString())));
         Files.write(
-                p.config.resolve("sharedfiles.dat"),
-                TextFiles.writeLines(List.of(p.sharedFile.toString())));
-        Files.write(
-                p.config.resolve("cancelled.met"),
-                CancelledMet.write(7, List.of(CancelledMet.key(7, Hash16.ZERO))));
+                p.config.resolve("cancelled.met"), CancelledMet.write(7, List.of(CancelledMet.key(7, Hash16.ZERO))));
         Files.writeString(
                 p.config.resolve("ipfilter.dat"),
                 "010.000.000.000 - 010.000.000.255 , 000 , test range\n",
                 StandardCharsets.US_ASCII);
         Files.write(
                 p.config.resolve("preferences.dat"),
-                PreferencesDat.write(
-                        new PreferencesDat.Contents(
-                                PreferencesDat.VERSION,
-                                UserHashStore.generate(random),
-                                Bytes.EMPTY)));
-        RsaKeys.writeKeyFile(
-                p.config.resolve("cryptkey.dat"), Rsa.generate(Rsa.NETWORK_KEY_BITS, random));
+                PreferencesDat.write(new PreferencesDat.Contents(
+                        PreferencesDat.VERSION, UserHashStore.generate(random), Bytes.EMPTY)));
+        RsaKeys.writeKeyFile(p.config.resolve("cryptkey.dat"), Rsa.generate(Rsa.NETWORK_KEY_BITS, random));
         Files.write(
                 p.config.resolve("clients.met"),
-                ClientsMet.write(
-                        List.of(
-                                new ClientsMet.Credit(
-                                        UserHashStore.generate(random),
-                                        1_000,
-                                        2_000,
-                                        1_700_000_000L,
-                                        Bytes.EMPTY))));
+                ClientsMet.write(List.of(new ClientsMet.Credit(
+                        UserHashStore.generate(random), 1_000, 2_000, 1_700_000_000L, Bytes.EMPTY))));
         Files.write(
                 p.config.resolve("preferencesKad.dat"),
                 PreferencesKadDat.write(new PreferencesKadDat.Contents(0, UInt128.random(random))));
@@ -205,8 +185,7 @@ public final class SyntheticEmuleProfile {
     }
 
     private PartFile download(int number, String name, Hash16 hash) {
-        return PartFile.create(
-                number, this.temp, name, DOWNLOAD_SIZE, hash, Optional.empty(), List.of());
+        return PartFile.create(number, this.temp, name, DOWNLOAD_SIZE, hash, Optional.empty(), List.of());
     }
 
     /** SHA-256 of every file below the profile, to prove an import left it untouched. */
@@ -225,8 +204,7 @@ public final class SyntheticEmuleProfile {
     }
 
     private static NodesDat.Contact contact(SecureRandom random, int ip) {
-        return new NodesDat.Contact(
-                UInt128.random(random), ip, 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
+        return new NodesDat.Contact(UInt128.random(random), ip, 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
     }
 
     private static byte[] randomBytes(SecureRandom random, int size) {

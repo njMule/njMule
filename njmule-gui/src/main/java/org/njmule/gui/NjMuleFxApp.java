@@ -33,10 +33,8 @@ public final class NjMuleFxApp extends Application {
     @Override
     public void init() throws Exception {
         try {
-            this.app =
-                    DesktopApp.open(
-                            LaunchOptions.parse(
-                                    this.getParameters().getRaw().toArray(String[]::new)));
+            this.app = DesktopApp.open(
+                    LaunchOptions.parse(this.getParameters().getRaw().toArray(String[]::new)));
         } catch (IOException e) {
             // Shown once the toolkit runs, for instance when njMule is already open.
             this.failure = e;

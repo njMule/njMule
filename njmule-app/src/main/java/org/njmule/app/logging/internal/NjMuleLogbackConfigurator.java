@@ -21,9 +21,8 @@ import ch.qos.logback.classic.spi.Configurator;
 import ch.qos.logback.core.spi.ContextAwareBase;
 
 /**
- * Programmatic Logback configuration found through {@link java.util.ServiceLoader}: no XML, hence
- * no Joran reflection in the native image. Console only; the file is added once its directory is
- * known.
+ * Programmatic Logback configuration found through {@link java.util.ServiceLoader}: no XML, hence no Joran reflection
+ * in the native image. Console only; the file is added once its directory is known.
  */
 public final class NjMuleLogbackConfigurator extends ContextAwareBase implements Configurator {
 

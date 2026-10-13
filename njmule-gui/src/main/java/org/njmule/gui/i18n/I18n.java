@@ -24,8 +24,8 @@ import java.util.Objects;
 import java.util.ResourceBundle;
 
 /**
- * The interface texts of one language: eMule's strings ({@code IDS_*} keys, converted from its
- * string tables) and njMule's own ({@code nj.*} keys). A missing translation falls back to English.
+ * The interface texts of one language: eMule's strings ({@code IDS_*} keys, converted from its string tables) and
+ * njMule's own ({@code nj.*} keys). A missing translation falls back to English.
  */
 public final class I18n {
 

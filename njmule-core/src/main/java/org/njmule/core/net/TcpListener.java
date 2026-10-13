@@ -29,8 +29,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Accepts incoming TCP connections on a virtual thread. Each one first passes the {@link
- * ConnectionGuard}; admitted sockets go to the acceptor, each on its own virtual thread.
+ * Accepts incoming TCP connections on a virtual thread. Each one first passes the {@link ConnectionGuard}; admitted
+ * sockets go to the acceptor, each on its own virtual thread.
  */
 public final class TcpListener implements AutoCloseable {
 
@@ -54,8 +54,7 @@ public final class TcpListener implements AutoCloseable {
     }
 
     /** Binds {@code address} (port 0 picks a free one) and starts accepting. */
-    public static TcpListener open(
-            InetSocketAddress address, ConnectionGuard guard, Acceptor acceptor)
+    public static TcpListener open(InetSocketAddress address, ConnectionGuard guard, Acceptor acceptor)
             throws IOException {
         Objects.requireNonNull(guard, "guard");
         Objects.requireNonNull(acceptor, "acceptor");
@@ -103,9 +102,9 @@ public final class TcpListener implements AutoCloseable {
         }
         switch (this.guard.admit(Ipv4.fromBytes(address.getAddress()))) {
             case Admission.Admitted(ConnectionGuard.Permit permit) ->
-                    Thread.ofVirtual()
-                            .name("njmule-tcp-accept-" + socket.getRemoteSocketAddress())
-                            .start(() -> this.acceptor.accepted(socket, permit));
+                Thread.ofVirtual()
+                        .name("njmule-tcp-accept-" + socket.getRemoteSocketAddress())
+                        .start(() -> this.acceptor.accepted(socket, permit));
             case Admission.Refused(ConnectionGuard.Refusal reason) -> {
                 logger.debug("Refused {}: {}", socket.getRemoteSocketAddress(), reason);
                 closeQuietly(socket);

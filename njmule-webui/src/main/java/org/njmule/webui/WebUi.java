@@ -61,9 +61,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The web interface: status, transfers, searches and servers as plain HTML pages behind a password.
- * Every change is a POST carrying the session's form token; pages run no scripts and cannot be
- * framed, and the session cookie is HTTP-only and same-site.
+ * The web interface: status, transfers, searches and servers as plain HTML pages behind a password. Every change is a
+ * POST carrying the session's form token; pages run no scripts and cannot be framed, and the session cookie is
+ * HTTP-only and same-site.
  */
 public final class WebUi implements AutoCloseable {
 
@@ -83,8 +83,7 @@ public final class WebUi implements AutoCloseable {
     private static final long ENGINE_WAIT_SECONDS = 10;
 
     // Pasted links are separated by white space, which file names may contain too.
-    private static final Pattern LINKS =
-            Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
     // Names under which a browser on this computer reaches a loopback-only interface; any other
     // Host header is a DNS-rebinding attempt.
@@ -112,10 +111,9 @@ public final class WebUi implements AutoCloseable {
         if (!settings.usable()) {
             throw new IllegalArgumentException("the web interface is off or has no password");
         }
-        InetSocketAddress bind =
-                settings.lan()
-                        ? new InetSocketAddress(settings.port())
-                        : new InetSocketAddress(InetAddress.getLoopbackAddress(), settings.port());
+        InetSocketAddress bind = settings.lan()
+                ? new InetSocketAddress(settings.port())
+                : new InetSocketAddress(InetAddress.getLoopbackAddress(), settings.port());
         HttpServer server = HttpServer.create(bind, 0);
         WebUi ui = new WebUi(engine, settings, server);
         server.setExecutor(ui.executor);
@@ -239,9 +237,7 @@ public final class WebUi implements AutoCloseable {
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
         exchange.getResponseHeaders()
-                .add(
-                        "Set-Cookie",
-                        COOKIE + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
+                .add("Set-Cookie", COOKIE + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
         this.redirect(exchange, "/");
     }
 
@@ -256,16 +252,14 @@ public final class WebUi implements AutoCloseable {
                         + "<button class=\"main\">Log in</button></form>");
     }
 
-    private void get(HttpExchange exchange, String path, Sessions.Session session)
-            throws IOException {
-        String page =
-                switch (path) {
-                    case "/" -> this.statusPage(session);
-                    case TRANSFERS -> this.transfersPage(session);
-                    case SEARCH -> this.searchPage(session, query(exchange).get("id"));
-                    case SERVERS -> this.serversPage(session);
-                    default -> null;
-                };
+    private void get(HttpExchange exchange, String path, Sessions.Session session) throws IOException {
+        String page = switch (path) {
+            case "/" -> this.statusPage(session);
+            case TRANSFERS -> this.transfersPage(session);
+            case SEARCH -> this.searchPage(session, query(exchange).get("id"));
+            case SERVERS -> this.serversPage(session);
+            default -> null;
+        };
         if (page == null) {
             this.send(exchange, 404, TEXT, "Not found.");
         } else {
@@ -273,8 +267,7 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private void post(HttpExchange exchange, String path, Sessions.Session session)
-            throws IOException {
+    private void post(HttpExchange exchange, String path, Sessions.Session session) throws IOException {
         Map<String, String> form = form(exchange);
         if (!Sessions.validForm(session, form.get("csrf"))) {
             this.send(exchange, 403, TEXT, "Expired form: reload the page.");
@@ -282,29 +275,24 @@ public final class WebUi implements AutoCloseable {
         }
         String next;
         try {
-            next =
-                    switch (path) {
-                        case "/logout" -> {
-                            this.sessions.close(session.id());
-                            exchange.getResponseHeaders()
-                                    .add(
-                                            "Set-Cookie",
-                                            COOKIE
-                                                    + "=; Path=/; Max-Age=0; HttpOnly;"
-                                                    + " SameSite=Strict");
-                            yield "/login";
-                        }
-                        case TRANSFERS -> {
-                            this.transfer(form);
-                            yield TRANSFERS;
-                        }
-                        case SEARCH -> this.search(form);
-                        case SERVERS -> {
-                            this.server(form);
-                            yield SERVERS;
-                        }
-                        default -> null;
-                    };
+            next = switch (path) {
+                case "/logout" -> {
+                    this.sessions.close(session.id());
+                    exchange.getResponseHeaders()
+                            .add("Set-Cookie", COOKIE + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
+                    yield "/login";
+                }
+                case TRANSFERS -> {
+                    this.transfer(form);
+                    yield TRANSFERS;
+                }
+                case SEARCH -> this.search(form);
+                case SERVERS -> {
+                    this.server(form);
+                    yield SERVERS;
+                }
+                default -> null;
+            };
         } catch (IllegalArgumentException | EngineFailure e) {
             this.send(
                     exchange,
@@ -342,13 +330,12 @@ public final class WebUi implements AutoCloseable {
             return;
         }
         Hash16 hash = Hash16.parseHex(form.getOrDefault("hash", ""));
-        CompletableFuture<Boolean> done =
-                switch (action) {
-                    case "pause" -> this.engine.pauseDownload(hash);
-                    case "resume" -> this.engine.resumeDownload(hash);
-                    case "cancel" -> this.engine.cancelDownload(hash);
-                    default -> throw new IllegalArgumentException("Unknown action.");
-                };
+        CompletableFuture<Boolean> done = switch (action) {
+            case "pause" -> this.engine.pauseDownload(hash);
+            case "resume" -> this.engine.resumeDownload(hash);
+            case "cancel" -> this.engine.cancelDownload(hash);
+            default -> throw new IllegalArgumentException("Unknown action.");
+        };
         this.await(done);
     }
 
@@ -370,8 +357,7 @@ public final class WebUi implements AutoCloseable {
         if (expression.isEmpty()) {
             return SEARCH;
         }
-        SearchRequest.Scope scope =
-                SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
+        SearchRequest.Scope scope = SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
         SearchId id = this.await(this.engine.search(new SearchRequest(expression, scope)));
         synchronized (this.results) {
             this.remember(id.value());
@@ -381,8 +367,7 @@ public final class WebUi implements AutoCloseable {
 
     // Called holding the results' lock.
     private Map<Hash16, SearchResult> remember(long search) {
-        Map<Hash16, SearchResult> found =
-                this.results.computeIfAbsent(search, k -> new LinkedHashMap<>());
+        Map<Hash16, SearchResult> found = this.results.computeIfAbsent(search, k -> new LinkedHashMap<>());
         while (this.results.size() > SEARCHES_KEPT) {
             this.results.pollFirstEntry();
         }
@@ -393,11 +378,8 @@ public final class WebUi implements AutoCloseable {
         switch (form.getOrDefault(ACTION, "")) {
             case "connect" -> {
                 String address = form.getOrDefault("address", "").strip();
-                this.await(
-                        this.engine.connect(
-                                address.isEmpty()
-                                        ? Optional.empty()
-                                        : Optional.of(ServerAddress.parse(address))));
+                this.await(this.engine.connect(
+                        address.isEmpty() ? Optional.empty() : Optional.of(ServerAddress.parse(address))));
             }
             case "disconnect" -> this.await(this.engine.disconnect());
             default -> throw new IllegalArgumentException("Unknown action.");
@@ -406,30 +388,23 @@ public final class WebUi implements AutoCloseable {
 
     private String statusPage(Sessions.Session session) {
         EngineStatus s = this.await(this.engine.status());
-        String ed2k =
-                s.server()
-                        .map(i -> Html.text(i.name()) + (s.lowId() ? " (LowID)" : " (HighID)"))
-                        .orElse("not connected");
-        String kad =
-                s.kad()
-                        .map(
-                                k ->
-                                        !k.connected()
-                                                ? "not connected"
-                                                : k.firewalled() ? "firewalled" : "open")
-                        .orElse("off");
-        String body =
-                "<div class=\"cards\">"
-                        + card("eD2K", ed2k)
-                        + card("Kad", kad)
-                        + card("Download", Html.rate(s.downloadBytesPerSecond()))
-                        + card("Upload", Html.rate(s.uploadBytesPerSecond()))
-                        + card("Downloaded (session)", Html.size(s.downloaded()))
-                        + card("Uploaded (session)", Html.size(s.uploaded()))
-                        + card("Downloads", String.valueOf(s.downloads()))
-                        + card("Uploads / queue", s.uploads() + " / " + s.queued())
-                        + card("Shared files", String.valueOf(s.sharedFiles()))
-                        + "</div>";
+        String ed2k = s.server()
+                .map(i -> Html.text(i.name()) + (s.lowId() ? " (LowID)" : " (HighID)"))
+                .orElse("not connected");
+        String kad = s.kad()
+                .map(k -> !k.connected() ? "not connected" : k.firewalled() ? "firewalled" : "open")
+                .orElse("off");
+        String body = "<div class=\"cards\">"
+                + card("eD2K", ed2k)
+                + card("Kad", kad)
+                + card("Download", Html.rate(s.downloadBytesPerSecond()))
+                + card("Upload", Html.rate(s.uploadBytesPerSecond()))
+                + card("Downloaded (session)", Html.size(s.downloaded()))
+                + card("Uploaded (session)", Html.size(s.uploaded()))
+                + card("Downloads", String.valueOf(s.downloads()))
+                + card("Uploads / queue", s.uploads() + " / " + s.queued())
+                + card("Shared files", String.valueOf(s.sharedFiles()))
+                + "</div>";
         return Html.page("Status", session.csrf(), body);
     }
 
@@ -438,18 +413,18 @@ public final class WebUi implements AutoCloseable {
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(1024 + downloads.size() * 512);
         body.append("<p>")
-                .append(
-                        Html.form(
-                                TRANSFERS,
-                                csrf,
-                                Html.hidden(ACTION, "add")
-                                        + "<input type=\"text\" name=\"link\" size=\"60\""
-                                        + " placeholder=\"ed2k://|file|...|/\"> ",
-                                "Download",
-                                true))
+                .append(Html.form(
+                        TRANSFERS,
+                        csrf,
+                        Html.hidden(ACTION, "add")
+                                + "<input type=\"text\" name=\"link\" size=\"60\""
+                                + " placeholder=\"ed2k://|file|...|/\"> ",
+                        "Download",
+                        true))
                 .append("</p>");
         if (downloads.isEmpty()) {
-            return Html.page("Transfers", csrf, body.append("<p>No downloads.</p>").toString());
+            return Html.page(
+                    "Transfers", csrf, body.append("<p>No downloads.</p>").toString());
         }
         body.append("<table><tr><th>File</th><th>Size</th><th>Done</th><th>Speed</th>")
                 .append("<th>Sources</th><th>Status</th><th></th></tr>");
@@ -474,21 +449,14 @@ public final class WebUi implements AutoCloseable {
                     .append("</td><td>")
                     .append(d.status().name().toLowerCase(Locale.ROOT))
                     .append("</td><td>")
-                    .append(
-                            Html.form(
-                                    TRANSFERS,
-                                    csrf,
-                                    Html.hidden(ACTION, paused ? "resume" : "pause") + hash,
-                                    paused ? "Resume" : "Pause",
-                                    false))
+                    .append(Html.form(
+                            TRANSFERS,
+                            csrf,
+                            Html.hidden(ACTION, paused ? "resume" : "pause") + hash,
+                            paused ? "Resume" : "Pause",
+                            false))
                     .append(' ')
-                    .append(
-                            Html.form(
-                                    TRANSFERS,
-                                    csrf,
-                                    Html.hidden(ACTION, "cancel") + hash,
-                                    "Cancel",
-                                    false))
+                    .append(Html.form(TRANSFERS, csrf, Html.hidden(ACTION, "cancel") + hash, "Cancel", false))
                     .append("</td></tr>");
         }
         return Html.page("Transfers", csrf, body.append("</table>").toString());
@@ -498,17 +466,16 @@ public final class WebUi implements AutoCloseable {
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(4096);
         body.append("<p>")
-                .append(
-                        Html.form(
-                                SEARCH,
-                                csrf,
-                                "<input type=\"text\" name=\"query\" size=\"40\" autofocus> "
-                                        + "<select name=\"scope\">"
-                                        + "<option value=\"SERVER\">Server</option>"
-                                        + "<option value=\"GLOBAL\">Global</option>"
-                                        + "<option value=\"KAD\">Kad</option></select> ",
-                                "Search",
-                                true))
+                .append(Html.form(
+                        SEARCH,
+                        csrf,
+                        "<input type=\"text\" name=\"query\" size=\"40\" autofocus> "
+                                + "<select name=\"scope\">"
+                                + "<option value=\"SERVER\">Server</option>"
+                                + "<option value=\"GLOBAL\">Global</option>"
+                                + "<option value=\"KAD\">Kad</option></select> ",
+                        "Search",
+                        true))
                 .append("</p>");
         Long id = parseId(idText);
         List<SearchResult> found;
@@ -534,14 +501,13 @@ public final class WebUi implements AutoCloseable {
                     .append("</td><td>")
                     .append(r.sources())
                     .append("</td><td>")
-                    .append(
-                            Html.form(
-                                    SEARCH,
-                                    csrf,
-                                    Html.hidden("search", String.valueOf(id))
-                                            + Html.hidden("download", r.hash().toHex()),
-                                    "Download",
-                                    false))
+                    .append(Html.form(
+                            SEARCH,
+                            csrf,
+                            Html.hidden("search", String.valueOf(id))
+                                    + Html.hidden("download", r.hash().toHex()),
+                            "Download",
+                            false))
                     .append("</td></tr>");
         }
         return Html.page("Search", csrf, body.append("</table>").toString());
@@ -565,13 +531,7 @@ public final class WebUi implements AutoCloseable {
         body.append("<p>")
                 .append(Html.form(SERVERS, csrf, Html.hidden(ACTION, "connect"), "Connect", true))
                 .append(' ')
-                .append(
-                        Html.form(
-                                SERVERS,
-                                csrf,
-                                Html.hidden(ACTION, "disconnect"),
-                                "Disconnect",
-                                false))
+                .append(Html.form(SERVERS, csrf, Html.hidden(ACTION, "disconnect"), "Disconnect", false))
                 .append("</p><table><tr><th>Name</th><th>Address</th><th>Users</th>")
                 .append("<th>Files</th><th></th></tr>");
         for (ServerInfo s : servers) {
@@ -584,14 +544,12 @@ public final class WebUi implements AutoCloseable {
                     .append("</td><td>")
                     .append(s.files())
                     .append("</td><td>")
-                    .append(
-                            Html.form(
-                                    SERVERS,
-                                    csrf,
-                                    Html.hidden(ACTION, "connect")
-                                            + Html.hidden("address", s.address()),
-                                    "Connect",
-                                    false))
+                    .append(Html.form(
+                            SERVERS,
+                            csrf,
+                            Html.hidden(ACTION, "connect") + Html.hidden("address", s.address()),
+                            "Connect",
+                            false))
                     .append("</td></tr>");
         }
         return Html.page("Servers", csrf, body.append("</table>").toString());
@@ -661,8 +619,7 @@ public final class WebUi implements AutoCloseable {
         exchange.sendResponseHeaders(303, -1);
     }
 
-    private void send(HttpExchange exchange, int status, String type, String body)
-            throws IOException {
+    private void send(HttpExchange exchange, int status, String type, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", type);
         securityHeaders(exchange.getResponseHeaders());

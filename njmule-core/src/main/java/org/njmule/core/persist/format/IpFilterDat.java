@@ -26,10 +26,10 @@ import org.njmule.core.protocol.io.Ed2kStrings;
 import org.njmule.core.util.Ipv4;
 
 /**
- * IP filter lists: {@code ipfilter.dat} lines {@code a.b.c.d - e.f.g.h , level , description},
- * PeerGuardian text lines {@code description:a.b.c.d-e.f.g.h} and the PeerGuardian binary P2B
- * format ({@code FF FF FF FF 'P2B' <version 1|2>} then {@code <name NUL><start BE><end BE>}). An
- * address is blocked when its range level is below the configured filter level.
+ * IP filter lists: {@code ipfilter.dat} lines {@code a.b.c.d - e.f.g.h , level , description}, PeerGuardian text lines
+ * {@code description:a.b.c.d-e.f.g.h} and the PeerGuardian binary P2B format ({@code FF FF FF FF 'P2B' <version 1|2>}
+ * then {@code <name NUL><start BE><end BE>}). An address is blocked when its range level is below the configured filter
+ * level.
  */
 public final class IpFilterDat {
 
@@ -50,8 +50,7 @@ public final class IpFilterDat {
         }
 
         public boolean contains(int ip) {
-            return Integer.compareUnsigned(ip, this.start) >= 0
-                    && Integer.compareUnsigned(ip, this.end) <= 0;
+            return Integer.compareUnsigned(ip, this.start) >= 0 && Integer.compareUnsigned(ip, this.end) <= 0;
         }
     }
 
@@ -64,8 +63,8 @@ public final class IpFilterDat {
     private IpFilterDat() {}
 
     /**
-     * Parses any of the formats, then sorts by start and merges overlapping ranges and adjacent
-     * ones with the same level; identical ranges keep the lowest level.
+     * Parses any of the formats, then sorts by start and merges overlapping ranges and adjacent ones with the same
+     * level; identical ranges keep the lowest level.
      *
      * @param fileName used only to recognise {@code .p2p} and {@code .prefix} files
      */
@@ -78,14 +77,13 @@ public final class IpFilterDat {
     public static byte[] write(List<Range> ranges) {
         StringBuilder out = new StringBuilder();
         for (Range r : ranges) {
-            out.append(
-                            String.format(
-                                    Locale.ROOT,
-                                    "%-15s - %-15s , %3d , %s",
-                                    Ipv4.format(r.start()),
-                                    Ipv4.format(r.end()),
-                                    r.level(),
-                                    r.description()))
+            out.append(String.format(
+                            Locale.ROOT,
+                            "%-15s - %-15s , %3d , %s",
+                            Ipv4.format(r.start()),
+                            Ipv4.format(r.end()),
+                            r.level(),
+                            r.description()))
                     .append('\n');
         }
         return out.toString().getBytes(StandardCharsets.UTF_8);
@@ -104,10 +102,7 @@ public final class IpFilterDat {
         List<Range> ranges = new ArrayList<>();
         for (String raw : TextFiles.lines(data)) {
             String line = raw.strip();
-            if (line.isEmpty()
-                    || line.charAt(0) == '#'
-                    || line.charAt(0) == '/'
-                    || line.length() < MIN_LINE) {
+            if (line.isEmpty() || line.charAt(0) == '#' || line.charAt(0) == '/' || line.length() < MIN_LINE) {
                 continue;
             }
             if (kind == Kind.UNKNOWN) {
@@ -123,10 +118,9 @@ public final class IpFilterDat {
                     }
                 }
             }
-            Range r =
-                    kind == Kind.FILTER_DAT
-                            ? filterDatLine(line)
-                            : kind == Kind.PEER_GUARDIAN ? peerGuardianLine(line) : null;
+            Range r = kind == Kind.FILTER_DAT
+                    ? filterDatLine(line)
+                    : kind == Kind.PEER_GUARDIAN ? peerGuardianLine(line) : null;
             if (r != null) {
                 ranges.add(r);
             }
@@ -167,23 +161,21 @@ public final class IpFilterDat {
         if (ips == null) {
             return null;
         }
-        return range(ips, DEFAULT_LEVEL, line.substring(0, colon).replace("PGIPDB", "").strip());
+        return range(
+                ips,
+                DEFAULT_LEVEL,
+                line.substring(0, colon).replace("PGIPDB", "").strip());
     }
 
     private static Range range(int[] ips, int level, String description) {
         if (Integer.compareUnsigned(ips[0], ips[1]) > 0) {
             return null;
         }
-        String d =
-                description.length() > MAX_DESCRIPTION
-                        ? description.substring(0, MAX_DESCRIPTION)
-                        : description;
+        String d = description.length() > MAX_DESCRIPTION ? description.substring(0, MAX_DESCRIPTION) : description;
         return new Range(ips[0], ips[1], level, d);
     }
 
-    /**
-     * {@code a.b.c.d - e.f.g.h} at {@code from} (spaces allowed): start, end, end index; or null.
-     */
+    /** {@code a.b.c.d - e.f.g.h} at {@code from} (spaces allowed): start, end, end index; or null. */
     private static int[] rangeAt(String line, int from) {
         int[] pos = {skipSpaces(line, from)};
         Integer start = ip(line, pos);
@@ -214,10 +206,7 @@ public final class IpFilterDat {
             }
             int digits = 0;
             int octet = 0;
-            while (i < line.length()
-                    && digits < 3
-                    && line.charAt(i) >= '0'
-                    && line.charAt(i) <= '9') {
+            while (i < line.length() && digits < 3 && line.charAt(i) >= '0' && line.charAt(i) <= '9') {
                 octet = octet * 10 + (line.charAt(i) - '0');
                 i++;
                 digits++;
@@ -256,10 +245,9 @@ public final class IpFilterDat {
                 break;
             }
             int nameLength = Math.min(nul - pos, MAX_DESCRIPTION);
-            String name =
-                    utf8
-                            ? Ed2kStrings.decode(data, pos, nameLength)
-                            : new String(data, pos, nameLength, StandardCharsets.ISO_8859_1);
+            String name = utf8
+                    ? Ed2kStrings.decode(data, pos, nameLength)
+                    : new String(data, pos, nameLength, StandardCharsets.ISO_8859_1);
             int start = bigEndian(data, nul + 1);
             int end = bigEndian(data, nul + 5);
             if (Integer.compareUnsigned(start, end) <= 0) {
@@ -300,23 +288,15 @@ public final class IpFilterDat {
             }
             Range prev = out.getLast();
             boolean overlapping = Integer.compareUnsigned(cur.start(), prev.end()) <= 0;
-            boolean adjacent =
-                    prev.end() != -1
-                            && cur.start() == prev.end() + 1
-                            && cur.level() == prev.level();
+            boolean adjacent = prev.end() != -1 && cur.start() == prev.end() + 1 && cur.level() == prev.level();
             if (overlapping || adjacent) {
                 if (cur.start() == prev.start() && cur.end() == prev.end()) {
                     out.set(
                             out.size() - 1,
                             new Range(
-                                    prev.start(),
-                                    prev.end(),
-                                    Math.min(prev.level(), cur.level()),
-                                    prev.description()));
+                                    prev.start(), prev.end(), Math.min(prev.level(), cur.level()), prev.description()));
                 } else if (Integer.compareUnsigned(cur.end(), prev.end()) > 0) {
-                    out.set(
-                            out.size() - 1,
-                            new Range(prev.start(), cur.end(), prev.level(), prev.description()));
+                    out.set(out.size() - 1, new Range(prev.start(), cur.end(), prev.level(), prev.description()));
                 }
             } else {
                 out.add(cur);

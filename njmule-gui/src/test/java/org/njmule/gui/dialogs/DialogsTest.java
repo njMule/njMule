@@ -33,7 +33,8 @@ import org.njmule.gui.TestGui;
 @Timeout(60)
 class DialogsTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private TestGui test;
 
@@ -50,35 +51,31 @@ class DialogsTest {
         Path emule = Files.createDirectories(this.dir.resolve("emule-config"));
         Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nNick=FromEmule\r\n");
         AtomicReference<ImportDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(
-                () -> {
-                    Stage owner = new Stage();
-                    dialog.set(new ImportDialog(this.test.gui, owner));
-                    dialog.get().show();
-                    dialog.get().directoryField().setText(emule.toString());
-                    dialog.get().run(true);
-                });
-        FxTesting.await("the check", () -> !dialog.get().reportTable().getItems().isEmpty());
-        assertThat(
-                        FxTesting.onFx(
-                                () ->
-                                        dialog.get().reportTable().getItems().stream()
-                                                .filter(i -> i.file().equals("preferences.ini"))
-                                                .findFirst()
-                                                .orElseThrow()
-                                                .outcome()))
+        FxTesting.onFx(() -> {
+            Stage owner = new Stage();
+            dialog.set(new ImportDialog(this.test.gui, owner));
+            dialog.get().show();
+            dialog.get().directoryField().setText(emule.toString());
+            dialog.get().run(true);
+        });
+        FxTesting.await(
+                "the check", () -> !dialog.get().reportTable().getItems().isEmpty());
+        assertThat(FxTesting.onFx(() -> dialog.get().reportTable().getItems().stream()
+                        .filter(i -> i.file().equals("preferences.ini"))
+                        .findFirst()
+                        .orElseThrow()
+                        .outcome()))
                 .isEqualTo(ImportReport.Outcome.WOULD_IMPORT);
         assertThat(this.test.engine.preferences().nick()).isNotEqualTo("FromEmule");
 
         FxTesting.onFx(() -> dialog.get().run(false));
         FxTesting.await(
                 "the import", () -> this.test.engine.preferences().nick().equals("FromEmule"));
-        FxTesting.onFx(
-                () -> {
-                    dialog.get().directoryField().setText(this.dir.resolve("none").toString());
-                    dialog.get().run(true);
-                    dialog.get().stage().close();
-                });
+        FxTesting.onFx(() -> {
+            dialog.get().directoryField().setText(this.dir.resolve("none").toString());
+            dialog.get().run(true);
+            dialog.get().stage().close();
+        });
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Not a folder"));
         assertThat(ImportDialog.guessEmuleDirectory()).isNotNull();
     }
@@ -86,12 +83,11 @@ class DialogsTest {
     @Test
     void aboutShowsTheVersion() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        FxTesting.onFx(
-                () -> {
-                    AboutDialog about = new AboutDialog(this.test.gui, new Stage());
-                    about.show();
-                    assertThat(about.stage().isShowing()).isTrue();
-                    about.stage().close();
-                });
+        FxTesting.onFx(() -> {
+            AboutDialog about = new AboutDialog(this.test.gui, new Stage());
+            about.show();
+            assertThat(about.stage().isShowing()).isTrue();
+            about.stage().close();
+        });
     }
 }

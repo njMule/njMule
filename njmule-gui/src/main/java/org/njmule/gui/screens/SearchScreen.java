@@ -52,8 +52,7 @@ public final class SearchScreen implements Screen {
     private final Map<Tab, Results> results = new HashMap<>();
 
     /** The table of one search. */
-    private record Results(
-            EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table) {}
+    private record Results(EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table) {}
 
     public SearchScreen(Gui gui) {
         this.gui = gui;
@@ -90,18 +89,14 @@ public final class SearchScreen implements Screen {
         this.scope.setValue(SearchRequest.Scope.SERVER);
         this.scope.setCellFactory(l -> new ScopeCell());
         this.scope.setButtonCell(new ScopeCell());
-        var tools =
-                Fx.toolRow(
-                        this.query,
-                        this.scope,
-                        Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start),
-                        Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
-                        Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
-                        Fx.spacer(),
-                        Fx.button(
-                                this.gui.t("IDS_DOWNLOAD"),
-                                Material2AL.CLOUD_DOWNLOAD,
-                                this::downloadSelected));
+        var tools = Fx.toolRow(
+                this.query,
+                this.scope,
+                Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start),
+                Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
+                Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
+                Fx.spacer(),
+                Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected));
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         return Fx.screen(this.title(), tools, this.tabs);
     }
@@ -125,37 +120,24 @@ public final class SearchScreen implements Screen {
 
     private void opened(EngineModel.Search search) {
         var formats = this.gui.formats();
-        TableView<LiveList.Row<SearchResult>> table =
-                Fx.table(search.results(), this.gui.t("nj.search.waiting"));
+        TableView<LiveList.Row<SearchResult>> table = Fx.table(search.results(), this.gui.t("nj.search.waiting"));
         table.getColumns()
-                .addAll(
-                        List.of(
-                                Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SIZE"),
-                                        90,
-                                        SearchResult::size,
-                                        formats::size),
-                                Fx.column(this.gui.t("IDS_SEARCHAVAIL"), 90, SearchResult::sources),
-                                Fx.column(
-                                        this.gui.t("IDS_COMPLETE"),
-                                        90,
-                                        SearchResult::completeSources),
-                                Fx.column(
-                                        this.gui.t("nj.search.type"),
-                                        90,
-                                        r -> r.type().orElse(""))));
-        table.setRowFactory(
-                t -> {
-                    TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();
-                    row.setOnMouseClicked(
-                            e -> {
-                                if (e.getClickCount() == 2 && !row.isEmpty()) {
-                                    this.gui.model().addDownload(row.getItem().get().link());
-                                }
-                            });
-                    return row;
-                });
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name),
+                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SearchResult::size, formats::size),
+                        Fx.column(this.gui.t("IDS_SEARCHAVAIL"), 90, SearchResult::sources),
+                        Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources),
+                        Fx.column(
+                                this.gui.t("nj.search.type"), 90, r -> r.type().orElse(""))));
+        table.setRowFactory(t -> {
+            TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();
+            row.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2 && !row.isEmpty()) {
+                    this.gui.model().addDownload(row.getItem().get().link());
+                }
+            });
+            return row;
+        });
         MenuItem download = new MenuItem(this.gui.t("IDS_DOWNLOAD"));
         download.setOnAction(e -> this.downloadSelected());
         table.setContextMenu(new ContextMenu(download));

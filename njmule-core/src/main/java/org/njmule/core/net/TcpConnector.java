@@ -39,9 +39,9 @@ import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Protocol;
 
 /**
- * Opens {@link TcpConnection}s: outgoing ones to servers and clients, plain or obfuscated, and
- * incoming ones, whose obfuscation is recognised from the first byte. Every method blocks until the
- * handshake is done, so callers run them on a virtual thread.
+ * Opens {@link TcpConnection}s: outgoing ones to servers and clients, plain or obfuscated, and incoming ones, whose
+ * obfuscation is recognised from the first byte. Every method blocks until the handshake is done, so callers run them
+ * on a virtual thread.
  */
 public final class TcpConnector {
 
@@ -49,8 +49,8 @@ public final class TcpConnector {
     public static final int MAX_CLIENT_PADDING = 128;
 
     /**
-     * Largest padding in the answer to a server testing whether we are reachable: servers accept at
-     * most 16 bytes there, and a longer padding leaves us with a LowID.
+     * Largest padding in the answer to a server testing whether we are reachable: servers accept at most 16 bytes
+     * there, and a longer padding leaves us with a LowID.
      */
     public static final int MAX_SERVER_TEST_PADDING = 15;
 
@@ -68,15 +68,13 @@ public final class TcpConnector {
 
     /** Connects to a server, obfuscated with a Diffie-Hellman key exchange if requested. */
     public static TcpConnection connectToServer(
-            InetSocketAddress address, boolean obfuscate, Duration timeout, SecureRandom random)
-            throws IOException {
+            InetSocketAddress address, boolean obfuscate, Duration timeout, SecureRandom random) throws IOException {
         Socket socket = connect(address, timeout);
         try {
             InputStream in = new BufferedInputStream(socket.getInputStream(), BUFFER);
             OutputStream out = new BufferedOutputStream(socket.getOutputStream(), BUFFER);
             if (obfuscate) {
-                StreamObfuscation.Ciphers ciphers =
-                        StreamObfuscation.connectToServer(in, out, random);
+                StreamObfuscation.Ciphers ciphers = StreamObfuscation.connectToServer(in, out, random);
                 in = new CipherInputStream(in, ciphers.receive().cipher());
                 out = new CipherOutputStream(out, ciphers.send().cipher());
             }
@@ -89,14 +87,11 @@ public final class TcpConnector {
     }
 
     /**
-     * Connects to a client; the connection is obfuscated when the client's user hash is known,
-     * since the keys derive from it. Reads keep {@code timeout} until the caller changes it.
+     * Connects to a client; the connection is obfuscated when the client's user hash is known, since the keys derive
+     * from it. Reads keep {@code timeout} until the caller changes it.
      */
     public static TcpConnection connectToClient(
-            InetSocketAddress address,
-            Optional<Hash16> obfuscateFor,
-            Duration timeout,
-            SecureRandom random)
+            InetSocketAddress address, Optional<Hash16> obfuscateFor, Duration timeout, SecureRandom random)
             throws IOException {
         Socket socket = connect(address, timeout);
         try {
@@ -104,13 +99,11 @@ public final class TcpConnector {
             OutputStream out = new BufferedOutputStream(socket.getOutputStream(), BUFFER);
             if (obfuscateFor.isPresent()) {
                 StreamObfuscation.Ciphers ciphers =
-                        StreamObfuscation.connectToClient(
-                                in, out, obfuscateFor.get(), random, MAX_CLIENT_PADDING);
+                        StreamObfuscation.connectToClient(in, out, obfuscateFor.get(), random, MAX_CLIENT_PADDING);
                 in = new CipherInputStream(in, ciphers.receive().cipher());
                 out = new CipherOutputStream(out, ciphers.send().cipher());
             }
-            return new TcpConnection(
-                    socket, in, out, obfuscateFor.isPresent(), FrameLimits.CLIENT_HANDSHAKE);
+            return new TcpConnection(socket, in, out, obfuscateFor.isPresent(), FrameLimits.CLIENT_HANDSHAKE);
         } catch (IOException | RuntimeException e) {
             closeQuietly(socket);
             throw e;
@@ -118,18 +111,13 @@ public final class TcpConnector {
     }
 
     /**
-     * Completes an accepted connection: a first byte that is not a protocol byte starts an
-     * obfuscation handshake keyed on our user hash. Reads keep {@code timeout} (the time allowed
-     * for the hello) until the caller changes it.
+     * Completes an accepted connection: a first byte that is not a protocol byte starts an obfuscation handshake keyed
+     * on our user hash. Reads keep {@code timeout} (the time allowed for the hello) until the caller changes it.
      *
      * @param allowPlain {@code false} when obfuscation is required
      */
     public static TcpConnection accept(
-            Socket socket,
-            Hash16 ownUserHash,
-            boolean allowPlain,
-            Duration timeout,
-            SecureRandom random)
+            Socket socket, Hash16 ownUserHash, boolean allowPlain, Duration timeout, SecureRandom random)
             throws IOException {
         return accept(socket, ownUserHash, allowPlain, timeout, random, MAX_CLIENT_PADDING);
     }
@@ -147,8 +135,7 @@ public final class TcpConnector {
             socket.setTcpNoDelay(true);
             socket.setSoTimeout(Math.toIntExact(timeout.toMillis()));
             PushbackInputStream raw =
-                    new PushbackInputStream(
-                            new BufferedInputStream(socket.getInputStream(), BUFFER), 1);
+                    new PushbackInputStream(new BufferedInputStream(socket.getInputStream(), BUFFER), 1);
             OutputStream out = new BufferedOutputStream(socket.getOutputStream(), BUFFER);
             int first = raw.read();
             if (first < 0) {

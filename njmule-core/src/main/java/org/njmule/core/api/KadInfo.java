@@ -19,8 +19,7 @@ package org.njmule.core.api;
 import java.util.Objects;
 
 /** The state of our Kad node. */
-public record KadInfo(
-        boolean connected, int contacts, int verifiedContacts, boolean firewalled, String id) {
+public record KadInfo(boolean connected, int contacts, int verifiedContacts, boolean firewalled, String id) {
 
     public KadInfo {
         Objects.requireNonNull(id, "id");

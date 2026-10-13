@@ -63,9 +63,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * An in-process eD2K server for tests: logs clients in with a chosen id, greets them, answers
- * searches with fixed results over TCP and, on the TCP port + 4, over UDP, and knows the sources of
- * files it is given. It records what it receives. Plain connections only.
+ * An in-process eD2K server for tests: logs clients in with a chosen id, greets them, answers searches with fixed
+ * results over TCP and, on the TCP port + 4, over UDP, and knows the sources of files it is given. It records what it
+ * receives. Plain connections only.
  */
 public final class FakeServer implements AutoCloseable {
 
@@ -78,11 +78,10 @@ public final class FakeServer implements AutoCloseable {
     }
 
     /** Server flags announced with the id. */
-    public static final int FLAGS =
-            ServerMessages.TCP_COMPRESSION
-                    | ServerMessages.TCP_NEWTAGS
-                    | ServerMessages.TCP_UNICODE
-                    | ServerMessages.TCP_LARGEFILES;
+    public static final int FLAGS = ServerMessages.TCP_COMPRESSION
+            | ServerMessages.TCP_NEWTAGS
+            | ServerMessages.TCP_UNICODE
+            | ServerMessages.TCP_LARGEFILES;
 
     private static final Logger logger = LoggerFactory.getLogger(FakeServer.class);
     private static final int UDP_OFFSET = 4;
@@ -104,10 +103,7 @@ public final class FakeServer implements AutoCloseable {
     private FakeServer(Config config, ServerSocket tcp) throws SocketException {
         this.config = config;
         this.tcp = tcp;
-        this.udp =
-                new DatagramSocket(
-                        new InetSocketAddress(
-                                tcp.getInetAddress(), tcp.getLocalPort() + UDP_OFFSET));
+        this.udp = new DatagramSocket(new InetSocketAddress(tcp.getInetAddress(), tcp.getLocalPort() + UDP_OFFSET));
     }
 
     /** Listens on {@code address}, on a free TCP port whose + 4 UDP port is free too. */
@@ -136,8 +132,8 @@ public final class FakeServer implements AutoCloseable {
     }
 
     /**
-     * A server that answers every search with the files {@code names}, each of {@code size} bytes;
-     * for callers that see only the public API.
+     * A server that answers every search with the files {@code names}, each of {@code size} bytes; for callers that see
+     * only the public API.
      */
     public static Config finding(long clientId, String welcome, long size, String... names) {
         List<FileEntry> files = new ArrayList<>();
@@ -149,12 +145,11 @@ public final class FakeServer implements AutoCloseable {
 
     /** A search result with a hash derived from the name. */
     public static FileEntry file(String name, long size, int sources) {
-        List<Tag> tags =
-                List.of(
-                        new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
-                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), size),
-                        new Tag.IntTag(TagName.id(FileTag.SOURCES), sources),
-                        new Tag.IntTag(TagName.id(FileTag.COMPLETE_SOURCES), sources));
+        List<Tag> tags = List.of(
+                new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
+                new Tag.IntTag(TagName.id(FileTag.FILESIZE), size),
+                new Tag.IntTag(TagName.id(FileTag.SOURCES), sources),
+                new Tag.IntTag(TagName.id(FileTag.COMPLETE_SOURCES), sources));
         return new FileEntry(hashOf(name), 0, 0, tags);
     }
 
@@ -188,15 +183,12 @@ public final class FakeServer implements AutoCloseable {
         int ip = Ipv4.fromBytes(peer.getAddress().getAddress());
         this.sources
                 .computeIfAbsent(file, f -> new CopyOnWriteArrayList<>())
-                .add(
-                        new ServerMessages.Source(
-                                Ipv4.toEd2k(ip), peer.getPort(), 0, Optional.empty()));
+                .add(new ServerMessages.Source(Ipv4.toEd2k(ip), peer.getPort(), 0, Optional.empty()));
     }
 
     /**
-     * From now on, answers requests for the sources of {@code file} with {@code peer} as a
-     * firewalled client with the LowID {@code lowId}, which calls back the downloader that asks for
-     * it through a callback request.
+     * From now on, answers requests for the sources of {@code file} with {@code peer} as a firewalled client with the
+     * LowID {@code lowId}, which calls back the downloader that asks for it through a callback request.
      */
     public void addLowIdSource(Hash16 file, long lowId, FakePeer peer) {
         this.lowIds.put(lowId, peer);
@@ -246,8 +238,7 @@ public final class FakeServer implements AutoCloseable {
             OutputStream out = new BufferedOutputStream(client.getOutputStream());
             this.clients.add(out);
             while (true) {
-                Packet request =
-                        Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
+                Packet request = Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
                 synchronized (out) {
                     for (Packet answer : this.answer(request, client)) {
                         out.write(TcpFraming.encode(answer));
@@ -281,9 +272,7 @@ public final class FakeServer implements AutoCloseable {
                 || request.opcode() == Opcodes.Server.GETSOURCES_OBFU.code()) {
             Hash16 file = request.reader().hash16();
             List<ServerMessages.Source> known = this.sources.getOrDefault(file, List.of());
-            return known.isEmpty()
-                    ? List.of()
-                    : List.of(new ServerMessages.FoundSources(file, known).encode());
+            return known.isEmpty() ? List.of() : List.of(new ServerMessages.FoundSources(file, known).encode());
         }
         if (request.opcode() == Opcodes.Server.CALLBACKREQUEST.code()) {
             long lowId = request.reader().u32();
@@ -317,8 +306,7 @@ public final class FakeServer implements AutoCloseable {
                 Packet answer = this.answerUdp(request);
                 if (answer != null) {
                     byte[] bytes = UdpFraming.encode(answer);
-                    this.udp.send(
-                            new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));
+                    this.udp.send(new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));
                 }
             } catch (IOException e) {
                 if (!this.udp.isClosed()) {
@@ -332,8 +320,7 @@ public final class FakeServer implements AutoCloseable {
         int opcode = request.opcode();
         if (opcode == Opcodes.ServerUdp.GLOBSERVSTATREQ.code()) {
             long challenge = request.reader().u32();
-            return new ServerDatagrams.Status(challenge, 10, 20, 100, 1000, 2000, 0, 0, 0, 0, 0)
-                    .encode();
+            return new ServerDatagrams.Status(challenge, 10, 20, 100, 1000, 2000, 0, 0, 0, 0, 0).encode();
         }
         PacketReader in = request.reader();
         if (opcode == Opcodes.ServerUdp.GLOBSEARCHREQ3.code()) {
@@ -343,17 +330,12 @@ public final class FakeServer implements AutoCloseable {
             return null;
         }
         this.udpSearches.add(SearchTreeCodec.read(in));
-        return this.config.results().isEmpty()
-                ? null
-                : ServerDatagrams.searchResults(this.config.results());
+        return this.config.results().isEmpty() ? null : ServerDatagrams.searchResults(this.config.results());
     }
 
     private static Hash16 hashOf(String name) {
         try {
-            return Hash16.of(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(name.getBytes(StandardCharsets.UTF_8)),
-                    0);
+            return Hash16.of(MessageDigest.getInstance("SHA-256").digest(name.getBytes(StandardCharsets.UTF_8)), 0);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

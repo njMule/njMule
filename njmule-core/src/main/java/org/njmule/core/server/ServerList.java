@@ -37,9 +37,8 @@ import org.njmule.core.util.Ipv4;
 /**
  * The known eD2K servers, kept in {@code server.met}. Only the engine thread uses it.
  *
- * <p>Servers without a usable address (port 0, a reserved IP, a host name not yet resolved) are
- * kept in the file but never offered as {@link #candidates()}; servers the IP filter blocks are
- * neither added nor offered.
+ * <p>Servers without a usable address (port 0, a reserved IP, a host name not yet resolved) are kept in the file but
+ * never offered as {@link #candidates()}; servers the IP filter blocks are neither added nor offered.
  */
 public final class ServerList {
 
@@ -128,9 +127,8 @@ public final class ServerList {
                 usable.add(server);
             }
         }
-        usable.sort(
-                Comparator.comparingInt(ServerList::rank)
-                        .thenComparingLong(s -> s.failedCount().orElse(0)));
+        usable.sort(Comparator.comparingInt(ServerList::rank)
+                .thenComparingLong(s -> s.failedCount().orElse(0)));
         return usable;
     }
 

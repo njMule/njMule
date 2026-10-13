@@ -35,24 +35,22 @@ import org.njmule.core.config.ProxySettings;
 
 class PreferencesCodecTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void roundTripsThroughTheFile() throws IOException {
         Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Preferences p =
-                Preferences.defaults().toBuilder()
-                        .nick("Ünïcødé = : # nick")
-                        .tcpPort(12_345)
-                        .kadEnabled(false)
-                        .obfuscation(ObfuscationMode.REQUIRED)
-                        .incomingDir(Optional.of(this.dir.resolve("in dir")))
-                        .logLevel("DEBUG")
-                        .upnp(true)
-                        .proxy(
-                                new ProxySettings(
-                                        ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
-                        .build();
+        Preferences p = Preferences.defaults().toBuilder()
+                .nick("Ünïcødé = : # nick")
+                .tcpPort(12_345)
+                .kadEnabled(false)
+                .obfuscation(ObfuscationMode.REQUIRED)
+                .incomingDir(Optional.of(this.dir.resolve("in dir")))
+                .logLevel("DEBUG")
+                .upnp(true)
+                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
+                .build();
 
         PreferencesCodec.save(file, p);
 
@@ -62,14 +60,12 @@ class PreferencesCodecTest {
 
     @Test
     void missingFileMeansDefaults() throws IOException {
-        assertThat(PreferencesCodec.load(this.dir.resolve("none")))
-                .isEqualTo(Preferences.defaults());
+        assertThat(PreferencesCodec.load(this.dir.resolve("none"))).isEqualTo(Preferences.defaults());
     }
 
     @Test
     void invalidValuesKeepTheirDefaultsAndValidOnesApply() throws IOException {
-        String text =
-                """
+        String text = """
                 net.tcpPort=99999
                 net.udpPort=5000
                 net.kad.enabled=maybe

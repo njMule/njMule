@@ -38,8 +38,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The client UDP socket, which Kad shares: datagrams are opened with any of the keys they may be
- * obfuscated with, unpacked, and Kad packets go to the node on the engine thread.
+ * The client UDP socket, which Kad shares: datagrams are opened with any of the keys they may be obfuscated with,
+ * unpacked, and Kad packets go to the node on the engine thread.
  */
 public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
@@ -77,21 +77,15 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
      * @param blocked addresses (host order) whose datagrams are dropped unread
      */
     public static KadSocket open(
-            int port,
-            EngineLoop loop,
-            Hash16 userHash,
-            KadIdentity identity,
-            IntPredicate blocked,
-            SecureRandom random)
+            int port, EngineLoop loop, Hash16 userHash, KadIdentity identity, IntPredicate blocked, SecureRandom random)
             throws SocketException {
-        KadSocket socket =
-                new KadSocket(
-                        new DatagramSocket(port),
-                        Objects.requireNonNull(loop, "loop"),
-                        Objects.requireNonNull(userHash, "userHash"),
-                        Objects.requireNonNull(identity, "identity"),
-                        Objects.requireNonNull(blocked, "blocked"),
-                        Objects.requireNonNull(random, "random"));
+        KadSocket socket = new KadSocket(
+                new DatagramSocket(port),
+                Objects.requireNonNull(loop, "loop"),
+                Objects.requireNonNull(userHash, "userHash"),
+                Objects.requireNonNull(identity, "identity"),
+                Objects.requireNonNull(blocked, "blocked"),
+                Objects.requireNonNull(random, "random"));
         Thread.ofVirtual().name("njmule-kad-udp").start(socket::run);
         return socket;
     }
@@ -105,30 +99,16 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     }
 
     @Override
-    public void send(
-            int ip,
-            int port,
-            Packet packet,
-            Optional<UInt128> receiverId,
-            int receiverKey,
-            int senderKey) {
+    public void send(int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey, int senderKey) {
         Packet framed = packet.length() > PACK_ABOVE ? Packing.pack(packet) : packet;
         byte[] datagram = UdpFraming.encode(framed);
         if (receiverId.isPresent() || receiverKey != 0) {
-            datagram =
-                    DatagramObfuscation.encryptForKad(
-                            datagram,
-                            receiverId.map(id -> Hash16.of(id.toWireBytes())),
-                            receiverKey,
-                            senderKey,
-                            this.random);
+            datagram = DatagramObfuscation.encryptForKad(
+                    datagram, receiverId.map(id -> Hash16.of(id.toWireBytes())), receiverKey, senderKey, this.random);
         }
         try {
             this.socket.send(
-                    new DatagramPacket(
-                            datagram,
-                            datagram.length,
-                            new InetSocketAddress(Ipv4.format(ip), port)));
+                    new DatagramPacket(datagram, datagram.length, new InetSocketAddress(Ipv4.format(ip), port)));
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
             logger.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
@@ -170,15 +150,14 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             return;
         }
         try {
-            DatagramObfuscation.Received opened =
-                    DatagramObfuscation.decodeFromClient(
-                            datagram.getData(),
-                            datagram.getOffset(),
-                            datagram.getLength(),
-                            this.userHash,
-                            address,
-                            Optional.of(Hash16.of(this.identity.id().toWireBytes())),
-                            this.identity.verifyKey(ip));
+            DatagramObfuscation.Received opened = DatagramObfuscation.decodeFromClient(
+                    datagram.getData(),
+                    datagram.getOffset(),
+                    datagram.getLength(),
+                    this.userHash,
+                    address,
+                    Optional.of(Hash16.of(this.identity.id().toWireBytes())),
+                    this.identity.verifyKey(ip));
             Packet packet = opened.packet();
             if (packet.protocol() == Protocol.KAD_PACKED) {
                 packet = Packing.unpack(packet, MAX_UNPACKED);
@@ -189,15 +168,8 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             Packet kad = packet;
             int port = from.getPort();
             boolean obfuscated = opened.kind() != DatagramObfuscation.Kind.PLAIN;
-            this.loop.post(
-                    () ->
-                            target.received(
-                                    ip,
-                                    port,
-                                    kad,
-                                    obfuscated,
-                                    opened.receiverVerifyKey(),
-                                    opened.senderVerifyKey()));
+            this.loop.post(() ->
+                    target.received(ip, port, kad, obfuscated, opened.receiverVerifyKey(), opened.senderVerifyKey()));
         } catch (DecodeException e) {
             logger.debug("Bad datagram from {}: {}", from, e.getMessage());
         }

@@ -39,7 +39,8 @@ class PartFileTest {
     private static final long P = Ed2k.PARTSIZE;
     private static final int B = Ed2k.EMBLOCKSIZE;
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void handsOutEachMissingBlockOnceUntilItIsWrittenOrReleased() {
@@ -47,8 +48,7 @@ class PartFileTest {
         BitSet all = all(file);
 
         List<Block> first = file.nextBlocks(all, 3);
-        assertThat(first)
-                .containsExactly(new Block(0, B), new Block(B, 2L * B), new Block(2L * B, 500_000));
+        assertThat(first).containsExactly(new Block(0, B), new Block(B, 2L * B), new Block(2L * B, 500_000));
         assertThat(file.nextBlocks(all, 3)).isEmpty();
 
         file.written(0, B);
@@ -63,14 +63,7 @@ class PartFileTest {
     void picksTheRarestPartTheSourceHasAndTakesBackCorruptParts() {
         List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
         PartFile file =
-                PartFile.create(
-                        1,
-                        this.dir,
-                        "big.bin",
-                        2 * P + 100,
-                        Ed2k.fileHash(parts),
-                        Optional.empty(),
-                        parts);
+                PartFile.create(1, this.dir, "big.bin", 2 * P + 100, Ed2k.fileHash(parts), Optional.empty(), parts);
         BitSet common = new BitSet();
         common.set(0, 3);
         file.addAvailability(common, 1);
@@ -101,17 +94,15 @@ class PartFileTest {
         assertThat(map.size()).isEqualTo(500_000);
         assertThat(map.missing()).containsExactly(new PartMap.Span(100_000, 500_000));
         assertThat(map.requested())
-                .containsExactly(
-                        new PartMap.Span(asked.getFirst().start(), asked.getFirst().end()));
+                .containsExactly(new PartMap.Span(
+                        asked.getFirst().start(), asked.getFirst().end()));
         assertThat(map.sources()).containsExactly(2);
     }
 
     @Test
     void acceptsOnlyAHashSetThatMatchesTheFileHash() {
         List<Hash16> parts = List.of(hash(1), hash(2));
-        PartFile file =
-                PartFile.create(
-                        1, this.dir, "f", P + 1, Ed2k.fileHash(parts), Optional.empty(), List.of());
+        PartFile file = PartFile.create(1, this.dir, "f", P + 1, Ed2k.fileHash(parts), Optional.empty(), List.of());
 
         assertThat(file.hasHashSet()).isFalse();
         assertThat(file.partHash(1)).isEmpty();
@@ -125,14 +116,7 @@ class PartFileTest {
     void savesAndLoadsItsProgress() throws Exception {
         List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
         PartFile file =
-                PartFile.create(
-                        7,
-                        this.dir,
-                        "film.mkv",
-                        2 * P + 5,
-                        Ed2k.fileHash(parts),
-                        Optional.empty(),
-                        parts);
+                PartFile.create(7, this.dir, "film.mkv", 2 * P + 5, Ed2k.fileHash(parts), Optional.empty(), parts);
         file.written(0, P);
         file.written(P + 10, P + 20);
         file.setStatus(PartFile.Status.PAUSED);
@@ -171,8 +155,7 @@ class PartFileTest {
     }
 
     private PartFile small(long size) {
-        return PartFile.create(
-                1, this.dir, "small.bin", size, hash(9), Optional.empty(), List.of());
+        return PartFile.create(1, this.dir, "small.bin", size, hash(9), Optional.empty(), List.of());
     }
 
     private static BitSet all(PartFile file) {

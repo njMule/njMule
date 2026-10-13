@@ -53,7 +53,8 @@ class WebUiFlowTest {
 
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final HttpClient http = HttpClient.newHttpClient();
     private int port;
@@ -64,28 +65,23 @@ class WebUiFlowTest {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
-        try (FakeServer server =
-                        FakeServer.start(
-                                InetAddress.getLoopbackAddress(),
-                                new FakeServer.Config(
-                                        Ipv4.toEd2k(Ipv4.parse("1.2.3.4")),
-                                        "welcome",
-                                        List.of(
-                                                FakeServer.file("linux web.iso", 700_000_000L, 40),
-                                                FakeServer.file("linux.txt", 10, 2))));
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
+        try (FakeServer server = FakeServer.start(
+                        InetAddress.getLoopbackAddress(),
+                        new FakeServer.Config(
+                                Ipv4.toEd2k(Ipv4.parse("1.2.3.4")),
+                                "welcome",
+                                List.of(
+                                        FakeServer.file("linux web.iso", 700_000_000L, 40),
+                                        FakeServer.file("linux.txt", 10, 2))));
                 NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-                WebUi ui =
-                        WebUi.start(
-                                engine,
-                                new WebUiSettings(
-                                        true,
-                                        freePort(),
-                                        false,
-                                        Passwords.hash(
-                                                "flow password".toCharArray(),
-                                                new SecureRandom())))) {
+                WebUi ui = WebUi.start(
+                        engine,
+                        new WebUiSettings(
+                                true,
+                                freePort(),
+                                false,
+                                Passwords.hash("flow password".toCharArray(), new SecureRandom())))) {
             this.port = ui.port();
             HttpResponse<String> login = this.post("/login", Map.of("password", "flow password"));
             String set = login.headers().firstValue("Set-Cookie").orElseThrow();
@@ -93,22 +89,17 @@ class WebUiFlowTest {
 
             String address = "127.0.0.1:" + server.port();
             HttpResponse<String> connect =
-                    this.post(
-                            "/servers",
-                            Map.of("action", "connect", "address", address, "csrf", this.csrf()));
+                    this.post("/servers", Map.of("action", "connect", "address", address, "csrf", this.csrf()));
             assertThat(connect.statusCode()).isEqualTo(303);
             await(() -> this.page("/").contains("(HighID)"));
             assertThat(this.page("/servers")).contains("<h1>Servers</h1>", "Disconnect");
 
-            assertThat(
-                            this.post("/search", Map.of("query", " ", "csrf", this.csrf()))
-                                    .headers()
-                                    .firstValue("Location"))
+            assertThat(this.post("/search", Map.of("query", " ", "csrf", this.csrf()))
+                            .headers()
+                            .firstValue("Location"))
                     .hasValue("/search");
             HttpResponse<String> search =
-                    this.post(
-                            "/search",
-                            Map.of("query", "linux", "scope", "SERVER", "csrf", this.csrf()));
+                    this.post("/search", Map.of("query", "linux", "scope", "SERVER", "csrf", this.csrf()));
             String results = search.headers().firstValue("Location").orElseThrow();
             assertThat(results).startsWith("/search?id=");
             await(() -> this.page(results).contains("linux.txt"));
@@ -116,21 +107,18 @@ class WebUiFlowTest {
             assertThat(found).contains("2 results", "linux web.iso");
             assertThat(found.indexOf("linux web.iso")).isLessThan(found.indexOf("linux.txt"));
 
-            Matcher download =
-                    Pattern.compile("name=\"download\" value=\"([0-9A-F]{32})\"").matcher(found);
+            Matcher download = Pattern.compile("name=\"download\" value=\"([0-9A-F]{32})\"")
+                    .matcher(found);
             assertThat(download.find()).isTrue();
             String hash = download.group(1);
             String id = results.substring(results.indexOf('=') + 1);
             HttpResponse<String> taken =
-                    this.post(
-                            "/search", Map.of("search", id, "download", hash, "csrf", this.csrf()));
+                    this.post("/search", Map.of("search", id, "download", hash, "csrf", this.csrf()));
             assertThat(taken.headers().firstValue("Location")).hasValue("/transfers");
             assertThat(this.page("/transfers")).contains("linux web.iso", hash);
 
             HttpResponse<String> gone =
-                    this.post(
-                            "/search",
-                            Map.of("search", "424242", "download", hash, "csrf", this.csrf()));
+                    this.post("/search", Map.of("search", "424242", "download", hash, "csrf", this.csrf()));
             assertThat(gone.statusCode()).isEqualTo(400);
             assertThat(gone.body()).contains("search again");
             assertThat(this.page("/search?id=nonsense")).doesNotContain("results;");
@@ -157,24 +145,21 @@ class WebUiFlowTest {
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        String body =
-                fields.entrySet().stream()
-                        .map(
-                                e ->
-                                        URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
-                                                + "="
-                                                + URLEncoder.encode(
-                                                        e.getValue(), StandardCharsets.UTF_8))
-                        .collect(Collectors.joining("&"));
+        String body = fields.entrySet().stream()
+                .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
+                        + "="
+                        + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"));
         return this.http.send(
-                this.request(path).POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                this.request(path)
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {
-        HttpRequest.Builder b =
-                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.port + path))
-                        .timeout(Duration.ofSeconds(30));
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.port + path))
+                .timeout(Duration.ofSeconds(30));
         if (this.cookie != null) {
             b.header("Cookie", this.cookie);
         }

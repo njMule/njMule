@@ -34,7 +34,8 @@ class CreditsTest {
     private static final Hash16 PEER = Hash16.parseHex("11".repeat(16));
     private static final Hash16 OTHER = Hash16.parseHex("22".repeat(16));
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void theRatioGrowsWithWhatAClientGaveUs() {

@@ -44,7 +44,8 @@ import org.njmule.testkit.FakeServer;
 @Timeout(120)
 class OnlineTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private TestGui test;
     private FakeServer server;
@@ -62,18 +63,16 @@ class OnlineTest {
     @Test
     void connectsSearchesDownloadsAndDisconnects() throws Exception {
         InetAddress lan = lanAddress();
-        long highId =
-                Integer.toUnsignedLong(
-                        Integer.reverseBytes(ByteBuffer.wrap(lan.getAddress()).getInt()));
-        this.server =
-                FakeServer.start(
-                        lan,
-                        FakeServer.finding(
-                                highId,
-                                "welcome to the fake server",
-                                5_000_000_000L,
-                                "ubuntu 24.04 desktop.iso",
-                                "ubuntu notes.txt"));
+        long highId = Integer.toUnsignedLong(
+                Integer.reverseBytes(ByteBuffer.wrap(lan.getAddress()).getInt()));
+        this.server = FakeServer.start(
+                lan,
+                FakeServer.finding(
+                        highId,
+                        "welcome to the fake server",
+                        5_000_000_000L,
+                        "ubuntu 24.04 desktop.iso",
+                        "ubuntu notes.txt"));
         this.test = TestGui.start(this.dir.resolve("njmule"));
         MainWindow window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
         this.test.show(window.root());
@@ -81,17 +80,13 @@ class OnlineTest {
         SearchScreen search = (SearchScreen) window.screen("search").orElseThrow();
         TransfersScreen transfers = (TransfersScreen) window.screen("transfers").orElseThrow();
 
-        FxTesting.onFx(
-                () -> {
-                    window.show("servers");
-                    servers.addressField().setText(lan.getHostAddress() + ":" + this.server.port());
-                    servers.connectToAddress();
-                });
+        FxTesting.onFx(() -> {
+            window.show("servers");
+            servers.addressField().setText(lan.getHostAddress() + ":" + this.server.port());
+            servers.connectToAddress();
+        });
         FxTesting.await(
-                "connected",
-                () ->
-                        this.test.model.connectionProperty().get()
-                                == EngineModel.Connection.CONNECTED);
+                "connected", () -> this.test.model.connectionProperty().get() == EngineModel.Connection.CONNECTED);
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await(
                 "the status with the server",
@@ -100,47 +95,42 @@ class OnlineTest {
         Button connect = FxTesting.onFx(() -> (Button) window.root().lookup("#connect"));
         assertThat(FxTesting.onFx(connect::getText)).isEqualTo("Disconnect");
 
-        FxTesting.onFx(
-                () -> {
-                    window.show("search");
-                    search.queryField().setText("ubuntu");
-                    search.scopeBox().setValue(SearchRequest.Scope.SERVER);
-                    search.start();
-                });
+        FxTesting.onFx(() -> {
+            window.show("search");
+            search.queryField().setText("ubuntu");
+            search.scopeBox().setValue(SearchRequest.Scope.SERVER);
+            search.start();
+        });
         FxTesting.await("a result tab", () -> search.tabs().getTabs().size() == 1);
         @SuppressWarnings("unchecked")
-        TableView<LiveList.Row<SearchResult>> results =
-                FxTesting.onFx(
-                        () ->
-                                (TableView<LiveList.Row<SearchResult>>)
-                                        search.tabs().getTabs().getFirst().getContent());
+        TableView<LiveList.Row<SearchResult>> results = FxTesting.onFx(() -> (TableView<LiveList.Row<SearchResult>>)
+                search.tabs().getTabs().getFirst().getContent());
         FxTesting.await("two results", () -> results.getItems().size() == 2);
-        FxTesting.onFx(
-                () -> {
-                    FxTesting.snapshot(window.root(), "search-results");
-                    results.getSelectionModel().select(0);
-                    search.downloadSelected();
-                    search.more();
-                    search.stop();
-                    return null;
-                });
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(window.root(), "search-results");
+            results.getSelectionModel().select(0);
+            search.downloadSelected();
+            search.more();
+            search.stop();
+            return null;
+        });
         FxTesting.await(
                 "a download",
-                () -> transfers.view() != null && !this.test.model.downloads().rows().isEmpty());
-        FxTesting.onFx(
-                () -> {
-                    window.show("transfers");
-                    search.tabs().getTabs().getFirst().getOnClosed().handle(null);
-                    search.tabs().getTabs().clear();
-                });
-        FxTesting.onFx(
-                () -> {
-                    FxTesting.snapshot(window.root(), "transfers-download");
-                    return null;
-                });
+                () -> transfers.view() != null
+                        && !this.test.model.downloads().rows().isEmpty());
+        FxTesting.onFx(() -> {
+            window.show("transfers");
+            search.tabs().getTabs().getFirst().getOnClosed().handle(null);
+            search.tabs().getTabs().clear();
+        });
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(window.root(), "transfers-download");
+            return null;
+        });
 
         Button theme = FxTesting.onFx(() -> (Button) window.root().lookup("#theme"));
-        boolean dark = FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get());
+        boolean dark =
+                FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get());
         FxTesting.onFx(theme::fire);
         assertThat(FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get()))
                 .isNotEqualTo(dark);
@@ -148,15 +138,11 @@ class OnlineTest {
         FxTesting.onFx(connect::fire);
         FxTesting.await(
                 "disconnected",
-                () ->
-                        this.test.model.connectionProperty().get()
-                                == EngineModel.Connection.DISCONNECTED);
+                () -> this.test.model.connectionProperty().get() == EngineModel.Connection.DISCONNECTED);
         FxTesting.onFx(connect::fire);
         FxTesting.await(
                 "connected again",
-                () ->
-                        this.test.model.connectionProperty().get()
-                                != EngineModel.Connection.DISCONNECTED);
+                () -> this.test.model.connectionProperty().get() != EngineModel.Connection.DISCONNECTED);
     }
 
     private static InetAddress lanAddress() throws Exception {

@@ -37,70 +37,62 @@ import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 
 /**
- * A dry run of the import on a real eMule profile from {@code NJMULE_EMULE_CONFIG}, which is only
- * read; it prints the outcome of each file, never names, hashes or other contents.
+ * A dry run of the import on a real eMule profile from {@code NJMULE_EMULE_CONFIG}, which is only read; it prints the
+ * outcome of each file, never names, hashes or other contents.
  */
 @Tag("private-fixtures")
 @EnabledIfEnvironmentVariable(named = "NJMULE_EMULE_CONFIG", matches = ".+")
 class EmuleImportDryRunTest {
 
-    @TempDir Path ours;
+    @TempDir
+    Path ours;
 
     @Test
     void everyFileOfTheProfileIsReadable() throws Exception {
         Path config = Path.of(System.getenv("NJMULE_EMULE_CONFIG"));
-        EmuleImporter.Target refusing =
-                new EmuleImporter.Target() {
-                    @Override
-                    public Path configDir() {
-                        return EmuleImportDryRunTest.this.ours;
-                    }
+        EmuleImporter.Target refusing = new EmuleImporter.Target() {
+            @Override
+            public Path configDir() {
+                return EmuleImportDryRunTest.this.ours;
+            }
 
-                    @Override
-                    public void updatePreferences(UnaryOperator<Preferences> change) {
-                        fail("a dry run changes nothing");
-                    }
+            @Override
+            public void updatePreferences(UnaryOperator<Preferences> change) {
+                fail("a dry run changes nothing");
+            }
 
-                    @Override
-                    public int addServers(Path serverMet) {
-                        return fail("a dry run changes nothing");
-                    }
+            @Override
+            public int addServers(Path serverMet) {
+                return fail("a dry run changes nothing");
+            }
 
-                    @Override
-                    public int addKadContacts(NodesDat.Contents contacts) {
-                        return fail("a dry run changes nothing");
-                    }
+            @Override
+            public int addKadContacts(NodesDat.Contents contacts) {
+                return fail("a dry run changes nothing");
+            }
 
-                    @Override
-                    public int addKnownFiles(
-                            List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
-                        return fail("a dry run changes nothing");
-                    }
+            @Override
+            public int addKnownFiles(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
+                return fail("a dry run changes nothing");
+            }
 
-                    @Override
-                    public void shareDirectory(Path directory) {
-                        fail("a dry run changes nothing");
-                    }
+            @Override
+            public void shareDirectory(Path directory) {
+                fail("a dry run changes nothing");
+            }
 
-                    @Override
-                    public String adoptDownload(Path met, Path data) {
-                        return fail("a dry run changes nothing");
-                    }
-                };
+            @Override
+            public String adoptDownload(Path met, Path data) {
+                return fail("a dry run changes nothing");
+            }
+        };
 
-        ImportReport report =
-                new EmuleImporter(
-                                config,
-                                new ImportOptions(true, true, true),
-                                refusing,
-                                EmuleImporter::isEmuleRunning)
-                        .run();
+        ImportReport report = new EmuleImporter(
+                        config, new ImportOptions(true, true, true), refusing, EmuleImporter::isEmuleRunning)
+                .run();
 
-        Map<ImportReport.Outcome, Long> counts =
-                report.items().stream()
-                        .collect(
-                                Collectors.groupingBy(
-                                        ImportReport.Item::outcome, Collectors.counting()));
+        Map<ImportReport.Outcome, Long> counts = report.items().stream()
+                .collect(Collectors.groupingBy(ImportReport.Item::outcome, Collectors.counting()));
         System.out.println("[private-fixtures] import dry run: " + counts);
         assertThat(report.items())
                 .filteredOn(i -> i.outcome() == ImportReport.Outcome.FAILED)

@@ -54,8 +54,7 @@ import org.njmule.gui.ui.Screen;
 public final class TransfersScreen implements Screen {
 
     // Pasted links are separated by white space, which file names may contain too.
-    private static final Pattern LINKS =
-            Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
     private final Gui gui;
     private Node view;
@@ -98,40 +97,19 @@ public final class TransfersScreen implements Screen {
         progress.setCellFactory(c -> new ProgressCell());
         this.downloads
                 .getColumns()
-                .addAll(
-                        List.of(
-                                Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SIZE"),
-                                        90,
-                                        DownloadInfo::size,
-                                        formats::size),
-                                progress,
-                                Fx.column(
-                                        this.gui.t("IDS_DL_TRANSFCOMPL"),
-                                        90,
-                                        DownloadInfo::completed,
-                                        formats::size),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SPEED"),
-                                        90,
-                                        DownloadInfo::bytesPerSecond,
-                                        formats::rate),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SOURCES"),
-                                        80,
-                                        DownloadInfo::sources,
-                                        n -> String.valueOf(n)),
-                                Fx.column(
-                                        this.gui.t("nj.transfers.status"),
-                                        110,
-                                        DownloadInfo::status,
-                                        this::status),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_REMAINS"),
-                                        90,
-                                        TransfersScreen::remaining,
-                                        s -> s < 0 ? "?" : formats.duration(s))));
+                .addAll(List.of(
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name),
+                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size),
+                        progress,
+                        Fx.column(this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size),
+                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate),
+                        Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n)),
+                        Fx.column(this.gui.t("nj.transfers.status"), 110, DownloadInfo::status, this::status),
+                        Fx.column(
+                                this.gui.t("IDS_DL_REMAINS"),
+                                90,
+                                TransfersScreen::remaining,
+                                s -> s < 0 ? "?" : formats.duration(s))));
         MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"));
         pause.setOnAction(e -> this.pauseSelected());
         MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"));
@@ -145,61 +123,35 @@ public final class TransfersScreen implements Screen {
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
         this.link.setOnAction(e -> this.addLink());
-        var tools =
-                Fx.toolRow(
-                        Fx.button(
-                                this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected),
-                        Fx.button(
-                                this.gui.t("IDS_DL_RESUME"),
-                                Material2MZ.PLAY_ARROW,
-                                this::resumeSelected),
-                        Fx.button(
-                                this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected),
-                        Fx.iconButton(
-                                this.gui.t("nj.copyLink"),
-                                Material2AL.CONTENT_COPY,
-                                this::copyLinks),
-                        Fx.spacer(),
-                        this.link,
-                        Fx.button(
-                                this.gui.t("IDS_DOWNLOAD"),
-                                Material2AL.CLOUD_DOWNLOAD,
-                                this::addLink));
+        var tools = Fx.toolRow(
+                Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected),
+                Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected),
+                Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected),
+                Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                Fx.spacer(),
+                this.link,
+                Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink));
 
         this.uploads = Fx.table(this.gui.model().uploads(), this.gui.t("nj.transfers.noUploads"));
         this.uploads
                 .getColumns()
-                .addAll(
-                        List.of(
-                                Fx.column(
-                                        this.gui.t("IDS_QL_USERNAME"),
-                                        180,
-                                        u -> u.nick().orElse(u.address())),
-                                Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software),
-                                Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_SPEED"),
-                                        90,
-                                        UploadInfo::bytesPerSecond,
-                                        formats::rate),
-                                Fx.column(
-                                        this.gui.t("IDS_DL_TRANSF"),
-                                        90,
-                                        UploadInfo::transferred,
-                                        formats::size),
-                                Fx.column(
-                                        this.gui.t("nj.transfers.waited"),
-                                        90,
-                                        UploadInfo::waitingSeconds,
-                                        formats::duration),
-                                Fx.column(
-                                        this.gui.t("nj.transfers.status"),
-                                        100,
-                                        UploadInfo::state,
-                                        s ->
-                                                s == UploadInfo.State.UPLOADING
-                                                        ? this.gui.t("nj.transfers.uploading")
-                                                        : this.gui.t("IDS_ONQUEUE"))));
+                .addAll(List.of(
+                        Fx.column(
+                                this.gui.t("IDS_QL_USERNAME"),
+                                180,
+                                u -> u.nick().orElse(u.address())),
+                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software),
+                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file),
+                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, UploadInfo::bytesPerSecond, formats::rate),
+                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, UploadInfo::transferred, formats::size),
+                        Fx.column(this.gui.t("nj.transfers.waited"), 90, UploadInfo::waitingSeconds, formats::duration),
+                        Fx.column(
+                                this.gui.t("nj.transfers.status"),
+                                100,
+                                UploadInfo::state,
+                                s -> s == UploadInfo.State.UPLOADING
+                                        ? this.gui.t("nj.transfers.uploading")
+                                        : this.gui.t("IDS_ONQUEUE"))));
         Label uploadsTitle = new Label(this.gui.t("nj.transfers.uploadsTitle"));
         uploadsTitle.getStyleClass().add("settings-section");
         VBox lower = new VBox(4, uploadsTitle, this.uploads);
@@ -261,12 +213,11 @@ public final class TransfersScreen implements Screen {
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm =
-                new Alert(
-                        Alert.AlertType.CONFIRMATION,
-                        this.gui.f("nj.transfers.cancelConfirm", selected.size()),
-                        ButtonType.OK,
-                        ButtonType.CANCEL);
+        Alert confirm = new Alert(
+                Alert.AlertType.CONFIRMATION,
+                this.gui.f("nj.transfers.cancelConfirm", selected.size()),
+                ButtonType.OK,
+                ButtonType.CANCEL);
         confirm.initOwner(this.view.getScene().getWindow());
         confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> this.cancel(selected));
     }
@@ -279,8 +230,8 @@ public final class TransfersScreen implements Screen {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (!selected.isEmpty()) {
             ClipboardContent content = new ClipboardContent();
-            content.putString(
-                    String.join("\n", selected.stream().map(d -> d.link().toUri()).toList()));
+            content.putString(String.join(
+                    "\n", selected.stream().map(d -> d.link().toUri()).toList()));
             Clipboard.getSystemClipboard().setContent(content);
         }
     }

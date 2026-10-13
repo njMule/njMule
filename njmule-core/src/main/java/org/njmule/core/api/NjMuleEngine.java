@@ -29,8 +29,8 @@ import org.njmule.core.config.Schedule;
 import org.njmule.core.engine.Engine;
 
 /**
- * Facade of the engine for every front end. Methods are thread-safe; commands run on the engine
- * thread and complete their futures there, events are delivered on a dedicated thread.
+ * Facade of the engine for every front end. Methods are thread-safe; commands run on the engine thread and complete
+ * their futures there, events are delivered on a dedicated thread.
  */
 public interface NjMuleEngine extends AutoCloseable {
 
@@ -58,9 +58,7 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The rule whose limits apply now, if any; never blocks. */
     Optional<Schedule.Rule> activeRule();
 
-    /**
-     * Adds the servers of a {@code server.met} (e.g. eMule's); completes with how many were new.
-     */
+    /** Adds the servers of a {@code server.met} (e.g. eMule's); completes with how many were new. */
     CompletableFuture<Integer> addServers(Path serverMet);
 
     /** The known servers, in the order of the list. */
@@ -76,8 +74,8 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<List<UploadInfo>> uploads();
 
     /**
-     * Connects to {@code server} (added to the list when new), or tries the known servers in turn
-     * when empty. The future completes once the attempt has started; events tell the outcome.
+     * Connects to {@code server} (added to the list when new), or tries the known servers in turn when empty. The
+     * future completes once the attempt has started; events tell the outcome.
      */
     CompletableFuture<Void> connect(Optional<ServerAddress> server);
 
@@ -95,8 +93,8 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<PeerInfo> hello(ServerAddress peer);
 
     /**
-     * Starts downloading the file of {@code link} into the temp directory; a file already being
-     * downloaded gets the link's sources.
+     * Starts downloading the file of {@code link} into the temp directory; a file already being downloaded gets the
+     * link's sources.
      */
     CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link);
 
@@ -123,14 +121,14 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<Optional<KadInfo>> kad();
 
     /**
-     * Takes what njMule can use from the eMule profile in {@code emuleConfigDir}, which is only
-     * read; completes with what happened to each file.
+     * Takes what njMule can use from the eMule profile in {@code emuleConfigDir}, which is only read; completes with
+     * what happened to each file.
      */
     CompletableFuture<ImportReport> importFromEmule(Path emuleConfigDir, ImportOptions options);
 
     /**
-     * Sends {@code text} to the client listening at {@code to}; the answer comes as an event. A
-     * CAPTCHA's solution is sent the same way.
+     * Sends {@code text} to the client listening at {@code to}; the answer comes as an event. A CAPTCHA's solution is
+     * sent the same way.
      */
     CompletableFuture<Void> sendMessage(ServerAddress to, String text);
 

@@ -37,9 +37,9 @@ import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.PartMet.Gap;
 
 /**
- * Reads a real eMule profile, read-only, from {@code NJMULE_EMULE_CONFIG} (and the downloads in
- * progress from {@code NJMULE_EMULE_TEMP}). Run with {@code -Dtest.excludedGroups=interop,perf
- * -Dgroups=private-fixtures}; it prints only counts, never names or hashes.
+ * Reads a real eMule profile, read-only, from {@code NJMULE_EMULE_CONFIG} (and the downloads in progress from
+ * {@code NJMULE_EMULE_TEMP}). Run with {@code -Dtest.excludedGroups=interop,perf -Dgroups=private-fixtures}; it prints
+ * only counts, never names or hashes.
  */
 @Tag("private-fixtures")
 @EnabledIfEnvironmentVariable(named = "NJMULE_EMULE_CONFIG", matches = ".+")
@@ -55,23 +55,24 @@ class EmuleProfileTest {
     void readsEveryDataFile() throws IOException {
         report("server.met", ServerMet.read(this.read("server.met")).size());
         List<KnownMet.KnownFile> known = KnownMet.read(this.read("known.met"));
-        long consistent = known.stream().filter(KnownMet.KnownFile::isConsistent).count();
+        long consistent =
+                known.stream().filter(KnownMet.KnownFile::isConsistent).count();
         report("known.met", known.size() + " (" + consistent + " consistent)");
         assertThat(consistent).isEqualTo(known.size());
         report("known2_64.met", Known2Met.read(this.read("known2_64.met")).size());
-        report("cancelled.met", CancelledMet.read(this.read("cancelled.met")).keys().size());
+        report(
+                "cancelled.met",
+                CancelledMet.read(this.read("cancelled.met")).keys().size());
         report("clients.met", ClientsMet.read(this.read("clients.met")).size());
         report("emfriends.met", FriendsMet.read(this.read("emfriends.met")).size());
         report("nodes.dat", NodesDat.read(this.read("nodes.dat")).contacts().size());
         report(
                 "preferencesKad.dat",
-                PreferencesKadDat.read(this.read("preferencesKad.dat")).kadId().isZero()
-                        ? "zero id"
-                        : "ok");
+                PreferencesKadDat.read(this.read("preferencesKad.dat")).kadId().isZero() ? "zero id" : "ok");
         report(
                 "preferences.dat",
-                PreferencesDat.isMarkedUserHash(
-                                PreferencesDat.read(this.read("preferences.dat")).userHash())
+                PreferencesDat.isMarkedUserHash(PreferencesDat.read(this.read("preferences.dat"))
+                                .userHash())
                         ? "marked hash"
                         : "unmarked hash");
         report(
@@ -82,14 +83,22 @@ class EmuleProfileTest {
                 KadIndexFiles.readSources(this.read("src_index.dat")).keys().size());
         report(
                 "key_index.dat",
-                KadIndexFiles.readKeywords(this.read("key_index.dat")).keywords().size());
+                KadIndexFiles.readKeywords(this.read("key_index.dat"))
+                        .keywords()
+                        .size());
         report(
                 "StoredSearches.met",
                 SearchFiles.readStored(this.read("StoredSearches.met")).size());
-        report("SearchSpam.met", SearchFiles.readSpam(this.read("SearchSpam.met")).size());
-        report("staticservers.dat", TextFiles.staticServers(this.read("staticservers.dat")).size());
+        report(
+                "SearchSpam.met",
+                SearchFiles.readSpam(this.read("SearchSpam.met")).size());
+        report(
+                "staticservers.dat",
+                TextFiles.staticServers(this.read("staticservers.dat")).size());
         report("shareddir.dat", TextFiles.entries(this.read("shareddir.dat")).size());
-        report("sharedfiles.dat", TextFiles.sharedFiles(this.read("sharedfiles.dat")).size());
+        report(
+                "sharedfiles.dat",
+                TextFiles.sharedFiles(this.read("sharedfiles.dat")).size());
         report("addresses.dat", TextFiles.entries(this.read("addresses.dat")).size());
         report(
                 "preferences.ini",
@@ -124,21 +133,17 @@ class EmuleProfileTest {
     void completePartsMatchTheirHashes() throws IOException {
         Path temp = Path.of(System.getenv("NJMULE_EMULE_TEMP"));
         try (Stream<Path> files = Files.list(temp)) {
-            for (Path met :
-                    files.filter(p -> p.getFileName().toString().endsWith(".part.met")).toList()) {
+            for (Path met : files.filter(p -> p.getFileName().toString().endsWith(".part.met"))
+                    .toList()) {
                 PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
-                Path data =
-                        temp.resolve(met.getFileName().toString().replace(".part.met", ".part"));
+                Path data = temp.resolve(met.getFileName().toString().replace(".part.met", ".part"));
                 long size = contents.size().orElseThrow();
                 List<Gap> gaps = contents.gaps();
                 int checked = 0;
-                for (int part = 0;
-                        part < Ed2k.partCount(size) && checked < PARTS_TO_CHECK;
-                        part++) {
+                for (int part = 0; part < Ed2k.partCount(size) && checked < PARTS_TO_CHECK; part++) {
                     long start = Ed2k.partStart(part);
                     long end = start + Ed2k.partLength(size, part);
-                    boolean complete =
-                            gaps.stream().noneMatch(g -> g.start() < end && g.end() > start);
+                    boolean complete = gaps.stream().noneMatch(g -> g.start() < end && g.end() > start);
                     if (complete && !contents.partHashes().isEmpty() && Files.exists(data)) {
                         assertThat(md4(data, start, end - start))
                                 .isEqualTo(contents.partHashes().get(part));

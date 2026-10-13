@@ -40,7 +40,8 @@ import org.njmule.core.files.hash.Ed2k;
 @Timeout(60)
 class DownloadQueueTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
@@ -54,23 +55,15 @@ class DownloadQueueTest {
     void writesVerifiesAndMovesAFinishedFile() throws Exception {
         byte[] data = random(400_000, 1);
         DownloadQueue queue = this.queue();
-        DownloadQueue.Download download =
-                this.onLoop(
-                        () ->
-                                queue.add(
-                                        Ed2kLink.FileLink.of(
-                                                "../evil:name.bin",
-                                                data.length,
-                                                Ed2k.md4(data, 0, data.length))));
+        DownloadQueue.Download download = this.onLoop(
+                () -> queue.add(Ed2kLink.FileLink.of("../evil:name.bin", data.length, Ed2k.md4(data, 0, data.length))));
         assertThat(this.events.take()).isEqualTo("added");
 
-        this.onLoop(
-                () -> {
-                    queue.received(
-                            download, 200_000, Arrays.copyOfRange(data, 200_000, data.length));
-                    queue.received(download, 0, Arrays.copyOfRange(data, 0, 200_000));
-                    return null;
-                });
+        this.onLoop(() -> {
+            queue.received(download, 200_000, Arrays.copyOfRange(data, 200_000, data.length));
+            queue.received(download, 0, Arrays.copyOfRange(data, 0, 200_000));
+            return null;
+        });
 
         String completed = this.awaitPrefix("completed ");
         Path file = Path.of(completed.substring("completed ".length()));
@@ -86,42 +79,24 @@ class DownloadQueueTest {
     void downloadsACorruptPartAgain() throws Exception {
         int size = (int) Ed2k.PARTSIZE + 1000;
         byte[] data = random(size, 2);
-        List<Hash16> parts =
-                List.of(
-                        Ed2k.md4(data, 0, (int) Ed2k.PARTSIZE),
-                        Ed2k.md4(data, (int) Ed2k.PARTSIZE, 1000));
+        List<Hash16> parts = List.of(Ed2k.md4(data, 0, (int) Ed2k.PARTSIZE), Ed2k.md4(data, (int) Ed2k.PARTSIZE, 1000));
         DownloadQueue queue = this.queue();
-        DownloadQueue.Download download =
-                this.onLoop(
-                        () ->
-                                queue.add(
-                                        new Ed2kLink.FileLink(
-                                                "two.bin",
-                                                size,
-                                                Ed2k.fileHash(parts),
-                                                Optional.empty(),
-                                                parts,
-                                                List.of(),
-                                                List.of())));
+        DownloadQueue.Download download = this.onLoop(() -> queue.add(new Ed2kLink.FileLink(
+                "two.bin", size, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of())));
         byte[] bad = data.clone();
         bad[123] ^= 1;
 
-        this.onLoop(
-                () -> {
-                    queue.received(download, 0, Arrays.copyOfRange(bad, 0, (int) Ed2k.PARTSIZE));
-                    queue.received(
-                            download,
-                            Ed2k.PARTSIZE,
-                            Arrays.copyOfRange(data, (int) Ed2k.PARTSIZE, size));
-                    return null;
-                });
+        this.onLoop(() -> {
+            queue.received(download, 0, Arrays.copyOfRange(bad, 0, (int) Ed2k.PARTSIZE));
+            queue.received(download, Ed2k.PARTSIZE, Arrays.copyOfRange(data, (int) Ed2k.PARTSIZE, size));
+            return null;
+        });
         this.awaitCorruptPart0(download);
 
-        this.onLoop(
-                () -> {
-                    queue.received(download, 0, Arrays.copyOfRange(data, 0, (int) Ed2k.PARTSIZE));
-                    return null;
-                });
+        this.onLoop(() -> {
+            queue.received(download, 0, Arrays.copyOfRange(data, 0, (int) Ed2k.PARTSIZE));
+            return null;
+        });
         Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
     }
@@ -130,25 +105,17 @@ class DownloadQueueTest {
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
         DownloadQueue first = this.queue();
-        DownloadQueue.Download download =
-                this.onLoop(
-                        () ->
-                                first.add(
-                                        Ed2kLink.FileLink.of(
-                                                "kept.bin",
-                                                data.length,
-                                                Ed2k.md4(data, 0, data.length))));
-        this.onLoop(
-                () -> {
-                    first.received(download, 0, Arrays.copyOfRange(data, 0, 100_000));
-                    return null;
-                });
+        DownloadQueue.Download download = this.onLoop(
+                () -> first.add(Ed2kLink.FileLink.of("kept.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        this.onLoop(() -> {
+            first.received(download, 0, Arrays.copyOfRange(data, 0, 100_000));
+            return null;
+        });
         this.awaitPrefix("progress");
-        this.onLoop(
-                () -> {
-                    first.close();
-                    return null;
-                });
+        this.onLoop(() -> {
+            first.close();
+            return null;
+        });
 
         DownloadQueue second = this.queue();
         DownloadQueue.Download reloaded = second.get(download.hash()).orElseThrow();
@@ -160,29 +127,21 @@ class DownloadQueueTest {
     void checksTheCompletePartsOfAResumedDownload() throws Exception {
         byte[] data = random(200_000, 4);
         DownloadQueue first = this.queue();
-        DownloadQueue.Download download =
-                this.onLoop(
-                        () ->
-                                first.add(
-                                        Ed2kLink.FileLink.of(
-                                                "resumed.bin",
-                                                data.length,
-                                                Ed2k.md4(data, 0, data.length))));
+        DownloadQueue.Download download = this.onLoop(
+                () -> first.add(Ed2kLink.FileLink.of("resumed.bin", data.length, Ed2k.md4(data, 0, data.length))));
         byte[] bad = data.clone();
         bad[7] ^= 1;
         // Written, then closed before the check could run: as after a crash.
-        this.onLoop(
-                () -> {
-                    download.file().written(0, data.length);
-                    download.file().save();
-                    return null;
-                });
+        this.onLoop(() -> {
+            download.file().written(0, data.length);
+            download.file().save();
+            return null;
+        });
         Files.write(this.dir.resolve("temp").resolve("001.part"), bad);
-        this.onLoop(
-                () -> {
-                    first.close();
-                    return null;
-                });
+        this.onLoop(() -> {
+            first.close();
+            return null;
+        });
 
         DownloadQueue second = this.queue();
         DownloadQueue.Download reloaded = second.get(download.hash()).orElseThrow();
@@ -198,9 +157,8 @@ class DownloadQueueTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {
             this.events.poll(100, TimeUnit.MILLISECONDS);
-            Boolean back =
-                    this.onLoop(
-                            () -> !download.file().isComplete(0) && download.file().isComplete(1));
+            Boolean back = this.onLoop(
+                    () -> !download.file().isComplete(0) && download.file().isComplete(1));
             if (back && this.onLoop(() -> download.file().completedBytes() == 1000)) {
                 return;
             }
@@ -209,33 +167,28 @@ class DownloadQueueTest {
     }
 
     private DownloadQueue queue() throws Exception {
-        return this.onLoop(
-                () ->
-                        DownloadQueue.load(
-                                this.loop,
-                                this.dir.resolve("temp"),
-                                () -> this.dir.resolve("incoming"),
-                                new DownloadQueue.Listener() {
-                                    @Override
-                                    public void added(DownloadQueue.Download d) {
-                                        DownloadQueueTest.this.events.add("added");
-                                    }
+        return this.onLoop(() -> DownloadQueue.load(
+                this.loop, this.dir.resolve("temp"), () -> this.dir.resolve("incoming"), new DownloadQueue.Listener() {
+                    @Override
+                    public void added(DownloadQueue.Download d) {
+                        DownloadQueueTest.this.events.add("added");
+                    }
 
-                                    @Override
-                                    public void progress(DownloadQueue.Download d) {
-                                        DownloadQueueTest.this.events.add("progress");
-                                    }
+                    @Override
+                    public void progress(DownloadQueue.Download d) {
+                        DownloadQueueTest.this.events.add("progress");
+                    }
 
-                                    @Override
-                                    public void completed(DownloadQueue.Download d, Path file) {
-                                        DownloadQueueTest.this.events.add("completed " + file);
-                                    }
+                    @Override
+                    public void completed(DownloadQueue.Download d, Path file) {
+                        DownloadQueueTest.this.events.add("completed " + file);
+                    }
 
-                                    @Override
-                                    public void failed(DownloadQueue.Download d, String reason) {
-                                        DownloadQueueTest.this.events.add("failed " + reason);
-                                    }
-                                }));
+                    @Override
+                    public void failed(DownloadQueue.Download d, String reason) {
+                        DownloadQueueTest.this.events.add("failed " + reason);
+                    }
+                }));
     }
 
     private String awaitPrefix(String prefix) throws InterruptedException {

@@ -33,32 +33,27 @@ public final class FileTypes {
 
     public static final String DOCUMENT = "Doc";
 
-    private static final Map<String, Integer> CODES =
-            Map.of(AUDIO, 1, VIDEO, 2, IMAGE, 3, PROGRAM, 4, DOCUMENT, 5);
+    private static final Map<String, Integer> CODES = Map.of(AUDIO, 1, VIDEO, 2, IMAGE, 3, PROGRAM, 4, DOCUMENT, 5);
 
-    private static final Map<String, Set<String>> EXTENSIONS =
-            Map.of(
-                    AUDIO,
-                    Set.of(
-                            "aac", "ac3", "aiff", "ape", "au", "flac", "m4a", "mid", "midi", "mp2",
-                            "mp3", "mpc", "ogg", "opus", "ra", "wav", "wma"),
-                    VIDEO,
-                    Set.of(
-                            "3gp", "asf", "avi", "divx", "flv", "m2ts", "m4v", "mkv", "mov", "mp4",
-                            "mpeg", "mpg", "ogm", "rm", "rmvb", "ts", "vob", "webm", "wmv", "xvid"),
-                    IMAGE,
-                    Set.of(
-                            "bmp", "gif", "ico", "jpeg", "jpg", "png", "psd", "svg", "tif", "tiff",
-                            "webp"),
-                    PROGRAM,
-                    Set.of(
-                            "7z", "ace", "apk", "bat", "bin", "bz2", "cab", "com", "cue", "deb",
-                            "dmg", "exe", "gz", "img", "iso", "jar", "mdf", "mds", "msi", "nrg",
-                            "rar", "rpm", "tar", "tgz", "xz", "zip"),
-                    DOCUMENT,
-                    Set.of(
-                            "chm", "csv", "doc", "docx", "epub", "htm", "html", "nfo", "odt", "pdf",
-                            "ppt", "pptx", "rtf", "txt", "xls", "xlsx"));
+    private static final Map<String, Set<String>> EXTENSIONS = Map.of(
+            AUDIO,
+            Set.of(
+                    "aac", "ac3", "aiff", "ape", "au", "flac", "m4a", "mid", "midi", "mp2", "mp3", "mpc", "ogg", "opus",
+                    "ra", "wav", "wma"),
+            VIDEO,
+            Set.of(
+                    "3gp", "asf", "avi", "divx", "flv", "m2ts", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ogm", "rm",
+                    "rmvb", "ts", "vob", "webm", "wmv", "xvid"),
+            IMAGE,
+            Set.of("bmp", "gif", "ico", "jpeg", "jpg", "png", "psd", "svg", "tif", "tiff", "webp"),
+            PROGRAM,
+            Set.of(
+                    "7z", "ace", "apk", "bat", "bin", "bz2", "cab", "com", "cue", "deb", "dmg", "exe", "gz", "img",
+                    "iso", "jar", "mdf", "mds", "msi", "nrg", "rar", "rpm", "tar", "tgz", "xz", "zip"),
+            DOCUMENT,
+            Set.of(
+                    "chm", "csv", "doc", "docx", "epub", "htm", "html", "nfo", "odt", "pdf", "ppt", "pptx", "rtf",
+                    "txt", "xls", "xlsx"));
 
     private FileTypes() {}
 

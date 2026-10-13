@@ -32,8 +32,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.Tags;
 
 /**
- * Shared and once-shared files, {@code known.met}: {@code <0x0E|0x0F><u32 count>} then {@code
- * <mtime u32><hash set><u32 tag count><tags>} per file; 0x0F allows 64-bit sizes.
+ * Shared and once-shared files, {@code known.met}: {@code <0x0E|0x0F><u32 count>} then {@code <mtime u32><hash set><u32
+ * tag count><tags>} per file; 0x0F allows 64-bit sizes.
  */
 public final class KnownMet {
 
@@ -94,8 +94,7 @@ public final class KnownMet {
         for (int i = 0; i < count; i++) {
             long mtime = in.u32();
             MetCodecs.HashSet set = MetCodecs.readHashSet(in);
-            files.add(
-                    new KnownFile(mtime, set.fileHash(), set.partHashes(), MetCodecs.readTags(in)));
+            files.add(new KnownFile(mtime, set.fileHash(), set.partHashes(), MetCodecs.readTags(in)));
         }
         return List.copyOf(files);
     }

@@ -35,9 +35,8 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.TcpFraming;
 
 /**
- * A framed eD2K TCP connection over a blocking socket, served by a reading and a writing virtual
- * thread. Sending never blocks: frames wait in a bounded queue, and a peer that does not drain it
- * is disconnected.
+ * A framed eD2K TCP connection over a blocking socket, served by a reading and a writing virtual thread. Sending never
+ * blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected.
  */
 public final class TcpConnection implements AutoCloseable {
 
@@ -71,12 +70,7 @@ public final class TcpConnection implements AutoCloseable {
     private volatile Handler handler;
     private volatile Thread writer;
 
-    TcpConnection(
-            Socket socket,
-            InputStream in,
-            OutputStream out,
-            boolean obfuscated,
-            FrameLimit frameLimit) {
+    TcpConnection(Socket socket, InputStream in, OutputStream out, boolean obfuscated, FrameLimit frameLimit) {
         this.socket = Objects.requireNonNull(socket, "socket");
         this.in = Objects.requireNonNull(in, "in");
         this.out = Objects.requireNonNull(out, "out");
@@ -97,18 +91,17 @@ public final class TcpConnection implements AutoCloseable {
         String name = "njmule-tcp-" + this.remote;
         // On Windows a virtual thread blocked in a socket write can miss the wakeup and hang the
         // connection for good, so writes run on a small platform thread.
-        this.writer =
-                Thread.ofPlatform()
-                        .name(name + "-out")
-                        .daemon(true)
-                        .stackSize(WRITER_STACK)
-                        .start(this::writeLoop);
+        this.writer = Thread.ofPlatform()
+                .name(name + "-out")
+                .daemon(true)
+                .stackSize(WRITER_STACK)
+                .start(this::writeLoop);
         Thread.ofVirtual().name(name + "-in").start(this::readLoop);
     }
 
     /**
-     * Queues a packet; returns {@code false} if the connection is closed. A full queue closes the
-     * connection: the peer is not reading.
+     * Queues a packet; returns {@code false} if the connection is closed. A full queue closes the connection: the peer
+     * is not reading.
      */
     public boolean send(Packet packet) {
         if (this.closed.get()) {

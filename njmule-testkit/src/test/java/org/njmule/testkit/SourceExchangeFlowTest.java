@@ -45,7 +45,8 @@ class SourceExchangeFlowTest {
 
     private static final Duration WAIT = Duration.ofSeconds(40);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
@@ -63,20 +64,17 @@ class SourceExchangeFlowTest {
         byte[] data = new byte[2_000_000];
         new Random(11).nextBytes(data);
         Path uploaderRoot = this.dir.resolve("uploader");
-        Files.write(
-                Files.createDirectories(uploaderRoot.resolve("incoming")).resolve("x.bin"), data);
+        Files.write(Files.createDirectories(uploaderRoot.resolve("incoming")).resolve("x.bin"), data);
         // Slow, so the first downloader is still there when the second asks.
         NjMuleEngine uploader = this.engine(uploaderRoot, "limits.uploadKiBps=1\n");
         SharedFileInfo shared = awaitShared(uploader);
         Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink)
-                        Ed2kLink.parse(
-                                shared.link().toUri()
-                                        + "|sources,"
-                                        + lan.getHostAddress()
-                                        + ":"
-                                        + uploader.preferences().tcpPort()
-                                        + "|/");
+                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
+                        + "|sources,"
+                        + lan.getHostAddress()
+                        + ":"
+                        + uploader.preferences().tcpPort()
+                        + "|/");
 
         NjMuleEngine first = this.engine(this.dir.resolve("first"), "");
         first.addDownload(link).get(10, TimeUnit.SECONDS);
@@ -120,8 +118,7 @@ class SourceExchangeFlowTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
+        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
         return engine;

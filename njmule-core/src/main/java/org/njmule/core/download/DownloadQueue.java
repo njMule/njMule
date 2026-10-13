@@ -46,9 +46,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The downloads: their part files in the temp directory, the data arriving from sources, the
- * verification of each finished part and the move of finished files to the incoming directory. Used
- * on the engine thread only; disk work runs on each file's own thread and reports back here.
+ * The downloads: their part files in the temp directory, the data arriving from sources, the verification of each
+ * finished part and the move of finished files to the incoming directory. Used on the engine thread only; disk work
+ * runs on each file's own thread and reports back here.
  */
 public final class DownloadQueue implements AutoCloseable {
 
@@ -112,8 +112,7 @@ public final class DownloadQueue implements AutoCloseable {
     private final Map<Hash16, Download> downloads = new LinkedHashMap<>();
     private ScheduledFuture<?> saver;
 
-    private DownloadQueue(
-            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener) {
+    private DownloadQueue(EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.tempDir = Objects.requireNonNull(tempDir, "tempDir");
         this.incomingDir = Objects.requireNonNull(incomingDir, "incomingDir");
@@ -121,13 +120,11 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     /** Loads the part files of {@code tempDir}; unreadable ones are left alone and logged. */
-    public static DownloadQueue load(
-            EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener)
+    public static DownloadQueue load(EngineLoop loop, Path tempDir, Supplier<Path> incomingDir, Listener listener)
             throws IOException {
         DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, listener);
         Files.createDirectories(tempDir);
-        try (DirectoryStream<Path> mets =
-                Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX)) {
+        try (DirectoryStream<Path> mets = Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX)) {
             for (Path met : mets) {
                 String name = String.valueOf(met.getFileName());
                 String number = name.substring(0, name.length() - PartFile.MET_SUFFIX.length());
@@ -145,9 +142,7 @@ public final class DownloadQueue implements AutoCloseable {
                 }
             }
         }
-        queue.saver =
-                loop.scheduleRepeating(
-                        "save downloads", SAVE_INTERVAL, SAVE_INTERVAL, queue::saveChanged);
+        queue.saver = loop.scheduleRepeating("save downloads", SAVE_INTERVAL, SAVE_INTERVAL, queue::saveChanged);
         return queue;
     }
 
@@ -158,15 +153,14 @@ public final class DownloadQueue implements AutoCloseable {
             existing.sources.addAll(link.sources());
             return existing;
         }
-        PartFile file =
-                PartFile.create(
-                        this.nextNumber(),
-                        this.tempDir,
-                        PathSanitizer.fileName(link.name()),
-                        link.size(),
-                        link.hash(),
-                        link.aichHash(),
-                        link.partHashes());
+        PartFile file = PartFile.create(
+                this.nextNumber(),
+                this.tempDir,
+                PathSanitizer.fileName(link.name()),
+                link.size(),
+                link.hash(),
+                link.aichHash(),
+                link.partHashes());
         file.save();
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.sources.addAll(link.sources());
@@ -176,16 +170,14 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     /**
-     * Takes over a download another client left in {@code met} and {@code data}, both already in
-     * our temp directory: they get the next free number and the complete parts are checked again.
+     * Takes over a download another client left in {@code met} and {@code data}, both already in our temp directory:
+     * they get the next free number and the complete parts are checked again.
      */
     public Download adopt(Path met, Path data) throws IOException {
         PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
         if (this.downloads.containsKey(contents.fileHash())) {
             throw new FileAlreadyExistsException(
-                    contents.name().orElse(contents.fileHash().toString()),
-                    null,
-                    "already downloading");
+                    contents.name().orElse(contents.fileHash().toString()), null, "already downloading");
         }
         int number = this.nextNumber();
         Path ownData = this.tempDir.resolve(PartFile.fileName(number) + PartFile.DATA_SUFFIX);
@@ -221,17 +213,14 @@ public final class DownloadQueue implements AutoCloseable {
         return List.copyOf(this.downloads.values());
     }
 
-    /**
-     * Data for {@code download} from a source; it is written, then the parts it ends are checked.
-     */
+    /** Data for {@code download} from a source; it is written, then the parts it ends are checked. */
     public void received(Download download, long start, byte[] data) {
         long end = start + data.length;
         if (!download.isActive() || end > download.file.size()) {
             return;
         }
         this.loop.whenDone(
-                download.storage.write(start, data),
-                (ok, failure) -> this.written(download, start, end, failure));
+                download.storage.write(start, data), (ok, failure) -> this.written(download, start, end, failure));
     }
 
     /** The hash set arrived: parts finished before it can now be checked. */
@@ -312,11 +301,9 @@ public final class DownloadQueue implements AutoCloseable {
                 (actual, failure) -> this.checked(download, part, expected.get(), actual, failure));
     }
 
-    private void checked(
-            Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
+    private void checked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
         if (failure != null || !expected.equals(actual)) {
-            logger.warn(
-                    "Part {} of {} is corrupt, downloading it again", part, download.file.name());
+            logger.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
             download.dirty = true;
             this.listener.progress(download);
@@ -341,8 +328,7 @@ public final class DownloadQueue implements AutoCloseable {
         if (failure != null) {
             download.finishing = false;
             download.file.setStatus(PartFile.Status.ERROR);
-            this.listener.failed(
-                    download, "cannot move the finished file: " + failure.getMessage());
+            this.listener.failed(download, "cannot move the finished file: " + failure.getMessage());
             return;
         }
         download.file.setStatus(PartFile.Status.COMPLETE);
@@ -376,8 +362,7 @@ public final class DownloadQueue implements AutoCloseable {
         }
         int number = 1;
         while (used.contains(number)
-                || Files.exists(
-                        this.tempDir.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX))) {
+                || Files.exists(this.tempDir.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX))) {
             number++;
         }
         return number;

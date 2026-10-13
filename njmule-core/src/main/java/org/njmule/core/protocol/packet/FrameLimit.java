@@ -17,8 +17,8 @@
 package org.njmule.core.protocol.packet;
 
 /**
- * Largest payload accepted for a TCP frame, decided from its header before any allocation; negative
- * means the opcode is not acceptable at all in the current connection state.
+ * Largest payload accepted for a TCP frame, decided from its header before any allocation; negative means the opcode is
+ * not acceptable at all in the current connection state.
  */
 @FunctionalInterface
 public interface FrameLimit {

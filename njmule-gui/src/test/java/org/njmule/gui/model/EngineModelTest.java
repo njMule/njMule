@@ -52,7 +52,8 @@ class EngineModelTest {
 
     private static final Hash16 FILE = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private NjMuleEngine engine;
     private EngineModel model;
@@ -100,10 +101,7 @@ class EngineModelTest {
         m.pause(FILE);
         until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.PAUSED);
         m.resume(FILE);
-        until(
-                () ->
-                        m.downloads().rows().getFirst().get().status()
-                                == DownloadInfo.Status.DOWNLOADING);
+        until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.DOWNLOADING);
         m.cancel(FILE);
         until(() -> m.downloads().size() == 0);
         assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
@@ -125,9 +123,7 @@ class EngineModelTest {
     @Test
     void eventsUpdateTheState() throws Exception {
         EngineModel m = this.start();
-        ServerInfo server =
-                new ServerInfo(
-                        "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL);
+        ServerInfo server = new ServerInfo("81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL);
 
         m.handle(new EngineEvent.ServerConnecting(server));
         assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTING);
@@ -150,16 +146,7 @@ class EngineModelTest {
         assertThat(m.log()).hasSize(EngineModel.LOG_LINES);
 
         DownloadInfo download =
-                new DownloadInfo(
-                        FILE,
-                        "a.bin",
-                        100,
-                        0,
-                        DownloadInfo.Status.DOWNLOADING,
-                        0,
-                        0,
-                        0,
-                        PartMap.EMPTY);
+                new DownloadInfo(FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, 0, 0, 0, PartMap.EMPTY);
         m.handle(new EngineEvent.DownloadAdded(download));
         m.handle(new EngineEvent.DownloadProgress(download));
         m.handle(new EngineEvent.DownloadFailed(download, "disk"));

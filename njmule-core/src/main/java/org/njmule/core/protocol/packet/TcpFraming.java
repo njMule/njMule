@@ -22,8 +22,8 @@ import java.io.InputStream;
 import org.njmule.core.protocol.io.DecodeException;
 
 /**
- * TCP framing: {@code <protocol u8><length u32><opcode u8><payload>}, where the length counts the
- * opcode byte. Frames are read in blocking style, one virtual thread per connection.
+ * TCP framing: {@code <protocol u8><length u32><opcode u8><payload>}, where the length counts the opcode byte. Frames
+ * are read in blocking style, one virtual thread per connection.
  */
 public final class TcpFraming {
 
@@ -46,9 +46,8 @@ public final class TcpFraming {
     }
 
     /**
-     * Reads one frame. A clean end of stream before the first header byte throws {@link
-     * EOFException}; a truncated frame, an unknown protocol byte or a payload beyond {@code limit}
-     * throws {@link DecodeException}.
+     * Reads one frame. A clean end of stream before the first header byte throws {@link EOFException}; a truncated
+     * frame, an unknown protocol byte or a payload beyond {@code limit} throws {@link DecodeException}.
      */
     public static Packet read(InputStream in, FrameLimit limit) throws IOException {
         byte[] header = new byte[HEADER_SIZE];
@@ -63,10 +62,7 @@ public final class TcpFraming {
             throw new DecodeException(String.format("unknown protocol byte 0x%02X", protocol));
         }
         long counted =
-                (header[1] & 0xFFL)
-                        | (header[2] & 0xFFL) << 8
-                        | (header[3] & 0xFFL) << 16
-                        | (header[4] & 0xFFL) << 24;
+                (header[1] & 0xFFL) | (header[2] & 0xFFL) << 8 | (header[3] & 0xFFL) << 16 | (header[4] & 0xFFL) << 24;
         int opcode = header[5] & 0xFF;
         if (counted == 0) {
             throw new DecodeException("frame length 0 cannot hold the opcode");
@@ -74,22 +70,18 @@ public final class TcpFraming {
         long length = counted - 1;
         int max = limit.maxPayload(protocol, opcode);
         if (max < 0) {
-            throw new DecodeException(
-                    String.format("opcode 0x%02X/0x%02X not allowed here", protocol, opcode));
+            throw new DecodeException(String.format("opcode 0x%02X/0x%02X not allowed here", protocol, opcode));
         }
         if (length > max) {
             throw new DecodeException(
-                    String.format(
-                            "frame 0x%02X/0x%02X of %d bytes exceeds %d",
-                            protocol, opcode, length, max));
+                    String.format("frame 0x%02X/0x%02X of %d bytes exceeds %d", protocol, opcode, length, max));
         }
         byte[] payload = new byte[(int) length];
         readFully(in, payload, 0, payload.length);
         return Packet.adopt(protocol, opcode, payload);
     }
 
-    private static void readFully(InputStream in, byte[] buffer, int offset, int length)
-            throws IOException {
+    private static void readFully(InputStream in, byte[] buffer, int offset, int length) throws IOException {
         int n = in.readNBytes(buffer, offset, length);
         if (n < length) {
             throw new DecodeException("connection closed inside a frame");

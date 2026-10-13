@@ -29,7 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class AtomicFilesTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private static String readUtf8(Path file) throws IOException {
         return AtomicFiles.read(file, in -> new String(in.readAllBytes(), UTF_8));
@@ -37,15 +38,13 @@ class AtomicFilesTest {
 
     // Rejects any content that is not "valid:...", like a parser rejecting a corrupt .met file.
     private static String readValid(Path file) throws IOException {
-        return AtomicFiles.read(
-                file,
-                in -> {
-                    String s = new String(in.readAllBytes(), UTF_8);
-                    if (!s.startsWith("valid:")) {
-                        throw new IOException("corrupt");
-                    }
-                    return s;
-                });
+        return AtomicFiles.read(file, in -> {
+            String s = new String(in.readAllBytes(), UTF_8);
+            if (!s.startsWith("valid:")) {
+                throw new IOException("corrupt");
+            }
+            return s;
+        });
     }
 
     @Test
@@ -65,14 +64,10 @@ class AtomicFilesTest {
         Path file = this.dir.resolve("clients.met");
         AtomicFiles.writeBytes(file, "original".getBytes(UTF_8));
 
-        assertThatThrownBy(
-                        () ->
-                                AtomicFiles.write(
-                                        file,
-                                        out -> {
-                                            out.write("partial".getBytes(UTF_8));
-                                            throw new IOException("disk full");
-                                        }))
+        assertThatThrownBy(() -> AtomicFiles.write(file, out -> {
+                    out.write("partial".getBytes(UTF_8));
+                    throw new IOException("disk full");
+                }))
                 .hasMessage("disk full");
 
         assertThat(file).hasContent("original");
@@ -113,8 +108,7 @@ class AtomicFilesTest {
 
     @Test
     void readOfMissingFileFails() {
-        assertThatThrownBy(() -> readUtf8(this.dir.resolve("none")))
-                .isInstanceOf(NoSuchFileException.class);
+        assertThatThrownBy(() -> readUtf8(this.dir.resolve("none"))).isInstanceOf(NoSuchFileException.class);
     }
 
     @Test

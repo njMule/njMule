@@ -39,37 +39,36 @@ import org.njmule.core.util.Ipv4;
 @Timeout(60)
 class CommandLineFlowTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void connectsToTheGivenServerAndPrintsIdMessagesAndResults() throws Exception {
         InetAddress loopback = InetAddress.getLoopbackAddress();
-        try (FakeServer server =
-                FakeServer.start(
-                        loopback,
-                        new FakeServer.Config(
-                                Ipv4.toEd2k(Ipv4.parse("1.2.3.4")),
-                                "Welcome to the fake server",
-                                List.of(
-                                        FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50),
-                                        FakeServer.file("ubuntu.txt", 10, 2))))) {
+        try (FakeServer server = FakeServer.start(
+                loopback,
+                new FakeServer.Config(
+                        Ipv4.toEd2k(Ipv4.parse("1.2.3.4")),
+                        "Welcome to the fake server",
+                        List.of(
+                                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50),
+                                FakeServer.file("ubuntu.txt", 10, 2))))) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ByteArrayOutputStream err = new ByteArrayOutputStream();
 
-            int exit =
-                    Main.run(
-                            new String[] {
-                                "--headless",
-                                "--config-dir",
-                                this.configDir().toString(),
-                                "--connect-server",
-                                "127.0.0.1:" + server.port(),
-                                "--search",
-                                "ubuntu iso"
-                            },
-                            new PrintStream(out, true, UTF_8),
-                            new PrintStream(err, true, UTF_8),
-                            new CompletableFuture<>());
+            int exit = Main.run(
+                    new String[] {
+                        "--headless",
+                        "--config-dir",
+                        this.configDir().toString(),
+                        "--connect-server",
+                        "127.0.0.1:" + server.port(),
+                        "--search",
+                        "ubuntu iso"
+                    },
+                    new PrintStream(out, true, UTF_8),
+                    new PrintStream(err, true, UTF_8),
+                    new CompletableFuture<>());
 
             String printed = out.toString(UTF_8);
             assertThat(exit).as(err.toString(UTF_8)).isZero();
@@ -91,32 +90,29 @@ class CommandLineFlowTest {
         new Random(4).nextBytes(data);
         Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("cli.bin");
         Files.write(shared, data);
-        try (FakePeer peer =
-                FakePeer.start(
-                        InetAddress.getLoopbackAddress(),
-                        shared,
-                        FakePeer.Config.simple(Hash16.parseHex("cd".repeat(16))))) {
+        try (FakePeer peer = FakePeer.start(
+                InetAddress.getLoopbackAddress(), shared, FakePeer.Config.simple(Hash16.parseHex("cd".repeat(16))))) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ByteArrayOutputStream err = new ByteArrayOutputStream();
             Path config = this.configDir();
 
-            int exit =
-                    Main.run(
-                            new String[] {
-                                "--config-dir", config.toString(), "--download", peer.link().toUri()
-                            },
-                            new PrintStream(out, true, UTF_8),
-                            new PrintStream(err, true, UTF_8),
-                            new CompletableFuture<>());
+            int exit = Main.run(
+                    new String[] {
+                        "--config-dir",
+                        config.toString(),
+                        "--download",
+                        peer.link().toUri()
+                    },
+                    new PrintStream(out, true, UTF_8),
+                    new PrintStream(err, true, UTF_8),
+                    new CompletableFuture<>());
 
             assertThat(exit).as(err.toString(UTF_8)).isZero();
-            assertThat(out.toString(UTF_8))
-                    .contains("Downloading cli.bin (2.9 MiB, 1 source)", "Finished cli.bin: ");
+            assertThat(out.toString(UTF_8)).contains("Downloading cli.bin (2.9 MiB, 1 source)", "Finished cli.bin: ");
             try (Stream<Path> incoming = Files.walk(config)) {
-                Path done =
-                        incoming.filter(p -> p.getFileName().toString().equals("cli.bin"))
-                                .findFirst()
-                                .orElseThrow();
+                Path done = incoming.filter(p -> p.getFileName().toString().equals("cli.bin"))
+                        .findFirst()
+                        .orElseThrow();
                 assertThat(Files.readAllBytes(done)).isEqualTo(data);
             }
         }
@@ -127,12 +123,11 @@ class CommandLineFlowTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
 
-        int exit =
-                Main.run(
-                        new String[] {"--config-dir", this.configDir().toString(), "--search", "x"},
-                        new PrintStream(out, true, UTF_8),
-                        new PrintStream(err, true, UTF_8),
-                        new CompletableFuture<>());
+        int exit = Main.run(
+                new String[] {"--config-dir", this.configDir().toString(), "--search", "x"},
+                new PrintStream(out, true, UTF_8),
+                new PrintStream(err, true, UTF_8),
+                new CompletableFuture<>());
 
         assertThat(exit).isEqualTo(Main.EXIT_FAILURE);
         assertThat(err.toString(UTF_8)).contains("no known server");
@@ -144,18 +139,13 @@ class CommandLineFlowTest {
         Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nNick=Someone\r\n");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-        int exit =
-                Main.run(
-                        new String[] {
-                            "--config-dir",
-                            this.configDir().toString(),
-                            "--import-emule",
-                            emule.toString(),
-                            "--dry-run"
-                        },
-                        new PrintStream(out, true, UTF_8),
-                        new PrintStream(new ByteArrayOutputStream(), true, UTF_8),
-                        new CompletableFuture<>());
+        int exit = Main.run(
+                new String[] {
+                    "--config-dir", this.configDir().toString(), "--import-emule", emule.toString(), "--dry-run"
+                },
+                new PrintStream(out, true, UTF_8),
+                new PrintStream(new ByteArrayOutputStream(), true, UTF_8),
+                new CompletableFuture<>());
 
         assertThat(exit).isEqualTo(Main.EXIT_OK);
         assertThat(out.toString(UTF_8))

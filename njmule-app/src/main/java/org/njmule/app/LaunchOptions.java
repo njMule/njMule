@@ -34,8 +34,8 @@ import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.ParseResult;
 
 /**
- * Parsed command-line options shared by the headless launcher and the GUI. Parsing uses picocli's
- * programmatic model, which needs no reflection in the native image.
+ * Parsed command-line options shared by the headless launcher and the GUI. Parsing uses picocli's programmatic model,
+ * which needs no reflection in the native image.
  */
 public record LaunchOptions(
         Action action,
@@ -51,8 +51,8 @@ public record LaunchOptions(
     }
 
     /**
-     * Network work for a run: servers to add, a server to connect to, a search, a hello or
-     * downloads. With a search, a hello or downloads the run ends once they are done.
+     * Network work for a run: servers to add, a server to connect to, a search, a hello or downloads. With a search, a
+     * hello or downloads the run ends once they are done.
      */
     public record NetworkTasks(
             Optional<Path> serverMet,
@@ -66,18 +66,17 @@ public record LaunchOptions(
             boolean kad,
             Optional<EmuleImport> emuleImport) {
 
-        static final NetworkTasks NONE =
-                new NetworkTasks(
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        false,
-                        Optional.empty(),
-                        List.of(),
-                        List.of(),
-                        Optional.empty(),
-                        false,
-                        Optional.empty());
+        static final NetworkTasks NONE = new NetworkTasks(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                false,
+                Optional.empty(),
+                List.of(),
+                List.of(),
+                Optional.empty(),
+                false,
+                Optional.empty());
 
         public NetworkTasks {
             downloads = List.copyOf(downloads);
@@ -168,18 +167,17 @@ public record LaunchOptions(
         if (result.hasMatchedOption(ADD_SERVERS_OPTION)) {
             serverMet = Optional.of(toFile(result.matchedOptionValue(ADD_SERVERS_OPTION, "")));
         }
-        NetworkTasks network =
-                new NetworkTasks(
-                        serverMet,
-                        address(result, CONNECT_SERVER_OPTION),
-                        Optional.ofNullable(result.<String>matchedOptionValue(SEARCH_OPTION, null)),
-                        result.hasMatchedOption(GLOBAL_OPTION),
-                        address(result, HELLO_OPTION),
-                        fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())),
-                        directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())),
-                        address(result, KAD_BOOTSTRAP_OPTION),
-                        result.hasMatchedOption(KAD_OPTION),
-                        emuleImport(result));
+        NetworkTasks network = new NetworkTasks(
+                serverMet,
+                address(result, CONNECT_SERVER_OPTION),
+                Optional.ofNullable(result.<String>matchedOptionValue(SEARCH_OPTION, null)),
+                result.hasMatchedOption(GLOBAL_OPTION),
+                address(result, HELLO_OPTION),
+                fileLinks(result.matchedOptionValue(DOWNLOAD_OPTION, List.<String>of())),
+                directories(result.matchedOptionValue(SHARE_OPTION, List.<String>of())),
+                address(result, KAD_BOOTSTRAP_OPTION),
+                result.hasMatchedOption(KAD_OPTION),
+                emuleImport(result));
         if (network.global() && network.search().isEmpty()) {
             throw new UsageException("--global applies to --search");
         }
@@ -190,14 +188,13 @@ public record LaunchOptions(
                 && (result.hasMatchedOption(DRY_RUN_OPTION)
                         || result.hasMatchedOption(IDENTITY_OPTION)
                         || result.hasMatchedOption(IMPORT_DOWNLOADS_OPTION))) {
-            throw new UsageException(
-                    DRY_RUN_OPTION
-                            + ", "
-                            + IDENTITY_OPTION
-                            + " and "
-                            + IMPORT_DOWNLOADS_OPTION
-                            + " apply to "
-                            + IMPORT_OPTION);
+            throw new UsageException(DRY_RUN_OPTION
+                    + ", "
+                    + IDENTITY_OPTION
+                    + " and "
+                    + IMPORT_DOWNLOADS_OPTION
+                    + " apply to "
+                    + IMPORT_OPTION);
         }
         return new LaunchOptions(
                 action(result),
@@ -238,120 +235,80 @@ public record LaunchOptions(
 
     private static CommandLine parser() {
         CommandSpec spec = CommandSpec.create().name("njmule");
+        spec.addOption(valued(CONFIG_DIR_OPTION, "<dir>", "keep all data below <dir> instead of the system locations"));
         spec.addOption(
-                valued(
-                        CONFIG_DIR_OPTION,
-                        "<dir>",
-                        "keep all data below <dir> instead of the system locations"));
-        spec.addOption(
-                valued(
-                        LOG_LEVEL_OPTION,
-                        "<level>",
-                        "ERROR, WARN, INFO, DEBUG or TRACE (overrides the preferences)"));
-        spec.addOption(
-                flag(HEADLESS_OPTION, "run without a window (the launcher of the desktop app)"));
-        spec.addOption(
-                valued(
-                        ADD_SERVERS_OPTION,
-                        "<server.met>",
-                        "add the servers of another client's server.met"));
-        spec.addOption(
-                valued(
-                        CONNECT_SERVER_OPTION,
-                        "<host:port>",
-                        "connect to this server (any known one when a"
-                                + " search needs a server)"));
+                valued(LOG_LEVEL_OPTION, "<level>", "ERROR, WARN, INFO, DEBUG or TRACE (overrides the preferences)"));
+        spec.addOption(flag(HEADLESS_OPTION, "run without a window (the launcher of the desktop app)"));
+        spec.addOption(valued(ADD_SERVERS_OPTION, "<server.met>", "add the servers of another client's server.met"));
+        spec.addOption(valued(
+                CONNECT_SERVER_OPTION,
+                "<host:port>",
+                "connect to this server (any known one when a" + " search needs a server)"));
         spec.addOption(valued(SEARCH_OPTION, "<expression>", "search, print the results and exit"));
         spec.addOption(flag(GLOBAL_OPTION, "search the other known servers too, over UDP"));
         spec.addOption(flag(KAD_OPTION, "search on Kad instead of the servers"));
-        spec.addOption(
-                valued(
-                        KAD_BOOTSTRAP_OPTION,
-                        "<host:port>",
-                        "join Kad through this node (its UDP port), e.g. a running eMule"));
-        spec.addOption(
-                valued(
-                        HELLO_OPTION,
-                        "<host:port>",
-                        "say hello to a client, print its answer and exit"));
-        spec.addOption(
-                OptionSpec.builder(DOWNLOAD_OPTION)
-                        .paramLabel("<ed2k link>")
-                        .type(List.class)
-                        .auxiliaryTypes(String.class)
-                        .arity("1..*")
-                        .description(
-                                "download the files of these links (from their sources and,"
-                                        + " with --connect-server, the server's), then exit")
-                        .build());
-        spec.addOption(
-                OptionSpec.builder(SHARE_OPTION)
-                        .paramLabel("<dir>")
-                        .type(List.class)
-                        .auxiliaryTypes(String.class)
-                        .arity("1..*")
-                        .description(
-                                "share the files of these directories too (remembered), besides"
-                                        + " the incoming one")
-                        .build());
-        spec.addOption(
-                valued(
-                        IMPORT_OPTION,
-                        "<dir>",
-                        "take servers, Kad contacts, known files, shared directories and"
-                                + " preferences from eMule's config directory (only read), then"
-                                + " exit"));
+        spec.addOption(valued(
+                KAD_BOOTSTRAP_OPTION,
+                "<host:port>",
+                "join Kad through this node (its UDP port), e.g. a running eMule"));
+        spec.addOption(valued(HELLO_OPTION, "<host:port>", "say hello to a client, print its answer and exit"));
+        spec.addOption(OptionSpec.builder(DOWNLOAD_OPTION)
+                .paramLabel("<ed2k link>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .arity("1..*")
+                .description("download the files of these links (from their sources and,"
+                        + " with --connect-server, the server's), then exit")
+                .build());
+        spec.addOption(OptionSpec.builder(SHARE_OPTION)
+                .paramLabel("<dir>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .arity("1..*")
+                .description("share the files of these directories too (remembered), besides" + " the incoming one")
+                .build());
+        spec.addOption(valued(
+                IMPORT_OPTION,
+                "<dir>",
+                "take servers, Kad contacts, known files, shared directories and"
+                        + " preferences from eMule's config directory (only read), then"
+                        + " exit"));
         spec.addOption(flag(DRY_RUN_OPTION, "with " + IMPORT_OPTION + ": only report"));
-        spec.addOption(
-                flag(
-                        IDENTITY_OPTION,
-                        "with "
-                                + IMPORT_OPTION
-                                + ": also take eMule's user hash, key and credits, from the"
-                                + " next start (never run both with one identity)"));
-        spec.addOption(
-                flag(
-                        IMPORT_DOWNLOADS_OPTION,
-                        "with "
-                                + IMPORT_OPTION
-                                + ": also copy eMule's downloads (paused ones while it runs)"));
-        spec.addOption(
-                flag(
-                        WEBUI_PASSWORD_OPTION,
-                        "ask for a password for the web interface, turn the interface on (from"
-                                + " the next start) and exit"));
-        spec.addOption(
-                valued(
-                        WEBUI_PORT_OPTION,
-                        "<port>",
-                        "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
-        spec.addOption(
-                flag(
-                        WEBUI_LAN_OPTION,
-                        "with "
-                                + WEBUI_PASSWORD_OPTION
-                                + ": let other computers connect (otherwise only this one)"));
-        spec.addOption(
-                OptionSpec.builder("-V", "--version")
-                        .versionHelp(true)
-                        .description("print the version and exit")
-                        .build());
+        spec.addOption(flag(
+                IDENTITY_OPTION,
+                "with "
+                        + IMPORT_OPTION
+                        + ": also take eMule's user hash, key and credits, from the"
+                        + " next start (never run both with one identity)"));
+        spec.addOption(flag(
+                IMPORT_DOWNLOADS_OPTION,
+                "with " + IMPORT_OPTION + ": also copy eMule's downloads (paused ones while it runs)"));
+        spec.addOption(flag(
+                WEBUI_PASSWORD_OPTION,
+                "ask for a password for the web interface, turn the interface on (from" + " the next start) and exit"));
+        spec.addOption(valued(
+                WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
+        spec.addOption(flag(
+                WEBUI_LAN_OPTION,
+                "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));
+        spec.addOption(OptionSpec.builder("-V", "--version")
+                .versionHelp(true)
+                .description("print the version and exit")
+                .build());
         spec.addOption(flag("--license", "print the GNU General Public License and exit"));
         spec.addOption(flag("--warranty", "print the warranty disclaimer and exit"));
         spec.addOption(flag("--notice", "print copyright, attribution and third-party notices"));
-        spec.addOption(
-                OptionSpec.builder(HASH_OPTION)
-                        .paramLabel("<file>")
-                        .type(List.class)
-                        .auxiliaryTypes(String.class)
-                        .arity("1..*")
-                        .description("print the ed2k link (with AICH hash) of each file and exit")
-                        .build());
-        spec.addOption(
-                OptionSpec.builder("-h", "--help")
-                        .usageHelp(true)
-                        .description("print this help and exit")
-                        .build());
+        spec.addOption(OptionSpec.builder(HASH_OPTION)
+                .paramLabel("<file>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .arity("1..*")
+                .description("print the ed2k link (with AICH hash) of each file and exit")
+                .build());
+        spec.addOption(OptionSpec.builder("-h", "--help")
+                .usageHelp(true)
+                .description("print this help and exit")
+                .build());
         return new CommandLine(spec);
     }
 
@@ -371,8 +328,7 @@ public record LaunchOptions(
                 .build();
     }
 
-    private static Optional<ServerAddress> address(ParseResult result, String option)
-            throws UsageException {
+    private static Optional<ServerAddress> address(ParseResult result, String option) throws UsageException {
         if (!result.hasMatchedOption(option)) {
             return Optional.empty();
         }
@@ -390,11 +346,7 @@ public record LaunchOptions(
         if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
             if (port || lan) {
                 throw new UsageException(
-                        WEBUI_PORT_OPTION
-                                + " and "
-                                + WEBUI_LAN_OPTION
-                                + " apply to "
-                                + WEBUI_PASSWORD_OPTION);
+                        WEBUI_PORT_OPTION + " and " + WEBUI_LAN_OPTION + " apply to " + WEBUI_PASSWORD_OPTION);
             }
             return Optional.empty();
         }
@@ -417,13 +369,12 @@ public record LaunchOptions(
         if (!result.hasMatchedOption(IMPORT_OPTION)) {
             return Optional.empty();
         }
-        return Optional.of(
-                new EmuleImport(
-                        toDirectory(result.matchedOptionValue(IMPORT_OPTION, "")),
-                        new ImportOptions(
-                                result.hasMatchedOption(DRY_RUN_OPTION),
-                                result.hasMatchedOption(IDENTITY_OPTION),
-                                result.hasMatchedOption(IMPORT_DOWNLOADS_OPTION))));
+        return Optional.of(new EmuleImport(
+                toDirectory(result.matchedOptionValue(IMPORT_OPTION, "")),
+                new ImportOptions(
+                        result.hasMatchedOption(DRY_RUN_OPTION),
+                        result.hasMatchedOption(IDENTITY_OPTION),
+                        result.hasMatchedOption(IMPORT_DOWNLOADS_OPTION))));
     }
 
     private static List<Ed2kLink.FileLink> fileLinks(List<String> values) throws UsageException {

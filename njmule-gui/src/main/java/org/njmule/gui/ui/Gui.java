@@ -26,8 +26,8 @@ import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 
 /**
- * What every screen needs: texts, formats, the engine model, the theme, the settings and a way to
- * tell the user something.
+ * What every screen needs: texts, formats, the engine model, the theme, the settings and a way to tell the user
+ * something.
  *
  * @param inform shows a short message to the user
  * @param relaunch rebuilds the window, after a language change

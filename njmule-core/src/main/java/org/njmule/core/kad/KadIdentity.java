@@ -30,8 +30,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Who we are on Kad: a random 128-bit id kept in {@code preferencesKad.dat}, and a secret from
- * which the verify key we give each address derives, kept in {@code kadudpkey.dat}.
+ * Who we are on Kad: a random 128-bit id kept in {@code preferencesKad.dat}, and a secret from which the verify key we
+ * give each address derives, kept in {@code kadudpkey.dat}.
  */
 public final class KadIdentity {
 
@@ -64,8 +64,7 @@ public final class KadIdentity {
         }
         if (id.isZero()) {
             id = UInt128.random(random);
-            AtomicFiles.writeBytes(
-                    file, PreferencesKadDat.write(new PreferencesKadDat.Contents(0, id)));
+            AtomicFiles.writeBytes(file, PreferencesKadDat.write(new PreferencesKadDat.Contents(0, id)));
         }
         Path keyFile = configDir.resolve(KEY_FILE_NAME);
         int key = 0;

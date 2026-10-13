@@ -44,7 +44,8 @@ import org.njmule.webui.WebUiSettings;
 @Timeout(30)
 class MainTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -92,22 +93,18 @@ class MainTest {
                                 + "h=VGMT4NSHA2AWVOR6EVYXQUGCNSONBWE5|/",
                         "3 bytes, 0 part hashes");
 
-        assertThat(this.run("--hash", this.dir.resolve("missing").toString()))
-                .isEqualTo(Main.EXIT_FAILURE);
+        assertThat(this.run("--hash", this.dir.resolve("missing").toString())).isEqualTo(Main.EXIT_FAILURE);
         assertThat(this.err.toString(UTF_8)).contains("Cannot hash");
     }
 
     @Test
     void runStartsTheEngineInTheGivenDirectoryAndStops() throws Exception {
         CompletableFuture<Void> stop = new CompletableFuture<>();
-        CompletableFuture<Integer> exit =
-                CompletableFuture.supplyAsync(
-                        () ->
-                                Main.run(
-                                        new String[] {"--config-dir", this.dir.toString()},
-                                        new PrintStream(this.out, true, UTF_8),
-                                        new PrintStream(this.err, true, UTF_8),
-                                        stop));
+        CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                new String[] {"--config-dir", this.dir.toString()},
+                new PrintStream(this.out, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                stop));
 
         Path prefs = this.dir.resolve("config/njmule.properties");
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
@@ -125,20 +122,10 @@ class MainTest {
     @Test
     void setsTheWebInterfacePasswordAndStartsTheInterface() throws Exception {
         String config = this.dir.toString();
-        assertThat(
-                        this.runWith(
-                                List.of("short", "short"),
-                                "--config-dir",
-                                config,
-                                "--webui-password"))
+        assertThat(this.runWith(List.of("short", "short"), "--config-dir", config, "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("at least " + Passwords.MIN_LENGTH);
-        assertThat(
-                        this.runWith(
-                                List.of("long enough", "different"),
-                                "--config-dir",
-                                config,
-                                "--webui-password"))
+        assertThat(this.runWith(List.of("long enough", "different"), "--config-dir", config, "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("differ");
         assertThat(this.runWith(List.of(), "--config-dir", config, "--webui-password"))
@@ -148,14 +135,13 @@ class MainTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        assertThat(
-                        this.runWith(
-                                List.of("long enough", "long enough"),
-                                "--config-dir",
-                                config,
-                                "--webui-password",
-                                "--webui-port",
-                                String.valueOf(port)))
+        assertThat(this.runWith(
+                        List.of("long enough", "long enough"),
+                        "--config-dir",
+                        config,
+                        "--webui-password",
+                        "--webui-port",
+                        String.valueOf(port)))
                 .isZero();
         assertThat(this.out.toString(UTF_8)).contains("http://localhost:" + port + "/");
         Path file = this.dir.resolve("config").resolve(WebUiSettings.FILE_NAME);
@@ -163,26 +149,20 @@ class MainTest {
         assertThat(Files.readString(file)).doesNotContain("long enough");
 
         CompletableFuture<Void> stop = new CompletableFuture<>();
-        CompletableFuture<Integer> exit =
-                CompletableFuture.supplyAsync(
-                        () ->
-                                Main.run(
-                                        new String[] {"--config-dir", config},
-                                        new PrintStream(this.out, true, UTF_8),
-                                        new PrintStream(this.err, true, UTF_8),
-                                        stop));
+        CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                new String[] {"--config-dir", config},
+                new PrintStream(this.out, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                stop));
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        while (!this.out.toString(UTF_8).contains("Web interface on port")
-                && System.nanoTime() < deadline) {
+        while (!this.out.toString(UTF_8).contains("Web interface on port") && System.nanoTime() < deadline) {
             Thread.sleep(20);
         }
-        HttpResponse<String> login =
-                HttpClient.newHttpClient()
-                        .send(
-                                HttpRequest.newBuilder(
-                                                URI.create("http://127.0.0.1:" + port + "/login"))
-                                        .build(),
-                                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> login = HttpClient.newHttpClient()
+                .send(
+                        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/login"))
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
         stop.complete(null);
         assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
         assertThat(login.statusCode()).isEqualTo(200);

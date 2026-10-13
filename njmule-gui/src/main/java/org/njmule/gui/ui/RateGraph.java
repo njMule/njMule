@@ -29,8 +29,8 @@ import javafx.scene.paint.Paint;
 import org.njmule.gui.model.EngineModel;
 
 /**
- * The download and upload rates of the last minutes as two filled lines, scaled to the highest rate
- * shown. Its colours come from the theme tokens of the legend swatches, so it follows the theme.
+ * The download and upload rates of the last minutes as two filled lines, scaled to the highest rate shown. Its colours
+ * come from the theme tokens of the legend swatches, so it follows the theme.
  */
 public final class RateGraph extends Region {
 

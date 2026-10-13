@@ -31,7 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
 /** Password hashes, sessions, settings and page building. */
 class WebUiPartsTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void hashesPasswordsWithSaltAndRounds() {
@@ -45,9 +46,12 @@ class WebUiPartsTest {
         assertThat(Passwords.matches("x".toCharArray(), fast)).isTrue();
         assertThat(Passwords.matches("x".toCharArray(), "")).isFalse();
         assertThat(Passwords.matches("x".toCharArray(), "md5$1$a$b")).isFalse();
-        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$0$AA$AA")).isFalse();
-        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$ten$AA$AA")).isFalse();
-        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$10$%%$AA")).isFalse();
+        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$0$AA$AA"))
+                .isFalse();
+        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$ten$AA$AA"))
+                .isFalse();
+        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$10$%%$AA"))
+                .isFalse();
 
         char[] used = "wipe me".toCharArray();
         Passwords.wipe(used);
@@ -99,11 +103,9 @@ class WebUiPartsTest {
         assertThat(mine.usable()).isTrue();
         assertThat(mine.toString()).doesNotContain("pbkdf2");
         assertThat(new WebUiSettings(true, 80, false, "").usable()).isFalse();
-        assertThatThrownBy(() -> new WebUiSettings(true, 0, false, ""))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new WebUiSettings(true, 0, false, "")).isInstanceOf(IllegalArgumentException.class);
 
-        Files.writeString(
-                this.dir.resolve(WebUiSettings.FILE_NAME), "port=99999\n", StandardCharsets.UTF_8);
+        Files.writeString(this.dir.resolve(WebUiSettings.FILE_NAME), "port=99999\n", StandardCharsets.UTF_8);
         assertThat(WebUiSettings.load(this.dir)).isEqualTo(WebUiSettings.DEFAULTS);
     }
 
@@ -115,8 +117,7 @@ class WebUiPartsTest {
         assertThat(Html.size(1536)).isEqualTo("1.50 KB");
         assertThat(Html.size(5L << 40)).isEqualTo("5.00 TB");
         assertThat(Html.rate(2048)).isEqualTo("2.0 KB/s");
-        assertThat(Html.hidden("a\"", "<b>"))
-                .isEqualTo("<input type=\"hidden\" name=\"a&quot;\" value=\"&lt;b&gt;\">");
+        assertThat(Html.hidden("a\"", "<b>")).isEqualTo("<input type=\"hidden\" name=\"a&quot;\" value=\"&lt;b&gt;\">");
         assertThat(Html.page("T<", "", "body")).contains("<h1>T&lt;</h1>").doesNotContain("nav");
         assertThat(Html.page("T", "tok", "body")).contains("<nav>", "value=\"tok\"");
     }

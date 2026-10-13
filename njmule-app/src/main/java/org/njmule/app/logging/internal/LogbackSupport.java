@@ -35,8 +35,7 @@ public final class LogbackSupport {
 
     // %replace neutralises CR/LF in messages, so that data from peers cannot forge log lines.
     private static final String SAFE_MSG = "%replace(%msg){'[\\r\\n]+', ' '}";
-    private static final String CONSOLE_PATTERN =
-            "%d{HH:mm:ss.SSS} %-5level %logger{20} - " + SAFE_MSG + "%n";
+    private static final String CONSOLE_PATTERN = "%d{HH:mm:ss.SSS} %-5level %logger{20} - " + SAFE_MSG + "%n";
     private static final String FILE_PATTERN =
             "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} - " + SAFE_MSG + "%n";
     private static final String FILE_APPENDER = "file";
@@ -60,8 +59,7 @@ public final class LogbackSupport {
             appender.setName(FILE_APPENDER);
             appender.setFile(logsDir.resolve(fileName).toString());
 
-            SizeAndTimeBasedRollingPolicy<ILoggingEvent> policy =
-                    new SizeAndTimeBasedRollingPolicy<>();
+            SizeAndTimeBasedRollingPolicy<ILoggingEvent> policy = new SizeAndTimeBasedRollingPolicy<>();
             policy.setContext(context);
             policy.setParent(appender);
             policy.setFileNamePattern(

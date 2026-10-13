@@ -30,8 +30,8 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
 /**
- * Rows kept by key: a new snapshot updates the rows in place, adds the new ones and drops the
- * vanished, so tables keep their selection and sort order. FX thread only.
+ * Rows kept by key: a new snapshot updates the rows in place, adds the new ones and drops the vanished, so tables keep
+ * their selection and sort order. FX thread only.
  *
  * @param <K> the key of a row
  * @param <V> the value a row shows

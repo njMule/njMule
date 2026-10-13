@@ -36,15 +36,13 @@ public sealed interface EngineEvent {
     record ServerConnecting(ServerInfo server) implements EngineEvent {}
 
     /**
-     * Logged in: {@code clientId} is our id on the server, a LowID when firewalled; {@code
-     * obfuscated} when the connection is.
+     * Logged in: {@code clientId} is our id on the server, a LowID when firewalled; {@code obfuscated} when the
+     * connection is.
      */
     record ServerConnected(ServerInfo server, long clientId, boolean lowId, boolean obfuscated)
             implements EngineEvent {}
 
-    /**
-     * The server connection ended or no attempt succeeded; {@code server} is the last one tried.
-     */
+    /** The server connection ended or no attempt succeeded; {@code server} is the last one tried. */
     record ServerDisconnected(Optional<ServerInfo> server, String reason) implements EngineEvent {}
 
     /** A line of the connected server's welcome or notice text. */
@@ -66,9 +64,7 @@ public sealed interface EngineEvent {
     /** A download was added. */
     record DownloadAdded(DownloadInfo download) implements EngineEvent {}
 
-    /**
-     * Data arrived, sources changed or the download was paused or resumed; at most once a second.
-     */
+    /** Data arrived, sources changed or the download was paused or resumed; at most once a second. */
     record DownloadProgress(DownloadInfo download) implements EngineEvent {}
 
     /** The download is verified and moved to {@code file}. */
@@ -107,8 +103,7 @@ public sealed interface EngineEvent {
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(
-                    this.address, this.userHash, java.util.Arrays.hashCode(this.image));
+            return java.util.Objects.hash(this.address, this.userHash, java.util.Arrays.hashCode(this.image));
         }
 
         @Override

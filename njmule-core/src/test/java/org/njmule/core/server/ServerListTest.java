@@ -30,7 +30,8 @@ import org.njmule.core.util.Ipv4;
 
 class ServerListTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void keepsOneEntryPerAddressAndRejectsUnusableOnes() {
@@ -81,9 +82,7 @@ class ServerListTest {
         ServerList list = new ServerList();
         list.addAll(List.of(server("5.6.7.8", 4242), server("8.7.6.5", 4661)));
         ServerList.Address address = new ServerList.Address(Ipv4.parse("5.6.7.8"), 4242);
-        list.update(
-                address,
-                s -> s.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "renamed")));
+        list.update(address, s -> s.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "renamed")));
         list.save(file);
 
         ServerList loaded = ServerList.load(file);

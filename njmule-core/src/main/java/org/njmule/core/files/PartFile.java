@@ -38,10 +38,9 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 
 /**
- * A file being downloaded, {@code NNN.part} with its metadata {@code NNN.part.met}: which byte
- * ranges are still missing, which are being requested, and the part hashes that verify each 9.28
- * MiB part. Used on the engine thread only; the data itself is read and written by {@link
- * PartFileStorage}.
+ * A file being downloaded, {@code NNN.part} with its metadata {@code NNN.part.met}: which byte ranges are still
+ * missing, which are being requested, and the part hashes that verify each 9.28 MiB part. Used on the engine thread
+ * only; the data itself is read and written by {@link PartFileStorage}.
  */
 public final class PartFile {
 
@@ -126,17 +125,14 @@ public final class PartFile {
         Path met = directory.resolve(fileName(number) + MET_SUFFIX);
         PartMet.Contents contents = AtomicFiles.read(met, in -> PartMet.read(in.readAllBytes()));
         long size = contents.size().orElseThrow();
-        PartFile file =
-                new PartFile(
-                        number,
-                        directory,
-                        contents.name().orElse(fileName(number)),
-                        size,
-                        contents.fileHash(),
-                        contents.aichHash(),
-                        contents.partHashes().size() == Ed2k.hashSetSize(size)
-                                ? contents.partHashes()
-                                : List.of());
+        PartFile file = new PartFile(
+                number,
+                directory,
+                contents.name().orElse(fileName(number)),
+                size,
+                contents.fileHash(),
+                contents.aichHash(),
+                contents.partHashes().size() == Ed2k.hashSetSize(size) ? contents.partHashes() : List.of());
         for (PartMet.Gap gap : contents.gaps()) {
             file.missing.add(Range.closedOpen(gap.start(), gap.end()));
         }
@@ -153,20 +149,14 @@ public final class PartFile {
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), this.size));
         tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), this.status == Status.PAUSED ? 1 : 0));
-        this.aichHash.ifPresent(
-                h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
+        this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
         for (Range<Long> gap : this.missing.asRanges()) {
             gaps.add(new PartMet.Gap(gap.lowerEndpoint(), gap.upperEndpoint()));
         }
-        PartMet.Contents contents =
-                new PartMet.Contents(
-                                PartMet.VERSION,
-                                System.currentTimeMillis() / 1000,
-                                this.hash,
-                                this.partHashes,
-                                tags)
-                        .withGaps(gaps);
+        PartMet.Contents contents = new PartMet.Contents(
+                        PartMet.VERSION, System.currentTimeMillis() / 1000, this.hash, this.partHashes, tags)
+                .withGaps(gaps);
         AtomicFiles.writeBytes(this.metFile(), PartMet.write(contents));
     }
 
@@ -254,9 +244,7 @@ public final class PartFile {
         if (this.size < Ed2k.PARTSIZE) {
             return Optional.of(this.hash);
         }
-        return this.partHashes.isEmpty()
-                ? Optional.empty()
-                : Optional.of(this.partHashes.get(part));
+        return this.partHashes.isEmpty() ? Optional.empty() : Optional.of(this.partHashes.get(part));
     }
 
     public boolean isComplete() {
@@ -294,9 +282,9 @@ public final class PartFile {
     }
 
     /**
-     * Up to {@code max} blocks to request from a source that has {@code sourceParts}: missing and
-     * not already requested, from the rarest incomplete part the source has. They are marked as
-     * requested until {@link #written} or {@link #release}.
+     * Up to {@code max} blocks to request from a source that has {@code sourceParts}: missing and not already
+     * requested, from the rarest incomplete part the source has. They are marked as requested until {@link #written} or
+     * {@link #release}.
      */
     public List<Block> nextBlocks(BitSet sourceParts, int max) {
         List<Block> blocks = new ArrayList<>(max);
@@ -304,8 +292,7 @@ public final class PartFile {
         if (part < 0) {
             return blocks;
         }
-        RangeSet<Long> wanted =
-                TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+        RangeSet<Long> wanted = TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
         wanted.removeAll(this.requested);
         for (Range<Long> gap : wanted.asRanges()) {
             for (long start = gap.lowerEndpoint();
@@ -371,8 +358,7 @@ public final class PartFile {
         for (int part = sourceParts.nextSetBit(0);
                 part >= 0 && part < this.partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
-            RangeSet<Long> wanted =
-                    TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+            RangeSet<Long> wanted = TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
             wanted.removeAll(this.requested);
             if (wanted.isEmpty()) {
                 continue;

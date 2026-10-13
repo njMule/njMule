@@ -29,8 +29,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Our ports forwarded by the router while njMule runs: found and mapped on a virtual thread at the
- * start, unmapped at the end. Only the mappings made here are ever removed.
+ * Our ports forwarded by the router while njMule runs: found and mapped on a virtual thread at the start, unmapped at
+ * the end. Only the mappings made here are ever removed.
  */
 public final class PortForwarding implements AutoCloseable {
 
@@ -52,16 +52,14 @@ public final class PortForwarding implements AutoCloseable {
     }
 
     /**
-     * Starts forwarding {@code tcpPort} and, when present, {@code udpPort}; {@code report} gets one
-     * line for the log when it is done or failed.
+     * Starts forwarding {@code tcpPort} and, when present, {@code udpPort}; {@code report} gets one line for the log
+     * when it is done or failed.
      */
     public static PortForwarding start(
             InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Consumer<String> report) {
         PortForwarding[] self = new PortForwarding[1];
         Thread worker =
-                Thread.ofVirtual()
-                        .name("njmule-upnp")
-                        .unstarted(() -> self[0].run(ssdp, tcpPort, udpPort, report));
+                Thread.ofVirtual().name("njmule-upnp").unstarted(() -> self[0].run(ssdp, tcpPort, udpPort, report));
         self[0] = new PortForwarding(worker);
         worker.start();
         return self[0];
@@ -81,8 +79,7 @@ public final class PortForwarding implements AutoCloseable {
         this.worker.join(wait);
     }
 
-    private void run(
-            InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Consumer<String> report) {
+    private void run(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Consumer<String> report) {
         try {
             Optional<Igd> found = Igd.discover(ssdp, DISCOVERY);
             if (found.isEmpty()) {
@@ -102,10 +99,7 @@ public final class PortForwarding implements AutoCloseable {
             report.accept(
                     this.mapped.isEmpty()
                             ? "UPnP: the router at " + host + " refused to forward our ports"
-                            : "UPnP: "
-                                    + String.join(" and ", this.mappings())
-                                    + " forwarded by "
-                                    + host);
+                            : "UPnP: " + String.join(" and ", this.mappings()) + " forwarded by " + host);
         } catch (IOException e) {
             report.accept("UPnP failed: " + e.getMessage());
         }
@@ -127,8 +121,7 @@ public final class PortForwarding implements AutoCloseable {
             try {
                 igd.deleteMapping(m.protocol(), m.port());
             } catch (IOException e) {
-                logger.debug(
-                        "UPnP: cannot remove {} {}: {}", m.protocol(), m.port(), e.getMessage());
+                logger.debug("UPnP: cannot remove {} {}: {}", m.protocol(), m.port(), e.getMessage());
             }
         }
         this.mapped.clear();

@@ -36,8 +36,8 @@ import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.scene.Scene;
 
 /**
- * The AtlantaFX theme of the interface, light or dark (by default as the system is), with njMule's
- * own colour tokens in {@code njmule.css}. FX thread only.
+ * The AtlantaFX theme of the interface, light or dark (by default as the system is), with njMule's own colour tokens in
+ * {@code njmule.css}. FX thread only.
  */
 public final class Themes {
 
@@ -77,7 +77,8 @@ public final class Themes {
     /** Styles {@code scene} from now on, also when the theme changes. */
     public void attach(Scene scene) {
         this.scenes.add(Objects.requireNonNull(scene, "scene"));
-        String css = Objects.requireNonNull(Themes.class.getResource(STYLESHEET)).toExternalForm();
+        String css =
+                Objects.requireNonNull(Themes.class.getResource(STYLESHEET)).toExternalForm();
         if (!scene.getStylesheets().contains(css)) {
             scene.getStylesheets().add(css);
         }
@@ -104,12 +105,11 @@ public final class Themes {
     }
 
     private void apply() {
-        boolean wantsDark =
-                switch (this.mode) {
-                    case DARK -> true;
-                    case LIGHT -> false;
-                    case SYSTEM -> Platform.getPreferences().getColorScheme() == ColorScheme.DARK;
-                };
+        boolean wantsDark = switch (this.mode) {
+            case DARK -> true;
+            case LIGHT -> false;
+            case SYSTEM -> Platform.getPreferences().getColorScheme() == ColorScheme.DARK;
+        };
         Theme theme = theme(this.family, wantsDark);
         Application.setUserAgentStylesheet(theme.getUserAgentStylesheet());
         this.dark.set(theme.isDarkMode());

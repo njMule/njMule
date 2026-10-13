@@ -33,7 +33,8 @@ import org.njmule.gui.infra.GuiSettings;
 @Timeout(60)
 class DesktopAppTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @BeforeAll
     static void toolkit() throws Exception {
@@ -47,24 +48,20 @@ class DesktopAppTest {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        Files.writeString(
-                config.resolve("njmule.properties"),
-                "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
+        Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         DesktopApp app = DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
         AtomicReference<Stage> stage = new AtomicReference<>();
         try {
-            FxTesting.onFx(
-                    () -> {
-                        stage.set(new Stage());
-                        app.show(stage.get());
-                    });
+            FxTesting.onFx(() -> {
+                stage.set(new Stage());
+                app.show(stage.get());
+            });
             assertThat(FxTesting.onFx(() -> stage.get().getTitle())).startsWith("njMule");
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("transfers");
-            FxTesting.onFx(
-                    () -> {
-                        app.window().show("search");
-                        app.relaunch();
-                    });
+            FxTesting.onFx(() -> {
+                app.window().show("search");
+                app.relaunch();
+            });
             assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("search");
             assertThat(app.engine().isRunning()).isTrue();
             FxTesting.onFx(() -> stage.get().close());

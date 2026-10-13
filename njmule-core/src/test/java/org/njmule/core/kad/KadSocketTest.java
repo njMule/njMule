@@ -35,7 +35,8 @@ import org.njmule.core.util.Ipv4;
 @Timeout(30)
 class KadSocketTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final SecureRandom random = new SecureRandom();
@@ -55,11 +56,10 @@ class KadSocketTest {
             KadNode b = this.node("b", socketB);
             int loopback = Ipv4.of(127, 0, 0, 1);
 
-            this.onLoop(
-                    () -> {
-                        a.bootstrap(loopback, socketB.port());
-                        return null;
-                    });
+            this.onLoop(() -> {
+                a.bootstrap(loopback, socketB.port());
+                return null;
+            });
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (this.onLoop(a::contacts) == 0) {
                 assertThat(System.nanoTime()).isLessThan(deadline);
@@ -68,7 +68,9 @@ class KadSocketTest {
             // The answer came back obfuscated with the key A gave B: B is a verified contact.
             assertThat(this.onLoop(a::verifiedContacts)).isEqualTo(1);
             assertThat(this.onLoop(a::isConnected)).isTrue();
-            assertThat(this.onLoop(b::contacts)).as("a bootstrap request adds nobody").isZero();
+            assertThat(this.onLoop(b::contacts))
+                    .as("a bootstrap request adds nobody")
+                    .isZero();
         }
     }
 
@@ -80,15 +82,14 @@ class KadSocketTest {
 
     private KadNode node(String name, KadSocket socket) throws Exception {
         Path config = this.dir.resolve(name);
-        KadNode node =
-                new KadNode(
-                        KadIdentity.loadOrCreate(config, this.random),
-                        socket,
-                        (ip, port, hash, options) -> {},
-                        new KadNode.Settings(4662, Hash16.ZERO, 1, ip -> true),
-                        config,
-                        this.random,
-                        Ticker.systemTicker());
+        KadNode node = new KadNode(
+                KadIdentity.loadOrCreate(config, this.random),
+                socket,
+                (ip, port, hash, options) -> {},
+                new KadNode.Settings(4662, Hash16.ZERO, 1, ip -> true),
+                config,
+                this.random,
+                Ticker.systemTicker());
         socket.deliverTo(node);
         return node;
     }

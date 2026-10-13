@@ -28,10 +28,9 @@ import java.util.function.IntPredicate;
 import org.njmule.core.persist.format.NodesDat;
 
 /**
- * Our view of the Kad network: a binary tree of zones by distance from our id, whose leaves hold up
- * to {@value #K} contacts. The tree is complete down to {@value #KBASE} levels; deeper, only the
- * zones closest to us split, so we know our neighbourhood best. Old contacts are never pushed out
- * by new ones. Engine thread only.
+ * Our view of the Kad network: a binary tree of zones by distance from our id, whose leaves hold up to {@value #K}
+ * contacts. The tree is complete down to {@value #KBASE} levels; deeper, only the zones closest to us split, so we know
+ * our neighbourhood best. Old contacts are never pushed out by new ones. Engine thread only.
  */
 final class RoutingTable {
 
@@ -101,9 +100,7 @@ final class RoutingTable {
     private final Map<Integer, KadContact> byIp = new HashMap<>();
     private final Map<Integer, Integer> perSubnet = new HashMap<>();
 
-    /**
-     * @param lan addresses (host order) exempt from the subnet limits
-     */
+    /** @param lan addresses (host order) exempt from the subnet limits */
     RoutingTable(UInt128 own, IntPredicate lan) {
         this.own = Objects.requireNonNull(own, "own");
         this.lan = Objects.requireNonNull(lan, "lan");
@@ -130,11 +127,10 @@ final class RoutingTable {
     }
 
     /**
-     * Adds {@code contact}, or updates the known contact with its id when {@code update} is set;
-     * {@code senderKey} is the key the contact gave us in this packet, if any.
+     * Adds {@code contact}, or updates the known contact with its id when {@code update} is set; {@code senderKey} is
+     * the key the contact gave us in this packet, if any.
      */
-    Outcome add(
-            KadContact contact, boolean update, NodesDat.UdpKey senderKey, int ourIp, long now) {
+    Outcome add(KadContact contact, boolean update, NodesDat.UdpKey senderKey, int ourIp, long now) {
         if (contact.id().equals(this.own)
                 || contact.version() <= 1
                 || contact.udpPort() < 1
@@ -169,8 +165,7 @@ final class RoutingTable {
         }
     }
 
-    private Outcome update(
-            KadContact known, KadContact fresh, NodesDat.UdpKey senderKey, int ourIp, long now) {
+    private Outcome update(KadContact known, KadContact fresh, NodesDat.UdpKey senderKey, int ourIp, long now) {
         // A key bound to our address proves who the contact is: another key is someone else.
         NodesDat.UdpKey stored = known.udpKey();
         if (stored.key() != 0 && stored.ip() == ourIp && senderKey.key() != stored.key()) {
@@ -283,10 +278,8 @@ final class RoutingTable {
         if (zone.level > 0) {
             UInt128 prefix = shiftLeft(zone.index, UInt128.BITS - zone.level);
             UInt128 mask = shiftLeft(ones(), UInt128.BITS - zone.level);
-            distance =
-                    new UInt128(
-                            prefix.high() | (distance.high() & ~mask.high()),
-                            prefix.low() | (distance.low() & ~mask.low()));
+            distance = new UInt128(
+                    prefix.high() | (distance.high() & ~mask.high()), prefix.low() | (distance.low() & ~mask.low()));
         }
         return distance.xor(this.own);
     }
@@ -302,9 +295,7 @@ final class RoutingTable {
         }
         this.consolidate(zone.near);
         this.consolidate(zone.far);
-        if (zone.near.isLeaf()
-                && zone.far.isLeaf()
-                && zone.near.bin.size() + zone.far.bin.size() < K / 2) {
+        if (zone.near.isLeaf() && zone.far.isLeaf() && zone.near.bin.size() + zone.far.bin.size() < K / 2) {
             zone.bin.addAll(zone.near.bin);
             zone.bin.addAll(zone.far.bin);
             zone.near = null;
@@ -321,9 +312,7 @@ final class RoutingTable {
     }
 
     private boolean canSplit(Zone zone) {
-        return zone.level < MAX_LEVEL
-                && (isSmall(zone.index) || zone.level < KBASE)
-                && zone.bin.size() == K;
+        return zone.level < MAX_LEVEL && (isSmall(zone.index) || zone.level < KBASE) && zone.bin.size() == K;
     }
 
     private void split(Zone zone) {

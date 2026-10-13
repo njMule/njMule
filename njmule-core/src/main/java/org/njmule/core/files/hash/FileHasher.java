@@ -52,11 +52,10 @@ public final class FileHasher {
     }
 
     /**
-     * Hashes exactly {@code size} bytes from {@code in}; {@code progress} receives the bytes hashed
-     * so far after each block. Interrupting the thread cancels the hashing.
+     * Hashes exactly {@code size} bytes from {@code in}; {@code progress} receives the bytes hashed so far after each
+     * block. Interrupting the thread cancels the hashing.
      */
-    public static Result hash(ReadableByteChannel in, long size, LongConsumer progress)
-            throws IOException {
+    public static Result hash(ReadableByteChannel in, long size, LongConsumer progress) throws IOException {
         Ed2k.checkSize(size);
         MD4Digest md4 = new MD4Digest();
         MessageDigest sha1 = AichTree.sha1();
@@ -85,22 +84,18 @@ public final class FileHasher {
 
         Ed2kHashSet ed2k;
         if (size < Ed2k.PARTSIZE) {
-            ed2k =
-                    new Ed2kHashSet(
-                            size, size == 0 ? Ed2k.EMPTY_PART_HASH : parts.getFirst(), List.of());
+            ed2k = new Ed2kHashSet(size, size == 0 ? Ed2k.EMPTY_PART_HASH : parts.getFirst(), List.of());
         } else {
             if (size % Ed2k.PARTSIZE == 0) {
                 parts.add(Ed2k.EMPTY_PART_HASH);
             }
             ed2k = new Ed2kHashSet(size, Ed2k.fileHash(parts), parts);
         }
-        Optional<AichTree> aich =
-                size == 0 ? Optional.empty() : Optional.of(AichTree.fromBlockHashes(size, blocks));
+        Optional<AichTree> aich = size == 0 ? Optional.empty() : Optional.of(AichTree.fromBlockHashes(size, blocks));
         return new Result(ed2k, aich);
     }
 
-    private static void readFully(ReadableByteChannel in, ByteBuffer buffer, int length)
-            throws IOException {
+    private static void readFully(ReadableByteChannel in, ByteBuffer buffer, int length) throws IOException {
         buffer.clear().limit(length);
         while (buffer.hasRemaining()) {
             if (in.read(buffer) < 0) {

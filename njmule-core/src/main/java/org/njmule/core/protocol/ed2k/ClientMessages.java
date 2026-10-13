@@ -32,8 +32,8 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 
 /**
- * Messages between two clients for a download, after the hello: asking for a file, its parts and
- * hash set, a place in the upload queue, then blocks of data.
+ * Messages between two clients for a download, after the hello: asking for a file, its parts and hash set, a place in
+ * the upload queue, then blocks of data.
  */
 public final class ClientMessages {
 
@@ -70,8 +70,8 @@ public final class ClientMessages {
     }
 
     /**
-     * OP_FILESTATUS: the parts the uploader has, one bit per eD2K part, lowest bit first; a count
-     * of zero means the whole file.
+     * OP_FILESTATUS: the parts the uploader has, one bit per eD2K part, lowest bit first; a count of zero means the
+     * whole file.
      */
     public record FileStatus(Hash16 file, int partCount, BitSet parts) {
         public FileStatus {
@@ -172,8 +172,8 @@ public final class ClientMessages {
     }
 
     /**
-     * OP_REQUESTPARTS: three ranges, end exclusive; unused slots are empty ranges. Files above 4 GB
-     * need the 64-bit OP_REQUESTPARTS_I64.
+     * OP_REQUESTPARTS: three ranges, end exclusive; unused slots are empty ranges. Files above 4 GB need the 64-bit
+     * OP_REQUESTPARTS_I64.
      */
     public record RequestParts(Hash16 file, List<Range> ranges) {
         public RequestParts {
@@ -254,12 +254,8 @@ public final class ClientMessages {
             Hash16 file = in.hash16();
             long start = wide ? in.u64() : in.u32();
             long end = wide ? in.u64() : in.u32();
-            if (!isOffset(start)
-                    || !isOffset(end)
-                    || end < start
-                    || end - start != in.remaining()) {
-                throw new DecodeException(
-                        "data of " + in.remaining() + " bytes for " + start + "-" + end);
+            if (!isOffset(start) || !isOffset(end) || end < start || end - start != in.remaining()) {
+                throw new DecodeException("data of " + in.remaining() + " bytes for " + start + "-" + end);
             }
             return new SendingPart(file, start, end, in.rest());
         }
@@ -290,8 +286,8 @@ public final class ClientMessages {
     }
 
     /**
-     * OP_COMPRESSEDPART(_I64): one chunk of the zlib stream of the block that starts at {@code
-     * blockStart}; every chunk repeats the stream's total size.
+     * OP_COMPRESSEDPART(_I64): one chunk of the zlib stream of the block that starts at {@code blockStart}; every chunk
+     * repeats the stream's total size.
      */
     // A message decoded or about to be sent, never compared; copying the data would cost.
     @SuppressWarnings("ArrayRecordComponent")
@@ -316,8 +312,7 @@ public final class ClientMessages {
 
         @Override
         public int hashCode() {
-            return Objects.hash(this.file, this.blockStart, this.compressedSize) * 31
-                    + Arrays.hashCode(this.chunk);
+            return Objects.hash(this.file, this.blockStart, this.compressedSize) * 31 + Arrays.hashCode(this.chunk);
         }
 
         @Override
@@ -343,9 +338,7 @@ public final class ClientMessages {
             out.u32(this.compressedSize).bytes(this.chunk);
             return Packet.of(
                     Protocol.EMULE,
-                    wide
-                            ? Opcodes.Extended.COMPRESSEDPART_I64.code()
-                            : Opcodes.Extended.COMPRESSEDPART.code(),
+                    wide ? Opcodes.Extended.COMPRESSEDPART_I64.code() : Opcodes.Extended.COMPRESSEDPART.code(),
                     out);
         }
 

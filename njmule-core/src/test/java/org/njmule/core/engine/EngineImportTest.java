@@ -44,7 +44,8 @@ import org.njmule.core.persist.format.PreferencesDat;
 @Timeout(60)
 class EngineImportTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void importedDownloadsGoOnAndTheIdentityFollowsAtTheNextStart() throws Exception {
@@ -54,20 +55,16 @@ class EngineImportTest {
         AppDirectories dirs = this.directories(port);
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            ImportReport report =
-                    engine.importFromEmule(emule.config, new ImportOptions(false, true, true))
-                            .get(30, TimeUnit.SECONDS);
+            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, true, true))
+                    .get(30, TimeUnit.SECONDS);
 
             assertThat(report.items())
                     .filteredOn(i -> i.outcome() == ImportReport.Outcome.FAILED)
                     .isEmpty();
             assertThat(engine.preferences().nick()).isEqualTo(SyntheticEmuleProfile.NICK);
             assertThat(engine.preferences().tcpPort()).isEqualTo(port);
-            assertThat(
-                            NodesDat.read(
-                                            Files.readAllBytes(
-                                                    dirs.config().resolve(KadNode.NODES_FILE)))
-                                    .contacts())
+            assertThat(NodesDat.read(Files.readAllBytes(dirs.config().resolve(KadNode.NODES_FILE)))
+                            .contacts())
                     .hasSize(3);
             // Both copies are one file: the complete one finishes, the other is then known.
             Path finished = engine.preferences().effectiveIncomingDir(dirs).resolve("complete.bin");
@@ -80,8 +77,7 @@ class EngineImportTest {
             List<DownloadInfo> downloads = engine.downloads().get(5, TimeUnit.SECONDS);
             assertThat(downloads).hasSize(1);
             assertThat(downloads.getFirst().hash()).isEqualTo(emule.halfHash);
-            assertThat(downloads.getFirst().completed())
-                    .isEqualTo(SyntheticEmuleProfile.DOWNLOAD_SIZE / 2);
+            assertThat(downloads.getFirst().completed()).isEqualTo(SyntheticEmuleProfile.DOWNLOAD_SIZE / 2);
             assertThat(engine.sharedFiles().get(5, TimeUnit.SECONDS))
                     .anyMatch(f -> f.name().equals("shared.bin"));
             assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).isDirectory();
@@ -90,16 +86,10 @@ class EngineImportTest {
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
             assertThat(engine.isRunning()).isTrue();
             assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-            assertThat(
-                            PreferencesDat.read(
-                                            Files.readAllBytes(
-                                                    dirs.config().resolve(UserHashStore.FILE_NAME)))
-                                    .userHash())
-                    .isEqualTo(
-                            PreferencesDat.read(
-                                            Files.readAllBytes(
-                                                    emule.config.resolve(UserHashStore.FILE_NAME)))
-                                    .userHash());
+            assertThat(PreferencesDat.read(Files.readAllBytes(dirs.config().resolve(UserHashStore.FILE_NAME)))
+                            .userHash())
+                    .isEqualTo(PreferencesDat.read(Files.readAllBytes(emule.config.resolve(UserHashStore.FILE_NAME)))
+                            .userHash());
         }
         assertThat(emule.fingerprint()).isEqualTo(before);
     }
@@ -110,9 +100,8 @@ class EngineImportTest {
         AppDirectories dirs = this.directories(freePort());
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            ImportReport report =
-                    engine.importFromEmule(emule.config, new ImportOptions(true, true, true))
-                            .get(30, TimeUnit.SECONDS);
+            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(true, true, true))
+                    .get(30, TimeUnit.SECONDS);
 
             assertThat(report.dryRun()).isTrue();
             assertThat(engine.preferences().nick()).isNotEqualTo(SyntheticEmuleProfile.NICK);
@@ -126,8 +115,7 @@ class EngineImportTest {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         return dirs;
     }
 

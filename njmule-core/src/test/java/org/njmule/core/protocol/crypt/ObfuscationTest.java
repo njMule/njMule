@@ -57,8 +57,7 @@ class ObfuscationTest {
 
     private static final HexFormat HEX = HexFormat.of();
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final Hash16 USER_HASH =
-            Hash16.of(HEX.parseHex("000102030405060708090a0b0c0d0e0f"));
+    private static final Hash16 USER_HASH = Hash16.of(HEX.parseHex("000102030405060708090a0b0c0d0e0f"));
     private static final Map<String, String> GOLDEN = golden();
 
     @Test
@@ -74,8 +73,7 @@ class ObfuscationTest {
 
         assertThat(a.publicValue()).hasSize(Dh768.SIZE);
         assertThat(a.sharedSecret(b.publicValue())).isEqualTo(b.sharedSecret(a.publicValue()));
-        assertThatThrownBy(() -> a.sharedSecret(new byte[Dh768.SIZE]))
-                .isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> a.sharedSecret(new byte[Dh768.SIZE])).isInstanceOf(DecodeException.class);
         byte[] one = new byte[Dh768.SIZE];
         one[Dh768.SIZE - 1] = 1;
         assertThatThrownBy(() -> a.sharedSecret(one)).isInstanceOf(DecodeException.class);
@@ -98,24 +96,16 @@ class ObfuscationTest {
         for (int i = 0; i < 96; i++) {
             secret[i] = (byte) (3 * i + 1);
         }
-        assertThat(keyStream(StreamObfuscation.serverKey(secret, 34)))
-                .isEqualTo(GOLDEN.get("tcp-server magic=34"));
-        assertThat(keyStream(StreamObfuscation.serverKey(secret, 203)))
-                .isEqualTo(GOLDEN.get("tcp-server magic=203"));
+        assertThat(keyStream(StreamObfuscation.serverKey(secret, 34))).isEqualTo(GOLDEN.get("tcp-server magic=34"));
+        assertThat(keyStream(StreamObfuscation.serverKey(secret, 203))).isEqualTo(GOLDEN.get("tcp-server magic=203"));
     }
 
     @Test
     void clientRequestStartsInClearAndIsReadableWithTheReceiverKey() throws Exception {
         ByteArrayOutputStream sent = new ByteArrayOutputStream();
         // The answer never comes: only the request matters here.
-        assertThatThrownBy(
-                        () ->
-                                StreamObfuscation.connectToClient(
-                                        new ByteArrayInputStream(new byte[0]),
-                                        sent,
-                                        USER_HASH,
-                                        RANDOM,
-                                        0))
+        assertThatThrownBy(() -> StreamObfuscation.connectToClient(
+                        new ByteArrayInputStream(new byte[0]), sent, USER_HASH, RANDOM, 0))
                 .isInstanceOf(DecodeException.class);
         byte[] request = sent.toByteArray();
 
@@ -131,17 +121,12 @@ class ObfuscationTest {
     @Test
     void clientsCompleteTheHandshakeAndShareTheStream() throws Exception {
         Duplex duplex = new Duplex();
-        Ciphers[] result =
-                duplex.run(
-                        () ->
-                                StreamObfuscation.connectToClient(
-                                        duplex.aIn, duplex.aOut, USER_HASH, RANDOM, 128),
-                        () -> {
-                            int marker = duplex.bIn.read();
-                            assertThat(Protocol.isTcp(marker)).isFalse();
-                            return StreamObfuscation.acceptFromClient(
-                                    duplex.bIn, duplex.bOut, USER_HASH, RANDOM, 128);
-                        });
+        Ciphers[] result = duplex.run(
+                () -> StreamObfuscation.connectToClient(duplex.aIn, duplex.aOut, USER_HASH, RANDOM, 128), () -> {
+                    int marker = duplex.bIn.read();
+                    assertThat(Protocol.isTcp(marker)).isFalse();
+                    return StreamObfuscation.acceptFromClient(duplex.bIn, duplex.bOut, USER_HASH, RANDOM, 128);
+                });
 
         assertThat(roundTrip(result[0].send(), result[1].receive(), "hello")).isEqualTo("hello");
         assertThat(roundTrip(result[1].send(), result[0].receive(), "answer")).isEqualTo("answer");
@@ -152,45 +137,32 @@ class ObfuscationTest {
         Duplex duplex = new Duplex();
         Hash16 other = Hash16.of(new byte[16]);
 
-        assertThatThrownBy(
-                        () ->
-                                duplex.run(
-                                        () ->
-                                                StreamObfuscation.connectToClient(
-                                                        duplex.aIn, duplex.aOut, other, RANDOM, 0),
-                                        () -> {
-                                            duplex.bIn.read();
-                                            try {
-                                                return StreamObfuscation.acceptFromClient(
-                                                        duplex.bIn,
-                                                        duplex.bOut,
-                                                        USER_HASH,
-                                                        RANDOM,
-                                                        0);
-                                            } finally {
-                                                duplex.bOut.close();
-                                            }
-                                        }))
+        assertThatThrownBy(() -> duplex.run(
+                        () -> StreamObfuscation.connectToClient(duplex.aIn, duplex.aOut, other, RANDOM, 0), () -> {
+                            duplex.bIn.read();
+                            try {
+                                return StreamObfuscation.acceptFromClient(
+                                        duplex.bIn, duplex.bOut, USER_HASH, RANDOM, 0);
+                            } finally {
+                                duplex.bOut.close();
+                            }
+                        }))
                 .hasRootCauseInstanceOf(DecodeException.class);
     }
 
     @Test
     void serverHandshakeAgreesOnKeys() throws Exception {
         Duplex duplex = new Duplex();
-        Ciphers[] result =
-                duplex.run(
-                        () -> {
-                            Ciphers c =
-                                    StreamObfuscation.connectToServer(
-                                            duplex.aIn, duplex.aOut, RANDOM);
-                            duplex.aOut.flush();
-                            return c;
-                        },
-                        () -> {
-                            duplex.bIn.read();
-                            return StreamObfuscation.acceptAsServer(
-                                    duplex.bIn, duplex.bOut, RANDOM);
-                        });
+        Ciphers[] result = duplex.run(
+                () -> {
+                    Ciphers c = StreamObfuscation.connectToServer(duplex.aIn, duplex.aOut, RANDOM);
+                    duplex.aOut.flush();
+                    return c;
+                },
+                () -> {
+                    duplex.bIn.read();
+                    return StreamObfuscation.acceptAsServer(duplex.bIn, duplex.bOut, RANDOM);
+                });
 
         assertThat(roundTrip(result[0].send(), result[1].receive(), "login")).isEqualTo("login");
         assertThat(roundTrip(result[1].send(), result[0].receive(), "id")).isEqualTo("id");
@@ -199,44 +171,24 @@ class ObfuscationTest {
     @Test
     void datagramsMatchTheGoldenVectors() {
         byte[] ip = {(byte) 192, (byte) 168, 1, 10};
-        assertThat(
-                        HEX.formatHex(
-                                DatagramObfuscation.encryptForClient(
-                                        packet("udp-ed2k"),
-                                        USER_HASH,
-                                        ip,
-                                        0x5B,
-                                        HEX.parseHex("3412"))))
+        assertThat(HEX.formatHex(DatagramObfuscation.encryptForClient(
+                        packet("udp-ed2k"), USER_HASH, ip, 0x5B, HEX.parseHex("3412"))))
                 .isEqualTo(datagram("udp-ed2k"));
 
         Hash16 kadId = Hash16.of(HEX.parseHex("101112131415161718191a1b1c1d1e1f"));
-        assertThat(
-                        HEX.formatHex(
-                                DatagramObfuscation.encryptForKad(
-                                        packet("udp-kad-id"),
-                                        Optional.of(kadId),
-                                        0x11223344,
-                                        0x55667788,
-                                        0x58,
-                                        HEX.parseHex("7856"))))
+        assertThat(HEX.formatHex(DatagramObfuscation.encryptForKad(
+                        packet("udp-kad-id"), Optional.of(kadId), 0x11223344, 0x55667788, 0x58, HEX.parseHex("7856"))))
                 .isEqualTo(datagram("udp-kad-id"));
-        assertThat(
-                        HEX.formatHex(
-                                DatagramObfuscation.encryptForKad(
-                                        packet("udp-kad-verify"),
-                                        Optional.empty(),
-                                        0xCAFEBABE,
-                                        0x55667788,
-                                        0x5A,
-                                        HEX.parseHex("7856"))))
+        assertThat(HEX.formatHex(DatagramObfuscation.encryptForKad(
+                        packet("udp-kad-verify"),
+                        Optional.empty(),
+                        0xCAFEBABE,
+                        0x55667788,
+                        0x5A,
+                        HEX.parseHex("7856"))))
                 .isEqualTo(datagram("udp-kad-verify"));
-        assertThat(
-                        HEX.formatHex(
-                                DatagramObfuscation.encryptForServer(
-                                        packet("udp-server"),
-                                        0xDEADBEEF,
-                                        0x42,
-                                        HEX.parseHex("9abc"))))
+        assertThat(HEX.formatHex(DatagramObfuscation.encryptForServer(
+                        packet("udp-server"), 0xDEADBEEF, 0x42, HEX.parseHex("9abc"))))
                 .isEqualTo(datagram("udp-server"));
     }
 
@@ -250,33 +202,19 @@ class ObfuscationTest {
         byte[] plainHello = UdpFraming.encode(hello);
 
         Received ed2k =
-                fromClient(
-                        DatagramObfuscation.encryptForClient(plainPing, USER_HASH, ip, RANDOM),
-                        ip,
-                        kadId,
-                        7);
+                fromClient(DatagramObfuscation.encryptForClient(plainPing, USER_HASH, ip, RANDOM), ip, kadId, 7);
         assertThat(ed2k.kind()).isEqualTo(Kind.ED2K);
         assertThat(ed2k.packet()).isEqualTo(ping);
 
-        Received byId =
-                fromClient(
-                        DatagramObfuscation.encryptForKad(
-                                plainHello, Optional.of(kadId), 5, 6, RANDOM),
-                        ip,
-                        kadId,
-                        7);
+        Received byId = fromClient(
+                DatagramObfuscation.encryptForKad(plainHello, Optional.of(kadId), 5, 6, RANDOM), ip, kadId, 7);
         assertThat(byId.kind()).isEqualTo(Kind.KAD_ID_KEY);
         assertThat(byId.packet()).isEqualTo(hello);
         assertThat(byId.receiverVerifyKey()).isEqualTo(5);
         assertThat(byId.senderVerifyKey()).isEqualTo(6);
 
         Received byKey =
-                fromClient(
-                        DatagramObfuscation.encryptForKad(
-                                plainHello, Optional.empty(), 7, 8, RANDOM),
-                        ip,
-                        kadId,
-                        7);
+                fromClient(DatagramObfuscation.encryptForKad(plainHello, Optional.empty(), 7, 8, RANDOM), ip, kadId, 7);
         assertThat(byKey.kind()).isEqualTo(Kind.KAD_VERIFY_KEY);
         assertThat(byKey.packet()).isEqualTo(hello);
 
@@ -285,17 +223,14 @@ class ObfuscationTest {
         assertThat(plain.packet()).isEqualTo(ping);
 
         Packet status = Packet.of(Protocol.EDONKEY, 0x97, new byte[8]);
-        byte[] toServer =
-                DatagramObfuscation.encryptForServer(UdpFraming.encode(status), 99, RANDOM);
-        assertThat(toServer.length)
-                .isEqualTo(UdpFraming.HEADER_SIZE + 8 + DatagramObfuscation.ED2K_OVERHEAD);
+        byte[] toServer = DatagramObfuscation.encryptForServer(UdpFraming.encode(status), 99, RANDOM);
+        assertThat(toServer.length).isEqualTo(UdpFraming.HEADER_SIZE + 8 + DatagramObfuscation.ED2K_OVERHEAD);
     }
 
     @Test
     void serverAnswersAreKeyedTheOtherWay() throws DecodeException {
         Packet status = Packet.of(Protocol.EDONKEY, 0x97, new byte[8]);
-        byte[] material =
-                new byte[] {99, 0, 0, 0, (byte) DatagramObfuscation.MAGIC_FROM_SERVER, 1, 2};
+        byte[] material = new byte[] {99, 0, 0, 0, (byte) DatagramObfuscation.MAGIC_FROM_SERVER, 1, 2};
         Rc4 fromServer = new Rc4(StreamObfuscation.md5(material));
         byte[] body = new byte[5 + 10];
         body[0] = (byte) 0xD5;
@@ -326,8 +261,7 @@ class ObfuscationTest {
         }
     }
 
-    private static Received fromClient(byte[] datagram, byte[] ip, Hash16 kadId, int verifyKey)
-            throws DecodeException {
+    private static Received fromClient(byte[] datagram, byte[] ip, Hash16 kadId, int verifyKey) throws DecodeException {
         return DatagramObfuscation.decodeFromClient(
                 datagram, 0, datagram.length, USER_HASH, ip, Optional.of(kadId), verifyKey);
     }
@@ -356,29 +290,19 @@ class ObfuscationTest {
     private static Map<String, String> golden() {
         Map<String, String> map = new HashMap<>();
         try (InputStream in =
-                        Objects.requireNonNull(
-                                ObfuscationTest.class.getResourceAsStream(
-                                        "/golden/obfuscation.txt"));
-                BufferedReader reader =
-                        new BufferedReader(new InputStreamReader(in, StandardCharsets.US_ASCII))) {
+                        Objects.requireNonNull(ObfuscationTest.class.getResourceAsStream("/golden/obfuscation.txt"));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.US_ASCII))) {
             reader.lines()
                     .filter(line -> !line.startsWith("#") && !line.isBlank())
-                    .forEach(
-                            line -> {
-                                String[] parts = line.split(" ", -1);
-                                if (parts[0].startsWith("tcp")) {
-                                    map.put(
-                                            parts[0] + " " + parts[1],
-                                            parts[2].substring("keystream=".length()));
-                                } else {
-                                    map.put(
-                                            parts[0] + " packet",
-                                            parts[1].substring("packet=".length()));
-                                    map.put(
-                                            parts[0] + " datagram",
-                                            parts[2].substring("datagram=".length()));
-                                }
-                            });
+                    .forEach(line -> {
+                        String[] parts = line.split(" ", -1);
+                        if (parts[0].startsWith("tcp")) {
+                            map.put(parts[0] + " " + parts[1], parts[2].substring("keystream=".length()));
+                        } else {
+                            map.put(parts[0] + " packet", parts[1].substring("packet=".length()));
+                            map.put(parts[0] + " datagram", parts[2].substring("datagram=".length()));
+                        }
+                    });
         } catch (IOException e) {
             throw new IllegalStateException(e);
         }

@@ -26,9 +26,8 @@ import javafx.scene.paint.Paint;
 import org.njmule.core.api.PartMap;
 
 /**
- * The bar of a download, with eMule's meaning in njMule's colours: what we have, what is missing
- * (bluer the more sources have it, red when none has), the blocks being requested, and a thin strip
- * on top for the completed share.
+ * The bar of a download, with eMule's meaning in njMule's colours: what we have, what is missing (bluer the more
+ * sources have it, red when none has), the blocks being requested, and a thin strip on top for the completed share.
  */
 public final class PartBar extends Region {
 
@@ -74,14 +73,7 @@ public final class PartBar extends Region {
     }
 
     private List<Region> swatches() {
-        return List.of(
-                this.track,
-                this.have,
-                this.missing,
-                this.few,
-                this.many,
-                this.requested,
-                this.complete);
+        return List.of(this.track, this.have, this.missing, this.few, this.many, this.requested, this.complete);
     }
 
     private void draw() {
@@ -107,12 +99,9 @@ public final class PartBar extends Region {
             while (start < gap.end()) {
                 int part = (int) (start / PartMap.PART_SIZE);
                 long end = Math.min(gap.end(), (part + 1) * PartMap.PART_SIZE);
-                int sources = part < this.map.sources().size() ? this.map.sources().get(part) : 0;
-                g.setFill(
-                        sources == 0
-                                ? none
-                                : low.interpolate(
-                                        high, Math.min(1.0, (double) sources / FULL_SOURCES)));
+                int sources =
+                        part < this.map.sources().size() ? this.map.sources().get(part) : 0;
+                g.setFill(sources == 0 ? none : low.interpolate(high, Math.min(1.0, (double) sources / FULL_SOURCES)));
                 fill(g, start, end, scale, STRIP, h - STRIP);
                 start = end;
             }
@@ -126,8 +115,7 @@ public final class PartBar extends Region {
     }
 
     // At least one pixel wide, so a small gap still shows.
-    private static void fill(
-            GraphicsContext g, long start, long end, double scale, double y, double height) {
+    private static void fill(GraphicsContext g, long start, long end, double scale, double y, double height) {
         double x = start * scale;
         double width = Math.max(1, (end - start) * scale);
         g.fillRect(x, y, width, height);

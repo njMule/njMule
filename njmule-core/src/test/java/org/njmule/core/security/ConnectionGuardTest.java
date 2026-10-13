@@ -37,10 +37,7 @@ class ConnectionGuardTest {
 
     @Test
     void filteredAddressesAreRefusedFirst() {
-        IpFilter filter =
-                IpFilter.of(
-                        List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")),
-                        IpFilter.DEFAULT_LEVEL);
+        IpFilter filter = IpFilter.of(List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")), IpFilter.DEFAULT_LEVEL);
         ConnectionGuard guard = new ConnectionGuard(() -> filter, Limits.DEFAULT, this.ticker);
 
         assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
@@ -50,16 +47,13 @@ class ConnectionGuardTest {
     @Test
     void capsConnectionsPerAddressAndInTotalUntilPermitsAreReleased() {
         ConnectionGuard guard =
-                new ConnectionGuard(
-                        IpFilter::empty, new Limits(3, 2, 100, Duration.ofSeconds(5)), this.ticker);
+                new ConnectionGuard(IpFilter::empty, new Limits(3, 2, 100, Duration.ofSeconds(5)), this.ticker);
 
         ConnectionGuard.Permit first = permit(guard.admit(PEER));
         permit(guard.admit(PEER));
-        assertThat(guard.admit(PEER))
-                .isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
+        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
         permit(guard.admit(OTHER));
-        assertThat(guard.admit(Ipv4.parse("9.9.9.9")))
-                .isEqualTo(new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS));
+        assertThat(guard.admit(Ipv4.parse("9.9.9.9"))).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS));
 
         first.close();
         first.close();
@@ -70,20 +64,15 @@ class ConnectionGuardTest {
     @Test
     void theServerTestingUsPassesTheRateAndTotalLimitsButNotTheFilter() {
         int server = Ipv4.parse("7.7.7.7");
-        IpFilter filter =
-                IpFilter.of(
-                        List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")),
-                        IpFilter.DEFAULT_LEVEL);
-        ConnectionGuard guard =
-                new ConnectionGuard(
-                        () -> filter,
-                        ip -> ip == server || ip == PEER,
-                        new Limits(1, 5, 1, Duration.ofSeconds(5)),
-                        this.ticker);
+        IpFilter filter = IpFilter.of(List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")), IpFilter.DEFAULT_LEVEL);
+        ConnectionGuard guard = new ConnectionGuard(
+                () -> filter,
+                ip -> ip == server || ip == PEER,
+                new Limits(1, 5, 1, Duration.ofSeconds(5)),
+                this.ticker);
 
         permit(guard.admit(OTHER));
-        assertThat(guard.admit(Ipv4.parse("9.9.9.9")))
-                .isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
+        assertThat(guard.admit(Ipv4.parse("9.9.9.9"))).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
         assertThat(guard.admit(server)).isInstanceOf(Admission.Admitted.class);
         assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
     }
@@ -91,10 +80,7 @@ class ConnectionGuardTest {
     @Test
     void limitsTheAcceptRateOverASlidingWindow() {
         ConnectionGuard guard =
-                new ConnectionGuard(
-                        IpFilter::empty,
-                        new Limits(100, 100, 2, Duration.ofSeconds(5)),
-                        this.ticker);
+                new ConnectionGuard(IpFilter::empty, new Limits(100, 100, 2, Duration.ofSeconds(5)), this.ticker);
 
         permit(guard.admit(PEER)).close();
         this.ticker.advance(Duration.ofSeconds(3));

@@ -50,29 +50,25 @@ class IdentityHandshakeTest {
     void strangersExchangeKeysAndSignatures() throws DecodeException {
         this.run(3, 3, Optional.empty(), Optional.empty());
 
-        assertThat(this.results)
-                .containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
+        assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
 
     @Test
     void aPinnedKeyNeedsOnlyTheSignature() throws DecodeException {
         this.run(3, 3, Optional.of(this.b.publicKey()), Optional.of(this.a.publicKey()));
 
-        assertThat(this.results)
-                .containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
+        assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
 
     @Test
     void aDifferentKeyThanThePinnedOneFails() throws DecodeException {
-        byte[] stranger =
-                IdentityHandshake.Identity.of(Rsa.generate(Rsa.NETWORK_KEY_BITS, RANDOM))
-                        .publicKey();
+        byte[] stranger = IdentityHandshake.Identity.of(Rsa.generate(Rsa.NETWORK_KEY_BITS, RANDOM))
+                .publicKey();
 
         this.run(3, 3, Optional.of(stranger), Optional.empty());
 
         // A signs over the key it pinned, which is not B's: both checks fail.
-        assertThat(this.results)
-                .containsExactlyInAnyOrder("A failed " + HASH_B, "B failed " + HASH_A);
+        assertThat(this.results).containsExactlyInAnyOrder("A failed " + HASH_B, "B failed " + HASH_A);
     }
 
     @Test
@@ -80,22 +76,14 @@ class IdentityHandshakeTest {
         // A only takes version 2, so B binds its signature to an address A can check.
         this.run(2, 3, Optional.empty(), Optional.empty());
 
-        assertThat(this.results)
-                .containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
+        assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
 
     @Test
     void peersThatDoNotTakePartAreLeftAlone() throws DecodeException {
         Deque<Packet> sent = new ArrayDeque<>();
-        IdentityHandshake handshake =
-                new IdentityHandshake(
-                        this.a,
-                        hello(HASH_B, 0),
-                        IP_B,
-                        Optional.empty(),
-                        Optional.empty(),
-                        sent::add,
-                        this.listener("A"));
+        IdentityHandshake handshake = new IdentityHandshake(
+                this.a, hello(HASH_B, 0), IP_B, Optional.empty(), Optional.empty(), sent::add, this.listener("A"));
         handshake.start(RANDOM);
 
         assertThat(handshake.isSupported()).isFalse();
@@ -107,24 +95,10 @@ class IdentityHandshakeTest {
             throws DecodeException {
         Deque<Packet> toA = new ArrayDeque<>();
         Deque<Packet> toB = new ArrayDeque<>();
-        IdentityHandshake atA =
-                new IdentityHandshake(
-                        this.a,
-                        hello(HASH_B, versionsB),
-                        IP_B,
-                        aPinsB,
-                        Optional.of(IP_A),
-                        toB::add,
-                        this.listener("A"));
-        IdentityHandshake atB =
-                new IdentityHandshake(
-                        this.b,
-                        hello(HASH_A, versionsA),
-                        IP_A,
-                        bPinsA,
-                        Optional.of(IP_B),
-                        toA::add,
-                        this.listener("B"));
+        IdentityHandshake atA = new IdentityHandshake(
+                this.a, hello(HASH_B, versionsB), IP_B, aPinsB, Optional.of(IP_A), toB::add, this.listener("A"));
+        IdentityHandshake atB = new IdentityHandshake(
+                this.b, hello(HASH_A, versionsA), IP_A, bPinsA, Optional.of(IP_B), toA::add, this.listener("B"));
         atA.start(RANDOM);
         atB.start(RANDOM);
         for (int round = 0; round < 10 && !(toA.isEmpty() && toB.isEmpty()); round++) {

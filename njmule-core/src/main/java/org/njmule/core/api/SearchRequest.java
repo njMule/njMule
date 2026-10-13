@@ -18,9 +18,7 @@ package org.njmule.core.api;
 
 import java.util.Objects;
 
-/**
- * A search: an expression in the eMule syntax ({@code ubuntu iso @size>700m}) and how far it goes.
- */
+/** A search: an expression in the eMule syntax ({@code ubuntu iso @size>700m}) and how far it goes. */
 public record SearchRequest(String expression, Scope scope) {
 
     /** Where to search. */

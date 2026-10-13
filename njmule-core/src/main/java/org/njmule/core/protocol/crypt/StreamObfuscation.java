@@ -28,17 +28,17 @@ import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Protocol;
 
 /**
- * The obfuscated TCP handshakes (protocol obfuscation, not security). Each one runs in blocking
- * style on the connection's virtual thread and yields the RC4 ciphers for the rest of the stream.
+ * The obfuscated TCP handshakes (protocol obfuscation, not security). Each one runs in blocking style on the
+ * connection's virtual thread and yields the RC4 ciphers for the rest of the stream.
  *
  * <ul>
- *   <li>Client to client: keys {@code MD5(<receiver user hash><34|203><random part>)}; the caller
- *       sends {@code <marker><random part 4>} in clear, then encrypted {@code <sync 4><methods
- *       supported 1><method preferred 1><padding length 1><padding>}; the receiver answers {@code
- *       <sync 4><method selected 1><padding length 1><padding>}.
- *   <li>Client to server: Diffie-Hellman ({@link Dh768}), keys {@code MD5(<secret 96><34|203>)};
- *       the client sends {@code <marker><g^a 96><padding length 0-15><padding>} in clear, the
- *       server answers {@code <g^b 96>} and the encrypted negotiation, the client confirms.
+ *   <li>Client to client: keys {@code MD5(<receiver user hash><34|203><random part>)}; the caller sends
+ *       {@code <marker><random part 4>} in clear, then encrypted {@code <sync 4><methods supported 1><method preferred
+ *       1><padding length 1><padding>}; the receiver answers {@code <sync 4><method selected 1><padding length
+ *       1><padding>}.
+ *   <li>Client to server: Diffie-Hellman ({@link Dh768}), keys {@code MD5(<secret 96><34|203>)}; the client sends
+ *       {@code <marker><g^a 96><padding length 0-15><padding>} in clear, the server answers {@code <g^b 96>} and the
+ *       encrypted negotiation, the client confirms.
  * </ul>
  */
 public final class StreamObfuscation {
@@ -59,11 +59,7 @@ public final class StreamObfuscation {
 
     /** Outgoing connection to a client whose user hash is known. */
     public static Ciphers connectToClient(
-            InputStream in,
-            OutputStream out,
-            Hash16 receiverUserHash,
-            SecureRandom random,
-            int maxPadding)
+            InputStream in, OutputStream out, Hash16 receiverUserHash, SecureRandom random, int maxPadding)
             throws IOException {
         byte[] keyPart = new byte[4];
         random.nextBytes(keyPart);
@@ -89,15 +85,11 @@ public final class StreamObfuscation {
     }
 
     /**
-     * Incoming connection whose first byte ({@code marker}, already consumed) is not a protocol
-     * byte. The keys derive from our own user hash.
+     * Incoming connection whose first byte ({@code marker}, already consumed) is not a protocol byte. The keys derive
+     * from our own user hash.
      */
     public static Ciphers acceptFromClient(
-            InputStream in,
-            OutputStream out,
-            Hash16 ownUserHash,
-            SecureRandom random,
-            int maxPadding)
+            InputStream in, OutputStream out, Hash16 ownUserHash, SecureRandom random, int maxPadding)
             throws IOException {
         byte[] keyPart = readFully(in, 4);
         Rc4 receive = clientKey(ownUserHash, MAGIC_REQUESTER, keyPart);
@@ -119,11 +111,10 @@ public final class StreamObfuscation {
     }
 
     /**
-     * Outgoing connection to a server. The final confirmation is written but not flushed, so that
-     * it leaves together with the first packet.
+     * Outgoing connection to a server. The final confirmation is written but not flushed, so that it leaves together
+     * with the first packet.
      */
-    public static Ciphers connectToServer(InputStream in, OutputStream out, SecureRandom random)
-            throws IOException {
+    public static Ciphers connectToServer(InputStream in, OutputStream out, SecureRandom random) throws IOException {
         Dh768 dh = Dh768.generate(random);
         int padding = random.nextInt(MAX_SERVER_PADDING);
         byte[] request = new byte[1 + Dh768.SIZE + 1 + padding];
@@ -152,8 +143,7 @@ public final class StreamObfuscation {
     }
 
     /** The server side of {@link #connectToServer}, after the marker byte; used by test servers. */
-    public static Ciphers acceptAsServer(InputStream in, OutputStream out, SecureRandom random)
-            throws IOException {
+    public static Ciphers acceptAsServer(InputStream in, OutputStream out, SecureRandom random) throws IOException {
         byte[] clientPublic = readFully(in, Dh768.SIZE);
         readFully(in, readFully(in, 1)[0] & 0xFF);
         Dh768 dh = Dh768.generate(random);
@@ -239,11 +229,10 @@ public final class StreamObfuscation {
     }
 
     private static void checkSync(byte[] decrypted) throws DecodeException {
-        int sync =
-                (decrypted[0] & 0xFF)
-                        | (decrypted[1] & 0xFF) << 8
-                        | (decrypted[2] & 0xFF) << 16
-                        | (decrypted[3] & 0xFF) << 24;
+        int sync = (decrypted[0] & 0xFF)
+                | (decrypted[1] & 0xFF) << 8
+                | (decrypted[2] & 0xFF) << 16
+                | (decrypted[3] & 0xFF) << 24;
         if (sync != SYNC) {
             throw new DecodeException("wrong obfuscation sync value: not an obfuscated stream");
         }

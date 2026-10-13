@@ -218,11 +218,7 @@ final class Ed2kLinkCodec {
         for (int i = 0; i < host.length(); i++) {
             char c = host.charAt(i);
             boolean ok =
-                    (c >= 'a' && c <= 'z')
-                            || (c >= 'A' && c <= 'Z')
-                            || (c >= '0' && c <= '9')
-                            || c == '-'
-                            || c == '.';
+                    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.';
             if (!ok) {
                 return false;
             }
@@ -311,8 +307,8 @@ final class Ed2kLinkCodec {
     }
 
     /**
-     * Percent-decoding (control characters dropped), then UTF-8 when the result is a valid UTF-8
-     * byte string; anything else is kept as typed.
+     * Percent-decoding (control characters dropped), then UTF-8 when the result is a valid UTF-8 byte string; anything
+     * else is kept as typed.
      */
     static String decode(String text) {
         StringBuilder chars = new StringBuilder(text.length());

@@ -31,17 +31,11 @@ class LiveListTest {
     void rowsStayAndTheirValuesChange() {
         LiveList<String, Item> list = new LiveList<>(Item::key);
         List<String> changes = new ArrayList<>();
-        list.rows()
-                .addListener(
-                        (ListChangeListener<LiveList.Row<Item>>)
-                                c -> {
-                                    while (c.next()) {
-                                        changes.add(
-                                                c.wasUpdated()
-                                                        ? "updated"
-                                                        : c.wasAdded() ? "added" : "removed");
-                                    }
-                                });
+        list.rows().addListener((ListChangeListener<LiveList.Row<Item>>) c -> {
+            while (c.next()) {
+                changes.add(c.wasUpdated() ? "updated" : c.wasAdded() ? "added" : "removed");
+            }
+        });
 
         list.update(List.of(new Item("a", 1), new Item("b", 2), new Item("a", 9)));
         LiveList.Row<Item> a = list.rows().getFirst();

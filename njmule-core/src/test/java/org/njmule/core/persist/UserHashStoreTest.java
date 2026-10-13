@@ -30,7 +30,8 @@ class UserHashStoreTest {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void createsAMarkedHashOnceAndKeepsIt() throws Exception {
@@ -58,6 +59,7 @@ class UserHashStoreTest {
 
         Files.write(file, new byte[3]);
         Files.deleteIfExists(AtomicFiles.bakPath(file));
-        assertThat(UserHashStore.isUsable(UserHashStore.loadOrCreate(this.dir, RANDOM))).isTrue();
+        assertThat(UserHashStore.isUsable(UserHashStore.loadOrCreate(this.dir, RANDOM)))
+                .isTrue();
     }
 }

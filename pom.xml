@@ -103,7 +103,7 @@
         <checkstyle-plugin.version>3.6.0</checkstyle-plugin.version>
         <checkstyle.version>14.3.0</checkstyle.version>
         <!-- 1.37.0 is not yet supported by Spotless 3.10.4 (InvocationTargetException); 1.36.1 is its default. -->
-        <google-java-format.version>1.36.1</google-java-format.version>
+        <palantir-java-format.version>2.102.0</palantir-java-format.version>
         <errorprone.version>2.50.0</errorprone.version>
         <spotbugs-plugin.version>4.10.5.0</spotbugs-plugin.version>
         <spotbugs.version>4.10.5</spotbugs.version>
@@ -490,11 +490,12 @@
                             <include>src/main/java/**/*.java</include>
                             <include>src/test/java/**/*.java</include>
                         </includes>
-                        <googleJavaFormat>
-                            <version>${google-java-format.version}</version>
-                            <style>AOSP</style>
-                            <reflowLongStrings>true</reflowLongStrings>
-                        </googleJavaFormat>
+                        <!-- PALANTIR style: 4-space indent, 120 columns, compact lambdas. -->
+                        <palantirJavaFormat>
+                            <version>${palantir-java-format.version}</version>
+                            <style>PALANTIR</style>
+                            <formatJavadoc>true</formatJavadoc>
+                        </palantirJavaFormat>
                         <removeUnusedImports/>
                         <licenseHeader>
                             <file>${maven.multiModuleProjectDirectory}/config/license/header-java.txt</file>
@@ -512,7 +513,7 @@
                 </executions>
             </plugin>
 
-            <!-- Conventions not covered by google-java-format (e.g. mandatory "this."). -->
+            <!-- Conventions not covered by the formatter (e.g. mandatory "this."). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>

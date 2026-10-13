@@ -81,9 +81,7 @@ class PortForwardingTest {
         forwarding.close();
 
         assertThat(this.soap).hasSize(4);
-        assertThat(this.soap.get(2))
-                .contains("#DeletePortMapping")
-                .contains("<NewProtocol>TCP</NewProtocol>");
+        assertThat(this.soap.get(2)).contains("#DeletePortMapping").contains("<NewProtocol>TCP</NewProtocol>");
         assertThat(this.soap.get(3)).contains("<NewProtocol>UDP</NewProtocol>");
         assertThat(forwarding.mappings()).isEmpty();
     }
@@ -99,10 +97,7 @@ class PortForwardingTest {
 
         assertThat(forwarding.mappings()).isEmpty();
         assertThat(this.log).singleElement().asString().contains("refused");
-        assertThat(this.soap)
-                .singleElement()
-                .asString()
-                .contains("WANPPPConnection:1#AddPortMapping");
+        assertThat(this.soap).singleElement().asString().contains("WANPPPConnection:1#AddPortMapping");
     }
 
     @Test
@@ -124,25 +119,19 @@ class PortForwardingTest {
 
     @Test
     void answersCarryTheirLocation() {
-        assertThat(
-                        Igd.location(
-                                """
+        assertThat(Igd.location("""
                                 HTTP/1.1 200 OK\r
                                 Cache-Control: max-age=120\r
                                 Location: http://10.0.0.1:5000/d.xml\r
                                 """))
-                .hasValueSatisfying(
-                        u -> assertThat(u.toString()).isEqualTo("http://10.0.0.1:5000/d.xml"));
+                .hasValueSatisfying(u -> assertThat(u.toString()).isEqualTo("http://10.0.0.1:5000/d.xml"));
         assertThat(Igd.location("HTTP/1.1 200 OK\r\n")).isEmpty();
         assertThat(Igd.location("LOCATION: http://bad host/\r\n")).isEmpty();
     }
 
     private PortForwarding start(OptionalInt udp) {
         return PortForwarding.start(
-                new InetSocketAddress(LOOPBACK, this.ssdp.getLocalPort()),
-                4662,
-                udp,
-                this.log::add);
+                new InetSocketAddress(LOOPBACK, this.ssdp.getLocalPort()), 4662, udp, this.log::add);
     }
 
     private static String service(String type, String control) {
@@ -164,49 +153,36 @@ class PortForwardingTest {
         this.description = deviceDescription;
         this.http = new ServerSocket(0, 10, LOOPBACK);
         this.ssdp = new DatagramSocket(0, LOOPBACK);
-        Thread.ofVirtual()
-                .start(
-                        () -> {
-                            byte[] buffer = new byte[2048];
-                            while (!this.ssdp.isClosed()) {
-                                try {
-                                    DatagramPacket search =
-                                            new DatagramPacket(buffer, buffer.length);
-                                    this.ssdp.receive(search);
-                                    String host =
-                                            this.locationHost == null
-                                                    ? "127.0.0.1"
-                                                    : this.locationHost;
-                                    byte[] answer =
-                                            ("HTTP/1.1 200 OK\r\n"
-                                                            + "ST: upnp:rootdevice\r\n"
-                                                            + "LOCATION: http://"
-                                                            + host
-                                                            + ":"
-                                                            + this.http.getLocalPort()
-                                                            + "/desc.xml\r\n\r\n")
-                                                    .getBytes(StandardCharsets.US_ASCII);
-                                    this.ssdp.send(
-                                            new DatagramPacket(
-                                                    answer,
-                                                    answer.length,
-                                                    search.getSocketAddress()));
-                                } catch (IOException e) {
-                                    return;
-                                }
-                            }
-                        });
-        Thread.ofVirtual()
-                .start(
-                        () -> {
-                            while (!this.http.isClosed()) {
-                                try (Socket client = this.http.accept()) {
-                                    this.serve(client);
-                                } catch (IOException e) {
-                                    return;
-                                }
-                            }
-                        });
+        Thread.ofVirtual().start(() -> {
+            byte[] buffer = new byte[2048];
+            while (!this.ssdp.isClosed()) {
+                try {
+                    DatagramPacket search = new DatagramPacket(buffer, buffer.length);
+                    this.ssdp.receive(search);
+                    String host = this.locationHost == null ? "127.0.0.1" : this.locationHost;
+                    byte[] answer = ("HTTP/1.1 200 OK\r\n"
+                                    + "ST: upnp:rootdevice\r\n"
+                                    + "LOCATION: http://"
+                                    + host
+                                    + ":"
+                                    + this.http.getLocalPort()
+                                    + "/desc.xml\r\n\r\n")
+                            .getBytes(StandardCharsets.US_ASCII);
+                    this.ssdp.send(new DatagramPacket(answer, answer.length, search.getSocketAddress()));
+                } catch (IOException e) {
+                    return;
+                }
+            }
+        });
+        Thread.ofVirtual().start(() -> {
+            while (!this.http.isClosed()) {
+                try (Socket client = this.http.accept()) {
+                    this.serve(client);
+                } catch (IOException e) {
+                    return;
+                }
+            }
+        });
     }
 
     private void serve(Socket client) throws IOException {
@@ -242,13 +218,12 @@ class PortForwardingTest {
             reply = "<s:Envelope/>";
         }
         byte[] bytes = reply.getBytes(StandardCharsets.UTF_8);
-        out.write(
-                ("HTTP/1.1 "
-                                + code
-                                + " X\r\nContent-Type: text/xml\r\nContent-Length: "
-                                + bytes.length
-                                + "\r\nConnection: close\r\n\r\n")
-                        .getBytes(StandardCharsets.US_ASCII));
+        out.write(("HTTP/1.1 "
+                        + code
+                        + " X\r\nContent-Type: text/xml\r\nContent-Length: "
+                        + bytes.length
+                        + "\r\nConnection: close\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII));
         out.write(bytes);
         out.flush();
     }

@@ -35,8 +35,8 @@ import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.search.SearchExpr;
 
 /**
- * What other nodes publish to us: files under keywords and sources of files, with global and
- * per-key limits and an expiry, answered to searches. Engine thread only.
+ * What other nodes publish to us: files under keywords and sources of files, with global and per-key limits and an
+ * expiry, answered to searches. Engine thread only.
  */
 final class KadIndex {
 
@@ -108,9 +108,7 @@ final class KadIndex {
                 return 100;
             }
             entry = new KeywordEntry(size.getAsLong());
-            this.keywords
-                    .computeIfAbsent(keyword, k -> new LinkedHashMap<>())
-                    .put(file.id(), entry);
+            this.keywords.computeIfAbsent(keyword, k -> new LinkedHashMap<>()).put(file.id(), entry);
             this.keywordEntries++;
             count++;
         }
@@ -125,16 +123,14 @@ final class KadIndex {
     }
 
     /** Stores a source of {@code file} at {@code ip}; returns its load, empty when refused. */
-    OptionalLong publishSource(
-            UInt128 file, UInt128 source, List<Tag> tags, int ip, int udpPort, long now) {
+    OptionalLong publishSource(UInt128 file, UInt128 source, List<Tag> tags, int ip, int udpPort, long now) {
         if (Tags.intValue(tags, FileTag.SOURCETYPE).isEmpty()) {
             return OptionalLong.empty();
         }
         int tcp = Tags.portValue(tags, FileTag.SOURCEPORT).orElse(0);
-        int udp =
-                Tags.intValue(tags, FileTag.SOURCEUPORT).isPresent()
-                        ? Tags.portValue(tags, FileTag.SOURCEUPORT).orElse(0)
-                        : udpPort;
+        int udp = Tags.intValue(tags, FileTag.SOURCEUPORT).isPresent()
+                ? Tags.portValue(tags, FileTag.SOURCEUPORT).orElse(0)
+                : udpPort;
         if (ip == 0 || tcp == 0 || udp == 0) {
             return OptionalLong.empty();
         }
@@ -153,10 +149,8 @@ final class KadIndex {
         if (!hasUdp) {
             stored.add(new Tag.IntTag(TagName.id(FileTag.SOURCEUPORT), udp));
         }
-        Map<UInt128, SourceEntry> entries =
-                this.sources.computeIfAbsent(file, f -> new LinkedHashMap<>());
-        for (Iterator<Map.Entry<UInt128, SourceEntry>> it = entries.entrySet().iterator();
-                it.hasNext(); ) {
+        Map<UInt128, SourceEntry> entries = this.sources.computeIfAbsent(file, f -> new LinkedHashMap<>());
+        for (Iterator<Map.Entry<UInt128, SourceEntry>> it = entries.entrySet().iterator(); it.hasNext(); ) {
             SourceEntry e = it.next().getValue();
             if (e.ip() == ip && (e.tcpPort() == tcp || e.udpPort() == udp)) {
                 it.remove();
@@ -176,11 +170,8 @@ final class KadIndex {
         return OptionalLong.of(load(entries.size(), MAX_SOURCES_PER_FILE));
     }
 
-    /**
-     * Files under {@code keyword} matching {@code expression}, skipping the first {@code start}.
-     */
-    List<KadMessages.Entry> searchKeyword(
-            UInt128 keyword, Optional<SearchExpr> expression, int start, long now) {
+    /** Files under {@code keyword} matching {@code expression}, skipping the first {@code start}. */
+    List<KadMessages.Entry> searchKeyword(UInt128 keyword, Optional<SearchExpr> expression, int start, long now) {
         Map<UInt128, KeywordEntry> files = this.keywords.get(keyword);
         List<KadMessages.Entry> results = new ArrayList<>();
         if (files == null) {
@@ -203,10 +194,9 @@ final class KadIndex {
             tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), name));
             tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), entry.size));
             tags.addAll(entry.tags);
-            long info =
-                    (long) Math.min(entry.names.size(), 255) << 24
-                            | (long) Math.min(entry.publishers.size(), 255) << 16
-                            | Math.min(entry.publishers.size() * 100L, 0xFFFF);
+            long info = (long) Math.min(entry.names.size(), 255) << 24
+                    | (long) Math.min(entry.publishers.size(), 255) << 16
+                    | Math.min(entry.publishers.size() * 100L, 0xFFFF);
             tags.add(new Tag.IntTag(TagName.id(FileTag.PUBLISHINFO), info));
             results.add(new KadMessages.Entry(e.getKey(), tags));
             if (results.size() >= MAX_RESULTS) {
@@ -246,8 +236,7 @@ final class KadIndex {
 
     /** Drops what expired. */
     void clean(long now) {
-        for (Iterator<Map<UInt128, KeywordEntry>> it = this.keywords.values().iterator();
-                it.hasNext(); ) {
+        for (Iterator<Map<UInt128, KeywordEntry>> it = this.keywords.values().iterator(); it.hasNext(); ) {
             Map<UInt128, KeywordEntry> files = it.next();
             int before = files.size();
             files.values().removeIf(e -> now - e.expires >= 0);
@@ -256,8 +245,7 @@ final class KadIndex {
                 it.remove();
             }
         }
-        for (Iterator<Map<UInt128, SourceEntry>> it = this.sources.values().iterator();
-                it.hasNext(); ) {
+        for (Iterator<Map<UInt128, SourceEntry>> it = this.sources.values().iterator(); it.hasNext(); ) {
             Map<UInt128, SourceEntry> entries = it.next();
             int before = entries.size();
             entries.values().removeIf(e -> now - e.expires() >= 0);
@@ -294,12 +282,9 @@ final class KadIndex {
 
     private static boolean matches(SearchExpr expr, String name, KeywordEntry entry) {
         return switch (expr) {
-            case SearchExpr.And and ->
-                    matches(and.left(), name, entry) && matches(and.right(), name, entry);
-            case SearchExpr.Or or ->
-                    matches(or.left(), name, entry) || matches(or.right(), name, entry);
-            case SearchExpr.Not not ->
-                    matches(not.left(), name, entry) && !matches(not.right(), name, entry);
+            case SearchExpr.And and -> matches(and.left(), name, entry) && matches(and.right(), name, entry);
+            case SearchExpr.Or or -> matches(or.left(), name, entry) || matches(or.right(), name, entry);
+            case SearchExpr.Not not -> matches(not.left(), name, entry) && !matches(not.right(), name, entry);
             case SearchExpr.Keyword keyword -> containsWords(name, keyword.text());
             case SearchExpr.StringAttr attr -> matchesString(attr, name, entry);
             case SearchExpr.NumericAttr attr -> matchesNumber(attr, entry);
@@ -308,8 +293,7 @@ final class KadIndex {
 
     private static boolean containsWords(String name, String words) {
         String haystack = KadLowerCase.toLowerCase(name);
-        for (String part :
-                KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
+        for (String part : KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
             if (!part.isEmpty() && !haystack.contains(part)) {
                 return false;
             }
@@ -317,8 +301,7 @@ final class KadIndex {
         return true;
     }
 
-    private static boolean matchesString(
-            SearchExpr.StringAttr attr, String name, KeywordEntry entry) {
+    private static boolean matchesString(SearchExpr.StringAttr attr, String name, KeywordEntry entry) {
         if (attr.tag() == FileTag.FILEFORMAT) {
             int dot = name.lastIndexOf('.');
             return dot >= 0 && name.substring(dot + 1).equalsIgnoreCase(attr.value());
@@ -329,10 +312,9 @@ final class KadIndex {
     }
 
     private static boolean matchesNumber(SearchExpr.NumericAttr attr, KeywordEntry entry) {
-        long value =
-                attr.tag() == FileTag.FILESIZE
-                        ? entry.size
-                        : Tags.intValue(entry.tags, attr.tag()).orElse(Long.MIN_VALUE);
+        long value = attr.tag() == FileTag.FILESIZE
+                ? entry.size
+                : Tags.intValue(entry.tags, attr.tag()).orElse(Long.MIN_VALUE);
         if (value == Long.MIN_VALUE) {
             return false;
         }

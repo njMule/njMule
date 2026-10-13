@@ -24,8 +24,8 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.util.Bytes;
 
 /**
- * {@code preferences.dat}, 61 bytes: {@code <version 0x14><user hash 16><main window placement
- * 44>}. Only the user hash matters to njMule; the window placement is kept as opaque bytes.
+ * {@code preferences.dat}, 61 bytes: {@code <version 0x14><user hash 16><main window placement 44>}. Only the user hash
+ * matters to njMule; the window placement is kept as opaque bytes.
  */
 public final class PreferencesDat {
 
@@ -56,8 +56,8 @@ public final class PreferencesDat {
     }
 
     /**
-     * Whether the hash carries the client marker bytes ({@code [5] = 14}, {@code [14] = 111}) set
-     * by the clients that generate user hashes this way.
+     * Whether the hash carries the client marker bytes ({@code [5] = 14}, {@code [14] = 111}) set by the clients that
+     * generate user hashes this way.
      */
     public static boolean isMarkedUserHash(Hash16 hash) {
         return hash.get(5) == 14 && hash.get(14) == 111;

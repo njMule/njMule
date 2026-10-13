@@ -38,9 +38,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The data file of a download. Every operation runs on the file's own virtual thread, one after the
- * other, so writes keep their order and the engine thread never waits for the disk; results come
- * back as futures. The file is sparse where the system supports it.
+ * The data file of a download. Every operation runs on the file's own virtual thread, one after the other, so writes
+ * keep their order and the engine thread never waits for the disk; results come back as futures. The file is sparse
+ * where the system supports it.
  */
 public final class PartFileStorage implements AutoCloseable {
 
@@ -55,9 +55,8 @@ public final class PartFileStorage implements AutoCloseable {
     private PartFileStorage(Path path, FileChannel channel) {
         this.path = path;
         this.channel = channel;
-        this.io =
-                Executors.newSingleThreadExecutor(
-                        Thread.ofVirtual().name("njmule-disk-" + path.getFileName()).factory());
+        this.io = Executors.newSingleThreadExecutor(
+                Thread.ofVirtual().name("njmule-disk-" + path.getFileName()).factory());
     }
 
     /** Opens the data file, creating an empty sparse one when missing. */
@@ -66,13 +65,12 @@ public final class PartFileStorage implements AutoCloseable {
         try {
             // SPARSE applies only to a file being created: otherwise NTFS fills a fresh file with
             // zeros up to the first write, which may be gigabytes in.
-            channel =
-                    FileChannel.open(
-                            path,
-                            StandardOpenOption.CREATE_NEW,
-                            StandardOpenOption.READ,
-                            StandardOpenOption.WRITE,
-                            StandardOpenOption.SPARSE);
+            channel = FileChannel.open(
+                    path,
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.READ,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.SPARSE);
         } catch (FileAlreadyExistsException e) {
             channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);
         }
@@ -127,8 +125,8 @@ public final class PartFileStorage implements AutoCloseable {
     }
 
     /**
-     * Flushes, closes and moves the finished file to {@code target}, after the queued writes. The
-     * storage cannot be used afterwards.
+     * Flushes, closes and moves the finished file to {@code target}, after the queued writes. The storage cannot be
+     * used afterwards.
      */
     public CompletableFuture<Path> finish(Path directory, String name) {
         return CompletableFuture.supplyAsync(
@@ -174,17 +172,16 @@ public final class PartFileStorage implements AutoCloseable {
     /** Closes the file after the queued operations. */
     @Override
     public void close() {
-        this.io.execute(
-                () -> {
-                    try {
-                        if (this.channel.isOpen()) {
-                            this.channel.force(true);
-                            this.channel.close();
-                        }
-                    } catch (IOException e) {
-                        // The data written so far stays on disk; the next start re-checks parts.
-                    }
-                });
+        this.io.execute(() -> {
+            try {
+                if (this.channel.isOpen()) {
+                    this.channel.force(true);
+                    this.channel.close();
+                }
+            } catch (IOException e) {
+                // The data written so far stays on disk; the next start re-checks parts.
+            }
+        });
         this.io.shutdown();
     }
 }

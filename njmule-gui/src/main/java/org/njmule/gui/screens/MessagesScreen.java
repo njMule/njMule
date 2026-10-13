@@ -99,31 +99,22 @@ public final class MessagesScreen implements Screen {
     private Node build() {
         this.friends.setItems(this.gui.model().friends().rows());
         this.friends.setPlaceholder(new Label(this.gui.t("nj.chat.noFriends")));
-        this.friends.setCellFactory(
-                l ->
-                        new ListCell<>() {
-                            @Override
-                            protected void updateItem(LiveList.Row<Friend> row, boolean empty) {
-                                super.updateItem(row, empty);
-                                this.setText(empty || row == null ? null : friendText(row.get()));
-                            }
-                        });
+        this.friends.setCellFactory(l -> new ListCell<>() {
+            @Override
+            protected void updateItem(LiveList.Row<Friend> row, boolean empty) {
+                super.updateItem(row, empty);
+                this.setText(empty || row == null ? null : friendText(row.get()));
+            }
+        });
         Label friendsTitle = new Label(this.gui.t("IDS_PW_FRIENDS"));
         friendsTitle.getStyleClass().add("settings-section");
-        VBox left =
-                new VBox(
-                        6,
-                        friendsTitle,
-                        this.friends,
-                        Fx.toolRow(
-                                Fx.button(
-                                        this.gui.t("nj.chat.open"),
-                                        Material2MZ.MESSAGE,
-                                        this::chatWithFriend),
-                                Fx.button(
-                                        this.gui.t("IDS_REMOVE"),
-                                        Material2AL.DELETE,
-                                        this::removeFriend)));
+        VBox left = new VBox(
+                6,
+                friendsTitle,
+                this.friends,
+                Fx.toolRow(
+                        Fx.button(this.gui.t("nj.chat.open"), Material2MZ.MESSAGE, this::chatWithFriend),
+                        Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeFriend)));
         VBox.setVgrow(this.friends, Priority.ALWAYS);
         left.setPadding(new Insets(0, 8, 0, 0));
         left.setMinWidth(220);
@@ -133,30 +124,26 @@ public final class MessagesScreen implements Screen {
         this.address.setOnAction(e -> this.startChat());
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         Chats chats = this.gui.model().chats();
-        chats.all()
-                .addListener(
-                        (ListChangeListener<Chats.Chat>)
-                                c -> {
-                                    while (c.next()) {
-                                        c.getAddedSubList().forEach(this::opened);
-                                        c.getRemoved().forEach(this::closed);
-                                    }
-                                });
+        chats.all().addListener((ListChangeListener<Chats.Chat>) c -> {
+            while (c.next()) {
+                c.getAddedSubList().forEach(this::opened);
+                c.getRemoved().forEach(this::closed);
+            }
+        });
         chats.all().forEach(this::opened);
         Label none = new Label(this.gui.t("nj.chat.none"));
         none.visibleProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         SplitPane split = new SplitPane(left, new StackPane(none, this.tabs));
         split.setDividerPositions(0.26);
-        var tools =
-                Fx.toolRow(
-                        this.address,
-                        Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat));
+        var tools = Fx.toolRow(this.address, Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat));
         return Fx.screen(this.title(), tools, split);
     }
 
     private static String friendText(Friend f) {
         String name = f.name().isEmpty() ? f.userHash().toString() : f.name();
-        return f.address().map(a -> name + "  (" + a.host() + ":" + a.port() + ")").orElse(name);
+        return f.address()
+                .map(a -> name + "  (" + a.host() + ":" + a.port() + ")")
+                .orElse(name);
     }
 
     void startChat() {
@@ -181,7 +168,10 @@ public final class MessagesScreen implements Screen {
             this.gui.inform().accept(this.gui.t("nj.chat.noAddress"));
             return;
         }
-        this.select(this.gui.model().chats().with(where.get().host() + ":" + where.get().port()));
+        this.select(this.gui
+                .model()
+                .chats()
+                .with(where.get().host() + ":" + where.get().port()));
     }
 
     void removeFriend() {
@@ -204,13 +194,11 @@ public final class MessagesScreen implements Screen {
         }
         Tab tab = new Tab(chat.address(), new ChatPane(chat));
         tab.textProperty()
-                .bind(
-                        Bindings.createStringBinding(
-                                () ->
-                                        chat.nickProperty().get().isEmpty()
-                                                ? chat.address()
-                                                : chat.nickProperty().get(),
-                                chat.nickProperty()));
+                .bind(Bindings.createStringBinding(
+                        () -> chat.nickProperty().get().isEmpty()
+                                ? chat.address()
+                                : chat.nickProperty().get(),
+                        chat.nickProperty()));
         tab.setOnClosed(e -> this.gui.model().chats().close(chat));
         this.open.put(chat, tab);
         this.tabs.getTabs().add(tab);
@@ -271,43 +259,30 @@ public final class MessagesScreen implements Screen {
             ListView<Chats.Line> lines = new ListView<>(chat.lines());
             lines.setUserData(chat);
             lines.setCellFactory(l -> new LineCell());
-            chat.lines()
-                    .addListener(
-                            (ListChangeListener<Chats.Line>)
-                                    c -> lines.scrollTo(chat.lines().size() - 1));
+            chat.lines().addListener((ListChangeListener<Chats.Line>)
+                    c -> lines.scrollTo(chat.lines().size() - 1));
             VBox.setVgrow(lines, Priority.ALWAYS);
             Label request = new Label(MessagesScreen.this.gui.t("IDS_CAPTCHAREQUEST"));
             request.setWrapText(true);
             this.solution.setOnAction(e -> this.solve());
-            this.captchaBox =
-                    new VBox(
-                            6,
-                            request,
-                            new HBox(
-                                    8,
-                                    this.captcha,
-                                    this.solution,
-                                    Fx.button(
-                                            MessagesScreen.this.gui.t("nj.chat.send"),
-                                            Material2MZ.SEND,
-                                            this::solve)));
+            this.captchaBox = new VBox(
+                    6,
+                    request,
+                    new HBox(
+                            8,
+                            this.captcha,
+                            this.solution,
+                            Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::solve)));
             this.captchaBox.getStyleClass().add("stat-card");
             chat.captchaProperty().addListener((o, was, now) -> this.showCaptcha(now));
             this.showCaptcha(chat.captchaProperty().get());
             this.input.setOnAction(e -> this.send());
             HBox.setHgrow(this.input, Priority.ALWAYS);
-            HBox row =
-                    new HBox(
-                            8,
-                            this.input,
-                            Fx.button(
-                                    MessagesScreen.this.gui.t("nj.chat.send"),
-                                    Material2MZ.SEND,
-                                    this::send),
-                            Fx.button(
-                                    MessagesScreen.this.gui.t("nj.chat.addFriend"),
-                                    Material2MZ.PERSON_ADD,
-                                    this::befriend));
+            HBox row = new HBox(
+                    8,
+                    this.input,
+                    Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::send),
+                    Fx.button(MessagesScreen.this.gui.t("nj.chat.addFriend"), Material2MZ.PERSON_ADD, this::befriend));
             this.getChildren().addAll(lines, this.captchaBox, row);
         }
 
@@ -336,21 +311,15 @@ public final class MessagesScreen implements Screen {
 
         void befriend() {
             if (this.chat.userHash().isEmpty()) {
-                MessagesScreen.this
-                        .gui
-                        .inform()
-                        .accept(MessagesScreen.this.gui.t("nj.chat.unknownYet"));
+                MessagesScreen.this.gui.inform().accept(MessagesScreen.this.gui.t("nj.chat.unknownYet"));
                 return;
             }
             ServerAddress where = ServerAddress.parse(this.chat.address());
             MessagesScreen.this
                     .gui
                     .model()
-                    .addFriend(
-                            new Friend(
-                                    this.chat.userHash().get(),
-                                    this.chat.nickProperty().get(),
-                                    Optional.of(where)));
+                    .addFriend(new Friend(
+                            this.chat.userHash().get(), this.chat.nickProperty().get(), Optional.of(where)));
         }
 
         TextField inputField() {
@@ -377,18 +346,11 @@ public final class MessagesScreen implements Screen {
                 return;
             }
             String time = TIME.format(line.time());
-            String text =
-                    switch (line.author()) {
-                        case US ->
-                                time
-                                        + "  "
-                                        + MessagesScreen.this.gui.t("nj.chat.me")
-                                        + ": "
-                                        + line.text();
-                        case THEM -> time + "  " + this.who() + ": " + line.text();
-                        case NOTICE ->
-                                time + "  " + MessagesScreen.this.gui.f(line.text(), line.detail());
-                    };
+            String text = switch (line.author()) {
+                case US -> time + "  " + MessagesScreen.this.gui.t("nj.chat.me") + ": " + line.text();
+                case THEM -> time + "  " + this.who() + ": " + line.text();
+                case NOTICE -> time + "  " + MessagesScreen.this.gui.f(line.text(), line.detail());
+            };
             this.setText(text);
             this.getStyleClass().add("chat-" + line.author().name().toLowerCase(Locale.ROOT));
         }

@@ -69,9 +69,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Our upload queue: clients that ask for a file wait in it, the best scored (waiting time times
- * credits times file priority) get the slots the upload limit allows, and each slot gets about one
- * part before the client goes back to waiting. Engine thread only, except {@link #router()}.
+ * Our upload queue: clients that ask for a file wait in it, the best scored (waiting time times credits times file
+ * priority) get the slots the upload limit allows, and each slot gets about one part before the client goes back to
+ * waiting. Engine thread only, except {@link #router()}.
  */
 public final class UploadManager implements AutoCloseable {
 
@@ -184,11 +184,7 @@ public final class UploadManager implements AutoCloseable {
     @FunctionalInterface
     public interface ChatSink {
         boolean incoming(
-                InetSocketAddress connection,
-                Hello peer,
-                Consumer<Packet> reply,
-                BooleanSupplier open,
-                Packet packet);
+                InetSocketAddress connection, Hello peer, Consumer<Packet> reply, BooleanSupplier open, Packet packet);
     }
 
     /** Chat packets arriving on upload connections go to {@code sink}. */
@@ -258,13 +254,7 @@ public final class UploadManager implements AutoCloseable {
         long now = this.ticker.read();
         List<UploadInfo> all = new ArrayList<>();
         for (Slot slot : this.slots) {
-            all.add(
-                    info(
-                            slot.client,
-                            UploadInfo.State.UPLOADING,
-                            slot.sent,
-                            slot.rate.rate(now),
-                            now));
+            all.add(info(slot.client, UploadInfo.State.UPLOADING, slot.sent, slot.rate.rate(now), now));
         }
         List<Client> queue = new ArrayList<>(this.waiting.values());
         queue.sort(Comparator.comparingDouble((Client c) -> this.score(c, now)).reversed());
@@ -284,8 +274,7 @@ public final class UploadManager implements AutoCloseable {
         return this.rate.total();
     }
 
-    private static UploadInfo info(
-            Client client, UploadInfo.State state, long sent, long rate, long now) {
+    private static UploadInfo info(Client client, UploadInfo.State state, long sent, long rate, long now) {
         return new UploadInfo(
                 client.ip.getHostAddress() + ":" + client.port,
                 client.userHash,
@@ -309,8 +298,8 @@ public final class UploadManager implements AutoCloseable {
     }
 
     /**
-     * Takes every incoming connection that no one else wanted: the client may ask for our files.
-     * Called on the connection's thread; waits for the engine thread.
+     * Takes every incoming connection that no one else wanted: the client may ask for our files. Called on the
+     * connection's thread; waits for the engine thread.
      */
     public PeerGreetings.Router router() {
         return (connection, peer) -> {
@@ -347,11 +336,8 @@ public final class UploadManager implements AutoCloseable {
     }
 
     private UploadSession session(TcpConnection connection, Hello peer) {
-        UploadSession session =
-                new UploadSession(this.loop, connection, peer, this.ourHello, this.events);
-        session.identify(
-                this.identities.start(
-                        peer, connection.remoteAddress().getAddress(), session::send));
+        UploadSession session = new UploadSession(this.loop, connection, peer, this.ourHello, this.events);
+        session.identify(this.identities.start(peer, connection.remoteAddress().getAddress(), session::send));
         return session;
     }
 
@@ -369,23 +355,15 @@ public final class UploadManager implements AutoCloseable {
     private void tick() {
         long now = this.ticker.read();
         int limit = this.settings.get().maxUploadKiBps();
-        this.budget =
-                limit == 0
-                        ? Long.MAX_VALUE
-                        : Math.min(this.budget + limit * 1024L / 10, limit * 1024L);
+        this.budget = limit == 0 ? Long.MAX_VALUE : Math.min(this.budget + limit * 1024L / 10, limit * 1024L);
         this.bans.values().removeIf(until -> now - until >= 0);
         this.waiting
                 .values()
-                .removeIf(
-                        c ->
-                                now - c.lastAsk > PURGE_AFTER.toNanos()
-                                        || this.find(c.file.hash()).isEmpty());
+                .removeIf(c -> now - c.lastAsk > PURGE_AFTER.toNanos()
+                        || this.find(c.file.hash()).isEmpty());
         for (Slot slot : List.copyOf(this.slots)) {
             this.read(slot);
-            if (slot.sent >= SESSION_LIMIT
-                    && !this.waiting.isEmpty()
-                    && slot.out.isEmpty()
-                    && !slot.reading) {
+            if (slot.sent >= SESSION_LIMIT && !this.waiting.isEmpty() && slot.out.isEmpty() && !slot.reading) {
                 this.requeue(slot, now);
             }
         }
@@ -442,13 +420,11 @@ public final class UploadManager implements AutoCloseable {
         Uploadable file = slot.client.file;
         slot.reading = true;
         this.loop.whenDone(
-                Blocks.read(
-                        file.data(), block.start(), Math.toIntExact(block.end() - block.start())),
+                Blocks.read(file.data(), block.start(), Math.toIntExact(block.end() - block.start())),
                 (data, failure) -> this.blockRead(slot, file, block, data, failure));
     }
 
-    private void blockRead(
-            Slot slot, Uploadable file, UploadSession.Block block, byte[] data, Throwable failure) {
+    private void blockRead(Slot slot, Uploadable file, UploadSession.Block block, byte[] data, Throwable failure) {
         slot.reading = false;
         if (!this.slots.contains(slot)) {
             return;
@@ -459,10 +435,9 @@ public final class UploadManager implements AutoCloseable {
             slot.session.close();
             return;
         }
-        boolean compress =
-                file.compressible()
-                        && data.length >= MIN_COMPRESSIBLE
-                        && (slot.session.peer().miscOptions1() >>> 20 & 0x0F) != 0;
+        boolean compress = file.compressible()
+                && data.length >= MIN_COMPRESSIBLE
+                && (slot.session.peer().miscOptions1() >>> 20 & 0x0F) != 0;
         List<Packet> packets = Blocks.packets(file.hash(), block.start(), data, compress);
         for (int i = 0; i < packets.size(); i++) {
             slot.out.add(new Item(packets.get(i), i == packets.size() - 1 ? data.length : 0));
@@ -542,8 +517,7 @@ public final class UploadManager implements AutoCloseable {
 
     private double score(Client client, long now) {
         double waited = Math.max(0, now - client.waitStart) / 1e9;
-        boolean trusted =
-                client.session != null ? client.session.trust().credits() : client.trusted;
+        boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
         double ratio = this.credits.ratio(client.userHash, trusted);
         return waited * ratio * this.priority(client.file.hash()) / 10;
     }
@@ -579,29 +553,21 @@ public final class UploadManager implements AutoCloseable {
     private void connect(Client client) {
         client.connecting = true;
         // Obfuscated only towards clients that said they take it.
-        Optional<Hash16> obfuscateFor =
-                this.settings.get().obfuscation() == ObfuscationMode.DISABLED || !client.crypt
-                        ? Optional.empty()
-                        : Optional.of(client.userHash);
+        Optional<Hash16> obfuscateFor = this.settings.get().obfuscation() == ObfuscationMode.DISABLED || !client.crypt
+                ? Optional.empty()
+                : Optional.of(client.userHash);
         InetSocketAddress address = new InetSocketAddress(client.ip, client.port);
-        Thread.ofVirtual()
-                .name("njmule-upload-" + address)
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection opened =
-                                        TcpConnector.connectToClient(
-                                                address,
-                                                obfuscateFor,
-                                                CONNECT_TIMEOUT,
-                                                this.random);
-                                if (!this.loop.post(() -> this.connected(client, opened))) {
-                                    opened.close();
-                                }
-                            } catch (IOException e) {
-                                this.loop.post(() -> this.unreachable(client, e.getMessage()));
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-upload-" + address).start(() -> {
+            try {
+                TcpConnection opened =
+                        TcpConnector.connectToClient(address, obfuscateFor, CONNECT_TIMEOUT, this.random);
+                if (!this.loop.post(() -> this.connected(client, opened))) {
+                    opened.close();
+                }
+            } catch (IOException e) {
+                this.loop.post(() -> this.unreachable(client, e.getMessage()));
+            }
+        });
     }
 
     private void unreachable(Client client, String reason) {
@@ -633,8 +599,7 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void onPacket(TcpConnection c, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY
-                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
             }
             UploadManager.this.loop.post(() -> this.deliver(packet));
@@ -642,14 +607,13 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void onClosed(TcpConnection c, Optional<IOException> cause) {
-            UploadManager.this.loop.post(
-                    () -> {
-                        if (this.session != null) {
-                            this.session.gone();
-                        } else {
-                            UploadManager.this.unreachable(this.client, "closed before the hello");
-                        }
-                    });
+            UploadManager.this.loop.post(() -> {
+                if (this.session != null) {
+                    this.session.gone();
+                } else {
+                    UploadManager.this.unreachable(this.client, "closed before the hello");
+                }
+            });
         }
 
         private void deliver(Packet packet) {
@@ -657,8 +621,7 @@ public final class UploadManager implements AutoCloseable {
                 this.session.received(packet);
                 return;
             }
-            if (packet.protocol() != Protocol.EDONKEY
-                    || packet.opcode() != Opcodes.Client.HELLOANSWER.code()) {
+            if (packet.protocol() != Protocol.EDONKEY || packet.opcode() != Opcodes.Client.HELLOANSWER.code()) {
                 return;
             }
             Hello peer;
@@ -702,15 +665,8 @@ public final class UploadManager implements AutoCloseable {
         if (sources.isEmpty()) {
             for (Client c : this.uploaders(request.file())) {
                 if (!c.lowId && c.ip instanceof Inet4Address ip4) {
-                    sources.add(
-                            new SourceExchange.Source(
-                                    Ipv4.fromBytes(ip4.getAddress()),
-                                    0,
-                                    c.port,
-                                    0,
-                                    0,
-                                    Optional.of(c.userHash),
-                                    0));
+                    sources.add(new SourceExchange.Source(
+                            Ipv4.fromBytes(ip4.getAddress()), 0, c.port, 0, 0, Optional.of(c.userHash), 0));
                 }
             }
         }
@@ -719,8 +675,7 @@ public final class UploadManager implements AutoCloseable {
             return;
         }
         this.sourcesAnswered.put(session.userHash(), now);
-        List<SourceExchange.Source> sent =
-                sources.subList(0, Math.min(sources.size(), SourceExchange.MAX_SOURCES));
+        List<SourceExchange.Source> sent = sources.subList(0, Math.min(sources.size(), SourceExchange.MAX_SOURCES));
         int version = Math.min(request.version(), SourceExchange.VERSION);
         Packet answer = new SourceExchange.Answer(version, request.file(), sent).encode();
         session.send(answer.length() > SX_PACK_ABOVE ? Packing.pack(answer) : answer);
@@ -787,10 +742,9 @@ public final class UploadManager implements AutoCloseable {
                 if (!sameClient(client, session)) {
                     return;
                 }
-                client.bad =
-                        now - client.lastAsk < MIN_REQUEST_TIME.toNanos()
-                                ? client.bad + 1
-                                : Math.max(0, client.bad - 1);
+                client.bad = now - client.lastAsk < MIN_REQUEST_TIME.toNanos()
+                        ? client.bad + 1
+                        : Math.max(0, client.bad - 1);
                 client.lastAsk = now;
                 if (client.bad >= BAD_LIMIT) {
                     logger.debug("Banning {}: asked again too often", ip);
@@ -840,8 +794,7 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void chat(UploadSession session, Packet packet) {
-            UploadManager.this.chat.incoming(
-                    session.address(), session.peer(), session::send, session::isOpen, packet);
+            UploadManager.this.chat.incoming(session.address(), session.peer(), session::send, session::isOpen, packet);
         }
 
         @Override

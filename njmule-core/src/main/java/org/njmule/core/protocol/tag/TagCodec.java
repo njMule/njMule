@@ -34,8 +34,8 @@ import org.njmule.core.protocol.tag.Tag.StringTag;
 import org.njmule.core.util.Bytes;
 
 /**
- * Reads and writes tags in the two eD2K encodings and the Kad encoding. Unknown types are rejected:
- * skipping them without consuming their data would desynchronise the rest of the list.
+ * Reads and writes tags in the two eD2K encodings and the Kad encoding. Unknown types are rejected: skipping them
+ * without consuming their data would desynchronise the rest of the list.
  */
 public final class TagCodec {
 
@@ -80,18 +80,15 @@ public final class TagCodec {
             case TagType.BSOB -> new BsobTag(name, Bytes.of(in.bytes(in.u8())));
             default -> {
                 if (type >= TagType.STR1 && type <= TagType.STR16) {
-                    yield new StringTag(
-                            name, Ed2kStrings.decode(in.bytes(type - TagType.STR1 + 1)));
+                    yield new StringTag(name, Ed2kStrings.decode(in.bytes(type - TagType.STR1 + 1)));
                 }
-                throw new DecodeException(
-                        String.format("unknown tag type 0x%02X for tag %s", type, name));
+                throw new DecodeException(String.format("unknown tag type 0x%02X for tag %s", type, name));
             }
         };
     }
 
     /** Reads {@code count} eD2K tags, after checking that they can fit in the remaining data. */
-    public static List<Tag> readEd2kList(PacketReader in, long count, int maxCount)
-            throws DecodeException {
+    public static List<Tag> readEd2kList(PacketReader in, long count, int maxCount) throws DecodeException {
         int n = in.count(count, MIN_ED2K_TAG_SIZE, maxCount);
         List<Tag> tags = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
@@ -100,32 +97,27 @@ public final class TagCodec {
         return List.copyOf(tags);
     }
 
-    public static void writeEd2k(
-            PacketWriter out, Tag tag, Ed2kTagFormat format, StringEncoding encoding) {
+    public static void writeEd2k(PacketWriter out, Tag tag, Ed2kTagFormat format, StringEncoding encoding) {
         byte[] string = null;
-        int type =
-                switch (tag) {
-                    case IntTag t ->
-                            format == Ed2kTagFormat.NEW
-                                    ? smallestIntType(t.value())
-                                    : (fits32(t.value()) ? TagType.UINT32 : TagType.UINT64);
-                    case StringTag t -> {
-                        string = Ed2kStrings.encode(t.value(), encoding);
-                        yield format == Ed2kTagFormat.NEW
-                                        && string.length >= 1
-                                        && string.length <= 16
-                                ? TagType.STR1 + string.length - 1
-                                : TagType.STRING;
-                    }
-                    case HashTag t -> TagType.HASH;
-                    case FloatTag t -> TagType.FLOAT32;
-                    case BoolTag t -> TagType.BOOL;
-                    case BoolArrayTag t -> TagType.BOOLARRAY;
-                    case BlobTag t -> TagType.BLOB;
-                    case BsobTag t ->
-                            throw new IllegalArgumentException(
-                                    "other clients cannot read BSOB in eD2K tags: " + t.name());
-                };
+        int type = switch (tag) {
+            case IntTag t ->
+                format == Ed2kTagFormat.NEW
+                        ? smallestIntType(t.value())
+                        : (fits32(t.value()) ? TagType.UINT32 : TagType.UINT64);
+            case StringTag t -> {
+                string = Ed2kStrings.encode(t.value(), encoding);
+                yield format == Ed2kTagFormat.NEW && string.length >= 1 && string.length <= 16
+                        ? TagType.STR1 + string.length - 1
+                        : TagType.STRING;
+            }
+            case HashTag t -> TagType.HASH;
+            case FloatTag t -> TagType.FLOAT32;
+            case BoolTag t -> TagType.BOOL;
+            case BoolArrayTag t -> TagType.BOOLARRAY;
+            case BlobTag t -> TagType.BLOB;
+            case BsobTag t ->
+                throw new IllegalArgumentException("other clients cannot read BSOB in eD2K tags: " + t.name());
+        };
 
         TagName name = tag.name();
         if (format == Ed2kTagFormat.NEW && name.isId()) {
@@ -137,8 +129,7 @@ public final class TagCodec {
         writeEd2kValue(out, tag, type, string);
     }
 
-    public static void writeEd2kList(
-            PacketWriter out, List<Tag> tags, Ed2kTagFormat format, StringEncoding encoding) {
+    public static void writeEd2kList(PacketWriter out, List<Tag> tags, Ed2kTagFormat format, StringEncoding encoding) {
         for (Tag tag : tags) {
             writeEd2k(out, tag, format, encoding);
         }
@@ -157,9 +148,7 @@ public final class TagCodec {
             case TagType.FLOAT32 -> new FloatTag(name, in.f32());
             case TagType.BSOB -> new BsobTag(name, Bytes.of(in.bytes(in.u8())));
             default ->
-                    throw new DecodeException(
-                            String.format(
-                                    "unsupported Kad tag type 0x%02X for tag %s", type, name));
+                throw new DecodeException(String.format("unsupported Kad tag type 0x%02X for tag %s", type, name));
         };
     }
 
@@ -174,23 +163,19 @@ public final class TagCodec {
     }
 
     public static void writeKad(PacketWriter out, Tag tag) {
-        int type =
-                switch (tag) {
-                    case IntTag t -> smallestIntType(t.value());
-                    case StringTag t -> TagType.STRING;
-                    case HashTag t -> TagType.HASH;
-                    case FloatTag t -> TagType.FLOAT32;
-                    case BsobTag t -> TagType.BSOB;
-                    case BoolTag t -> throw unsupportedInKad(t);
-                    case BoolArrayTag t -> throw unsupportedInKad(t);
-                    case BlobTag t -> throw unsupportedInKad(t);
-                };
+        int type = switch (tag) {
+            case IntTag t -> smallestIntType(t.value());
+            case StringTag t -> TagType.STRING;
+            case HashTag t -> TagType.HASH;
+            case FloatTag t -> TagType.FLOAT32;
+            case BsobTag t -> TagType.BSOB;
+            case BoolTag t -> throw unsupportedInKad(t);
+            case BoolArrayTag t -> throw unsupportedInKad(t);
+            case BlobTag t -> throw unsupportedInKad(t);
+        };
         byte[] raw = tag.name().toBytes();
         out.u8(type).u16(raw.length).bytes(raw);
-        byte[] string =
-                tag instanceof StringTag s
-                        ? Ed2kStrings.encode(s.value(), StringEncoding.UTF8)
-                        : null;
+        byte[] string = tag instanceof StringTag s ? Ed2kStrings.encode(s.value(), StringEncoding.UTF8) : null;
         writeEd2kValue(out, tag, type, string);
     }
 

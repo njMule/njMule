@@ -36,8 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The friends, kept in {@code emfriends.met} as eMule keeps them; what njMule does not change (Kad
- * id, times) is kept as read. Engine thread only.
+ * The friends, kept in {@code emfriends.met} as eMule keeps them; what njMule does not change (Kad id, times) is kept
+ * as read. Engine thread only.
  */
 public final class Friends {
 
@@ -55,11 +55,9 @@ public final class Friends {
     /** Reads the friends of {@code configDir}; a broken file counts as none. */
     public static Friends load(Path configDir) {
         Friends store = new Friends(configDir.resolve(FILE_NAME));
-        if (Files.exists(store.file)
-                || Files.exists(AtomicFiles.bakPath(store.file.toAbsolutePath()))) {
+        if (Files.exists(store.file) || Files.exists(AtomicFiles.bakPath(store.file.toAbsolutePath()))) {
             try {
-                for (FriendsMet.Friend f :
-                        AtomicFiles.read(store.file, in -> FriendsMet.read(in.readAllBytes()))) {
+                for (FriendsMet.Friend f : AtomicFiles.read(store.file, in -> FriendsMet.read(in.readAllBytes()))) {
                     store.friends.put(f.userHash(), f);
                 }
             } catch (IOException e) {
@@ -72,10 +70,9 @@ public final class Friends {
     public List<Friend> all() {
         List<Friend> all = new ArrayList<>();
         for (FriendsMet.Friend f : this.friends.values()) {
-            Optional<ServerAddress> address =
-                    f.lastIp() == 0 || f.lastPort() == 0
-                            ? Optional.empty()
-                            : Optional.of(new ServerAddress(Ipv4.format(f.lastIp()), f.lastPort()));
+            Optional<ServerAddress> address = f.lastIp() == 0 || f.lastPort() == 0
+                    ? Optional.empty()
+                    : Optional.of(new ServerAddress(Ipv4.format(f.lastIp()), f.lastPort()));
             all.add(new Friend(f.userHash(), f.name().orElse(""), address));
         }
         return all;

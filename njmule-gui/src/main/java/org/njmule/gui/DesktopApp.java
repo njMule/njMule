@@ -48,8 +48,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The desktop application around one engine: opening it, showing the main window, keeping the
- * window's settings and closing everything together.
+ * The desktop application around one engine: opening it, showing the main window, keeping the window's settings and
+ * closing everything together.
  */
 public final class DesktopApp implements AutoCloseable {
 
@@ -67,11 +67,7 @@ public final class DesktopApp implements AutoCloseable {
     private Scene scene;
     private Timeline ticker;
 
-    private DesktopApp(
-            NjMuleEngine engine,
-            AppDirectories directories,
-            GuiSettings settings,
-            Optional<WebUi> webUi) {
+    private DesktopApp(NjMuleEngine engine, AppDirectories directories, GuiSettings settings, Optional<WebUi> webUi) {
         this.engine = engine;
         this.directories = directories;
         this.settings = settings;
@@ -118,15 +114,12 @@ public final class DesktopApp implements AutoCloseable {
                 stage.getIcons().add(new Image(icon.toExternalForm()));
             }
         }
-        this.settings
-                .window()
-                .ifPresent(
-                        b -> {
-                            stage.setX(b[0]);
-                            stage.setY(b[1]);
-                            stage.setWidth(b[2]);
-                            stage.setHeight(b[3]);
-                        });
+        this.settings.window().ifPresent(b -> {
+            stage.setX(b[0]);
+            stage.setY(b[1]);
+            stage.setWidth(b[2]);
+            stage.setHeight(b[3]);
+        });
         stage.setMaximized(this.settings.maximized());
         stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         stage.setScene(this.scene);
@@ -141,8 +134,7 @@ public final class DesktopApp implements AutoCloseable {
             GuiTour.start(this.gui, this.window, stage, Platform::exit);
         } else if (!this.settings.existed()) {
             // At the first start an eMule on this computer is offered for import.
-            ImportDialog.guessEmuleDirectory()
-                    .ifPresent(dir -> new ImportDialog(this.gui, stage).show());
+            ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
         }
     }
 
@@ -171,16 +163,15 @@ public final class DesktopApp implements AutoCloseable {
     private Parent build() {
         Locale locale = this.settings.language().orElse(Locale.getDefault());
         I18n i18n = I18n.of(locale);
-        this.gui =
-                new Gui(
-                        i18n,
-                        new Formats(i18n.locale()),
-                        this.model,
-                        this.themes,
-                        this.settings,
-                        this.directories,
-                        text -> this.window.message(text),
-                        this::relaunch);
+        this.gui = new Gui(
+                i18n,
+                new Formats(i18n.locale()),
+                this.model,
+                this.themes,
+                this.settings,
+                this.directories,
+                text -> this.window.message(text),
+                this::relaunch);
         this.window = new MainWindow(this.gui);
         this.model.onError(this.window::message);
         return this.window.root();
@@ -195,8 +186,7 @@ public final class DesktopApp implements AutoCloseable {
 
     private void remember(Stage stage) {
         if (!stage.isMaximized()) {
-            this.settings.setWindow(
-                    stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight());
+            this.settings.setWindow(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight());
         }
         this.settings.setMaximized(stage.isMaximized());
         try {

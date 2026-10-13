@@ -27,7 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class InfraTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void sizesRatesDurationsAndPercentages() {
@@ -78,8 +79,7 @@ class InfraTest {
         assertThat(again.mode()).isEqualTo(GuiSettings.Mode.DARK);
         assertThat(again.language()).contains(Locale.ITALIAN);
         assertThat(again.screen()).isEqualTo("search");
-        assertThat(again.window())
-                .hasValueSatisfying(b -> assertThat(b).containsExactly(10, 20, 800, 600));
+        assertThat(again.window()).hasValueSatisfying(b -> assertThat(b).containsExactly(10, 20, 800, 600));
         assertThat(again.maximized()).isTrue();
     }
 

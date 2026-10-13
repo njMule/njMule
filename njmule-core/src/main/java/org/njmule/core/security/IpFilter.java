@@ -25,8 +25,8 @@ import java.util.Optional;
 import org.njmule.core.persist.format.IpFilterDat;
 
 /**
- * Immutable set of blocked IPv4 ranges: a range blocks when its level is below the filter level.
- * Where ranges overlap, the one listed later wins. Safe to use from any thread.
+ * Immutable set of blocked IPv4 ranges: a range blocks when its level is below the filter level. Where ranges overlap,
+ * the one listed later wins. Safe to use from any thread.
  */
 public final class IpFilter {
 
@@ -52,8 +52,7 @@ public final class IpFilter {
         for (IpFilterDat.Range r : ranges) {
             if (r.level() < level) {
                 blocked.put(
-                        Range.closed(
-                                Integer.toUnsignedLong(r.start()), Integer.toUnsignedLong(r.end())),
+                        Range.closed(Integer.toUnsignedLong(r.start()), Integer.toUnsignedLong(r.end())),
                         r.description());
             }
         }
@@ -67,9 +66,7 @@ public final class IpFilter {
 
     /** The description of the range blocking {@code ip}, if any. */
     public Optional<String> match(int ip) {
-        return ip == 0
-                ? Optional.empty()
-                : Optional.ofNullable(this.blocked.get(Integer.toUnsignedLong(ip)));
+        return ip == 0 ? Optional.empty() : Optional.ofNullable(this.blocked.get(Integer.toUnsignedLong(ip)));
     }
 
     /** Number of disjoint blocked ranges. */

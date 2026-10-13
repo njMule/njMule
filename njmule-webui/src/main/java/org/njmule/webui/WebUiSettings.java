@@ -26,8 +26,8 @@ import java.util.Objects;
 import java.util.Properties;
 
 /**
- * Whether the web interface runs, on which port, whether other computers may reach it, and the hash
- * of its password; kept in {@code webui.properties} of the config directory.
+ * Whether the web interface runs, on which port, whether other computers may reach it, and the hash of its password;
+ * kept in {@code webui.properties} of the config directory.
  *
  * @param lan whether to listen on every address instead of this computer's only
  * @param passwordHash empty until a password is set; the interface does not start without one
@@ -63,7 +63,8 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
             p.load(in);
             return new WebUiSettings(
                     Boolean.parseBoolean(p.getProperty("enabled", "false").strip()),
-                    Integer.parseInt(p.getProperty("port", String.valueOf(DEFAULT_PORT)).strip()),
+                    Integer.parseInt(
+                            p.getProperty("port", String.valueOf(DEFAULT_PORT)).strip()),
                     Boolean.parseBoolean(p.getProperty("lan", "false").strip()),
                     p.getProperty("password", "").strip());
         } catch (IOException | IllegalArgumentException e) {
@@ -73,38 +74,28 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
 
     /** Writes the settings, replacing the old file in one step. */
     public void save(Path configDir) throws IOException {
-        String text =
-                "# njMule web interface\n"
-                        + "enabled="
-                        + this.enabled
-                        + "\n"
-                        + "port="
-                        + this.port
-                        + "\n"
-                        + "lan="
-                        + this.lan
-                        + "\n"
-                        + "password="
-                        + this.passwordHash
-                        + "\n";
+        String text = "# njMule web interface\n"
+                + "enabled="
+                + this.enabled
+                + "\n"
+                + "port="
+                + this.port
+                + "\n"
+                + "lan="
+                + this.lan
+                + "\n"
+                + "password="
+                + this.passwordHash
+                + "\n";
         Files.createDirectories(configDir);
         Path tmp = configDir.resolve(FILE_NAME + ".tmp");
         Files.writeString(tmp, text, StandardCharsets.UTF_8);
         Files.move(
-                tmp,
-                configDir.resolve(FILE_NAME),
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE);
+                tmp, configDir.resolve(FILE_NAME), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     @Override
     public String toString() {
-        return "WebUiSettings[enabled="
-                + this.enabled
-                + ", port="
-                + this.port
-                + ", lan="
-                + this.lan
-                + "]";
+        return "WebUiSettings[enabled=" + this.enabled + ", port=" + this.port + ", lan=" + this.lan + "]";
     }
 }

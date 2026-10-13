@@ -62,20 +62,17 @@ class EngineLoopTest {
 
     @Test
     void failingTaskDoesNotKillTheLoop() throws Exception {
-        this.loop.post(
-                () -> {
-                    throw new IllegalStateException("boom");
-                });
+        this.loop.post(() -> {
+            throw new IllegalStateException("boom");
+        });
         assertThat(this.loop.submit(() -> 42).get()).isEqualTo(42);
     }
 
     @Test
     void submitPropagatesExceptions() {
-        CompletableFuture<Object> f =
-                this.loop.submit(
-                        () -> {
-                            throw new IllegalArgumentException("bad");
-                        });
+        CompletableFuture<Object> f = this.loop.submit(() -> {
+            throw new IllegalArgumentException("bad");
+        });
         assertThatThrownBy(f::get)
                 .isInstanceOf(ExecutionException.class)
                 .hasCauseInstanceOf(IllegalArgumentException.class);
@@ -85,11 +82,10 @@ class EngineLoopTest {
     void fullQueueRefusesTasksWithoutBlocking() throws Exception {
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch blocked = new CountDownLatch(1);
-        this.loop.post(
-                () -> {
-                    blocked.countDown();
-                    awaitQuietly(release);
-                });
+        this.loop.post(() -> {
+            blocked.countDown();
+            awaitQuietly(release);
+        });
         blocked.await();
 
         int accepted = 0;
@@ -106,16 +102,12 @@ class EngineLoopTest {
         CountDownLatch repeating = new CountDownLatch(3);
         AtomicInteger runs = new AtomicInteger();
         this.loop.schedule("one", Duration.ofMillis(5), oneShot::countDown);
-        this.loop.scheduleRepeating(
-                "tick",
-                Duration.ZERO,
-                Duration.ofMillis(5),
-                () -> {
-                    repeating.countDown();
-                    if (runs.incrementAndGet() == 1) {
-                        throw new IllegalStateException("first run fails");
-                    }
-                });
+        this.loop.scheduleRepeating("tick", Duration.ZERO, Duration.ofMillis(5), () -> {
+            repeating.countDown();
+            if (runs.incrementAndGet() == 1) {
+                throw new IllegalStateException("first run fails");
+            }
+        });
 
         assertThat(oneShot.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(repeating.await(5, TimeUnit.SECONDS)).isTrue();
@@ -124,7 +116,9 @@ class EngineLoopTest {
     @Test
     void cancelledTimersDoNotRun() throws Exception {
         AtomicInteger runs = new AtomicInteger();
-        this.loop.schedule("never", Duration.ofMillis(50), runs::incrementAndGet).cancel(false);
+        this.loop
+                .schedule("never", Duration.ofMillis(50), runs::incrementAndGet)
+                .cancel(false);
         Thread.sleep(150);
 
         assertThat(runs).hasValue(0);
@@ -139,16 +133,13 @@ class EngineLoopTest {
             this.loop.post(ran::incrementAndGet);
         }
 
-        Thread stopper =
-                Thread.ofPlatform()
-                        .start(
-                                () -> {
-                                    try {
-                                        this.loop.shutdown(Duration.ofSeconds(5));
-                                    } catch (InterruptedException e) {
-                                        Thread.currentThread().interrupt();
-                                    }
-                                });
+        Thread stopper = Thread.ofPlatform().start(() -> {
+            try {
+                this.loop.shutdown(Duration.ofSeconds(5));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         while (this.loop.isRunning()) {
             Thread.onSpinWait();
         }
@@ -157,8 +148,7 @@ class EngineLoopTest {
 
         assertThat(ran).hasValue(5);
         assertThat(this.loop.post(() -> {})).isFalse();
-        assertThatThrownBy(() -> this.loop.submit(() -> 1).get())
-                .hasCauseInstanceOf(RejectedExecutionException.class);
+        assertThatThrownBy(() -> this.loop.submit(() -> 1).get()).hasCauseInstanceOf(RejectedExecutionException.class);
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

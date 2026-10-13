@@ -40,8 +40,8 @@ import org.njmule.core.search.SearchTreeCodec;
 import org.njmule.core.util.Ipv4;
 
 /**
- * Messages between a client and an eD2K server over TCP. IP addresses travel as the four bytes in
- * network order; client ids below {@link #LOW_ID_LIMIT} are LowIDs (firewalled clients).
+ * Messages between a client and an eD2K server over TCP. IP addresses travel as the four bytes in network order; client
+ * ids below {@link #LOW_ID_LIMIT} are LowIDs (firewalled clients).
  */
 public final class ServerMessages {
 
@@ -76,8 +76,7 @@ public final class ServerMessages {
     private ServerMessages() {}
 
     /** The login request, the first message after connecting. */
-    public record Login(
-            Hash16 userHash, long clientId, int tcpPort, String nick, int capabilities) {
+    public record Login(Hash16 userHash, long clientId, int tcpPort, String nick, int capabilities) {
         public Login {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(nick, "nick");
@@ -86,14 +85,12 @@ public final class ServerMessages {
         public Packet encode() {
             PacketWriter out = new PacketWriter();
             out.hash16(this.userHash).u32(this.clientId).u16(this.tcpPort);
-            List<Tag> tags =
-                    List.of(
-                            new Tag.StringTag(TagName.id(ClientTag.NAME), this.nick),
-                            new Tag.IntTag(TagName.id(ClientTag.VERSION), ClientVersion.EDONKEY),
-                            new Tag.IntTag(TagName.id(ClientTag.SERVER_FLAGS), this.capabilities),
-                            new Tag.IntTag(
-                                    TagName.id(ClientTag.EMULE_VERSION),
-                                    Integer.toUnsignedLong(ClientVersion.njMule())));
+            List<Tag> tags = List.of(
+                    new Tag.StringTag(TagName.id(ClientTag.NAME), this.nick),
+                    new Tag.IntTag(TagName.id(ClientTag.VERSION), ClientVersion.EDONKEY),
+                    new Tag.IntTag(TagName.id(ClientTag.SERVER_FLAGS), this.capabilities),
+                    new Tag.IntTag(
+                            TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())));
             out.u32(tags.size());
             TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.OLD, StringEncoding.UTF8);
             return Packet.of(Protocol.EDONKEY, Opcodes.Server.LOGINREQUEST.code(), out);
@@ -107,18 +104,12 @@ public final class ServerMessages {
             int port = in.u16();
             List<Tag> tags = TagCodec.readEd2kList(in, in.u32(), FileEntry.MAX_TAGS);
             return new Login(
-                    hash,
-                    clientId,
-                    port,
-                    Tags.stringValue(tags, ClientTag.NAME).orElse(""),
-                    (int) Tags.intValue(tags, ClientTag.SERVER_FLAGS).orElse(0));
+                    hash, clientId, port, Tags.stringValue(tags, ClientTag.NAME).orElse(""), (int)
+                            Tags.intValue(tags, ClientTag.SERVER_FLAGS).orElse(0));
         }
     }
 
-    /**
-     * The id the server assigned, its flags and, from newer servers, our address as it sees it (0
-     * when absent).
-     */
+    /** The id the server assigned, its flags and, from newer servers, our address as it sees it (0 when absent). */
     public record IdChange(long clientId, int serverFlags, int reportedIp) {
         public boolean isLowId() {
             return this.clientId < LOW_ID_LIMIT;
@@ -134,12 +125,11 @@ public final class ServerMessages {
         }
 
         public Packet encode() {
-            PacketWriter out =
-                    new PacketWriter()
-                            .u32(this.clientId)
-                            .u32(Integer.toUnsignedLong(this.serverFlags))
-                            .u32(0)
-                            .u32(this.reportedIp == 0 ? 0 : Ipv4.toEd2k(this.reportedIp));
+            PacketWriter out = new PacketWriter()
+                    .u32(this.clientId)
+                    .u32(Integer.toUnsignedLong(this.serverFlags))
+                    .u32(0)
+                    .u32(this.reportedIp == 0 ? 0 : Ipv4.toEd2k(this.reportedIp));
             return Packet.of(Protocol.EDONKEY, Opcodes.Server.IDCHANGE.code(), out);
         }
 
@@ -177,20 +167,16 @@ public final class ServerMessages {
     }
 
     /** The server's own description. */
-    public record ServerIdent(
-            Hash16 hash, int ip, int port, Optional<String> name, Optional<String> description) {
+    public record ServerIdent(Hash16 hash, int ip, int port, Optional<String> name, Optional<String> description) {
         public Packet encode() {
             List<Tag> tags = new ArrayList<>();
-            this.name.ifPresent(
-                    n -> tags.add(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), n)));
-            this.description.ifPresent(
-                    d -> tags.add(new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), d)));
-            PacketWriter out =
-                    new PacketWriter()
-                            .hash16(this.hash)
-                            .u32(Ipv4.toEd2k(this.ip))
-                            .u16(this.port)
-                            .u32(tags.size());
+            this.name.ifPresent(n -> tags.add(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), n)));
+            this.description.ifPresent(d -> tags.add(new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), d)));
+            PacketWriter out = new PacketWriter()
+                    .hash16(this.hash)
+                    .u32(Ipv4.toEd2k(this.ip))
+                    .u16(this.port)
+                    .u32(tags.size());
             TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
             return Packet.of(Protocol.EDONKEY, Opcodes.Server.SERVERIDENT.code(), out);
         }
@@ -242,8 +228,7 @@ public final class ServerMessages {
     }
 
     /** A LowID client asked through the server that we connect to it. */
-    public record CallbackRequested(
-            Endpoint endpoint, int cryptOptions, Optional<Hash16> userHash) {
+    public record CallbackRequested(Endpoint endpoint, int cryptOptions, Optional<Hash16> userHash) {
         public static CallbackRequested decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             Endpoint endpoint = new Endpoint(Ipv4.fromEd2k(in.u32()), in.u16());
@@ -256,8 +241,8 @@ public final class ServerMessages {
     }
 
     /**
-     * A source for a file: a client id (its IP for a HighID), its port and, from servers that know
-     * them, its connect options and user hash.
+     * A source for a file: a client id (its IP for a HighID), its port and, from servers that know them, its connect
+     * options and user hash.
      */
     public record Source(long clientId, int port, int cryptOptions, Optional<Hash16> userHash) {
         /** Connect options flag: the user hash follows. */
@@ -309,8 +294,8 @@ public final class ServerMessages {
     }
 
     /**
-     * Asks for the sources of a file; files above 4 GB use the 64-bit form, which only servers with
-     * large file support understand.
+     * Asks for the sources of a file; files above 4 GB use the 64-bit form, which only servers with large file support
+     * understand.
      */
     public static Packet getSources(Hash16 file, long size, boolean obfuscated) {
         PacketWriter out = new PacketWriter().hash16(file);
@@ -319,8 +304,7 @@ public final class ServerMessages {
         } else {
             out.u32(size);
         }
-        Opcodes.Server opcode =
-                obfuscated ? Opcodes.Server.GETSOURCES_OBFU : Opcodes.Server.GETSOURCES;
+        Opcodes.Server opcode = obfuscated ? Opcodes.Server.GETSOURCES_OBFU : Opcodes.Server.GETSOURCES;
         return Packet.of(Protocol.EDONKEY, opcode.code(), out);
     }
 
@@ -379,10 +363,7 @@ public final class ServerMessages {
 
     /** Asks the server to have a LowID client connect to us. */
     public static Packet callbackRequest(long lowId) {
-        return Packet.of(
-                Protocol.EDONKEY,
-                Opcodes.Server.CALLBACKREQUEST.code(),
-                new PacketWriter().u32(lowId));
+        return Packet.of(Protocol.EDONKEY, Opcodes.Server.CALLBACKREQUEST.code(), new PacketWriter().u32(lowId));
     }
 
     /** Our shared files, with new tags for servers that announced them. */
@@ -397,7 +378,6 @@ public final class ServerMessages {
 
     /** An empty file offer: keeps an idle connection alive. */
     public static Packet keepAlive() {
-        return Packet.of(
-                Protocol.EDONKEY, Opcodes.Server.OFFERFILES.code(), new PacketWriter().u32(0));
+        return Packet.of(Protocol.EDONKEY, Opcodes.Server.OFFERFILES.code(), new PacketWriter().u32(0));
     }
 }

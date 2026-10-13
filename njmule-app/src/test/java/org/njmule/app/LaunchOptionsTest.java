@@ -28,7 +28,8 @@ import org.njmule.core.api.ServerAddress;
 
 class LaunchOptionsTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void defaultsToRun() throws Exception {
@@ -40,8 +41,7 @@ class LaunchOptionsTest {
 
     @Test
     void parsesEveryOption() throws Exception {
-        LaunchOptions cli =
-                LaunchOptions.parse("--config-dir", this.dir.toString(), "--log-level", "debug");
+        LaunchOptions cli = LaunchOptions.parse("--config-dir", this.dir.toString(), "--log-level", "debug");
         assertThat(cli.configDir()).contains(this.dir.toAbsolutePath().normalize());
         assertThat(cli.logLevel()).contains("DEBUG");
 
@@ -67,16 +67,15 @@ class LaunchOptionsTest {
 
     @Test
     void collectsTheNetworkTasks() throws Exception {
-        LaunchOptions cli =
-                LaunchOptions.parse(
-                        "--headless",
-                        "--add-servers",
-                        "server.met",
-                        "--connect-server",
-                        "1.2.3.4:4661",
-                        "--search",
-                        "ubuntu iso",
-                        "--global");
+        LaunchOptions cli = LaunchOptions.parse(
+                "--headless",
+                "--add-servers",
+                "server.met",
+                "--connect-server",
+                "1.2.3.4:4661",
+                "--search",
+                "ubuntu iso",
+                "--global");
 
         assertThat(cli.action()).isEqualTo(Action.RUN);
         assertThat(cli.headless()).isTrue();
@@ -88,7 +87,9 @@ class LaunchOptionsTest {
 
         LaunchOptions hello = LaunchOptions.parse("--hello", "localhost:61426");
         assertThat(hello.network().hello()).contains(new ServerAddress("localhost", 61426));
-        assertThat(LaunchOptions.parse("--connect-server", "s.example:4242").network().isOneShot())
+        assertThat(LaunchOptions.parse("--connect-server", "s.example:4242")
+                        .network()
+                        .isOneShot())
                 .isFalse();
 
         String link = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/|sources,127.0.0.1:61426|/";
@@ -96,12 +97,10 @@ class LaunchOptionsTest {
         assertThat(download.network().downloads()).hasSize(1);
         assertThat(download.network().downloads().getFirst().sources()).hasSize(1);
         assertThat(download.network().isOneShot()).isTrue();
-        LaunchOptions kad =
-                LaunchOptions.parse("--kad-bootstrap", "127.0.0.1:14897", "--search", "x", "--kad");
+        LaunchOptions kad = LaunchOptions.parse("--kad-bootstrap", "127.0.0.1:14897", "--search", "x", "--kad");
         assertThat(kad.network().kadBootstrap()).contains(new ServerAddress("127.0.0.1", 14897));
         assertThat(kad.network().kad()).isTrue();
-        assertThatThrownBy(() -> LaunchOptions.parse("--kad"))
-                .hasMessageContaining("--kad applies to --search");
+        assertThatThrownBy(() -> LaunchOptions.parse("--kad")).hasMessageContaining("--kad applies to --search");
 
         LaunchOptions share = LaunchOptions.parse("--share", "videos", "music");
         assertThat(share.network().shares())
@@ -114,29 +113,25 @@ class LaunchOptionsTest {
 
         assertThatThrownBy(() -> LaunchOptions.parse("--connect-server", "nowhere"))
                 .hasMessageContaining("Invalid address for --connect-server");
-        assertThatThrownBy(() -> LaunchOptions.parse("--global"))
-                .hasMessageContaining("--global applies to --search");
+        assertThatThrownBy(() -> LaunchOptions.parse("--global")).hasMessageContaining("--global applies to --search");
     }
 
     @Test
     void collectsAnEmuleImport() throws Exception {
         LaunchOptions cli =
-                LaunchOptions.parse(
-                        "--import-emule", this.dir.toString(), "--dry-run", "--import-downloads");
+                LaunchOptions.parse("--import-emule", this.dir.toString(), "--dry-run", "--import-downloads");
 
         LaunchOptions.EmuleImport task = cli.network().emuleImport().orElseThrow();
         assertThat(task.dir()).isEqualTo(this.dir.toAbsolutePath().normalize());
         assertThat(task.options()).isEqualTo(new ImportOptions(true, false, true));
         assertThat(cli.network().isOneShot()).isTrue();
-        assertThat(
-                        LaunchOptions.parse("--import-emule", "x", "--adopt-emule-identity")
-                                .network()
-                                .emuleImport()
-                                .orElseThrow()
-                                .options())
+        assertThat(LaunchOptions.parse("--import-emule", "x", "--adopt-emule-identity")
+                        .network()
+                        .emuleImport()
+                        .orElseThrow()
+                        .options())
                 .isEqualTo(new ImportOptions(false, true, false));
-        assertThatThrownBy(() -> LaunchOptions.parse("--dry-run"))
-                .hasMessageContaining("apply to --import-emule");
+        assertThatThrownBy(() -> LaunchOptions.parse("--dry-run")).hasMessageContaining("apply to --import-emule");
     }
 
     @Test
@@ -144,25 +139,22 @@ class LaunchOptionsTest {
         assertThatThrownBy(() -> LaunchOptions.parse("--bogus"))
                 .hasMessageContaining("Unknown option")
                 .hasMessageContaining("--bogus");
-        assertThatThrownBy(() -> LaunchOptions.parse("--config-dir"))
-                .hasMessageContaining("--config-dir");
-        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "--help"))
-                .hasMessageContaining("--log-level");
-        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "loud"))
-                .hasMessage("Invalid log level: loud");
+        assertThatThrownBy(() -> LaunchOptions.parse("--config-dir")).hasMessageContaining("--config-dir");
+        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "--help")).hasMessageContaining("--log-level");
+        assertThatThrownBy(() -> LaunchOptions.parse("--log-level", "loud")).hasMessage("Invalid log level: loud");
     }
 
     @Test
     void parsesTheWebInterfacePassword() throws Exception {
         LaunchOptions cli = LaunchOptions.parse("--webui-password", "--webui-port", "8080");
         assertThat(cli.action()).isEqualTo(Action.WEBUI_PASSWORD);
-        assertThat(cli.webUi())
-                .contains(new LaunchOptions.WebUiSetup(java.util.Optional.of(8080), false));
-        assertThat(LaunchOptions.parse("--webui-password", "--webui-lan").webUi().orElseThrow())
+        assertThat(cli.webUi()).contains(new LaunchOptions.WebUiSetup(java.util.Optional.of(8080), false));
+        assertThat(LaunchOptions.parse("--webui-password", "--webui-lan")
+                        .webUi()
+                        .orElseThrow())
                 .isEqualTo(new LaunchOptions.WebUiSetup(java.util.Optional.empty(), true));
         assertThat(LaunchOptions.parse().webUi()).isEmpty();
-        assertThatThrownBy(() -> LaunchOptions.parse("--webui-lan"))
-                .hasMessageContaining("apply to --webui-password");
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-lan")).hasMessageContaining("apply to --webui-password");
         assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "0"))
                 .hasMessage("Invalid port for --webui-port: 0");
         assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "x"))

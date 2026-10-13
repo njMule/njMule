@@ -48,7 +48,8 @@ class RsaTest {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final PrivateKey KEY = Rsa.generate(Rsa.NETWORK_KEY_BITS, RANDOM);
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void networkKeysFitTheEightyBytePublicKeyLimit() throws DecodeException {
@@ -61,8 +62,7 @@ class RsaTest {
 
     @Test
     void signaturesVerifyAndDetectTampering() {
-        byte[] message =
-                "public key + challenge".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] message = "public key + challenge".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         byte[] signature = Rsa.sign(KEY, message);
 
         assertThat(signature).hasSize(48);
@@ -116,30 +116,21 @@ class RsaTest {
                 .isTrue();
         assertThat(SecureIdent.verify(peer.publicKey(), signature, ourPublic, 0x12345679, v2))
                 .isFalse();
-        assertThat(
-                        SecureIdent.verify(
-                                peer.publicKey(),
-                                signature,
-                                ourPublic,
-                                0x12345678,
-                                Optional.empty()))
+        assertThat(SecureIdent.verify(peer.publicKey(), signature, ourPublic, 0x12345678, Optional.empty()))
                 .isFalse();
-        assertThat(
-                        SecureIdent.verify(
-                                peer.publicKey(),
-                                signature,
-                                ourPublic,
-                                0x12345678,
-                                Optional.of(new IpBinding(ip(10, 0, 0, 2), IpKind.REMOTE_CLIENT))))
+        assertThat(SecureIdent.verify(
+                        peer.publicKey(),
+                        signature,
+                        ourPublic,
+                        0x12345678,
+                        Optional.of(new IpBinding(ip(10, 0, 0, 2), IpKind.REMOTE_CLIENT))))
                 .isFalse();
-        assertThat(SecureIdent.message(new byte[] {7}, 0x01020304, v2))
-                .containsExactly(7, 4, 3, 2, 1, 10, 0, 0, 1, 10);
+        assertThat(SecureIdent.message(new byte[] {7}, 0x01020304, v2)).containsExactly(7, 4, 3, 2, 1, 10, 0, 0, 1, 10);
     }
 
     private static Inet4Address ip(int a, int b, int c, int d) {
         try {
-            return (Inet4Address)
-                    InetAddress.getByAddress(new byte[] {(byte) a, (byte) b, (byte) c, (byte) d});
+            return (Inet4Address) InetAddress.getByAddress(new byte[] {(byte) a, (byte) b, (byte) c, (byte) d});
         } catch (UnknownHostException e) {
             throw new IllegalStateException(e);
         }

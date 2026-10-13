@@ -63,9 +63,7 @@ class BlockInflaterTest {
             try (BlockInflater inflater = new BlockInflater(0, block.length)) {
                 for (int at = 0; at < stream.length; at += 10_240) {
                     out.writeBytes(
-                            inflater.inflate(
-                                    Arrays.copyOfRange(
-                                            stream, at, Math.min(stream.length, at + 10_240))));
+                            inflater.inflate(Arrays.copyOfRange(stream, at, Math.min(stream.length, at + 10_240))));
                 }
                 assertThat(inflater.finished()).as("round %d", round).isTrue();
             }

@@ -56,10 +56,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The complete files we share: those of the incoming directory and of the shared directories, not
- * their subdirectories. Hashes are remembered in {@code known.met} (and the AICH trees in {@code
- * known2_64.met}) by name, size and modification time, so unchanged files are not hashed again.
- * Engine thread only; hashing runs on a thread of its own and reports back.
+ * The complete files we share: those of the incoming directory and of the shared directories, not their subdirectories.
+ * Hashes are remembered in {@code known.met} (and the AICH trees in {@code known2_64.met}) by name, size and
+ * modification time, so unchanged files are not hashed again. Engine thread only; hashing runs on a thread of its own
+ * and reports back.
  */
 public final class SharedFiles implements AutoCloseable {
 
@@ -96,8 +96,7 @@ public final class SharedFiles implements AutoCloseable {
     public static final Duration RESCAN_INTERVAL = Duration.ofMinutes(10);
 
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
-    private static final Set<String> SKIPPED =
-            Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
+    private static final Set<String> SKIPPED = Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
     private static final Logger logger = LoggerFactory.getLogger(SharedFiles.class);
 
     /** A client's private key: a directory holding one is a client's configuration. */
@@ -115,9 +114,8 @@ public final class SharedFiles implements AutoCloseable {
     private final Map<Hash16, SharedFile> byHash = new LinkedHashMap<>();
     private final Map<Path, SharedFile> byPath = new HashMap<>();
     private final Set<Path> hashing = new LinkedHashSet<>();
-    private final ExecutorService hasher =
-            Executors.newSingleThreadExecutor(
-                    Thread.ofPlatform().name("njmule-hasher").daemon(true).factory());
+    private final ExecutorService hasher = Executors.newSingleThreadExecutor(
+            Thread.ofPlatform().name("njmule-hasher").daemon(true).factory());
     private ScheduledFuture<?> rescan;
     private ScheduledFuture<?> pendingSave;
     private boolean closed;
@@ -148,9 +146,7 @@ public final class SharedFiles implements AutoCloseable {
             Listener listener) {
         SharedFiles shares = new SharedFiles(loop, configDir, incomingDir, privateDirs, listener);
         shares.loadKnown();
-        shares.rescan =
-                loop.scheduleRepeating(
-                        "rescan shared files", Duration.ZERO, RESCAN_INTERVAL, shares::scan);
+        shares.rescan = loop.scheduleRepeating("rescan shared files", Duration.ZERO, RESCAN_INTERVAL, shares::scan);
         return shares;
     }
 
@@ -198,15 +194,14 @@ public final class SharedFiles implements AutoCloseable {
             dirs.add(dir);
             List<String> lines = new ArrayList<>();
             dirs.forEach(d -> lines.add(d.toString()));
-            AtomicFiles.writeBytes(
-                    this.configDir.resolve(SHARED_DIRS), TextFiles.writeLines(lines));
+            AtomicFiles.writeBytes(this.configDir.resolve(SHARED_DIRS), TextFiles.writeLines(lines));
         }
         this.scan();
     }
 
     /**
-     * Remembers the hashes of another client's known files, so the same files are not hashed again;
-     * returns how many were new. Only the AICH trees of those files are kept.
+     * Remembers the hashes of another client's known files, so the same files are not hashed again; returns how many
+     * were new. Only the AICH trees of those files are kept.
      */
     public int addKnown(List<KnownMet.KnownFile> files, List<Known2Met.Entry> trees) {
         Set<Hash20> wanted = new HashSet<>();
@@ -298,8 +293,7 @@ public final class SharedFiles implements AutoCloseable {
     }
 
     private void consider(Path file, Set<Path> seen) throws IOException {
-        BasicFileAttributes attrs =
-                Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
         String name = String.valueOf(file.getFileName());
         if (!attrs.isRegularFile()
                 || attrs.size() == 0
@@ -318,13 +312,7 @@ public final class SharedFiles implements AutoCloseable {
         if (record != null && record.isConsistent()) {
             this.share(
                     new SharedFile(
-                            file,
-                            name,
-                            attrs.size(),
-                            record.fileHash(),
-                            record.partHashes(),
-                            record.aichHash(),
-                            mtime),
+                            file, name, attrs.size(), record.fileHash(), record.partHashes(), record.aichHash(), mtime),
                     Optional.empty());
             return;
         }
@@ -352,8 +340,7 @@ public final class SharedFiles implements AutoCloseable {
             logger.warn("Cannot hash {}: {}", file, failure.getMessage());
             return;
         }
-        Optional<Known2Met.Entry> tree =
-                result.aich().map(t -> new Known2Met.Entry(t.masterHash(), t.blockHashes()));
+        Optional<Known2Met.Entry> tree = result.aich().map(t -> new Known2Met.Entry(t.masterHash(), t.blockHashes()));
         this.share(
                 new SharedFile(
                         file,
@@ -378,11 +365,10 @@ public final class SharedFiles implements AutoCloseable {
             this.known.put(key, record(file));
             this.saveSoon();
         }
-        tree.ifPresent(
-                t -> {
-                    this.aich.put(t.masterHash(), t);
-                    this.saveSoon();
-                });
+        tree.ifPresent(t -> {
+            this.aich.put(t.masterHash(), t);
+            this.saveSoon();
+        });
         if (fresh) {
             logger.debug("Sharing {}", file.path());
             this.listener.shared(file);
@@ -401,12 +387,7 @@ public final class SharedFiles implements AutoCloseable {
         List<Tag> tags = new ArrayList<>();
         tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), file.name()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), file.size()));
-        file.aichHash()
-                .ifPresent(
-                        h ->
-                                tags.add(
-                                        new Tag.StringTag(
-                                                TagName.id(FileTag.AICH_HASH), h.toBase32())));
+        file.aichHash().ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         tags.add(new Tag.IntTag(TagName.id(FileTag.LASTSHARED), System.currentTimeMillis() / 1000));
         return new KnownMet.KnownFile(file.mtime(), file.hash(), file.partHashes(), tags);
     }
@@ -415,12 +396,10 @@ public final class SharedFiles implements AutoCloseable {
         Path met = this.configDir.resolve(KNOWN_MET);
         if (Files.exists(met) || Files.exists(AtomicFiles.bakPath(met.toAbsolutePath()))) {
             try {
-                for (KnownMet.KnownFile file :
-                        AtomicFiles.read(met, in -> KnownMet.read(in.readAllBytes()))) {
+                for (KnownMet.KnownFile file : AtomicFiles.read(met, in -> KnownMet.read(in.readAllBytes()))) {
                     Optional<String> name = file.name();
                     if (name.isPresent() && file.size().isPresent()) {
-                        this.known.put(
-                                new Key(name.get(), file.size().getAsLong(), file.mtime()), file);
+                        this.known.put(new Key(name.get(), file.size().getAsLong(), file.mtime()), file);
                     }
                 }
             } catch (IOException e) {
@@ -447,21 +426,18 @@ public final class SharedFiles implements AutoCloseable {
 
     private void save() {
         try {
+            AtomicFiles.writeBytes(this.configDir.resolve(KNOWN_MET), KnownMet.write(List.copyOf(this.known.values())));
             AtomicFiles.writeBytes(
-                    this.configDir.resolve(KNOWN_MET),
-                    KnownMet.write(List.copyOf(this.known.values())));
-            AtomicFiles.writeBytes(
-                    this.configDir.resolve(KNOWN2_MET),
-                    Known2Met.write(List.copyOf(this.aich.values())));
+                    this.configDir.resolve(KNOWN2_MET), Known2Met.write(List.copyOf(this.aich.values())));
         } catch (IOException e) {
             logger.warn("Cannot save the known files", e);
         }
     }
 
     /**
-     * Whether the files of {@code dir} must never be shared: the user's home directory, our
-     * configuration and temp directories and what lies below them, and any directory holding a
-     * client's private key (another client's configuration).
+     * Whether the files of {@code dir} must never be shared: the user's home directory, our configuration and temp
+     * directories and what lies below them, and any directory holding a client's private key (another client's
+     * configuration).
      */
     boolean isPrivate(Path dir) {
         Path d = dir.toAbsolutePath().normalize();

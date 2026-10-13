@@ -58,9 +58,8 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 
 /**
- * The engine as the interface sees it: observable state on the FX thread, refreshed from the
- * engine's events and by polling once a second, and the commands the screens send. The engine is
- * never waited for on the FX thread.
+ * The engine as the interface sees it: observable state on the FX thread, refreshed from the engine's events and by
+ * polling once a second, and the commands the screens send. The engine is never waited for on the FX thread.
  */
 public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoCloseable {
 
@@ -109,32 +108,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Seconds of rate history kept for the graphs. */
     public static final int RATE_HISTORY = 3_600;
 
-    private static final EngineStatus NO_STATUS =
-            new EngineStatus(
-                    Optional.empty(),
-                    0,
-                    false,
-                    false,
-                    Optional.empty(),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0);
+    private static final EngineStatus NO_STATUS = new EngineStatus(
+            Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private final NjMuleEngine engine;
     private final Executor fx;
     private final ObjectProperty<EngineStatus> status = new SimpleObjectProperty<>(NO_STATUS);
-    private final ObjectProperty<Connection> connection =
-            new SimpleObjectProperty<>(Connection.DISCONNECTED);
+    private final ObjectProperty<Connection> connection = new SimpleObjectProperty<>(Connection.DISCONNECTED);
     private final StringProperty serverName = new SimpleStringProperty("");
     private final StringProperty lastLog = new SimpleStringProperty("");
     private final ObjectProperty<Preferences> preferences;
@@ -142,8 +122,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
     private final LiveList<Hash16, DownloadInfo> downloads = new LiveList<>(DownloadInfo::hash);
-    private final LiveList<String, UploadInfo> uploads =
-            new LiveList<>(u -> u.userHash() + "@" + u.address());
+    private final LiveList<String, UploadInfo> uploads = new LiveList<>(u -> u.userHash() + "@" + u.address());
     private final LiveList<Path, SharedFileInfo> shared = new LiveList<>(SharedFileInfo::path);
     private final Map<SearchId, Search> searches = new LinkedHashMap<>();
     private final Chats chats = new Chats();
@@ -153,9 +132,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private Flow.Subscription subscription;
     private long ticks;
 
-    /**
-     * @param fx runs tasks on the FX thread (in tests, any thread)
-     */
+    /** @param fx runs tasks on the FX thread (in tests, any thread) */
     public EngineModel(NjMuleEngine engine, Executor fx) {
         this.engine = Objects.requireNonNull(engine, "engine");
         this.fx = Objects.requireNonNull(fx, "fx");
@@ -184,19 +161,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Runs once a second on the FX thread: polls what events do not tell. */
     public void tick() {
         this.ticks++;
-        this.later(
-                this.engine.status(),
-                s -> {
-                    this.status.set(s);
-                    this.rates.add(
-                            new RateSample(
-                                    Instant.now(),
-                                    s.downloadBytesPerSecond(),
-                                    s.uploadBytesPerSecond()));
-                    if (this.rates.size() > RATE_HISTORY) {
-                        this.rates.remove(0, this.rates.size() - RATE_HISTORY);
-                    }
-                });
+        this.later(this.engine.status(), s -> {
+            this.status.set(s);
+            this.rates.add(new RateSample(Instant.now(), s.downloadBytesPerSecond(), s.uploadBytesPerSecond()));
+            if (this.rates.size() > RATE_HISTORY) {
+                this.rates.remove(0, this.rates.size() - RATE_HISTORY);
+            }
+        });
         this.later(this.engine.downloads(), this.downloads::update);
         if (this.ticks % 2 == 0) {
             this.later(this.engine.uploads(), this.uploads::update);
@@ -343,13 +314,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void moreResults(Search search) {
-        this.later(
-                this.engine.moreResults(search.id()),
-                more -> {
-                    if (more) {
-                        search.running.set(true);
-                    }
-                });
+        this.later(this.engine.moreResults(search.id()), more -> {
+            if (more) {
+                search.running.set(true);
+            }
+        });
     }
 
     public void stopSearch(Search search) {
@@ -359,12 +328,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void updatePreferences(UnaryOperator<Preferences> change, Consumer<Preferences> done) {
-        this.later(
-                this.engine.updatePreferences(change),
-                p -> {
-                    this.preferences.set(p);
-                    done.accept(p);
-                });
+        this.later(this.engine.updatePreferences(change), p -> {
+            this.preferences.set(p);
+            done.accept(p);
+        });
     }
 
     public void updateSchedule(Schedule schedule, Consumer<Schedule> done) {
@@ -372,14 +339,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void importFromEmule(Path dir, ImportOptions options, Consumer<ImportReport> done) {
-        this.later(
-                this.engine.importFromEmule(dir, options),
-                report -> {
-                    done.accept(report);
-                    this.preferences.set(this.engine.preferences());
-                    this.refreshServers();
-                    this.refreshShared();
-                });
+        this.later(this.engine.importFromEmule(dir, options), report -> {
+            done.accept(report);
+            this.preferences.set(this.engine.preferences());
+            this.refreshServers();
+            this.refreshShared();
+        });
     }
 
     @Override
@@ -450,17 +415,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadFailed e -> this.downloads.put(e.download());
             case EngineEvent.DownloadRemoved e -> this.downloads.remove(e.hash());
             case EngineEvent.PreferencesChanged e -> this.preferences.set(e.preferences());
-            case EngineEvent.MessageReceived e ->
-                    this.chats.received(e.address(), e.userHash(), e.nick(), e.text());
-            case EngineEvent.CaptchaRequested e ->
-                    this.chats.captcha(e.address(), e.userHash(), e.image());
+            case EngineEvent.MessageReceived e -> this.chats.received(e.address(), e.userHash(), e.nick(), e.text());
+            case EngineEvent.CaptchaRequested e -> this.chats.captcha(e.address(), e.userHash(), e.image());
             case EngineEvent.CaptchaAnswered e ->
-                    this.chats.notice(
-                            e.address(),
-                            e.solved() ? "IDS_CAPTCHASOLVED" : "IDS_CAPTCHAFAILED",
-                            "");
-            case EngineEvent.MessageFailed e ->
-                    this.chats.notice(e.address(), "nj.chat.failed", e.reason());
+                this.chats.notice(e.address(), e.solved() ? "IDS_CAPTCHASOLVED" : "IDS_CAPTCHAFAILED", "");
+            case EngineEvent.MessageFailed e -> this.chats.notice(e.address(), "nj.chat.failed", e.reason());
             default -> {
                 // Started, stopping and server messages show through the log.
             }
@@ -496,27 +455,22 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     // The follow-up only hands the outcome to the FX thread, which reports failures itself.
     @SuppressWarnings("FutureReturnValueIgnored")
     private <T> void later(CompletableFuture<T> work, Consumer<T> then) {
-        work.whenComplete(
-                (value, failure) ->
-                        this.fx.execute(
-                                () -> {
-                                    if (failure != null) {
-                                        this.errors.accept(message(failure));
-                                        if (this.connection.get() == Connection.CONNECTING
-                                                && this.serverName.get().isEmpty()) {
-                                            this.connection.set(Connection.DISCONNECTED);
-                                        }
-                                    } else {
-                                        then.accept(value);
-                                    }
-                                }));
+        work.whenComplete((value, failure) -> this.fx.execute(() -> {
+            if (failure != null) {
+                this.errors.accept(message(failure));
+                if (this.connection.get() == Connection.CONNECTING
+                        && this.serverName.get().isEmpty()) {
+                    this.connection.set(Connection.DISCONNECTED);
+                }
+            } else {
+                then.accept(value);
+            }
+        }));
     }
 
     private static String message(Throwable failure) {
         Throwable cause =
-                failure instanceof CompletionException && failure.getCause() != null
-                        ? failure.getCause()
-                        : failure;
+                failure instanceof CompletionException && failure.getCause() != null ? failure.getCause() : failure;
         return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
     }
 

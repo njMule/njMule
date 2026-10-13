@@ -27,9 +27,8 @@ import java.util.TreeMap;
 import org.njmule.core.protocol.kad.KadMessages;
 
 /**
- * One iterative lookup towards a target: the closest contacts we know are asked for closer ones,
- * three at a time, and the nodes that answered and are close enough get the actual request (a
- * search or a publish). Engine thread only.
+ * One iterative lookup towards a target: the closest contacts we know are asked for closer ones, three at a time, and
+ * the nodes that answered and are close enough get the actual request (a search or a publish). Engine thread only.
  */
 final class Lookup {
 
@@ -220,9 +219,7 @@ final class Lookup {
                 return;
             }
             if (this.responded.contains(c.id())) {
-                if (this.kind.value
-                        && e.getKey().top32() <= TOLERANCE
-                        && this.requested.add(c.id())) {
+                if (this.kind.value && e.getKey().top32() <= TOLERANCE && this.requested.add(c.id())) {
                     this.requests.request(this, c);
                 }
                 this.possible.remove(e.getKey());

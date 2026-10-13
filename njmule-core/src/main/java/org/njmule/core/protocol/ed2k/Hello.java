@@ -37,12 +37,11 @@ import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Ipv4;
 
 /**
- * The greeting two clients exchange first (OP_HELLO, then OP_HELLOANSWER): {@code [<16>]<user hash
- * 16><client id u32><tcp port u16><tag count u32><tags><server ip u32><server port u16>}, where
- * only OP_HELLO starts with the hash size. The tags announce name, versions, ports and features.
+ * The greeting two clients exchange first (OP_HELLO, then OP_HELLOANSWER): {@code [<16>]<user hash 16><client id
+ * u32><tcp port u16><tag count u32><tags><server ip u32><server port u16>}, where only OP_HELLO starts with the hash
+ * size. The tags announce name, versions, ports and features.
  */
-public record Hello(
-        Hash16 userHash, long clientId, int tcpPort, List<Tag> tags, int serverIp, int serverPort) {
+public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags, int serverIp, int serverPort) {
 
     // Feature bits of the first options tag.
     public static final int MISC1_UNICODE = 1 << 28;
@@ -77,22 +76,14 @@ public record Hello(
             int miscOptions2,
             int serverIp,
             int serverPort) {
-        List<Tag> tags =
-                List.of(
-                        new Tag.StringTag(TagName.id(ClientTag.NAME), nick),
-                        new Tag.IntTag(TagName.id(ClientTag.VERSION), ClientVersion.EDONKEY),
-                        new Tag.IntTag(
-                                TagName.id(ClientTag.EMULE_UDPPORTS),
-                                (long) (kadPort & 0xFFFF) << 16 | (udpPort & 0xFFFF)),
-                        new Tag.IntTag(
-                                TagName.id(ClientTag.EMULE_MISCOPTIONS1),
-                                Integer.toUnsignedLong(miscOptions1)),
-                        new Tag.IntTag(
-                                TagName.id(ClientTag.EMULE_MISCOPTIONS2),
-                                Integer.toUnsignedLong(miscOptions2)),
-                        new Tag.IntTag(
-                                TagName.id(ClientTag.EMULE_VERSION),
-                                Integer.toUnsignedLong(ClientVersion.njMule())));
+        List<Tag> tags = List.of(
+                new Tag.StringTag(TagName.id(ClientTag.NAME), nick),
+                new Tag.IntTag(TagName.id(ClientTag.VERSION), ClientVersion.EDONKEY),
+                new Tag.IntTag(
+                        TagName.id(ClientTag.EMULE_UDPPORTS), (long) (kadPort & 0xFFFF) << 16 | (udpPort & 0xFFFF)),
+                new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS1), Integer.toUnsignedLong(miscOptions1)),
+                new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS2), Integer.toUnsignedLong(miscOptions2)),
+                new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())));
         return new Hello(userHash, clientId, tcpPort, tags, serverIp, serverPort);
     }
 

@@ -27,21 +27,19 @@ import org.njmule.core.protocol.packet.UdpFraming;
 import org.njmule.core.util.Ipv4;
 
 /**
- * UDP obfuscation. An obfuscated datagram is {@code <marker 1><random part 2>} in clear followed by
- * RC4-encrypted {@code <sync 4><padding length 1><padding>[<receiver key 4><sender key
- * 4>]<packet>}; the key stream is not discarded and the bracketed verify keys exist only for Kad.
+ * UDP obfuscation. An obfuscated datagram is {@code <marker 1><random part 2>} in clear followed by RC4-encrypted
+ * {@code <sync 4><padding length 1><padding>[<receiver key 4><sender key 4>]<packet>}; the key stream is not discarded
+ * and the bracketed verify keys exist only for Kad.
  *
  * <p>RC4 key = MD5 of:
  *
  * <ul>
  *   <li>eD2K client: receiver user hash, sender IP, 91, random part (sync {@code 0x395F2EC1});
  *   <li>Kad: receiver Kad id or the receiver's verify key, random part (sync {@code 0x395F2EC1});
- *   <li>server: server key, 0x6B towards the server or 0xA5 from it, random part (sync {@code
- *       0x13EF24D5}).
+ *   <li>server: server key, 0x6B towards the server or 0xA5 from it, random part (sync {@code 0x13EF24D5}).
  * </ul>
  *
- * <p>The marker's low bits hint which key to try first: {@code x1} eD2K, {@code 00} Kad id, {@code
- * 10} Kad verify key.
+ * <p>The marker's low bits hint which key to try first: {@code x1} eD2K, {@code 00} Kad id, {@code 10} Kad verify key.
  */
 public final class DatagramObfuscation {
 
@@ -69,54 +67,36 @@ public final class DatagramObfuscation {
     private DatagramObfuscation() {}
 
     /**
-     * The verify key we give the Kad node at {@code peerIp} (host order), derived from our secret
-     * {@code udpKey}: 1 to 0xFFFFFFFE, and the same for that address until the secret changes.
+     * The verify key we give the Kad node at {@code peerIp} (host order), derived from our secret {@code udpKey}: 1 to
+     * 0xFFFFFFFE, and the same for that address until the secret changes.
      */
     public static int kadVerifyKey(int udpKey, int peerIp) {
         byte[] material = concat(Ipv4.toBytes(peerIp), le32(udpKey));
         byte[] digest = StreamObfuscation.md5(material);
-        long folded =
-                Integer.toUnsignedLong(
-                        readLe32(digest, 0)
-                                ^ readLe32(digest, 4)
-                                ^ readLe32(digest, 8)
-                                ^ readLe32(digest, 12));
+        long folded = Integer.toUnsignedLong(
+                readLe32(digest, 0) ^ readLe32(digest, 4) ^ readLe32(digest, 8) ^ readLe32(digest, 12));
         return (int) (folded % 0xFFFF_FFFEL + 1);
     }
 
     private static int readLe32(byte[] b, int at) {
-        return (b[at] & 0xFF)
-                | (b[at + 1] & 0xFF) << 8
-                | (b[at + 2] & 0xFF) << 16
-                | (b[at + 3] & 0xFF) << 24;
+        return (b[at] & 0xFF) | (b[at + 1] & 0xFF) << 8 | (b[at + 2] & 0xFF) << 16 | (b[at + 3] & 0xFF) << 24;
     }
 
     public static byte[] encryptForClient(
             byte[] datagram, Hash16 receiverUserHash, byte[] ownPublicIpv4, SecureRandom random) {
         return encryptForClient(
-                datagram,
-                receiverUserHash,
-                ownPublicIpv4,
-                clientMarker(random, false, 0),
-                keyPart(random));
+                datagram, receiverUserHash, ownPublicIpv4, clientMarker(random, false, 0), keyPart(random));
     }
 
     static byte[] encryptForClient(
-            byte[] datagram,
-            Hash16 receiverUserHash,
-            byte[] ownPublicIpv4,
-            int marker,
-            byte[] keyPart) {
-        Rc4 rc4 =
-                new Rc4(
-                        StreamObfuscation.md5(
-                                ed2kMaterial(receiverUserHash, ownPublicIpv4, keyPart)));
+            byte[] datagram, Hash16 receiverUserHash, byte[] ownPublicIpv4, int marker, byte[] keyPart) {
+        Rc4 rc4 = new Rc4(StreamObfuscation.md5(ed2kMaterial(receiverUserHash, ownPublicIpv4, keyPart)));
         return seal(datagram, marker, keyPart, SYNC_CLIENT, rc4, null);
     }
 
     /**
-     * Kad datagram, keyed with the receiver's Kad id when known, otherwise with the verify key the
-     * receiver gave us ({@code receiverVerifyKey}).
+     * Kad datagram, keyed with the receiver's Kad id when known, otherwise with the verify key the receiver gave us
+     * ({@code receiverVerifyKey}).
      */
     public static byte[] encryptForKad(
             byte[] datagram,
@@ -145,10 +125,9 @@ public final class DatagramObfuscation {
         if (useVerifyKey && receiverVerifyKey == 0) {
             throw new IllegalArgumentException("a Kad id or a receiver verify key is required");
         }
-        byte[] material =
-                useVerifyKey
-                        ? concat(le32(receiverVerifyKey), keyPart)
-                        : concat(receiverKadId.get().toByteArray(), keyPart);
+        byte[] material = useVerifyKey
+                ? concat(le32(receiverVerifyKey), keyPart)
+                : concat(receiverKadId.get().toByteArray(), keyPart);
         Rc4 rc4 = new Rc4(StreamObfuscation.md5(material));
         byte[] keys = concat(le32(receiverVerifyKey), le32(senderVerifyKey));
         return seal(datagram, marker, keyPart, SYNC_CLIENT, rc4, keys);
@@ -163,14 +142,13 @@ public final class DatagramObfuscation {
     }
 
     static byte[] encryptForServer(byte[] datagram, int serverKey, int marker, byte[] keyPart) {
-        Rc4 rc4 =
-                new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, MAGIC_TO_SERVER, keyPart)));
+        Rc4 rc4 = new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, MAGIC_TO_SERVER, keyPart)));
         return seal(datagram, marker, keyPart, SYNC_SERVER, rc4, null);
     }
 
     /**
-     * Decodes a datagram from a client or Kad node, trying the possible keys in the order hinted by
-     * the marker. Datagrams that are not obfuscated, or that match no key, are decoded as plain.
+     * Decodes a datagram from a client or Kad node, trying the possible keys in the order hinted by the marker.
+     * Datagrams that are not obfuscated, or that match no key, are decoded as plain.
      *
      * @param ownKadId our Kad id, empty when Kad is not running
      * @param ownVerifyKeyForSender the verify key we hand out to the sender's IP (0 if unknown)
@@ -209,13 +187,7 @@ public final class DatagramObfuscation {
                 }
             }
             Optional<Received> opened =
-                    open(
-                            data,
-                            offset,
-                            length,
-                            new Rc4(StreamObfuscation.md5(material)),
-                            SYNC_CLIENT,
-                            kind);
+                    open(data, offset, length, new Rc4(StreamObfuscation.md5(material)), SYNC_CLIENT, kind);
             if (opened.isPresent()) {
                 return opened.get();
             }
@@ -224,24 +196,17 @@ public final class DatagramObfuscation {
     }
 
     /** Decodes a datagram from a server whose UDP key is {@code serverKey} (0: none). */
-    public static Received decodeFromServer(byte[] data, int offset, int length, int serverKey)
-            throws DecodeException {
-        if (length <= ED2K_OVERHEAD
-                || serverKey == 0
-                || (data[offset] & 0xFF) == Protocol.EDONKEY) {
+    public static Received decodeFromServer(byte[] data, int offset, int length, int serverKey) throws DecodeException {
+        if (length <= ED2K_OVERHEAD || serverKey == 0 || (data[offset] & 0xFF) == Protocol.EDONKEY) {
             return plain(data, offset, length);
         }
         byte[] keyPart = {data[offset + 1], data[offset + 2]};
-        Rc4 rc4 =
-                new Rc4(
-                        StreamObfuscation.md5(
-                                serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart)));
+        Rc4 rc4 = new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart)));
         Optional<Received> opened = open(data, offset, length, rc4, SYNC_SERVER, Kind.SERVER);
         return opened.isPresent() ? opened.get() : plain(data, offset, length);
     }
 
-    private static Optional<Received> open(
-            byte[] data, int offset, int length, Rc4 rc4, int sync, Kind kind)
+    private static Optional<Received> open(byte[] data, int offset, int length, Rc4 rc4, int sync, Kind kind)
             throws DecodeException {
         byte[] head = new byte[5];
         rc4.apply(data, offset + 3, head, 0, 5);
@@ -271,12 +236,10 @@ public final class DatagramObfuscation {
         }
         byte[] packet = new byte[rest];
         rc4.apply(data, from, packet, 0, rest);
-        return Optional.of(
-                new Received(UdpFraming.decode(packet, 0, rest), kind, receiverKey, senderKey));
+        return Optional.of(new Received(UdpFraming.decode(packet, 0, rest), kind, receiverKey, senderKey));
     }
 
-    private static byte[] seal(
-            byte[] datagram, int marker, byte[] keyPart, int sync, Rc4 rc4, byte[] kadKeys) {
+    private static byte[] seal(byte[] datagram, int marker, byte[] keyPart, int sync, Rc4 rc4, byte[] kadKeys) {
         int extra = kadKeys == null ? 0 : kadKeys.length;
         byte[] out = new byte[ED2K_OVERHEAD + extra + datagram.length];
         out[0] = (byte) marker;
@@ -310,8 +273,7 @@ public final class DatagramObfuscation {
                     Protocol.KAD,
                     Protocol.UDP_RESERVED_1,
                     Protocol.UDP_RESERVED_2,
-                    Protocol.PACKED ->
-                    true;
+                    Protocol.PACKED -> true;
             default -> false;
         };
     }

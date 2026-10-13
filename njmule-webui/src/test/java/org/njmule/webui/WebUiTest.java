@@ -56,7 +56,8 @@ class WebUiTest {
     private static final String PASSWORD = "correct horse";
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
 
-    @TempDir static Path dir;
+    @TempDir
+    static Path dir;
 
     private static NjMuleEngine engine;
 
@@ -69,8 +70,7 @@ class WebUiTest {
         AppDirectories dirs = AppDirectories.underRoot(dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
         engine = NjMuleEngine.start(new EngineConfig(dirs));
     }
 
@@ -101,7 +101,8 @@ class WebUiTest {
         assertThat(login.statusCode()).isEqualTo(200);
         assertThat(login.body()).contains("type=\"password\"").doesNotContain("csrf");
         assertThat(this.get("/style.css").body()).contains("color-scheme");
-        assertThat(this.post("/transfers", Map.of("action", "add")).statusCode()).isEqualTo(403);
+        assertThat(this.post("/transfers", Map.of("action", "add")).statusCode())
+                .isEqualTo(403);
     }
 
     @Test
@@ -138,33 +139,16 @@ class WebUiTest {
         this.start();
         this.login();
         String link = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
-        assertThat(this.post("/transfers", Map.of("action", "add", "link", link)).statusCode())
+        assertThat(this.post("/transfers", Map.of("action", "add", "link", link))
+                        .statusCode())
                 .isEqualTo(403);
-        assertThat(
-                        this.post(
-                                        "/transfers",
-                                        Map.of(
-                                                "action",
-                                                "add",
-                                                "link",
-                                                link,
-                                                "csrf",
-                                                "not-the-token"))
-                                .statusCode())
+        assertThat(this.post("/transfers", Map.of("action", "add", "link", link, "csrf", "not-the-token"))
+                        .statusCode())
                 .isEqualTo(403);
-        HttpRequest foreign =
-                this.request("/transfers")
-                        .header("Origin", "http://evil.example")
-                        .POST(
-                                form(
-                                        Map.of(
-                                                "action",
-                                                "add",
-                                                "link",
-                                                link,
-                                                "csrf",
-                                                this.csrf("/transfers"))))
-                        .build();
+        HttpRequest foreign = this.request("/transfers")
+                .header("Origin", "http://evil.example")
+                .POST(form(Map.of("action", "add", "link", link, "csrf", this.csrf("/transfers"))))
+                .build();
         assertThat(this.http.send(foreign, HttpResponse.BodyHandlers.ofString()).statusCode())
                 .isEqualTo(403);
         assertThat(this.get("/transfers").body()).doesNotContain("refused.bin");
@@ -176,9 +160,7 @@ class WebUiTest {
         try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
             OutputStream out = socket.getOutputStream();
             out.write(
-                    ("GET /login HTTP/1.1\r\nHost: rebound.example:"
-                                    + this.ui.port()
-                                    + "\r\nConnection: close\r\n\r\n")
+                    ("GET /login HTTP/1.1\r\nHost: rebound.example:" + this.ui.port() + "\r\nConnection: close\r\n\r\n")
                             .getBytes(StandardCharsets.US_ASCII));
             out.flush();
             InputStream in = socket.getInputStream();
@@ -194,9 +176,7 @@ class WebUiTest {
         String hash = "0123456789ABCDEF0123456789ABCDEF";
         String link = "ed2k://|file|web & test.bin|1000|" + hash + "|/";
         HttpResponse<String> added =
-                this.post(
-                        "/transfers",
-                        Map.of("action", "add", "link", link, "csrf", this.csrf("/transfers")));
+                this.post("/transfers", Map.of("action", "add", "link", link, "csrf", this.csrf("/transfers")));
         assertThat(added.statusCode()).isEqualTo(303);
         assertThat(added.headers().firstValue("Location")).hasValue("/transfers");
         String page = this.get("/transfers").body();
@@ -209,22 +189,13 @@ class WebUiTest {
         this.action("cancel", hash);
         await(() -> !this.uncheckedGet("/transfers").contains("web &amp; test.bin"));
 
-        HttpResponse<String> bad =
-                this.post(
-                        "/transfers",
-                        Map.of(
-                                "action",
-                                "add",
-                                "link",
-                                "ed2k://|server|1.2.3.4|4661|/",
-                                "csrf",
-                                this.csrf("/transfers")));
+        HttpResponse<String> bad = this.post(
+                "/transfers",
+                Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/", "csrf", this.csrf("/transfers")));
         assertThat(bad.statusCode()).isEqualTo(400);
         assertThat(bad.body()).contains("Not an eD2K file link");
         HttpResponse<String> unknown =
-                this.post(
-                        "/transfers",
-                        Map.of("action", "explode", "hash", hash, "csrf", this.csrf("/")));
+                this.post("/transfers", Map.of("action", "explode", "hash", hash, "csrf", this.csrf("/")));
         assertThat(unknown.statusCode()).isEqualTo(400);
     }
 
@@ -243,9 +214,7 @@ class WebUiTest {
 
     private void action(String action, String hash) throws Exception {
         HttpResponse<String> done =
-                this.post(
-                        "/transfers",
-                        Map.of("action", action, "hash", hash, "csrf", this.csrf("/transfers")));
+                this.post("/transfers", Map.of("action", action, "hash", hash, "csrf", this.csrf("/transfers")));
         assertThat(done.statusCode()).isEqualTo(303);
     }
 
@@ -256,8 +225,7 @@ class WebUiTest {
     }
 
     private HttpResponse<String> get(String path) throws Exception {
-        return this.http.send(
-                this.request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(this.request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private String uncheckedGet(String path) {
@@ -270,20 +238,19 @@ class WebUiTest {
 
     private HttpResponse<String> send(String path, String method) throws Exception {
         return this.http.send(
-                this.request(path).method(method, HttpRequest.BodyPublishers.noBody()).build(),
+                this.request(path)
+                        .method(method, HttpRequest.BodyPublishers.noBody())
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        return this.http.send(
-                this.request(path).POST(form(fields)).build(),
-                HttpResponse.BodyHandlers.ofString());
+        return this.http.send(this.request(path).POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {
-        HttpRequest.Builder b =
-                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.ui.port() + path))
-                        .timeout(Duration.ofSeconds(30));
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.ui.port() + path))
+                .timeout(Duration.ofSeconds(30));
         if (this.cookie != null) {
             b.header("Cookie", this.cookie);
         }
@@ -291,18 +258,12 @@ class WebUiTest {
     }
 
     private static HttpRequest.BodyPublisher form(Map<String, String> fields) {
-        String body =
-                new LinkedHashMap<>(fields)
-                        .entrySet().stream()
-                                .map(
-                                        e ->
-                                                URLEncoder.encode(
-                                                                e.getKey(), StandardCharsets.UTF_8)
-                                                        + "="
-                                                        + URLEncoder.encode(
-                                                                e.getValue(),
-                                                                StandardCharsets.UTF_8))
-                                .collect(Collectors.joining("&"));
+        String body = new LinkedHashMap<>(fields)
+                .entrySet().stream()
+                        .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
+                                + "="
+                                + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                        .collect(Collectors.joining("&"));
         return HttpRequest.BodyPublishers.ofString(body);
     }
 

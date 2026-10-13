@@ -81,11 +81,7 @@ public sealed interface Tag {
             Objects.requireNonNull(value, "value");
             if (bitCount < 0 || bitCount > 0xFFFF || value.length() != bitCount / 8 + 1) {
                 throw new IllegalArgumentException(
-                        "bool array of "
-                                + bitCount
-                                + " bits needs "
-                                + (bitCount / 8 + 1)
-                                + " bytes");
+                        "bool array of " + bitCount + " bits needs " + (bitCount / 8 + 1) + " bytes");
             }
         }
     }

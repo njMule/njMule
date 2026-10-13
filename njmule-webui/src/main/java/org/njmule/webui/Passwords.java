@@ -25,8 +25,8 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
 /**
- * Password hashes for the web interface: PBKDF2 with HMAC-SHA-512 from the JDK, a random salt and
- * many rounds, written as {@code pbkdf2-sha512$<rounds>$<salt>$<hash>}.
+ * Password hashes for the web interface: PBKDF2 with HMAC-SHA-512 from the JDK, a random salt and many rounds, written
+ * as {@code pbkdf2-sha512$<rounds>$<salt>$<hash>}.
  */
 public final class Passwords {
 

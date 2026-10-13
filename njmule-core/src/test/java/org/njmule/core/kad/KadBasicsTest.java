@@ -51,7 +51,9 @@ class KadBasicsTest {
     @Test
     void theLowerCaseTableIsTheNetworkOneNotTodaysUnicode() {
         assertThat(KadLowerCase.toLowerCase('A')).isEqualTo('a');
-        assertThat(KadLowerCase.toLowerCase('İ')).as("dotted capital I unchanged").isEqualTo('İ');
+        assertThat(KadLowerCase.toLowerCase('İ'))
+                .as("dotted capital I unchanged")
+                .isEqualTo('İ');
         assertThat(KadLowerCase.toLowerCase('ῃ')).isEqualTo('ῌ');
         assertThat(KadLowerCase.toLowerCase('7')).isEqualTo('7');
     }
@@ -69,33 +71,16 @@ class KadBasicsTest {
                 .as("same address")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
         for (int port : new int[] {0, 0x1_0000, -1}) {
-            assertThat(
-                            table.add(
-                                    contact(random, Ipv4.of(9, 8, 7, 6), port),
-                                    false,
-                                    NodesDat.UdpKey.NONE,
-                                    0,
-                                    0))
+            assertThat(table.add(contact(random, Ipv4.of(9, 8, 7, 6), port), false, NodesDat.UdpKey.NONE, 0, 0))
                     .as("port " + port)
                     .isEqualTo(RoutingTable.Outcome.REFUSED);
         }
-        assertThat(
-                        table.add(
-                                new KadContact(own, Ipv4.of(5, 5, 5, 5), 1, 1, 8, 0),
-                                false,
-                                NodesDat.UdpKey.NONE,
-                                0,
-                                0))
+        assertThat(table.add(new KadContact(own, Ipv4.of(5, 5, 5, 5), 1, 1, 8, 0), false, NodesDat.UdpKey.NONE, 0, 0))
                 .as("ourselves")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
         int added = 0;
         for (int i = 1; i <= 20; i++) {
-            if (table.add(
-                            contact(random, Ipv4.of(9, 9, 9, i), 4672),
-                            false,
-                            NodesDat.UdpKey.NONE,
-                            0,
-                            0)
+            if (table.add(contact(random, Ipv4.of(9, 9, 9, i), 4672), false, NodesDat.UdpKey.NONE, 0, 0)
                     == RoutingTable.Outcome.ADDED) {
                 added++;
             }
@@ -165,7 +150,8 @@ class KadBasicsTest {
         }
         assertThat(allowed).as("two pings a minute").isEqualTo(2);
         assertThat(tracking.isBanned(ip, 1000)).as("9 back to back ban").isTrue();
-        assertThat(tracking.isBanned(ip, 1000 + PacketTracking.BAN_TIME.toMillis())).isFalse();
+        assertThat(tracking.isBanned(ip, 1000 + PacketTracking.BAN_TIME.toMillis()))
+                .isFalse();
 
         assertThat(tracking.expected(ip, 4672, Kad.PONG, 2000)).isFalse();
         tracking.sent(ip, 4672, Kad.PING, 2000);
@@ -173,12 +159,7 @@ class KadBasicsTest {
         assertThat(tracking.expected(ip, 4672, Kad.PONG, 2100)).isTrue();
         assertThat(tracking.expected(ip, 4672, Kad.PONG, 2200)).as("consumed").isFalse();
         tracking.sent(ip, 4672, Kad.REQ, 3000);
-        assertThat(
-                        tracking.expected(
-                                ip,
-                                4672,
-                                Kad.RES,
-                                3000 + PacketTracking.ANSWER_WINDOW.toMillis() + 1))
+        assertThat(tracking.expected(ip, 4672, Kad.RES, 3000 + PacketTracking.ANSWER_WINDOW.toMillis() + 1))
                 .as("too late")
                 .isFalse();
     }

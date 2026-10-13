@@ -54,7 +54,8 @@ import org.njmule.core.util.Ipv4;
 @Timeout(20)
 class EngineTest {
 
-    @TempDir Path root;
+    @TempDir
+    Path root;
 
     private static final class Recorder implements Flow.Subscriber<EngineEvent> {
         private final List<EngineEvent> events = new CopyOnWriteArrayList<>();
@@ -90,7 +91,8 @@ class EngineTest {
         try (NjMuleEngine engine = this.start()) {
             assertThat(engine.isRunning()).isTrue();
             assertThat(engine.directories().logs()).isDirectory();
-            assertThat(engine.directories().config().resolve(PreferencesCodec.FILE_NAME)).exists();
+            assertThat(engine.directories().config().resolve(PreferencesCodec.FILE_NAME))
+                    .exists();
             assertThat(engine.preferences()).isEqualTo(Preferences.defaults());
         }
     }
@@ -100,9 +102,9 @@ class EngineTest {
         Recorder recorder = new Recorder();
         try (NjMuleEngine engine = this.start()) {
             engine.events().subscribe(recorder);
-            Preferences updated =
-                    engine.updatePreferences(p -> p.toBuilder().nick("renamed").build())
-                            .get(5, TimeUnit.SECONDS);
+            Preferences updated = engine.updatePreferences(
+                            p -> p.toBuilder().nick("renamed").build())
+                    .get(5, TimeUnit.SECONDS);
             assertThat(updated.nick()).isEqualTo("renamed");
             assertThat(engine.preferences()).isEqualTo(updated);
 
@@ -123,10 +125,9 @@ class EngineTest {
     @Test
     void invalidUpdateFailsAndKeepsThePreviousPreferences() throws IOException {
         try (NjMuleEngine engine = this.start()) {
-            assertThatThrownBy(
-                            () ->
-                                    engine.updatePreferences(p -> p.toBuilder().tcpPort(0).build())
-                                            .get())
+            assertThatThrownBy(() -> engine.updatePreferences(
+                                    p -> p.toBuilder().tcpPort(0).build())
+                            .get())
                     .isInstanceOf(ExecutionException.class)
                     .hasCauseInstanceOf(IllegalArgumentException.class);
             assertThat(engine.preferences()).isEqualTo(Preferences.defaults());
@@ -138,28 +139,25 @@ class EngineTest {
         Path met = this.root.resolve("other-server.met");
         Files.write(
                 met,
-                ServerMet.write(
-                        List.of(
-                                new ServerMet.Server(
-                                        Ipv4.of(81, 2, 3, 4),
-                                        4661,
-                                        List.of(
-                                                new Tag.StringTag(
-                                                        TagName.id(ServerTag.SERVERNAME), "One"),
-                                                new Tag.IntTag(
-                                                        TagName.id(ServerTag.PREFERENCE), 1))),
-                                new ServerMet.Server(Ipv4.of(81, 2, 3, 5), 4242, List.of()))));
+                ServerMet.write(List.of(
+                        new ServerMet.Server(
+                                Ipv4.of(81, 2, 3, 4),
+                                4661,
+                                List.of(
+                                        new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "One"),
+                                        new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1))),
+                        new ServerMet.Server(Ipv4.of(81, 2, 3, 5), 4242, List.of()))));
         try (NjMuleEngine engine = this.start()) {
             assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
 
             List<ServerInfo> servers = engine.servers().get(5, TimeUnit.SECONDS);
-            assertThat(servers)
-                    .extracting(ServerInfo::name)
-                    .containsExactly("One", "81.2.3.5:4242");
+            assertThat(servers).extracting(ServerInfo::name).containsExactly("One", "81.2.3.5:4242");
             assertThat(servers.getFirst().priority()).isEqualTo(ServerInfo.Priority.HIGH);
             assertThat(servers.get(1).priority()).isEqualTo(ServerInfo.Priority.NORMAL);
-            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get()).isTrue();
-            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get()).isFalse();
+            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get())
+                    .isTrue();
+            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get())
+                    .isFalse();
             assertThat(engine.servers().get(5, TimeUnit.SECONDS)).hasSize(1);
 
             EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
@@ -173,17 +171,16 @@ class EngineTest {
 
     @Test
     void theSchedulerAppliesItsRuleOverThePreferences() throws Exception {
-        Schedule.Rule always =
-                new Schedule.Rule(
-                        "always",
-                        true,
-                        EnumSet.allOf(DayOfWeek.class),
-                        LocalTime.MIDNIGHT,
-                        LocalTime.MIDNIGHT,
-                        OptionalInt.of(7),
-                        OptionalInt.empty(),
-                        OptionalInt.empty(),
-                        OptionalInt.empty());
+        Schedule.Rule always = new Schedule.Rule(
+                "always",
+                true,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.of(7),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty());
         try (Engine engine = (Engine) this.start()) {
             assertThat(engine.activeRule()).isEmpty();
             engine.updateSchedule(new Schedule(List.of(always))).get(5, TimeUnit.SECONDS);
@@ -192,8 +189,7 @@ class EngineTest {
             assertThat(engine.schedule().rules()).containsExactly(always);
             assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
             assertThat(engine.preferences().maxUploadKiBps()).isZero();
-            engine.updatePreferences(p -> p.toBuilder().nick("other").build())
-                    .get(5, TimeUnit.SECONDS);
+            engine.updatePreferences(p -> p.toBuilder().nick("other").build()).get(5, TimeUnit.SECONDS);
             assertThat(engine.effective().nick()).isEqualTo("other");
             assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
         }

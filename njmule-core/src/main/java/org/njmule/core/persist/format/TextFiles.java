@@ -23,10 +23,9 @@ import java.util.Objects;
 import org.njmule.core.protocol.io.Ed2kStrings;
 
 /**
- * Line-based files: {@code staticservers.dat} ({@code host:port,priority,name}), {@code
- * shareddir.dat} and {@code sharedfiles.dat} (one path per line, {@code -} excluding a file),
- * {@code addresses.dat} (server list URLs) and the {@code AC_*.dat} histories. They are UTF-16LE
- * with a BOM when written; ANSI and UTF-8 files are read too.
+ * Line-based files: {@code staticservers.dat} ({@code host:port,priority,name}), {@code shareddir.dat} and
+ * {@code sharedfiles.dat} (one path per line, {@code -} excluding a file), {@code addresses.dat} (server list URLs) and
+ * the {@code AC_*.dat} histories. They are UTF-16LE with a BOM when written; ANSI and UTF-8 files are read too.
  */
 public final class TextFiles {
 

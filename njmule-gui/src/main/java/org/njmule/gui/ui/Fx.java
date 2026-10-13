@@ -112,21 +112,16 @@ public final class Fx {
             String title, double width, Function<V, T> value, Function<T, String> text) {
         TableColumn<LiveList.Row<V>, T> column = new TableColumn<>(title);
         column.setPrefWidth(width);
-        column.setCellValueFactory(
-                c ->
-                        Bindings.createObjectBinding(
-                                () -> value.apply(c.getValue().get()),
-                                c.getValue().valueProperty()));
+        column.setCellValueFactory(c -> Bindings.createObjectBinding(
+                () -> value.apply(c.getValue().get()), c.getValue().valueProperty()));
         column.setComparator(Comparator.nullsFirst(Comparator.naturalOrder()));
-        column.setCellFactory(
-                c ->
-                        new TableCell<>() {
-                            @Override
-                            protected void updateItem(T item, boolean empty) {
-                                super.updateItem(item, empty);
-                                this.setText(empty || item == null ? null : text.apply(item));
-                            }
-                        });
+        column.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                this.setText(empty || item == null ? null : text.apply(item));
+            }
+        });
         return column;
     }
 

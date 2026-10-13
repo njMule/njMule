@@ -33,9 +33,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 
 /**
- * Publishes what we share on Kad: each keyword of the complete files once a day, with all its
- * files, and ourselves as a source of every shared file every five hours. Only a node that is ready
- * and reachable publishes. Engine thread only.
+ * Publishes what we share on Kad: each keyword of the complete files once a day, with all its files, and ourselves as a
+ * source of every shared file every five hours. Only a node that is ready and reachable publishes. Engine thread only.
  */
 public final class KadPublisher {
 
@@ -97,13 +96,11 @@ public final class KadPublisher {
         }
         long now = this.ticker.read();
         List<Shared> files = this.shared.get();
-        if (now - this.nextKeyword >= 0
-                && this.node.runningKeywordPublishes() < MAX_KEYWORD_PUBLISHES) {
+        if (now - this.nextKeyword >= 0 && this.node.runningKeywordPublishes() < MAX_KEYWORD_PUBLISHES) {
             this.nextKeyword = now + START_EVERY.toNanos();
             this.publishOneKeyword(files, now);
         }
-        if (now - this.nextSource >= 0
-                && this.node.runningSourcePublishes() < MAX_SOURCE_PUBLISHES) {
+        if (now - this.nextSource >= 0 && this.node.runningSourcePublishes() < MAX_SOURCE_PUBLISHES) {
             this.nextSource = now + START_EVERY.toNanos();
             this.publishOneSource(files, now);
         }
@@ -116,8 +113,7 @@ public final class KadPublisher {
                 continue;
             }
             for (String word : Keywords.of(file.name())) {
-                List<KadMessages.Entry> entries =
-                        byKeyword.computeIfAbsent(word, w -> new ArrayList<>());
+                List<KadMessages.Entry> entries = byKeyword.computeIfAbsent(word, w -> new ArrayList<>());
                 if (entries.size() < FILES_PER_KEYWORD) {
                     entries.add(new KadMessages.Entry(UInt128.of(file.hash()), tags(file)));
                 }
@@ -153,8 +149,7 @@ public final class KadPublisher {
         tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), file.name()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), file.size()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCES), 1));
-        FileTypes.of(file.name())
-                .ifPresent(t -> tags.add(new Tag.StringTag(TagName.id(FileTag.FILETYPE), t)));
+        FileTypes.of(file.name()).ifPresent(t -> tags.add(new Tag.StringTag(TagName.id(FileTag.FILETYPE), t)));
         return tags;
     }
 }

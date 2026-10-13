@@ -21,9 +21,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * eD2K links ({@code ed2k://|file|…|/}, {@code |server|}, {@code |serverlist|}, {@code
- * |nodeslist|}, {@code |search|}) and the eD2K form of magnet links. Parsing is strict about the
- * essentials (name, size, hash) and lenient about optional parts, which are dropped when invalid.
+ * eD2K links ({@code ed2k://|file|…|/}, {@code |server|}, {@code |serverlist|}, {@code |nodeslist|}, {@code |search|})
+ * and the eD2K form of magnet links. Parsing is strict about the essentials (name, size, hash) and lenient about
+ * optional parts, which are dropped when invalid.
  */
 public sealed interface Ed2kLink {
 
@@ -84,14 +84,16 @@ public sealed interface Ed2kLink {
         }
 
         public static FileLink of(String name, long size, Hash16 hash) {
-            return new FileLink(
-                    name, size, hash, Optional.empty(), List.of(), List.of(), List.of());
+            return new FileLink(name, size, hash, Optional.empty(), List.of(), List.of(), List.of());
         }
 
         @Override
         public String toUri() {
             StringBuilder out = new StringBuilder("ed2k://|file|");
-            out.append(Ed2kLinkCodec.encode(this.name)).append('|').append(this.size).append('|');
+            out.append(Ed2kLinkCodec.encode(this.name))
+                    .append('|')
+                    .append(this.size)
+                    .append('|');
             out.append(this.hash.toHex()).append('|');
             this.aichHash.ifPresent(h -> out.append("h=").append(h.toBase32()).append('|'));
             if (!this.partHashes.isEmpty()) {

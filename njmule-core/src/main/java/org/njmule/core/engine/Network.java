@@ -107,9 +107,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The network side of the engine: the listening socket, the server session, server UDP queries,
- * searches, the hello exchange with peers, the downloads, the shared files and the uploads. Engine
- * thread only, except the methods marked otherwise.
+ * The network side of the engine: the listening socket, the server session, server UDP queries, searches, the hello
+ * exchange with peers, the downloads, the shared files and the uploads. Engine thread only, except the methods marked
+ * otherwise.
  */
 final class Network {
 
@@ -197,127 +197,100 @@ final class Network {
         this.friends = Friends.load(configDir);
         this.started = System.nanoTime();
         this.random = random;
-        Identities identities =
-                new Identities(
-                        IdentityHandshake.Identity.of(
-                                Identities.loadOrCreateKey(configDir, random)),
-                        hash ->
-                                this.credits
-                                        .get(hash)
-                                        .map(Credits.Credit::publicKey)
-                                        .filter(key -> key.length() > 0)
-                                        .map(Bytes::toByteArray),
-                        (hash, key) -> this.credits.identified(hash, Bytes.of(key)),
-                        this::ourPublicAddress,
-                        random);
+        Identities identities = new Identities(
+                IdentityHandshake.Identity.of(Identities.loadOrCreateKey(configDir, random)),
+                hash -> this.credits
+                        .get(hash)
+                        .map(Credits.Credit::publicKey)
+                        .filter(key -> key.length() > 0)
+                        .map(Bytes::toByteArray),
+                (hash, key) -> this.credits.identified(hash, Bytes.of(key)),
+                this::ourPublicAddress,
+                random);
         this.serverMet = configDir.resolve(ServerList.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
         this.servers = ServerList.load(this.serverMet);
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE));
         this.servers.filter(this.ipFilter::blocks);
-        this.session =
-                new ServerSession(
-                        loop,
-                        this.servers,
-                        preferences,
-                        userHash,
-                        this::listenPort,
-                        new SessionEvents(),
-                        random);
-        this.searches =
-                new SearchManager(
-                        loop,
-                        this.session,
-                        this.servers,
-                        () -> Optional.ofNullable(this.udp),
-                        () -> Optional.ofNullable(this.kad).map(k -> this.kadSearches(k)),
-                        new SearchEvents());
-        this.pinger =
-                new ServerPinger(
-                        loop,
-                        this.servers,
-                        () -> Optional.ofNullable(this.udp),
-                        () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
-                        this::serverUpdated,
-                        random,
-                        Clock.systemUTC());
-        this.greetings =
-                new PeerGreetings(
-                        userHash,
-                        this::ourHello,
-                        () -> preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
-                        this::isOurServer,
-                        random);
-        this.downloads =
-                DownloadManager.open(
-                        loop,
-                        tempDir,
-                        incomingDir,
-                        this::ourHello,
-                        () -> {
-                            Preferences prefs = preferences.get();
-                            return new DownloadManager.Settings(
-                                    prefs.obfuscation(),
-                                    prefs.maxSourcesPerFile(),
-                                    this.listenPort());
-                        },
-                        new ServerLinkImpl(),
-                        ip -> this.ipFilter.blocks(ip),
-                        random,
-                        Ticker.systemTicker(),
-                        identities,
-                        this.credits::downloaded,
-                        () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
-                        new DownloadEvents());
-        this.uploads =
-                new UploadManager(
-                        loop,
-                        hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
-                        this.downloads::find,
-                        this.downloads::exchangeable,
-                        this::ourHello,
-                        () ->
-                                new UploadManager.Settings(
-                                        preferences.get().maxUploadKiBps(),
-                                        preferences.get().obfuscation()),
-                        identities,
-                        this.credits,
-                        ip -> {
-                            if (this.kad != null) {
-                                this.kad.reachableConfirmed(ip);
-                            }
-                        },
-                        random,
-                        Ticker.systemTicker());
+        this.session = new ServerSession(
+                loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
+        this.searches = new SearchManager(
+                loop,
+                this.session,
+                this.servers,
+                () -> Optional.ofNullable(this.udp),
+                () -> Optional.ofNullable(this.kad).map(k -> this.kadSearches(k)),
+                new SearchEvents());
+        this.pinger = new ServerPinger(
+                loop,
+                this.servers,
+                () -> Optional.ofNullable(this.udp),
+                () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
+                this::serverUpdated,
+                random,
+                Clock.systemUTC());
+        this.greetings = new PeerGreetings(
+                userHash,
+                this::ourHello,
+                () -> preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
+                this::isOurServer,
+                random);
+        this.downloads = DownloadManager.open(
+                loop,
+                tempDir,
+                incomingDir,
+                this::ourHello,
+                () -> {
+                    Preferences prefs = preferences.get();
+                    return new DownloadManager.Settings(
+                            prefs.obfuscation(), prefs.maxSourcesPerFile(), this.listenPort());
+                },
+                new ServerLinkImpl(),
+                ip -> this.ipFilter.blocks(ip),
+                random,
+                Ticker.systemTicker(),
+                identities,
+                this.credits::downloaded,
+                () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
+                new DownloadEvents());
+        this.uploads = new UploadManager(
+                loop,
+                hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
+                this.downloads::find,
+                this.downloads::exchangeable,
+                this::ourHello,
+                () -> new UploadManager.Settings(
+                        preferences.get().maxUploadKiBps(), preferences.get().obfuscation()),
+                identities,
+                this.credits,
+                ip -> {
+                    if (this.kad != null) {
+                        this.kad.reachableConfirmed(ip);
+                    }
+                },
+                random,
+                Ticker.systemTicker());
         this.identities = identities;
         this.messaging = new Messaging(loop, this::ourHello, random, new ChatEvents());
         this.uploads.onChat(this.messaging::incoming);
-        this.publisher =
-                new FilePublisher(
-                        this.session, this::offers, this::listenPort, Ticker.systemTicker());
+        this.publisher = new FilePublisher(this.session, this::offers, this::listenPort, Ticker.systemTicker());
         PeerGreetings.Router forDownloads = this.downloads.router();
         PeerGreetings.Router forUploads = this.uploads.router();
         // A source calling back with a slot first; any other client may want our files.
-        this.greetings.routeTo(
-                (connection, peer) -> {
-                    Optional<TcpConnection.Handler> handler = forDownloads.route(connection, peer);
-                    return handler.isPresent() ? handler : forUploads.route(connection, peer);
-                });
+        this.greetings.routeTo((connection, peer) -> {
+            Optional<TcpConnection.Handler> handler = forDownloads.route(connection, peer);
+            return handler.isPresent() ? handler : forUploads.route(connection, peer);
+        });
     }
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
     void start() {
         ProxyRoute.install(() -> this.preferences.get().proxy());
         int port = this.preferences.get().tcpPort();
-        ConnectionGuard guard =
-                new ConnectionGuard(
-                        () -> this.ipFilter,
-                        this::isOurServer,
-                        ConnectionGuard.Limits.DEFAULT,
-                        Ticker.systemTicker());
+        ConnectionGuard guard = new ConnectionGuard(
+                () -> this.ipFilter, this::isOurServer, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
         try {
-            this.listener =
-                    TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
+            this.listener = TcpListener.open(new InetSocketAddress(port), guard, this.greetings::accepted);
         } catch (IOException e) {
             this.userLog.log(
                     LogLine.Level.WARNING,
@@ -328,44 +301,27 @@ final class Network {
                             + "): other clients cannot connect, servers will give a LowID");
         }
         try {
-            this.udp =
-                    ServerUdp.open(
-                            0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
+            this.udp = ServerUdp.open(0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
         } catch (IOException e) {
-            this.userLog.log(
-                    LogLine.Level.WARNING, "No server UDP socket: global searches are off");
+            this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
-        this.shares =
-                SharedFiles.open(
-                        this.loop,
-                        this.configDir,
-                        this.incomingDir,
-                        () -> List.of(this.tempDir()),
-                        new ShareEvents());
+        this.shares = SharedFiles.open(
+                this.loop, this.configDir, this.incomingDir, () -> List.of(this.tempDir()), new ShareEvents());
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             this.startKad();
         }
         if (this.preferences.get().upnp() && this.listener != null) {
-            OptionalInt udp =
-                    this.kadSocket == null
-                            ? OptionalInt.empty()
-                            : OptionalInt.of(this.kadSocket.port());
-            this.forwarding =
-                    PortForwarding.start(
-                            Igd.SSDP,
-                            this.listenPort(),
-                            udp,
-                            line ->
-                                    this.loop.post(
-                                            () -> this.userLog.log(LogLine.Level.INFO, line)));
+            OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
+            this.forwarding = PortForwarding.start(
+                    Igd.SSDP,
+                    this.listenPort(),
+                    udp,
+                    line -> this.loop.post(() -> this.userLog.log(LogLine.Level.INFO, line)));
         }
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
-                "offer shared files",
-                Duration.ofSeconds(1),
-                Duration.ofSeconds(1),
-                this.publisher::tick);
+                "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
         logger.info(
                 "{} servers known, {} IP filter ranges, user hash {}",
                 this.servers.size(),
@@ -417,8 +373,7 @@ final class Network {
     }
 
     private void saveTotals() {
-        this.totals.save(
-                this.downloads.downloaded(), this.uploads.uploaded(), this.sessionSeconds());
+        this.totals.save(this.downloads.downloaded(), this.uploads.uploaded(), this.sessionSeconds());
     }
 
     List<UploadInfo> uploads() {
@@ -446,14 +401,12 @@ final class Network {
         @Override
         public void received(Messaging.Correspondent from, String text) {
             Network.this.publish.accept(
-                    new EngineEvent.MessageReceived(
-                            address(from), from.userHash(), from.nick(), text));
+                    new EngineEvent.MessageReceived(address(from), from.userHash(), from.nick(), text));
         }
 
         @Override
         public void captcha(Messaging.Correspondent from, byte[] image) {
-            Network.this.publish.accept(
-                    new EngineEvent.CaptchaRequested(address(from), from.userHash(), image));
+            Network.this.publish.accept(new EngineEvent.CaptchaRequested(address(from), from.userHash(), image));
         }
 
         @Override
@@ -464,8 +417,7 @@ final class Network {
         @Override
         public void failed(InetSocketAddress to, String reason) {
             Network.this.publish.accept(
-                    new EngineEvent.MessageFailed(
-                            to.getAddress().getHostAddress() + ":" + to.getPort(), reason));
+                    new EngineEvent.MessageFailed(to.getAddress().getHostAddress() + ":" + to.getPort(), reason));
         }
 
         private static String address(Messaging.Correspondent c) {
@@ -492,15 +444,10 @@ final class Network {
             this.session.connect(Optional.empty());
             return;
         }
-        ServerMet.Server server =
-                this.servers
-                        .get(address.get())
-                        .orElseGet(
-                                () ->
-                                        new ServerMet.Server(
-                                                address.get().ip(),
-                                                address.get().port(),
-                                                List.of()));
+        ServerMet.Server server = this.servers
+                .get(address.get())
+                .orElseGet(() ->
+                        new ServerMet.Server(address.get().ip(), address.get().port(), List.of()));
         if (this.servers.add(server)) {
             this.saveServers();
         }
@@ -567,9 +514,7 @@ final class Network {
         this.shares.addDirectory(directory);
     }
 
-    /**
-     * Adds Kad contacts to the running node, or to {@code nodes.dat}; returns how many were new.
-     */
+    /** Adds Kad contacts to the running node, or to {@code nodes.dat}; returns how many were new. */
     int addKadContacts(NodesDat.Contents contents) throws IOException {
         if (this.kad != null) {
             int added = this.kad.addContacts(contents);
@@ -614,41 +559,30 @@ final class Network {
     }
 
     /**
-     * Any thread: says hello to a client and runs the identification; the answer comes when its
-     * outcome is known or after {@link #IDENTIFY_WAIT}. The connection stays open until idle.
+     * Any thread: says hello to a client and runs the identification; the answer comes when its outcome is known or
+     * after {@link #IDENTIFY_WAIT}. The connection stays open until idle.
      */
     CompletableFuture<PeerInfo> hello(InetSocketAddress peer) {
         CompletableFuture<PeerInfo> answer = new CompletableFuture<>();
-        Thread.ofVirtual()
-                .name("njmule-hello-" + peer)
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection connection =
-                                        TcpConnector.connectToClient(
-                                                peer,
-                                                Optional.empty(),
-                                                PeerGreetings.HELLO_TIMEOUT,
-                                                this.random);
-                                if (!this.loop.post(() -> this.greet(connection, answer))) {
-                                    connection.close();
-                                }
-                            } catch (IOException e) {
-                                answer.completeExceptionally(e);
-                            }
-                        });
-        return answer.orTimeout(
-                PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT).toSeconds() * 2, TimeUnit.SECONDS);
+        Thread.ofVirtual().name("njmule-hello-" + peer).start(() -> {
+            try {
+                TcpConnection connection =
+                        TcpConnector.connectToClient(peer, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
+                if (!this.loop.post(() -> this.greet(connection, answer))) {
+                    connection.close();
+                }
+            } catch (IOException e) {
+                answer.completeExceptionally(e);
+            }
+        });
+        return answer.orTimeout(PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT).toSeconds() * 2, TimeUnit.SECONDS);
     }
 
     private void greet(TcpConnection connection, CompletableFuture<PeerInfo> answer) {
         Greeting greeting = new Greeting(connection, answer);
         connection.start(greeting, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
         connection.send(this.ourHello().encode(false));
-        this.loop.schedule(
-                "hello identification",
-                PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT),
-                greeting::settle);
+        this.loop.schedule("hello identification", PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT), greeting::settle);
     }
 
     /** A hello of ours: the answer, then the identification. Engine thread, except callbacks. */
@@ -665,8 +599,7 @@ final class Network {
 
         @Override
         public void onPacket(TcpConnection c, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY
-                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
             }
             Network.this.loop.post(() -> this.received(packet));
@@ -674,30 +607,24 @@ final class Network {
 
         @Override
         public void onClosed(TcpConnection c, Optional<IOException> cause) {
-            Network.this.loop.post(
-                    () -> {
-                        if (this.peer == null) {
-                            this.answer.completeExceptionally(
-                                    cause.orElseGet(
-                                            () -> new IOException("closed before the hello")));
-                        } else {
-                            this.settle();
-                        }
-                    });
+            Network.this.loop.post(() -> {
+                if (this.peer == null) {
+                    this.answer.completeExceptionally(
+                            cause.orElseGet(() -> new IOException("closed before the hello")));
+                } else {
+                    this.settle();
+                }
+            });
         }
 
         private void received(Packet packet) {
             try {
                 if (this.peer == null) {
-                    if (packet.protocol() == Protocol.EDONKEY
-                            && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+                    if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                         this.peer = Hello.decode(packet);
                         this.connection.setReadTimeout(PeerGreetings.IDLE_TIMEOUT);
-                        this.identity =
-                                Network.this.identities.start(
-                                        this.peer,
-                                        this.connection.remoteAddress().getAddress(),
-                                        this.connection::send);
+                        this.identity = Network.this.identities.start(
+                                this.peer, this.connection.remoteAddress().getAddress(), this.connection::send);
                     }
                 } else if (!this.identity.received(packet)
                         && packet.protocol() == Protocol.EDONKEY
@@ -708,8 +635,7 @@ final class Network {
                     this.settle();
                 }
             } catch (IOException e) {
-                logger.debug(
-                        "Bad packet from {}: {}", this.connection.remoteAddress(), e.getMessage());
+                logger.debug("Bad packet from {}: {}", this.connection.remoteAddress(), e.getMessage());
                 this.connection.close();
             }
         }
@@ -723,21 +649,14 @@ final class Network {
             if (!this.identity.isSupported()) {
                 outcome = PeerInfo.Identification.NOT_SUPPORTED;
             } else {
-                outcome =
-                        switch (this.identity.trust()) {
-                            case IDENTIFIED -> PeerInfo.Identification.VERIFIED;
-                            case FAILED -> PeerInfo.Identification.FAILED;
-                            default -> PeerInfo.Identification.PENDING;
-                        };
+                outcome = switch (this.identity.trust()) {
+                    case IDENTIFIED -> PeerInfo.Identification.VERIFIED;
+                    case FAILED -> PeerInfo.Identification.FAILED;
+                    default -> PeerInfo.Identification.PENDING;
+                };
             }
-            this.answer.complete(
-                    new PeerInfo(
-                            info.address(),
-                            info.userHash(),
-                            info.nick(),
-                            info.software(),
-                            info.obfuscated(),
-                            outcome));
+            this.answer.complete(new PeerInfo(
+                    info.address(), info.userHash(), info.nick(), info.software(), info.obfuscated(), outcome));
         }
     }
 
@@ -818,56 +737,40 @@ final class Network {
         if (node == null) {
             return Optional.empty();
         }
-        return Optional.of(
-                new KadInfo(
-                        node.isConnected(),
-                        node.contacts(),
-                        node.verifiedContacts(),
-                        node.isFirewalled(),
-                        node.id().toHex()));
+        return Optional.of(new KadInfo(
+                node.isConnected(),
+                node.contacts(),
+                node.verifiedContacts(),
+                node.isFirewalled(),
+                node.id().toHex()));
     }
 
     private void startKad() {
         Preferences prefs = this.preferences.get();
         try {
             KadIdentity identity = KadIdentity.loadOrCreate(this.configDir, this.random);
-            this.kadSocket =
-                    KadSocket.open(
-                            prefs.udpPort(),
-                            this.loop,
-                            this.userHash,
-                            identity,
-                            ip -> this.ipFilter.blocks(ip),
-                            this.random);
-            this.kad =
-                    new KadNode(
-                            identity,
-                            this.kadSocket,
-                            this::checkReachable,
-                            new KadNode.Settings(
-                                    this.listenPort(),
-                                    this.userHash,
-                                    cryptOptions(prefs.obfuscation()) >>> 7,
-                                    ip -> false),
-                            this.configDir,
-                            this.random,
-                            Ticker.systemTicker());
+            this.kadSocket = KadSocket.open(
+                    prefs.udpPort(), this.loop, this.userHash, identity, ip -> this.ipFilter.blocks(ip), this.random);
+            this.kad = new KadNode(
+                    identity,
+                    this.kadSocket,
+                    this::checkReachable,
+                    new KadNode.Settings(
+                            this.listenPort(), this.userHash, cryptOptions(prefs.obfuscation()) >>> 7, ip -> false),
+                    this.configDir,
+                    this.random,
+                    Ticker.systemTicker());
             this.kadSocket.deliverTo(this.kad);
             this.kad.loadNodes();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, Ticker.systemTicker());
-            this.loop.scheduleRepeating(
-                    "Kad",
-                    Duration.ofSeconds(1),
-                    Duration.ofSeconds(1),
-                    () -> {
-                        this.kad.tick();
-                        this.kadPublisher.tick();
-                    });
+            this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
+                this.kad.tick();
+                this.kadPublisher.tick();
+            });
             logger.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
         } catch (IOException e) {
             this.userLog.log(
-                    LogLine.Level.WARNING,
-                    "Cannot start Kad on UDP port " + prefs.udpPort() + ": " + e.getMessage());
+                    LogLine.Level.WARNING, "Cannot start Kad on UDP port " + prefs.udpPort() + ": " + e.getMessage());
             if (this.kadSocket != null) {
                 this.kadSocket.close();
             }
@@ -880,42 +783,27 @@ final class Network {
     private void checkReachable(int ip, int port, Hash16 peer, int connectOptions) {
         InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), port);
         Optional<Hash16> obfuscateFor =
-                (connectOptions & 0x01) != 0
-                                && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED
+                (connectOptions & 0x01) != 0 && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED
                         ? Optional.of(peer)
                         : Optional.empty();
-        Thread.ofVirtual()
-                .name("njmule-kad-check-" + address)
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection connection =
-                                        TcpConnector.connectToClient(
-                                                address,
-                                                obfuscateFor,
-                                                PeerGreetings.HELLO_TIMEOUT,
-                                                this.random);
-                                connection.start(
-                                        new ReachabilityCheck(),
-                                        frame ->
-                                                Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-                                connection.send(this.ourHello().encode(false));
-                                this.loop.schedule(
-                                        "Kad check close",
-                                        PeerGreetings.HELLO_TIMEOUT,
-                                        connection::close);
-                            } catch (IOException e) {
-                                logger.debug("Kad check of {} failed: {}", address, e.getMessage());
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-kad-check-" + address).start(() -> {
+            try {
+                TcpConnection connection =
+                        TcpConnector.connectToClient(address, obfuscateFor, PeerGreetings.HELLO_TIMEOUT, this.random);
+                connection.start(new ReachabilityCheck(), frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
+                connection.send(this.ourHello().encode(false));
+                this.loop.schedule("Kad check close", PeerGreetings.HELLO_TIMEOUT, connection::close);
+            } catch (IOException e) {
+                logger.debug("Kad check of {} failed: {}", address, e.getMessage());
+            }
+        });
     }
 
     /** After the peer's hello answer, tells it that we could connect. */
     private static final class ReachabilityCheck implements TcpConnection.Handler {
         @Override
         public void onPacket(TcpConnection c, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY
-                    && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
                 c.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.KAD_FWTCPCHECK_ACK.code()));
             }
@@ -928,39 +816,23 @@ final class Network {
     }
 
     private SearchManager.KadSearches kadSearches(KadNode node) {
-        return (keyword, expression, results) ->
-                node.searchKeyword(
-                        keyword,
-                        Optional.of(expression),
-                        found -> {
-                            List<SearchResult> converted = new ArrayList<>();
-                            for (KadNode.FileResult r : found) {
-                                converted.add(
-                                        new SearchResult(
-                                                r.hash(),
-                                                r.name(),
-                                                r.size(),
-                                                r.sources(),
-                                                0,
-                                                r.type()));
-                            }
-                            results.accept(converted);
-                        });
+        return (keyword, expression, results) -> node.searchKeyword(keyword, Optional.of(expression), found -> {
+            List<SearchResult> converted = new ArrayList<>();
+            for (KadNode.FileResult r : found) {
+                converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type()));
+            }
+            results.accept(converted);
+        });
     }
 
     private DownloadManager.KadSources kadSources(KadNode node) {
-        return (file, size, sources) ->
-                node.findSources(
-                        file,
-                        size,
-                        found -> {
-                            List<InetSocketAddress> addresses = new ArrayList<>();
-                            for (KadNode.Source s : found) {
-                                addresses.add(
-                                        new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort()));
-                            }
-                            sources.accept(addresses);
-                        });
+        return (file, size, sources) -> node.findSources(file, size, found -> {
+            List<InetSocketAddress> addresses = new ArrayList<>();
+            for (KadNode.Source s : found) {
+                addresses.add(new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort()));
+            }
+            sources.accept(addresses);
+        });
     }
 
     private List<KadPublisher.Shared> kadShared() {
@@ -971,11 +843,10 @@ final class Network {
             }
         }
         for (DownloadInfo d : this.downloads.downloads()) {
-            boolean shared =
-                    this.downloads
-                            .find(d.hash())
-                            .map(x -> !x.verifiedParts().isEmpty())
-                            .orElse(false);
+            boolean shared = this.downloads
+                    .find(d.hash())
+                    .map(x -> !x.verifiedParts().isEmpty())
+                    .orElse(false);
             if (shared) {
                 files.add(new KadPublisher.Shared(d.hash(), d.name(), d.size(), false));
             }
@@ -992,11 +863,10 @@ final class Network {
             }
         }
         for (DownloadInfo d : this.downloads.downloads()) {
-            boolean shared =
-                    this.downloads
-                            .find(d.hash())
-                            .map(x -> !x.verifiedParts().isEmpty())
-                            .orElse(false);
+            boolean shared = this.downloads
+                    .find(d.hash())
+                    .map(x -> !x.verifiedParts().isEmpty())
+                    .orElse(false);
             if (shared) {
                 offers.add(new FilePublisher.Offer(d.hash(), d.name(), d.size(), false));
             }
@@ -1011,8 +881,7 @@ final class Network {
             return Optional.empty();
         }
         try {
-            return Optional.of(
-                    (Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(Ipv4.fromEd2k(id))));
+            return Optional.of((Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(Ipv4.fromEd2k(id))));
         } catch (UnknownHostException e) {
             return Optional.empty();
         }
@@ -1057,9 +926,7 @@ final class Network {
             return IpFilter.empty();
         }
         try {
-            return IpFilter.of(
-                    IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE),
-                    IpFilter.DEFAULT_LEVEL);
+            return IpFilter.of(IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE), IpFilter.DEFAULT_LEVEL);
         } catch (IOException e) {
             logger.warn("Cannot read {}, no IP filter", file, e);
             return IpFilter.empty();
@@ -1071,10 +938,7 @@ final class Network {
             case DISABLED -> 0;
             case SUPPORTED -> Hello.MISC2_SUPPORTS_CRYPT;
             case REQUESTED -> Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT;
-            case REQUIRED ->
-                    Hello.MISC2_SUPPORTS_CRYPT
-                            | Hello.MISC2_REQUESTS_CRYPT
-                            | Hello.MISC2_REQUIRES_CRYPT;
+            case REQUIRED -> Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT | Hello.MISC2_REQUIRES_CRYPT;
         };
     }
 
@@ -1113,8 +977,7 @@ final class Network {
                             + (id.isLowId() ? "LowID " : "HighID ")
                             + id.clientId()
                             + (obfuscated ? ", obfuscated" : ""));
-            Network.this.publish.accept(
-                    new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
+            Network.this.publish.accept(new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
             Network.this.saveServers();
             Network.this.pinger.start();
             Network.this.downloads.serverConnected();
@@ -1131,20 +994,15 @@ final class Network {
             Optional<ServerInfo> info = server.map(Network::info);
             Network.this.userLog.log(
                     LogLine.Level.INFO,
-                    info.map(i -> "Disconnected from " + describe(i)).orElse("Not connected")
-                            + ": "
-                            + reason);
+                    info.map(i -> "Disconnected from " + describe(i)).orElse("Not connected") + ": " + reason);
             Network.this.publish.accept(new EngineEvent.ServerDisconnected(info, reason));
         }
 
         @Override
         public void message(ServerMet.Server server, String line) {
-            LogLine.Level level =
-                    line.startsWith("ERROR")
-                            ? LogLine.Level.ERROR
-                            : line.startsWith("WARNING")
-                                    ? LogLine.Level.WARNING
-                                    : LogLine.Level.INFO;
+            LogLine.Level level = line.startsWith("ERROR")
+                    ? LogLine.Level.ERROR
+                    : line.startsWith("WARNING") ? LogLine.Level.WARNING : LogLine.Level.INFO;
             Network.this.userLog.log(level, line);
             Network.this.publish.accept(new EngineEvent.ServerMessage(info(server), line));
         }
@@ -1167,21 +1025,15 @@ final class Network {
                 return;
             }
             // The client may require obfuscation, which needs its user hash.
-            boolean obfuscate =
-                    request.userHash().isPresent()
-                            && (request.cryptOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
-                            && Network.this.preferences.get().obfuscation()
-                                    != ObfuscationMode.DISABLED;
+            boolean obfuscate = request.userHash().isPresent()
+                    && (request.cryptOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
+                    && Network.this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
             InetSocketAddress address =
                     new InetSocketAddress(Ipv4.format(ip), request.endpoint().port());
             Network.this.loop.whenDone(
-                    Network.this.greetings.greet(
-                            address, obfuscate ? request.userHash() : Optional.empty()),
-                    (peer, failure) ->
-                            logger.debug(
-                                    "Callback to {}: {}",
-                                    address,
-                                    failure == null ? peer.software() : failure.getMessage()));
+                    Network.this.greetings.greet(address, obfuscate ? request.userHash() : Optional.empty()),
+                    (peer, failure) -> logger.debug(
+                            "Callback to {}: {}", address, failure == null ? peer.software() : failure.getMessage()));
         }
 
         @Override
@@ -1190,9 +1042,7 @@ final class Network {
         }
 
         private static String describe(ServerInfo info) {
-            return info.name().equals(info.address())
-                    ? info.address()
-                    : info.name() + " (" + info.address() + ")";
+            return info.name().equals(info.address()) ? info.address() : info.name() + " (" + info.address() + ")";
         }
     }
 
@@ -1207,10 +1057,8 @@ final class Network {
             if (size > 0xFFFF_FFFFL && (flags & ServerMessages.TCP_LARGEFILES) == 0) {
                 return false;
             }
-            boolean obfuscated =
-                    (flags & ServerMessages.TCP_OBFUSCATION) != 0
-                            && Network.this.preferences.get().obfuscation()
-                                    != ObfuscationMode.DISABLED;
+            boolean obfuscated = (flags & ServerMessages.TCP_OBFUSCATION) != 0
+                    && Network.this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
             return Network.this.session.send(ServerMessages.getSources(file, size, obfuscated));
         }
 
@@ -1243,8 +1091,7 @@ final class Network {
 
         @Override
         public void completed(DownloadInfo download, Path file, PartFile part) {
-            Network.this.userLog.log(
-                    LogLine.Level.SUCCESS, "Finished downloading " + download.name());
+            Network.this.userLog.log(LogLine.Level.SUCCESS, "Finished downloading " + download.name());
             if (Network.this.shares != null) {
                 Network.this.shares.finished(file, part);
             }
@@ -1254,8 +1101,7 @@ final class Network {
 
         @Override
         public void failed(DownloadInfo download, String reason) {
-            Network.this.userLog.log(
-                    LogLine.Level.ERROR, "Download " + download.name() + " stopped: " + reason);
+            Network.this.userLog.log(LogLine.Level.ERROR, "Download " + download.name() + " stopped: " + reason);
             Network.this.publish.accept(new EngineEvent.DownloadFailed(download, reason));
         }
 

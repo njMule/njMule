@@ -31,10 +31,9 @@ import org.njmule.core.search.SearchExpr.Or;
 import org.njmule.core.search.SearchExpr.StringAttr;
 
 /**
- * The search tree sent to servers, in prefix order: operators {@code <0><0 AND|1 OR|2 NOT>},
- * keywords {@code <1><string>}, string attributes {@code <2><string><u16 1><tag>} and numeric
- * attributes {@code <3><u32>} (or {@code <8><u64>} for servers with 64-bit support) followed by
- * {@code <comparison><u16 1><tag>}.
+ * The search tree sent to servers, in prefix order: operators {@code <0><0 AND|1 OR|2 NOT>}, keywords
+ * {@code <1><string>}, string attributes {@code <2><string><u16 1><tag>} and numeric attributes {@code <3><u32>} (or
+ * {@code <8><u64>} for servers with 64-bit support) followed by {@code <comparison><u16 1><tag>}.
  */
 public final class SearchTreeCodec {
 
@@ -50,14 +49,12 @@ public final class SearchTreeCodec {
     private SearchTreeCodec() {}
 
     /**
-     * The tree to send: an expression made only of ANDed keywords becomes one keyword with the
-     * words joined by spaces, which servers handle more efficiently.
+     * The tree to send: an expression made only of ANDed keywords becomes one keyword with the words joined by spaces,
+     * which servers handle more efficiently.
      */
     public static SearchExpr forServer(SearchExpr expr) {
         List<String> words = new ArrayList<>();
-        return onlyAndedKeywords(expr, words) && words.size() > 1
-                ? new Keyword(String.join(" ", words))
-                : expr;
+        return onlyAndedKeywords(expr, words) && words.size() > 1 ? new Keyword(String.join(" ", words)) : expr;
     }
 
     public static void write(PacketWriter out, SearchExpr expr, boolean supports64Bit) {
@@ -79,7 +76,7 @@ public final class SearchTreeCodec {
             }
             case Keyword k -> out.u8(KEYWORD).string16(k.text(), StringEncoding.UTF8);
             case StringAttr a ->
-                    out.u8(STRING).string16(a.value(), StringEncoding.UTF8).u16(1).u8(a.tag());
+                out.u8(STRING).string16(a.value(), StringEncoding.UTF8).u16(1).u8(a.tag());
             case NumericAttr a -> {
                 if (a.value() > 0xFFFF_FFFFL && supports64Bit) {
                     out.u8(UINT64).u64(a.value());

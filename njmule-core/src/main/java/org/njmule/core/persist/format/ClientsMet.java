@@ -26,9 +26,9 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.util.Bytes;
 
 /**
- * Upload and download credits per user hash, {@code clients.met}: {@code <0x12><u32 count>} then
- * 119-byte records {@code <user hash 16><up lo u32><down lo u32><last seen u32><up hi u32><down hi
- * u32><reserved u16><key size u8><public key 80>}. Version 0x11 records have 38 bytes and no key.
+ * Upload and download credits per user hash, {@code clients.met}: {@code <0x12><u32 count>} then 119-byte records
+ * {@code <user hash 16><up lo u32><down lo u32><last seen u32><up hi u32><down hi u32><reserved u16><key size
+ * u8><public key 80>}. Version 0x11 records have 38 bytes and no key.
  */
 public final class ClientsMet {
 
@@ -40,8 +40,7 @@ public final class ClientsMet {
     private static final int MAX_CLIENTS = 2_000_000;
 
     /** {@code publicKey} is empty when the peer never identified itself. */
-    public record Credit(
-            Hash16 userHash, long uploaded, long downloaded, long lastSeen, Bytes publicKey) {
+    public record Credit(Hash16 userHash, long uploaded, long downloaded, long lastSeen, Bytes publicKey) {
         public Credit {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(publicKey, "publicKey");

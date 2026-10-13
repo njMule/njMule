@@ -52,12 +52,11 @@ class TagCodecTest {
 
     @Test
     void portsAreTakenOnlyWithinTheirRange() {
-        List<Tag> tags =
-                List.of(
-                        new IntTag(TagName.id(1), 4662),
-                        new IntTag(TagName.id(2), 0),
-                        new IntTag(TagName.id(3), 0x1_0000),
-                        new IntTag(TagName.id(4), 0xFFFF));
+        List<Tag> tags = List.of(
+                new IntTag(TagName.id(1), 4662),
+                new IntTag(TagName.id(2), 0),
+                new IntTag(TagName.id(3), 0x1_0000),
+                new IntTag(TagName.id(4), 0xFFFF));
         assertThat(Tags.portValue(tags, 1)).hasValue(4662);
         assertThat(Tags.portValue(tags, 2)).isEmpty();
         assertThat(Tags.portValue(tags, 3)).isEmpty();
@@ -70,23 +69,20 @@ class TagCodecTest {
         assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 5))).isEqualTo("890205");
         assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 0x1234))).isEqualTo("88023412");
         assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 0x12345678))).isEqualTo("830278563412");
-        assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 0x1_0000_0000L)))
-                .isEqualTo("8b020000000001000000");
+        assertThat(newEd2k(Tag.of(FileTag.FILESIZE, 0x1_0000_0000L))).isEqualTo("8b020000000001000000");
     }
 
     @Test
     void newEncodingUsesShortStrings() {
         assertThat(newEd2k(Tag.of(FileTag.FILENAME, "abc"))).isEqualTo("9301616263");
-        assertThat(newEd2k(Tag.of(FileTag.FILENAME, "a".repeat(17))))
-                .isEqualTo("82011100" + "61".repeat(17));
+        assertThat(newEd2k(Tag.of(FileTag.FILENAME, "a".repeat(17)))).isEqualTo("82011100" + "61".repeat(17));
         assertThat(newEd2k(Tag.of(FileTag.FILENAME, ""))).isEqualTo("82010000");
     }
 
     @Test
     void oldEncodingWritesNamesWithLengthAndWideIntegers() {
         assertThat(oldEd2k(Tag.of(FileTag.FILESIZE, 5))).isEqualTo("0301000205000000");
-        assertThat(oldEd2k(new IntTag(TagName.of(ServerTag.USERS), 10)))
-                .isEqualTo("0305007573657273" + "0a000000");
+        assertThat(oldEd2k(new IntTag(TagName.of(ServerTag.USERS), 10))).isEqualTo("0305007573657273" + "0a000000");
         assertThat(oldEd2k(new IntTag(TagName.of("\u00090"), 0x1_0000_0000L)))
                 .isEqualTo("0b02000930" + "0000000001000000");
         assertThat(oldEd2k(Tag.of(FileTag.FILENAME, "abc"))).isEqualTo("020100010300616263");
@@ -94,8 +90,7 @@ class TagCodecTest {
 
     @Test
     void stringNamesInTheNewEncodingKeepTheLongForm() {
-        assertThat(newEd2k(new IntTag(TagName.of("users"), 7)))
-                .isEqualTo("09050075736572730" + "7");
+        assertThat(newEd2k(new IntTag(TagName.of("users"), 7))).isEqualTo("09050075736572730" + "7");
     }
 
     @Test
@@ -131,8 +126,7 @@ class TagCodecTest {
     @Test
     void rejectsUnknownTypesAndOversizedBlobs() {
         assertThatThrownBy(() -> readEd2k("8c0100")).isInstanceOf(DecodeException.class);
-        assertThatThrownBy(() -> readEd2k("8701" + "ffffff7f" + "00"))
-                .isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> readEd2k("8701" + "ffffff7f" + "00")).isInstanceOf(DecodeException.class);
         assertThatThrownBy(() -> TagCodec.readKad(PacketReader.of(HEX.parseHex("0701000100"))))
                 .isInstanceOf(DecodeException.class);
     }
@@ -141,8 +135,7 @@ class TagCodecTest {
     void listsCheckTheirCountAgainstTheData() {
         PacketReader in = PacketReader.of(HEX.parseHex("890205"));
 
-        assertThatThrownBy(() -> TagCodec.readEd2kList(in, 2, 100))
-                .isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> TagCodec.readEd2kList(in, 2, 100)).isInstanceOf(DecodeException.class);
     }
 
     @Property
@@ -190,23 +183,19 @@ class TagCodecTest {
                 Combinators.combine(names, Arbitraries.floats()).as(FloatTag::new),
                 Combinators.combine(names, Arbitraries.of(true, false)).as(BoolTag::new),
                 Combinators.combine(names, Arbitraries.integers().between(0, 100))
-                        .as(
-                                (n, bits) ->
-                                        new BoolArrayTag(
-                                                n, bits, Bytes.of(new byte[bits / 8 + 1]))),
+                        .as((n, bits) -> new BoolArrayTag(n, bits, Bytes.of(new byte[bits / 8 + 1]))),
                 Combinators.combine(names, bytes(300)).as(BlobTag::new));
     }
 
     @Provide
     Arbitrary<List<Tag>> kadTags() {
         Arbitrary<TagName> names = names();
-        Arbitrary<Tag> tag =
-                Arbitraries.oneOf(
-                        Combinators.combine(names, Arbitraries.longs()).as(IntTag::new),
-                        Combinators.combine(names, strings()).as(StringTag::new),
-                        Combinators.combine(names, hashes()).as(HashTag::new),
-                        Combinators.combine(names, Arbitraries.floats()).as(FloatTag::new),
-                        Combinators.combine(names, bytes(255)).as(BsobTag::new));
+        Arbitrary<Tag> tag = Arbitraries.oneOf(
+                Combinators.combine(names, Arbitraries.longs()).as(IntTag::new),
+                Combinators.combine(names, strings()).as(StringTag::new),
+                Combinators.combine(names, hashes()).as(HashTag::new),
+                Combinators.combine(names, Arbitraries.floats()).as(FloatTag::new),
+                Combinators.combine(names, bytes(255)).as(BsobTag::new));
         return tag.list().ofMaxSize(8);
     }
 
@@ -229,8 +218,7 @@ class TagCodecTest {
         return Arbitraries.bytes().array(byte[].class).ofMaxSize(max).map(Bytes::of);
     }
 
-    private static Tag roundTripEd2k(Tag tag, Ed2kTagFormat format, StringEncoding encoding)
-            throws DecodeException {
+    private static Tag roundTripEd2k(Tag tag, Ed2kTagFormat format, StringEncoding encoding) throws DecodeException {
         PacketWriter out = new PacketWriter();
         TagCodec.writeEd2k(out, tag, format, encoding);
         PacketReader in = PacketReader.of(out.toByteArray());

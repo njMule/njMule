@@ -27,8 +27,8 @@ import java.util.OptionalInt;
 import java.util.Set;
 
 /**
- * Times of the week when other limits apply: during a rule's window its values replace those of the
- * preferences, which stay as they are; the first enabled rule whose window holds wins.
+ * Times of the week when other limits apply: during a rule's window its values replace those of the preferences, which
+ * stay as they are; the first enabled rule whose window holds wins.
  */
 public record Schedule(List<Rule> rules) {
 
@@ -36,8 +36,8 @@ public record Schedule(List<Rule> rules) {
     public static final Schedule EMPTY = new Schedule(List.of());
 
     /**
-     * One window of the week and the limits it sets; a window that ends before it starts runs past
-     * midnight, one that ends when it starts lasts the whole day.
+     * One window of the week and the limits it sets; a window that ends before it starts runs past midnight, one that
+     * ends when it starts lasts the whole day.
      */
     public record Rule(
             String name,
@@ -72,9 +72,7 @@ public record Schedule(List<Rule> rules) {
                 return this.days.contains(today);
             }
             if (this.start.isBefore(this.end)) {
-                return this.days.contains(today)
-                        && !time.isBefore(this.start)
-                        && time.isBefore(this.end);
+                return this.days.contains(today) && !time.isBefore(this.start) && time.isBefore(this.end);
             }
             return (this.days.contains(today) && !time.isBefore(this.start))
                     || (this.days.contains(today.minus(1)) && time.isBefore(this.end));

@@ -22,7 +22,8 @@ import java.io.Serial;
 /** Malformed, truncated or out-of-limits data received from the network or read from a file. */
 public class DecodeException extends IOException {
 
-    @Serial private static final long serialVersionUID = 1L;
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     public DecodeException(String message) {
         super(message);

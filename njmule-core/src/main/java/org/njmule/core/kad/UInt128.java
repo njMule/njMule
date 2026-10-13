@@ -23,9 +23,9 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 
 /**
- * A 128-bit Kad id or key, compared and XORed as an unsigned number. Bit 0 is the most significant.
- * On the wire and in files it is four little-endian 32-bit words, most significant word first; file
- * hashes map to keys big-endian ({@link #fromBigEndian}).
+ * A 128-bit Kad id or key, compared and XORed as an unsigned number. Bit 0 is the most significant. On the wire and in
+ * files it is four little-endian 32-bit words, most significant word first; file hashes map to keys big-endian
+ * ({@link #fromBigEndian}).
  */
 public record UInt128(long high, long low) implements Comparable<UInt128> {
 
@@ -102,9 +102,7 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
         if (index < 0 || index >= BITS) {
             throw new IndexOutOfBoundsException("bit " + index);
         }
-        return index < 64
-                ? (int) (this.high >>> (63 - index)) & 1
-                : (int) (this.low >>> (127 - index)) & 1;
+        return index < 64 ? (int) (this.high >>> (63 - index)) & 1 : (int) (this.low >>> (127 - index)) & 1;
     }
 
     /** The most significant 32 bits, used for the Kad search tolerance. */
@@ -132,8 +130,7 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
             throw new IllegalArgumentException("a 128-bit id has 32 hex digits");
         }
         return new UInt128(
-                Long.parseUnsignedLong(hex.substring(0, 16), 16),
-                Long.parseUnsignedLong(hex.substring(16), 16));
+                Long.parseUnsignedLong(hex.substring(0, 16), 16), Long.parseUnsignedLong(hex.substring(16), 16));
     }
 
     @Override

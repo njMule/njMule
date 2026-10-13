@@ -71,11 +71,9 @@ class TcpConnectionTest {
     @Test
     void clientsConnectPlainOrObfuscatedToTheListener() throws Exception {
         try (Echo echo = new Echo(true)) {
-            for (Optional<Hash16> obfuscation :
-                    List.of(Optional.<Hash16>empty(), Optional.of(OWN_HASH))) {
+            for (Optional<Hash16> obfuscation : List.of(Optional.<Hash16>empty(), Optional.of(OWN_HASH))) {
                 Recorder recorder = new Recorder();
-                TcpConnection client =
-                        TcpConnector.connectToClient(echo.address(), obfuscation, TIMEOUT, RANDOM);
+                TcpConnection client = TcpConnector.connectToClient(echo.address(), obfuscation, TIMEOUT, RANDOM);
                 client.start(recorder, frame -> frame);
                 assertThat(client.isObfuscated()).isEqualTo(obfuscation.isPresent());
 
@@ -92,8 +90,7 @@ class TcpConnectionTest {
     void aListenerRequiringObfuscationDropsPlainClients() throws Exception {
         try (Echo echo = new Echo(false)) {
             Recorder recorder = new Recorder();
-            TcpConnection client =
-                    TcpConnector.connectToClient(echo.address(), Optional.empty(), TIMEOUT, RANDOM);
+            TcpConnection client = TcpConnector.connectToClient(echo.address(), Optional.empty(), TIMEOUT, RANDOM);
             client.start(recorder, frame -> frame);
             client.send(Packet.of(Protocol.EDONKEY, 0x01, new byte[1]));
 
@@ -105,34 +102,21 @@ class TcpConnectionTest {
     @Test
     void framesBeyondTheHandshakeLimitCloseTheConnection() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            CompletableFuture<Void> sent =
-                    CompletableFuture.runAsync(
-                            () -> {
-                                try (Socket peer = server.accept()) {
-                                    // Not a greeting: refused before the payload is allocated.
-                                    peer.getOutputStream()
-                                            .write(
-                                                    TcpFraming.encode(
-                                                            Packet.of(
-                                                                    Protocol.EDONKEY,
-                                                                    0x46,
-                                                                    new byte[16])));
-                                    peer.getInputStream().read();
-                                } catch (IOException e) {
-                                    // The client hung up, as expected.
-                                }
-                            });
+            CompletableFuture<Void> sent = CompletableFuture.runAsync(() -> {
+                try (Socket peer = server.accept()) {
+                    // Not a greeting: refused before the payload is allocated.
+                    peer.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x46, new byte[16])));
+                    peer.getInputStream().read();
+                } catch (IOException e) {
+                    // The client hung up, as expected.
+                }
+            });
             Recorder recorder = new Recorder();
-            TcpConnection client =
-                    TcpConnector.connectToClient(
-                            new InetSocketAddress(LOOPBACK, server.getLocalPort()),
-                            Optional.empty(),
-                            TIMEOUT,
-                            RANDOM);
+            TcpConnection client = TcpConnector.connectToClient(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
             client.start(recorder, frame -> frame);
 
-            assertThat(recorder.closed.get(5, TimeUnit.SECONDS))
-                    .containsInstanceOf(DecodeException.class);
+            assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).containsInstanceOf(DecodeException.class);
             sent.get(5, TimeUnit.SECONDS);
         }
     }
@@ -140,15 +124,10 @@ class TcpConnectionTest {
     private void exchangeWithServer(boolean obfuscated) throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
             CompletableFuture<Packet> received = new CompletableFuture<>();
-            CompletableFuture<Void> serving =
-                    CompletableFuture.runAsync(() -> serveOnce(server, obfuscated, received));
+            CompletableFuture<Void> serving = CompletableFuture.runAsync(() -> serveOnce(server, obfuscated, received));
             Recorder recorder = new Recorder();
-            TcpConnection connection =
-                    TcpConnector.connectToServer(
-                            new InetSocketAddress(LOOPBACK, server.getLocalPort()),
-                            obfuscated,
-                            TIMEOUT,
-                            RANDOM);
+            TcpConnection connection = TcpConnector.connectToServer(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), obfuscated, TIMEOUT, RANDOM);
             connection.start(recorder, frame -> frame);
             Packet login = Packet.of(Protocol.EDONKEY, 0x01, new byte[] {7, 7, 7});
 
@@ -162,15 +141,13 @@ class TcpConnectionTest {
     }
 
     // Reads one frame and answers with an empty server message, like a minimal eD2K server.
-    private static void serveOnce(
-            ServerSocket server, boolean obfuscated, CompletableFuture<Packet> received) {
+    private static void serveOnce(ServerSocket server, boolean obfuscated, CompletableFuture<Packet> received) {
         try (Socket socket = server.accept()) {
             InputStream in = new BufferedInputStream(socket.getInputStream());
             OutputStream out = new BufferedOutputStream(socket.getOutputStream());
             if (obfuscated) {
                 in.read();
-                StreamObfuscation.Ciphers ciphers =
-                        StreamObfuscation.acceptAsServer(in, out, RANDOM);
+                StreamObfuscation.Ciphers ciphers = StreamObfuscation.acceptAsServer(in, out, RANDOM);
                 in = new CipherInputStream(in, ciphers.receive().cipher());
                 out = new CipherOutputStream(out, ciphers.send().cipher());
             }
@@ -189,37 +166,27 @@ class TcpConnectionTest {
 
         Echo(boolean allowPlain) throws IOException {
             ConnectionGuard guard =
-                    new ConnectionGuard(
-                            IpFilter::empty, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
-            this.listener =
-                    TcpListener.open(
-                            new InetSocketAddress(LOOPBACK, 0),
-                            guard,
-                            (socket, permit) -> {
-                                try {
-                                    TcpConnection connection =
-                                            TcpConnector.accept(
-                                                    socket, OWN_HASH, allowPlain, TIMEOUT, RANDOM);
-                                    connection.start(
-                                            new TcpConnection.Handler() {
-                                                @Override
-                                                public void onPacket(
-                                                        TcpConnection c, Packet packet) {
-                                                    c.send(packet);
-                                                }
+                    new ConnectionGuard(IpFilter::empty, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
+            this.listener = TcpListener.open(new InetSocketAddress(LOOPBACK, 0), guard, (socket, permit) -> {
+                try {
+                    TcpConnection connection = TcpConnector.accept(socket, OWN_HASH, allowPlain, TIMEOUT, RANDOM);
+                    connection.start(
+                            new TcpConnection.Handler() {
+                                @Override
+                                public void onPacket(TcpConnection c, Packet packet) {
+                                    c.send(packet);
+                                }
 
-                                                @Override
-                                                public void onClosed(
-                                                        TcpConnection c,
-                                                        Optional<IOException> cause) {
-                                                    permit.close();
-                                                }
-                                            },
-                                            frame -> frame);
-                                } catch (IOException e) {
+                                @Override
+                                public void onClosed(TcpConnection c, Optional<IOException> cause) {
                                     permit.close();
                                 }
-                            });
+                            },
+                            frame -> frame);
+                } catch (IOException e) {
+                    permit.close();
+                }
+            });
         }
 
         InetSocketAddress address() {

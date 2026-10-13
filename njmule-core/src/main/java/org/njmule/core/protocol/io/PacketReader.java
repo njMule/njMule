@@ -22,8 +22,8 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 
 /**
- * Little-endian reader over an in-memory buffer. Every read is bounds-checked first, so a length
- * field can never make it allocate more than the data actually received.
+ * Little-endian reader over an in-memory buffer. Every read is bounds-checked first, so a length field can never make
+ * it allocate more than the data actually received.
  */
 public final class PacketReader {
 
@@ -130,9 +130,7 @@ public final class PacketReader {
         return out;
     }
 
-    /**
-     * A {@code <u16 length><bytes>} string decoded with the network's rules ({@link Ed2kStrings}).
-     */
+    /** A {@code <u16 length><bytes>} string decoded with the network's rules ({@link Ed2kStrings}). */
     public String string16() throws DecodeException {
         return Ed2kStrings.decode(this.bytes(this.u16()));
     }
@@ -143,8 +141,7 @@ public final class PacketReader {
             throw new DecodeException("count " + count + " exceeds the limit of " + maxCount);
         }
         if (minItemSize > 0 && count > this.buffer.remaining() / minItemSize) {
-            throw new DecodeException(
-                    "count " + count + " does not fit in " + this.buffer.remaining() + " bytes");
+            throw new DecodeException("count " + count + " does not fit in " + this.buffer.remaining() + " bytes");
         }
         return (int) count;
     }
@@ -157,14 +154,13 @@ public final class PacketReader {
 
     private void need(int length) throws DecodeException {
         if (length > this.buffer.remaining()) {
-            throw new DecodeException(
-                    "truncated data: need "
-                            + length
-                            + " bytes at offset "
-                            + this.buffer.position()
-                            + ", "
-                            + this.buffer.remaining()
-                            + " left");
+            throw new DecodeException("truncated data: need "
+                    + length
+                    + " bytes at offset "
+                    + this.buffer.position()
+                    + ", "
+                    + this.buffer.remaining()
+                    + " left");
         }
     }
 }

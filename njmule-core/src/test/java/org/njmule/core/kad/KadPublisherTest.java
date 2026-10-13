@@ -104,13 +104,11 @@ class KadPublisherTest {
 
     private final FakeNode node = new FakeNode();
     private final FakeTicker ticker = new FakeTicker();
-    private final List<KadPublisher.Shared> shared =
-            List.of(
-                    new KadPublisher.Shared(MOVIE, "Great Movie.avi", 700_000_000L, true),
-                    new KadPublisher.Shared(SONG, "great song.mp3", 5_000_000L, true),
-                    new KadPublisher.Shared(PARTIAL, "half done.iso", 9_000_000L, false));
-    private final KadPublisher publisher =
-            new KadPublisher(this.node, () -> this.shared, this.ticker);
+    private final List<KadPublisher.Shared> shared = List.of(
+            new KadPublisher.Shared(MOVIE, "Great Movie.avi", 700_000_000L, true),
+            new KadPublisher.Shared(SONG, "great song.mp3", 5_000_000L, true),
+            new KadPublisher.Shared(PARTIAL, "half done.iso", 9_000_000L, false));
+    private final KadPublisher publisher = new KadPublisher(this.node, () -> this.shared, this.ticker);
 
     @Test
     void keywordsOfCompleteFilesAndAllSourcesArePublishedInTurn() {
@@ -122,8 +120,7 @@ class KadPublisherTest {
         assertThat(this.node.keywords).containsOnlyKeys("great", "movie", "song");
         List<KadMessages.Entry> great = this.node.keywords.get("great");
         assertThat(great).hasSize(2);
-        assertThat(Tags.stringValue(great.getFirst().tags(), FileTag.FILENAME))
-                .contains("Great Movie.avi");
+        assertThat(Tags.stringValue(great.getFirst().tags(), FileTag.FILENAME)).contains("Great Movie.avi");
         assertThat(Tags.intValue(great.getFirst().tags(), FileTag.FILESIZE)).hasValue(700_000_000L);
         assertThat(Tags.stringValue(great.getFirst().tags(), FileTag.FILETYPE)).isPresent();
         assertThat(this.node.sources).containsExactly(MOVIE, SONG, PARTIAL);

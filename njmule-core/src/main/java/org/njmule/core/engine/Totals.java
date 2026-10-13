@@ -28,8 +28,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The all-time totals: bytes received and sent, sessions and time running, kept in {@code
- * statistics.properties}. The current session is added when the totals are saved.
+ * The all-time totals: bytes received and sent, sessions and time running, kept in {@code statistics.properties}. The
+ * current session is added when the totals are saved.
  */
 final class Totals {
 
@@ -55,17 +55,13 @@ final class Totals {
     static Totals load(Path file) {
         if (Files.exists(file) || Files.exists(AtomicFiles.bakPath(file.toAbsolutePath()))) {
             try {
-                Properties p =
-                        AtomicFiles.read(
-                                file,
-                                in -> {
-                                    Properties props = new Properties();
-                                    try (Reader r =
-                                            new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                                        props.load(r);
-                                    }
-                                    return props;
-                                });
+                Properties p = AtomicFiles.read(file, in -> {
+                    Properties props = new Properties();
+                    try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                        props.load(r);
+                    }
+                    return props;
+                });
                 return new Totals(
                         file,
                         number(p, "downloaded"),
@@ -99,20 +95,19 @@ final class Totals {
 
     /** Saves the totals with this session's bytes and time. */
     void save(long sessionDownloaded, long sessionUploaded, long sessionSeconds) {
-        String text =
-                "# njMule all-time statistics\n"
-                        + "downloaded="
-                        + (this.downloaded + sessionDownloaded)
-                        + "\n"
-                        + "uploaded="
-                        + (this.uploaded + sessionUploaded)
-                        + "\n"
-                        + "sessions="
-                        + (this.sessions + 1)
-                        + "\n"
-                        + "seconds="
-                        + (this.seconds + sessionSeconds)
-                        + "\n";
+        String text = "# njMule all-time statistics\n"
+                + "downloaded="
+                + (this.downloaded + sessionDownloaded)
+                + "\n"
+                + "uploaded="
+                + (this.uploaded + sessionUploaded)
+                + "\n"
+                + "sessions="
+                + (this.sessions + 1)
+                + "\n"
+                + "seconds="
+                + (this.seconds + sessionSeconds)
+                + "\n";
         try {
             AtomicFiles.writeBytes(this.file, text.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {

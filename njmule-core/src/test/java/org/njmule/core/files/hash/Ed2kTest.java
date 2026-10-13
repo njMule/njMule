@@ -47,14 +47,7 @@ class Ed2kTest {
 
     // Reference part counts around the PARTSIZE boundaries.
     @ParameterizedTest
-    @CsvSource({
-        "1,1,1,0",
-        "9727999,1,1,0",
-        "9728000,1,2,2",
-        "9728001,2,2,2",
-        "19456000,2,3,3",
-        "19456001,3,3,3"
-    })
+    @CsvSource({"1,1,1,0", "9727999,1,1,0", "9728000,1,2,2", "9728001,2,2,2", "19456000,2,3,3", "19456001,3,3,3"})
     void countsParts(long size, int dataParts, int ed2kParts, int hashes) {
         assertThat(Ed2k.partCount(size)).isEqualTo(dataParts);
         assertThat(Ed2k.ed2kPartCount(size)).isEqualTo(ed2kParts);
@@ -70,7 +63,8 @@ class Ed2kTest {
         "797ED552F34380CAFF8C958207E40355,FC7FD02CCD6987DCF1421F4C0AF94FB8:2FE466AF8A7C06DA3365317B75A5ACFE:873D3BF52629F7C1527C6E8E473C1C30:BCE50BEE7877BB07BB6FDA56BFE142FB"
     })
     void fileHashIsTheMd4OfThePartHashes(String file, String parts) {
-        List<Hash16> hashes = Arrays.stream(parts.split(":")).map(Hash16::parseHex).toList();
+        List<Hash16> hashes =
+                Arrays.stream(parts.split(":")).map(Hash16::parseHex).toList();
 
         assertThat(Ed2k.fileHash(hashes)).isEqualTo(Hash16.parseHex(file));
     }
@@ -79,10 +73,8 @@ class Ed2kTest {
     void hashSetsValidateTheirShape() {
         Hash16 h = Ed2k.EMPTY_PART_HASH;
 
-        assertThatThrownBy(() -> new Ed2kHashSet(P, h, List.of(h)))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Ed2kHashSet(P, h, List.of(h))).isInstanceOf(IllegalArgumentException.class);
         assertThat(new Ed2kHashSet(P, h, List.of(h, h)).isConsistent()).isFalse();
-        assertThatThrownBy(() -> Ed2k.partCount(Ed2k.MAX_FILE_SIZE + 1))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ed2k.partCount(Ed2k.MAX_FILE_SIZE + 1)).isInstanceOf(IllegalArgumentException.class);
     }
 }

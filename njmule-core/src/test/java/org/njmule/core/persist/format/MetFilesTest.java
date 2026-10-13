@@ -51,14 +51,7 @@ class MetFilesTest {
     @Test
     void serverMetStoresIpsInNetworkOrder() throws DecodeException {
         // One server 1.2.3.4:4661 with name "abc" (old tag encoding).
-        byte[] file =
-                HEX.parseHex(
-                        "e0"
-                                + "01000000"
-                                + "01020304"
-                                + "3512"
-                                + "01000000"
-                                + "020100010300616263");
+        byte[] file = HEX.parseHex("e0" + "01000000" + "01020304" + "3512" + "01000000" + "020100010300616263");
 
         Server server = ServerMet.read(file).getFirst();
 
@@ -70,14 +63,13 @@ class MetFilesTest {
 
     @Test
     void serverMetKeepsUnknownTagsAndNamedCounters() throws DecodeException {
-        Server server =
-                new Server(
-                        Ipv4.of(10, 0, 0, 1),
-                        4242,
-                        List.of(
-                                Tag.of(ServerTag.SERVERNAME, "Città"),
-                                new IntTag(TagName.of(ServerTag.USERS), 1234),
-                                Tag.of(0x77, 9)));
+        Server server = new Server(
+                Ipv4.of(10, 0, 0, 1),
+                4242,
+                List.of(
+                        Tag.of(ServerTag.SERVERNAME, "Città"),
+                        new IntTag(TagName.of(ServerTag.USERS), 1234),
+                        Tag.of(0x77, 9)));
 
         Server read = ServerMet.read(ServerMet.write(List.of(server))).getFirst();
 
@@ -88,16 +80,12 @@ class MetFilesTest {
     @Test
     void knownMetRoundTripsAndChecksConsistency() throws DecodeException {
         List<Hash16> parts = List.of(H, Ed2k.EMPTY_PART_HASH);
-        KnownFile good =
-                new KnownFile(
-                        1_700_000_000L,
-                        Ed2k.fileHash(parts),
-                        parts,
-                        List.of(
-                                Tag.of(FileTag.FILENAME, "a.bin"),
-                                Tag.of(FileTag.FILESIZE, Ed2k.PARTSIZE)));
-        KnownFile bad =
-                new KnownFile(1, H, List.of(), List.of(Tag.of(FileTag.FILESIZE, Ed2k.PARTSIZE)));
+        KnownFile good = new KnownFile(
+                1_700_000_000L,
+                Ed2k.fileHash(parts),
+                parts,
+                List.of(Tag.of(FileTag.FILENAME, "a.bin"), Tag.of(FileTag.FILESIZE, Ed2k.PARTSIZE)));
+        KnownFile bad = new KnownFile(1, H, List.of(), List.of(Tag.of(FileTag.FILESIZE, Ed2k.PARTSIZE)));
 
         List<KnownFile> read = KnownMet.read(KnownMet.write(List.of(good, bad)));
 
@@ -109,8 +97,7 @@ class MetFilesTest {
 
     @Test
     void largeFilesSwitchKnownMetToSixtyFourBitTags() throws DecodeException {
-        KnownFile big =
-                new KnownFile(0, H, List.of(), List.of(Tag.of(FileTag.FILESIZE, 5_000_000_000L)));
+        KnownFile big = new KnownFile(0, H, List.of(), List.of(Tag.of(FileTag.FILESIZE, 5_000_000_000L)));
 
         byte[] file = KnownMet.write(List.of(big));
 
@@ -120,57 +107,47 @@ class MetFilesTest {
 
     @Test
     void partMetGapsAreExclusiveAndClamped() throws DecodeException {
-        PartMet.Contents base =
-                new PartMet.Contents(
-                        PartMet.VERSION,
-                        0,
-                        H,
-                        List.of(),
-                        List.of(Tag.of(FileTag.FILENAME, "x"), Tag.of(FileTag.FILESIZE, 1000)));
+        PartMet.Contents base = new PartMet.Contents(
+                PartMet.VERSION,
+                0,
+                H,
+                List.of(),
+                List.of(Tag.of(FileTag.FILENAME, "x"), Tag.of(FileTag.FILESIZE, 1000)));
         PartMet.Contents withGaps = base.withGaps(List.of(new Gap(0, 100), new Gap(900, 1000)));
 
         PartMet.Contents read = PartMet.read(PartMet.write(withGaps));
 
         assertThat(read.gaps()).containsExactly(new Gap(0, 100), new Gap(900, 1000));
-        assertThat(read.tags())
-                .contains(new IntTag(TagName.of("\n1"), 1000), new IntTag(TagName.of("\t1"), 900));
+        assertThat(read.tags()).contains(new IntTag(TagName.of("\n1"), 1000), new IntTag(TagName.of("\t1"), 900));
 
         // A gap past the end is clamped, an incomplete pair is dropped.
-        PartMet.Contents odd =
-                new PartMet.Contents(
-                        PartMet.VERSION,
-                        0,
-                        H,
-                        List.of(),
-                        List.of(
-                                Tag.of(FileTag.FILESIZE, 1000),
-                                new IntTag(TagName.of("\t0"), 500),
-                                new IntTag(TagName.of("\n0"), 5000),
-                                new IntTag(TagName.of("\t7"), 10)));
+        PartMet.Contents odd = new PartMet.Contents(
+                PartMet.VERSION,
+                0,
+                H,
+                List.of(),
+                List.of(
+                        Tag.of(FileTag.FILESIZE, 1000),
+                        new IntTag(TagName.of("\t0"), 500),
+                        new IntTag(TagName.of("\n0"), 5000),
+                        new IntTag(TagName.of("\t7"), 10)));
         assertThat(odd.gaps()).containsExactly(new Gap(500, 1000));
     }
 
     @Test
     void partMetChoosesTheLargeVersionAboveFourGigabytes() throws DecodeException {
-        PartMet.Contents big =
-                new PartMet.Contents(
-                        PartMet.VERSION,
-                        0,
-                        H,
-                        List.of(),
-                        List.of(Tag.of(FileTag.FILESIZE, 5_000_000_000L)));
+        PartMet.Contents big = new PartMet.Contents(
+                PartMet.VERSION, 0, H, List.of(), List.of(Tag.of(FileTag.FILESIZE, 5_000_000_000L)));
 
         byte[] file = PartMet.write(big);
 
         assertThat(file[0]).isEqualTo((byte) PartMet.VERSION_LARGE);
-        assertThatThrownBy(() -> PartMet.read(HEX.parseHex("e1")))
-                .isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> PartMet.read(HEX.parseHex("e1"))).isInstanceOf(DecodeException.class);
     }
 
     @Test
     void clientsMetRecordsHave119Bytes() throws DecodeException {
-        Credit credit =
-                new Credit(H, 5_000_000_000L, 42, 1_700_000_000L, Bytes.of(new byte[] {1, 2, 3}));
+        Credit credit = new Credit(H, 5_000_000_000L, 42, 1_700_000_000L, Bytes.of(new byte[] {1, 2, 3}));
 
         byte[] file = ClientsMet.write(List.of(credit));
 
@@ -182,17 +159,15 @@ class MetFilesTest {
 
     @Test
     void oldClientsMetHasNoKeys() throws DecodeException {
-        byte[] file =
-                HEX.parseHex(
-                        "11"
-                                + "01000000"
-                                + H.toHex()
-                                + "0a000000"
-                                + "14000000"
-                                + "00000000"
-                                + "01000000"
-                                + "00000000"
-                                + "0000");
+        byte[] file = HEX.parseHex("11"
+                + "01000000"
+                + H.toHex()
+                + "0a000000"
+                + "14000000"
+                + "00000000"
+                + "01000000"
+                + "00000000"
+                + "0000");
 
         Credit credit = ClientsMet.read(file).getFirst();
 
@@ -203,21 +178,17 @@ class MetFilesTest {
 
     @Test
     void friendsMetWritesTheKadIdInTheNewEncoding() throws DecodeException {
-        Friend friend =
-                new Friend(
-                        H,
-                        Ipv4.of(1, 2, 3, 4),
-                        4662,
-                        100,
-                        200,
-                        List.of(
-                                Tag.of(FriendsMet.NAME, "pal"),
-                                new HashTag(TagName.id(FriendsMet.KAD_ID), H)));
+        Friend friend = new Friend(
+                H,
+                Ipv4.of(1, 2, 3, 4),
+                4662,
+                100,
+                200,
+                List.of(Tag.of(FriendsMet.NAME, "pal"), new HashTag(TagName.id(FriendsMet.KAD_ID), H)));
 
         byte[] file = FriendsMet.write(List.of(friend));
 
-        assertThat(HEX.formatHex(file))
-                .contains("8102" + H.toHex().toLowerCase(java.util.Locale.ROOT));
+        assertThat(HEX.formatHex(file)).contains("8102" + H.toHex().toLowerCase(java.util.Locale.ROOT));
         Friend read = FriendsMet.read(file).getFirst();
         assertThat(read).isEqualTo(friend);
         assertThat(read.name()).contains("pal");
@@ -228,14 +199,14 @@ class MetFilesTest {
     void cancelledMetHidesTheFileHashes() throws DecodeException {
         Hash16 key = CancelledMet.key(0x01020304, H);
 
-        CancelledMet.Contents read =
-                CancelledMet.read(CancelledMet.write(0x01020304, List.of(key)));
+        CancelledMet.Contents read = CancelledMet.read(CancelledMet.write(0x01020304, List.of(key)));
 
         assertThat(read.seed()).isEqualTo(0x01020304);
         assertThat(read.legacy()).isFalse();
         assertThat(read.keys()).containsExactly(key);
         assertThat(key).isNotEqualTo(H);
-        assertThat(CancelledMet.read(HEX.parseHex("0e" + "01000000" + H.toHex() + "00")).legacy())
+        assertThat(CancelledMet.read(HEX.parseHex("0e" + "01000000" + H.toHex() + "00"))
+                        .legacy())
                 .isTrue();
     }
 
@@ -244,11 +215,9 @@ class MetFilesTest {
         Hash20 a = Hash20.of(new byte[20]);
         Known2Met.Entry entry = new Known2Met.Entry(a, List.of(a, a));
 
-        assertThat(Known2Met.read(Known2Met.write(List.of(entry, entry))))
-                .containsExactly(entry, entry);
+        assertThat(Known2Met.read(Known2Met.write(List.of(entry, entry)))).containsExactly(entry, entry);
         String zero = "00".repeat(20);
-        assertThat(Known2Met.readOld(HEX.parseHex(zero + "0200" + zero + zero)))
-                .containsExactly(entry);
+        assertThat(Known2Met.readOld(HEX.parseHex(zero + "0200" + zero + zero))).containsExactly(entry);
         assertThatThrownBy(() -> Known2Met.read(HEX.parseHex("02" + zero + "ffffff7f")))
                 .isInstanceOf(DecodeException.class);
     }

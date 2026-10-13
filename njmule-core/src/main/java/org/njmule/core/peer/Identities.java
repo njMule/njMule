@@ -38,9 +38,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Secure identification on every client connection: our key from {@code cryptkey.dat}, the keys
- * peers proved to own, and how far each connection's user hash can be trusted for credits. Engine
- * thread only.
+ * Secure identification on every client connection: our key from {@code cryptkey.dat}, the keys peers proved to own,
+ * and how far each connection's user hash can be trusted for credits. Engine thread only.
  */
 public final class Identities {
 
@@ -117,8 +116,7 @@ public final class Identities {
     }
 
     /** Reads our key from {@code configDir}, creating it on the first start. */
-    public static Rsa.PrivateKey loadOrCreateKey(Path configDir, SecureRandom random)
-            throws IOException {
+    public static Rsa.PrivateKey loadOrCreateKey(Path configDir, SecureRandom random) throws IOException {
         Path file = configDir.resolve(KEY_FILE);
         if (Files.exists(file) && Files.size(file) > 0) {
             try {
@@ -132,9 +130,7 @@ public final class Identities {
         return key;
     }
 
-    /**
-     * Starts the identification with a peer whose hello we have, asking it to sign our challenge.
-     */
+    /** Starts the identification with a peer whose hello we have, asking it to sign our challenge. */
     public Session start(Hello peer, InetAddress address, Consumer<Packet> send) {
         Optional<byte[]> pinned = this.pinnedKeys.apply(peer.userHash());
         if (!(address instanceof Inet4Address ip)) {
@@ -142,10 +138,8 @@ public final class Identities {
         }
         Listener listener = new Listener(peer.userHash());
         IdentityHandshake handshake =
-                new IdentityHandshake(
-                        this.own, peer, ip, pinned, this.ourPublicAddress.get(), send, listener);
-        Trust initial =
-                handshake.isSupported() || pinned.isPresent() ? Trust.NEEDED : Trust.UNSECURED;
+                new IdentityHandshake(this.own, peer, ip, pinned, this.ourPublicAddress.get(), send, listener);
+        Trust initial = handshake.isSupported() || pinned.isPresent() ? Trust.NEEDED : Trust.UNSECURED;
         Session session = new Session(Optional.of(handshake), initial);
         listener.session = session;
         handshake.start(this.random);

@@ -49,9 +49,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The connection to one eD2K server at a time: connect (obfuscated when both sides support it), log
- * in, then serve the session. Used on the engine thread only; network callbacks are posted to it,
- * and those of an abandoned attempt are ignored.
+ * The connection to one eD2K server at a time: connect (obfuscated when both sides support it), log in, then serve the
+ * session. Used on the engine thread only; network callbacks are posted to it, and those of an abandoned attempt are
+ * ignored.
  */
 public final class ServerSession {
 
@@ -124,8 +124,8 @@ public final class ServerSession {
     }
 
     /**
-     * Connects to {@code target}, or to the known servers one after the other until one accepts us.
-     * An open session or attempt is dropped first.
+     * Connects to {@code target}, or to the known servers one after the other until one accepts us. An open session or
+     * attempt is dropped first.
      */
     public void connect(Optional<ServerMet.Server> target) {
         this.disconnect("reconnecting");
@@ -175,8 +175,7 @@ public final class ServerSession {
                 this.start(next);
                 return;
             }
-            logger.debug(
-                    "Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
+            logger.debug("Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
         }
         Optional<ServerMet.Server> last = this.server;
         this.state = State.IDLE;
@@ -187,38 +186,28 @@ public final class ServerSession {
     private void start(ServerMet.Server target) {
         long current = ++this.attempt;
         boolean obfuscate = this.obfuscationFor(target).orElse(false);
-        int port =
-                obfuscate && target.obfuscatedTcpPort().orElse(0) > 0
-                        ? (int) target.obfuscatedTcpPort().getAsLong()
-                        : target.port();
+        int port = obfuscate && target.obfuscatedTcpPort().orElse(0) > 0
+                ? (int) target.obfuscatedTcpPort().getAsLong()
+                : target.port();
         InetSocketAddress address = new InetSocketAddress(Ipv4.format(target.ip()), port);
         this.state = State.CONNECTING;
         this.server = Optional.of(target);
         this.id = Optional.empty();
-        this.timeout =
-                this.loop.schedule(
-                        "server login timeout",
-                        LOGIN_TIMEOUT,
-                        () ->
-                                this.fail(
-                                        current,
-                                        "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
+        this.timeout = this.loop.schedule(
+                "server login timeout",
+                LOGIN_TIMEOUT,
+                () -> this.fail(current, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
         this.listener.connecting(target);
-        Thread.ofVirtual()
-                .name("njmule-server-connect")
-                .start(
-                        () -> {
-                            try {
-                                TcpConnection opened =
-                                        TcpConnector.connectToServer(
-                                                address, obfuscate, LOGIN_TIMEOUT, this.random);
-                                if (!this.loop.post(() -> this.opened(current, opened))) {
-                                    opened.close();
-                                }
-                            } catch (IOException e) {
-                                this.loop.post(() -> this.fail(current, describe(e)));
-                            }
-                        });
+        Thread.ofVirtual().name("njmule-server-connect").start(() -> {
+            try {
+                TcpConnection opened = TcpConnector.connectToServer(address, obfuscate, LOGIN_TIMEOUT, this.random);
+                if (!this.loop.post(() -> this.opened(current, opened))) {
+                    opened.close();
+                }
+            } catch (IOException e) {
+                this.loop.post(() -> this.fail(current, describe(e)));
+            }
+        });
     }
 
     private void opened(long current, TcpConnection opened) {
@@ -231,32 +220,26 @@ public final class ServerSession {
                 new TcpConnection.Handler() {
                     @Override
                     public void onPacket(TcpConnection c, Packet packet) {
-                        if (!ServerSession.this.loop.post(
-                                () -> ServerSession.this.received(current, packet))) {
+                        if (!ServerSession.this.loop.post(() -> ServerSession.this.received(current, packet))) {
                             c.close();
                         }
                     }
 
                     @Override
                     public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                        ServerSession.this.loop.post(
-                                () ->
-                                        ServerSession.this.closed(
-                                                current,
-                                                cause.map(ServerSession::describe)
-                                                        .orElse("closed by the server")));
+                        ServerSession.this.loop.post(() -> ServerSession.this.closed(
+                                current, cause.map(ServerSession::describe).orElse("closed by the server")));
                     }
                 },
                 Packing::unpackFromServer);
         Preferences prefs = this.preferences.get();
-        opened.send(
-                new ServerMessages.Login(
-                                this.userHash,
-                                this.lastClientId,
-                                this.listenPort.getAsInt(),
-                                prefs.nick(),
-                                capabilities(prefs.obfuscation()))
-                        .encode());
+        opened.send(new ServerMessages.Login(
+                        this.userHash,
+                        this.lastClientId,
+                        this.listenPort.getAsInt(),
+                        prefs.nick(),
+                        capabilities(prefs.obfuscation()))
+                .encode());
         this.state = State.LOGGING_IN;
     }
 
@@ -279,32 +262,28 @@ public final class ServerSession {
                     }
                 }
                 case SERVERSTATUS ->
-                        ServerMessages.ServerStatus.decode(packet)
-                                .ifPresent(
-                                        status ->
-                                                this.update(
-                                                        target,
-                                                        intTag(ServerTag.USERS, status.users()),
-                                                        intTag(ServerTag.FILES, status.files())));
+                    ServerMessages.ServerStatus.decode(packet)
+                            .ifPresent(status -> this.update(
+                                    target,
+                                    intTag(ServerTag.USERS, status.users()),
+                                    intTag(ServerTag.FILES, status.files())));
                 case SERVERIDENT -> {
                     ServerMessages.ServerIdent ident = ServerMessages.ServerIdent.decode(packet);
                     this.update(
                             target,
-                            ident.name().map(n -> stringTag(ServerTag.SERVERNAME, n)).orElse(null),
+                            ident.name()
+                                    .map(n -> stringTag(ServerTag.SERVERNAME, n))
+                                    .orElse(null),
                             ident.description()
                                     .map(d -> stringTag(ServerTag.DESCRIPTION, d))
                                     .orElse(null));
                 }
                 case CALLBACKREQUESTED ->
-                        this.listener.callbackRequested(
-                                ServerMessages.CallbackRequested.decode(packet));
-                case SEARCHRESULT ->
-                        this.listener.searchResults(
-                                target, ServerMessages.SearchResults.decode(packet));
+                    this.listener.callbackRequested(ServerMessages.CallbackRequested.decode(packet));
+                case SEARCHRESULT -> this.listener.searchResults(target, ServerMessages.SearchResults.decode(packet));
                 case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
-                        this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
-                case REJECT ->
-                        logger.info("{} rejected our last request", ServerList.addressOf(target));
+                    this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
+                case REJECT -> logger.info("{} rejected our last request", ServerList.addressOf(target));
                 default -> logger.debug("Ignoring server message {}", opcode.get());
             }
         } catch (DecodeException e) {
@@ -328,25 +307,22 @@ public final class ServerSession {
             this.state = State.CONNECTED;
             this.timeout.cancel(false);
             this.pending.clear();
-            this.servers.update(
-                    ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
+            this.servers.update(ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
             this.listener.connected(target, change);
         }
     }
 
     private void update(ServerMet.Server target, Tag... tags) {
         ServerList.Address address = ServerList.addressOf(target);
-        this.servers.update(
-                address,
-                s -> {
-                    ServerMet.Server updated = s;
-                    for (Tag tag : tags) {
-                        if (tag != null) {
-                            updated = updated.with(tag);
-                        }
-                    }
-                    return updated;
-                });
+        this.servers.update(address, s -> {
+            ServerMet.Server updated = s;
+            for (Tag tag : tags) {
+                if (tag != null) {
+                    updated = updated.with(tag);
+                }
+            }
+            return updated;
+        });
         ServerMet.Server current = this.servers.get(address).orElse(target);
         this.server = Optional.of(current);
         this.listener.updated(current);
@@ -410,18 +386,14 @@ public final class ServerSession {
     }
 
     /**
-     * Whether to obfuscate with {@code target}: empty when the preferences require obfuscation and
-     * the server cannot do it.
+     * Whether to obfuscate with {@code target}: empty when the preferences require obfuscation and the server cannot do
+     * it.
      */
     private Optional<Boolean> obfuscationFor(ServerMet.Server target) {
         ObfuscationMode mode = this.preferences.get().obfuscation();
         long flags = target.udpFlags().orElse(0);
-        boolean serverCan =
-                target.obfuscatedTcpPort().orElse(0) > 0
-                        && (flags
-                                        & (ServerDatagrams.UDP_OBFUSCATION
-                                                | ServerDatagrams.UDP_TCP_OBFUSCATION))
-                                != 0;
+        boolean serverCan = target.obfuscatedTcpPort().orElse(0) > 0
+                && (flags & (ServerDatagrams.UDP_OBFUSCATION | ServerDatagrams.UDP_TCP_OBFUSCATION)) != 0;
         if (mode == ObfuscationMode.REQUIRED) {
             return serverCan ? Optional.of(true) : Optional.empty();
         }
@@ -429,21 +401,19 @@ public final class ServerSession {
     }
 
     static int capabilities(ObfuscationMode mode) {
-        int caps =
-                ServerMessages.CAP_ZLIB
-                        | ServerMessages.CAP_NEWTAGS
-                        | ServerMessages.CAP_UNICODE
-                        | ServerMessages.CAP_LARGEFILES;
+        int caps = ServerMessages.CAP_ZLIB
+                | ServerMessages.CAP_NEWTAGS
+                | ServerMessages.CAP_UNICODE
+                | ServerMessages.CAP_LARGEFILES;
         return switch (mode) {
             case DISABLED -> caps;
             case SUPPORTED -> caps | ServerMessages.CAP_SUPPORTS_CRYPT;
-            case REQUESTED ->
-                    caps | ServerMessages.CAP_SUPPORTS_CRYPT | ServerMessages.CAP_REQUESTS_CRYPT;
+            case REQUESTED -> caps | ServerMessages.CAP_SUPPORTS_CRYPT | ServerMessages.CAP_REQUESTS_CRYPT;
             case REQUIRED ->
-                    caps
-                            | ServerMessages.CAP_SUPPORTS_CRYPT
-                            | ServerMessages.CAP_REQUESTS_CRYPT
-                            | ServerMessages.CAP_REQUIRES_CRYPT;
+                caps
+                        | ServerMessages.CAP_SUPPORTS_CRYPT
+                        | ServerMessages.CAP_REQUESTS_CRYPT
+                        | ServerMessages.CAP_REQUIRES_CRYPT;
         };
     }
 

@@ -46,9 +46,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 
-/**
- * The network work asked on the command line: add servers, connect, search, say hello, download.
- */
+/** The network work asked on the command line: add servers, connect, search, say hello, download. */
 final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
 
     /** Longest wait for a login, several servers included. */
@@ -96,7 +94,8 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
             }
             if (tasks.serverMet().isPresent()) {
                 int added = this.engine.addServers(tasks.serverMet().get()).get();
-                this.out.println("Added " + added + " servers from " + tasks.serverMet().get());
+                this.out.println(
+                        "Added " + added + " servers from " + tasks.serverMet().get());
             }
             for (Path dir : tasks.shares()) {
                 this.engine.shareDirectory(dir).get();
@@ -114,14 +113,10 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                     return Main.EXIT_FAILURE;
                 }
                 this.search(tasks.search().orElseThrow(), SearchRequest.Scope.KAD);
-                return tasks.downloads().isEmpty()
-                        ? Main.EXIT_OK
-                        : this.download(tasks.downloads());
+                return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
             }
             if (tasks.server().isEmpty() && tasks.search().isEmpty()) {
-                return tasks.downloads().isEmpty()
-                        ? Main.EXIT_OK
-                        : this.download(tasks.downloads());
+                return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
             }
             this.engine.connect(tasks.server()).get();
             if (!tasks.isOneShot()) {
@@ -132,8 +127,7 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
             }
             if (tasks.search().isPresent()) {
                 this.search(
-                        tasks.search().get(),
-                        tasks.global() ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER);
+                        tasks.search().get(), tasks.global() ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER);
             }
             return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
         } catch (ExecutionException e) {
@@ -142,20 +136,17 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         }
     }
 
-    private void importEmule(LaunchOptions.EmuleImport task)
-            throws InterruptedException, ExecutionException {
-        this.out.println(
-                (task.options().dryRun() ? "What would be imported from " : "Importing from ")
-                        + task.dir());
-        ImportReport report = this.engine.importFromEmule(task.dir(), task.options()).get();
+    private void importEmule(LaunchOptions.EmuleImport task) throws InterruptedException, ExecutionException {
+        this.out.println((task.options().dryRun() ? "What would be imported from " : "Importing from ") + task.dir());
+        ImportReport report =
+                this.engine.importFromEmule(task.dir(), task.options()).get();
         for (ImportReport.Item item : report.items()) {
-            this.out.println(
-                    String.format(
-                            Locale.ROOT,
-                            "  %-13s %-20s %s",
-                            item.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' '),
-                            item.file(),
-                            item.detail()));
+            this.out.println(String.format(
+                    Locale.ROOT,
+                    "  %-13s %-20s %s",
+                    item.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' '),
+                    item.file(),
+                    item.detail()));
         }
     }
 
@@ -166,22 +157,20 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         } catch (TimeoutException e) {
             throw new ExecutionException(e);
         }
-        this.out.println(
-                "Hello answered by "
-                        + peer.address()
-                        + ": "
-                        + peer.software()
-                        + peer.nick().map(n -> ", \"" + n + "\"").orElse("")
-                        + (peer.obfuscated() ? ", obfuscated" : "")
-                        + ", user hash "
-                        + peer.userHash()
-                        + ", identity "
-                        + identity(peer.identification()));
+        this.out.println("Hello answered by "
+                + peer.address()
+                + ": "
+                + peer.software()
+                + peer.nick().map(n -> ", \"" + n + "\"").orElse("")
+                + (peer.obfuscated() ? ", obfuscated" : "")
+                + ", user hash "
+                + peer.userHash()
+                + ", identity "
+                + identity(peer.identification()));
         if (!tasks.isOneShot() || tasks.search().isEmpty()) {
-            this.out.println(
-                    "Keeping the connection open for "
-                            + HELLO_HOLD.toSeconds()
-                            + " s, so the peer lists us among its clients");
+            this.out.println("Keeping the connection open for "
+                    + HELLO_HOLD.toSeconds()
+                    + " s, so the peer lists us among its clients");
             Thread.sleep(HELLO_HOLD.toMillis());
         }
     }
@@ -192,18 +181,16 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
             EngineEvent event = this.events.poll(1, TimeUnit.SECONDS);
             switch (event) {
                 case EngineEvent.ServerConnecting e ->
-                        this.out.println(
-                                "Connecting to "
-                                        + describe(e.server().name(), e.server().address()));
+                    this.out.println("Connecting to "
+                            + describe(e.server().name(), e.server().address()));
                 case EngineEvent.ServerMessage e -> this.out.println("  > " + e.text());
                 case EngineEvent.ServerConnected e -> {
-                    this.out.println(
-                            "Connected to "
-                                    + describe(e.server().name(), e.server().address())
-                                    + " with "
-                                    + (e.lowId() ? "LowID " : "HighID ")
-                                    + e.clientId()
-                                    + (e.obfuscated() ? ", obfuscated" : ""));
+                    this.out.println("Connected to "
+                            + describe(e.server().name(), e.server().address())
+                            + " with "
+                            + (e.lowId() ? "LowID " : "HighID ")
+                            + e.clientId()
+                            + (e.obfuscated() ? ", obfuscated" : ""));
                     return true;
                 }
                 case EngineEvent.ServerDisconnected e -> {
@@ -253,19 +240,17 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                 + (kad.firewalled() ? ", firewalled" : ", reachable");
     }
 
-    private void search(String expression, SearchRequest.Scope scope)
-            throws InterruptedException, ExecutionException {
+    private void search(String expression, SearchRequest.Scope scope) throws InterruptedException, ExecutionException {
         boolean global = scope != SearchRequest.Scope.SERVER;
         SearchId id = this.engine.search(new SearchRequest(expression, scope)).get();
-        this.out.println(
-                "Searching \""
-                        + expression
-                        + "\""
-                        + switch (scope) {
-                            case SERVER -> " on the server";
-                            case GLOBAL -> " on every known server";
-                            case KAD -> " on Kad";
-                        });
+        this.out.println("Searching \""
+                + expression
+                + "\""
+                + switch (scope) {
+                    case SERVER -> " on the server";
+                    case GLOBAL -> " on every known server";
+                    case KAD -> " on Kad";
+                });
         Map<Hash16, SearchResult> results = new LinkedHashMap<>();
         long deadline = System.nanoTime() + SEARCH_WAIT.toNanos();
         long quietSince = Long.MAX_VALUE;
@@ -289,32 +274,25 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         List<SearchResult> sorted = new ArrayList<>(results.values());
         sorted.sort(Comparator.comparingInt(SearchResult::sources).reversed());
         for (SearchResult result : sorted) {
-            this.out.printf(
-                    Locale.ROOT,
-                    "%7d  %10s  %s%n",
-                    result.sources(),
-                    size(result.size()),
-                    result.name());
+            this.out.printf(Locale.ROOT, "%7d  %10s  %s%n", result.sources(), size(result.size()), result.name());
             this.out.println("                     " + result.link().toUri());
         }
         this.out.println(sorted.size() + " results");
     }
 
     // Runs until every download is finished or has failed.
-    private int download(List<Ed2kLink.FileLink> links)
-            throws InterruptedException, ExecutionException {
+    private int download(List<Ed2kLink.FileLink> links) throws InterruptedException, ExecutionException {
         Map<Hash16, DownloadInfo> running = new LinkedHashMap<>();
         for (Ed2kLink.FileLink link : links) {
             DownloadInfo info = this.engine.addDownload(link).get();
             running.put(info.hash(), info);
-            this.out.println(
-                    "Downloading "
-                            + info.name()
-                            + " ("
-                            + size(info.size())
-                            + ", "
-                            + info.sources()
-                            + (info.sources() == 1 ? " source)" : " sources)"));
+            this.out.println("Downloading "
+                    + info.name()
+                    + " ("
+                    + size(info.size())
+                    + ", "
+                    + info.sources()
+                    + (info.sources() == 1 ? " source)" : " sources)"));
         }
         Map<Hash16, DownloadInfo> latest = new HashMap<>(running);
         boolean failed = false;
@@ -322,22 +300,24 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
         while (!running.isEmpty()) {
             EngineEvent event = this.events.poll(500, TimeUnit.MILLISECONDS);
             switch (event) {
-                case EngineEvent.DownloadProgress p when running.containsKey(p.download().hash()) ->
-                        latest.put(p.download().hash(), p.download());
+                case EngineEvent.DownloadProgress p
+                when running.containsKey(p.download().hash()) ->
+                    latest.put(p.download().hash(), p.download());
                 case EngineEvent.DownloadCompleted c
-                        when running.containsKey(c.download().hash()) -> {
+                when running.containsKey(c.download().hash()) -> {
                     running.remove(c.download().hash());
                     this.out.println("Finished " + c.download().name() + ": " + c.file());
                 }
-                case EngineEvent.DownloadFailed f when running.containsKey(f.download().hash()) -> {
+                case EngineEvent.DownloadFailed f
+                when running.containsKey(f.download().hash()) -> {
                     running.remove(f.download().hash());
                     failed = true;
                     this.err.println("Failed " + f.download().name() + ": " + f.reason());
                 }
                 case EngineEvent.ServerConnected e ->
-                        this.out.println("Connected to " + e.server().address());
+                    this.out.println("Connected to " + e.server().address());
                 case EngineEvent.ServerDisconnected e ->
-                        this.err.println("Disconnected from the server: " + e.reason());
+                    this.err.println("Disconnected from the server: " + e.reason());
                 case null, default -> {
                     // keep waiting
                 }

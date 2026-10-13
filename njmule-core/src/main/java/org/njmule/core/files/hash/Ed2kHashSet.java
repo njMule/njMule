@@ -21,8 +21,8 @@ import java.util.Objects;
 import org.njmule.core.api.Hash16;
 
 /**
- * A file hash with its part hashes; {@code partHashes} is empty for files smaller than one part,
- * whose file hash is the MD4 of the data itself.
+ * A file hash with its part hashes; {@code partHashes} is empty for files smaller than one part, whose file hash is the
+ * MD4 of the data itself.
  */
 public record Ed2kHashSet(long size, Hash16 fileHash, List<Hash16> partHashes) {
 
@@ -31,13 +31,12 @@ public record Ed2kHashSet(long size, Hash16 fileHash, List<Hash16> partHashes) {
         Objects.requireNonNull(fileHash, "fileHash");
         partHashes = List.copyOf(partHashes);
         if (partHashes.size() != Ed2k.hashSetSize(size)) {
-            throw new IllegalArgumentException(
-                    "a file of "
-                            + size
-                            + " bytes has "
-                            + Ed2k.hashSetSize(size)
-                            + " part hashes, got "
-                            + partHashes.size());
+            throw new IllegalArgumentException("a file of "
+                    + size
+                    + " bytes has "
+                    + Ed2k.hashSetSize(size)
+                    + " part hashes, got "
+                    + partHashes.size());
         }
     }
 

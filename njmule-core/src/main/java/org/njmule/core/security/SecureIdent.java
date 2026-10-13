@@ -24,9 +24,9 @@ import org.njmule.core.crypto.Rsa.PrivateKey;
 import org.njmule.core.crypto.Rsa.PublicKey;
 
 /**
- * Secure identification of peers for the credit system. A peer proves it owns its key by signing
- * {@code <verifier's public key><verifier's challenge u32>}, plus {@code <IP 4><kind 1>} in version
- * 2, which binds the signature to an address so that it cannot be replayed elsewhere.
+ * Secure identification of peers for the credit system. A peer proves it owns its key by signing {@code <verifier's
+ * public key><verifier's challenge u32>}, plus {@code <IP 4><kind 1>} in version 2, which binds the signature to an
+ * address so that it cannot be replayed elsewhere.
  */
 public final class SecureIdent {
 
@@ -69,8 +69,7 @@ public final class SecureIdent {
 
     private SecureIdent() {}
 
-    public static byte[] message(
-            byte[] verifierPublicKey, int challenge, Optional<IpBinding> binding) {
+    public static byte[] message(byte[] verifierPublicKey, int challenge, Optional<IpBinding> binding) {
         int length = verifierPublicKey.length + 4 + (binding.isPresent() ? 5 : 0);
         byte[] message = new byte[length];
         System.arraycopy(verifierPublicKey, 0, message, 0, verifierPublicKey.length);
@@ -87,21 +86,13 @@ public final class SecureIdent {
     }
 
     /** Signs the challenge of a verifier whose public key is {@code verifierPublicKey}. */
-    public static byte[] sign(
-            PrivateKey ownKey,
-            byte[] verifierPublicKey,
-            int challenge,
-            Optional<IpBinding> binding) {
+    public static byte[] sign(PrivateKey ownKey, byte[] verifierPublicKey, int challenge, Optional<IpBinding> binding) {
         return Rsa.sign(ownKey, message(verifierPublicKey, challenge, binding));
     }
 
     /** Checks a signature of our challenge made with the peer's key. */
     public static boolean verify(
-            PublicKey peerKey,
-            byte[] signature,
-            byte[] ownPublicKey,
-            int challenge,
-            Optional<IpBinding> binding) {
+            PublicKey peerKey, byte[] signature, byte[] ownPublicKey, int challenge, Optional<IpBinding> binding) {
         return Rsa.verify(peerKey, message(ownPublicKey, challenge, binding), signature);
     }
 }

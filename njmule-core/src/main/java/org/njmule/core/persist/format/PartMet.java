@@ -37,9 +37,9 @@ import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
 
 /**
- * A download's metadata, {@code NNN.part.met}: {@code <0xE0|0xE2><mtime u32><hash set><u32 tag
- * count><tags>}; 0xE2 marks files larger than 4 GB. Missing ranges are stored as tag pairs named
- * {@code "\x09<n>"} (start) and {@code "\x0A<n>"} (end, exclusive).
+ * A download's metadata, {@code NNN.part.met}: {@code <0xE0|0xE2><mtime u32><hash set><u32 tag count><tags>}; 0xE2
+ * marks files larger than 4 GB. Missing ranges are stored as tag pairs named {@code "\x09<n>"} (start) and
+ * {@code "\x0A<n>"} (end, exclusive).
  */
 public final class PartMet {
 
@@ -55,8 +55,7 @@ public final class PartMet {
         }
     }
 
-    public record Contents(
-            int version, long mtime, Hash16 fileHash, List<Hash16> partHashes, List<Tag> tags) {
+    public record Contents(int version, long mtime, Hash16 fileHash, List<Hash16> partHashes, List<Tag> tags) {
         public Contents {
             Objects.requireNonNull(fileHash, "fileHash");
             partHashes = List.copyOf(partHashes);
@@ -85,8 +84,8 @@ public final class PartMet {
         }
 
         /**
-         * The missing ranges, clamped to the file size and sorted by start. Incomplete pairs and
-         * ranges starting beyond the end are dropped; overlaps are left for the gap list to merge.
+         * The missing ranges, clamped to the file size and sorted by start. Incomplete pairs and ranges starting beyond
+         * the end are dropped; overlaps are left for the gap list to merge.
          */
         public List<Gap> gaps() {
             long size = this.size().orElse(0);
@@ -120,14 +119,12 @@ public final class PartMet {
                 }
             }
             for (int i = 0; i < gaps.size(); i++) {
-                kept.add(
-                        new IntTag(
-                                TagName.of((char) FileTag.GAPSTART + Integer.toString(i)),
-                                gaps.get(i).start()));
-                kept.add(
-                        new IntTag(
-                                TagName.of((char) FileTag.GAPEND + Integer.toString(i)),
-                                gaps.get(i).end()));
+                kept.add(new IntTag(
+                        TagName.of((char) FileTag.GAPSTART + Integer.toString(i)),
+                        gaps.get(i).start()));
+                kept.add(new IntTag(
+                        TagName.of((char) FileTag.GAPEND + Integer.toString(i)),
+                        gaps.get(i).end()));
             }
             return new Contents(this.version, this.mtime, this.fileHash, this.partHashes, kept);
         }
@@ -139,17 +136,12 @@ public final class PartMet {
         PacketReader in = PacketReader.of(data);
         int version = in.u8();
         if (version != VERSION && version != VERSION_LARGE) {
-            throw new DecodeException(
-                    String.format("unsupported part.met version 0x%02X", version));
+            throw new DecodeException(String.format("unsupported part.met version 0x%02X", version));
         }
         long mtime = in.u32();
         MetCodecs.HashSet set = MetCodecs.readHashSet(in);
-        Contents contents =
-                new Contents(
-                        version, mtime, set.fileHash(), set.partHashes(), MetCodecs.readTags(in));
-        long size =
-                contents.size()
-                        .orElseThrow(() -> new DecodeException("part.met without file size"));
+        Contents contents = new Contents(version, mtime, set.fileHash(), set.partHashes(), MetCodecs.readTags(in));
+        long size = contents.size().orElseThrow(() -> new DecodeException("part.met without file size"));
         if (size <= 0 || size > Ed2k.MAX_FILE_SIZE) {
             throw new DecodeException("part.met file size out of range: " + size);
         }
@@ -167,8 +159,7 @@ public final class PartMet {
     }
 
     private static boolean isGapName(String raw) {
-        if (raw.length() < 2
-                || (raw.charAt(0) != FileTag.GAPSTART && raw.charAt(0) != FileTag.GAPEND)) {
+        if (raw.length() < 2 || (raw.charAt(0) != FileTag.GAPSTART && raw.charAt(0) != FileTag.GAPEND)) {
             return false;
         }
         for (int i = 1; i < raw.length(); i++) {

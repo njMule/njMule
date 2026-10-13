@@ -29,10 +29,9 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
 
 /**
- * Search files: {@code StoredSearches.met} (open search tabs with their results, restored at start)
- * and {@code SearchSpam.met} (learned spam markers). Both start with {@code 0x0F}; results use the
- * same record as server search results, {@code <hash 16><client id u32><port u16><u32 tag
- * count><new-encoding tags>}.
+ * Search files: {@code StoredSearches.met} (open search tabs with their results, restored at start) and
+ * {@code SearchSpam.met} (learned spam markers). Both start with {@code 0x0F}; results use the same record as server
+ * search results, {@code <hash 16><client id u32><port u16><u32 tag count><new-encoding tags>}.
  */
 public final class SearchFiles {
 
@@ -71,9 +70,7 @@ public final class SearchFiles {
         }
     }
 
-    /**
-     * One stored search tab. {@code type} is the search method (automatic, server, global, Kad).
-     */
+    /** One stored search tab. {@code type} is the search method (automatic, server, global, Kad). */
     public record StoredSearch(
             long id,
             int type,

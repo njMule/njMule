@@ -35,36 +35,31 @@ import org.njmule.gui.shell.MainWindow;
 @Timeout(120)
 class GuiTourTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     @Test
     void visitsEverythingThenEndsWithTheThemeItFound() throws Exception {
         try (TestGui test = TestGui.start(this.dir.resolve("njmule"))) {
             AtomicReference<Stage> stage = new AtomicReference<>();
             CountDownLatch done = new CountDownLatch(1);
-            FxTesting.onFx(
-                    () -> {
-                        MainWindow window = new MainWindow(test.gui);
-                        Stage s = new Stage();
-                        Scene scene = new Scene(window.root(), 1100, 720);
-                        test.gui.themes().attach(scene);
-                        s.setScene(scene);
-                        s.show();
-                        stage.set(s);
-                        GuiTour.start(test.gui, window, s, done::countDown);
-                    });
+            FxTesting.onFx(() -> {
+                MainWindow window = new MainWindow(test.gui);
+                Stage s = new Stage();
+                Scene scene = new Scene(window.root(), 1100, 720);
+                test.gui.themes().attach(scene);
+                s.setScene(scene);
+                s.show();
+                stage.set(s);
+                GuiTour.start(test.gui, window, s, done::countDown);
+            });
             assertThat(done.await(90, TimeUnit.SECONDS)).isTrue();
-            assertThat(FxTesting.onFx(() -> test.gui.themes().family()))
-                    .isEqualTo(Themes.Family.NORD);
-            assertThat(FxTesting.onFx(() -> test.gui.themes().mode()))
-                    .isEqualTo(GuiSettings.Mode.LIGHT);
-            assertThat(
-                            FxTesting.onFx(
-                                    () ->
-                                            Window.getWindows().stream()
-                                                    .filter(Window::isShowing)
-                                                    .filter(w -> w instanceof Stage)
-                                                    .count()))
+            assertThat(FxTesting.onFx(() -> test.gui.themes().family())).isEqualTo(Themes.Family.NORD);
+            assertThat(FxTesting.onFx(() -> test.gui.themes().mode())).isEqualTo(GuiSettings.Mode.LIGHT);
+            assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
+                            .filter(Window::isShowing)
+                            .filter(w -> w instanceof Stage)
+                            .count()))
                     .isEqualTo(1);
             assertThat(GuiTour.requested()).isFalse();
             FxTesting.onFx(() -> stage.get().close());

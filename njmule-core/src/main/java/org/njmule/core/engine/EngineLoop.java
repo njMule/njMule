@@ -30,10 +30,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The single thread that owns all mutable engine state: a one-thread {@link
- * ScheduledThreadPoolExecutor} running posted tasks and timers in order. Posting never blocks: when
- * too many tasks wait, the task is refused and the caller decides (e.g. disconnects a flooding
- * peer). A failing task is logged and does not stop the loop.
+ * The single thread that owns all mutable engine state: a one-thread {@link ScheduledThreadPoolExecutor} running posted
+ * tasks and timers in order. Posting never blocks: when too many tasks wait, the task is refused and the caller decides
+ * (e.g. disconnects a flooding peer). A failing task is logged and does not stop the loop.
  */
 public final class EngineLoop implements AutoCloseable {
 
@@ -50,18 +49,11 @@ public final class EngineLoop implements AutoCloseable {
             throw new IllegalArgumentException("capacity must be positive");
         }
         this.capacity = capacity;
-        this.executor =
-                new ScheduledThreadPoolExecutor(
-                        1,
-                        task -> {
-                            Thread t =
-                                    Thread.ofPlatform()
-                                            .name(threadName)
-                                            .daemon(false)
-                                            .unstarted(task);
-                            this.thread = t;
-                            return t;
-                        });
+        this.executor = new ScheduledThreadPoolExecutor(1, task -> {
+            Thread t = Thread.ofPlatform().name(threadName).daemon(false).unstarted(task);
+            this.thread = t;
+            return t;
+        });
         // On shutdown, tasks already posted still run; timers are dropped.
         this.executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         this.executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
@@ -92,24 +84,21 @@ public final class EngineLoop implements AutoCloseable {
     }
 
     /**
-     * Runs a computation on the engine thread. The future fails with {@link
-     * RejectedExecutionException} if the task cannot be queued.
+     * Runs a computation on the engine thread. The future fails with {@link RejectedExecutionException} if the task
+     * cannot be queued.
      */
     public <T> CompletableFuture<T> submit(Callable<T> task) {
         Objects.requireNonNull(task, "task");
         CompletableFuture<T> future = new CompletableFuture<>();
-        boolean queued =
-                this.post(
-                        () -> {
-                            try {
-                                future.complete(task.call());
-                            } catch (Exception | Error e) {
-                                future.completeExceptionally(e);
-                            }
-                        });
+        boolean queued = this.post(() -> {
+            try {
+                future.complete(task.call());
+            } catch (Exception | Error e) {
+                future.completeExceptionally(e);
+            }
+        });
         if (!queued) {
-            future.completeExceptionally(
-                    new RejectedExecutionException("engine loop not accepting"));
+            future.completeExceptionally(new RejectedExecutionException("engine loop not accepting"));
         }
         return future;
     }
@@ -118,28 +107,23 @@ public final class EngineLoop implements AutoCloseable {
     @CanIgnoreReturnValue
     public ScheduledFuture<?> schedule(String name, Duration delay, Runnable job) {
         Objects.requireNonNull(job, "job");
-        return this.executor.schedule(
-                () -> runTask(name, job), delay.toNanos(), TimeUnit.NANOSECONDS);
+        return this.executor.schedule(() -> runTask(name, job), delay.toNanos(), TimeUnit.NANOSECONDS);
     }
 
     /**
-     * Runs {@code job} repeatedly, {@code period} after the end of the previous run, so a stalled
-     * loop never fires a burst of missed runs. A failing run is logged and the job continues.
+     * Runs {@code job} repeatedly, {@code period} after the end of the previous run, so a stalled loop never fires a
+     * burst of missed runs. A failing run is logged and the job continues.
      */
     @CanIgnoreReturnValue
-    public ScheduledFuture<?> scheduleRepeating(
-            String name, Duration initialDelay, Duration period, Runnable job) {
+    public ScheduledFuture<?> scheduleRepeating(String name, Duration initialDelay, Duration period, Runnable job) {
         Objects.requireNonNull(job, "job");
         return this.executor.scheduleWithFixedDelay(
-                () -> runTask(name, job),
-                initialDelay.toNanos(),
-                period.toNanos(),
-                TimeUnit.NANOSECONDS);
+                () -> runTask(name, job), initialDelay.toNanos(), period.toNanos(), TimeUnit.NANOSECONDS);
     }
 
     /**
-     * Runs {@code then} on the engine thread with the outcome of {@code work}; dropped if the loop
-     * has stopped or is full, like {@link #post}.
+     * Runs {@code then} on the engine thread with the outcome of {@code work}; dropped if the loop has stopped or is
+     * full, like {@link #post}.
      */
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-up reports its own failures
     public <T> void whenDone(CompletableFuture<T> work, BiConsumer<T, Throwable> then) {
