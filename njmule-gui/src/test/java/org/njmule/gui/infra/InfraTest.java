@@ -104,4 +104,12 @@ class InfraTest {
         }
         assertThat(Themes.theme(Themes.Family.NORD, false).isDarkMode()).isFalse();
     }
+
+    @Test
+    void foldersOpenInTheFileManagerOfEachSystem() {
+        Path dir = Path.of("downloads");
+        assertThat(Folders.command("Windows 11", dir)).containsExactly("explorer.exe", dir.toString());
+        assertThat(Folders.command("Mac OS X", dir)).containsExactly("open", dir.toString());
+        assertThat(Folders.command("Linux", dir)).containsExactly("xdg-open", dir.toString());
+    }
 }

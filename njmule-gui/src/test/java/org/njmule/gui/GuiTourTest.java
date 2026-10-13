@@ -19,7 +19,7 @@ package org.njmule.gui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -52,7 +52,7 @@ class GuiTourTest {
                 s.setScene(scene);
                 s.show();
                 stage.set(s);
-                GuiTour.start(test.gui, window, s, Optional.empty(), done::countDown);
+                GuiTour.start(test.gui, window, s, List.of(), done::countDown);
             });
             assertThat(done.await(90, TimeUnit.SECONDS)).isTrue();
             assertThat(FxTesting.onFx(() -> test.gui.themes().family())).isEqualTo(Themes.Family.NORD);

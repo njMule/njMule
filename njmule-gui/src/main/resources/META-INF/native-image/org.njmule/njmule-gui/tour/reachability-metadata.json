@@ -835,6 +835,36 @@
       ]
     },
     {
+      "type": "com.sun.javafx.font.directwrite.DWRITE_MATRIX",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "dx"
+        },
+        {
+          "name": "dy"
+        },
+        {
+          "name": "m11"
+        },
+        {
+          "name": "m12"
+        },
+        {
+          "name": "m21"
+        },
+        {
+          "name": "m22"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "com.sun.javafx.font.directwrite.RECT",
       "jniAccessible": true,
       "fields": [
@@ -963,6 +993,22 @@
         },
         {
           "name": "width"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.javafx.geom.Path2D",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "byte[]",
+            "int",
+            "float[]",
+            "int"
+          ]
         }
       ]
     },
@@ -2824,6 +2870,63 @@
           "parameterTypes": [
             "boolean",
             "java.awt.desktop.UserSessionEvent$Reason"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.awt.windows.WDesktopProperties",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "pData"
+        }
+      ],
+      "methods": [
+        {
+          "name": "setBooleanProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "boolean"
+          ]
+        },
+        {
+          "name": "setColorProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "setFontProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "setIntegerProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "int"
+          ]
+        },
+        {
+          "name": "setSoundProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "setStringProperty",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
           ]
         }
       ]

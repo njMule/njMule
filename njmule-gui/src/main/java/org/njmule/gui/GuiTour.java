@@ -24,7 +24,6 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.geometry.Side;
@@ -47,7 +46,6 @@ import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.shell.MainWindow;
-import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.ui.Gui;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,15 +64,15 @@ final class GuiTour {
     private final Gui gui;
     private final MainWindow window;
     private final Stage stage;
-    private final Optional<NotificationArea> tray;
+    private final List<Runnable> trayTour;
     private final Runnable done;
     private final List<Runnable> steps = new ArrayList<>();
 
-    private GuiTour(Gui gui, MainWindow window, Stage stage, Optional<NotificationArea> tray, Runnable done) {
+    private GuiTour(Gui gui, MainWindow window, Stage stage, List<Runnable> trayTour, Runnable done) {
         this.gui = gui;
         this.window = window;
         this.stage = stage;
-        this.tray = tray;
+        this.trayTour = List.copyOf(trayTour);
         this.done = done;
     }
 
@@ -82,9 +80,12 @@ final class GuiTour {
         return Boolean.getBoolean(PROPERTY);
     }
 
-    /** Plays the tour on the FX thread, then runs {@code done} (the app exits). */
-    static void start(Gui gui, MainWindow window, Stage stage, Optional<NotificationArea> tray, Runnable done) {
-        new GuiTour(gui, window, stage, tray, done).play();
+    /**
+     * Plays the tour on the FX thread, then runs {@code done} (the app exits); {@code trayTour} visits the notification
+     * area and its windows, where there are some.
+     */
+    static void start(Gui gui, MainWindow window, Stage stage, List<Runnable> trayTour, Runnable done) {
+        new GuiTour(gui, window, stage, trayTour, done).play();
     }
 
     private void play() {
@@ -110,13 +111,7 @@ final class GuiTour {
         this.steps.add(GuiTour::languages);
         this.steps.add(GuiTour::picture);
         this.steps.add(GuiTour::clipboard);
-        // Into the notification area and back, with a notification on the way.
-        this.tray.ifPresent(area -> {
-            this.steps.add(() -> this.stage.setIconified(true));
-            this.steps.add(() -> area.notify("Tour"));
-            this.steps.add(() -> {});
-            this.steps.add(area::restore);
-        });
+        this.steps.addAll(this.trayTour);
         this.steps.add(() -> {
             logger.info("Tour finished");
             this.done.run();

@@ -31,23 +31,28 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.Duration;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.i18n.I18n;
+import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.shell.MainWindow;
+import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.NotificationArea;
+import org.njmule.gui.shell.TrayMenu;
 import org.njmule.gui.ui.Gui;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
@@ -72,6 +77,8 @@ public final class DesktopApp implements AutoCloseable {
     private LinkHandoff handoff;
     private Stage stage;
     private NotificationArea tray;
+    private TrayMenu trayMenu;
+    private MiniMule miniMule;
     private EngineModel model;
     private Themes themes;
     private MainWindow window;
@@ -181,25 +188,118 @@ public final class DesktopApp implements AutoCloseable {
         stage.setOnHiding(e -> this.remember(stage));
         stage.show();
         this.model.start();
-        this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> this.model.tick()));
+        this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> {
+            this.model.tick();
+            this.tickTray();
+        }));
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
         logger.info("Main window shown");
         this.keepButtonsVisible(stage);
         if (NotificationArea.isSupported()) {
-            this.tray = NotificationArea.attach(
-                    stage,
-                    this.settings::minimizeToTray,
-                    new NotificationArea.Texts(this.gui.t("nj.tray.open"), this.gui.t("nj.tray.exit")));
-            this.window.whileHidden(this.tray::notify);
+            this.attachTray(stage);
         }
         this.addPending();
         if (GuiTour.requested()) {
-            GuiTour.start(this.gui, this.window, stage, Optional.ofNullable(this.tray), Platform::exit);
+            GuiTour.start(this.gui, this.window, stage, this.trayTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
             // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
         }
+    }
+
+    // The icon, its menu and the small status window. They belong to a window of their own that never
+    // shows, so they get no button on the taskbar.
+    private void attachTray(Stage stage) {
+        Stage owner = new Stage(StageStyle.UTILITY);
+        owner.setOpacity(0);
+        owner.setWidth(1);
+        owner.setHeight(1);
+        owner.setX(-10_000);
+        owner.setY(-10_000);
+        owner.show();
+        Runnable restore = () -> this.tray.restore();
+        Runnable options = () -> {
+            this.tray.restore();
+            this.window.show("settings");
+        };
+        this.trayMenu = new TrayMenu(this.gui, owner, new TrayMenu.Actions() {
+            @Override
+            public void restore() {
+                restore.run();
+            }
+
+            @Override
+            public void options() {
+                options.run();
+            }
+
+            @Override
+            public void exit() {
+                Platform.exit();
+            }
+        });
+        this.miniMule = new MiniMule(
+                this.gui,
+                owner,
+                () -> this.engine.preferences().effectiveIncomingDir(this.directories),
+                new MiniMule.Actions() {
+                    @Override
+                    public void openIncoming() {
+                        try {
+                            Folders.open(DesktopApp.this
+                                    .engine
+                                    .preferences()
+                                    .effectiveIncomingDir(DesktopApp.this.directories));
+                        } catch (IOException e) {
+                            DesktopApp.this.window.message(e.getMessage());
+                        }
+                    }
+
+                    @Override
+                    public void options() {
+                        options.run();
+                    }
+
+                    @Override
+                    public void restore() {
+                        restore.run();
+                    }
+                });
+        this.tray = NotificationArea.attach(stage, this.settings::minimizeToTray, new NotificationArea.Handlers() {
+            @Override
+            public void click() {
+                DesktopApp.this.miniMule.show();
+            }
+
+            @Override
+            public void menu(double x, double y) {
+                DesktopApp.this.trayMenu.show(x, y);
+            }
+
+            @Override
+            public void restored() {
+                DesktopApp.this.miniMule.hide();
+                DesktopApp.this.trayMenu.hide();
+            }
+        });
+        this.window.whileHidden(this.tray::notify);
+    }
+
+    // The tray's own windows in the tour, for the native metadata: the icon cannot be clicked there.
+    private List<Runnable> trayTour(Stage stage) {
+        if (this.tray == null) {
+            return List.of();
+        }
+        return List.of(
+                () -> stage.setIconified(true),
+                () -> this.tray.notify("Tour"),
+                () -> this.miniMule.show(),
+                () -> this.miniMule.refresh(),
+                () -> this.miniMule.hide(),
+                () -> this.trayMenu.show(400, 400),
+                () -> this.trayMenu.hide(),
+                () -> this.tray.restore());
     }
 
     // The window never gets so small that buttons are cut or hidden; the frame adds its own borders.
@@ -207,6 +307,23 @@ public final class DesktopApp implements AutoCloseable {
         Dimension2D content = this.window.minimumSize();
         stage.setMinWidth(content.getWidth() + Math.max(0, stage.getWidth() - this.scene.getWidth()));
         stage.setMinHeight(content.getHeight() + Math.max(0, stage.getHeight() - this.scene.getHeight()));
+    }
+
+    // While hidden in the notification area: the rates on the icon and in the small window.
+    private void tickTray() {
+        if (this.tray == null || !this.tray.isHidden()) {
+            return;
+        }
+        EngineStatus status = this.model.statusProperty().get();
+        if (status != null) {
+            this.tray.tooltip(NjMuleInfo.NAME + " - " + this.gui.t("IDS_PW_CON_DOWNLBL") + ": "
+                    + this.gui.formats().rate(status.downloadBytesPerSecond()) + " | "
+                    + this.gui.t("IDS_PW_CON_UPLBL") + ": "
+                    + this.gui.formats().rate(status.uploadBytesPerSecond()));
+        }
+        if (this.miniMule.isShowing()) {
+            this.miniMule.refresh();
+        }
     }
 
     public MainWindow window() {

@@ -30,6 +30,8 @@ import java.util.concurrent.Flow;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.ReadOnlyIntegerProperty;
+import javafx.beans.property.ReadOnlyIntegerWrapper;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -129,6 +131,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final LiveList<Hash16, Friend> friends = new LiveList<>(Friend::userHash);
     private Consumer<String> errors = message -> {};
     private Consumer<DownloadInfo> completed = download -> {};
+    private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
     private long ticks;
 
@@ -186,6 +189,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public ReadOnlyObjectProperty<EngineStatus> statusProperty() {
         return this.status;
+    }
+
+    /** Downloads finished since the start. */
+    public ReadOnlyIntegerProperty completedProperty() {
+        return this.completedCount.getReadOnlyProperty();
     }
 
     public ReadOnlyObjectProperty<Connection> connectionProperty() {
@@ -410,6 +418,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadCompleted e -> {
                 this.downloads.remove(e.download().hash());
                 this.refreshShared();
+                this.completedCount.set(this.completedCount.get() + 1);
                 this.completed.accept(e.download());
             }
             case EngineEvent.DownloadFailed e -> this.downloads.put(e.download());
