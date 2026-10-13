@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# deb and rpm packages (nfpm): VERSION and STAGE (the directory with the executables, the shared
-# libraries next to the desktop executable and the documents) come from the environment.
-#   VERSION=1.2.3 STAGE=stage nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+# deb and rpm packages (nfpm), run from the repository root: VERSION and ARCH (amd64 or arm64)
+# come from the environment, the programs from stage/ (njmule, gui/ with the desktop executable
+# and its shared libraries, doc/ with the documents).
+#   VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 name: njmule
-arch: amd64
+arch: ${ARCH}
 platform: linux
 version: ${VERSION}
 version_schema: semver
@@ -35,12 +36,12 @@ overrides:
       - mesa-libGL
 
 contents:
-  - src: ${STAGE}/njmule
+  - src: stage/njmule
     dst: /usr/bin/njmule
     file_info:
       mode: 0755
   # The desktop executable finds its shared libraries in its own directory.
-  - src: ${STAGE}/gui/
+  - src: stage/gui/
     dst: /usr/lib/njmule/
     type: tree
   - src: /usr/lib/njmule/njmule-gui
@@ -68,7 +69,7 @@ contents:
     dst: /usr/share/icons/hicolor/512x512/apps/org.njmule.njMule.png
   - src: LICENSE
     dst: /usr/share/licenses/njmule/LICENSE
-  - src: ${STAGE}/doc/
+  - src: stage/doc/
     dst: /usr/share/doc/njmule/
     type: tree
 
