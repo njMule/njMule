@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.common.base.Ticker;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -54,7 +55,8 @@ class KadSimulationTest {
     @TempDir
     Path dir;
 
-    private final SecureRandom random = new SecureRandom();
+    // A fixed seed: the same simulated network at every run, so that a failure can be looked into.
+    private final SecureRandom random = seeded();
     private final AtomicLong time = new AtomicLong(1_000 * SECOND);
     private final Ticker ticker = new Ticker() {
         @Override
@@ -67,6 +69,16 @@ class KadSimulationTest {
     private final List<Integer> ips = new ArrayList<>();
     private final Deque<Runnable> wire = new ArrayDeque<>();
     private final List<int[]> reachabilityChecks = new ArrayList<>();
+
+    private static SecureRandom seeded() {
+        try {
+            SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
+            random.setSeed(20_261_013L);
+            return random;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Test
     void nodesFindEachOtherPublishAndSearch() throws Exception {
