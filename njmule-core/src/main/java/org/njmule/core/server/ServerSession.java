@@ -69,6 +69,9 @@ public final class ServerSession {
         void updated(ServerMet.Server server);
 
         void searchResults(ServerMet.Server server, ServerMessages.SearchResults results);
+
+        /** A firewalled client asks, through the server, that we connect to it. */
+        void callbackRequested(ServerMessages.CallbackRequested request);
     }
 
     /** From the start of an attempt to the id: connection, handshake and login. */
@@ -283,6 +286,9 @@ public final class ServerSession {
                                     .map(d -> stringTag(ServerTag.DESCRIPTION, d))
                                     .orElse(null));
                 }
+                case CALLBACKREQUESTED ->
+                        this.listener.callbackRequested(
+                                ServerMessages.CallbackRequested.decode(packet));
                 case SEARCHRESULT ->
                         this.listener.searchResults(
                                 target, ServerMessages.SearchResults.decode(packet));

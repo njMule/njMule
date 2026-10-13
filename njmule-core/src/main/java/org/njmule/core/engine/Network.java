@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -53,8 +54,10 @@ import org.njmule.core.search.SearchManager;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
+import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +69,9 @@ import org.slf4j.LoggerFactory;
 final class Network {
 
     static final String IPFILTER_FILE = "ipfilter.dat";
+
+    // Connect options of a callback request: the client requests or requires obfuscation.
+    private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
 
     private static final Logger LOG = LoggerFactory.getLogger(Network.class);
 
@@ -83,6 +89,7 @@ final class Network {
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
+    private final ServerPinger pinger;
     private final PeerGreetings greetings;
     private final IpFilter ipFilter;
     private TcpListener listener;
@@ -129,6 +136,15 @@ final class Network {
                         this.servers,
                         () -> Optional.ofNullable(this.udp),
                         new SearchEvents());
+        this.pinger =
+                new ServerPinger(
+                        loop,
+                        this.servers,
+                        () -> Optional.ofNullable(this.udp),
+                        () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
+                        server -> publish.accept(new EngineEvent.ServerUpdated(info(server))),
+                        random,
+                        Clock.systemUTC());
         this.greetings =
                 new PeerGreetings(
                         userHash,
@@ -263,6 +279,10 @@ final class Network {
     }
 
     private void datagram(InetSocketAddress from, Packet packet) {
+        if (packet.opcode() == Opcodes.ServerUdp.GLOBSERVSTATRES.code()) {
+            this.pinger.received(from, packet);
+            return;
+        }
         if (packet.opcode() != Opcodes.ServerUdp.GLOBSEARCHRES.code()) {
             return;
         }
@@ -339,12 +359,14 @@ final class Network {
             Network.this.publish.accept(
                     new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId()));
             Network.this.saveServers();
+            Network.this.pinger.start();
         }
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
             Network.this.context = ServerContext.NONE;
             Network.this.searches.stopAll();
+            Network.this.pinger.stop();
             Optional<ServerInfo> info = server.map(Network::info);
             Network.this.log.log(
                     LogLine.Level.INFO,
@@ -374,6 +396,34 @@ final class Network {
         @Override
         public void searchResults(ServerMet.Server server, ServerMessages.SearchResults results) {
             Network.this.searches.serverResults(server, results);
+        }
+
+        @Override
+        public void callbackRequested(ServerMessages.CallbackRequested request) {
+            int ip = request.endpoint().ip();
+            if (!Ipv4.isUnicastPublicCandidate(ip) || Network.this.ipFilter.blocks(ip)) {
+                LOG.debug("Ignoring a callback request to {}", Ipv4.format(ip));
+                return;
+            }
+            // The client may require obfuscation, which needs its user hash.
+            boolean obfuscate =
+                    request.userHash().isPresent()
+                            && (request.cryptOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
+                            && Network.this.preferences.get().obfuscation()
+                                    != ObfuscationMode.DISABLED;
+            InetSocketAddress address =
+                    new InetSocketAddress(Ipv4.format(ip), request.endpoint().port());
+            Network.this
+                    .greetings
+                    .greet(address, obfuscate ? request.userHash() : Optional.empty())
+                    .whenComplete(
+                            (peer, failure) ->
+                                    LOG.debug(
+                                            "Callback to {}: {}",
+                                            address,
+                                            failure == null
+                                                    ? peer.software()
+                                                    : failure.getMessage()));
         }
 
         private static String describe(ServerInfo info) {

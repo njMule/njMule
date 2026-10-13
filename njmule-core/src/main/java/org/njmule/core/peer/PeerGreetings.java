@@ -116,6 +116,12 @@ public final class PeerGreetings implements AutoCloseable {
      * stays open until the peer closes it or it is idle.
      */
     public CompletableFuture<PeerInfo> greet(InetSocketAddress address) {
+        return this.greet(address, Optional.empty());
+    }
+
+    /** As {@link #greet(InetSocketAddress)}, obfuscated with the peer's user hash when known. */
+    public CompletableFuture<PeerInfo> greet(
+            InetSocketAddress address, Optional<Hash16> obfuscateFor) {
         CompletableFuture<PeerInfo> answer = new CompletableFuture<>();
         Thread.ofVirtual()
                 .name("njmule-greet-" + address)
@@ -124,10 +130,7 @@ public final class PeerGreetings implements AutoCloseable {
                             try {
                                 TcpConnection connection =
                                         TcpConnector.connectToClient(
-                                                address,
-                                                Optional.empty(),
-                                                HELLO_TIMEOUT,
-                                                this.random);
+                                                address, obfuscateFor, HELLO_TIMEOUT, this.random);
                                 this.open.add(connection);
                                 connection.start(
                                         new Handler(Optional.of(answer)), PeerGreetings::unpack);

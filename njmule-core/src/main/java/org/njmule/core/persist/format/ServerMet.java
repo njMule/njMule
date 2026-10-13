@@ -108,6 +108,11 @@ public final class ServerMet {
         public OptionalLong obfuscatedUdpPort() {
             return Tags.intValue(this.tags, ServerTag.UDPPORTOBFUSCATION);
         }
+
+        /** When the server was last asked for its status, in epoch seconds. */
+        public OptionalLong lastPing() {
+            return Tags.intValue(this.tags, ServerTag.LASTPING);
+        }
     }
 
     private ServerMet() {}
