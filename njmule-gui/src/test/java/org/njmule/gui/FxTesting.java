@@ -18,6 +18,7 @@ package org.njmule.gui;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,7 +99,7 @@ public final class FxTesting {
         }
     }
 
-    /** An engine in {@code root} on a free TCP port, without Kad. */
+    /** An engine in {@code root} on free ports, without Kad until asked: never on the ports of a running njMule. */
     public static NjMuleEngine engine(Path root) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
@@ -106,8 +107,13 @@ public final class FxTesting {
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
+        int udp;
+        try (DatagramSocket probe = new DatagramSocket(0)) {
+            udp = probe.getLocalPort();
+        }
         Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");
         return NjMuleEngine.start(new EngineConfig(dirs));
     }
 

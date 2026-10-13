@@ -18,8 +18,6 @@ package org.njmule.gui.screens;
 
 import java.net.URI;
 import java.nio.file.Path;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -34,19 +32,25 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.gui.infra.Formats;
+import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -58,15 +62,14 @@ import org.njmule.gui.ui.UrlBox;
 /** The known servers, connecting to one, and the log below. */
 public final class ServersScreen implements Screen {
 
-    private static final DateTimeFormatter TIME =
-            DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT).withZone(ZoneId.systemDefault());
-
     private final Gui gui;
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
     private Input<ServerAddress> addressInput;
     private UrlBox list;
+    private TabPane logTabs;
+    private final Button connectButton = new Button();
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
@@ -119,10 +122,11 @@ public final class ServersScreen implements Screen {
             return row;
         });
         MenuItem connect = new MenuItem(this.gui.t("IDS_MAIN_BTN_CONNECT"));
-        connect.setOnAction(e -> this.connectSelected());
+        connect.setOnAction(e -> this.connectOrDisconnect());
         MenuItem remove = new MenuItem(this.gui.t("IDS_REMOVE"));
         remove.setOnAction(e -> this.removeSelected());
         this.table.setContextMenu(new ContextMenu(connect, remove));
+        this.table.getContextMenu().setOnShowing(e -> connect.setText(this.connectText()));
 
         this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
         this.address.setPrefColumnCount(18);
@@ -133,24 +137,95 @@ public final class ServersScreen implements Screen {
         Button connectTo =
                 Fx.primary(Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress));
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
+        this.connectButton.setOnAction(e -> this.connectOrDisconnect());
+        this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.showConnect());
+        this.gui.model().connectionProperty().addListener((o, was, now) -> this.showConnect());
+        this.gui.model().serverAddressProperty().addListener((o, was, now) -> this.showConnect());
+        this.showConnect();
         var tools = Fx.toolRow(
-                Fx.button(this.gui.t("IDS_MAIN_BTN_CONNECT"), Material2AL.LINK, this::connectSelected),
+                this.connectButton,
                 Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
                 Fx.spacer(),
                 this.address,
                 connectTo,
                 Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
 
-        ListView<LogLine> log = new ListView<>(this.gui.model().log());
-        log.setCellFactory(l -> new LogCell());
-        log.getItems().addListener((ListChangeListener<LogLine>)
-                c -> log.scrollTo(log.getItems().size() - 1));
-        SplitPane split = new SplitPane(this.table, log);
+        SplitPane split = new SplitPane(this.table, this.logs());
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
         VBox content = new VBox(8, this.listRow(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
         return Fx.screen(this.title(), tools, content);
+    }
+
+    // What the servers said and what happened, in two tabs as in eMule; Reset empties the one shown.
+    private Node logs() {
+        ListView<EngineModel.ServerNote> info = new ListView<>(this.gui.model().serverInfo());
+        info.getStyleClass().add("log-list");
+        info.setCellFactory(l -> new ServerNoteCell(this.gui));
+        info.getItems().addListener((ListChangeListener<EngineModel.ServerNote>)
+                c -> info.scrollTo(info.getItems().size() - 1));
+        ListView<LogLine> log = new ListView<>(this.gui.model().log());
+        log.getStyleClass().add("log-list");
+        log.setCellFactory(l -> new LogCell(this.gui.formats()));
+        log.getItems().addListener((ListChangeListener<LogLine>)
+                c -> log.scrollTo(log.getItems().size() - 1));
+        Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info);
+        Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log);
+        TabPane tabs = new TabPane(infoTab, logTab);
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        this.logTabs = tabs;
+        Button clear = Fx.button(this.gui.t("IDS_PW_RESET"), Material2AL.CLEAR_ALL, () -> {
+            if (infoTab.isSelected()) {
+                this.gui.model().clearServerInfo();
+            } else {
+                this.gui.model().clearLog();
+            }
+        });
+        clear.getStyleClass().add("small");
+        StackPane pane = new StackPane(tabs, clear);
+        StackPane.setAlignment(clear, Pos.TOP_RIGHT);
+        return pane;
+    }
+
+    // Connect becomes Disconnect on the server we are connected to or trying.
+    private boolean isCurrent(ServerInfo server) {
+        return server != null
+                && this.gui.model().connectionProperty().get() != EngineModel.Connection.DISCONNECTED
+                && server.address()
+                        .equals(this.gui.model().serverAddressProperty().get());
+    }
+
+    private String connectText() {
+        LiveList.Row<ServerInfo> row = this.table.getSelectionModel().getSelectedItem();
+        return this.isCurrent(row == null ? null : row.get())
+                ? this.gui.t("IDS_MAIN_BTN_DISCONNECT")
+                : this.gui.t("IDS_MAIN_BTN_CONNECT");
+    }
+
+    private void showConnect() {
+        String text = this.connectText();
+        this.connectButton.setText(text);
+        this.connectButton.setGraphic(new FontIcon(
+                text.equals(this.gui.t("IDS_MAIN_BTN_CONNECT")) ? Material2AL.LINK : Material2AL.LINK_OFF));
+    }
+
+    /** Disconnects from the selected server when it is ours, else connects to it, leaving the current one. */
+    void connectOrDisconnect() {
+        LiveList.Row<ServerInfo> row = this.table.getSelectionModel().getSelectedItem();
+        if (this.isCurrent(row == null ? null : row.get())) {
+            this.gui.model().disconnect();
+        } else {
+            this.connectSelected();
+        }
+    }
+
+    TabPane logTabs() {
+        return this.logTabs;
+    }
+
+    Button connectButton() {
+        return this.connectButton;
     }
 
     // A server list from the web, from an address typed or used before.
@@ -244,8 +319,14 @@ public final class ServersScreen implements Screen {
         return this.address;
     }
 
-    /** One log line: time, text, and the level as style. */
+    /** An event after its date and time as the system shows them, with its level as style. */
     static final class LogCell extends ListCell<LogLine> {
+        private final Formats formats;
+
+        LogCell(Formats formats) {
+            this.formats = formats;
+        }
+
         @Override
         protected void updateItem(LogLine line, boolean empty) {
             super.updateItem(line, empty);
@@ -254,8 +335,38 @@ public final class ServersScreen implements Screen {
                 this.setText(null);
                 return;
             }
-            this.setText(TIME.format(line.time()) + "  " + line.message());
+            this.setText(this.formats.dateTime(line.time()) + ": " + line.message());
             this.getStyleClass().addAll("log-line", line.level().name().toLowerCase(Locale.ROOT));
+        }
+    }
+
+    /** A session's start with its date and time, or a line the server sent as it is. */
+    static final class ServerNoteCell extends ListCell<EngineModel.ServerNote> {
+        private final Gui gui;
+
+        ServerNoteCell(Gui gui) {
+            this.gui = gui;
+        }
+
+        @Override
+        protected void updateItem(EngineModel.ServerNote note, boolean empty) {
+            super.updateItem(note, empty);
+            this.getStyleClass().removeAll("log-line", "success");
+            if (empty || note == null) {
+                this.setText(null);
+                return;
+            }
+            this.getStyleClass().add("log-line");
+            switch (note.kind()) {
+                case CONNECTED, CONNECTED_OBFUSCATED -> {
+                    String key = note.kind() == EngineModel.ServerNote.Kind.CONNECTED
+                            ? "IDS_CONNECTEDTO"
+                            : "IDS_CONNECTEDTOOBFUSCATED";
+                    this.setText(this.gui.formats().dateTime(note.time()) + ": " + this.gui.f(key, note.text()));
+                    this.getStyleClass().add("success");
+                }
+                default -> this.setText(note.text());
+            }
         }
     }
 }

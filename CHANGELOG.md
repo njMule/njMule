@@ -173,6 +173,10 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - UPnP port forwarding is on by default; tests never use it.
+- The servers screen splits its log as eMule does: Server Info holds the connections and what the
+  servers say, Log the application's events; dates follow the system's format, with a full year.
+- Connect turns into Disconnect on the server we are on, and connecting to another server leaves
+  the current one; the Kad screen connects and disconnects Kad too.
 - The Italian interface keeps upload, download and the other terms that Italian software usually
   leaves in English, such as client, firewalled, Incoming and Temp.
 - MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and

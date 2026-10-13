@@ -28,6 +28,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
@@ -52,6 +53,7 @@ public final class KadScreen implements Screen {
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
+    private final Button connect = new Button();
 
     public KadScreen(Gui gui) {
         this.gui = gui;
@@ -89,7 +91,8 @@ public final class KadScreen implements Screen {
                 .quietWhenEmpty();
         Button start = Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
         start.disableProperty().bind(this.nodeInput.validProperty().not());
-        var tools = Fx.toolRow(this.node, start);
+        this.connect.setOnAction(e -> this.connectOrDisconnect());
+        var tools = Fx.toolRow(this.connect, Fx.spacer(), this.node, start);
         FlowPane cards = new FlowPane(
                 12,
                 12,
@@ -133,7 +136,23 @@ public final class KadScreen implements Screen {
         return this.nodes;
     }
 
+    // Connect starts Kad from the known contacts; while it runs the button stops it.
+    void connectOrDisconnect() {
+        if (this.gui.model().statusProperty().get().kad().isPresent()) {
+            this.gui.model().disconnectKad();
+        } else {
+            this.gui.model().connectKad();
+        }
+    }
+
+    Button connectButton() {
+        return this.connect;
+    }
+
     private void show(EngineStatus status) {
+        boolean running = status.kad().isPresent();
+        this.connect.setText(this.gui.t(running ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
+        this.connect.setGraphic(new FontIcon(running ? Material2AL.LINK_OFF : Material2AL.LINK));
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {
             this.state.setText(this.gui.t("nj.kad.off"));

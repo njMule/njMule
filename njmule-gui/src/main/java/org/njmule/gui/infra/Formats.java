@@ -19,6 +19,12 @@ package org.njmule.gui.infra;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.chrono.IsoChronology;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.FormatStyle;
 import java.util.Locale;
 
 /** Sizes, rates, durations and counts as the interface shows them, in one locale. */
@@ -32,12 +38,27 @@ public final class Formats {
     private final DecimalFormat oneDecimal;
     private final DecimalFormat twoDecimals;
     private final NumberFormat integer;
+    private final DateTimeFormatter dateTime;
 
     public Formats(Locale locale) {
+        this.dateTime = dateTime(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(locale);
         this.oneDecimal = new DecimalFormat("0.0", symbols);
         this.twoDecimals = new DecimalFormat("0.00", symbols);
         this.integer = NumberFormat.getIntegerInstance(locale);
+    }
+
+    /** {@code time} as the system shows a date and a time, whatever the language of the interface. */
+    public String dateTime(Instant time) {
+        return this.dateTime.format(time);
+    }
+
+    // The short date and the time with seconds of {@code locale}; short dates often have a two-digit year.
+    static DateTimeFormatter dateTime(Locale locale, ZoneId zone) {
+        String pattern = DateTimeFormatterBuilder.getLocalizedDateTimePattern(
+                FormatStyle.SHORT, FormatStyle.MEDIUM, IsoChronology.INSTANCE, locale);
+        return DateTimeFormatter.ofPattern(pattern.replaceAll("(?<!y)yy(?!y)", "yyyy"), locale)
+                .withZone(zone);
     }
 
     /** {@code bytes} with a binary unit: 999 B, 1.00 KB, 12.3 MB, 1.21 GB. */

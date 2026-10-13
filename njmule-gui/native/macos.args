@@ -3,3 +3,4 @@
 --enable-monitoring=threaddump
 -H:+ForeignAPISupport
 -H:ConfigurationFileDirectories=../../native/macos
+-H:+IncludeAllLocales

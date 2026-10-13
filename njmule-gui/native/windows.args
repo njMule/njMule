@@ -2,3 +2,4 @@
 --enable-native-access=javafx.graphics
 -H:NativeLinkerOption=/SUBSYSTEM:WINDOWS
 -H:NativeLinkerOption=/ENTRY:mainCRTStartup
+-H:+IncludeAllLocales

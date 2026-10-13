@@ -54,6 +54,7 @@ import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -128,6 +129,9 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final StringProperty lastLog = new SimpleStringProperty("");
     private final ObjectProperty<Preferences> preferences;
     private final ObservableList<LogLine> log = FXCollections.observableArrayList();
+    private final ObservableList<ServerNote> serverInfo = FXCollections.observableArrayList(
+            new ServerNote(Instant.now(), ServerNote.Kind.TITLE, NjMuleInfo.NAME + " " + NjMuleInfo.version()));
+    private final StringProperty serverAddress = new SimpleStringProperty("");
     private final ObservableList<Category> categories = FXCollections.observableArrayList();
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
@@ -230,6 +234,33 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public ReadOnlyObjectProperty<Connection> connectionProperty() {
         return this.connection;
+    }
+
+    /** The address of the server connected to or being tried, empty without one. */
+    public ReadOnlyStringProperty serverAddressProperty() {
+        return this.serverAddress;
+    }
+
+    /** What the servers said: each session's start, then the lines its server sent. */
+    public ObservableList<ServerNote> serverInfo() {
+        return this.serverInfo;
+    }
+
+    public void clearServerInfo() {
+        this.serverInfo.clear();
+    }
+
+    public void clearLog() {
+        this.log.clear();
+    }
+
+    /** Starts Kad from the known contacts, or looks for contacts at once when it runs. */
+    public void connectKad() {
+        this.later(this.engine.connectKad(), ok -> this.tick());
+    }
+
+    public void disconnectKad() {
+        this.later(this.engine.disconnectKad(), ok -> this.tick());
     }
 
     /** The server being connected to or connected to; empty when none. */
@@ -478,16 +509,24 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public void handle(EngineEvent event) {
         switch (event) {
             case EngineEvent.Log e -> this.addLog(e.line());
+            case EngineEvent.ServerMessage e -> this.addServerNote(ServerNote.Kind.MESSAGE, e.text());
             case EngineEvent.ServerConnecting e -> {
+                this.serverAddress.set(e.server().address());
                 this.connection.set(Connection.CONNECTING);
                 this.serverName.set(e.server().name());
             }
             case EngineEvent.ServerConnected e -> {
+                this.serverAddress.set(e.server().address());
+                this.addServerNote(ServerNote.Kind.GAP, "");
+                this.addServerNote(
+                        e.obfuscated() ? ServerNote.Kind.CONNECTED_OBFUSCATED : ServerNote.Kind.CONNECTED,
+                        e.server().name() + " (" + e.server().address() + ")");
                 this.connection.set(Connection.CONNECTED);
                 this.serverName.set(e.server().name());
                 this.refreshServers();
             }
             case EngineEvent.ServerDisconnected e -> {
+                this.serverAddress.set("");
                 this.connection.set(Connection.DISCONNECTED);
                 this.serverName.set("");
             }
@@ -523,6 +562,28 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             default -> {
                 // Started, stopping and server messages show through the log.
             }
+        }
+    }
+
+    private void addServerNote(ServerNote.Kind kind, String text) {
+        this.serverInfo.add(new ServerNote(Instant.now(), kind, text));
+        if (this.serverInfo.size() > LOG_LINES) {
+            this.serverInfo.remove(0, this.serverInfo.size() - LOG_LINES);
+        }
+    }
+
+    /** A line of the server information. */
+    public record ServerNote(Instant time, Kind kind, String text) {
+        public enum Kind {
+            /** njMule and its version, at the top. */
+            TITLE,
+            /** The empty line before a session. */
+            GAP,
+            /** A session starts: the server's name and address. */
+            CONNECTED,
+            CONNECTED_OBFUSCATED,
+            /** A line the server sent. */
+            MESSAGE
         }
     }
 

@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -27,6 +29,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class InfraTest {
+
+    @Test
+    void datesAndTimesFollowTheSystemWithAFullYear() {
+        Instant time = Instant.parse("2026-10-13T19:07:43Z");
+
+        String italian = Formats.dateTime(Locale.ITALY, ZoneOffset.ofHours(2)).format(time);
+        String american = Formats.dateTime(Locale.US, ZoneOffset.ofHours(2)).format(time);
+
+        assertThat(italian).startsWith("13/10/2026").contains("21:07:43");
+        assertThat(american).startsWith("10/13/2026").contains("9:07:43");
+    }
 
     @Test
     void historiesKeepTheLatestEntriesFirstOnce() throws Exception {

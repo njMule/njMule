@@ -50,6 +50,7 @@ import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.infra.GuiSettings;
@@ -280,11 +281,25 @@ public final class MainWindow {
         return strip;
     }
 
+    // As in eMule, Connect and Disconnect act on both networks; Cancel only stops trying servers.
     private void toggleConnection() {
-        if (this.gui.model().connectionProperty().get() == EngineModel.Connection.DISCONNECTED) {
-            this.gui.model().connect(Optional.empty());
-        } else {
-            this.gui.model().disconnect();
+        EngineModel model = this.gui.model();
+        boolean kadRuns = model.statusProperty().get().kad().isPresent();
+        switch (model.connectionProperty().get()) {
+            case DISCONNECTED -> {
+                model.connect(Optional.empty());
+                Preferences preferences = model.preferencesProperty().get();
+                if (!kadRuns && preferences != null && preferences.kadEnabled()) {
+                    model.connectKad();
+                }
+            }
+            case CONNECTING -> model.disconnect();
+            case CONNECTED -> {
+                model.disconnect();
+                if (kadRuns) {
+                    model.disconnectKad();
+                }
+            }
         }
     }
 

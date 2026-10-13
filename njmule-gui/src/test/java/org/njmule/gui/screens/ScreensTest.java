@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import javafx.scene.input.Clipboard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -32,8 +33,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
@@ -213,6 +216,20 @@ class ScreensTest {
 
         FxTesting.onFx(() -> screen.addServerMet(met));
         FxTesting.await("two servers", () -> screen.table().getItems().size() == 2);
+
+        // Connect becomes Disconnect on the server we are on, and stays Connect on the others.
+        FxTesting.onFx(() -> {
+            ServerInfo first = screen.table().getItems().getFirst().get();
+            this.test.model.handle(new EngineEvent.ServerConnected(first, 99, true, false));
+            screen.table().getSelectionModel().select(0);
+        });
+        assertThat(FxTesting.onFx(() -> screen.connectButton().getText())).isEqualTo("Disconnect");
+        FxTesting.onFx(() -> screen.table().getSelectionModel().select(1));
+        assertThat(FxTesting.onFx(() -> screen.connectButton().getText())).isEqualTo("Connect");
+        assertThat(FxTesting.onFx(() -> screen.logTabs().getTabs()))
+                .extracting(t -> t.getText())
+                .containsExactly("Server Info", "Log");
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerDisconnected(Optional.empty(), "test")));
         FxTesting.onFx(() -> {
             screen.table().getSelectionModel().clearSelection();
             screen.table().getSelectionModel().select(0);
@@ -277,6 +294,22 @@ class ScreensTest {
         FxTesting.await(
                 "the release priority",
                 () -> screen.table().getItems().getFirst().get().priority() == UploadPriority.RELEASE);
+    }
+
+    @Test
+    void kadConnectsAndDisconnectsByHand() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        KadScreen screen = new KadScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        assertThat(FxTesting.onFx(() -> screen.connectButton().getText())).isEqualTo("Connect");
+
+        FxTesting.onFx(screen::connectOrDisconnect);
+        this.tickUntil(() -> this.test.model.statusProperty().get().kad().isPresent());
+        FxTesting.await(
+                "the button follows", () -> screen.connectButton().getText().equals("Disconnect"));
+        FxTesting.onFx(screen::connectOrDisconnect);
+        this.tickUntil(() -> this.test.model.statusProperty().get().kad().isEmpty());
+        assertThat(this.test.model.statusProperty().get().kad()).isEmpty();
     }
 
     @Test
@@ -468,5 +501,13 @@ class ScreensTest {
         assertThat(this.test.engine.downloads().get())
                 .extracting(DownloadInfo::name)
                 .containsExactlyInAnyOrder("my holiday video.mkv", "notes.txt");
+    }
+
+    // The model learns the engine's state on its ticks, which these tests drive.
+    private void tickUntil(BooleanSupplier done) throws Exception {
+        for (int i = 0; i < 80 && !done.getAsBoolean(); i++) {
+            FxTesting.onFx(this.test.model::tick);
+            Thread.sleep(250);
+        }
     }
 }

@@ -166,6 +166,25 @@ class EngineModelTest {
         assertThat(m.downloads().size()).isZero();
         m.handle(new EngineEvent.PreferencesChanged(this.engine.preferences()));
         m.handle(new EngineEvent.Started("x"));
+
+        ServerInfo sunrise =
+                new ServerInfo("176.123.5.89:4725", "eMule Sunrise", "", 0, 0, 0, 0, ServerInfo.Priority.NORMAL);
+        int logged = m.log().size();
+        assertThat(m.serverInfo().getFirst().kind()).isEqualTo(EngineModel.ServerNote.Kind.TITLE);
+        m.clearServerInfo();
+        m.handle(new EngineEvent.ServerConnected(sunrise, 7_603_580, true, true));
+        m.handle(new EngineEvent.ServerMessage(sunrise, "Welcome to eMule Sunrise!"));
+        assertThat(m.serverInfo())
+                .extracting(EngineModel.ServerNote::kind)
+                .containsExactly(
+                        EngineModel.ServerNote.Kind.GAP,
+                        EngineModel.ServerNote.Kind.CONNECTED_OBFUSCATED,
+                        EngineModel.ServerNote.Kind.MESSAGE);
+        assertThat(m.serverInfo().get(1).text()).isEqualTo("eMule Sunrise (176.123.5.89:4725)");
+        assertThat(m.serverAddressProperty().get()).isEqualTo("176.123.5.89:4725");
+        assertThat(m.log()).as("the server's lines are not events").hasSize(logged);
+        m.clearServerInfo();
+        assertThat(m.serverInfo()).isEmpty();
     }
 
     @Test
