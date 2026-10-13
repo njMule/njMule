@@ -256,6 +256,48 @@ class ScreensTest {
     }
 
     @Test
+    void schedulerRulesAreEditedAndSaved() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        SettingsScreen settings = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(settings::view));
+        SchedulerPane pane = FxTesting.onFx(settings::schedulerPane);
+
+        FxTesting.onFx(
+                () -> {
+                    pane.nameField().setText("all week");
+                    pane.dayBoxes().values().forEach(b -> b.setSelected(true));
+                    pane.uploadField().setText("5");
+                    pane.add();
+                    pane.startField().setText("25:00");
+                    pane.add();
+                });
+        assertThat(FxTesting.onFx(() -> pane.rulesTable().getItems().size())).isEqualTo(1);
+        assertThat(this.test.told).anyMatch(m -> m.startsWith("Not saved"));
+
+        FxTesting.onFx(
+                () -> {
+                    pane.rulesTable().getSelectionModel().select(0);
+                    pane.nameField().setText("every day");
+                    pane.startField().setText("00:00");
+                    pane.replace();
+                    pane.save();
+                });
+        FxTesting.await("the rule applies", () -> this.test.engine.activeRule().isPresent());
+        assertThat(this.test.engine.schedule().rules().getFirst().name()).isEqualTo("every day");
+        FxTesting.await("shown", () -> pane.activeLabel().getText().equals("Now: every day"));
+
+        FxTesting.onFx(
+                () -> {
+                    pane.rulesTable().getSelectionModel().select(0);
+                    pane.remove();
+                    pane.save();
+                });
+        FxTesting.await("no rule", () -> this.test.engine.activeRule().isEmpty());
+        FxTesting.onFx(pane::load);
+        assertThat(FxTesting.onFx(() -> pane.rulesTable().getItems().isEmpty())).isTrue();
+    }
+
+    @Test
     void settingsApplyValidateAndRelaunchForALanguage() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         SettingsScreen screen = new SettingsScreen(this.test.gui);

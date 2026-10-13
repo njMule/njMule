@@ -77,6 +77,7 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
     private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
+    private SchedulerPane scheduler;
 
     public SettingsScreen(Gui gui) {
         this.gui = gui;
@@ -175,6 +176,8 @@ public final class SettingsScreen implements Screen {
         row = section(grid, row, this.gui.t("IDS_PW_DIR"));
         row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
         row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
+        row = section(grid, row, this.gui.t("nj.scheduler.title"));
+        grid.add(this.scheduler(), 0, row++, 2, 1);
         Label note = new Label(this.gui.t("nj.settings.restartNote"));
         note.setWrapText(true);
         note.getStyleClass().add("text-muted");
@@ -188,6 +191,17 @@ public final class SettingsScreen implements Screen {
         scroll.setFitToWidth(true);
         this.load(this.gui.model().preferencesProperty().get());
         return Fx.screen(this.title(), tools, scroll);
+    }
+
+    private SchedulerPane scheduler() {
+        if (this.scheduler == null) {
+            this.scheduler = new SchedulerPane(this.gui);
+        }
+        return this.scheduler;
+    }
+
+    SchedulerPane schedulerPane() {
+        return this.scheduler();
     }
 
     private HBox directory(TextField field) {

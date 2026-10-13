@@ -54,6 +54,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 
 /**
  * The engine as the interface sees it: observable state on the FX thread, refreshed from the
@@ -314,6 +315,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                     this.preferences.set(p);
                     done.accept(p);
                 });
+    }
+
+    public void updateSchedule(Schedule schedule, Consumer<Schedule> done) {
+        this.later(this.engine.updateSchedule(schedule), done);
     }
 
     public void importFromEmule(Path dir, ImportOptions options, Consumer<ImportReport> done) {
