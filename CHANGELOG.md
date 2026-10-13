@@ -134,9 +134,13 @@ All notable changes to this project are documented here. The format follows
   and a second start without links brings the running window to the front.
 - An option of the settings, off by default, makes njMule open the ed2k links of the system on
   Windows and Linux; turned off, it gives them back to what opened them before, such as eMule.
+- Minimising the window hides it into an icon in the Windows notification area, next to the clock
+  (a setting, on by default); the icon brings it back and shows notifications meanwhile.
+- The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 
 ### Changed
 
+- UPnP port forwarding is on by default; tests never use it.
 - MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and
   command-line parsing now come from the JDK, Bouncy Castle, Guava and picocli instead of our own
   code.
@@ -185,3 +189,4 @@ All notable changes to this project are documented here. The format follows
 - A client can download from us over the connection we download from it on, and a client
   connected to download from us is asked for our downloads over that same connection.
 - Links whose separators a browser escaped (`%7C`) are read.
+- The window cannot get so small that buttons are cut or hidden.
