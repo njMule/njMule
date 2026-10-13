@@ -170,9 +170,11 @@ public final class Rc2Properties {
 
     private static void write(Path file, Map<String, String> strings) throws IOException {
         List<String> out = new ArrayList<>();
+        // REUSE-IgnoreStart: the header of the generated files, not of this one.
         out.add("# SPDX-FileCopyrightText: 2002-2026 Merkur and the eMule contributors");
         out.add("# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors");
         out.add("# SPDX-License-Identifier: GPL-3.0-or-later");
+        // REUSE-IgnoreEnd
         out.add("#");
         out.add("# Interface strings converted from eMule's string tables by tools/Rc2Properties.java;");
         out.add("# regenerate instead of editing.");
