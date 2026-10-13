@@ -357,6 +357,7 @@ public final class WebUi implements AutoCloseable {
         if (expression.isEmpty()) {
             return SEARCH;
         }
+        SearchRequest.checkExpression(expression);
         SearchRequest.Scope scope = SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
         SearchId id = this.await(this.engine.search(new SearchRequest(expression, scope)));
         synchronized (this.results) {
@@ -417,7 +418,9 @@ public final class WebUi implements AutoCloseable {
                         TRANSFERS,
                         csrf,
                         Html.hidden(ACTION, "add")
-                                + "<input type=\"text\" name=\"link\" size=\"60\""
+                                + "<input type=\"text\" name=\"link\" size=\"60\" required"
+                                + " pattern=\"\\s*[eE][dD]2[kK]://.+\" maxlength=\"65536\""
+                                + " title=\"One or more eD2K file links\""
                                 + " placeholder=\"ed2k://|file|...|/\"> ",
                         "Download",
                         true))
@@ -469,7 +472,9 @@ public final class WebUi implements AutoCloseable {
                 .append(Html.form(
                         SEARCH,
                         csrf,
-                        "<input type=\"text\" name=\"query\" size=\"40\" autofocus> "
+                        "<input type=\"text\" name=\"query\" size=\"40\" required maxlength=\""
+                                + SearchRequest.MAX_EXPRESSION_LENGTH
+                                + "\" autofocus> "
                                 + "<select name=\"scope\">"
                                 + "<option value=\"SERVER\">Server</option>"
                                 + "<option value=\"GLOBAL\">Global</option>"
