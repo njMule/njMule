@@ -181,6 +181,24 @@ class DownloadQueueTest {
         });
     }
 
+    @Test
+    void aWriteThatEndsAfterTheCancelIsIgnored() throws Exception {
+        byte[] data = random(1000, 3);
+        DownloadQueue queue = this.queue();
+        DownloadQueue.Download download = this.onLoop(
+                () -> queue.add(Ed2kLink.FileLink.of("gone.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        assertThat(this.events.take()).isEqualTo("added");
+
+        this.onLoop(() -> {
+            queue.received(download, 0, data);
+            queue.cancel(download);
+            return null;
+        });
+
+        assertThat(this.events.poll(1, TimeUnit.SECONDS)).isNull();
+        assertThat(this.onLoop(() -> download.file().completedBytes())).isZero();
+    }
+
     private void awaitCorruptPart0(DownloadQueue.Download download) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {

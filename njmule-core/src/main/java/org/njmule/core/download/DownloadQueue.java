@@ -283,6 +283,9 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     private void written(Download download, long start, long end, Throwable failure) {
+        if (!this.isQueued(download)) {
+            return;
+        }
         if (failure != null) {
             download.file.setStatus(PartFile.Status.ERROR);
             download.dirty = true;
@@ -301,6 +304,11 @@ public final class DownloadQueue implements AutoCloseable {
         this.listener.progress(download);
     }
 
+    // A write or a check can finish after its download was cancelled, and then its storage is closed.
+    private boolean isQueued(Download download) {
+        return this.downloads.get(download.hash()) == download;
+    }
+
     private void verify(Download download, int part) {
         Optional<Hash16> expected = download.file.partHash(part);
         if (expected.isEmpty()) {
@@ -312,6 +320,9 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     private void checked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
+        if (!this.isQueued(download)) {
+            return;
+        }
         if (failure != null || !expected.equals(actual)) {
             logger.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
