@@ -271,4 +271,13 @@ class SearchParserTest {
     private static Keyword kw(String text) {
         return new Keyword(text);
     }
+
+    @Test
+    void kadLooksUpTheLongestWordOfTheExpression() {
+        assertThat(SearchManager.kadKeyword("the matrix reloaded")).isEqualTo("reloaded");
+        assertThat(SearchManager.kadKeyword("\"linux\" AND (debian OR ubuntu) @size>700m"))
+                .isEqualTo("debian");
+        assertThat(SearchManager.kadKeyword("  único  ")).isEqualTo("único");
+        assertThat(SearchManager.kadKeyword("NOT")).isEmpty();
+    }
 }

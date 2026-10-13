@@ -146,11 +146,12 @@ public final class SearchManager {
         return search.id;
     }
 
-    // The first word of the expression is the keyword looked up; the whole expression filters.
+    // The longest word of the expression is the keyword looked up, as short common words land on
+    // overloaded nodes; the whole expression filters.
     private SearchId startKad(SearchRequest request, SearchExpr expression) {
         KadSearches searches =
                 this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
-        String keyword = request.expression().strip().split("\\s+")[0].replace("\"", "");
+        String keyword = kadKeyword(request.expression());
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         boolean started =
                 searches.search(
@@ -167,6 +168,25 @@ public final class SearchManager {
         this.searches.put(search.id, search);
         search.serverTimer = this.loop.schedule("Kad search", KAD_WAIT, () -> this.end(search));
         return search.id;
+    }
+
+    /** The longest word of {@code expression}, leaving out operators and attributes. */
+    static String kadKeyword(String expression) {
+        String best = "";
+        for (String token : expression.strip().split("\\s+", -1)) {
+            String word = token.replace("\"", "").replace("(", "").replace(")", "");
+            boolean operator =
+                    word.equalsIgnoreCase("AND")
+                            || word.equalsIgnoreCase("OR")
+                            || word.equalsIgnoreCase("NOT");
+            if (operator || word.startsWith("@") || word.matches(".*[=<>].*")) {
+                continue;
+            }
+            if (word.codePointCount(0, word.length()) > best.codePointCount(0, best.length())) {
+                best = word;
+            }
+        }
+        return best;
     }
 
     /** Asks the server for more results; {@code false} if it has none or the limit is reached. */
