@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,10 +45,13 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
+import org.njmule.core.files.hash.AichRecovery;
+import org.njmule.core.files.hash.AichVotes;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
@@ -137,6 +141,9 @@ public final class DownloadManager implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadManager.class);
 
+    /** How long a corrupt part waits for its AICH recovery data before it is downloaded again whole. */
+    static final Duration RECOVERY_WAIT = Duration.ofSeconds(30);
+
     /** Firewalled sources asked for at once, and how long a callback is awaited. */
     static final int MAX_CALLBACKS = 32;
 
@@ -214,6 +221,12 @@ public final class DownloadManager implements AutoCloseable {
     private final SecureRandom random;
     private final Ticker ticker;
     private final PeerLinks links;
+    // Corrupt parts waiting for a source able to send their AICH recovery data.
+    private final Map<Hash16, BitSet> recoveryWanted = new HashMap<>();
+    // The parts whose recovery was tried, once each.
+    private final Map<Hash16, BitSet> recoveryTried = new HashMap<>();
+    // The AICH hashes announced for downloads that have no trusted one yet.
+    private final Map<Hash16, AichVotes> aichVotes = new HashMap<>();
     private final BiConsumer<Hash16, Long> credit;
     private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
@@ -918,6 +931,93 @@ public final class DownloadManager implements AutoCloseable {
         };
     }
 
+    // A corrupt part with a trusted AICH master hash: one source able to is asked for the recovery data.
+    private void recover(DownloadQueue.Download download, int part) {
+        PartFile file = download.file();
+        Entry entry = this.entries.get(download.hash());
+        BitSet tried = this.recoveryTried.computeIfAbsent(download.hash(), h -> new BitSet());
+        // Once only: a part that fails again after its recovery is downloaded again whole.
+        if (entry == null
+                || file.aichHash().isEmpty()
+                || !AichRecovery.hasRecovery(file.size(), part)
+                || tried.get(part)) {
+            return;
+        }
+        tried.set(part);
+        // The part waits a little for the recovery data rather than come again whole.
+        file.hold(part);
+        this.loop.schedule("AICH recovery wait", RECOVERY_WAIT, () -> file.unhold(part));
+        for (Source source : entry.sources.values()) {
+            if (source.session != null && source.session.mayRecover(part)) {
+                logger.info("Asking {} for AICH recovery data of part {} of {}", source.address, part, file.name());
+                source.session.requestAich(part, file.aichHash().get());
+                return;
+            }
+        }
+        // The next source able to is asked when it says which parts it has.
+        this.recoveryWanted.computeIfAbsent(download.hash(), h -> new BitSet()).set(part);
+    }
+
+    private void aichAnnounced(DownloadSession session, Hash20 master) {
+        DownloadQueue.Download download = session.download();
+        PartFile file = download.file();
+        if (file.aichHash().isPresent()) {
+            return;
+        }
+        int ip = Ipv4.fromBytes(session.address().getAddress().getAddress());
+        Optional<Hash20> trusted = this.aichVotes
+                .computeIfAbsent(download.hash(), h -> new AichVotes())
+                .announced(ip, master);
+        if (trusted.isPresent()) {
+            this.aichVotes.remove(download.hash());
+            file.trustAich(trusted.get());
+            logger.info("The sources agree on the AICH hash of {}", file.name());
+        }
+    }
+
+    private void mayRecoverFrom(DownloadSession session) {
+        DownloadQueue.Download download = session.download();
+        BitSet wanted = this.recoveryWanted.get(download.hash());
+        Optional<Hash20> master = download.file().aichHash();
+        if (wanted == null || master.isEmpty()) {
+            return;
+        }
+        wanted.andNot(download.verifiedParts());
+        for (int part = wanted.nextSetBit(0); part >= 0; part = wanted.nextSetBit(part + 1)) {
+            if (download.file().isComplete(part)) {
+                wanted.clear(part);
+            } else if (session.mayRecover(part)) {
+                wanted.clear(part);
+                logger.info(
+                        "Asking {} for AICH recovery data of part {} of {}",
+                        session.address(),
+                        part,
+                        download.file().name());
+                session.requestAich(part, master.get());
+                break;
+            }
+        }
+        if (wanted.isEmpty()) {
+            this.recoveryWanted.remove(download.hash());
+        }
+    }
+
+    private void aichAnswered(DownloadSession session, int part, Hash20 master, byte[] data) {
+        DownloadQueue.Download download = session.download();
+        PartFile file = download.file();
+        if (file.aichHash().filter(master::equals).isEmpty()) {
+            return;
+        }
+        Optional<List<Hash20>> blocks = AichRecovery.verify(file.size(), part, master, data);
+        if (blocks.isEmpty()) {
+            file.unhold(part);
+            logger.info(
+                    "AICH recovery data of part {} of {} from {} proves nothing", part, file.name(), session.address());
+            return;
+        }
+        this.queue.recovered(download, part, blocks.get());
+    }
+
     private DownloadInfo info(Entry entry) {
         PartFile file = entry.download.file();
         int transferring = 0;
@@ -1018,6 +1118,21 @@ public final class DownloadManager implements AutoCloseable {
         }
 
         @Override
+        public void aichAnswered(DownloadSession session, int part, Hash20 master, byte[] data) {
+            DownloadManager.this.aichAnswered(session, part, master, data);
+        }
+
+        @Override
+        public void partsKnown(DownloadSession session) {
+            DownloadManager.this.mayRecoverFrom(session);
+        }
+
+        @Override
+        public void aichAnnounced(DownloadSession session, Hash20 master) {
+            DownloadManager.this.aichAnnounced(session, master);
+        }
+
+        @Override
         public void received(DownloadSession session, int bytes, int transferred) {
             Entry entry = DownloadManager.this.entries.get(session.download().hash());
             if (entry != null) {
@@ -1072,6 +1187,11 @@ public final class DownloadManager implements AutoCloseable {
             Entry entry = new Entry(download, DownloadManager.this.ticker.read());
             DownloadManager.this.entries.put(download.hash(), entry);
             DownloadManager.this.listener.added(DownloadManager.this.info(entry));
+        }
+
+        @Override
+        public void corrupt(DownloadQueue.Download download, int part) {
+            DownloadManager.this.recover(download, part);
         }
 
         @Override

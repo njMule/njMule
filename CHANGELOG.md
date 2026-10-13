@@ -208,6 +208,9 @@ All notable changes to this project are documented here. The format follows
   and can be shared sooner, and its blocks end on the 180 KiB boundaries of AICH.
 - AICH recovery data is sent to the clients that ask for it, and the AICH hash of a shared file
   to those that ask what it is; a finished download is hashed once more for its AICH tree.
+- A part that fails its check is repaired with AICH recovery data from a source: only its bad
+  blocks are downloaded again. The AICH hash comes from the link or, without one, from the
+  agreement of the sources (at least ten networks and 92% of the announcements).
 
 ### Changed
 

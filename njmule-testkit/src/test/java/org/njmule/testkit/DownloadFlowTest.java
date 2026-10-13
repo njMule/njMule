@@ -144,6 +144,19 @@ class DownloadFlowTest {
     }
 
     @Test
+    void aichRecoveryDataSavesTheGoodBlocksOfACorruptPart() throws Exception {
+        byte[] data = content(3 * PART + 1000, 6);
+        FakePeer peer = this.peer(data, new FakePeer.Config(hash(6), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+
+        Path file = this.download(peer);
+
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(peer.received()).contains("AICHREQUEST");
+        // The part waits for the recovery data: only the bad block comes again.
+        assertThat(peer.bytesSent()).as("one bad block costs one block").isLessThan(data.length + PART / 10);
+    }
+
+    @Test
     void getsTheSlotWhenTheSourceCallsBack() throws Exception {
         byte[] data = content(PART / 2, 4);
         FakePeer peer = this.peer(data, new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));

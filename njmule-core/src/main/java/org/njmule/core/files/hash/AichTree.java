@@ -86,7 +86,8 @@ public final class AichTree {
         return dataSize <= Ed2k.PARTSIZE ? Ed2k.EMBLOCKSIZE : Ed2k.PARTSIZE;
     }
 
-    static MessageDigest sha1() {
+    /** A SHA-1 digest, the hash of AICH blocks and nodes. */
+    public static MessageDigest sha1() {
         try {
             return MessageDigest.getInstance("SHA-1");
         } catch (NoSuchAlgorithmException e) {

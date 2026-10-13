@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.net.PeerChannel;
@@ -46,6 +47,8 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
@@ -75,6 +78,15 @@ final class DownloadSession implements PeerLink.Role {
 
         /** The source told us of other sources. */
         void sourcesFound(DownloadSession session, SourceExchange.Answer answer);
+
+        /** The source sent AICH recovery data for {@code part}, which we asked for. */
+        default void aichAnswered(DownloadSession session, int part, Hash20 master, byte[] data) {}
+
+        /** The source told which parts it has. */
+        default void partsKnown(DownloadSession session) {}
+
+        /** The source announced the AICH master hash of the file. */
+        default void aichAnnounced(DownloadSession session, Hash20 master) {}
     }
 
     /** How a session ended, which decides when the source is asked again. */
@@ -159,6 +171,8 @@ final class DownloadSession implements PeerLink.Role {
     private PeerLink link;
     private Optional<Hello> peer = Optional.empty();
     private boolean sourcesAsked;
+    // The part whose AICH recovery data we asked for, or -1.
+    private int aichAsked = -1;
 
     DownloadSession(
             EngineLoop loop,
@@ -180,6 +194,39 @@ final class DownloadSession implements PeerLink.Role {
     /** The source's hello, once it greeted us. */
     Optional<Hello> peer() {
         return this.peer;
+    }
+
+    /** Whether the source can send AICH recovery data of {@code part}: it greeted us as able to and has the part. */
+    boolean mayRecover(int part) {
+        return this.connection != null
+                && this.peer.map(Hello::supportsAich).orElse(false)
+                && this.sourceParts != null
+                && this.sourceParts.get(part);
+    }
+
+    /** Asks the source for the AICH recovery data of {@code part}, under the trusted {@code master} hash. */
+    void requestAich(int part, Hash20 master) {
+        this.aichAsked = part;
+        this.connection.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.AICHREQUEST.code(),
+                new PacketWriter().hash16(this.download.hash()).u16(part).hash20(master)));
+    }
+
+    // An answer of 16 bytes says the source has no recovery data; only an answer we asked for counts.
+    private void aichAnswer(Packet packet) throws DecodeException {
+        PacketReader in = packet.reader();
+        Hash16 file = in.hash16();
+        if (!file.equals(this.download.hash()) || this.aichAsked < 0 || in.remaining() == 0) {
+            this.aichAsked = -1;
+            return;
+        }
+        int part = in.u16();
+        Hash20 master = Hash20.of(in.bytes(Hash20.LENGTH));
+        if (part == this.aichAsked) {
+            this.aichAsked = -1;
+            this.listener.aichAnswered(this, part, master, in.bytes(in.remaining()));
+        }
     }
 
     State state() {
@@ -384,6 +431,13 @@ final class DownloadSession implements PeerLink.Role {
             case QUEUERANKING -> this.queued((int) ClientMessages.decodeQueueRank(packet));
             case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
             case COMPRESSEDPART, COMPRESSEDPART_I64 -> this.compressed(ClientMessages.CompressedPart.decode(packet));
+            case AICHANSWER -> this.aichAnswer(packet);
+            case AICHFILEHASHANS -> {
+                PacketReader in = packet.reader();
+                if (in.hash16().equals(this.download.hash())) {
+                    this.listener.aichAnnounced(this, Hash20.of(in.bytes(Hash20.LENGTH)));
+                }
+            }
             case ANSWERSOURCES2 -> {
                 SourceExchange.Answer answer = SourceExchange.Answer.decode(packet);
                 // Only answers we asked for, about this file.
@@ -402,6 +456,12 @@ final class DownloadSession implements PeerLink.Role {
         Hash16 file = this.download.hash();
         this.connection.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file));
         this.connection.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
+        // Without a trusted AICH hash, the sources' announcements may make one.
+        if (this.download.file().aichHash().isEmpty()
+                && this.peer.map(Hello::supportsAich).orElse(false)) {
+            this.connection.send(Packet.of(
+                    Protocol.EMULE, Opcodes.Extended.AICHFILEHASHREQ.code(), new PacketWriter().hash16(file)));
+        }
         if (!this.download.file().hasHashSet()) {
             this.connection.send(ClientMessages.forFile(Opcodes.Client.HASHSETREQUEST, file));
         }
@@ -421,6 +481,7 @@ final class DownloadSession implements PeerLink.Role {
         }
         this.sourceParts = parts;
         file.addAvailability(parts, 1);
+        this.listener.partsKnown(this);
         if (!this.hasNeededParts()) {
             this.close("the source has no part we need");
             return;

@@ -32,6 +32,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -39,8 +40,14 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
+import org.njmule.core.files.hash.AichRecovery;
+import org.njmule.core.files.hash.AichTree;
+import org.njmule.core.files.hash.FileHasher;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
@@ -96,11 +103,13 @@ public final class FakePeer implements AutoCloseable {
     private volatile int serverPort;
     private final List<String> received = new CopyOnWriteArrayList<>();
     private final Set<Integer> corrupted = ConcurrentHashMap.newKeySet();
+    private final Optional<AichTree> aich;
     private final AtomicLong sent = new AtomicLong();
 
-    private FakePeer(Path file, Ed2kLink.FileLink link, Config config, ServerSocket tcp) {
+    private FakePeer(Path file, Ed2kLink.FileLink link, Optional<AichTree> aich, Config config, ServerSocket tcp) {
         this.file = file;
         this.link = link;
+        this.aich = aich;
         this.config = config;
         this.tcp = tcp;
     }
@@ -108,7 +117,8 @@ public final class FakePeer implements AutoCloseable {
     /** Hashes {@code file} and shares it on a free port of {@code address}. */
     public static FakePeer start(InetAddress address, Path file, Config config) throws IOException {
         Ed2kLink.FileLink link = FileHashing.link(file, bytes -> {});
-        FakePeer peer = new FakePeer(file, link, config, new ServerSocket(0, 16, address));
+        Optional<AichTree> aich = FileHasher.hash(file).aich();
+        FakePeer peer = new FakePeer(file, link, aich, config, new ServerSocket(0, 16, address));
         Thread.ofVirtual().name("fake-peer-accept").start(peer::acceptLoop);
         return peer;
     }
@@ -260,6 +270,10 @@ public final class FakePeer implements AutoCloseable {
                 this.blocks(ClientMessages.RequestParts.decode(packet));
                 return;
             }
+            if (packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.AICHREQUEST.code()) {
+                this.aichRequested(packet);
+                return;
+            }
             if (packet.protocol() != Protocol.EDONKEY) {
                 return;
             }
@@ -321,10 +335,31 @@ public final class FakePeer implements AutoCloseable {
                     "fake peer",
                     0,
                     0,
-                    Hello.MISC1_UNICODE,
+                    1 << Hello.MISC1_AICH_SHIFT | Hello.MISC1_UNICODE,
                     Hello.MISC2_LARGE_FILES,
                     FakePeer.this.serverIp,
                     FakePeer.this.serverPort);
+        }
+
+        // The recovery data of the part asked for, from the AICH tree of the shared file.
+        private void aichRequested(Packet packet) throws IOException {
+            try {
+                PacketReader in = packet.reader();
+                Hash16 file = in.hash16();
+                int part = in.u16();
+                Hash20 master = Hash20.of(in.bytes(Hash20.LENGTH));
+                PacketWriter answer = new PacketWriter().hash16(file);
+                Optional<AichTree> tree =
+                        FakePeer.this.aich.filter(t -> t.masterHash().equals(master));
+                if (file.equals(FakePeer.this.link.hash())
+                        && tree.isPresent()
+                        && AichRecovery.hasRecovery(tree.get().size(), part)) {
+                    answer.u16(part).hash20(master).bytes(AichRecovery.create(tree.get(), part));
+                }
+                this.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
+            } catch (DecodeException e) {
+                throw new IOException(e);
+            }
         }
 
         private void slotLater() {

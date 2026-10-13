@@ -26,11 +26,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
+import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.security.PathSanitizer;
@@ -87,6 +92,35 @@ public final class PartFileStorage implements AutoCloseable {
                         while (buffer.hasRemaining()) {
                             at += this.channel.write(buffer, at);
                         }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                },
+                this.io);
+    }
+
+    /** The SHA-1 of each 180 KiB block of {@code part}, as AICH hashes them, on the I/O thread. */
+    public CompletableFuture<List<Hash20>> hashBlocks(long size, int part) {
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        MessageDigest sha1 = AichTree.sha1();
+                        ByteBuffer buffer = ByteBuffer.allocate(Ed2k.EMBLOCKSIZE);
+                        List<Hash20> blocks = new ArrayList<>();
+                        long start = Ed2k.partStart(part);
+                        long end = start + Ed2k.partLength(size, part);
+                        for (long at = start; at < end; at += Ed2k.EMBLOCKSIZE) {
+                            int length = (int) Math.min(Ed2k.EMBLOCKSIZE, end - at);
+                            buffer.clear().limit(length);
+                            while (buffer.hasRemaining()) {
+                                if (this.channel.read(buffer, at + buffer.position()) < 0) {
+                                    break;
+                                }
+                            }
+                            sha1.update(buffer.array(), 0, buffer.position());
+                            blocks.add(Hash20.of(sha1.digest()));
+                        }
+                        return blocks;
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }

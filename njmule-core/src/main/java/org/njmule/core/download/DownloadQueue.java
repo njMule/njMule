@@ -40,6 +40,7 @@ import java.util.regex.Pattern;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.PartFileStorage;
@@ -69,6 +70,9 @@ public final class DownloadQueue implements AutoCloseable {
 
         /** The temp disk has dropped below, or come back above, the free space downloads need. */
         default void diskSpace(boolean enough) {}
+
+        /** A part failed its check and is missing again; AICH recovery data may save its good blocks. */
+        default void corrupt(Download download, int part) {}
     }
 
     /** Part files are saved this often while their progress changes. */
@@ -391,6 +395,8 @@ public final class DownloadQueue implements AutoCloseable {
             logger.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
             download.dirty = true;
+            // Before progress, which asks for blocks: a part that waits for its recovery data is not among them.
+            this.listener.corrupt(download, part);
             this.listener.progress(download);
             return;
         }
@@ -402,6 +408,43 @@ public final class DownloadQueue implements AutoCloseable {
                 && !download.finishing) {
             this.finish(download);
         }
+    }
+
+    /**
+     * Takes back the blocks of {@code part} whose data on disk has the AICH hash in {@code blocks}, which recovery data
+     * proved against the trusted master hash; the others are downloaded again.
+     */
+    public void recovered(Download download, int part, List<Hash20> blocks) {
+        if (!this.isQueued(download) || download.verified.get(part)) {
+            return;
+        }
+        this.loop.whenDone(
+                download.storage.hashBlocks(download.file.size(), part),
+                (ours, failure) -> this.takeBack(download, part, blocks, ours, failure));
+    }
+
+    private void takeBack(Download download, int part, List<Hash20> blocks, List<Hash20> ours, Throwable failure) {
+        download.file.unhold(part);
+        if (!this.isQueued(download) || failure != null || ours.size() != blocks.size()) {
+            return;
+        }
+        long start = Ed2k.partStart(part);
+        long end = start + Ed2k.partLength(download.file.size(), part);
+        long saved = 0;
+        for (int i = 0; i < blocks.size(); i++) {
+            if (blocks.get(i).equals(ours.get(i))) {
+                long from = start + (long) i * Ed2k.EMBLOCKSIZE;
+                long to = Math.min(end, from + Ed2k.EMBLOCKSIZE);
+                download.file.written(from, to);
+                saved += to - from;
+            }
+        }
+        download.dirty = true;
+        logger.info("AICH saved {} of {} bytes of part {} of {}", saved, end - start, part, download.file.name());
+        if (download.file.isComplete(part)) {
+            this.verify(download, part);
+        }
+        this.listener.progress(download);
     }
 
     private void finish(Download download) {

@@ -83,10 +83,12 @@ public final class PartFile {
     private final Path directory;
     private final Hash16 hash;
     private final long size;
-    private final Optional<Hash20> aichHash;
+    private Optional<Hash20> aichHash;
     // The parts checked in this run and before, and those trusted from the last save.
     private final BitSet verified = new BitSet();
     private final BitSet trusted = new BitSet();
+    // Corrupt parts waiting for their AICH recovery data.
+    private final BitSet held = new BitSet();
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
@@ -235,8 +237,14 @@ public final class PartFile {
         this.name = Objects.requireNonNull(name, "name");
     }
 
+    /** The trusted AICH master hash: from the link, or agreed by enough sources. */
     public Optional<Hash20> aichHash() {
         return this.aichHash;
+    }
+
+    /** Takes {@code hash} as the trusted AICH master hash. */
+    public void trustAich(Hash20 hash) {
+        this.aichHash = Optional.of(Objects.requireNonNull(hash, "hash"));
     }
 
     public Status status() {
@@ -387,6 +395,15 @@ public final class PartFile {
         return blocks;
     }
 
+    /** Keeps {@code part} from being downloaded until {@link #unhold}: its recovery data may save most of it. */
+    public void hold(int part) {
+        this.held.set(part);
+    }
+
+    public void unhold(int part) {
+        this.held.clear(part);
+    }
+
     /** A requested block that will not arrive (the source is gone). */
     public void release(Block block) {
         this.requested.remove(Range.closedOpen(block.start(), block.end()));
@@ -467,6 +484,9 @@ public final class PartFile {
         for (int part = sourceParts.nextSetBit(0);
                 part >= 0 && part < this.partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
+            if (this.held.get(part)) {
+                continue;
+            }
             Range<Long> range = partRange(this.size, part);
             RangeSet<Long> missingHere = this.missing.subRangeSet(range);
             RangeSet<Long> wanted = TreeRangeSet.create(missingHere);
