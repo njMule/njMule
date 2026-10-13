@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
@@ -333,6 +334,12 @@ public final class WebUi implements AutoCloseable {
         CompletableFuture<Boolean> done = switch (action) {
             case "pause" -> this.engine.pauseDownload(hash);
             case "resume" -> this.engine.resumeDownload(hash);
+            case "stop" -> this.engine.stopDownload(hash);
+            case "priority" ->
+                this.engine.setDownloadPriority(
+                        hash,
+                        DownloadPriority.valueOf(
+                                form.getOrDefault("priority", "").toUpperCase(Locale.ROOT)));
             case "cancel" -> this.engine.cancelDownload(hash);
             default -> throw new IllegalArgumentException("Unknown action.");
         };
@@ -430,11 +437,11 @@ public final class WebUi implements AutoCloseable {
                     "Transfers", csrf, body.append("<p>No downloads.</p>").toString());
         }
         body.append("<table><tr><th>File</th><th>Size</th><th>Done</th><th>Speed</th>")
-                .append("<th>Sources</th><th>Status</th><th></th></tr>");
+                .append("<th>Sources</th><th>Status</th><th>Priority</th><th></th></tr>");
         for (DownloadInfo d : downloads) {
             int percent = d.size() <= 0 ? 0 : (int) (d.completed() * 100 / d.size());
             String hash = Html.hidden("hash", d.hash().toHex());
-            boolean paused = d.status() == DownloadInfo.Status.PAUSED;
+            boolean paused = d.status() == DownloadInfo.Status.PAUSED || d.status() == DownloadInfo.Status.STOPPED;
             body.append("<tr><td>")
                     .append(Html.text(d.name()))
                     .append("</td><td>")
@@ -453,16 +460,37 @@ public final class WebUi implements AutoCloseable {
                     .append(d.status().name().toLowerCase(Locale.ROOT))
                     .append("</td><td>")
                     .append(Html.form(
+                            TRANSFERS, csrf, Html.hidden(ACTION, "priority") + hash + priorities(d), "Set", false))
+                    .append("</td><td>")
+                    .append(Html.form(
                             TRANSFERS,
                             csrf,
                             Html.hidden(ACTION, paused ? "resume" : "pause") + hash,
                             paused ? "Resume" : "Pause",
                             false))
-                    .append(' ')
-                    .append(Html.form(TRANSFERS, csrf, Html.hidden(ACTION, "cancel") + hash, "Cancel", false))
+                    .append(' ');
+            if (d.status() != DownloadInfo.Status.STOPPED) {
+                body.append(Html.form(TRANSFERS, csrf, Html.hidden(ACTION, "stop") + hash, "Stop", false))
+                        .append(' ');
+            }
+            body.append(Html.form(TRANSFERS, csrf, Html.hidden(ACTION, "cancel") + hash, "Cancel", false))
                     .append("</td></tr>");
         }
         return Html.page("Transfers", csrf, body.append("</table>").toString());
+    }
+
+    // The priority of a download, to change.
+    private static String priorities(DownloadInfo d) {
+        StringBuilder select = new StringBuilder("<select name=\"priority\">");
+        for (DownloadPriority priority : DownloadPriority.values()) {
+            String name = priority.name().toLowerCase(Locale.ROOT);
+            select.append("<option value=\"")
+                    .append(name)
+                    .append(priority == d.priority() ? "\" selected>" : "\">")
+                    .append(name)
+                    .append("</option>");
+        }
+        return select.append("</select> ").toString();
     }
 
     private String searchPage(Sessions.Session session, String idText) {

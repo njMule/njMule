@@ -186,6 +186,12 @@ class WebUiTest {
         assertThat(this.get("/transfers").body()).contains("paused", "Resume");
         this.action("resume", hash);
         assertThat(this.get("/transfers").body()).contains("Pause");
+        this.action("stop", hash);
+        assertThat(this.get("/transfers").body()).contains("stopped", "Resume");
+        this.post(
+                "/transfers",
+                Map.of("action", "priority", "hash", hash, "priority", "high", "csrf", this.csrf("/transfers")));
+        assertThat(this.get("/transfers").body()).contains("value=\"high\" selected");
         this.action("cancel", hash);
         await(() -> !this.uncheckedGet("/transfers").contains("web &amp; test.bin"));
 
