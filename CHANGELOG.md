@@ -122,6 +122,13 @@ All notable changes to this project are documented here. The format follows
   origin and host checks, a login lockout and a strict Content-Security-Policy; on this computer
   only unless other computers are allowed. Set with `njmule --webui-password` (`--webui-port`,
   `--webui-lan`) or in the desktop options, and started with the engine.
+- The desktop app as a GraalVM native executable (Windows, Linux, macOS), whose metadata is
+  recorded by a tour of the whole interface under the tracing agent; the tour also serves as a
+  smoke test of the native app.
+- Installers: a per-user Windows MSI (no administrator rights, Start menu entry, launcher on the
+  PATH), deb and rpm packages with the desktop entry, AppStream metadata and icons, a macOS disk
+  image, and portable archives; the release workflow builds them all and opens a draft release
+  for a tag.
 
 ### Changed
 

@@ -108,6 +108,20 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `tools/native-docker.sh` (Maven on a copy of the sources inside the container: ~1.5 min instead of
   ~6 on the bind mount): `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash
   <image> /work/tools/native-docker.sh` (Git Bash: prefix `MSYS_NO_PATHCONV=1`).
+- Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
+  through `./mvnw -Pnative -pl njmule-gui -am package -DskipTests` → `njmule-gui/target/native/`
+  (exe plus the JDK libraries it loads). Its reachability metadata comes from the GUI tour
+  (`GuiTour`, system property `njmule.gui.tour`): `-Pnative-tour` runs it under the tracing agent
+  (accelerated and software rendering) and merges into
+  `src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour`; `manual/` holds the JNI
+  entries the tour cannot reach (file choosers). Regenerate after GUI changes on Windows, and for
+  Linux with `tools/native-gui-docker.sh` (Ubuntu container, GraalVM Linux archive mounted at
+  `/graalvm`); macOS adds its own in CI. Only GraalVM Community: Oracle GraalVM (PGO) is under GFTC,
+  not compatible with distributing GPL binaries.
+- Installers: WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
+  builds the per-user MSI from `packaging/windows/njmule.wxs`; nfpm builds deb/rpm from
+  `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG. All in
+  `.github/workflows/release.yml` (manual run: packages only; tag `vX.Y.Z`: draft release).
 - Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
 - Library versions are always the latest stable ones; check Maven Central before adding or bumping.
   Known constraint: google-java-format is pinned to the newest version Spotless supports.

@@ -105,6 +105,21 @@ Run the desktop GUI during development:
 ./mvnw -pl njmule-gui -am install -DskipTests && ./mvnw -pl njmule-gui javafx:run
 ```
 
+The desktop app is a native executable too, built with the same GraalVM from the module path
+(`njmule-gui/target/native/`, the executable with the JDK libraries it loads):
+
+```bash
+./mvnw -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
+```
+
+Its reachability metadata is recorded by a tour of the interface (`-Pnative-tour`, under GraalVM's
+tracing agent) and kept in `njmule-gui/src/main/resources/META-INF/native-image`; for Linux,
+`tools/native-gui-docker.sh` records it and builds both executables in an Ubuntu container.
+
+Installers: a per-user Windows MSI (WiX 5, `packaging/windows`), deb and rpm packages (nfpm,
+`packaging/linux`) and a macOS disk image are built by the release workflow, which also runs the
+native tour on each system as a smoke test.
+
 ## Project layout
 
 | Module | Content |
