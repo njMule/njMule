@@ -108,8 +108,8 @@ public final class PartFileStorage implements AutoCloseable {
     }
 
     /**
-     * Writes the metadata {@code contents} to {@code met}, after the writes queued before, dated as the data is then;
-     * nothing when {@code current} says a newer save is on its way.
+     * Writes the metadata {@code contents} to {@code met} once the writes queued before are flushed, dated as the data
+     * is then; nothing when {@code current} says a newer save is on its way.
      */
     public CompletableFuture<Void> saveMet(Path met, PartMet.Contents contents, BooleanSupplier current) {
         return CompletableFuture.runAsync(
@@ -118,6 +118,11 @@ public final class PartFileStorage implements AutoCloseable {
                         return;
                     }
                     try {
+                        // The data it tells as written reaches the disk first: else a crash could lose the data
+                        // and keep the part.met.
+                        if (this.channel.isOpen()) {
+                            this.channel.force(false);
+                        }
                         PartFile.writeMet(met, contents, this.path);
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);

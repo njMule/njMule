@@ -89,6 +89,8 @@ public final class DownloadQueue implements AutoCloseable {
     /** The free space of the temp disk is looked at this often. */
     public static final Duration SPACE_CHECK = Duration.ofSeconds(10);
 
+    // A write that fails while the temp disk has less room than this found it full: the downloads wait for room.
+    private static final long FULL_DISK_RESERVE = 64L * 1024 * 1024;
     // How long closing waits for the last saves and writes.
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(30);
 
@@ -155,6 +157,8 @@ public final class DownloadQueue implements AutoCloseable {
     private ScheduledFuture<?> saver;
     private ScheduledFuture<?> spaceChecker;
     private boolean spaceShort;
+    // Whether a write found the disk full: then downloads wait for the reserve at least, whatever the minimum is.
+    private boolean diskFull;
 
     private DownloadQueue(
             EngineLoop loop,
@@ -478,8 +482,14 @@ public final class DownloadQueue implements AutoCloseable {
         if (failure != null) {
             // The session has let the block go: the range is asked for again once the download goes on.
             download.file.release(start, end);
-            download.file.setStatus(PartFile.Status.ERROR);
             download.dirty = true;
+            if (this.isOutOfSpace()) {
+                logger.warn("The temp disk is full: downloads wait for room");
+                this.diskFull = true;
+                this.checkSpace();
+                return;
+            }
+            download.file.setStatus(PartFile.Status.ERROR);
             this.listener.failed(download, "cannot write the data: " + failure.getMessage());
             return;
         }
@@ -607,7 +617,7 @@ public final class DownloadQueue implements AutoCloseable {
 
     // Downloads wait while the temp disk is short of space and go on by themselves once there is room again.
     void checkSpace() {
-        long min = this.minFree.getAsLong();
+        long min = Math.max(this.minFree.getAsLong(), this.diskFull ? FULL_DISK_RESERVE : 0);
         boolean shortNow;
         if (min <= 0) {
             shortNow = false;
@@ -619,9 +629,22 @@ public final class DownloadQueue implements AutoCloseable {
                 return;
             }
         }
+        if (!shortNow) {
+            this.diskFull = false;
+        }
         if (shortNow != this.spaceShort) {
             this.spaceShort = shortNow;
             this.listener.diskSpace(!shortNow);
+        }
+    }
+
+    // A failed write on a disk short of the room downloads need is a full disk, not a broken one.
+    private boolean isOutOfSpace() {
+        try {
+            return Files.getFileStore(this.tempDir).getUsableSpace()
+                    < Math.max(this.minFree.getAsLong(), FULL_DISK_RESERVE);
+        } catch (IOException e) {
+            return false;
         }
     }
 
