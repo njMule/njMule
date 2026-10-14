@@ -16,8 +16,11 @@
  */
 package org.njmule.core.files;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
@@ -45,6 +48,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -115,6 +119,8 @@ public final class SharedFiles implements AutoCloseable {
     public static final Duration RESCAN_INTERVAL = Duration.ofMinutes(10);
 
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
+    private static final int HASH_ATTEMPTS = 10;
+    private static final Duration HASH_RETRY_DELAY = Duration.ofMillis(500);
     // A shared tree is walked this deep, and up to so many directories.
     private static final int MAX_TREE_DEPTH = 32;
     private static final int MAX_TREE_DIRS = 10_000;
@@ -456,16 +462,7 @@ public final class SharedFiles implements AutoCloseable {
     private void hashFinished(Path file, long mtime, PartFile download) {
         if (this.hashing.add(file)) {
             this.loop.whenDone(
-                    CompletableFuture.supplyAsync(
-                            () -> {
-                                try {
-                                    return FileHasher.hash(file);
-                                } catch (IOException e) {
-                                    throw new UncheckedIOException(e);
-                                }
-                            },
-                            this.hasher),
-                    (result, failure) -> this.treeOfFinished(file, mtime, download, result, failure));
+                    this.hash(file), (result, failure) -> this.treeOfFinished(file, mtime, download, result, failure));
         }
     }
 
@@ -686,18 +683,39 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         if (this.hashing.add(file)) {
-            this.loop.whenDone(
-                    CompletableFuture.supplyAsync(
-                            () -> {
-                                try {
-                                    return FileHasher.hash(file);
-                                } catch (IOException e) {
-                                    throw new UncheckedIOException(e);
-                                }
-                            },
-                            this.hasher),
-                    (result, failure) -> this.hashed(file, mtime, result, failure));
+            this.loop.whenDone(this.hash(file), (result, failure) -> this.hashed(file, mtime, result, failure));
         }
+    }
+
+    // On the hashing thread. A file another program holds or locks, such as one it is still writing on Windows, is
+    // tried
+    // again for a few seconds before it is left for the next scan; one we may not read is not.
+    private CompletableFuture<FileHasher.Result> hash(Path file) {
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    for (int attempt = 1; ; attempt++) {
+                        try {
+                            return FileHasher.hash(file);
+                        } catch (NoSuchFileException
+                                | AccessDeniedException
+                                | EOFException
+                                | InterruptedIOException e) {
+                            throw new UncheckedIOException(e);
+                        } catch (IOException e) {
+                            if (attempt >= HASH_ATTEMPTS) {
+                                throw new UncheckedIOException(e);
+                            }
+                            logger.debug("Cannot read {} yet: {}", file, e.toString());
+                        }
+                        try {
+                            Thread.sleep(HASH_RETRY_DELAY);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new CancellationException("closed while waiting for " + file);
+                        }
+                    }
+                },
+                this.hasher);
     }
 
     private void hashed(Path file, long mtime, FileHasher.Result result, Throwable failure) {

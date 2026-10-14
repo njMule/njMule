@@ -511,6 +511,8 @@ All notable changes to this project are documented here. The format follows
   which carry the user's name), macOS `._` files, lock files, NFS and sync-tool leftovers, and
   downloads a browser or another client is still writing (`.crdownload`, `.partial`, `.download`,
   `.!qB`, `.!ut`, …).
+- A shared file that another program holds or locks for a moment, as while it is still being
+  written, is read again for a few seconds instead of being left out until the next scan.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

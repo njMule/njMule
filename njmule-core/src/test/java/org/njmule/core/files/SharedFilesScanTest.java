@@ -18,8 +18,13 @@ package org.njmule.core.files;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -30,6 +35,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.engine.EngineLoop;
 
@@ -81,6 +88,17 @@ class SharedFilesScanTest {
         this.thenOnlyTheseAreShared("real.bin");
     }
 
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void aFileAnotherProgramLocksForAMomentIsSharedOnceItIsFree() throws Exception {
+        this.givenTheIncomingDirectoryHolds("locked.bin");
+        this.givenAnotherProgramLocksItFor("locked.bin", Duration.ofMillis(1500));
+
+        this.whenTheDirectoriesAreScanned("locked.bin");
+
+        this.thenOnlyTheseAreShared("locked.bin");
+    }
+
     private void givenTheIncomingDirectoryHolds(String... names) throws Exception {
         this.config = Files.createDirectories(this.dir.resolve("config"));
         this.incoming = Files.createDirectories(this.dir.resolve("incoming"));
@@ -88,6 +106,21 @@ class SharedFilesScanTest {
         for (String name : names) {
             Files.write(this.incoming.resolve(name), bytes(3000, seed++));
         }
+    }
+
+    // A lock on Windows keeps other handles from reading the file, as a program writing it does.
+    private void givenAnotherProgramLocksItFor(String name, Duration time) throws Exception {
+        FileChannel channel = FileChannel.open(this.incoming.resolve(name), StandardOpenOption.WRITE);
+        FileLock lock = channel.lock();
+        Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(time);
+                lock.release();
+                channel.close();
+            } catch (InterruptedException | IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
     }
 
     // Waits for the file expected last, then a moment for any other.
