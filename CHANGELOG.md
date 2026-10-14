@@ -265,6 +265,10 @@ All notable changes to this project are documented here. The format follows
   and Simplified Chinese, with eMule's own translations of its texts and njMule's texts in the same
   terms; the language box names each language in its own words, and the interface follows the
   system's language when it is one of them.
+- The desktop interface also in European Portuguese, Swedish, Turkish, Traditional Chinese,
+  Japanese and Korean; a system language in the traditional Chinese script (zh-Hant, or Taiwan,
+  Hong Kong and Macao) gets Traditional Chinese, and Portuguese outside Brazil gets European
+  Portuguese.
 - Search results keep the media details that servers and Kad give (artist, album, title, length,
   bitrate, codec), by tag id or by the names servers use, and so do the search tabs kept at exit.
 - The search results list shows them in Artist, Album, Title, Length, Bitrate and Codec columns,
