@@ -64,10 +64,12 @@ abstract sealed class SystemAutostart implements Autostart {
             String osName,
             String xdgConfigHome,
             String home) {
-        if (!LinkAssociation.isDesktopProgram(Path.of(program))) {
+        String os = osName.toLowerCase(Locale.ROOT);
+        // The program's own name, cut at the separators of the system it is for, whichever system this runs on.
+        int cut = Math.max(program.lastIndexOf('/'), os.startsWith("windows") ? program.lastIndexOf('\\') : -1);
+        if (!LinkAssociation.isDesktopProgram(Path.of(program.substring(cut + 1)))) {
             return Optional.empty();
         }
-        String os = osName.toLowerCase(Locale.ROOT);
         if (os.startsWith("windows")) {
             return Optional.of(new Windows(configDir, shell, program, arguments));
         }
