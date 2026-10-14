@@ -24,6 +24,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -87,6 +88,26 @@ class InputsTest {
             assertThat(port.isValid()).isFalse();
             assertThat(danger(field)).as("an emptied setting is marked").isTrue();
             assertThat(field.getTooltip().getText()).isEqualTo("A whole number from 1 to 65535");
+        });
+    }
+
+    @Test
+    void longLinksFitAndAPasteTooLongIsTold() throws Exception {
+        // With the hashes of its parts, the link of a 4 GB file runs to about 15,000 characters.
+        String parts = String.join(":", Collections.nCopies(442, HASH));
+        String link = "ed2k://|file|big.iso|4290000000|" + HASH + "|p=" + parts + "|/";
+        FxTesting.onFx(() -> {
+            TextField field = new TextField();
+            Input<List<Ed2kLink.FileLink>> links = this.inputs.fileLinks(field, "Download");
+
+            field.replaceText(0, 0, link + " " + link.replace("big", "other"));
+            assertThat(links.value()).extracting(Ed2kLink.FileLink::name).containsExactly("big.iso", "other.iso");
+            assertThat(this.test.told).isEmpty();
+
+            field.clear();
+            field.replaceText(0, 0, "x".repeat(Inputs.MAX_LINKS_TEXT + 1));
+            assertThat(field.getText()).as("refused").isEmpty();
+            assertThat(this.test.told).singleElement().asString().startsWith("Too long");
         });
     }
 

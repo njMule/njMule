@@ -45,6 +45,8 @@ public final class Inputs {
 
     private static final int MAX_HOST = 253;
     private static final int MAX_TEXT = 4096;
+    // As many links as a later start hands over (256), each as long as a line it may send (64 Ki characters).
+    static final int MAX_LINKS_TEXT = 256 * 64 * 1024;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("H:mm");
 
     private final Gui gui;
@@ -180,23 +182,24 @@ public final class Inputs {
 
     /** One or more eD2K file links, apart by spaces or lines. */
     public Input<List<Ed2kLink.FileLink>> fileLinks(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_TEXT * 4, t -> {
-            List<Ed2kLink.FileLink> links = new ArrayList<>();
-            for (String one : LINKS.split(t, -1)) {
-                if (one.isEmpty()) {
-                    continue;
-                }
-                if (Ed2kLink.tryParse(one).orElse(null) instanceof Ed2kLink.FileLink file) {
-                    links.add(file);
-                } else {
-                    throw new IllegalArgumentException(one);
-                }
-            }
-            if (links.isEmpty()) {
-                throw new IllegalArgumentException(t);
-            }
-            return links;
-        });
+        return Input.of(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_LINKS_TEXT, t -> {
+                    List<Ed2kLink.FileLink> links = new ArrayList<>();
+                    for (String one : LINKS.split(t, -1)) {
+                        if (one.isEmpty()) {
+                            continue;
+                        }
+                        if (Ed2kLink.tryParse(one).orElse(null) instanceof Ed2kLink.FileLink file) {
+                            links.add(file);
+                        } else {
+                            throw new IllegalArgumentException(one);
+                        }
+                    }
+                    if (links.isEmpty()) {
+                        throw new IllegalArgumentException(t);
+                    }
+                    return links;
+                })
+                .whenTooLong(() -> this.gui.inform().accept(this.gui.f("nj.input.tooLong", MAX_LINKS_TEXT)));
     }
 
     /** A search expression in the eMule syntax. */

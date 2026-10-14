@@ -18,6 +18,7 @@ package org.njmule.gui.ui;
 
 import atlantafx.base.theme.Styles;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
@@ -53,6 +54,7 @@ public final class Input<T> {
     private final ReadOnlyBooleanWrapper valid = new ReadOnlyBooleanWrapper();
     private boolean quietWhenEmpty;
     private boolean strip = true;
+    private Runnable tooLong = () -> {};
 
     private Input(
             TextField field, String name, String hint, Predicate<Character> allowed, int maxLength, Parser<T> parser) {
@@ -60,7 +62,13 @@ public final class Input<T> {
         this.name = name;
         this.hint = hint;
         this.parser = parser;
-        field.setTextFormatter(new TextFormatter<>(change -> filter(change, allowed, maxLength)));
+        field.setTextFormatter(new TextFormatter<>(change -> {
+            TextFormatter.Change kept = filter(change, allowed, maxLength);
+            if (kept == null) {
+                this.tooLong.run();
+            }
+            return kept;
+        }));
         field.setTooltip(new Tooltip(hint));
         field.textProperty().addListener((o, was, now) -> this.check());
         this.check();
@@ -80,6 +88,12 @@ public final class Input<T> {
         return Bindings.createBooleanBinding(
                 () -> inputs.stream().allMatch(Input::isValid),
                 inputs.stream().map(Input::validProperty).toArray(ObservableValue[]::new));
+    }
+
+    /** Runs {@code action} when a change is refused for making the text too long: a paste that lands nowhere. */
+    public Input<T> whenTooLong(Runnable action) {
+        this.tooLong = Objects.requireNonNull(action, "action");
+        return this;
     }
 
     /** Leaves the field unmarked while empty: for a box that waits for something to act on, not a setting. */
