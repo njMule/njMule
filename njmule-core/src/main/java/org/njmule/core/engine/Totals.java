@@ -16,6 +16,7 @@
  */
 package org.njmule.core.engine;
 
+import com.google.common.math.LongMath;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -93,20 +94,20 @@ final class Totals {
         return this.seconds;
     }
 
-    /** Saves the totals with this session's bytes and time. */
+    /** Saves the totals with this session's bytes and time; they stop at the largest number rather than wrap. */
     void save(long sessionDownloaded, long sessionUploaded, long sessionSeconds) {
         String text = "# njMule all-time statistics\n"
                 + "downloaded="
-                + (this.downloaded + sessionDownloaded)
+                + LongMath.saturatedAdd(this.downloaded, sessionDownloaded)
                 + "\n"
                 + "uploaded="
-                + (this.uploaded + sessionUploaded)
+                + LongMath.saturatedAdd(this.uploaded, sessionUploaded)
                 + "\n"
                 + "sessions="
-                + (this.sessions + 1)
+                + LongMath.saturatedAdd(this.sessions, 1)
                 + "\n"
                 + "seconds="
-                + (this.seconds + sessionSeconds)
+                + LongMath.saturatedAdd(this.seconds, sessionSeconds)
                 + "\n";
         try {
             AtomicFiles.writeBytes(this.file, text.getBytes(StandardCharsets.UTF_8));

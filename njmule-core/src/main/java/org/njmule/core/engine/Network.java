@@ -17,6 +17,7 @@
 package org.njmule.core.engine;
 
 import com.google.common.base.Ticker;
+import com.google.common.math.LongMath;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -534,11 +535,11 @@ final class Network {
                 this.uploads.slotCount(),
                 this.uploads.waitingCount(),
                 this.shares == null ? 0 : this.shares.all().size(),
-                this.totals.downloaded() + this.downloads.downloaded(),
-                this.totals.uploaded() + this.uploads.uploaded(),
-                this.totals.sessions() + 1,
+                LongMath.saturatedAdd(this.totals.downloaded(), this.downloads.downloaded()),
+                LongMath.saturatedAdd(this.totals.uploaded(), this.uploads.uploaded()),
+                LongMath.saturatedAdd(this.totals.sessions(), 1),
                 this.sessionSeconds(),
-                this.totals.seconds() + this.sessionSeconds(),
+                LongMath.saturatedAdd(this.totals.seconds(), this.sessionSeconds()),
                 id.map(ServerMessages.IdChange::publicIp)
                         .filter(ip -> ip != 0)
                         .map(Ipv4::format)
