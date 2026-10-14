@@ -67,7 +67,8 @@ class LanguagesTest {
                 arguments(Locale.of("es"), "Español", "Idioma"),
                 arguments(Locale.FRENCH, "Français", "Langue"),
                 arguments(Locale.ITALIAN, "Italiano", "Lingua"),
-                arguments(Locale.of("nl"), "Nederlands", "Taal"));
+                arguments(Locale.of("nl"), "Nederlands", "Taal"),
+                arguments(Locale.of("pl"), "Polski", "Język"));
     }
 
     static Stream<Locale> translations() {
@@ -79,7 +80,13 @@ class LanguagesTest {
         this.whenTheLanguagesOfTheInterfaceAreListed();
 
         this.thenTheLanguagesAre(
-                Locale.ENGLISH, Locale.GERMAN, Locale.of("es"), Locale.FRENCH, Locale.ITALIAN, Locale.of("nl"));
+                Locale.ENGLISH,
+                Locale.GERMAN,
+                Locale.of("es"),
+                Locale.FRENCH,
+                Locale.ITALIAN,
+                Locale.of("nl"),
+                Locale.of("pl"));
     }
 
     @ParameterizedTest
@@ -101,6 +108,7 @@ class LanguagesTest {
         "it-CH, it",
         "it, it",
         "nl-BE, nl",
+        "pl-PL, pl",
         "sv-SE, en",
         "ja-JP, en"
     })
