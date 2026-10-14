@@ -71,7 +71,7 @@ jobs:
                   dotnet tool install --global wix --version 5.0.2
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
             - name: Smoke test
               shell: pwsh
               run: |
@@ -150,7 +150,7 @@ jobs:
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
             - name: Smoke test
               run: |
                   njmule-app/target/njmule --version
@@ -249,7 +249,7 @@ jobs:
               run: ./mvnw -B -ntp -Pnative-tour -pl njmule-gui -am package -DskipTests
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
             - name: Smoke test
               run: |
                   njmule-app/target/njmule --version
