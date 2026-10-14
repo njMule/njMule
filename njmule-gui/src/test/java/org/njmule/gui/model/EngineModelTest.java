@@ -68,6 +68,7 @@ class EngineModelTest {
 
     private NjMuleEngine engine;
     private EngineModel model;
+    private EngineModel.Search opened;
     private final List<String> errors = new CopyOnWriteArrayList<>();
 
     @AfterEach
@@ -311,6 +312,33 @@ class EngineModelTest {
         m.moreResults(search);
         m.stopSearch(search);
         assertThat(m.searches()).isEmpty();
+    }
+
+    @Test
+    void resultsThatComeBeforeTheirSearchOpensGoToItOnceItDoes() throws Exception {
+        this.givenAModel();
+        this.whenResultsAndTheEndOfASearchComeBeforeItsId(new SearchId(9));
+        this.whenTheSearchOpens(new SearchId(9));
+        this.thenTheSearchHasTheResultsAndHasEnded();
+    }
+
+    private void givenAModel() throws Exception {
+        this.model = this.start();
+    }
+
+    private void whenResultsAndTheEndOfASearchComeBeforeItsId(SearchId id) {
+        SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
+        this.model.handle(new EngineEvent.SearchResults(id, List.of(result)));
+        this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    }
+
+    private void whenTheSearchOpens(SearchId id) {
+        this.opened = this.model.open(id, new SearchRequest("x", SearchRequest.Scope.SERVER));
+    }
+
+    private void thenTheSearchHasTheResultsAndHasEnded() {
+        assertThat(this.opened.results().size()).isEqualTo(1);
+        assertThat(this.opened.runningProperty().get()).isFalse();
     }
 
     @Test

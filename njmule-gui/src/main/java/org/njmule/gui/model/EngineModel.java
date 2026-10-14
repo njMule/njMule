@@ -97,6 +97,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public record RateSample(Instant time, long down, long up) {}
 
     /** One search with its results. */
+    // The results and the end of a search heard of before its id.
+    private static final class Early {
+        private final List<SearchResult> results = new ArrayList<>();
+        private boolean ended;
+    }
+
     public static final class Search {
         private final SearchId id;
         private final SearchRequest request;
@@ -131,6 +137,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Seconds of rate history kept for the graphs. */
     public static final int RATE_HISTORY = 3_600;
 
+    // Searches kept from before their id came back: a few, as those started elsewhere never open here.
+    private static final int EARLY_SEARCHES = 4;
     private static final EngineStatus NO_STATUS = new EngineStatus(
             Optional.empty(), 0, false, false, Optional.empty(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, false);
 
@@ -164,6 +172,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     // The hashes of the shared files, built again after the list changed.
     private Set<Hash16> sharedHashes;
     private final Map<SearchId, Search> searches = new LinkedHashMap<>();
+    // What a server that answers at once sends before the FX thread hears of the search it was asked for.
+    private final Map<SearchId, Early> early = new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<SearchId, Early> eldest) {
+            return this.size() > EARLY_SEARCHES;
+        }
+    };
     private final Chats chats = new Chats();
     private final LiveList<Hash16, Friend> friends = new LiveList<>(Friend::userHash);
     private Consumer<String> errors = message -> {};
@@ -704,6 +719,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Follows the results of a search the engine started. */
     Search open(SearchId id, SearchRequest request) {
         Search search = new Search(id, request);
+        Early before = this.early.remove(id);
+        if (before != null) {
+            before.results.forEach(search.results::put);
+            search.running.set(!before.ended);
+        }
         this.searches.put(id, search);
         return search;
     }
@@ -823,12 +843,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 Search search = this.searches.get(e.search());
                 if (search != null) {
                     e.results().forEach(search.results::put);
+                } else {
+                    this.early
+                            .computeIfAbsent(e.search(), id -> new Early())
+                            .results
+                            .addAll(e.results());
                 }
             }
             case EngineEvent.SearchEnded e -> {
                 Search search = this.searches.get(e.search());
                 if (search != null) {
                     search.running.set(false);
+                } else {
+                    this.early.computeIfAbsent(e.search(), id -> new Early()).ended = true;
                 }
             }
             case EngineEvent.DownloadAdded e -> this.downloads.put(e.download());
