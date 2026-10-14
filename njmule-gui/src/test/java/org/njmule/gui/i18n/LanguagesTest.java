@@ -82,7 +82,6 @@ class LanguagesTest {
                 arguments(Locale.of("ru"), "Русский", "Язык"),
                 arguments(Locale.of("uk"), "Українська", "Мова"),
                 arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
-                arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"));
                 arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"),
                 arguments(Locale.JAPANESE, "日本語", "言語"),
                 arguments(Locale.KOREAN, "한국어", "언어"));
@@ -117,7 +116,6 @@ class LanguagesTest {
                 Locale.of("ru"),
                 Locale.of("uk"),
                 Locale.SIMPLIFIED_CHINESE,
-                Locale.SIMPLIFIED_CHINESE);
                 Locale.TRADITIONAL_CHINESE,
                 Locale.JAPANESE,
                 Locale.KOREAN);

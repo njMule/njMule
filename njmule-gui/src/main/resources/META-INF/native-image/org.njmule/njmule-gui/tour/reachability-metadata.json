@@ -14280,6 +14280,9 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule_ko.properties"
+    },
+    {
+      "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule_nb.properties"
     },
     {
@@ -14309,6 +14312,9 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule_tr.properties"
+    },
+    {
+      "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule_uk.properties"
     },
     {
@@ -14366,6 +14372,9 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/nj_ko.properties"
+    },
+    {
+      "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/nj_nb.properties"
     },
     {
@@ -14395,6 +14404,9 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/nj_tr.properties"
+    },
+    {
+      "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/nj_uk.properties"
     },
     {
