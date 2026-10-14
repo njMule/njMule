@@ -237,7 +237,16 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                 + kad.verifiedContacts()
                 + " verified"
                 + (kad.connected() ? ", connected" : "")
-                + (kad.firewalled() ? ", firewalled" : ", reachable");
+                + (kad.firewalled() ? ", firewalled" : ", reachable")
+                + (kad.udpVerified() || kad.udpFirewalled()
+                        ? (kad.udpFirewalled() ? ", UDP firewalled" : ", UDP open")
+                        : "")
+                + switch (kad.buddy()) {
+                    case NONE -> "";
+                    case CONNECTING -> ", connecting to a buddy";
+                    case CONNECTED -> ", with a buddy";
+                    case SERVING -> ", buddy of a firewalled client";
+                };
     }
 
     private void search(String expression, SearchRequest.Scope scope) throws InterruptedException, ExecutionException {

@@ -61,6 +61,8 @@ class NetworkCommandsTest {
     private final FakeEngine fake = new FakeEngine();
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
+    private KadInfo kadState;
+    private String kadLine;
 
     @AfterEach
     void stop() {
@@ -465,6 +467,27 @@ class NetworkCommandsTest {
 
         assertThat(NetworkCommands.kadLine(new KadInfo(true, 5, 4, true, "", "", 4672)))
                 .isEqualTo("Kad: 5 contacts, 4 verified, connected, firewalled");
+    }
+
+    @Test
+    void theKadLineTellsTheTestedUdpStateAndTheBuddy() {
+        this.givenKadFirewalledOnBothPortsWithABuddy();
+
+        this.whenTheKadLineIsWritten();
+
+        this.thenTheKadLineIs("Kad: 5 contacts, 4 verified, connected, firewalled, UDP firewalled, with a buddy");
+    }
+
+    private void givenKadFirewalledOnBothPortsWithABuddy() {
+        this.kadState = new KadInfo(true, 5, 4, true, "", "", 4672, true, true, KadInfo.Buddy.CONNECTED);
+    }
+
+    private void whenTheKadLineIsWritten() {
+        this.kadLine = NetworkCommands.kadLine(this.kadState);
+    }
+
+    private void thenTheKadLineIs(String expected) {
+        assertThat(this.kadLine).isEqualTo(expected);
     }
 
     @Test
