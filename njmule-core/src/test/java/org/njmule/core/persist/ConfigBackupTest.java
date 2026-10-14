@@ -17,11 +17,13 @@
 package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +61,44 @@ class ConfigBackupTest {
             }
         }
         assertThat(names).containsExactly("njmule.properties", "server.met");
+    }
+
+    @Test
+    void theCopyJustWrittenIsNeverPruned() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=4662\n");
+        Path folder = this.dir.resolve(ConfigBackup.FOLDER);
+        Path mine = Files.writeString(Files.createDirectories(folder).resolve("njmule-config-mine.zip"), "x");
+
+        ConfigBackup.write(config, folder, 1, at("2026-10-15T20:00:00Z"));
+        // The clock went back.
+        Path last = ConfigBackup.write(config, folder, 1, at("2026-10-14T20:00:00Z"));
+
+        assertThat(last).exists();
+        assertThat(ConfigBackup.copies(folder)).containsExactly(last);
+        assertThat(mine).as("not one of ours").exists();
+    }
+
+    @Test
+    void copiesAreNamedInUtc() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Clock rome = Clock.fixed(Instant.parse("2026-10-25T00:30:00Z"), ZoneId.of("Europe/Rome"));
+
+        Path copy = ConfigBackup.write(config, this.dir.resolve(ConfigBackup.FOLDER), 3, rome);
+
+        assertThat(copy.getFileName().toString()).isEqualTo("njmule-config-20261025-003000.zip");
+    }
+
+    @Test
+    void atLeastOneCopyIsKept() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Path folder = this.dir.resolve(ConfigBackup.FOLDER);
+
+        for (int keep : new int[] {0, -1}) {
+            assertThatThrownBy(() -> ConfigBackup.write(config, folder, keep, at("2026-10-15T20:00:00Z")))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(ConfigBackup.copies(folder)).isEmpty();
     }
 
     private static Clock at(String instant) {

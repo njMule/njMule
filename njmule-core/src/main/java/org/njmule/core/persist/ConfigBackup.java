@@ -22,11 +22,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -43,6 +45,8 @@ public final class ConfigBackup {
     private static final String PREFIX = "njmule-config-";
     private static final String SUFFIX = ".zip";
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.ROOT);
+    private static final Pattern NAME =
+            Pattern.compile(Pattern.quote(PREFIX) + "\\d{8}-\\d{6}" + Pattern.quote(SUFFIX));
     private static final Set<String> LEFT_OUT = Set.of("njmule.lock", "handoff", "known2_64.met");
 
     private ConfigBackup() {}
@@ -52,8 +56,12 @@ public final class ConfigBackup {
      * {@code keep}; returns the new copy.
      */
     public static Path write(Path config, Path folder, int keep, Clock clock) throws IOException {
+        if (keep < 1) {
+            throw new IllegalArgumentException("at least one copy is kept: " + keep);
+        }
         Files.createDirectories(folder);
-        String name = PREFIX + STAMP.format(LocalDateTime.now(clock)) + SUFFIX;
+        // In UTC: local time repeats an hour when summer time ends, and the names must sort as the copies were made.
+        String name = PREFIX + STAMP.format(LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)) + SUFFIX;
         Path target = folder.resolve(name);
         List<Path> files = files(config);
         AtomicFiles.write(
@@ -69,7 +77,7 @@ public final class ConfigBackup {
                     zip.finish();
                 },
                 false);
-        prune(folder, keep);
+        prune(folder, keep, target);
         return target;
     }
 
@@ -81,7 +89,10 @@ public final class ConfigBackup {
         }
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(folder, PREFIX + "*" + SUFFIX)) {
             for (Path entry : entries) {
-                copies.add(entry);
+                // A file of the user that only looks like a copy is not ours to prune.
+                if (NAME.matcher(String.valueOf(entry.getFileName())).matches()) {
+                    copies.add(entry);
+                }
             }
         }
         // The stamp sorts as the time.
@@ -106,10 +117,12 @@ public final class ConfigBackup {
         return files;
     }
 
-    private static void prune(Path folder, int keep) throws IOException {
-        List<Path> copies = copies(folder);
-        for (int i = 0; i < copies.size() - keep; i++) {
-            Files.deleteIfExists(copies.get(i));
+    // The new copy stays whatever its name sorts after: a clock set back gives it an older one.
+    private static void prune(Path folder, int keep, Path written) throws IOException {
+        List<Path> others = copies(folder);
+        others.remove(written);
+        for (int i = 0; i < others.size() - (keep - 1); i++) {
+            Files.deleteIfExists(others.get(i));
         }
     }
 }

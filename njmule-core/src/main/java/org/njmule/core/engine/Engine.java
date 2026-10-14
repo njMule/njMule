@@ -981,8 +981,7 @@ public final class Engine implements NjMuleEngine {
                     this.directories.config(),
                     this.directories.data().resolve(ConfigBackup.FOLDER),
                     keep,
-                    // The copy is named by the local time.
-                    Clock.system(ZoneId.systemDefault()));
+                    Clock.systemUTC());
             logger.info("Configuration backed up to {}", copy);
         } catch (IOException e) {
             logger.warn("Cannot back up the configuration: {}", e.toString());
