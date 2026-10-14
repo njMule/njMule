@@ -88,6 +88,7 @@ class LaunchOptionsTest {
 
         LaunchOptions hello = LaunchOptions.parse("--hello", "localhost:61426");
         assertThat(hello.network().hello()).contains(new ServerAddress("localhost", 61426));
+        assertThat(hello.network().isOneShot()).isTrue();
         assertThat(LaunchOptions.parse("--connect-server", "s.example:4242")
                         .network()
                         .isOneShot())
@@ -166,6 +167,32 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void rejectsOptionsWithoutTheOneTheyApplyTo() {
+        assertThatThrownBy(() -> LaunchOptions.parse("--search", "x", "--global", "--kad"))
+                .hasMessage("--kad applies to --search, without --global");
+        assertThatThrownBy(() -> LaunchOptions.parse("--adopt-emule-identity"))
+                .hasMessageContaining("apply to --import-emule");
+        assertThatThrownBy(() -> LaunchOptions.parse("--import-downloads"))
+                .hasMessageContaining("apply to --import-emule");
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-port", "8080"))
+                .hasMessageContaining("apply to --webui-password");
+        assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "65536"))
+                .hasMessage("Invalid port for --webui-port: 65536");
+    }
+
+    @Test
+    void rejectsPathsTheFileSystemCannotName() {
+        // No file system takes a NUL character in a name.
+        String invalid = "a\u0000b";
+        assertThatThrownBy(() -> LaunchOptions.parse("--config-dir", invalid))
+                .isInstanceOf(LaunchOptions.UsageException.class)
+                .hasMessage("Invalid directory: " + invalid);
+        assertThatThrownBy(() -> LaunchOptions.parse("--share", invalid)).hasMessage("Invalid directory: " + invalid);
+        assertThatThrownBy(() -> LaunchOptions.parse("--add-servers", invalid)).hasMessage("Invalid file: " + invalid);
+        assertThatThrownBy(() -> LaunchOptions.parse("--hash", invalid)).hasMessage("Invalid file: " + invalid);
+    }
+
+    @Test
     void parsesExit() throws Exception {
         assertThat(LaunchOptions.parse("--exit").action()).isEqualTo(Action.EXIT);
         assertThat(LaunchOptions.parse(
@@ -173,6 +200,7 @@ class LaunchOptionsTest {
                         .action())
                 .isEqualTo(Action.EXIT);
         assertThat(LaunchOptions.parse("--exit", "--help").action()).isEqualTo(Action.HELP);
+        assertThat(LaunchOptions.parse("--exit", "--version").action()).isEqualTo(Action.VERSION);
     }
 
     @Test
