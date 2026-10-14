@@ -18,6 +18,7 @@ package org.njmule.core.net;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.google.common.base.Splitter;
 import java.io.BufferedReader;
@@ -25,12 +26,16 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.Authenticator;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -39,12 +44,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.njmule.core.config.ProxySettings;
 
 @Timeout(60)
 class WebListsTest {
 
     // Path -> the whole response, status line to body.
     private final Map<String, byte[]> responses = new ConcurrentHashMap<>();
+    // Paths whose response stops there, the connection left open.
+    private final Set<String> stalls = ConcurrentHashMap.newKeySet();
     private ServerSocket server;
     private final WebLists anyAddress = new WebLists(a -> true);
 
@@ -63,8 +71,13 @@ class WebListsTest {
                     OutputStream out = client.getOutputStream();
                     out.write(this.responses.getOrDefault(path, response(404, "", new byte[0])));
                     out.flush();
+                    if (this.stalls.contains(path)) {
+                        Thread.sleep(20_000);
+                    }
                 } catch (IOException e) {
                     // Closed by the test.
+                } catch (InterruptedException e) {
+                    return;
                 }
             }
         });
@@ -107,6 +120,87 @@ class WebListsTest {
     }
 
     @Test
+    void aBodyThatStopsComingFailsWithinTheDeadline() {
+        byte[] head = "HTTP/1.1 200 X\r\nContent-Length: 1000\r\n\r\n0123456789".getBytes(StandardCharsets.US_ASCII);
+        this.responses.put("/stalled", head);
+        this.stalls.add("/stalled");
+        WebLists quick = new WebLists(a -> true, Duration.ofSeconds(2));
+
+        assertTimeoutPreemptively(
+                Duration.ofSeconds(15),
+                () -> assertThatThrownBy(() -> quick.fetch(this.uri("/stalled")))
+                        .isInstanceOf(IOException.class));
+    }
+
+    @Test
+    void anArchiveGivesTheListItHoldsRatherThanItsFirstFile() throws Exception {
+        byte[] list = "1.2.3.4 - 1.2.3.5 , 100 , bad".getBytes(StandardCharsets.US_ASCII);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry("README.txt"));
+            zip.write("read me".getBytes(StandardCharsets.US_ASCII));
+            zip.putNextEntry(new ZipEntry("lists/ipfilter.dat"));
+            zip.write(list);
+        }
+        this.responses.put("/lists.zip", response(200, "", out.toByteArray()));
+        this.responses.put("/other.zip", response(200, "", zip("only.txt", list)));
+
+        assertThat(this.anyAddress.fetch(this.uri("/lists.zip"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(this.uri("/other.zip")))
+                .as("else the first")
+                .isEqualTo(list);
+    }
+
+    @Test
+    void aRedirectMayNotLeaveHttpsForHttp() throws Exception {
+        URI secure = URI.create("https://lists.example/ipfilter.zip");
+
+        assertThat(WebLists.redirect(secure, "/other.zip")).isEqualTo(URI.create("https://lists.example/other.zip"));
+        assertThat(WebLists.redirect(URI.create("http://lists.example/a"), "https://mirror.example/a"))
+                .isEqualTo(URI.create("https://mirror.example/a"));
+        assertThatThrownBy(() -> WebLists.redirect(secure, "http://mirror.example/ipfilter.zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("https");
+    }
+
+    @Test
+    void aListCutShortIsRefused() throws Exception {
+        byte[] lines =
+                "1.2.3.4 - 1.2.3.5 , 100 , one\n2.2.3.4 - 2.2.3.5 , 100 , two\n".getBytes(StandardCharsets.US_ASCII);
+        byte[] cut = Arrays.copyOf(lines, 40);
+        byte[] shortHead = "HTTP/1.1 200 X\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n"
+                .getBytes(StandardCharsets.US_ASCII);
+        this.responses.put("/short", concat(shortHead, cut));
+        this.responses.put("/whole.dat", untilClosed(lines));
+        this.responses.put("/cut.dat", untilClosed(cut));
+
+        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/short"))).isInstanceOf(IOException.class);
+        assertThat(this.anyAddress.fetchText(this.uri("/whole.dat"))).isEqualTo(lines);
+        assertThatThrownBy(() -> this.anyAddress.fetchText(this.uri("/cut.dat")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("cut short");
+        assertThat(this.anyAddress.fetch(this.uri("/cut.dat")))
+                .as("not a list of lines")
+                .isEqualTo(cut);
+    }
+
+    @Test
+    void listsGoThroughTheHttpProxyOfThePreferences() throws Exception {
+        byte[] list = "through the proxy".getBytes(StandardCharsets.US_ASCII);
+        // A proxy gets the whole address; nothing listens at the address itself.
+        this.responses.put("http://localhost:9/server.met", response(200, "", list));
+        ProxyRoute.install(
+                () -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", this.server.getLocalPort(), "", ""));
+        try {
+            assertThat(new WebLists(a -> true).fetch(URI.create("http://localhost:9/server.met")))
+                    .isEqualTo(list);
+        } finally {
+            ProxyRoute.install(() -> ProxySettings.NONE);
+            Authenticator.setDefault(null);
+        }
+    }
+
+    @Test
     void onlyPublicAddressesCount() throws Exception {
         for (String address : new String[] {
             "127.0.0.1",
@@ -143,6 +237,17 @@ class WebListsTest {
         byte[] all = new byte[start.length + body.length];
         System.arraycopy(start, 0, all, 0, start.length);
         System.arraycopy(body, 0, all, start.length, body.length);
+        return all;
+    }
+
+    // A response whose body ends when the connection closes.
+    private static byte[] untilClosed(byte[] body) {
+        return concat("HTTP/1.1 200 X\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1), body);
+    }
+
+    private static byte[] concat(byte[] a, byte[] b) {
+        byte[] all = Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, all, a.length, b.length);
         return all;
     }
 

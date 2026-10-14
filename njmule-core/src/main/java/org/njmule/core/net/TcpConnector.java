@@ -66,6 +66,11 @@ public final class TcpConnector {
         proxy = Objects.requireNonNull(supplier, "supplier");
     }
 
+    /** The proxy outgoing connections go through now. */
+    static Proxy currentProxy() {
+        return proxy.get();
+    }
+
     /** Connects to a server, obfuscated with a Diffie-Hellman key exchange if requested. */
     public static TcpConnection connectToServer(
             InetSocketAddress address, boolean obfuscate, Duration timeout, SecureRandom random) throws IOException {

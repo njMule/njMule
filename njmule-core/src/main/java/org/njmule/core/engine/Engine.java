@@ -373,7 +373,7 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> updateIpFilter(URI url) {
         Objects.requireNonNull(url, "url");
-        return this.fetch(url, data -> ipRanges(data, url))
+        return this.fetch(url, true, data -> ipRanges(data, url))
                 .thenCompose(ranges -> this.loop.submit(() -> this.network.setIpFilter(ranges)));
     }
 
@@ -415,10 +415,15 @@ public final class Engine implements NjMuleEngine {
 
     /** Reads what the web gives, on a thread of its own: the engine thread never waits for the network. */
     private <T> CompletableFuture<T> fetch(URI url, Parser<T> parser) {
+        return this.fetch(url, false, parser);
+    }
+
+    // A list of lines (an IP filter) is also checked for a cut the HTTP framing does not show.
+    private <T> CompletableFuture<T> fetch(URI url, boolean lines, Parser<T> parser) {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
-                        return parser.parse(this.web.fetch(url));
+                        return parser.parse(lines ? this.web.fetchText(url) : this.web.fetch(url));
                     } catch (IOException e) {
                         throw new CompletionException(e);
                     }
