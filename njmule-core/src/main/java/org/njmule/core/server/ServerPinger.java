@@ -17,6 +17,7 @@
 package org.njmule.core.server;
 
 import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -116,6 +117,11 @@ public final class ServerPinger {
 
     /** A status answer received from {@code from}. */
     public void received(InetSocketAddress from, Packet packet) {
+        // The socket takes IPv6 too; no server is known by an IPv6 address.
+        if (!(from.getAddress() instanceof Inet4Address)) {
+            logger.debug("Ignoring a status from {}", from);
+            return;
+        }
         ServerDatagrams.Status status;
         try {
             status = ServerDatagrams.Status.decode(packet);
@@ -142,7 +148,7 @@ public final class ServerPinger {
         logger.debug("Unrequested status from {}", from);
     }
 
-    private void pingNext() {
+    void pingNext() {
         long now = this.clock.instant().getEpochSecond();
         this.pending.values().removeIf(p -> now - p.sentAt() > ANSWER_TIMEOUT.toSeconds());
         Optional<ServerUdp> socket = this.udp.get();
@@ -155,7 +161,11 @@ public final class ServerPinger {
             ServerMet.Server server = candidates.get(index);
             ServerList.Address address = ServerList.addressOf(server);
             long last = server.lastPing().orElse(0);
-            if (now - last < REPING_AFTER.toSeconds() || this.pending.containsKey(address)) {
+            // No address yet, or no UDP port above the TCP one: nothing to ask.
+            if (server.ip() == 0
+                    || server.port() + ServerUdp.PORT_OFFSET > 0xFFFF
+                    || now - last < REPING_AFTER.toSeconds()
+                    || this.pending.containsKey(address)) {
                 continue;
             }
             this.cursor = index + 1;

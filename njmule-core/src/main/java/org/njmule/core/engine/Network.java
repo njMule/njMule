@@ -446,6 +446,10 @@ final class Network {
         return all;
     }
 
+    boolean knowsServer(ServerList.Address address) {
+        return this.servers.get(address).isPresent();
+    }
+
     boolean removeServer(ServerList.Address address) {
         return this.removeServers(List.of(address)) == 1;
     }
@@ -653,7 +657,7 @@ final class Network {
     /** Connects to the server at {@code ip:port} (added to the list if new), or to any. */
     void connect(Optional<ServerList.Address> address) {
         if (address.isEmpty()) {
-            if (this.servers.candidates().isEmpty()) {
+            if (this.servers.connectable().isEmpty()) {
                 throw new IllegalStateException("no known server: add a server.met or give one");
             }
             this.session.connect(Optional.empty());

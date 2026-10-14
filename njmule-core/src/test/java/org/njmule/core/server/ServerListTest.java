@@ -135,6 +135,77 @@ class ServerListTest {
     }
 
     @Test
+    void serversKnownByHostNameAreKeptByIt() throws Exception {
+        ServerList list = new ServerList();
+        assertThat(list.add(dynamic("a.example", 4661))).isTrue();
+        assertThat(list.add(dynamic("b.example", 4661))).isTrue();
+        assertThat(list.add(dynamic("A.Example", 4661))).as("the same host").isFalse();
+        assertThat(list.add(server("1.2.3.4", 4661))).isTrue();
+        Path file = this.dir.resolve(ServerList.FILE_NAME);
+
+        list.save(file);
+        ServerList loaded = ServerList.load(file);
+
+        assertThat(loaded.all())
+                .extracting(ServerList::addressOf)
+                .extracting(ServerList.Address::toString)
+                .containsExactly("a.example:4661", "b.example:4661", "1.2.3.4:4661");
+        assertThat(loaded.candidates())
+                .as("no address to ping")
+                .extracting(ServerMet.Server::ip)
+                .containsExactly(Ipv4.parse("1.2.3.4"));
+        assertThat(loaded.connectable())
+                .extracting(ServerList::addressOf)
+                .extracting(ServerList.Address::toString)
+                .containsExactly("a.example:4661", "b.example:4661", "1.2.3.4:4661");
+    }
+
+    @Test
+    void staticServersAreWrittenBackEvenWhenNotTaken() throws Exception {
+        Path file = this.dir.resolve(ServerList.STATIC_FILE_NAME);
+        List<String> lines = List.of(
+                "a.example:4661,1,A",
+                "b.example:4661,1,B",
+                "127.0.0.1:4661,0,Loopback",
+                "5.6.7.8:4242,2,Blocked",
+                "1.2.3.4:4661,1,Kept");
+        Files.write(file, TextFiles.writeLines(lines));
+        ServerList list = new ServerList();
+        list.filter(ip -> ip == Ipv4.parse("5.6.7.8"));
+
+        list.loadStatics(file);
+        list.saveStatics(file);
+
+        assertThat(list.size()).isEqualTo(3);
+        assertThat(TextFiles.staticServers(Files.readAllBytes(file)))
+                .containsExactlyInAnyOrderElementsOf(TextFiles.staticServers(TextFiles.writeLines(lines)));
+    }
+
+    @Test
+    void aServerNameCannotAddLinesToTheStaticServers() throws Exception {
+        Path file = this.dir.resolve(ServerList.STATIC_FILE_NAME);
+        ServerList list = new ServerList();
+        list.add(server("1.2.3.4", 4661)
+                .with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "Evil\r\n6.6.6.6:4661,0,Injected\u0007")));
+        list.setStatic(new ServerList.Address(Ipv4.parse("1.2.3.4"), 4661), true);
+
+        list.saveStatics(file);
+
+        assertThat(TextFiles.staticServers(Files.readAllBytes(file)))
+                .containsExactly(new TextFiles.StaticServer(
+                        "1.2.3.4", 4661, TextFiles.PRIORITY_NORMAL, "Evil6.6.6.6:4661,0,Injected"));
+    }
+
+    @Test
+    void anObfuscatedPortBeyondTheRangeIsNone() {
+        ServerMet.Server flagged = server("1.2.3.4", 4661)
+                .with(tag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION))
+                .with(tag(ServerTag.TCPPORTOBFUSCATION, 70_000));
+
+        assertThat(ServerList.supportsObfuscation(flagged)).isFalse();
+    }
+
+    @Test
     void deadServersFailedOftenEnoughButStaticOnesNever() {
         ServerList list = new ServerList();
         list.add(server("1.1.1.1", 1).with(tag(ServerTag.FAIL, 2)));
@@ -180,6 +251,10 @@ class ServerListTest {
 
     private static ServerMet.Server server(String ip, int port) {
         return new ServerMet.Server(Ipv4.parse(ip), port, List.of());
+    }
+
+    private static ServerMet.Server dynamic(String host, int port) {
+        return new ServerMet.Server(0, port, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), host)));
     }
 
     private static Tag tag(int id, long value) {

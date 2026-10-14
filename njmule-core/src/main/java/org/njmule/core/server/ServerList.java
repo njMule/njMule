@@ -16,6 +16,7 @@
  */
 package org.njmule.core.server;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,11 +26,13 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.persist.AtomicFiles;
@@ -44,8 +47,9 @@ import org.njmule.core.util.Ipv4;
 /**
  * The known eD2K servers, kept in {@code server.met}. Only the engine thread uses it.
  *
- * <p>Servers without a usable address (port 0, a reserved IP, a host name not yet resolved) are kept in the file but
- * never offered as {@link #candidates()}; servers the IP filter blocks are neither added nor offered.
+ * <p>Servers without a usable address (port 0, a reserved IP) are not added; those known by a host name are kept by it
+ * and offered for connecting only ({@link #connectable()}), as they are resolved then; servers the IP filter blocks are
+ * neither added nor offered.
  */
 public final class ServerList {
 
@@ -58,16 +62,41 @@ public final class ServerList {
     public static final int PRIORITY_HIGH = 1;
     public static final int PRIORITY_LOW = 2;
 
-    /** A server address; {@code ip} is in {@link Ipv4} form. */
-    public record Address(int ip, int port) {
+    private static final CharMatcher CONTROL = CharMatcher.javaIsoControl();
+
+    /**
+     * A server address: {@code ip} in {@link Ipv4} form, or, for a server known by host name, that name (lower case)
+     * and ip 0, whatever it resolves to.
+     */
+    public record Address(int ip, int port, String host) {
+        public Address {
+            Objects.requireNonNull(host, "host");
+        }
+
+        public Address(int ip, int port) {
+            this(ip, port, "");
+        }
+
+        /** The address of a server known by {@code host}; empty when it is an IPv4 address. */
+        public static Optional<Address> named(String host, int port) {
+            try {
+                Ipv4.parse(host);
+                return Optional.empty();
+            } catch (IllegalArgumentException e) {
+                return Optional.of(new Address(0, port, host.toLowerCase(Locale.ROOT)));
+            }
+        }
+
         @Override
         public String toString() {
-            return Ipv4.format(this.ip) + ":" + this.port;
+            return (this.host.isEmpty() ? Ipv4.format(this.ip) : this.host) + ":" + this.port;
         }
     }
 
     private final Map<Address, ServerMet.Server> servers = new LinkedHashMap<>();
     private final Set<Address> statics = new LinkedHashSet<>();
+    // Static servers not taken in the list (blocked, unusable): written back as they were.
+    private final List<TextFiles.StaticServer> untaken = new ArrayList<>();
     private IntPredicate blocked = ip -> false;
 
     /** Reads {@code file} (or its backup); a missing file gives an empty list. */
@@ -130,6 +159,7 @@ public final class ServerList {
         if (!Files.exists(file) && !Files.exists(AtomicFiles.bakPath(file.toAbsolutePath()))) {
             return;
         }
+        this.untaken.clear();
         for (TextFiles.StaticServer entry : AtomicFiles.read(file, in -> TextFiles.staticServers(in.readAllBytes()))) {
             ServerMet.Server server = serverOf(entry);
             Address address = addressOf(server);
@@ -142,19 +172,30 @@ public final class ServerList {
                             : kept.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), entry.name()));
                 });
                 this.statics.add(address);
+            } else {
+                this.untaken.add(entry);
             }
         }
     }
 
+    // One server a line: names and hosts come from servers and lists, so line breaks and other control characters go.
     public void saveStatics(Path file) throws IOException {
         List<TextFiles.StaticServer> entries = new ArrayList<>();
         for (Address address : this.statics) {
             ServerMet.Server server = this.servers.get(address);
             if (server != null) {
-                String host = server.dynamicIp().orElse(Ipv4.format(server.ip()));
+                String host = CONTROL.removeFrom(server.dynamicIp().orElse(Ipv4.format(server.ip())));
                 int priority = (int) server.preference().orElse(PRIORITY_NORMAL);
                 entries.add(new TextFiles.StaticServer(
-                        host, server.port(), priority, server.name().orElse(host)));
+                        host,
+                        server.port(),
+                        priority,
+                        CONTROL.removeFrom(server.name().orElse(host))));
+            }
+        }
+        for (TextFiles.StaticServer entry : this.untaken) {
+            if (!this.statics.contains(addressOf(serverOf(entry)))) {
+                entries.add(entry);
             }
         }
         AtomicFiles.writeBytes(file, TextFiles.writeStaticServers(entries));
@@ -182,10 +223,12 @@ public final class ServerList {
         return this.servers.computeIfPresent(address, (key, s) -> s.with(preferenceTag(value))) != null;
     }
 
-    /** Whether the server announced TCP obfuscation and the port it takes it on. */
+    /** Whether the server announced TCP obfuscation and a port it takes it on. */
     public static boolean supportsObfuscation(ServerMet.Server server) {
         long flags = server.udpFlags().orElse(0);
-        return server.obfuscatedTcpPort().orElse(0) > 0
+        long port = server.obfuscatedTcpPort().orElse(0);
+        return port > 0
+                && port <= 0xFFFF
                 && (flags & (ServerDatagrams.UDP_OBFUSCATION | ServerDatagrams.UDP_TCP_OBFUSCATION)) != 0;
     }
 
@@ -225,11 +268,25 @@ public final class ServerList {
         return dead;
     }
 
-    /** The servers to try, high priority first, then those that failed least. */
+    /** The servers at a usable address, to ask over UDP: high priority first, then those that failed least. */
     public List<ServerMet.Server> candidates() {
+        return this.sorted(s -> this.accepts(s.ip()));
+    }
+
+    /** As {@link #candidates()}, with the servers known by host name too, resolved when connecting. */
+    public List<ServerMet.Server> connectable() {
+        return this.sorted(s -> this.accepts(s.ip()) || s.dynamicIp().isPresent());
+    }
+
+    /** Whether a server may be at {@code ip}: a usable address the filters let through. */
+    public boolean accepts(int ip) {
+        return isUsable(ip) && !this.blocked.test(ip);
+    }
+
+    private List<ServerMet.Server> sorted(Predicate<ServerMet.Server> wanted) {
         List<ServerMet.Server> usable = new ArrayList<>();
         for (ServerMet.Server server : this.servers.values()) {
-            if (isUsable(server.ip()) && !this.blocked.test(server.ip())) {
+            if (wanted.test(server)) {
                 usable.add(server);
             }
         }
@@ -238,8 +295,11 @@ public final class ServerList {
         return usable;
     }
 
+    /** A server known by host name keeps its address whatever the name resolves to. */
     public static Address addressOf(ServerMet.Server server) {
-        return new Address(server.ip(), server.port());
+        return server.dynamicIp()
+                .map(host -> new Address(0, server.port(), host.toLowerCase(Locale.ROOT)))
+                .orElseGet(() -> new Address(server.ip(), server.port()));
     }
 
     public static ServerInfo.Priority priority(ServerMet.Server server) {

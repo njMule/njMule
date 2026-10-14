@@ -179,6 +179,36 @@ class EngineTest {
     }
 
     @Test
+    void serversKnownByHostNameAreKeptAndActedOnByIt() throws Exception {
+        Path met = this.root.resolve("named-server.met");
+        // localhost resolves without any network: acting on it by name must not resolve it.
+        Files.write(
+                met,
+                ServerMet.write(List.of(
+                        new ServerMet.Server(
+                                0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "localhost"))),
+                        new ServerMet.Server(
+                                0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "b.example"))))));
+        try (NjMuleEngine engine = this.start()) {
+            assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
+            assertThat(engine.servers().get(5, TimeUnit.SECONDS))
+                    .extracting(ServerInfo::address)
+                    .containsExactly("localhost:4661", "b.example:4661");
+            ServerAddress named = new ServerAddress("localhost", 4661);
+
+            assertThat(engine.setStaticServer(named, true).get(5, TimeUnit.SECONDS))
+                    .isTrue();
+            assertThat(engine.setServerPriority(named, ServerInfo.Priority.LOW).get(5, TimeUnit.SECONDS))
+                    .isTrue();
+            assertThat(engine.removeServer(named).get(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThat(engine.servers().get(5, TimeUnit.SECONDS))
+                    .extracting(ServerInfo::address)
+                    .containsExactly("b.example:4661");
+        }
+    }
+
+    @Test
     void aRuleStopsTheDownloadsOfOneCategoryAndResumesThoseOfAnother() throws Exception {
         Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
         Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a2".repeat(16)));

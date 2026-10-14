@@ -445,9 +445,8 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Boolean> removeServer(ServerAddress server) {
         Objects.requireNonNull(server, "server");
-        return resolve(server.host())
-                .thenCompose(ip ->
-                        this.loop.submit(() -> this.network.removeServer(new ServerList.Address(ip, server.port()))));
+        return this.serverAddress(server)
+                .thenCompose(address -> this.loop.submit(() -> this.network.removeServer(address)));
     }
 
     @Override
@@ -459,7 +458,7 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers) {
         List<CompletableFuture<ServerList.Address>> addresses = new ArrayList<>();
         for (ServerAddress server : servers) {
-            addresses.add(resolve(server.host()).thenApply(ip -> new ServerList.Address(ip, server.port())));
+            addresses.add(this.serverAddress(server));
         }
         return CompletableFuture.allOf(addresses.toArray(CompletableFuture<?>[]::new))
                 .thenCompose(done -> this.loop.submit(() -> this.network.removeServers(
@@ -479,8 +478,18 @@ public final class Engine implements NjMuleEngine {
 
     private CompletableFuture<Boolean> onServer(ServerAddress server, Predicate<ServerList.Address> action) {
         Objects.requireNonNull(server, "server");
-        return resolve(server.host())
-                .thenCompose(ip -> this.loop.submit(() -> action.test(new ServerList.Address(ip, server.port()))));
+        return this.serverAddress(server).thenCompose(address -> this.loop.submit(() -> action.test(address)));
+    }
+
+    // A server known by its host name is that one, whatever the name resolves to; any other is known by its address.
+    private CompletableFuture<ServerList.Address> serverAddress(ServerAddress server) {
+        Optional<ServerList.Address> named = ServerList.Address.named(server.host(), server.port());
+        CompletableFuture<Boolean> known = named.isEmpty()
+                ? CompletableFuture.completedFuture(false)
+                : this.loop.submit(() -> this.network.knowsServer(named.get()));
+        return known.thenCompose(byName -> byName
+                ? CompletableFuture.completedFuture(named.get())
+                : resolve(server.host()).thenApply(ip -> new ServerList.Address(ip, server.port())));
     }
 
     @Override
@@ -553,10 +562,9 @@ public final class Engine implements NjMuleEngine {
                 return null;
             });
         }
-        int port = server.get().port();
-        return resolve(server.get().host())
-                .thenCompose(ip -> this.loop.submit(() -> {
-                    this.network.connect(Optional.of(new ServerList.Address(ip, port)));
+        return this.serverAddress(server.get())
+                .thenCompose(address -> this.loop.submit(() -> {
+                    this.network.connect(Optional.of(address));
                     return null;
                 }));
     }

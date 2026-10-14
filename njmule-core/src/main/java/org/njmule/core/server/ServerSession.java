@@ -16,8 +16,12 @@
  */
 package org.njmule.core.server;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -28,6 +32,7 @@ import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.njmule.core.api.Hash16;
@@ -88,6 +93,7 @@ public final class ServerSession {
     private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
     private static final String VERSION_LINE = "server version";
     private static final Pattern VERSION_NUMBER = Pattern.compile("(\\d{1,5})\\.(\\d{1,5})");
+    private static final CharMatcher CONTROL = CharMatcher.javaIsoControl();
 
     private enum State {
         IDLE,
@@ -178,11 +184,14 @@ public final class ServerSession {
     private void tryNext() {
         while (!this.pending.isEmpty()) {
             ServerMet.Server next = this.pending.poll();
-            if (this.obfuscationFor(next).isPresent()) {
+            if (next.port() < 1 || next.port() > 0xFFFF) {
+                logger.debug("Skipping {}: no such port", ServerList.addressOf(next));
+            } else if (this.obfuscationFor(next).isEmpty()) {
+                logger.debug("Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
+            } else {
                 this.start(next);
                 return;
             }
-            logger.debug("Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
         }
         Optional<ServerMet.Server> last = this.server;
         this.state = State.IDLE;
@@ -192,11 +201,6 @@ public final class ServerSession {
 
     private void start(ServerMet.Server target) {
         long current = ++this.attempt;
-        boolean obfuscate = this.obfuscationFor(target).orElse(false);
-        int port = obfuscate && target.obfuscatedTcpPort().orElse(0) > 0
-                ? (int) target.obfuscatedTcpPort().getAsLong()
-                : target.port();
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(target.ip()), port);
         this.state = State.CONNECTING;
         this.server = Optional.of(target);
         this.id = Optional.empty();
@@ -204,6 +208,54 @@ public final class ServerSession {
                 "server login timeout",
                 LOGIN_TIMEOUT,
                 () -> this.fail(current, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
+        Optional<String> host = target.dynamicIp();
+        if (host.isEmpty()) {
+            if (target.ip() >>> 24 == 0) {
+                this.fail(current, "no address to connect to");
+            } else {
+                this.dial(current, target);
+            }
+            return;
+        }
+        // A host name is looked up for each connection, off the engine thread; the address may change.
+        Thread.ofVirtual().name("njmule-server-resolve").start(() -> {
+            try {
+                int ip = resolve(host.get());
+                this.loop.postOutcome(() -> this.resolved(current, ip));
+            } catch (IOException e) {
+                this.loop.postOutcome(() -> this.fail(current, describe(e)));
+            }
+        });
+    }
+
+    private static int resolve(String host) throws UnknownHostException {
+        for (InetAddress address : InetAddress.getAllByName(host)) {
+            if (address instanceof Inet4Address v4) {
+                return Ipv4.fromBytes(v4.getAddress());
+            }
+        }
+        throw new UnknownHostException("no IPv4 address for " + host);
+    }
+
+    private void resolved(long current, int ip) {
+        if (current != this.attempt || this.state != State.CONNECTING || this.server.isEmpty()) {
+            return;
+        }
+        if (!this.servers.accepts(ip)) {
+            this.fail(current, Ipv4.format(ip) + " is not an address to connect to");
+            return;
+        }
+        ServerMet.Server target = this.server.get();
+        this.servers.update(ServerList.addressOf(target), s -> new ServerMet.Server(ip, s.port(), s.tags()));
+        ServerMet.Server at = new ServerMet.Server(ip, target.port(), target.tags());
+        this.server = Optional.of(at);
+        this.dial(current, at);
+    }
+
+    private void dial(long current, ServerMet.Server target) {
+        boolean obfuscate = this.obfuscationFor(target).orElse(false);
+        int port = obfuscate ? (int) target.obfuscatedTcpPort().getAsLong() : target.port();
+        InetSocketAddress address = new InetSocketAddress(Ipv4.format(target.ip()), port);
         this.listener.connecting(target);
         Thread.ofVirtual().name("njmule-server-connect").start(() -> {
             try {
@@ -264,7 +316,12 @@ public final class ServerSession {
             switch (opcode.get()) {
                 case IDCHANGE -> this.idChanged(target, IdChange.decode(packet));
                 case SERVERMESSAGE -> {
-                    for (String line : ServerMessages.decodeMessage(packet)) {
+                    // Shown and logged: no terminal escapes, bells or other control characters.
+                    for (String raw : ServerMessages.decodeMessage(packet)) {
+                        String line = CONTROL.removeFrom(raw).strip();
+                        if (line.isEmpty()) {
+                            continue;
+                        }
                         version(line).ifPresent(v -> this.update(target, stringTag(ServerTag.VERSION, v)));
                         this.listener.message(target, line);
                     }
@@ -280,10 +337,10 @@ public final class ServerSession {
                     this.update(
                             target,
                             ident.name()
-                                    .map(n -> stringTag(ServerTag.SERVERNAME, n))
+                                    .map(n -> stringTag(ServerTag.SERVERNAME, CONTROL.removeFrom(n)))
                                     .orElse(null),
                             ident.description()
-                                    .map(d -> stringTag(ServerTag.DESCRIPTION, d))
+                                    .map(d -> stringTag(ServerTag.DESCRIPTION, CONTROL.removeFrom(d)))
                                     .orElse(null));
                 }
                 case CALLBACKREQUESTED ->
@@ -323,7 +380,7 @@ public final class ServerSession {
 
     // Only the static servers when the preferences say so.
     private List<ServerMet.Server> candidates() {
-        List<ServerMet.Server> all = this.servers.candidates();
+        List<ServerMet.Server> all = this.servers.connectable();
         if (!this.preferences.get().staticServersOnly()) {
             return all;
         }
@@ -345,9 +402,9 @@ public final class ServerSession {
         return version.isEmpty() ? Optional.empty() : Optional.of(version.substring(0, Math.min(64, version.length())));
     }
 
+    // A server not in the list (one given by hand that the list refuses) still shows what it said.
     private void update(ServerMet.Server target, Tag... tags) {
-        ServerList.Address address = ServerList.addressOf(target);
-        this.servers.update(address, s -> {
+        UnaryOperator<ServerMet.Server> change = s -> {
             ServerMet.Server updated = s;
             for (Tag tag : tags) {
                 if (tag != null) {
@@ -355,8 +412,10 @@ public final class ServerSession {
                 }
             }
             return updated;
-        });
-        ServerMet.Server current = this.servers.get(address).orElse(target);
+        };
+        ServerList.Address address = ServerList.addressOf(target);
+        this.servers.update(address, change);
+        ServerMet.Server current = this.servers.get(address).orElseGet(() -> change.apply(target));
         this.server = Optional.of(current);
         this.listener.updated(current);
     }
