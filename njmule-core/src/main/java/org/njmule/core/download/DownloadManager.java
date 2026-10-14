@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -113,10 +114,50 @@ public final class DownloadManager implements AutoCloseable {
         boolean requestCallback(long lowId);
     }
 
-    /** Kad, when it runs: finds sources of a file. */
+    /** Kad, when it runs: finds sources of a file, and asks the firewalled ones to connect to us. */
     public interface KadSources {
         /** Starts a search; {@code false} when Kad cannot search for it now. */
-        boolean find(Hash16 file, long size, Consumer<List<InetSocketAddress>> sources);
+        boolean find(Hash16 file, long size, Consumer<List<KadSource>> sources);
+
+        /** Asks a firewalled source to connect to us for {@code file}; {@code false} when it cannot be asked now. */
+        default boolean requestCallback(KadSource source, Hash16 file) {
+            return false;
+        }
+    }
+
+    /**
+     * A source Kad found. A firewalled one cannot be connected to: it is asked to connect to us, through its buddy or
+     * directly over UDP, as {@code callback} says.
+     *
+     * @param address where the source listens, as Kad saw it
+     * @param cryptOptions the connect options it publishes
+     */
+    public record KadSource(
+            InetSocketAddress address, Optional<Hash16> userHash, int cryptOptions, Optional<KadCallback> callback) {
+        public KadSource {
+            Objects.requireNonNull(address, "address");
+            Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(callback, "callback");
+        }
+
+        /** A source reachable directly. */
+        public static KadSource direct(InetSocketAddress address) {
+            return new KadSource(address, Optional.empty(), 0, Optional.empty());
+        }
+    }
+
+    /**
+     * How a firewalled Kad source is asked to connect to us: through the buddy at {@code buddyIp:buddyPort} that knows
+     * it by {@code buddyId}, or, with no buddy, by a datagram to its own Kad {@code udpPort}.
+     */
+    public record KadCallback(int buddyIp, int buddyPort, Optional<Hash16> buddyId, int udpPort) {
+        public KadCallback {
+            Objects.requireNonNull(buddyId, "buddyId");
+        }
+
+        public boolean viaBuddy() {
+            return this.buddyId.isPresent();
+        }
     }
 
     /**
@@ -198,18 +239,32 @@ public final class DownloadManager implements AutoCloseable {
 
     static final Duration CALLBACK_WAIT = Duration.ofSeconds(60);
 
+    /** A buddy or a firewalled source is asked for a callback this rarely at most: receivers drop more. */
+    static final Duration KAD_CALLBACK_GAP = Duration.ofMinutes(3);
+
     private static final class Callback {
         private final Hash16 file;
         private final Optional<Hash16> userHash;
         private final int cryptOptions;
+        // How a firewalled Kad source is asked; null for one asked through the server.
+        private final KadSource kad;
         private long since;
         private boolean requested;
 
-        Callback(Hash16 file, Optional<Hash16> userHash, int cryptOptions, long since) {
+        Callback(Hash16 file, Optional<Hash16> userHash, int cryptOptions, KadSource kad, long since) {
             this.file = file;
             this.userHash = userHash;
             this.cryptOptions = cryptOptions;
+            this.kad = kad;
             this.since = since;
+        }
+
+        // Where the request goes: the buddy, or the source itself.
+        int target() {
+            KadCallback route = this.kad.callback().orElseThrow();
+            return route.viaBuddy()
+                    ? route.buddyIp()
+                    : Ipv4.fromBytes(this.kad.address().getAddress().getAddress());
         }
     }
 
@@ -236,6 +291,8 @@ public final class DownloadManager implements AutoCloseable {
         private long lastAsk;
         private boolean asked;
         private int failures;
+        // How a source firewalled on Kad is asked to call us; null for any other.
+        private KadSource kad;
 
         Client(InetSocketAddress address, long now) {
             this.address = address;
@@ -331,6 +388,9 @@ public final class DownloadManager implements AutoCloseable {
     private final Map<InetSocketAddress, Client> clients = new LinkedHashMap<>();
     // Firewalled sources asked, through the server, to connect to us: by their LowID.
     private final Map<Long, Callback> callbacks = new LinkedHashMap<>();
+    // Sources firewalled on Kad asked to connect to us, by their user hash, and when each buddy or source was asked.
+    private final Map<Hash16, Callback> kadCallbacks = new LinkedHashMap<>();
+    private final Map<Integer, Long> kadCallbackTargets = new HashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
     private DownloadQueue queue;
     private ScheduledFuture<?> ticking;
@@ -483,8 +543,11 @@ public final class DownloadManager implements AutoCloseable {
         List<SourceExchange.Source> sources = new ArrayList<>();
         for (Source source : entry.sources.values()) {
             Client client = source.client;
+            // A firewalled source passed on by its address would be tried in vain.
             if (client.userHash.isPresent()
                     && source.parts != null
+                    && client.lowId == 0
+                    && client.kad == null
                     && client.address.getAddress() instanceof Inet4Address ip) {
                 sources.add(new SourceExchange.Source(
                         Ipv4.fromBytes(ip.getAddress()),
@@ -546,6 +609,18 @@ public final class DownloadManager implements AutoCloseable {
         return text.toString();
     }
 
+    /** Whether a client at {@code ip} is a source of one of our downloads. */
+    public boolean hasSourceAt(InetAddress ip) {
+        for (Entry entry : this.entries.values()) {
+            for (InetSocketAddress address : entry.sources.keySet()) {
+                if (address.getAddress().equals(ip)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** The download of {@code hash}, whose checked parts other clients may download. */
     public Optional<DownloadQueue.Download> find(Hash16 hash) {
         return Optional.ofNullable(this.entries.get(hash)).map(e -> e.download);
@@ -577,6 +652,7 @@ public final class DownloadManager implements AutoCloseable {
         this.closeSessions(entry, "the download is stopped");
         this.forget(entry);
         this.callbacks.values().removeIf(callback -> callback.file.equals(hash));
+        this.kadCallbacks.values().removeIf(callback -> callback.file.equals(hash));
         this.listener.progress(this.info(entry));
         return true;
     }
@@ -773,7 +849,28 @@ public final class DownloadManager implements AutoCloseable {
                 || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
             return;
         }
-        this.callbacks.put(lowId, new Callback(entry.download.hash(), userHash, cryptOptions, this.ticker.read()));
+        this.callbacks.put(
+                lowId, new Callback(entry.download.hash(), userHash, cryptOptions, null, this.ticker.read()));
+    }
+
+    // Queues a callback request for a source firewalled on Kad; ourselves, seen by Kad, are left out.
+    private void askKadCallback(Entry entry, KadSource source) {
+        Optional<Hash16> user = source.userHash();
+        if (user.isEmpty()
+                || user.get().equals(this.ourHello.get().userHash())
+                || this.callbacks.size() + this.kadCallbacks.size() >= MAX_CALLBACKS
+                || this.kadCallbacks.containsKey(user.get())
+                || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
+            return;
+        }
+        for (Source known : entry.sources.values()) {
+            if (known.client.session != null && known.client.userHash.equals(user)) {
+                return;
+            }
+        }
+        this.kadCallbacks.put(
+                user.get(),
+                new Callback(entry.download.hash(), user, source.cryptOptions(), source, this.ticker.read()));
     }
 
     private void sendCallbacks(long now) {
@@ -793,19 +890,51 @@ public final class DownloadManager implements AutoCloseable {
                 }
             }
         }
+        this.sendKadCallbacks(now);
     }
 
-    // A firewalled source we asked to call us, recognised by the LowID our server gave it.
+    // One request a tick, each buddy or source asked once in a while: they drop requests that come too often.
+    private void sendKadCallbacks(long now) {
+        this.kadCallbackTargets.values().removeIf(at -> now - at >= KAD_CALLBACK_GAP.toNanos());
+        Optional<KadSources> finder = this.kad.get();
+        boolean sent = false;
+        for (var it = this.kadCallbacks.values().iterator(); it.hasNext(); ) {
+            Callback callback = it.next();
+            if (now - callback.since >= CALLBACK_WAIT.toNanos()) {
+                it.remove();
+            } else if (!sent && !callback.requested && !this.kadCallbackTargets.containsKey(callback.target())) {
+                sent = true;
+                if (finder.isPresent() && finder.get().requestCallback(callback.kad, callback.file)) {
+                    callback.requested = true;
+                    callback.since = now;
+                    this.kadCallbackTargets.put(callback.target(), now);
+                } else {
+                    it.remove();
+                }
+            }
+        }
+    }
+
+    // A firewalled source we asked to call us, recognised by the LowID our server gave it or, from Kad, by its hash.
     private boolean adoptCallback(PeerLink link, Hello peer) {
         Callback callback = this.callbacks.get(peer.clientId());
-        if (callback == null
-                || !callback.requested
-                || peer.serverIp() == 0
-                || peer.serverIp() != this.server.serverIp()
-                || !callback.userHash.map(peer.userHash()::equals).orElse(true)) {
-            return false;
+        if (callback != null
+                && callback.requested
+                && peer.serverIp() != 0
+                && peer.serverIp() == this.server.serverIp()
+                && callback.userHash.map(peer.userHash()::equals).orElse(true)) {
+            this.callbacks.remove(peer.clientId());
+            return this.calledBack(link, peer, callback);
         }
-        this.callbacks.remove(peer.clientId());
+        Callback kad = this.kadCallbacks.get(peer.userHash());
+        if (kad != null && kad.requested) {
+            this.kadCallbacks.remove(peer.userHash());
+            return this.calledBack(link, peer, kad);
+        }
+        return false;
+    }
+
+    private boolean calledBack(PeerLink link, Hello peer, Callback callback) {
         Entry entry = this.entries.get(callback.file);
         if (entry == null || !entry.download.isActive()) {
             return false;
@@ -823,7 +952,12 @@ public final class DownloadManager implements AutoCloseable {
             return false;
         }
         long now = this.ticker.read();
-        client.lowId = peer.clientId();
+        if (callback.kad != null) {
+            client.lowId = 0;
+            client.kad = followBuddy(callback.kad, peer);
+        } else {
+            client.lowId = peer.clientId();
+        }
         client.userHash = Optional.of(peer.userHash());
         client.cryptOptions = callback.cryptOptions;
         client.asked = true;
@@ -836,6 +970,20 @@ public final class DownloadManager implements AutoCloseable {
         logger.debug("{} called us back for {}", address, entry.download.file().name());
         session.adopt(link, Optional.empty(), false);
         return true;
+    }
+
+    // A firewalled source names its current buddy in its hello: the next callback goes there.
+    private static KadSource followBuddy(KadSource source, Hello peer) {
+        Optional<KadCallback> route = source.callback();
+        if (route.isEmpty() || !route.get().viaBuddy() || peer.buddyIp() == 0 || peer.buddyUdpPort() == 0) {
+            return source;
+        }
+        KadCallback moved = new KadCallback(
+                peer.buddyIp(),
+                peer.buddyUdpPort(),
+                route.get().buddyId(),
+                route.get().udpPort());
+        return new KadSource(source.address(), source.userHash(), source.cryptOptions(), Optional.of(moved));
     }
 
     /**
@@ -996,9 +1144,19 @@ public final class DownloadManager implements AutoCloseable {
             if (current == null || current.download.file().status() == PartFile.Status.STOPPED) {
                 return;
             }
-            for (InetSocketAddress address : found) {
+            for (KadSource source : found) {
+                if (source.callback().isPresent()) {
+                    this.askKadCallback(current, source);
+                    continue;
+                }
+                InetSocketAddress address = source.address();
                 if (this.usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
-                    this.addSource(current, address);
+                    Source fresh = this.addSource(current, address);
+                    // A client known already keeps the user hash it told us itself.
+                    if (fresh != null && source.userHash().isPresent() && fresh.client.userHash.isEmpty()) {
+                        fresh.client.userHash = source.userHash();
+                        fresh.client.cryptOptions = source.cryptOptions();
+                    }
                 }
             }
         });
@@ -1037,6 +1195,14 @@ public final class DownloadManager implements AutoCloseable {
                 if (this.server.clientId() >= ServerMessages.LOW_ID_LIMIT) {
                     this.askCallback(source.entry, client.lowId, client.userHash, client.cryptOptions);
                 }
+                continue;
+            }
+            if (client.kad != null) {
+                // Firewalled on Kad: asked again through its buddy, or directly.
+                this.makeCurrent(client, source);
+                client.pinned = false;
+                client.nextAsk = now + REASK_INTERVAL.toNanos();
+                this.askKadCallback(source.entry, client.kad);
                 continue;
             }
             client.asked = true;

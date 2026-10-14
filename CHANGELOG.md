@@ -310,6 +310,18 @@ All notable changes to this project are documented here. The format follows
   on Kad beside the comments of the sources, with the Kad icon, and Search Kad looks for more; each
   running download is searched once a run. Notes holding a filtered word, in the comment or in the
   file name, are left out.
+- Kad UDP firewall test: nodes we never wrote to are asked over TCP to send a datagram to our UDP
+  port (to the port a NAT shows too, learnt from other nodes); one that arrives means UDP is open,
+  two helpers whose datagram never came mean it is firewalled. It runs at start, every hour and on
+  Recheck Firewall; the Kad screen, the status bar, My Info and `--kad` lines show the outcome. We
+  help other clients with their own test, once in a while per address.
+- Kad buddies: firewalled on both ports, njMule asks the nodes near the complement of its Kad id
+  for a buddy, keeps one link to it with pings and names it in its hello; open on both ports, it
+  serves one firewalled node and relays to it the callback requests of other clients.
+- Callbacks on Kad: a firewalled Kad source is asked to connect to us through its buddy, or by a
+  direct UDP callback when its UDP port is open, and we are called back the same ways. Our source
+  publishes say how to reach us while firewalled (through our buddy or by a direct callback), and
+  nothing is published while nobody could.
 
 ### Changed
 
@@ -341,6 +353,8 @@ All notable changes to this project are documented here. The format follows
 - Shared files cannot be renamed to names that are never shared (backup, temporary or hidden ones).
 - Links copied to the clipboard are added after a confirmation.
 - UPnP mappings are leased for an hour and renewed every half hour.
+- Kad hellos say UDP-firewalled only when the UDP test found it so, rather than whenever the TCP
+  port is firewalled; while UDP is firewalled, publishes of other nodes are not taken.
 
 ### Fixed
 
@@ -516,3 +530,6 @@ All notable changes to this project are documented here. The format follows
 - A finished download renamed before its AICH tree was built is hashed under its new name, so it
   is shared with recovery data.
 - Pressing Enter on a search the parser refuses tells what the box accepts instead of failing.
+- A firewalled njMule that the server asks to call a client back now serves that client's requests
+  over the connection, instead of leaving them unanswered; firewalled sources are no longer passed on
+  by source exchange as if they could be connected to.

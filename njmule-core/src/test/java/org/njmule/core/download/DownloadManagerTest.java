@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -60,7 +61,7 @@ class DownloadManagerTest {
     Path dir;
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
-    private final CompletableFuture<Consumer<List<InetSocketAddress>>> kadSearch = new CompletableFuture<>();
+    private final CompletableFuture<Consumer<List<DownloadManager.KadSource>>> kadSearch = new CompletableFuture<>();
     private DownloadManager manager;
     private List<Category> categories = List.of();
     private DownloadManager.Listener listener = new Quiet();
@@ -81,11 +82,11 @@ class DownloadManagerTest {
         DownloadManager manager = this.manager();
         Hash16 hash = Hash16.parseHex("12".repeat(16));
         this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
-        Consumer<List<InetSocketAddress>> found = this.kadSearch.get(30, TimeUnit.SECONDS);
+        Consumer<List<DownloadManager.KadSource>> found = this.kadSearch.get(30, TimeUnit.SECONDS);
 
         DownloadInfo info = this.onLoop(() -> {
             manager.pause(hash);
-            found.accept(List.of(
+            found.accept(direct(
                     address(Ipv4.of(127, 0, 0, 1), PORT),
                     address(Ipv4.of(224, 0, 0, 1), PORT),
                     address(BLOCKED_IP, PORT),
@@ -434,6 +435,10 @@ class DownloadManagerTest {
                 () -> this.categories,
                 this.listener));
         return this.manager;
+    }
+
+    private static List<DownloadManager.KadSource> direct(InetSocketAddress... addresses) {
+        return Stream.of(addresses).map(DownloadManager.KadSource::direct).toList();
     }
 
     private static InetSocketAddress address(int ip, int port) {

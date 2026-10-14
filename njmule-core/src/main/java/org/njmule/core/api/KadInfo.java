@@ -21,8 +21,12 @@ import java.util.Objects;
 /**
  * The state of our Kad node.
  *
+ * @param firewalled whether other nodes cannot connect to our TCP port
  * @param publicIp our address as other nodes see it, empty when unknown
  * @param udpPort the port Kad listens on
+ * @param udpFirewalled whether nodes cannot send to our UDP port; while a test runs, the last outcome
+ * @param udpVerified whether a UDP test came to an outcome: an unknown UDP state counts as open
+ * @param buddy the buddy relaying callbacks to us while we are firewalled, or the firewalled node we serve
  */
 public record KadInfo(
         boolean connected,
@@ -31,10 +35,38 @@ public record KadInfo(
         boolean firewalled,
         String id,
         String publicIp,
-        int udpPort) {
+        int udpPort,
+        boolean udpFirewalled,
+        boolean udpVerified,
+        Buddy buddy) {
+
+    /** Our Kad buddy. */
+    public enum Buddy {
+        /** None: not needed, or not found yet. */
+        NONE,
+        /** We are firewalled and connect to one. */
+        CONNECTING,
+        /** We are firewalled and have one. */
+        CONNECTED,
+        /** We serve a firewalled node. */
+        SERVING
+    }
 
     public KadInfo {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(publicIp, "publicIp");
+        Objects.requireNonNull(buddy, "buddy");
+    }
+
+    /** Without a UDP test or a buddy. */
+    public KadInfo(
+            boolean connected,
+            int contacts,
+            int verifiedContacts,
+            boolean firewalled,
+            String id,
+            String publicIp,
+            int udpPort) {
+        this(connected, contacts, verifiedContacts, firewalled, id, publicIp, udpPort, false, false, Buddy.NONE);
     }
 }

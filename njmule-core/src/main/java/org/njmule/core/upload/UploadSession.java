@@ -44,6 +44,7 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.FileDescription;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -84,6 +85,9 @@ final class UploadSession implements PeerLink.Role {
 
         /** A Kad node we asked to check our TCP port connected and says it could. */
         void reachabilityConfirmed(UploadSession session);
+
+        /** The client asks us to send a datagram to its UDP ports, for its UDP firewall test. */
+        default void udpCheckRequested(UploadSession session, LowIdMessages.UdpCheckRequest request) {}
 
         /** A chat packet: a message or a CAPTCHA request or result. */
         void chat(UploadSession session, Packet packet);
@@ -444,6 +448,7 @@ final class UploadSession implements PeerLink.Role {
         switch (opcode.get()) {
             case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
             case KAD_FWTCPCHECK_ACK -> this.queue.reachabilityConfirmed(this);
+            case FWCHECKUDPREQ -> this.queue.udpCheckRequested(this, LowIdMessages.UdpCheckRequest.decode(packet));
             case CHATCAPTCHAREQ, CHATCAPTCHARES -> this.chat(packet);
             case REQUESTSOURCES2 -> this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->

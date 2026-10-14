@@ -64,6 +64,7 @@ import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
@@ -213,6 +214,34 @@ public final class UploadManager implements AutoCloseable {
     private final SessionEvents events = new SessionEvents();
     private final RateMeter rate = new RateMeter(RATE_SECONDS);
     private ChatSink chat = (address, peer, proven, reply, open, packet) -> false;
+    private UdpCheckSink udpChecks = (ip, request, known) -> {};
+
+    /** Where the UDP firewall test requests of clients go, on the engine thread. */
+    @FunctionalInterface
+    public interface UdpCheckSink {
+        /** The client at {@code ip} asks for its test; {@code known} when it waits for or has an upload slot. */
+        void requested(int ip, LowIdMessages.UdpCheckRequest request, boolean known);
+    }
+
+    /** The UDP firewall test requests arriving on upload connections go to {@code sink}. */
+    public void onUdpCheck(UdpCheckSink sink) {
+        this.udpChecks = Objects.requireNonNull(sink, "sink");
+    }
+
+    /** Whether a client at {@code ip} waits in our queue or has a slot. */
+    public boolean knows(InetAddress ip) {
+        for (Slot slot : this.slots) {
+            if (slot.client.ip.equals(ip)) {
+                return true;
+            }
+        }
+        for (Client client : this.waiting.values()) {
+            if (client.ip.equals(ip)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** Where chat packets from clients go, {@code proven} when the client's identity is; engine thread. */
     @FunctionalInterface
@@ -936,6 +965,15 @@ public final class UploadManager implements AutoCloseable {
         public void reachabilityConfirmed(UploadSession session) {
             if (session.address().getAddress() instanceof Inet4Address ip) {
                 UploadManager.this.reachable.accept(Ipv4.fromBytes(ip.getAddress()));
+            }
+        }
+
+        @Override
+        public void udpCheckRequested(UploadSession session, LowIdMessages.UdpCheckRequest request) {
+            InetAddress from = session.address().getAddress();
+            if (from instanceof Inet4Address ip) {
+                UploadManager.this.udpChecks.requested(
+                        Ipv4.fromBytes(ip.getAddress()), request, UploadManager.this.knows(from));
             }
         }
 

@@ -65,6 +65,7 @@ import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -105,6 +106,8 @@ class UploadManagerTest {
     private volatile DownloadQueue downloads;
     private UploadManager manager;
     private int port;
+    private final List<String> udpChecks = new CopyOnWriteArrayList<>();
+    private ScriptedDownloader client;
 
     @AfterEach
     void stop() throws Exception {
@@ -581,6 +584,39 @@ class UploadManagerTest {
     private static int rank(Packet packet) throws Exception {
         assertThat(packet.opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
         return (int) ClientMessages.decodeQueueRank(packet);
+    }
+
+    @Test
+    void aClientsUdpTestRequestGoesToKadWithItsAddress() throws Exception {
+        this.givenTheUploadsTellKadOfUdpTests();
+        this.givenAClientConnected();
+
+        this.whenItAsksForItsUdpTest(new LowIdMessages.UdpCheckRequest(4673, 5000, 99));
+
+        this.thenKadHearsOfTheUdpTest("127.0.0.1 4673 5000 99 false");
+    }
+
+    private void givenTheUploadsTellKadOfUdpTests() throws Exception {
+        this.start();
+        this.onLoop(() -> {
+            this.manager.onUdpCheck((ip, request, known) -> this.udpChecks.add(Ipv4.format(ip) + " "
+                    + request.internalPort() + " " + request.externalPort() + " " + request.senderKey() + " "
+                    + known));
+            return null;
+        });
+    }
+
+    private void givenAClientConnected() throws IOException {
+        this.client = this.client(21, 0, 0);
+    }
+
+    private void whenItAsksForItsUdpTest(LowIdMessages.UdpCheckRequest request) throws IOException {
+        this.client.send(request.encode());
+    }
+
+    private void thenKadHearsOfTheUdpTest(String request) throws Exception {
+        this.await("the UDP test request", () -> !this.udpChecks.isEmpty());
+        assertThat(this.udpChecks).containsExactly(request);
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

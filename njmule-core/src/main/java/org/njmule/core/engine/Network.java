@@ -96,6 +96,7 @@ import org.njmule.core.net.ProxyRoute;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
+import org.njmule.core.peer.BuddyLink;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerGreetings;
@@ -110,6 +111,7 @@ import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.DecodeException;
@@ -162,6 +164,16 @@ final class Network {
 
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
+    private static final int CRYPT_SUPPORTED = 0x01;
+    private static final int CRYPT_REQUESTED = 0x02;
+
+    /** A client may ask us for a direct callback this rarely, as clients expect. */
+    static final Duration DIRECT_CALLBACK_REPEAT = Duration.ofMinutes(3);
+
+    private static final int MAX_DIRECT_CALLERS = 256;
+
+    /** How long the link to a UDP test helper waits for the helper's datagram before the test counts as failed. */
+    static final Duration UDP_CHECK_WAIT = PeerGreetings.IDLE_TIMEOUT;
 
     private static final Logger logger = LoggerFactory.getLogger(Network.class);
     /** Set to {@code true}, no port is ever forwarded: tests must not touch the router of the machine they run on. */
@@ -204,7 +216,11 @@ final class Network {
     private volatile IpFilter ipFilter;
     // Clients the server asked us to call back, by address and when; engine thread only.
     private final Map<InetSocketAddress, Long> callbacks = new HashMap<>();
-    private int callbacksOpen;
+    // The clients being called back now, until they greet us or fail.
+    private final Set<InetSocketAddress> calling = new HashSet<>();
+    // Clients that asked us for a direct callback, by address and when; engine thread only.
+    private final Map<Integer, Long> directCallers = new HashMap<>();
+    private final BuddyLink buddyLink;
     // The server logged in to or being tried, read by the listener's threads; 0 for none.
     private volatile int serverIp;
     private final DownloadManager downloads;
@@ -332,6 +348,15 @@ final class Network {
                 random);
         this.links = new PeerLinks(loop, identities, this::uploadSide);
         this.links.onGreeted(hello -> this.loop.post(() -> this.serverOf(hello)));
+        this.buddyLink = new BuddyLink(
+                loop,
+                this.links,
+                this::ourHello,
+                options ->
+                        (options & CRYPT_SUPPORTED) != 0 && preferences.get().obfuscation() != ObfuscationMode.DISABLED,
+                this::relayedCallback,
+                random,
+                Ticker.systemTicker());
         this.downloads = DownloadManager.open(
                 loop,
                 tempDir,
@@ -392,6 +417,14 @@ final class Network {
         this.messaging = new Messaging(
                 loop, this::ourHello, random, new ChatEvents(), this::chatFilter, h -> this.friends.contains(h));
         this.uploads.onChat(this.messaging::incoming);
+        this.uploads.onUdpCheck((ip, request, known) -> {
+            KadNode node = this.kad;
+            if (node != null) {
+                boolean source = this.downloads.hasSourceAt(InetAddresses.fromInteger(ip));
+                node.udpCheckRequested(
+                        ip, request.internalPort(), request.externalPort(), request.senderKey(), known || source);
+            }
+        });
         this.uploads.priorities(hash -> this.shares == null ? UploadPriority.AUTO : this.shares.priority(hash));
         this.publisher = new FilePublisher(this.session, this::offers, this::listenPort, Ticker.systemTicker());
         this.greetings.routeTo(this::route);
@@ -404,8 +437,11 @@ final class Network {
             return Optional.of(this.loop
                     .submit(() -> {
                         PeerLink link = this.links.incoming(connection, peer);
+                        // The firewalled node we agreed to serve keeps its link as a buddy link too.
+                        boolean buddy = this.buddyLink.adopt(link);
                         if (!this.downloads.adopt(link)
-                                && this.uploads.attach(link).isEmpty()) {
+                                && this.uploads.attach(link).isEmpty()
+                                && !buddy) {
                             link.disconnect();
                         }
                         return link;
@@ -1276,6 +1312,7 @@ final class Network {
             this.kadTicking.cancel(false);
             this.kadTicking = null;
         }
+        this.buddyLink.release();
         this.kad.close();
         this.kadSocket.close();
         this.kad = null;
@@ -1301,6 +1338,7 @@ final class Network {
         this.closed = true;
         this.saveTotals();
         this.messaging.close();
+        this.buddyLink.release();
         if (this.kad != null) {
             this.kad.close();
             this.kadSocket.close();
@@ -1350,11 +1388,13 @@ final class Network {
     private Hello ourHello() {
         Preferences prefs = this.preferences.get();
         ServerContext server = this.context;
-        // Kad listens on the client UDP port; announced while Kad is connected.
+        // Kad listens on the client UDP port; announced while Kad is connected, as a NAT shows it once proven usable.
         KadSocket socket = this.kadSocket;
         KadNode node = this.kad;
-        int kadPort = socket != null && node != null && node.isConnected() ? socket.port() : 0;
-        return Hello.of(
+        boolean connected = socket != null && node != null && node.isConnected();
+        int kadPort = connected ? node.announcedUdpPort() : 0;
+        boolean directCallback = connected && node.supportsDirectCallback();
+        Hello hello = Hello.of(
                 this.userHash,
                 ourClientId(server, node),
                 this.listenPort(),
@@ -1375,9 +1415,17 @@ final class Network {
                         | Hello.MISC2_SOURCE_EXCHANGE2
                         | Hello.MISC2_SUPPORTS_CAPTCHA
                         | cryptOptions(prefs.obfuscation())
+                        | (directCallback ? Hello.MISC2_DIRECT_UDP_CALLBACK : 0)
                         | (kadPort != 0 ? KadMessages.VERSION : 0),
                 server.serverIp(),
                 server.serverPort());
+        // Firewalled with a buddy: clients that know us reach us through it.
+        boolean firewalled = server.clientId() < ServerMessages.LOW_ID_LIMIT;
+        int buddyIp = this.buddyLink.buddyIp();
+        if (connected && firewalled && node.isFirewalled() && buddyIp != 0) {
+            return hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
+        }
+        return hello;
     }
 
     /** Checks again whether Kad nodes can reach us; {@code false} when Kad does not run. */
@@ -1478,7 +1526,15 @@ final class Network {
                 node.isFirewalled(),
                 node.id().toHex(),
                 node.publicIp() == 0 ? "" : Ipv4.format(node.publicIp()),
-                this.kadSocket.port()));
+                this.kadSocket.port(),
+                node.isFirewalledUdp(),
+                node.isUdpVerified(),
+                switch (node.buddyState()) {
+                    case NONE -> KadInfo.Buddy.NONE;
+                    case CONNECTING -> KadInfo.Buddy.CONNECTING;
+                    case CONNECTED -> KadInfo.Buddy.CONNECTED;
+                    case SERVING -> KadInfo.Buddy.SERVING;
+                }));
     }
 
     private void startKad() {
@@ -1490,21 +1546,25 @@ final class Network {
             this.kad = new KadNode(
                     identity,
                     this.kadSocket,
-                    this::checkReachable,
+                    new KadHost(),
                     new KadNode.Settings(
                             this.listenPort(),
                             this.userHash,
                             cryptOptions(prefs.obfuscation()) >>> 7,
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
-                            ip -> this.ipFilter.blocks(ip)),
+                            ip -> this.ipFilter.blocks(ip),
+                            this.kadSocket.port()),
                     this.configDir,
                     this.random,
                     Ticker.systemTicker());
+            this.kad.useBuddies(this.buddyLink);
             this.kadSocket.deliverTo(this.kad);
+            this.kadSocket.deliverClientPacketsTo(this::clientDatagram);
             this.kad.loadNodes();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
             this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
                 this.kad.tick();
+                this.buddyLink.tick();
                 this.kadPublisher.tick();
                 this.kadNotes.tick();
             });
@@ -1517,6 +1577,209 @@ final class Network {
             }
             this.kad = null;
             this.kadSocket = null;
+        }
+    }
+
+    /** What the Kad node needs of the rest of the client. */
+    private final class KadHost implements KadNode.Host {
+        @Override
+        public void checkReachable(int ip, int port, Hash16 userHash, int connectOptions) {
+            Network.this.checkReachable(ip, port, userHash, connectOptions);
+        }
+
+        @Override
+        public void checkUdp(int ip, int tcpPort, int internalPort, int externalPort, int senderKey) {
+            Network.this.checkUdp(
+                    ip, tcpPort, new LowIdMessages.UdpCheckRequest(internalPort, externalPort, senderKey));
+        }
+
+        @Override
+        public boolean isKnownClient(int ip) {
+            InetAddress address = InetAddresses.fromInteger(ip);
+            return Network.this.downloads.hasSourceAt(address)
+                    || Network.this.uploads.knows(address)
+                    || Network.this
+                            .buddyLink
+                            .served()
+                            .map(a -> a.getAddress().equals(address))
+                            .orElse(false);
+        }
+
+        @Override
+        public boolean hasHighId() {
+            return Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT;
+        }
+    }
+
+    // A UDP test helper: after the hellos it is asked to send its datagram; the link stays open while we wait for it.
+    private void checkUdp(int ip, int port, LowIdMessages.UdpCheckRequest request) {
+        KadNode node = this.kad;
+        InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), port);
+        Thread.ofVirtual().name("njmule-udp-check-" + address).start(() -> {
+            try {
+                TcpConnection connection = TcpConnector.connectToClient(
+                        address, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
+                UdpCheck check = new UdpCheck(node, ip, request);
+                connection.start(check, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
+                connection.send(this.ourHello().encode(false));
+            } catch (IOException e) {
+                logger.debug("UDP test helper {} unreachable: {}", address, e.getMessage());
+                this.loop.post(() -> this.udpCheckEnded(node, ip, false));
+            }
+        });
+    }
+
+    private void udpCheckEnded(KadNode node, int ip, boolean asked) {
+        if (this.kad == node && node != null) {
+            node.udpCheckEnded(ip, asked);
+        }
+    }
+
+    /** Asks a UDP test helper, once it greeted us as a Kad node able to help, then waits for its datagram. */
+    private final class UdpCheck implements TcpConnection.Handler {
+        private final KadNode node;
+        private final int ip;
+        private final LowIdMessages.UdpCheckRequest request;
+        private volatile boolean asked;
+
+        UdpCheck(KadNode node, int ip, LowIdMessages.UdpCheckRequest request) {
+            this.node = node;
+            this.ip = ip;
+            this.request = request;
+        }
+
+        @Override
+        public void onPacket(TcpConnection c, Packet packet) {
+            if (this.asked
+                    || packet.protocol() != Protocol.EDONKEY
+                    || packet.opcode() != Opcodes.Client.HELLOANSWER.code()) {
+                return;
+            }
+            c.setFrameLimit(FrameLimits.CLIENT);
+            try {
+                Hello peer = Hello.decode(packet);
+                // Kad nodes before version 6 do not know the test.
+                if ((peer.miscOptions2() & 0x0F) < 6 || peer.kadPort() == 0) {
+                    c.close();
+                    return;
+                }
+                this.asked = c.send(this.request.encode());
+                c.setReadTimeout(UDP_CHECK_WAIT);
+            } catch (IOException e) {
+                c.close();
+            }
+        }
+
+        @Override
+        public void onClosed(TcpConnection c, Optional<IOException> cause) {
+            boolean sent = this.asked;
+            Network.this.loop.postOutcome(() -> Network.this.udpCheckEnded(this.node, this.ip, sent));
+        }
+    }
+
+    /**
+     * Connects to a client that asked to be called back, so that it can download from us: a few at a time, each address
+     * once a minute; a client the filters refuse is not called.
+     */
+    private void callBack(InetSocketAddress address, Optional<Hash16> obfuscateFor, String why) {
+        int ip = Ipv4.fromBytes(address.getAddress().getAddress());
+        // Nobody must have us probe our LAN or call a client we banned.
+        if (!Ipv4.isUnicastPublicCandidate(ip)
+                || address.getPort() == 0
+                || this.ipFilter.blocks(ip)
+                || this.isFilteredLan(ip)
+                || this.uploads.isBanned(address.getAddress())) {
+            logger.debug("Ignoring a callback request to {} ({})", address, why);
+            return;
+        }
+        long now = System.nanoTime();
+        this.callbacks.values().removeIf(at -> now - at >= CALLBACK_REPEAT.toNanos());
+        if (this.calling.size() >= MAX_CALLBACKS_OPEN || this.callbacks.containsKey(address)) {
+            logger.debug("Not calling {} back now", address);
+            return;
+        }
+        this.callbacks.put(address, now);
+        this.calling.add(address);
+        Thread.ofVirtual().name("njmule-callback-" + address).start(() -> {
+            try {
+                TcpConnection connection =
+                        TcpConnector.connectToClient(address, obfuscateFor, PeerGreetings.HELLO_TIMEOUT, this.random);
+                if (!this.loop.postOutcome(() -> this.calledBack(address, connection, why))) {
+                    connection.close();
+                }
+            } catch (IOException e) {
+                logger.debug("Callback to {} ({}) failed: {}", address, why, e.getMessage());
+                this.loop.postOutcome(() -> this.calling.remove(address));
+            }
+        });
+    }
+
+    // The client asks for what it wants over the link: our upload side answers it.
+    private void calledBack(InetSocketAddress address, TcpConnection connection, String why) {
+        PeerLink link = this.links.outgoing(connection, new PeerLinks.Opener() {
+            @Override
+            public void greeted(PeerLink greeted) {
+                Network.this.calling.remove(address);
+                logger.debug("Called {} back ({})", connection.remoteAddress(), why);
+                try {
+                    connection.setReadTimeout(PeerGreetings.IDLE_TIMEOUT);
+                } catch (IOException e) {
+                    connection.close();
+                }
+            }
+
+            @Override
+            public void failed(String reason) {
+                Network.this.calling.remove(address);
+                logger.debug("Callback to {} failed: {}", connection.remoteAddress(), reason);
+            }
+        });
+        connection.start(link, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
+        connection.send(this.ourHello().encode(false));
+    }
+
+    // Our buddy relays a client's callback request: for a file we share or download, we connect to it.
+    private void relayedCallback(LowIdMessages.Callback callback) {
+        KadNode node = this.kad;
+        Hash16 file = callback.file().toHash16();
+        if (node == null || !node.isOurBuddyId(callback.buddyId()) || !this.offersFile(file)) {
+            logger.debug("Ignoring a callback relayed for {}", file);
+            return;
+        }
+        this.callBack(
+                new InetSocketAddress(Ipv4.format(callback.requesterIp()), callback.requesterPort()),
+                Optional.empty(),
+                "through our buddy");
+    }
+
+    private boolean offersFile(Hash16 file) {
+        return (this.shares != null && this.shares.get(file).isPresent())
+                || this.downloads.download(file).isPresent();
+    }
+
+    // Client packets on the Kad socket: a client asks us for a direct callback, which only a firewalled Kad node takes.
+    private void clientDatagram(int ip, int port, Packet packet) {
+        KadNode node = this.kad;
+        if (packet.opcode() != Opcodes.ClientUdp.DIRECTCALLBACKREQ.code() || node == null || !node.isFirewalled()) {
+            return;
+        }
+        long now = System.nanoTime();
+        this.directCallers.values().removeIf(at -> now - at >= DIRECT_CALLBACK_REPEAT.toNanos());
+        if (this.directCallers.containsKey(ip) || this.directCallers.size() >= MAX_DIRECT_CALLERS) {
+            logger.debug("Ignoring a direct callback request from {}", Ipv4.format(ip));
+            return;
+        }
+        this.directCallers.put(ip, now);
+        try {
+            LowIdMessages.DirectCallbackRequest request = LowIdMessages.DirectCallbackRequest.decode(packet);
+            boolean obfuscate = (request.connectOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
+                    && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
+            this.callBack(
+                    new InetSocketAddress(Ipv4.format(ip), request.tcpPort()),
+                    obfuscate ? Optional.of(request.userHash()) : Optional.empty(),
+                    "direct callback");
+        } catch (DecodeException e) {
+            logger.debug("Bad direct callback request from {}: {}", Ipv4.format(ip), e.getMessage());
         }
     }
 
@@ -1567,13 +1830,72 @@ final class Network {
     }
 
     private DownloadManager.KadSources kadSources(KadNode node) {
-        return (file, size, sources) -> node.findSources(file, size, found -> {
-            List<InetSocketAddress> addresses = new ArrayList<>();
-            for (KadNode.Source s : found) {
-                addresses.add(new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort()));
+        return new DownloadManager.KadSources() {
+            @Override
+            public boolean find(Hash16 file, long size, Consumer<List<DownloadManager.KadSource>> sources) {
+                return node.findSources(file, size, found -> {
+                    // A firewalled source can only connect to us: useless while we are firewalled too.
+                    boolean callable =
+                            !node.isFirewalled() || Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT;
+                    List<DownloadManager.KadSource> converted = new ArrayList<>();
+                    for (KadNode.Source s : found) {
+                        if (!s.isFirewalled() || callable) {
+                            converted.add(kadSource(s));
+                        }
+                    }
+                    sources.accept(converted);
+                });
             }
-            sources.accept(addresses);
-        });
+
+            @Override
+            public boolean requestCallback(DownloadManager.KadSource source, Hash16 file) {
+                return Network.this.kad == node && Network.this.requestKadCallback(node, source, file);
+            }
+        };
+    }
+
+    private static DownloadManager.KadSource kadSource(KadNode.Source s) {
+        InetSocketAddress address = new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort());
+        Optional<DownloadManager.KadCallback> callback = Optional.empty();
+        if (s.buddy().isPresent()) {
+            KadNode.Buddy buddy = s.buddy().get();
+            callback = Optional.of(new DownloadManager.KadCallback(
+                    buddy.ip(), buddy.udpPort(), Optional.of(buddy.id().toHash16()), s.udpPort()));
+        } else if (s.directCallback()) {
+            callback = Optional.of(new DownloadManager.KadCallback(0, 0, Optional.empty(), s.udpPort()));
+        }
+        return new DownloadManager.KadSource(address, Optional.of(s.userHash()), s.connectOptions(), callback);
+    }
+
+    // Through the buddy of the source, plain; or straight to its Kad port, obfuscated when either side asks for it.
+    private boolean requestKadCallback(KadNode node, DownloadManager.KadSource source, Hash16 file) {
+        DownloadManager.KadCallback route = source.callback().orElseThrow();
+        if (route.buddyId().isPresent()) {
+            KadNode.Buddy buddy = new KadNode.Buddy(
+                    route.buddyIp(),
+                    route.buddyPort(),
+                    UInt128.of(route.buddyId().get()));
+            return !this.uploads.isBanned(InetAddresses.fromInteger(route.buddyIp()))
+                    && node.requestCallback(buddy, file);
+        }
+        int ip = Ipv4.fromBytes(source.address().getAddress().getAddress());
+        if (route.udpPort() == 0
+                || source.userHash().isEmpty()
+                || !Ipv4.isUnicastPublicCandidate(ip)
+                || this.ipFilter.blocks(ip)
+                || this.isFilteredLan(ip)) {
+            return false;
+        }
+        ObfuscationMode mode = this.preferences.get().obfuscation();
+        boolean obfuscate = (source.cryptOptions() & CRYPT_SUPPORTED) != 0
+                && mode != ObfuscationMode.DISABLED
+                && ((source.cryptOptions() & CRYPT_REQUESTED) != 0 || mode != ObfuscationMode.SUPPORTED);
+        Packet request = new LowIdMessages.DirectCallbackRequest(
+                        this.listenPort(), this.userHash, cryptOptions(mode) >>> 7)
+                .encode();
+        this.kadSocket.sendClient(
+                ip, route.udpPort(), request, obfuscate ? source.userHash() : Optional.empty(), node.publicIp());
+        return true;
     }
 
     private List<KadPublisher.Shared> kadShared() {
@@ -1910,39 +2232,15 @@ final class Network {
         @Override
         public void callbackRequested(ServerMessages.CallbackRequested request) {
             int ip = request.endpoint().ip();
-            // A server must not have us probe our LAN or call a client we banned.
-            if (!Ipv4.isUnicastPublicCandidate(ip)
-                    || Network.this.ipFilter.blocks(ip)
-                    || Network.this.isFilteredLan(ip)
-                    || Network.this.uploads.isBanned(InetAddresses.fromInteger(ip))) {
-                logger.debug("Ignoring a callback request to {}", Ipv4.format(ip));
-                return;
-            }
             // The client may require obfuscation, which needs its user hash.
             boolean obfuscate = request.userHash().isPresent()
                     && (request.cryptOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
                     && Network.this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
-            InetSocketAddress address =
-                    new InetSocketAddress(Ipv4.format(ip), request.endpoint().port());
-            // A server could otherwise have us open any number of connections, or the same one
-            // again and again: a few at a time, each address once a minute.
-            long now = System.nanoTime();
-            Network.this.callbacks.values().removeIf(at -> now - at >= CALLBACK_REPEAT.toNanos());
-            if (Network.this.callbacksOpen >= MAX_CALLBACKS_OPEN || Network.this.callbacks.containsKey(address)) {
-                logger.debug("Not calling {} back now", address);
-                return;
-            }
-            Network.this.callbacks.put(address, now);
-            Network.this.callbacksOpen++;
-            Network.this.loop.whenDone(
-                    Network.this.greetings.greet(address, obfuscate ? request.userHash() : Optional.empty()),
-                    (peer, failure) -> {
-                        Network.this.callbacksOpen--;
-                        logger.debug(
-                                "Callback to {}: {}",
-                                address,
-                                failure == null ? peer.software() : failure.getMessage());
-                    });
+            // A server could otherwise have us open any number of connections, or the same one again and again.
+            Network.this.callBack(
+                    new InetSocketAddress(Ipv4.format(ip), request.endpoint().port()),
+                    obfuscate ? request.userHash() : Optional.empty(),
+                    "asked by the server");
         }
 
         @Override

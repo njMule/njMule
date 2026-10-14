@@ -609,7 +609,7 @@ class DownloadSourcesTest {
 
     @Test
     void kadSourcesOfAStoppedDownloadAreLeftOut() throws Exception {
-        AtomicReference<Consumer<List<InetSocketAddress>>> found = new AtomicReference<>();
+        AtomicReference<Consumer<List<DownloadManager.KadSource>>> found = new AtomicReference<>();
         this.kad = Optional.of((file, size, sources) -> {
             found.compareAndSet(null, sources);
             return true;
@@ -621,7 +621,9 @@ class DownloadSourcesTest {
 
         int sources = this.onLoop(() -> {
             manager.stop(hash);
-            found.get().accept(List.of(new InetSocketAddress(Ipv4.format(Ipv4.of(192, 0, 2, 60)), PORT)));
+            found.get()
+                    .accept(List.of(DownloadManager.KadSource.direct(
+                            new InetSocketAddress(Ipv4.format(Ipv4.of(192, 0, 2, 60)), PORT))));
             return manager.download(hash).orElseThrow().sources();
         });
 
