@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.njmule.core.security.IpWhitelist;
 
 /**
  * Immutable, validated engine preferences.
@@ -33,6 +34,7 @@ import java.util.Set;
  * @param downloadCapacityKiBps what the line can download, the top of the speed controls
  * @param uploadCapacityKiBps what the line can upload
  * @param minFreeSpaceMiB downloads wait while the temp disk has less free space; {@code 0} = never
+ * @param ipFilterWhitelist addresses the IP filter never blocks, one per line (see {@link #invalidWhitelistEntry})
  */
 public record Preferences(
         String nick,
@@ -81,7 +83,8 @@ public record Preferences(
         boolean previewFirst,
         String videoPlayer,
         String videoPlayerArgs,
-        String commentFilter) {
+        String commentFilter,
+        String ipFilterWhitelist) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -108,6 +111,7 @@ public record Preferences(
     public static final int DEFAULT_IP_FILTER_LEVEL = 127;
 
     public static final int MAX_IP_FILTER_LEVEL = 255;
+    public static final int MAX_IP_FILTER_WHITELIST = 16_384;
     /** Chat messages holding one of these words, apart by {@code |}, do not show. */
     public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
 
@@ -164,6 +168,25 @@ public record Preferences(
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
+        ipFilterWhitelist =
+                Objects.requireNonNull(ipFilterWhitelist, "ipFilterWhitelist").strip();
+        if (ipFilterWhitelist.length() > MAX_IP_FILTER_WHITELIST) {
+            throw new IllegalArgumentException(
+                    "ipFilterWhitelist must be at most " + MAX_IP_FILTER_WHITELIST + " characters");
+        }
+        Optional<String> invalid = invalidWhitelistEntry(ipFilterWhitelist);
+        if (invalid.isPresent()) {
+            throw new IllegalArgumentException(
+                    "ipFilterWhitelist: not an address, CIDR block or range: " + invalid.get());
+        }
+    }
+
+    /**
+     * The first line of an IP filter whitelist that is not an address ({@code 1.2.3.4}), a CIDR block
+     * ({@code 1.2.3.0/24}) or an ipfilter.dat range ({@code 1.2.3.0 - 1.2.3.255}), if any.
+     */
+    public static Optional<String> invalidWhitelistEntry(String text) {
+        return IpWhitelist.firstInvalidEntry(text);
     }
 
     /** Defaults of a fresh installation, with njMule's own ports. */
@@ -215,7 +238,8 @@ public record Preferences(
                 false,
                 "",
                 "",
-                DEFAULT_COMMENT_FILTER);
+                DEFAULT_COMMENT_FILTER,
+                "");
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -307,6 +331,7 @@ public record Preferences(
         private String videoPlayer;
         private String videoPlayerArgs;
         private String commentFilter;
+        private String ipFilterWhitelist;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -356,6 +381,7 @@ public record Preferences(
             this.videoPlayer = p.videoPlayer;
             this.videoPlayerArgs = p.videoPlayerArgs;
             this.commentFilter = p.commentFilter;
+            this.ipFilterWhitelist = p.ipFilterWhitelist;
         }
 
         public Builder nick(String value) {
@@ -622,6 +648,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder ipFilterWhitelist(String value) {
+            this.ipFilterWhitelist = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -671,7 +702,8 @@ public record Preferences(
                     this.previewFirst,
                     this.videoPlayer,
                     this.videoPlayerArgs,
-                    this.commentFilter);
+                    this.commentFilter,
+                    this.ipFilterWhitelist);
         }
     }
 }

@@ -124,6 +124,7 @@ import org.njmule.core.search.SpamFilter;
 import org.njmule.core.search.StoredSearches;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
+import org.njmule.core.security.IpWhitelist;
 import org.njmule.core.server.FilePublisher;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
@@ -298,8 +299,7 @@ final class Network {
         if (!preferences.get().rememberCancelledFiles()) {
             this.forgetCancelled();
         }
-        this.ipFilter =
-                loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get().ipFilterLevel());
+        this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get());
         this.servers.filter(ip -> this.ipFilter.blocks(ip) || this.isFilteredLan(ip));
         this.session = new ServerSession(
                 loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
@@ -888,7 +888,8 @@ final class Network {
             throw new IOException("the list holds no IP range");
         }
         AtomicFiles.writeBytes(this.configDir.resolve(IPFILTER_FILE), IpFilterDat.write(ranges));
-        this.ipFilter = IpFilter.of(ranges, this.preferences.get().ipFilterLevel());
+        Preferences now = this.preferences.get();
+        this.ipFilter = IpFilter.of(ranges, now.ipFilterLevel()).allowing(IpWhitelist.ranges(now.ipFilterWhitelist()));
         this.userLog.log(LogLine.Level.INFO, this.ipFilter.rangeCount() + " IP filter ranges");
         this.filtersChanged();
         return this.ipFilter.rangeCount();
@@ -1154,14 +1155,20 @@ final class Network {
         if (tcp || udp || was.upnp() != now.upnp()) {
             this.restartForwarding();
         }
-        if (was.ipFilterLevel() != now.ipFilterLevel()) {
+        boolean level = was.ipFilterLevel() != now.ipFilterLevel();
+        boolean whitelist = !was.ipFilterWhitelist().equals(now.ipFilterWhitelist());
+        if (level) {
             // The file keeps every range: read again at the new level.
-            this.ipFilter = loadIpFilter(this.configDir.resolve(IPFILTER_FILE), now.ipFilterLevel());
+            this.ipFilter = loadIpFilter(this.configDir.resolve(IPFILTER_FILE), now);
             this.userLog.log(
                     LogLine.Level.INFO,
                     this.ipFilter.rangeCount() + " IP filter ranges at level " + now.ipFilterLevel());
+        } else if (whitelist) {
+            List<IpFilterDat.Range> allowed = IpWhitelist.ranges(now.ipFilterWhitelist());
+            this.ipFilter = this.ipFilter.allowing(allowed);
+            this.userLog.log(LogLine.Level.INFO, allowed.size() + " addresses or ranges always allowed");
         }
-        if (was.ipFilterLevel() != now.ipFilterLevel() || was.filterLanAddresses() != now.filterLanAddresses()) {
+        if (level || whitelist || was.filterLanAddresses() != now.filterLanAddresses()) {
             this.filtersChanged();
         }
         if (was.rememberCancelledFiles() && !now.rememberCancelledFiles()) {
@@ -1723,16 +1730,17 @@ final class Network {
         return node != null && node.awaitsConnectionFrom(ip);
     }
 
-    private static IpFilter loadIpFilter(Path file, int level) {
-        if (!Files.exists(file)) {
-            return IpFilter.empty();
+    private static IpFilter loadIpFilter(Path file, Preferences preferences) {
+        List<IpFilterDat.Range> ranges = List.of();
+        if (Files.exists(file)) {
+            try {
+                ranges = IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE);
+            } catch (IOException e) {
+                logger.warn("Cannot read {}, no IP filter", file, e);
+            }
         }
-        try {
-            return IpFilter.of(IpFilterDat.read(Files.readAllBytes(file), IPFILTER_FILE), level);
-        } catch (IOException e) {
-            logger.warn("Cannot read {}, no IP filter", file, e);
-            return IpFilter.empty();
-        }
+        return IpFilter.of(ranges, preferences.ipFilterLevel())
+                .allowing(IpWhitelist.ranges(preferences.ipFilterWhitelist()));
     }
 
     private static int cryptOptions(ObfuscationMode mode) {

@@ -269,6 +269,8 @@ All notable changes to this project are documented here. The format follows
   bitrate, codec), by tag id or by the names servers use, and so do the search tabs kept at exit.
 - The search results list shows them in Artist, Album, Title, Length, Bitrate and Codec columns,
   sorted by value, and offers the file hash in a File ID column of the column menu.
+- An IP filter whitelist (`security.ipFilterWhitelist`): addresses, CIDR blocks and ipfilter.dat
+  ranges, one per line, that the IP filter never blocks; a change applies at once.
 
 ### Changed
 
