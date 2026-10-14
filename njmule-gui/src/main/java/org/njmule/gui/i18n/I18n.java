@@ -51,7 +51,9 @@ public final class I18n {
             Locale.of("tr"),
             Locale.of("el"),
             Locale.of("ru"),
+            Locale.of("uk"),
             Locale.SIMPLIFIED_CHINESE,
+            Locale.SIMPLIFIED_CHINESE);
             Locale.TRADITIONAL_CHINESE,
             Locale.JAPANESE,
             Locale.KOREAN);
