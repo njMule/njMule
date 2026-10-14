@@ -724,7 +724,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     @Override
     public void onError(Throwable throwable) {
-        this.fx.execute(() -> this.errors.accept(String.valueOf(throwable.getMessage())));
+        this.fx.execute(() -> this.errors.accept(message(throwable)));
     }
 
     @Override

@@ -136,6 +136,15 @@ class EngineModelTest {
     }
 
     @Test
+    void anErrorWithoutAMessageShowsItsName() throws Exception {
+        EngineModel m = this.start();
+
+        m.onError((Throwable) new IllegalStateException());
+
+        assertThat(this.errors).containsExactly("IllegalStateException");
+    }
+
+    @Test
     void aDownloadIsToldAddedOnlyOnceTheEngineTookIt() throws Exception {
         EngineModel m = this.start(real -> Engines.overriding(
                 real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException("disk full")))));
