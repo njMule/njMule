@@ -323,6 +323,9 @@ All notable changes to this project are documented here. The format follows
   publishes say how to reach us while firewalled (through our buddy or by a direct callback), and
   nothing is published while nobody could.
 
+- The server list and nodes.dat boxes are filled in with the well-known lists of
+  upd.emule-security.org while no list was used; nothing is fetched until the user asks.
+
 ### Changed
 
 - The log names each port the router refuses to forward over UPnP, with the router's reason.

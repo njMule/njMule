@@ -19,6 +19,7 @@ package org.njmule.gui.ui;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import javafx.scene.control.ComboBox;
 import org.njmule.gui.infra.GuiSettings;
@@ -35,6 +36,10 @@ public final class UrlBox {
     // The files eMule keeps its box histories in, copied by the import.
     private static final Map<String, String> EMULE_HISTORIES =
             Map.of("serverMet", "AC_ServerMetURLs.dat", "ipFilter", "AC_IPFilterUpdateURLs.dat");
+    // Well-known lists filled in while none was used: fetched only when the user asks.
+    static final Map<String, String> SUGGESTED = Map.of(
+            "serverMet", "http://upd.emule-security.org/server.met",
+            "nodesDat", "http://upd.emule-security.org/nodes.dat");
 
     private final GuiSettings settings;
     private final String history;
@@ -48,7 +53,14 @@ public final class UrlBox {
         this.seed(gui.directories().config());
         this.box.setEditable(true);
         this.box.setMaxWidth(Double.MAX_VALUE);
-        this.box.getItems().setAll(this.settings.history(history));
+        List<String> used = this.settings.history(history);
+        String suggested = SUGGESTED.get(history);
+        if (used.isEmpty() && suggested != null) {
+            this.box.getItems().setAll(suggested);
+            this.box.getEditor().setText(suggested);
+        } else {
+            this.box.getItems().setAll(used);
+        }
         this.input = new Inputs(gui).url(this.box.getEditor(), name).quietWhenEmpty();
     }
 

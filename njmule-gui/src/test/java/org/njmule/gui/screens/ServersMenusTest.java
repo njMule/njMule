@@ -178,7 +178,10 @@ class ServersMenusTest {
         assertThat(FxTesting.onFx(() -> screen.filterField().getText())).isEmpty();
 
         // An empty list address is not fetched.
-        FxTesting.onFx(screen::updateFromUrl);
+        FxTesting.onFx(() -> {
+            screen.listBox().node().getEditor().clear();
+            screen.updateFromUrl();
+        });
         assertThat(this.calls).noneMatch(c -> c.startsWith("list"));
     }
 
