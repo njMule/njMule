@@ -52,6 +52,7 @@ public final class I18n {
             Locale.of("sv"),
             Locale.of("tr"),
             Locale.of("el"),
+            Locale.of("bg"),
             Locale.of("ru"),
             Locale.of("uk"),
             Locale.SIMPLIFIED_CHINESE,
