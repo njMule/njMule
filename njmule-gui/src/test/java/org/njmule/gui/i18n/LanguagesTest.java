@@ -70,6 +70,7 @@ class LanguagesTest {
                 arguments(Locale.of("nl"), "Nederlands", "Taal"),
                 arguments(Locale.of("pl"), "Polski", "Język"),
                 arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"),
+                arguments(Locale.of("pt", "PT"), "Português (Portugal)", "Linguagem"),
                 arguments(Locale.of("ru"), "Русский", "Язык"),
                 arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
                 arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"));
@@ -92,6 +93,7 @@ class LanguagesTest {
                 Locale.of("nl"),
                 Locale.of("pl"),
                 Locale.of("pt", "BR"),
+                Locale.of("pt", "PT"),
                 Locale.of("ru"),
                 Locale.SIMPLIFIED_CHINESE,
                 Locale.TRADITIONAL_CHINESE);
@@ -126,7 +128,10 @@ class LanguagesTest {
         "nl-BE, nl",
         "pl-PL, pl",
         "pt-BR, pt-BR",
-        "pt-PT, pt-BR",
+        "pt-PT, pt-PT",
+        "pt, pt-PT",
+        "pt-AO, pt-PT",
+        "pt-MZ, pt-PT",
         "ru-RU, ru",
         "zh, zh-CN",
         "zh-CN, zh-CN",

@@ -41,6 +41,7 @@ public final class I18n {
             Locale.of("nl"),
             Locale.of("pl"),
             Locale.of("pt", "BR"),
+            Locale.of("pt", "PT"),
             Locale.of("ru"),
             Locale.SIMPLIFIED_CHINESE,
             Locale.TRADITIONAL_CHINESE);
@@ -74,10 +75,11 @@ public final class I18n {
         return new I18n(Locale.ENGLISH);
     }
 
-    // Chinese is written in two scripts: the locale picks the translation.
+    // Chinese is written in two scripts and Portuguese in two standards: the locale picks the translation.
     private static boolean sameWriting(Locale language, Locale locale) {
         return switch (language.getLanguage()) {
             case "zh" -> language.equals(Locale.TRADITIONAL_CHINESE) == traditionalChinese(locale);
+            case "pt" -> language.getCountry().equals(locale.getCountry().equals("BR") ? "BR" : "PT");
             default -> true;
         };
     }
