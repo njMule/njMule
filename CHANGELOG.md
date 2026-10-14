@@ -326,6 +326,8 @@ All notable changes to this project are documented here. The format follows
   upd.emule-security.org while no list was used; nothing is fetched until the user asks.
 - Sizes and rates use the units of the interface language as eMule's translations write them
   (Ko and Ko/s in French, Кб in Russian).
+- The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one
+  being tried is in italics, whether njMule chose it or the user did.
 
 ### Changed
 

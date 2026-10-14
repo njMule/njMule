@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.ListChangeListener;
+import javafx.css.PseudoClass;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -53,6 +54,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
@@ -85,6 +87,9 @@ import org.njmule.gui.ui.UrlBox;
 
 /** The known servers, connecting to one, and the log below. */
 public final class ServersScreen implements Screen {
+
+    private static final PseudoClass CURRENT = PseudoClass.getPseudoClass("current-server");
+    private static final PseudoClass TRYING = PseudoClass.getPseudoClass("trying-server");
 
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     private static final KeyCombination COPY = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
@@ -167,7 +172,13 @@ public final class ServersScreen implements Screen {
         this.table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         this.table.setOnKeyPressed(this::key);
         this.table.setRowFactory(t -> {
-            TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>();
+            TableRow<LiveList.Row<ServerInfo>> row = new TableRow<>() {
+                @Override
+                protected void updateItem(LiveList.Row<ServerInfo> item, boolean empty) {
+                    super.updateItem(item, empty);
+                    ServersScreen.this.markCurrent(this);
+                }
+            };
             row.setOnMouseClicked(e -> {
                 if (e.getClickCount() == 2 && !row.isEmpty()) {
                     this.connectTo(row.getItem().get());
@@ -188,8 +199,8 @@ public final class ServersScreen implements Screen {
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         this.connectButton.setOnAction(e -> this.connectOrDisconnect());
         this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.showConnect());
-        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.showConnect());
-        this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> this.showConnect());
+        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.showCurrent());
+        this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> this.showCurrent());
         this.showConnect();
         var tools = Fx.toolRow(
                 this.connectButton,
@@ -245,6 +256,32 @@ public final class ServersScreen implements Screen {
         StackPane pane = new StackPane(tabs, clear);
         StackPane.setAlignment(clear, Pos.TOP_RIGHT);
         return pane;
+    }
+
+    private void showCurrent() {
+        this.showConnect();
+        for (Node node : this.table.lookupAll(".table-row-cell")) {
+            if (node instanceof TableRow<?> row) {
+                this.markCurrent(row);
+            }
+        }
+    }
+
+    // The server we are connected to is bold, the one we are trying italic; the tooltip says which, so colour is never
+    // the only cue.
+    private void markCurrent(TableRow<?> row) {
+        boolean ours = row.getItem() instanceof LiveList.Row<?> item
+                && item.get() instanceof ServerInfo server
+                && this.isCurrent(server);
+        EngineModel.Connection state = this.gui.model().connectionProperty().get();
+        boolean connected = ours && state == EngineModel.Connection.CONNECTED;
+        boolean connecting = ours && state == EngineModel.Connection.CONNECTING;
+        row.pseudoClassStateChanged(CURRENT, connected);
+        row.pseudoClassStateChanged(TRYING, connecting);
+        row.setTooltip(
+                connected
+                        ? new Tooltip(this.gui.t("nj.servers.current"))
+                        : connecting ? new Tooltip(this.gui.t("nj.servers.trying")) : null);
     }
 
     // Connect becomes Disconnect on the server we are connected to or trying.

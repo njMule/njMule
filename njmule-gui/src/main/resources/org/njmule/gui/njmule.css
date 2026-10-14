@@ -443,3 +443,17 @@
 .source-state.downloading {
     -fx-icon-color: -color-success-fg;
 }
+
+/* The server in use: bold behind an accent bar; the one being tried: italic. */
+.table-row-cell:current-server {
+    -fx-border-color: transparent transparent transparent -nj-accent-strong;
+    -fx-border-width: 0 0 0 3;
+}
+
+.table-row-cell:current-server .table-cell {
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:trying-server .table-cell {
+    -fx-font-style: italic;
+}
