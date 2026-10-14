@@ -256,6 +256,11 @@ public final class DesktopApp implements AutoCloseable {
 
     /** Shows the main window in {@code stage}; FX thread. */
     public void show(Stage stage) {
+        this.show(stage, NotificationArea.isSupported());
+    }
+
+    /** As above, with the notification area's menu and windows when {@code tray}. */
+    void show(Stage stage, boolean tray) {
         this.stage = stage;
         this.themes = new Themes(this.settings.theme(), this.settings.mode());
         this.model = new EngineModel(this.engine, Platform::runLater);
@@ -303,7 +308,7 @@ public final class DesktopApp implements AutoCloseable {
         });
         logger.info("Main window shown");
         this.keepButtonsVisible(stage);
-        if (NotificationArea.isSupported()) {
+        if (tray) {
             this.attachTray(stage);
         }
         if (this.settings.startMinimized() && !GuiTour.requested()) {

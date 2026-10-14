@@ -115,14 +115,7 @@ public final class FxTesting {
 
             @Override
             public void run() {
-                Optional<DialogPane> pane = Window.getWindows().stream()
-                        .filter(Window::isShowing)
-                        .map(Window::getScene)
-                        .filter(Objects::nonNull)
-                        .map(scene -> scene.getRoot().lookup(".dialog-pane"))
-                        .filter(DialogPane.class::isInstance)
-                        .map(DialogPane.class::cast)
-                        .findFirst();
+                Optional<DialogPane> pane = dialog();
                 if (pane.isEmpty()) {
                     if (this.tries++ < 200) {
                         Platform.runLater(this);
@@ -137,6 +130,48 @@ public final class FxTesting {
 
     public static void answer(ButtonType button) {
         answer(button, pane -> {});
+    }
+
+    /**
+     * As {@link #answer}, for a dialog that shows later, within 10 seconds; any thread. The answer is given from a task
+     * of the FX thread: given from an animation, the headless platform may never leave the dialog's event loop.
+     */
+    public static void answerLater(ButtonType button, Consumer<DialogPane> fill) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        Thread.ofVirtual().name("answer-later").start(() -> {
+            try {
+                while (System.nanoTime() < deadline) {
+                    CompletableFuture<Boolean> answered = new CompletableFuture<>();
+                    Platform.runLater(() -> {
+                        Optional<DialogPane> pane = dialog();
+                        pane.ifPresent(p -> {
+                            fill.accept(p);
+                            ((Button) p.lookupButton(button)).fire();
+                        });
+                        answered.complete(pane.isPresent());
+                    });
+                    if (answered.get(10, TimeUnit.SECONDS)) {
+                        return;
+                    }
+                    Thread.sleep(50);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
+    private static Optional<DialogPane> dialog() {
+        return Window.getWindows().stream()
+                .filter(Window::isShowing)
+                .map(Window::getScene)
+                .filter(Objects::nonNull)
+                .map(scene -> scene.getRoot().lookup(".dialog-pane"))
+                .filter(DialogPane.class::isInstance)
+                .map(DialogPane.class::cast)
+                .findFirst();
     }
 
     /** The texts the cells of the tables or lists under {@code node} show now; FX thread. */
