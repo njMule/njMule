@@ -197,15 +197,20 @@ public final class SyntheticEmuleProfile {
 
     /** Puts download {@code number} (1 complete, 2 half done) in eMule's category {@code category}. */
     public void putInCategory(int number, int category) throws IOException {
+        this.retag(number, new Tag.IntTag(TagName.id(FileTag.CATEGORY), category));
+    }
+
+    /** Gives download {@code number} (1 complete, 2 half done) {@code tag} in place of the one of that name. */
+    public void retag(int number, Tag tag) throws IOException {
         Path met = this.temp.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX);
         PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
         List<Tag> tags = new ArrayList<>();
-        for (Tag tag : contents.tags()) {
-            if (!tag.name().equals(TagName.id(FileTag.CATEGORY))) {
-                tags.add(tag);
+        for (Tag t : contents.tags()) {
+            if (!t.name().equals(tag.name())) {
+                tags.add(t);
             }
         }
-        tags.add(new Tag.IntTag(TagName.id(FileTag.CATEGORY), category));
+        tags.add(tag);
         Files.write(
                 met,
                 PartMet.write(new PartMet.Contents(

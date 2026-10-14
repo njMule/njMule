@@ -545,10 +545,8 @@ public final class EmuleImporter {
     // eMule's categories keep their numbers, so downloads taken from its temp folder stay in theirs.
     private void categories(Optional<IniFile> preferences) {
         // eMule's own incoming folder is never ours: those categories finish into njMule's.
-        Optional<Path> emuleIncoming = preferences
-                .flatMap(p -> p.get(SECTION, "IncomingDir"))
-                .flatMap(EmuleImporter::path)
-                .map(Path::normalize);
+        Optional<Path> emuleIncoming =
+                preferences.flatMap(p -> p.get(SECTION, "IncomingDir")).flatMap(EmuleImporter::path);
         this.with(this.emule.resolve("Category.ini"), (file, data) -> {
             IniFile ini = IniFile.parse(data);
             List<Category> found = new ArrayList<>();
@@ -563,7 +561,7 @@ public final class EmuleImporter {
                 String title = shorten(ini.get(section, "Title").orElse(""), Category.MAX_NAME);
                 Optional<Path> incoming = ini.get(section, "Incoming")
                         .flatMap(EmuleImporter::path)
-                        .filter(dir -> !emuleIncoming.equals(Optional.of(dir.normalize())));
+                        .filter(dir -> !emuleIncoming.equals(Optional.of(dir)));
                 String comment = shorten(ini.get(section, "Comment").orElse(""), Category.MAX_COMMENT);
                 int color = color(ini.getLong(section, "Color"));
                 String patterns = shorten(ini.get(section, "AutoCat").orElse(""), Category.MAX_PATTERNS);
@@ -837,12 +835,15 @@ public final class EmuleImporter {
         return item(met, ImportReport.Outcome.IMPORTED, adopted + ", " + mib + " MiB copied");
     }
 
-    // Absolute only: a relative one would name a folder below njMule's working directory.
+    // Absolute only, as a relative one would name a folder below njMule's working directory; normalized, so that one
+    // folder written two ways is taken once.
     private static Optional<Path> path(String text) {
         try {
             return text.isBlank()
                     ? Optional.empty()
-                    : Optional.of(Path.of(text.strip())).filter(Path::isAbsolute);
+                    : Optional.of(Path.of(text.strip()))
+                            .filter(Path::isAbsolute)
+                            .map(Path::normalize);
         } catch (InvalidPathException e) {
             return Optional.empty();
         }

@@ -18,6 +18,7 @@ package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
@@ -26,11 +27,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,6 +41,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Category;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.ImportReport.Outcome;
@@ -49,8 +53,13 @@ import org.njmule.core.persist.format.IniFile;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.persist.format.PreferencesDat;
 import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.util.Bytes;
 
 class EmuleImporterTest {
 
@@ -70,6 +79,7 @@ class EmuleImporterTest {
         final List<Path> shared = new ArrayList<>();
         final List<Path> refused = new ArrayList<>();
         final List<String> adopted = new ArrayList<>();
+        final List<Path> adoptedFrom = new ArrayList<>();
         final Map<String, Integer> adoptedCategories = new HashMap<>();
         final List<Category> categories = new ArrayList<>();
         boolean ownCategories;
@@ -123,6 +133,8 @@ class EmuleImporterTest {
         public String adoptDownload(Path met, Path data, int category) {
             assertThat(data).exists();
             this.adopted.add(String.valueOf(met.getFileName()));
+            this.adoptedFrom.add(met);
+            this.adoptedFrom.add(data);
             this.adoptedCategories.put(String.valueOf(met.getFileName()), category);
             return String.valueOf(met.getFileName());
         }
@@ -736,6 +748,130 @@ class EmuleImporterTest {
         assertThat(outcomes(report)).containsEntry("known.met", Outcome.IMPORTED);
         assertThat(detail(report, "known.met")).contains("known2_64.met");
         assertThat(this.target.known).isEqualTo(1);
+    }
+
+    @Test
+    void aSecondImportChangesNeitherEmuleNorWhatItTookAlready() throws IOException {
+        SortedMap<String, String> before = this.emule.fingerprint();
+        this.run(new ImportOptions(false, true, false), false);
+
+        Map<String, Outcome> again = outcomes(this.run(new ImportOptions(false, true, false), false));
+
+        assertThat(again)
+                .containsEntry("ipfilter.dat", Outcome.SKIPPED)
+                .containsEntry("preferences.dat", Outcome.IMPORTED);
+        assertThat(this.emule.fingerprint()).isEqualTo(before);
+    }
+
+    @Test
+    void aDryRunLeavesOurFilesAsTheyWere() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        SortedMap<String, String> ours = fingerprint(this.ours);
+
+        this.run(new ImportOptions(true, true, true), false);
+
+        assertThat(fingerprint(this.ours)).isEqualTo(ours);
+    }
+
+    @Test
+    void aMissingProfileIsReportedAndNothingIsWritten() throws IOException {
+        ImportReport report = new EmuleImporter(
+                        this.dir.resolve("no such profile"),
+                        new ImportOptions(false, true, true),
+                        this.target,
+                        () -> false)
+                .run();
+
+        assertThat(report.items())
+                .isNotEmpty()
+                .allSatisfy(i -> assertThat(i.outcome()).isIn(Outcome.MISSING, Outcome.SKIPPED));
+        assertThat(this.target.untouched()).isTrue();
+        try (Stream<Path> left = Files.list(this.ours)) {
+            assertThat(left.count()).isZero();
+        }
+    }
+
+    @Test
+    void emptyOrMisplacedFilesFailAloneAndTheRestGoesOn() throws IOException {
+        for (String name : List.of("server.met", "known.met", "nodes.dat")) {
+            Files.write(this.emule.config.resolve(name), new byte[0]);
+        }
+        Files.delete(this.emule.config.resolve("preferences.ini"));
+        Files.createDirectory(this.emule.config.resolve("preferences.ini"));
+
+        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(outcomes(report))
+                .containsEntry("server.met", Outcome.FAILED)
+                .containsEntry("known.met", Outcome.FAILED)
+                .containsEntry("nodes.dat", Outcome.FAILED)
+                .containsEntry("preferences.ini", Outcome.FAILED)
+                .containsEntry("cancelled.met", Outcome.IMPORTED);
+        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void aDownloadNamedToClimbOutStaysWhereItIs() throws IOException {
+        this.emule.retag(2, new Tag.StringTag(TagName.id(FileTag.FILENAME), "../../evil.bin"));
+
+        this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.adoptedFrom)
+                .allSatisfy(p -> assertThat(p.getParent()).isEqualTo(this.emule.temp));
+        assertThat(this.dir.resolve("evil.bin")).doesNotExist();
+    }
+
+    @Test
+    void aTempDirectoryNamedTwiceGivesEachDownloadOnce() throws IOException {
+        Path ini = this.emule.config.resolve("preferences.ini");
+        Files.writeString(
+                ini,
+                Files.readString(ini, StandardCharsets.ISO_8859_1) + "TempDirs=" + this.emule.temp.resolve(".") + "|"
+                        + this.emule.temp + File.separator + "\r\n",
+                StandardCharsets.ISO_8859_1);
+
+        this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void anUnmarkedUserHashLeavesNoIdentityWaiting() throws IOException {
+        Files.write(
+                this.emule.config.resolve("preferences.dat"),
+                PreferencesDat.write(new PreferencesDat.Contents(
+                        PreferencesDat.VERSION, Hash16.parseHex("0102030405060708090A0B0C0D0E0F10"), Bytes.EMPTY)));
+
+        ImportReport report = this.run(new ImportOptions(false, true, false), false);
+
+        assertThat(outcomes(report)).containsEntry("preferences.dat", Outcome.FAILED);
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+    }
+
+    @Test
+    void corruptCreditsLeaveTheRestOfTheIdentity() throws IOException {
+        Files.write(this.emule.config.resolve("clients.met"), new byte[] {0x12, 1, 0});
+
+        ImportReport report = this.run(new ImportOptions(false, true, false), false);
+
+        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+        assertThat(outcomes(report)).containsEntry("clients.met", Outcome.FAILED);
+        assertThat(pending.resolve("preferences.dat")).exists();
+        assertThat(pending.resolve("cryptkey.dat")).exists();
+        assertThat(pending.resolve("clients.met")).doesNotExist();
+    }
+
+    private static SortedMap<String, String> fingerprint(Path root) throws IOException {
+        SortedMap<String, String> sums = new TreeMap<>();
+        try (Stream<Path> files = Files.walk(root)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                sums.put(
+                        root.relativize(file).toString(),
+                        Arrays.hashCode(Files.readAllBytes(file)) + "@"
+                                + Files.getLastModifiedTime(file).toMillis());
+            }
+        }
+        return sums;
     }
 
     @Test
