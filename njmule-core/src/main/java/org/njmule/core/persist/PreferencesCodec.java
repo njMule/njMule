@@ -107,6 +107,11 @@ public final class PreferencesCodec {
         key("preview.player", Preferences::videoPlayer, Preferences.Builder::videoPlayer);
         key("preview.args", Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs);
         key("comments.filter", Preferences::commentFilter, Preferences.Builder::commentFilter);
+        boolKey("notify.sound", Preferences::notificationSound, Preferences.Builder::notificationSound);
+        key(
+                "notify.soundFile",
+                p -> p.notificationSoundFile().map(Path::toString).orElse(""),
+                (b, v) -> b.notificationSoundFile(optionalPath(v)));
         key(
                 "share.visibleTo",
                 p -> p.sharedFilesVisibility().name(),

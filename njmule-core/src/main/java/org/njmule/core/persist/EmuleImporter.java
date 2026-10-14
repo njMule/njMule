@@ -356,6 +356,11 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "PreviewPrio").ifPresent(b::previewFirst);
         ini.get(SECTION, "VideoPlayer").ifPresent(b::videoPlayer);
         ini.get(SECTION, "VideoPlayerArgs").ifPresent(b::videoPlayerArgs);
+        // NotifierUseSound: 0 none, 1 the sound file, 2 speech, which njMule has not.
+        ini.getLong(SECTION, "NotifierUseSound").ifPresent(v -> b.notificationSound(v == 1));
+        ini.get(SECTION, "NotifierSoundPath")
+                .flatMap(EmuleImporter::path)
+                .ifPresent(p -> b.notificationSoundFile(Optional.of(p)));
         // SeeShare: 0 everybody, 1 friends, 2 nobody.
         ini.getLong(SECTION, "SeeShare").ifPresent(v -> b.sharedFilesVisibility(visibility(v)));
         ini.getLong(SECTION, "QueueSize")

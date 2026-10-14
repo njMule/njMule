@@ -36,6 +36,8 @@ import org.njmule.core.security.IpWhitelist;
  * @param minFreeSpaceMiB downloads wait while the temp disk has less free space; {@code 0} = never
  * @param ipFilterWhitelist addresses the IP filter never blocks, one per line (see {@link #invalidWhitelistEntry})
  * @param eventCommands the programs run when a download ends, a chat message arrives or the disk runs short
+ * @param notificationSound whether the desktop app plays {@code notificationSoundFile} with its notifications
+ * @param notificationSoundFile a WAV file; empty = none
  */
 public record Preferences(
         String nick,
@@ -86,7 +88,9 @@ public record Preferences(
         String videoPlayerArgs,
         String commentFilter,
         String ipFilterWhitelist,
-        EventCommands eventCommands) {
+        EventCommands eventCommands,
+        boolean notificationSound,
+        Optional<Path> notificationSoundFile) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -182,6 +186,8 @@ public record Preferences(
                     "ipFilterWhitelist: not an address, CIDR block or range: " + invalid.get());
         }
         Objects.requireNonNull(eventCommands, "eventCommands");
+        Objects.requireNonNull(notificationSoundFile, "notificationSoundFile")
+                .ifPresent(p -> requireAbsolute("notificationSoundFile", p));
     }
 
     /**
@@ -243,7 +249,9 @@ public record Preferences(
                 "",
                 DEFAULT_COMMENT_FILTER,
                 "",
-                EventCommands.NONE);
+                EventCommands.NONE,
+                false,
+                Optional.empty());
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -337,6 +345,8 @@ public record Preferences(
         private String commentFilter;
         private String ipFilterWhitelist;
         private EventCommands eventCommands;
+        private boolean notificationSound;
+        private Optional<Path> notificationSoundFile;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -388,6 +398,8 @@ public record Preferences(
             this.commentFilter = p.commentFilter;
             this.ipFilterWhitelist = p.ipFilterWhitelist;
             this.eventCommands = p.eventCommands;
+            this.notificationSound = p.notificationSound;
+            this.notificationSoundFile = p.notificationSoundFile;
         }
 
         public Builder nick(String value) {
@@ -679,6 +691,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder notificationSound(boolean value) {
+            this.notificationSound = value;
+            return this;
+        }
+
+        public Builder notificationSoundFile(Optional<Path> value) {
+            this.notificationSoundFile = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -730,7 +752,9 @@ public record Preferences(
                     this.videoPlayerArgs,
                     this.commentFilter,
                     this.ipFilterWhitelist,
-                    this.eventCommands);
+                    this.eventCommands,
+                    this.notificationSound,
+                    this.notificationSoundFile);
         }
     }
 }
