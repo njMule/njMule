@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.TextFiles;
@@ -255,6 +256,26 @@ class SharedFilesTest {
                 .hasRootCauseInstanceOf(FileAlreadyExistsException.class);
         assertThat(this.onLoop(() -> shares.rename(Hash16.parseHex("00".repeat(16)), "d.bin")))
                 .isEmpty();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void theAichTreeOfAFileIsBuiltOnceForAllItsRequests() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(500_000, 7);
+        Files.write(incoming.resolve("a.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
+
+        AichTree first = this.onLoop(() -> shares.aichTree(hash)).orElseThrow();
+
+        assertThat(this.onLoop(() -> shares.aichTree(hash))).containsSame(first);
+        assertThat(first.size()).isEqualTo(a.length);
         this.onLoop(() -> {
             shares.close();
             return null;

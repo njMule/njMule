@@ -116,6 +116,8 @@ public final class SharedFiles implements AutoCloseable {
     // A shared tree is walked this deep, and up to so many directories.
     private static final int MAX_TREE_DEPTH = 32;
     private static final int MAX_TREE_DIRS = 10_000;
+    // AICH trees kept built, for the files clients ask recovery data of now.
+    private static final int MAX_BUILT_TREES = 64;
     private static final Set<String> SKIPPED = Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
     private static final Logger logger = LoggerFactory.getLogger(SharedFiles.class);
 
@@ -131,6 +133,13 @@ public final class SharedFiles implements AutoCloseable {
     private final Listener listener;
     private final Map<Key, KnownMet.KnownFile> known = new LinkedHashMap<>();
     private final Map<Hash20, Known2Met.Entry> aich = new LinkedHashMap<>();
+    // By master hash, the least recently asked for first: building a tree hashes all of it again.
+    private final Map<Hash20, Optional<AichTree>> built = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Hash20, Optional<AichTree>> eldest) {
+            return this.size() > MAX_BUILT_TREES;
+        }
+    };
     private final Map<Hash16, SharedFile> byHash = new LinkedHashMap<>();
     private final Map<Path, SharedFile> byPath = new HashMap<>();
     private final Set<Path> hashing = new LinkedHashSet<>();
@@ -209,13 +218,15 @@ public final class SharedFiles implements AutoCloseable {
         if (entry == null) {
             return Optional.empty();
         }
-        try {
-            AichTree tree = AichTree.fromBlockHashes(file.size(), entry.blockHashes());
-            return tree.masterHash().equals(entry.masterHash()) ? Optional.of(tree) : Optional.empty();
-        } catch (IllegalArgumentException e) {
-            logger.debug("Unusable AICH hashes for {}: {}", file.name(), e.getMessage());
-            return Optional.empty();
-        }
+        return this.built.computeIfAbsent(entry.masterHash(), master -> {
+            try {
+                AichTree tree = AichTree.fromBlockHashes(file.size(), entry.blockHashes());
+                return tree.masterHash().equals(master) ? Optional.of(tree) : Optional.empty();
+            } catch (IllegalArgumentException e) {
+                logger.debug("Unusable AICH hashes for {}: {}", file.name(), e.getMessage());
+                return Optional.empty();
+            }
+        });
     }
 
     /** The upload priority of the file shared with {@code hash}: AUTO unless one was chosen. */
@@ -661,6 +672,7 @@ public final class SharedFiles implements AutoCloseable {
         }
         tree.ifPresent(t -> {
             this.aich.put(t.masterHash(), t);
+            this.built.remove(t.masterHash());
             this.saveSoon();
         });
         if (fresh) {
