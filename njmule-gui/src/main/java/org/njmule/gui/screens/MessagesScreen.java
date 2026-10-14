@@ -187,7 +187,13 @@ public final class MessagesScreen implements Screen {
             this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
             return;
         }
-        this.select(this.gui.model().chats().with(this.addressInput.value().toString()));
+        ServerAddress to = this.addressInput.value();
+        // Clients are reached on their IPv4 address; only an IPv6 one holds colons.
+        if (to.host().contains(":")) {
+            this.gui.inform().accept(this.gui.f("nj.chat.ipv4Only", text));
+            return;
+        }
+        this.select(this.gui.model().chats().with(to.toString()));
         this.address.clear();
     }
 

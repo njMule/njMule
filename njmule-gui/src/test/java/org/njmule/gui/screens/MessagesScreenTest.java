@@ -145,6 +145,28 @@ class MessagesScreenTest {
         assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().isEmpty())).isTrue();
     }
 
+    @Test
+    void aChatToAnIpv6AddressIsRefusedAndNothingCountsAsSent() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        MessagesScreen screen = new MessagesScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+
+        FxTesting.onFx(() -> {
+            screen.addressField().setText("[2001:db8::1]:4661");
+            screen.startChat();
+        });
+        assertThat(this.test.told).anyMatch(m -> m.contains("2001:db8::1"));
+        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().isEmpty())).isTrue();
+
+        // An address as an IPv6 one reads without its brackets.
+        FxTesting.onFx(() -> this.test.model.sendMessage("2001:db8::1:4661", "hello"));
+        assertThat(FxTesting.onFx(() -> this.test.model.chats().all().stream()
+                        .allMatch(c -> c.lines().isEmpty())))
+                .as("nothing shows as sent")
+                .isTrue();
+        assertThat(this.test.told).anyMatch(m -> m.contains("2001:db8::1:4661"));
+    }
+
     private record Collector(BlockingQueue<EngineEvent> queue) implements Flow.Subscriber<EngineEvent> {
         @Override
         public void onSubscribe(Flow.Subscription s) {

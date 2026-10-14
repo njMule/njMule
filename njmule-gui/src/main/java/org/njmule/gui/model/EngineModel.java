@@ -400,8 +400,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         if (text.isBlank()) {
             return;
         }
+        ServerAddress to;
+        try {
+            to = ServerAddress.parse(address);
+        } catch (IllegalArgumentException e) {
+            this.errors.accept(e.getMessage());
+            return;
+        }
         this.chats.sent(address, text);
-        this.later(this.engine.sendMessage(ServerAddress.parse(address), text), done -> {});
+        this.later(this.engine.sendMessage(to, text), done -> {});
     }
 
     public void addFriend(Friend friend) {
