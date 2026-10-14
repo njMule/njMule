@@ -22,6 +22,7 @@ import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 
@@ -32,6 +33,7 @@ import org.njmule.gui.model.EngineModel;
  * @param inform shows a short message to the user
  * @param relaunch rebuilds the window, after a language change
  * @param subscriptions what the window follows of the model, ended when it is rebuilt
+ * @param sound plays the sound of the notifications
  */
 public record Gui(
         I18n i18n,
@@ -42,7 +44,8 @@ public record Gui(
         AppDirectories directories,
         Consumer<String> inform,
         Runnable relaunch,
-        Subscriptions subscriptions) {
+        Subscriptions subscriptions,
+        SoundPlayer sound) {
 
     public Gui {
         Objects.requireNonNull(i18n, "i18n");
@@ -54,9 +57,10 @@ public record Gui(
         Objects.requireNonNull(inform, "inform");
         Objects.requireNonNull(relaunch, "relaunch");
         Objects.requireNonNull(subscriptions, "subscriptions");
+        Objects.requireNonNull(sound, "sound");
     }
 
-    /** A context with subscriptions of its own. */
+    /** A context with subscriptions of its own, which plays no sound. */
     public Gui(
             I18n i18n,
             Formats formats,
@@ -66,7 +70,17 @@ public record Gui(
             AppDirectories directories,
             Consumer<String> inform,
             Runnable relaunch) {
-        this(i18n, formats, model, themes, settings, directories, inform, relaunch, new Subscriptions());
+        this(
+                i18n,
+                formats,
+                model,
+                themes,
+                settings,
+                directories,
+                inform,
+                relaunch,
+                new Subscriptions(),
+                SoundPlayer.SILENT);
     }
 
     public String t(String key) {

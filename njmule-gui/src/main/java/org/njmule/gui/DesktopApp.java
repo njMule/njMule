@@ -57,7 +57,9 @@ import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
+import org.njmule.gui.infra.WavPlayer;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.shell.MiniMule;
@@ -65,6 +67,7 @@ import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.shell.TrayMenu;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Subscriptions;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
 import org.slf4j.Logger;
@@ -84,6 +87,7 @@ public final class DesktopApp implements AutoCloseable {
     private final AppDirectories directories;
     private final GuiSettings settings;
     private final Optional<WebUi> webUi;
+    private final SoundPlayer sound = new WavPlayer();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
     // The links of the command line, followed once the window shows.
@@ -548,7 +552,9 @@ public final class DesktopApp implements AutoCloseable {
                 this.settings,
                 this.directories,
                 text -> this.window.message(text),
-                this::relaunch);
+                this::relaunch,
+                new Subscriptions(),
+                this.sound);
         this.window = new MainWindow(this.gui);
         this.model.onError(this.window::message);
         return this.window.root();

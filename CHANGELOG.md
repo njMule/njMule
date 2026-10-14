@@ -295,6 +295,8 @@ All notable changes to this project are documented here. The format follows
   `%FILE`, `%HASH`, `%SIZE`, `%SENDER` and `%MESSAGE` filled in inside its arguments
   (set in the settings, or as `events.*` in `njmule.properties`). No shell runs it, and at most
   four run at once.
+- The desktop app can play a WAV file of the user's with the notifications of completed downloads
+  and new chat messages, chosen and tried in the settings; eMule's notifier sound is imported.
 
 ### Changed
 

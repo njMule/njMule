@@ -35,6 +35,7 @@ import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Subscriptions;
 
 /** An engine, its model and the screens' context, for one GUI test; close it at the end. */
 public final class TestGui implements AutoCloseable {
@@ -46,14 +47,24 @@ public final class TestGui implements AutoCloseable {
     /** What the user was told, by the screens or the model. */
     public final List<String> told;
 
+    /** The sound files played, in order; no sound is ever heard. */
+    public final List<Path> played;
+
     private final AtomicInteger relaunches;
     private Stage stage;
 
-    private TestGui(NjMuleEngine engine, EngineModel model, Gui gui, List<String> told, AtomicInteger relaunches) {
+    private TestGui(
+            NjMuleEngine engine,
+            EngineModel model,
+            Gui gui,
+            List<String> told,
+            List<Path> played,
+            AtomicInteger relaunches) {
         this.engine = engine;
         this.model = model;
         this.gui = gui;
         this.told = told;
+        this.played = played;
         this.relaunches = relaunches;
     }
 
@@ -70,6 +81,7 @@ public final class TestGui implements AutoCloseable {
         NjMuleEngine engine = FxTesting.engine(root);
         EngineModel model = new EngineModel(wrap.apply(engine), Platform::runLater);
         List<String> told = new CopyOnWriteArrayList<>();
+        List<Path> played = new CopyOnWriteArrayList<>();
         AtomicInteger relaunches = new AtomicInteger();
         Gui gui = FxTesting.onFx(() -> new Gui(
                 I18n.of(Locale.ENGLISH),
@@ -79,10 +91,12 @@ public final class TestGui implements AutoCloseable {
                 GuiSettings.load(engine.directories().gui()),
                 engine.directories(),
                 told::add,
-                relaunches::incrementAndGet));
+                relaunches::incrementAndGet,
+                new Subscriptions(),
+                played::add));
         model.onError(told::add);
         model.start();
-        return new TestGui(engine, model, gui, told, relaunches);
+        return new TestGui(engine, model, gui, told, played, relaunches);
     }
 
     public int relaunches() {

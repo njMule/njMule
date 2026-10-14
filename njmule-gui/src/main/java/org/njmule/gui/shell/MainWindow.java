@@ -136,13 +136,17 @@ public final class MainWindow {
         gui.subscriptions().onChange(model.serverNameProperty(), (was, now) -> this.showConnection());
         gui.subscriptions().onChange(model.statusProperty(), (was, now) -> this.showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
-        model.onCompleted(d -> this.message(gui.f("nj.transfers.completed", d.name())));
+        model.onCompleted(d -> {
+            this.message(gui.f("nj.transfers.completed", d.name()));
+            this.chime();
+        });
         model.chats().onMessage(chat -> {
             if (!this.current.equals("messages")) {
                 String who = chat.nickProperty().get().isEmpty()
                         ? chat.address()
                         : chat.nickProperty().get();
                 this.message(gui.f("nj.chat.from", who));
+                this.chime();
             }
         });
         this.showConnection();
@@ -174,6 +178,14 @@ public final class MainWindow {
         PauseTransition later = new PauseTransition(MESSAGE_TIME);
         later.setOnFinished(e -> this.messages.getChildren().remove(note));
         later.play();
+    }
+
+    // The sound of a notification of an event, when the preferences ask for one; not for the replies to the user.
+    private void chime() {
+        Preferences preferences = this.gui.model().preferencesProperty().get();
+        if (preferences != null && preferences.notificationSound()) {
+            preferences.notificationSoundFile().ifPresent(this.gui.sound()::play);
+        }
     }
 
     /** The window closes for good: each screen keeps what it keeps between runs. */

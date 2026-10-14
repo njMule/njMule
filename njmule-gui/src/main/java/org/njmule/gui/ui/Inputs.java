@@ -180,6 +180,20 @@ public final class Inputs {
         });
     }
 
+    /** Nothing, or the full path of a sound file, which need not exist yet. */
+    public Input<Optional<Path>> soundFile(TextField field, String name) {
+        return Input.of(field, name, this.gui.t("nj.input.soundFile"), Inputs::printable, MAX_TEXT, t -> {
+            if (t.isEmpty()) {
+                return Optional.empty();
+            }
+            Path path = Path.of(t);
+            if (!path.isAbsolute() || Files.isDirectory(path)) {
+                throw new IllegalArgumentException(t);
+            }
+            return Optional.of(path);
+        });
+    }
+
     /** The path of a folder that exists. */
     public Input<Path> existingFolder(TextField field, String name) {
         return Input.of(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {

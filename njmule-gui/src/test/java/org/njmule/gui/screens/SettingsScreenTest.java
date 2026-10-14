@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -126,6 +127,28 @@ class SettingsScreenTest {
         this.thenTheEngineHasNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
     }
 
+    @Test
+    void shouldPlayTheTypedSoundFileForATest() throws Exception {
+        this.givenTheSettingsShow();
+
+        this.whenTheUserTypesTheSoundFile(this.ding());
+        this.whenTheUserTestsTheSound();
+
+        this.thenThePlayedSoundsAre(this.ding());
+        this.thenTheEngineHasNoSoundFile();
+    }
+
+    @Test
+    void shouldSaveTheNotificationSound() throws Exception {
+        this.givenTheSettingsShow();
+
+        this.whenTheUserTurnsTheSoundOn();
+        this.whenTheUserTypesTheSoundFile(this.ding());
+        this.whenTheUserApplies();
+
+        this.thenTheEnginePlays(this.ding());
+    }
+
     private void givenTheSettingsShow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.screen = new SettingsScreen(this.test.gui);
@@ -142,6 +165,41 @@ class SettingsScreenTest {
 
     private void whenTheUserApplies() throws Exception {
         FxTesting.onFx(this.screen::apply);
+    }
+
+    private void whenTheUserTurnsTheSoundOn() throws Exception {
+        FxTesting.onFx(() -> this.screen.soundBox().setSelected(true));
+    }
+
+    private void whenTheUserTypesTheSoundFile(Path file) throws Exception {
+        FxTesting.onFx(() -> this.screen.soundFileField().setText(file.toString()));
+    }
+
+    private void whenTheUserTestsTheSound() throws Exception {
+        FxTesting.onFx(this.screen::testSound);
+    }
+
+    private void thenThePlayedSoundsAre(Path... expected) {
+        assertThat(this.test.played).containsExactly(expected);
+    }
+
+    private void thenTheEngineHasNoSoundFile() {
+        assertThat(this.test.engine.preferences().notificationSoundFile()).isEmpty();
+    }
+
+    private void thenTheEnginePlays(Path file) throws Exception {
+        FxTesting.await(
+                "saved",
+                () -> this.test.engine.preferences().notificationSound()
+                        && this.test
+                                .engine
+                                .preferences()
+                                .notificationSoundFile()
+                                .equals(Optional.of(file)));
+    }
+
+    private Path ding() {
+        return this.dir.resolve("ding.wav").toAbsolutePath();
     }
 
     private void thenTheEngineRunsOn(EventCommands.Event event, EventCommands.Command expected) throws Exception {

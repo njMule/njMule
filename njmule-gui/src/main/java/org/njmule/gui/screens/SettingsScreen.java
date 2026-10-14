@@ -16,9 +16,11 @@
  */
 package org.njmule.gui.screens;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -33,6 +35,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -50,6 +53,7 @@ import javafx.scene.control.TextInputControl;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
@@ -101,6 +105,8 @@ public final class SettingsScreen implements Screen {
     private final CheckBox confirmExit = new CheckBox();
     private final CheckBox startMinimized = new CheckBox();
     private final CheckBox watchClipboard = new CheckBox();
+    private final CheckBox sound = new CheckBox();
+    private final TextField soundFile = new TextField();
     private final CheckBox filterLan = new CheckBox();
     private final TextArea whitelist = new TextArea();
     private final TextField messageFilter = new TextField();
@@ -168,6 +174,7 @@ public final class SettingsScreen implements Screen {
     private Input<String> proxyUserInput;
     private Input<Optional<Path>> incomingInput;
     private Input<Optional<Path>> tempInput;
+    private Input<Optional<Path>> soundFileInput;
     private Input<Integer> minFreeSpaceInput;
     private Input<Integer> deadRetriesInput;
     private Input<Integer> backupsInput;
@@ -233,6 +240,7 @@ public final class SettingsScreen implements Screen {
         this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
         this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
         this.watchClipboard.setText(this.gui.t("IDS_PF_WATCHCB"));
+        this.sound.setText(this.gui.t("nj.settings.sound"));
         this.filterLan.setText(this.gui.t("IDS_PW_FILTER"));
         this.friendsOnly.setText(this.gui.t("IDS_MSGONLYFRIENDS"));
         this.spamFilter.setText(this.gui.t("IDS_ADVSPAMFILTER"));
@@ -296,6 +304,9 @@ public final class SettingsScreen implements Screen {
         if (this.links.isPresent()) {
             grid.add(this.ed2kLinks, 1, row++);
         }
+        row = section(grid, row, this.gui.t("IDS_PW_EKDEV_OPTIONS"));
+        grid.add(this.sound, 1, row++);
+        row = field(grid, row, this.gui.t("nj.settings.soundFile"), this.soundRow());
         row = section(grid, row, this.gui.t("nj.settings.connection"));
         row = field(grid, row, this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcpPort);
         row = field(grid, row, "UDP", this.udpPort);
@@ -410,6 +421,7 @@ public final class SettingsScreen implements Screen {
                 this.proxyUserInput,
                 this.incomingInput,
                 this.tempInput,
+                this.soundFileInput,
                 this.minFreeSpaceInput,
                 this.deadRetriesInput,
                 this.backupsInput,
@@ -460,6 +472,7 @@ public final class SettingsScreen implements Screen {
         this.proxyUserInput = inputs.text(this.proxyUser, this.gui.t("nj.proxy.user"), MAX_PROXY_USER, false);
         this.incomingInput = inputs.folder(this.incoming, this.gui.t("IDS_PW_INCOMING"));
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
+        this.soundFileInput = inputs.soundFile(this.soundFile, this.gui.t("nj.settings.soundFile"));
         this.minFreeSpaceInput =
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
         this.filterLevelInput =
@@ -565,6 +578,46 @@ public final class SettingsScreen implements Screen {
         return this.scheduler();
     }
 
+    // A WAV file, chosen or typed, and a button to hear it as the notifications would play it.
+    private Node soundRow() {
+        this.soundFile.setPrefColumnCount(32);
+        Button browse = Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::chooseSound);
+        Button test = Fx.button(this.gui.t("IDS_TEST"), Material2MZ.VOLUME_UP, this::testSound);
+        test.disableProperty()
+                .bind(Bindings.createBooleanBinding(
+                        () -> !this.soundFileInput.isValid()
+                                || this.soundFile.getText().isBlank(),
+                        this.soundFileInput.validProperty(),
+                        this.soundFile.textProperty()));
+        HBox row = new HBox(6, this.soundFile, browse, test);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
+    private void chooseSound() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(this.gui.t("nj.settings.soundFile"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("WAV", "*.wav", "*.WAV"));
+        if (this.soundFileInput.isValid()) {
+            this.soundFileInput
+                    .value()
+                    .map(Path::getParent)
+                    .filter(Files::isDirectory)
+                    .ifPresent(dir -> chooser.setInitialDirectory(dir.toFile()));
+        }
+        File chosen = chooser.showOpenDialog(this.view.getScene().getWindow());
+        if (chosen != null) {
+            this.soundFile.setText(chosen.getAbsolutePath());
+        }
+    }
+
+    /** Plays the sound file of the form, applied or not. */
+    void testSound() {
+        if (this.soundFileInput.isValid()) {
+            this.soundFileInput.value().ifPresent(this.gui.sound()::play);
+        }
+    }
+
     private HBox directory(TextField field) {
         field.setPrefColumnCount(32);
         field.setPromptText(this.gui.t("nj.settings.defaultDir"));
@@ -636,6 +689,8 @@ public final class SettingsScreen implements Screen {
         this.confirmExit.setSelected(this.gui.settings().confirmExit());
         this.startMinimized.setSelected(this.gui.settings().startMinimized());
         this.watchClipboard.setSelected(this.gui.settings().watchClipboard());
+        this.sound.setSelected(p.notificationSound());
+        this.soundFile.setText(p.notificationSoundFile().map(Path::toString).orElse(""));
         WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
@@ -867,7 +922,12 @@ public final class SettingsScreen implements Screen {
                 .set(
                         Preferences::nextDownload,
                         Preferences.Builder::nextDownload,
-                        this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE);
+                        this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
+                .set(Preferences::notificationSound, Preferences.Builder::notificationSound, this.sound.isSelected())
+                .set(
+                        Preferences::notificationSoundFile,
+                        Preferences.Builder::notificationSoundFile,
+                        this.soundFileInput.value());
     }
 
     /** What the form changed, set on whichever preferences are current when they are written. */
@@ -1070,6 +1130,14 @@ public final class SettingsScreen implements Screen {
 
     Input<String> whitelistInput() {
         return this.whitelistInput;
+    }
+
+    CheckBox soundBox() {
+        return this.sound;
+    }
+
+    TextField soundFileField() {
+        return this.soundFile;
     }
 
     CheckBox eventSwitch(EventCommands.Event event) {
