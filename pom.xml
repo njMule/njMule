@@ -90,6 +90,8 @@
         <surefire.version>3.6.0</surefire.version>
         <!-- Run the optional groups with e.g. -Dtest.excludedGroups=interop,perf -Dgroups=private-fixtures -->
         <test.excludedGroups>interop,private-fixtures,perf</test.excludedGroups>
+        <!-- JVMs running test classes at once; -Dtest.forks=1 runs them one after the other. -->
+        <test.forks>4</test.forks>
         <jar-plugin.version>3.5.1</jar-plugin.version>
         <resources-plugin.version>3.5.0</resources-plugin.version>
         <clean-plugin.version>3.5.0</clean-plugin.version>
@@ -317,6 +319,10 @@
                         <!-- UPnP stays off in every test: it would change the router's port mappings. -->
                         <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true</argLine>
                         <excludedGroups>${test.excludedGroups}</excludedGroups>
+                        <!-- Test classes spread over JVMs of their own: no static state is shared, and each
+                             test keeps to its temp folders and port 0. -->
+                        <forkCount>${test.forks}</forkCount>
+                        <reuseForks>true</reuseForks>
                     </configuration>
                 </plugin>
                 <plugin>
