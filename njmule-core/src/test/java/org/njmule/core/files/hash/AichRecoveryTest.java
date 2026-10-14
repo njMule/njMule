@@ -23,6 +23,9 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.constraints.LongRange;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash20;
 
@@ -105,6 +108,27 @@ class AichRecoveryTest {
                 .as("no such part")
                 .isFalse();
         assertThat(AichRecovery.hasRecovery(Ed2k.PARTSIZE, -1)).isFalse();
+    }
+
+    @Property(tries = 200)
+    void everyPartOfMoreThanOneBlockProvesItsBlocks(
+            @ForAll @LongRange(min = 1, max = 4 * Ed2k.PARTSIZE + Ed2k.EMBLOCKSIZE) long size,
+            @ForAll @LongRange(min = 0, max = 1000) long seed) {
+        AichTree tree = tree(size, seed);
+        int parts = Ed2k.partCount(size);
+        for (int part = 0; part < parts; part++) {
+            long length = Ed2k.partLength(size, part);
+            if (length <= Ed2k.EMBLOCKSIZE) {
+                assertThat(AichRecovery.hasRecovery(size, part)).isFalse();
+                continue;
+            }
+            int first = part * PER_PART;
+            int count = (int) ((length + Ed2k.EMBLOCKSIZE - 1) / Ed2k.EMBLOCKSIZE);
+            assertThat(AichRecovery.verify(size, part, tree.masterHash(), AichRecovery.create(tree, part)))
+                    .as("part %d of %d bytes", part, size)
+                    .contains(tree.blockHashes().subList(first, first + count));
+        }
+        assertThat(AichRecovery.hasRecovery(size, parts)).isFalse();
     }
 
     @Test

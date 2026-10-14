@@ -22,6 +22,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.constraints.LongRange;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -67,6 +70,23 @@ class Ed2kTest {
                 Arrays.stream(parts.split(":")).map(Hash16::parseHex).toList();
 
         assertThat(Ed2k.fileHash(hashes)).isEqualTo(Hash16.parseHex(file));
+    }
+
+    @Property
+    void thePartsAndBlocksOfAFileCoverItExactly(@ForAll @LongRange(min = 1, max = Ed2k.MAX_FILE_SIZE) long size) {
+        long total = 0;
+        long blocks = 0;
+        for (int part = 0; part < Ed2k.partCount(size); part++) {
+            long length = Ed2k.partLength(size, part);
+            assertThat(length).isPositive().isLessThanOrEqualTo(P);
+            assertThat(Ed2k.partStart(part)).isEqualTo(total);
+            total += length;
+            blocks += (length + Ed2k.EMBLOCKSIZE - 1) / Ed2k.EMBLOCKSIZE;
+        }
+        assertThat(total).isEqualTo(size);
+        assertThat(AichTree.blockCount(size)).isEqualTo(blocks);
+        assertThat(Ed2k.ed2kPartCount(size)).isEqualTo(size / P + 1);
+        assertThat(Ed2k.hashSetSize(size)).isEqualTo(size < P ? 0 : (int) (size / P + 1));
     }
 
     @Test

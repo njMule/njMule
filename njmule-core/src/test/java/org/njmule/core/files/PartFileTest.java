@@ -19,6 +19,9 @@ package org.njmule.core.files;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.common.collect.Range;
+import com.google.common.collect.RangeSet;
+import com.google.common.collect.TreeRangeSet;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -28,10 +31,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.constraints.IntRange;
+import net.jqwik.api.constraints.LongRange;
+import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.files.PartFile.Block;
 import org.njmule.core.files.hash.Ed2k;
@@ -60,6 +69,132 @@ class PartFileTest {
         assertThat(file.completedBytes()).isEqualTo(B);
         assertThat(file.hasHashSet()).isTrue();
         assertThat(file.partHash(0)).contains(file.hash());
+    }
+
+    @Test
+    void blocksCoverFilesOfEverySizeAroundThePartBoundaries() {
+        for (long size : new long[] {1, B - 1, B, B + 1, P - 1, P, P + 1, 2 * P - 1, 2 * P, 2 * P + 1}) {
+            PartFile file = PartFile.create(1, this.dir, "edge.bin", size, hash(1), Optional.empty(), List.of());
+            List<Block> blocks = drain(file, all(file), 3);
+
+            assertThat(file.partCount()).as("%d bytes", size).isEqualTo((int) ((size + P - 1) / P));
+            assertCutAsAich(blocks, size);
+            assertThat(blocks.getLast().end()).isEqualTo(size);
+        }
+        PartFile onePart = PartFile.create(1, this.dir, "one.bin", P, hash(1), Optional.empty(), List.of());
+        List<Block> blocks = drain(onePart, all(onePart), 3);
+        assertThat(blocks).hasSize(53);
+        assertThat(blocks.getLast().length()).isEqualTo(P - 52L * B);
+        assertThatThrownBy(() -> PartFile.create(1, this.dir, "empty.bin", 0, hash(1), Optional.empty(), List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Property(tries = 300)
+    void blocksAreHandedOutOnceWithinTheMissingBytesOfOnePart(
+            @ForAll @LongRange(min = 1, max = 3 * P + 5) long size,
+            @ForAll @Size(max = 8) List<@LongRange(min = 0, max = 3 * P + 5) Long> writes,
+            @ForAll @IntRange(min = 1, max = 3) int perCall) {
+        // No file is written: jqwik gives no temporary directory.
+        PartFile file = PartFile.create(1, Path.of("unused"), "any.bin", size, hash(1), Optional.empty(), List.of());
+        RangeSet<Long> missing = TreeRangeSet.create();
+        missing.add(Range.closedOpen(0L, size));
+        for (long at : writes) {
+            long start = Math.min(at, size - 1);
+            long end = Math.min(size, start + 1 + at % (2L * B));
+            file.written(start, end);
+            missing.remove(Range.closedOpen(start, end));
+        }
+        long expected = missing.asRanges().stream()
+                .mapToLong(r -> r.upperEndpoint() - r.lowerEndpoint())
+                .sum();
+        assertThat(file.missingBytes()).isEqualTo(expected);
+
+        List<Block> blocks = drain(file, all(file), perCall);
+
+        RangeSet<Long> handed = TreeRangeSet.create();
+        for (Block block : blocks) {
+            Range<Long> range = Range.closedOpen(block.start(), block.end());
+            assertThat(missing.encloses(range)).as("%s is missing", block).isTrue();
+            assertThat(handed.intersects(range)).as("%s handed out once", block).isFalse();
+            handed.add(range);
+        }
+        assertThat(handed).isEqualTo(missing);
+        assertCutAsAich(blocks, size);
+        for (Block block : blocks) {
+            file.written(block.start(), block.end());
+        }
+        assertThat(file.isComplete()).isTrue();
+    }
+
+    @Test
+    void handlesOffsetsAboveFourGibibytes() throws Exception {
+        long size = 5L << 30;
+        int parts = Ed2k.partCount(size);
+        PartFile file = PartFile.create(9, this.dir, "big.iso", size, hash(1), Optional.empty(), List.of());
+        long high = (9L << 29) + 12_345;
+        file.written(0, high);
+        file.written(high + 1000, size - 7);
+        BitSet last = new BitSet();
+        last.set(parts - 1);
+        BitSet middle = new BitSet();
+        middle.set((int) (high / P));
+
+        assertThat(file.nextBlocks(middle, 1)).containsExactly(new Block(high, high + 1000));
+        assertThat(file.nextBlocks(last, 1)).containsExactly(new Block(size - 7, size));
+        file.save();
+        PartFile loaded = PartFile.load(this.dir, 9);
+        assertThat(loaded.missingBytes()).isEqualTo(1007);
+        assertThat(loaded.isComplete(0, high)).isTrue();
+        assertThat(loaded.isComplete(high, high + 1)).isFalse();
+        assertThat(loaded.map().missing())
+                .containsExactly(new PartMap.Span(high, high + 1000), new PartMap.Span(size - 7, size));
+    }
+
+    @Test
+    void storageWritesAndHashesAPartAboveFourGibibytesOfASparseFile() throws Exception {
+        long size = (5L << 30) + 3;
+        int part = (int) ((9L << 29) / P);
+        long partStart = Ed2k.partStart(part);
+        byte[] data = new byte[50_000];
+        new Random(2).nextBytes(data);
+        int offset = 1_000_000;
+        byte[] expected = new byte[(int) P];
+        System.arraycopy(data, 0, expected, offset, data.length);
+
+        try (PartFileStorage storage = PartFileStorage.open(this.dir.resolve("big.part"))) {
+            storage.write(partStart + offset, data).get(10, TimeUnit.SECONDS);
+            storage.write(size - 1, new byte[] {1}).get(10, TimeUnit.SECONDS);
+
+            assertThat(storage.hashPart(size, part).get(30, TimeUnit.SECONDS))
+                    .isEqualTo(Ed2k.md4(expected, 0, expected.length));
+            List<Hash20> blocks = storage.hashBlocks(size, part).get(30, TimeUnit.SECONDS);
+            assertThat(blocks).hasSize(53);
+        }
+        assertThat(Files.size(this.dir.resolve("big.part"))).isEqualTo(size);
+    }
+
+    // Draws blocks until none is left, as sources asking in turn would.
+    private static List<Block> drain(PartFile file, BitSet parts, int perCall) {
+        List<Block> all = new java.util.ArrayList<>();
+        for (List<Block> next = file.nextBlocks(parts, perCall);
+                !next.isEmpty();
+                next = file.nextBlocks(parts, perCall)) {
+            assertThat(next.size()).isLessThanOrEqualTo(perCall);
+            all.addAll(next);
+        }
+        return all;
+    }
+
+    // At most one block long, within one part and within one 180 KiB AICH block of it.
+    private static void assertCutAsAich(List<Block> blocks, long size) {
+        for (Block block : blocks) {
+            int part = (int) (block.start() / P);
+            long inPart = block.start() - Ed2k.partStart(part);
+            assertThat(block.end()).as("%s", block).isLessThanOrEqualTo(Math.min(size, Ed2k.partStart(part) + P));
+            assertThat(Ed2k.partStart(part) + (inPart / B + 1) * B)
+                    .as("%s within its AICH block", block)
+                    .isGreaterThanOrEqualTo(block.end());
+        }
     }
 
     @Test
