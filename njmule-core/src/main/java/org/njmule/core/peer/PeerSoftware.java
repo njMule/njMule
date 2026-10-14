@@ -37,7 +37,7 @@ public final class PeerSoftware {
         int minor = value >>> 10 & 0x7F;
         int update = value >>> 7 & 0x7;
         return switch (compat) {
-            // eMule writes its update as a letter: 0.72 + 0 = 0.72a.
+            // The update shows as a letter after the version: 0 is a, 1 is b.
             case 0 -> String.format(Locale.ROOT, "eMule v%d.%02d%c", major, minor, 'a' + update);
             case 3 -> String.format(Locale.ROOT, "aMule v%d.%d.%d", major, minor, update);
             case ClientVersion.NJMULE_COMPAT -> String.format(Locale.ROOT, "njMule v%d.%d.%d", major, minor, update);
