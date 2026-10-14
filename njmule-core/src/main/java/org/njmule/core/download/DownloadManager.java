@@ -480,6 +480,9 @@ public final class DownloadManager implements AutoCloseable {
                     .append(':');
             for (Source source : entry.sources.values()) {
                 text.append(' ').append(source.session == null ? source.address : source.session.describe());
+                if (source.failures > 0) {
+                    text.append(" (failed ").append(source.failures).append(')');
+                }
             }
             text.append('\n');
         }

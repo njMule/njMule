@@ -465,14 +465,14 @@ class DownloadSourcesTest {
                 .containsExactlyInAnyOrder(
                         "127.0.0.1:" + useless.port(), "127.0.0.1:" + silent.port(), "127.0.0.1:" + closed);
 
-        // Three failures in a row drop a source; the one without parts we need waits its time.
-        for (int round = 2; round <= 3; round++) {
-            this.advance(DownloadManager.MIN_REASK);
-            silent.refuseNext();
-            this.await(
-                    "every attempt ended",
-                    () -> manager.sources().stream().allMatch(s -> s.state() == SourceInfo.State.WAITING));
-        }
+        // Three failures in a row drop a source; the one without parts we need waits its time. Each round waits for
+        // both failures: a refused connection takes Windows a couple of seconds.
+        this.awaitFailures(manager, 1, silent.port(), closed);
+        this.advance(DownloadManager.MIN_REASK);
+        silent.refuseNext();
+        this.awaitFailures(manager, 2, silent.port(), closed);
+        this.advance(DownloadManager.MIN_REASK);
+        silent.refuseNext();
         this.awaitSources(hash, 1);
         assertThat(this.onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + useless.port());
         this.onLoop(() -> manager.pause(hash));
@@ -778,6 +778,13 @@ class DownloadSourcesTest {
             return false;
         });
         return seen.get();
+    }
+
+    private void awaitFailures(DownloadManager manager, int failures, int... ports) throws Exception {
+        this.await(failures + " failures of " + Arrays.toString(ports), () -> {
+            String now = manager.describe();
+            return Arrays.stream(ports).allMatch(p -> now.contains("127.0.0.1:" + p + " (failed " + failures + ")"));
+        });
     }
 
     private void awaitSources(Hash16 hash, int count) throws Exception {
