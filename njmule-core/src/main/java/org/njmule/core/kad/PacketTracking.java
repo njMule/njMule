@@ -144,6 +144,17 @@ final class PacketTracking {
         return false;
     }
 
+    /** Whether we sent any request to {@code ip} in the last three minutes. */
+    boolean wroteTo(int ip, long nowMs) {
+        this.expire(nowMs);
+        for (Sent s : this.sent) {
+            if (s.ip() == ip) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Drops what is old; call every few minutes. */
     void clean(long nowMs) {
         this.expire(nowMs);

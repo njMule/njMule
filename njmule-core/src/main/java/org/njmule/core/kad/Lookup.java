@@ -42,7 +42,11 @@ final class Lookup {
         NOTES(2, Duration.ofSeconds(45), 50, true),
         STORE_SOURCE(4, Duration.ofSeconds(140), 10, true),
         STORE_KEYWORD(4, Duration.ofSeconds(140), 10, true),
-        STORE_NOTES(4, Duration.ofSeconds(100), 10, true);
+        STORE_NOTES(4, Duration.ofSeconds(100), 10, true),
+        // Finds helpers for the UDP firewall test: its answers are never asked or added, see KadNode.
+        UDP_HELPERS(11, Duration.ofSeconds(45), 0, false),
+        // The value counted is each buddy request sent.
+        FIND_BUDDY(4, Duration.ofSeconds(100), 10, true);
 
         private final int count;
         private final Duration lifetime;

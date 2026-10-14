@@ -166,8 +166,8 @@ class KadNodeMessagesTest {
         KadMessages.Hello hello = KadMessages.Hello.decode(reply.packet());
         assertThat(hello.sender().id()).isEqualTo(this.node.id());
         assertThat(Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS))
-                .as("firewalled, and asking for an acknowledgement")
-                .hasValue(0x01 | 0x02 | 0x04);
+                .as("TCP-firewalled, UDP not known to be firewalled yet, and asking for an acknowledgement")
+                .hasValue(0x02 | 0x04);
         assertThat(this.last(PEER, Opcodes.Kad.FIREWALLED2_REQ))
                 .as("a recent node is asked to check our port")
                 .isNotNull();
@@ -584,6 +584,7 @@ class KadNodeMessagesTest {
         UInt128 target = UInt128.of(hash);
         this.contactAt(target);
         long size = 5_000_000_000L;
+        this.reachableThroughTcp();
 
         assertThat(this.node.publishSource(hash, size)).isTrue();
         assertThat(this.node.publishSource(hash, size)).as("already running").isFalse();
@@ -745,6 +746,14 @@ class KadNodeMessagesTest {
 
         assertThat(this.requestedTargets()).filteredOn(this.node.id()::equals).hasSize(1);
         assertThat(this.node.isReady()).isFalse();
+    }
+
+    // Two nodes connected to our TCP port and said so: the node is open.
+    private void reachableThroughTcp() {
+        for (int ip : new int[] {Ipv4.of(26, 1, 1, 1), Ipv4.of(27, 1, 1, 1)}) {
+            this.hello(ip, 8);
+            this.node.reachableConfirmed(ip);
+        }
     }
 
     // Lets the lookup towards target ask the contact at that very id, which then gets the request.

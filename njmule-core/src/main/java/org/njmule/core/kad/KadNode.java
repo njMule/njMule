@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -77,10 +78,107 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     public interface Host {
         /** Connects to {@code ip:port} over TCP to prove to that node it is reachable. */
         void checkReachable(int ip, int port, Hash16 userHash, int connectOptions);
+
+        /**
+         * Connects to the helper at {@code ip:tcpPort} and asks it to send a datagram to our UDP ports, obfuscated with
+         * {@code senderKey}; then tells {@link KadNode#udpCheckEnded} whether the request went out.
+         */
+        default void checkUdp(int ip, int tcpPort, int internalPort, int externalPort, int senderKey) {}
+
+        /** Whether the client at {@code ip} deals with us already (a download, an upload): it cannot be a helper. */
+        default boolean isKnownClient(int ip) {
+            return false;
+        }
+
+        /** Whether other clients reach us anyway, through a HighID on the server. */
+        default boolean hasHighId() {
+            return false;
+        }
     }
 
-    /** A source a Kad search found: a client reachable directly. */
-    public record Source(Hash16 userHash, int ip, int tcpPort, int connectOptions) {}
+    /**
+     * The TCP side of buddies: the link to our buddy while we are firewalled, or to the firewalled node we serve. A
+     * buddy relays the callback requests of other clients to the node it serves.
+     */
+    public interface Buddies {
+        /** No buddy, ours being connected to, ours connected, or a node we serve. */
+        enum State {
+            NONE,
+            CONNECTING,
+            CONNECTED,
+            SERVING
+        }
+
+        Buddies NONE = new Buddies() {};
+
+        default State state() {
+            return State.NONE;
+        }
+
+        /** The address ({@code Ipv4} form) of our buddy, 0 without one. */
+        default int buddyIp() {
+            return 0;
+        }
+
+        /** The UDP port of our buddy, 0 without one. */
+        default int buddyUdpPort() {
+            return 0;
+        }
+
+        /** The node at {@code ip} answered our search and offers to be our buddy. */
+        default void offered(int ip, int tcpPort, int udpPort, Hash16 userHash, int connectOptions) {}
+
+        /** The firewalled node at {@code ip} asks us to be its buddy; {@code false} when we cannot now. */
+        default boolean asked(int ip, int tcpPort, int udpPort, Hash16 userHash, UInt128 buddyId) {
+            return false;
+        }
+
+        /**
+         * Relays the callback request of the client at {@code requesterIp} to the node we serve, when {@code buddyId}
+         * is its; {@code false} otherwise.
+         */
+        default boolean relay(UInt128 buddyId, UInt128 file, int requesterIp, int requesterPort) {
+            return false;
+        }
+
+        /** The link is no longer needed. */
+        default void release() {}
+    }
+
+    /** The buddy of a firewalled source, which relays callback requests to it. */
+    public record Buddy(int ip, int udpPort, UInt128 id) {
+        public Buddy {
+            Objects.requireNonNull(id, "id");
+        }
+    }
+
+    /**
+     * A source a Kad search found. A firewalled one connects to us when asked: through its {@code buddy}, or directly
+     * at its Kad {@code udpPort} when it takes {@code directCallback}s.
+     */
+    public record Source(
+            Hash16 userHash,
+            int ip,
+            int tcpPort,
+            int connectOptions,
+            int udpPort,
+            Optional<Buddy> buddy,
+            boolean directCallback) {
+        public Source {
+            Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(buddy, "buddy");
+        }
+
+        /** A source reachable directly. */
+        public Source(Hash16 userHash, int ip, int tcpPort, int connectOptions) {
+            this(userHash, ip, tcpPort, connectOptions, 0, Optional.empty(), false);
+        }
+
+        /** Whether the source is firewalled and reached only by a callback. */
+        public boolean isFirewalled() {
+            return this.buddy.isPresent() || this.directCallback;
+        }
+    }
 
     /** A file a keyword search found. */
     public record FileResult(
@@ -103,13 +201,18 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      *
      * @param trusted addresses taken although they are not public (tests, LANs)
      * @param blocked addresses the IP filter refuses, never taken as contacts
+     * @param udpPort the UDP port we listen on, 0 when unknown: the UDP firewall test needs it
      */
     public record Settings(
-            int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked) {
+            int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked, int udpPort) {
         public Settings {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(trusted, "trusted");
             Objects.requireNonNull(blocked, "blocked");
+        }
+
+        public Settings(int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked) {
+            this(tcpPort, userHash, connectOptions, trusted, blocked, 0);
         }
     }
 
@@ -140,7 +243,25 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final int MISC_TCP_FIREWALLED = 0x02;
     private static final int MISC_ACK_REQUESTED = 0x04;
     private static final int SOURCE_DIRECT = 1;
+    private static final int SOURCE_BUDDY = 3;
     private static final int SOURCE_DIRECT_LARGE = 4;
+    private static final int SOURCE_BUDDY_LARGE = 5;
+    private static final int SOURCE_DIRECT_CALLBACK = 6;
+    private static final long LARGE_SOURCE = 4_290_048_000L;
+    // Connect option bits.
+    private static final int OBFUSCATION_REQUIRED = 0x04;
+    private static final int DIRECT_CALLBACK = 0x08;
+    private static final UInt128 ALL_ONES = new UInt128(-1L, -1L);
+    // A firewalled node looks for a buddy a while after the start, when its state is known, then now and then.
+    private static final Duration FIND_BUDDY_FIRST = Duration.ofMinutes(5);
+    private static final Duration FIND_BUDDY_EVERY = Duration.ofMinutes(20);
+    private static final Duration EXTERNAL_PORT_ASK_EVERY = Duration.ofSeconds(15);
+    // Lookups for UDP test helpers in one test at most, and how far apart.
+    private static final int UDP_HELPER_LOOKUPS = 3;
+    private static final Duration UDP_HELPER_LOOKUP_GAP = Duration.ofMinutes(1);
+    // A node is helped with its UDP test once in this time at most, and so many are remembered.
+    private static final Duration UDP_HELP_GAP = Duration.ofMinutes(5);
+    private static final int MAX_UDP_HELPED = 256;
 
     private final KadIdentity identity;
     private final RoutingTable table;
@@ -160,6 +281,16 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // Nodes asked to connect to our TCP port, and when; read by the listener's threads too.
     private final Map<Integer, Long> firewallChecks = new ConcurrentHashMap<>();
     private final Set<Integer> firewallAcks = new HashSet<>();
+    private final UdpFirewallTest udpTest = new UdpFirewallTest();
+    // Nodes we sent datagrams for their UDP test, and when.
+    private final Map<Integer, Long> udpHelped = new LinkedHashMap<>();
+    private Buddies buddies = Buddies.NONE;
+    private Buddies.State buddyState = Buddies.State.NONE;
+    private boolean findBuddy;
+    private long nextFindBuddy;
+    private long nextExternalPortAsk;
+    private long nextUdpHelperLookup;
+    private int udpHelperLookups;
     private int publicIp;
     private int pendingIp;
     private long lastPacket;
@@ -197,6 +328,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.nextSelfLookup = now + SELF_LOOKUP_FIRST.toNanos();
         this.nextFirewallCheck = now;
         this.nextClean = now + 12 * MINUTE;
+        this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
+    }
+
+    /** Where the buddy links are kept; none until set. */
+    public void useBuddies(Buddies links) {
+        this.buddies = Objects.requireNonNull(links, "links");
     }
 
     public UInt128 id() {
@@ -226,9 +363,66 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 && this.table.size() > 0;
     }
 
-    /** Checks again whether other nodes can reach our TCP port: the next contacts heard from are asked at once. */
+    /**
+     * Checks again whether other nodes can reach our TCP port, the next contacts heard from being asked at once, and
+     * our UDP port.
+     */
     public void recheckFirewall() {
         this.nextFirewallCheck = this.ticker.read();
+    }
+
+    /**
+     * Whether nodes we never wrote to cannot send to our UDP port, as far as we know; while a test runs, the last
+     * outcome stands. Unknown counts as open.
+     */
+    public boolean isFirewalledUdp() {
+        return this.udpTest.isFirewalled(true);
+    }
+
+    /** Whether a UDP firewall test came to an outcome. */
+    public boolean isUdpVerified() {
+        return this.udpTest.isVerified();
+    }
+
+    /** Whether we take direct UDP callbacks: TCP-firewalled, with a UDP port proven open. */
+    public boolean supportsDirectCallback() {
+        return this.isFirewalled() && !this.isFirewalledUdp() && this.udpTest.isVerified();
+    }
+
+    /** The Kad port other clients should use: the one a NAT shows them once a test proved it, else ours. */
+    public int announcedUdpPort() {
+        int external = this.udpTest.externalPort();
+        return external != 0 && this.udpTest.useExternalPort() && this.udpTest.isVerified()
+                ? external
+                : this.settings.udpPort();
+    }
+
+    /** What our buddy link is doing. */
+    public Buddies.State buddyState() {
+        return this.buddies.state();
+    }
+
+    /** Whether {@code buddyId} is the one our buddy was found by: the complement of our id. */
+    public boolean isOurBuddyId(UInt128 buddyId) {
+        return buddyId.xor(ALL_ONES).equals(this.identity.id());
+    }
+
+    // Firewalled as other clients see us: neither Kad nor the server gives us a HighID.
+    private boolean isFirewalledForClients() {
+        return this.isFirewalled() && !this.host.hasHighId();
+    }
+
+    /** Whether other clients can reach us, directly, through our buddy or by a direct callback. */
+    @Override
+    public boolean isReachable() {
+        return !this.isFirewalledForClients()
+                || this.buddies.state() == Buddies.State.CONNECTED
+                || (!this.isFirewalledUdp() && this.udpTest.isVerified());
+    }
+
+    @Override
+    public int buddyIp() {
+        return this.buddies.state() == Buddies.State.CONNECTED ? this.buddies.buddyIp() : 0;
     }
 
     /** Whether other nodes cannot connect to our TCP port, as far as we know. */
@@ -454,6 +648,16 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return lookup != null;
     }
 
+    /** The target of the lookup for UDP test helpers running now, for tests. */
+    Optional<UInt128> udpHelpersTarget() {
+        for (Lookup lookup : this.lookups.values()) {
+            if (lookup.kind() == Lookup.Kind.UDP_HELPERS) {
+                return Optional.of(lookup.target());
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Files indexed under keywords and sources indexed, for tests. */
     int[] indexed() {
         return new int[] {this.index.keywordEntries(), this.index.sourceEntries()};
@@ -528,7 +732,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private static KadSearchInfo.Kind kind(Lookup.Kind kind) {
         return switch (kind) {
-            case NODE, NODE_COMPLETE -> KadSearchInfo.Kind.NODE;
+            case NODE, NODE_COMPLETE, UDP_HELPERS, FIND_BUDDY -> KadSearchInfo.Kind.NODE;
             case KEYWORD -> KadSearchInfo.Kind.KEYWORD;
             case SOURCES -> KadSearchInfo.Kind.SOURCES;
             case NOTES -> KadSearchInfo.Kind.NOTES;
@@ -561,6 +765,63 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             this.firewallChecks.remove(ip);
             this.firewallAcks.add(ip);
         }
+    }
+
+    /**
+     * The TCP connection to a UDP test helper ended; {@code asked} whether the request went out. A helper asked whose
+     * datagram did not come by then failed, one never asked does not count.
+     */
+    public void udpCheckEnded(int ip, boolean asked) {
+        if (this.udpTest.outcome(ip, false, !asked, 0, this.settings.udpPort(), this.ticker.read())) {
+            this.askUdpHelpers();
+        }
+    }
+
+    /**
+     * A client asked us over TCP to send a datagram to its UDP ports for its UDP firewall test. It gets one per port,
+     * marked when it is known to us already ({@code knownClient}, a contact, a node we wrote to): that would bias its
+     * outcome.
+     */
+    public void udpCheckRequested(int ip, int internalPort, int externalPort, int senderKey, boolean knownClient) {
+        long now = this.ticker.read();
+        if (internalPort == 0 || !this.isGoodAddress(ip)) {
+            return;
+        }
+        this.udpHelped.values().removeIf(at -> now - at >= UDP_HELP_GAP.toNanos());
+        if (this.udpHelped.containsKey(ip) || this.udpHelped.size() >= MAX_UDP_HELPED) {
+            return;
+        }
+        this.udpHelped.put(ip, now);
+        boolean known = knownClient || this.table.byAddress(ip).isPresent() || this.tracking.wroteTo(ip, this.nowMs());
+        int error = known ? 1 : 0;
+        this.send(
+                ip,
+                internalPort,
+                new KadMessages.FirewallUdp(error, internalPort).encode(),
+                Optional.empty(),
+                senderKey);
+        if (externalPort != 0 && externalPort != internalPort) {
+            this.send(
+                    ip,
+                    externalPort,
+                    new KadMessages.FirewallUdp(error, externalPort).encode(),
+                    Optional.empty(),
+                    senderKey);
+        }
+    }
+
+    /**
+     * Asks the buddy of a firewalled source, plain as the buddy may not know us, to have the source connect to our TCP
+     * port for {@code file}; {@code false} when the buddy's address is not usable.
+     */
+    public boolean requestCallback(Buddy buddy, Hash16 file) {
+        if (!this.isGoodAddress(buddy.ip()) || buddy.udpPort() == 0) {
+            return false;
+        }
+        Packet request =
+                new KadMessages.CallbackRequest(buddy.id(), UInt128.of(file), this.settings.tcpPort()).encode();
+        this.transport.send(buddy.ip(), buddy.udpPort(), request, Optional.empty(), 0, 0);
+        return true;
     }
 
     /** Runs every second. */
@@ -607,12 +868,145 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             }
             this.firewallReports = 0;
             this.firewallAcks.clear();
+            this.udpTest.recheck(this.isConnected(), now);
+            this.udpHelperLookups = 0;
+            this.nextUdpHelperLookup = now;
+            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            // A buddy is looked for once the outcome is likely known.
+            this.findBuddy = false;
+            if (this.nextFindBuddy - (now + FIND_BUDDY_FIRST.toNanos()) < 0) {
+                this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
+            }
         }
+        this.tickUdpTest(now);
+        this.tickBuddies(now);
         if (now - this.nextClean >= 0) {
             this.nextClean = now + 12 * MINUTE;
             this.tracking.clean(this.nowMs());
             this.index.clean(now);
             this.firewallChecks.values().removeIf(at -> now - at > 3 * MINUTE);
+            this.udpHelped.values().removeIf(at -> now - at >= UDP_HELP_GAP.toNanos());
+        }
+    }
+
+    // While the UDP test runs: nodes are asked the port they see us on, and lookups find helpers.
+    private void tickUdpTest(long now) {
+        boolean connected = this.isConnected();
+        this.udpTest.tick(connected, this.isFirewalled(), now);
+        if (!this.udpTest.isRunning()) {
+            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            return;
+        }
+        if (!connected) {
+            return;
+        }
+        if (this.udpTest.findsExternalPort() && now - this.nextExternalPortAsk >= 0) {
+            this.nextExternalPortAsk = now + EXTERNAL_PORT_ASK_EVERY.toNanos();
+            this.askExternalPort();
+        }
+        // Helpers are looked for once they can be asked: when the port a NAT shows is known.
+        if (!this.udpTest.findsExternalPort()
+                && this.udpTest.wantsCandidates()
+                && this.udpHelperLookups < UDP_HELPER_LOOKUPS
+                && now - this.nextUdpHelperLookup >= 0
+                && this.running(Lookup.Kind.UDP_HELPERS) == 0
+                && this.startLookup(UInt128.random(this.random), Lookup.Kind.UDP_HELPERS) != null) {
+            this.udpHelperLookups++;
+            this.nextUdpHelperLookup = now + UDP_HELPER_LOOKUP_GAP.toNanos();
+        }
+    }
+
+    // A random contact recent enough says which UDP port it sees us on.
+    private void askExternalPort() {
+        List<KadContact> usable = new ArrayList<>();
+        for (KadContact c : this.table.all()) {
+            if (c.type() < KadContact.DEAD && c.version() >= OBFUSCATION_VERSION) {
+                usable.add(c);
+            }
+        }
+        if (!usable.isEmpty()) {
+            this.request(usable.get(this.random.nextInt(usable.size())), KadMessages.ping(), Opcodes.Kad.PING);
+        }
+    }
+
+    // Helpers are asked one by one until enough are; each is told our ports and the key to obfuscate with.
+    private void askUdpHelpers() {
+        while (true) {
+            Optional<KadMessages.Contact> helper =
+                    this.udpTest.nextHelper(this::mayHelpWithUdp, this.publicIp, this.identity.id());
+            if (helper.isEmpty()) {
+                return;
+            }
+            KadMessages.Contact c = helper.get();
+            logger.debug("Asking {} to test our UDP port", Ipv4.format(c.ip()));
+            this.host.checkUdp(
+                    c.ip(),
+                    c.tcpPort(),
+                    this.settings.udpPort(),
+                    this.udpTest.externalPort(),
+                    this.identity.verifyKey(c.ip()));
+        }
+    }
+
+    // A helper must know nothing of us that would let its datagram through: no contact of ours, no node we wrote to,
+    // no client we deal with.
+    private boolean mayHelpWithUdp(KadMessages.Contact c) {
+        return this.settings.udpPort() != 0
+                && c.tcpPort() != 0
+                && this.isGoodAddress(c.ip())
+                && this.table.byAddress(c.ip()).isEmpty()
+                && !this.tracking.wroteTo(c.ip(), this.nowMs())
+                && !this.host.isKnownClient(c.ip());
+    }
+
+    // A buddy is looked for while we are firewalled on both ports, and let go once we are not.
+    private void tickBuddies(long now) {
+        if (now - this.nextFindBuddy >= 0) {
+            this.findBuddy = true;
+            this.nextFindBuddy = now + FIND_BUDDY_EVERY.toNanos();
+        }
+        Buddies.State state = this.buddies.state();
+        boolean lost = state == Buddies.State.NONE
+                && (this.buddyState == Buddies.State.CONNECTED || this.buddyState == Buddies.State.CONNECTING);
+        this.buddyState = state;
+        if (!this.isConnected()) {
+            if (state != Buddies.State.NONE) {
+                this.buddies.release();
+            }
+            return;
+        }
+        if (!this.needsBuddy()) {
+            if (state == Buddies.State.CONNECTED || state == Buddies.State.CONNECTING) {
+                logger.debug("Kad: our buddy is no longer needed");
+                this.buddies.release();
+            }
+            return;
+        }
+        // A buddy lost is replaced at once.
+        if (lost) {
+            this.findBuddy = true;
+        }
+        // Callback requests to us cannot be obfuscated, so a node that requires it cannot use a buddy.
+        if (state == Buddies.State.NONE
+                && this.findBuddy
+                && (this.settings.connectOptions() & OBFUSCATION_REQUIRED) == 0) {
+            this.findBuddy = false;
+            if (this.startLookup(this.identity.id().xor(ALL_ONES), Lookup.Kind.FIND_BUDDY) == null) {
+                this.findBuddy = true;
+            }
+        }
+    }
+
+    // Firewalled on both ports, a node needs a buddy to be reached.
+    private boolean needsBuddy() {
+        return this.isConnected() && this.isFirewalled() && this.isFirewalledUdp();
+    }
+
+    private void stopLookups(Lookup.Kind kind) {
+        for (Lookup lookup : List.copyOf(this.lookups.values())) {
+            if (lookup.kind() == kind) {
+                this.lookupEnded(lookup);
+            }
         }
     }
 
@@ -651,10 +1045,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 case PUBLISH_RES -> this.publishAnswered(peer, packet);
                 case FIREWALLED2_REQ -> this.firewallCheckRequested(peer, packet);
                 case FIREWALLED_RES -> this.firewallAnswered(peer, packet);
+                case FIREWALLUDP -> this.udpTestAnswered(peer, packet);
+                case FINDBUDDY_REQ -> this.buddyRequested(peer, packet);
+                case FINDBUDDY_RES -> this.buddyOffered(peer, packet);
+                case CALLBACK_REQ -> this.callbackRequested(peer, packet);
                 case PING -> this.answer(peer, KadMessages.pong(port));
-                case PONG -> this.tracking.expected(ip, Opcodes.Kad.PONG, nowMs);
+                case PONG -> this.pongReceived(peer, packet);
                 default -> {
-                    // Buddies, callbacks and the UDP firewall test are not taken part in.
+                    // Kad 1 and acknowledgements we never ask for.
                 }
             }
         } catch (DecodeException e) {
@@ -774,14 +1172,23 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             logger.debug("Ignoring {} contacts from {}", answer.contacts().size(), Ipv4.format(peer.ip()));
             return;
         }
+        boolean helpers = lookup.kind() == Lookup.Kind.UDP_HELPERS;
         List<KadMessages.Contact> usable = new ArrayList<>();
         for (KadMessages.Contact c : answer.contacts()) {
             if (c.version() >= 2 && this.isGoodAddress(c.ip()) && !(c.udpPort() == 53 && c.version() <= 5)) {
-                this.addUnverified(c, false, now);
+                // Helpers must never hear from us over UDP: they are neither added nor asked further.
+                if (helpers) {
+                    this.udpTest.candidate(c);
+                } else {
+                    this.addUnverified(c, false, now);
+                }
                 usable.add(c);
             }
         }
-        lookup.answered(peer.ip(), peer.port(), usable, now);
+        lookup.answered(peer.ip(), peer.port(), helpers ? List.of() : usable, now);
+        if (helpers) {
+            this.askUdpHelpers();
+        }
     }
 
     private void keywordSearchRequested(Peer peer, Packet packet) throws DecodeException {
@@ -832,9 +1239,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         lookup.valueReceived(sink.applyAsInt(answer.results()));
     }
 
+    // A node others cannot send to would store what nobody can ask for: it takes no publishes.
     private void keywordPublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.KeywordPublish publish = KadMessages.KeywordPublish.decode(packet);
-        if (!this.inTolerance(publish.keyword())) {
+        if (this.isFirewalledUdp() || !this.inTolerance(publish.keyword())) {
             return;
         }
         long now = this.ticker.read();
@@ -847,7 +1255,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private void sourcePublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.SourcePublish publish = KadMessages.SourcePublish.decode(packet);
-        if (!this.inTolerance(publish.file())) {
+        if (this.isFirewalledUdp() || !this.inTolerance(publish.file())) {
             return;
         }
         OptionalLong load = this.index.publishSource(
@@ -906,6 +1314,98 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             this.pendingIp = 0;
         } else {
             this.pendingIp = ip;
+        }
+    }
+
+    private void pongReceived(Peer peer, Packet packet) throws DecodeException {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PONG, this.nowMs())) {
+            return;
+        }
+        int port = KadMessages.decodePong(packet);
+        if (port != 0 && this.udpTest.isRunning() && this.udpTest.findsExternalPort()) {
+            this.udpTest.portSeen(port, peer.ip());
+            this.askUdpHelpers();
+        }
+    }
+
+    // Only a helper we asked counts, and only with the key we gave it: a datagram from anyone else proves nothing.
+    private void udpTestAnswered(Peer peer, Packet packet) throws DecodeException {
+        if (!peer.validKey() || !this.udpTest.asked(peer.ip())) {
+            return;
+        }
+        KadMessages.FirewallUdp answer = KadMessages.FirewallUdp.decode(packet);
+        int port = answer.port();
+        int internal = this.settings.udpPort();
+        boolean ours = port != 0 && (port == internal || port == this.udpTest.externalPort());
+        boolean succeeded = ours && answer.error() == 0;
+        long now = this.ticker.read();
+        boolean more = this.udpTest.outcome(peer.ip(), succeeded, !succeeded, succeeded ? port : 0, internal, now);
+        if (!this.udpTest.isRunning()) {
+            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            logger.info("Kad: UDP {}", this.udpTest.isFirewalled(false) ? "firewalled" : "open");
+        } else if (more) {
+            this.askUdpHelpers();
+        }
+    }
+
+    // We serve one firewalled node, and only when both our ports are open: it must be able to reach us.
+    private void buddyRequested(Peer peer, Packet packet) throws DecodeException {
+        KadMessages.FindBuddy request = KadMessages.FindBuddy.decode(packet);
+        if (this.isFirewalled()
+                || this.isFirewalledUdp()
+                || !this.udpTest.isVerified()
+                || this.buddies.state() != Buddies.State.NONE
+                || request.tcpPort() == 0
+                || !this.isGoodAddress(peer.ip())
+                || this.firewallChecks.containsKey(peer.ip())) {
+            return;
+        }
+        if (!this.buddies.asked(
+                peer.ip(), request.tcpPort(), peer.port(), request.userHash().toHash16(), request.buddyId())) {
+            return;
+        }
+        // Only nodes recent enough to obfuscate read the connect options.
+        OptionalInt options =
+                peer.senderKey() != 0 ? OptionalInt.of(this.settings.connectOptions()) : OptionalInt.empty();
+        this.answer(
+                peer,
+                new KadMessages.BuddyOffer(
+                                request.buddyId(),
+                                UInt128.of(this.settings.userHash()),
+                                this.settings.tcpPort(),
+                                options)
+                        .encode());
+    }
+
+    private void buddyOffered(Peer peer, Packet packet) throws DecodeException {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.FINDBUDDY_RES, this.nowMs())) {
+            return;
+        }
+        KadMessages.BuddyOffer offer = KadMessages.BuddyOffer.decode(packet);
+        Buddies.State state = this.buddies.state();
+        if (!this.isOurBuddyId(offer.buddyId())
+                || offer.tcpPort() == 0
+                || !this.isGoodAddress(peer.ip())
+                || !this.needsBuddy()
+                || (state != Buddies.State.NONE && state != Buddies.State.CONNECTING)) {
+            return;
+        }
+        this.buddies.offered(
+                peer.ip(),
+                offer.tcpPort(),
+                peer.port(),
+                offer.userHash().toHash16(),
+                offer.connectOptions().orElse(0));
+    }
+
+    // The node we serve is asked to connect to whoever sent this; the buddy id must be the one it registered.
+    private void callbackRequested(Peer peer, Packet packet) throws DecodeException {
+        KadMessages.CallbackRequest request = KadMessages.CallbackRequest.decode(packet);
+        if (request.tcpPort() == 0 || !this.isGoodAddress(peer.ip()) || this.buddies.state() != Buddies.State.SERVING) {
+            return;
+        }
+        if (this.buddies.relay(request.buddyId(), request.file(), peer.ip(), request.tcpPort())) {
+            logger.debug("Kad: callback request from {} relayed", Ipv4.format(peer.ip()));
         }
     }
 
@@ -1035,14 +1535,24 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                     }
                 }
                 case STORE_SOURCE ->
+                    node.sourceTags((Long) data)
+                            .ifPresent(tags -> node.requestTo(
+                                    contact,
+                                    new KadMessages.SourcePublish(
+                                                    lookup.target(), UInt128.of(node.settings.userHash()), tags)
+                                            .encode(),
+                                    Opcodes.Kad.PUBLISH_SOURCE_REQ));
+                case FIND_BUDDY -> {
                     node.requestTo(
                             contact,
-                            new KadMessages.SourcePublish(
+                            new KadMessages.FindBuddy(
                                             lookup.target(),
                                             UInt128.of(node.settings.userHash()),
-                                            node.sourceTags((Long) data))
+                                            node.settings.tcpPort())
                                     .encode(),
-                            Opcodes.Kad.PUBLISH_SOURCE_REQ);
+                            Opcodes.Kad.FINDBUDDY_REQ);
+                    lookup.valueReceived(1);
+                }
                 case STORE_NOTES -> {
                     OwnNote note = (OwnNote) data;
                     Optional<FileComment> comment = note.comment().get().filter(c -> !c.isEmpty());
@@ -1065,14 +1575,45 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
     }
 
-    private List<Tag> sourceTags(long size) {
+    // How others reach us as a source: directly, through our buddy or by a direct callback; empty when they cannot.
+    private Optional<List<Tag>> sourceTags(long size) {
+        boolean large = size > LARGE_SOURCE;
+        boolean direct = false;
         List<Tag> tags = new ArrayList<>();
-        int type = size > 4_290_048_000L ? SOURCE_DIRECT_LARGE : SOURCE_DIRECT;
-        tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), type));
+        if (!this.isFirewalledForClients()) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), large ? SOURCE_DIRECT_LARGE : SOURCE_DIRECT));
+        } else if (!this.isFirewalledUdp() && this.udpTest.isVerified()) {
+            direct = true;
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), SOURCE_DIRECT_CALLBACK));
+        } else if (this.buddies.state() == Buddies.State.CONNECTED && this.buddies.buddyIp() != 0) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), large ? SOURCE_BUDDY_LARGE : SOURCE_BUDDY));
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SERVERIP), Ipv4.toEd2k(this.buddies.buddyIp())));
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SERVERPORT), this.buddies.buddyUdpPort()));
+            tags.add(new Tag.StringTag(TagName.id(FileTag.BUDDYHASH), buddyHash(this.identity.id())));
+        } else {
+            return Optional.empty();
+        }
         tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEPORT), this.settings.tcpPort()));
+        if (!this.udpTest.useExternalPort() && this.settings.udpPort() != 0) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEUPORT), this.settings.udpPort()));
+        }
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size));
-        tags.add(new Tag.IntTag(TagName.id(FileTag.ENCRYPTION), this.settings.connectOptions()));
-        return tags;
+        int options = this.settings.connectOptions() | (direct ? DIRECT_CALLBACK : 0);
+        tags.add(new Tag.IntTag(TagName.id(FileTag.ENCRYPTION), options));
+        return Optional.of(tags);
+    }
+
+    /** The buddy hash of a source publish: the complement of the Kad id, as hex of its id layout. */
+    static String buddyHash(UInt128 kadId) {
+        return Hash16.of(kadId.xor(ALL_ONES).toWireBytes()).toHex();
+    }
+
+    static Optional<UInt128> parseBuddyHash(String hex) {
+        try {
+            return Optional.of(UInt128.fromWireBytes(Hash16.parseHex(hex).toByteArray()));
+        } catch (IllegalArgumentException | DecodeException e) {
+            return Optional.empty();
+        }
     }
 
     private static List<Tag> noteTags(OwnNote note, FileComment comment) {
@@ -1117,12 +1658,17 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private KadMessages.Hello hello(int peerVersion, boolean askAck) {
         List<Tag> tags = new ArrayList<>();
-        if (peerVersion >= HELLO_ACK_VERSION) {
-            // Without a UDP test of our own, a reachable TCP port stands for a reachable node.
-            int misc = this.isFirewalled() ? MISC_UDP_FIREWALLED | MISC_TCP_FIREWALLED : 0;
-            if (askAck) {
-                misc |= MISC_ACK_REQUESTED;
-            }
+        // Our own port, once the UDP test proved it better than the one a NAT shows.
+        if (!this.udpTest.useExternalPort() && this.settings.udpPort() != 0) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEUPORT), this.settings.udpPort()));
+        }
+        boolean tcp = this.isFirewalled();
+        boolean udp = this.isFirewalledUdp();
+        // A UDP-firewalled node says so: others do not take it as a contact.
+        if (peerVersion >= HELLO_ACK_VERSION && (askAck || tcp || udp)) {
+            int misc = (udp ? MISC_UDP_FIREWALLED : 0)
+                    | (tcp ? MISC_TCP_FIREWALLED : 0)
+                    | (askAck ? MISC_ACK_REQUESTED : 0);
             tags.add(new Tag.IntTag(TagName.id(FileTag.KADMISCOPTIONS), misc));
         }
         return new KadMessages.Hello(this.self(), tags);
@@ -1196,20 +1742,42 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return notes;
     }
 
-    private static List<Source> sourceResults(List<KadMessages.Entry> entries) {
+    // Sources reachable directly, through their buddy, or by a direct callback when they say they take it.
+    static List<Source> sourceResults(List<KadMessages.Entry> entries) {
         List<Source> sources = new ArrayList<>();
         for (KadMessages.Entry e : entries) {
-            int type = (int) Tags.intValue(e.tags(), FileTag.SOURCETYPE).orElse(0);
-            if (type != SOURCE_DIRECT && type != SOURCE_DIRECT_LARGE) {
-                continue;
-            }
-            int ip = (int) Tags.intValue(e.tags(), FileTag.SOURCEIP).orElse(0);
-            int port = Tags.portValue(e.tags(), FileTag.SOURCEPORT).orElse(0);
+            List<Tag> tags = e.tags();
+            int type = (int) Tags.intValue(tags, FileTag.SOURCETYPE).orElse(0);
+            int ip = (int) Tags.intValue(tags, FileTag.SOURCEIP).orElse(0);
+            int port = Tags.portValue(tags, FileTag.SOURCEPORT).orElse(0);
+            int udp = Tags.portValue(tags, FileTag.SOURCEUPORT).orElse(0);
+            int options = (int) Tags.intValue(tags, FileTag.ENCRYPTION).orElse(0) & 0xFF;
             if (ip == 0 || port == 0) {
                 continue;
             }
-            sources.add(new Source(e.id().toHash16(), ip, port, (int)
-                    Tags.intValue(e.tags(), FileTag.ENCRYPTION).orElse(0)));
+            Hash16 user = e.id().toHash16();
+            switch (type) {
+                case SOURCE_DIRECT, SOURCE_DIRECT_LARGE -> sources.add(new Source(user, ip, port, options));
+                case SOURCE_BUDDY, SOURCE_BUDDY_LARGE -> {
+                    int buddyIp =
+                            Ipv4.fromEd2k(Tags.intValue(tags, FileTag.SERVERIP).orElse(0));
+                    int buddyPort = Tags.portValue(tags, FileTag.SERVERPORT).orElse(0);
+                    Optional<UInt128> buddyId =
+                            Tags.stringValue(tags, FileTag.BUDDYHASH).flatMap(KadNode::parseBuddyHash);
+                    if (buddyIp != 0 && buddyPort != 0 && buddyId.isPresent()) {
+                        Buddy buddy = new Buddy(buddyIp, buddyPort, buddyId.get());
+                        sources.add(new Source(user, ip, port, options, udp, Optional.of(buddy), false));
+                    }
+                }
+                case SOURCE_DIRECT_CALLBACK -> {
+                    if ((options & DIRECT_CALLBACK) != 0 && udp != 0) {
+                        sources.add(new Source(user, ip, port, options, udp, Optional.empty(), true));
+                    }
+                }
+                default -> {
+                    // Type 2 is read wrongly by old clients; other types are unknown.
+                }
+            }
         }
         return sources;
     }

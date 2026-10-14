@@ -55,6 +55,13 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     private final IntPredicate blocked;
     private final SecureRandom random;
     private volatile KadNode node;
+    private volatile ClientPackets clientPackets = (ip, port, packet) -> {};
+
+    /** Client packets that share the socket with Kad, such as callback requests; on the engine thread. */
+    @FunctionalInterface
+    public interface ClientPackets {
+        void received(int ip, int port, Packet packet);
+    }
 
     private KadSocket(
             DatagramSocket socket,
@@ -94,6 +101,24 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
         this.node = Objects.requireNonNull(node, "node");
     }
 
+    /** Where the client packets of the extended protocol go. */
+    public void deliverClientPacketsTo(ClientPackets sink) {
+        this.clientPackets = Objects.requireNonNull(sink, "sink");
+    }
+
+    /**
+     * Sends a client packet, obfuscated for {@code receiverUserHash} when given; {@code ourIp} ({@code Ipv4} form) is
+     * part of that key.
+     */
+    public void sendClient(int ip, int port, Packet packet, Optional<Hash16> receiverUserHash, int ourIp) {
+        byte[] datagram = UdpFraming.encode(packet);
+        if (receiverUserHash.isPresent() && ourIp != 0) {
+            datagram = DatagramObfuscation.encryptForClient(
+                    datagram, receiverUserHash.get(), Ipv4.toBytes(ourIp), this.random);
+        }
+        this.transmit(ip, port, datagram);
+    }
+
     public int port() {
         return this.socket.getLocalPort();
     }
@@ -106,6 +131,10 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             datagram = DatagramObfuscation.encryptForKad(
                     datagram, receiverId.map(id -> Hash16.of(id.toWireBytes())), receiverKey, senderKey, this.random);
         }
+        this.transmit(ip, port, datagram);
+    }
+
+    private void transmit(int ip, int port, byte[] datagram) {
         try {
             this.socket.send(
                     new DatagramPacket(datagram, datagram.length, new InetSocketAddress(Ipv4.format(ip), port)));
@@ -162,11 +191,16 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             if (packet.protocol() == Protocol.KAD_PACKED) {
                 packet = Packing.unpack(packet, MAX_UNPACKED);
             }
+            int port = from.getPort();
+            if (packet.protocol() == Protocol.EMULE) {
+                Packet client = packet;
+                this.loop.post(() -> this.clientPackets.received(ip, port, client));
+                return;
+            }
             if (packet.protocol() != Protocol.KAD) {
                 return;
             }
             Packet kad = packet;
-            int port = from.getPort();
             boolean obfuscated = opened.kind() != DatagramObfuscation.Kind.PLAIN;
             this.loop.post(() ->
                     target.received(ip, port, kad, obfuscated, opened.receiverVerifyKey(), opened.senderVerifyKey()));

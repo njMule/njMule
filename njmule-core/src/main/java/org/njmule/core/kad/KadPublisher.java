@@ -60,6 +60,16 @@ public final class KadPublisher {
 
         boolean isFirewalled();
 
+        /** Whether other clients can reach us: directly, through a buddy or by a direct callback. */
+        default boolean isReachable() {
+            return !this.isFirewalled();
+        }
+
+        /** The address of the buddy that relays callbacks to us, 0 without one. */
+        default int buddyIp() {
+            return 0;
+        }
+
         int runningKeywordPublishes();
 
         int runningSourcePublishes();
@@ -101,6 +111,7 @@ public final class KadPublisher {
     private long nextKeyword;
     private long nextSource;
     private long nextNote;
+    private int lastBuddy;
 
     /** Our comment on a file as last published, and when. */
     private record PublishedNote(FileComment comment, long at) {}
@@ -119,10 +130,20 @@ public final class KadPublisher {
         this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
 
-    /** Runs every second: starts at most one keyword, one source and one note publish every two seconds. */
+    /**
+     * Runs every second: starts at most one keyword, one source and one note publish every two seconds. A new buddy has
+     * every source published again at once: the old ones point to the buddy we left.
+     */
     public void tick() {
-        if (!this.node.isReady() || !this.node.isConnected() || this.node.isFirewalled()) {
+        if (!this.node.isReady() || !this.node.isConnected() || !this.node.isReachable()) {
             return;
+        }
+        int buddy = this.node.buddyIp();
+        if (buddy != this.lastBuddy) {
+            this.lastBuddy = buddy;
+            if (buddy != 0) {
+                this.sourceDone.clear();
+            }
         }
         long now = this.ticker.read();
         List<Shared> files = this.shared.get();

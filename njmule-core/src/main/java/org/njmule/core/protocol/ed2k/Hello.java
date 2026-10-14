@@ -16,6 +16,7 @@
  */
 package org.njmule.core.protocol.ed2k;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -58,6 +59,8 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     public static final int MISC2_SUPPORTS_CRYPT = 1 << 7;
     public static final int MISC2_REQUESTS_CRYPT = 1 << 8;
     public static final int MISC2_REQUIRES_CRYPT = 1 << 9;
+    /** TCP-firewalled on Kad with an open UDP port: reached by a direct UDP callback. */
+    public static final int MISC2_DIRECT_UDP_CALLBACK = 1 << 12;
 
     private static final int HASH_SIZE = 16;
     private static final int MAX_TAGS = 64;
@@ -88,6 +91,22 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS2), Integer.toUnsignedLong(miscOptions2)),
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())));
         return new Hello(userHash, clientId, tcpPort, tags, serverIp, serverPort);
+    }
+
+    /**
+     * This greeting with the address of our Kad buddy ({@code Ipv4} form) and its UDP port, after the UDP ports as
+     * clients expect them.
+     */
+    public Hello withBuddy(int buddyIp, int buddyUdpPort) {
+        List<Tag> withBuddy = new ArrayList<>(this.tags.size() + 2);
+        for (Tag tag : this.tags) {
+            withBuddy.add(tag);
+            if (tag.name().equals(TagName.id(ClientTag.EMULE_UDPPORTS))) {
+                withBuddy.add(new Tag.IntTag(TagName.id(ClientTag.EMULE_BUDDYIP), Ipv4.toEd2k(buddyIp)));
+                withBuddy.add(new Tag.IntTag(TagName.id(ClientTag.EMULE_BUDDYUDP), buddyUdpPort & 0xFFFF));
+            }
+        }
+        return new Hello(this.userHash, this.clientId, this.tcpPort, withBuddy, this.serverIp, this.serverPort);
     }
 
     /** OP_HELLO, or OP_HELLOANSWER when {@code answer}. */
@@ -133,6 +152,21 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     public int kadPort() {
         return (int) (Tags.intValue(this.tags, ClientTag.EMULE_UDPPORTS).orElse(0) >>> 16 & 0xFFFF);
+    }
+
+    /** The address ({@code Ipv4} form) of the Kad buddy of a firewalled client, 0 when it names none. */
+    public int buddyIp() {
+        return Ipv4.fromEd2k(Tags.intValue(this.tags, ClientTag.EMULE_BUDDYIP).orElse(0));
+    }
+
+    /** The UDP port of the client's Kad buddy, 0 when it names none. */
+    public int buddyUdpPort() {
+        return (int) (Tags.intValue(this.tags, ClientTag.EMULE_BUDDYUDP).orElse(0) & 0xFFFF);
+    }
+
+    /** Whether the client, firewalled, takes a direct UDP callback on its Kad port. */
+    public boolean supportsDirectCallback() {
+        return (this.miscOptions2() & MISC2_DIRECT_UDP_CALLBACK) != 0;
     }
 
     /** Whether the client exchanges AICH hashes and recovery data. */

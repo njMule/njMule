@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -506,6 +507,101 @@ public final class KadMessages {
             throw new DecodeException("a firewall answer has 4 bytes");
         }
         return (int) packet.reader().u32();
+    }
+
+    /**
+     * KADEMLIA_FINDBUDDY_REQ: a firewalled node looks for a buddy under {@code buddyId}, the complement of its Kad id,
+     * and says how to reach it: its user hash and TCP port.
+     */
+    public record FindBuddy(UInt128 buddyId, UInt128 userHash, int tcpPort) {
+        public FindBuddy {
+            Objects.requireNonNull(buddyId, "buddyId");
+            Objects.requireNonNull(userHash, "userHash");
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter();
+            this.buddyId.write(out);
+            this.userHash.write(out);
+            out.u16(this.tcpPort);
+            return Packet.of(Protocol.KAD, Opcodes.Kad.FINDBUDDY_REQ.code(), out);
+        }
+
+        public static FindBuddy decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new FindBuddy(UInt128.read(in), UInt128.read(in), in.u16());
+        }
+    }
+
+    /**
+     * KADEMLIA_FINDBUDDY_RES: a node offers to be the buddy of {@code buddyId}; newer nodes add their connect options.
+     */
+    public record BuddyOffer(UInt128 buddyId, UInt128 userHash, int tcpPort, OptionalInt connectOptions) {
+        public BuddyOffer {
+            Objects.requireNonNull(buddyId, "buddyId");
+            Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(connectOptions, "connectOptions");
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter();
+            this.buddyId.write(out);
+            this.userHash.write(out);
+            out.u16(this.tcpPort);
+            this.connectOptions.ifPresent(out::u8);
+            return Packet.of(Protocol.KAD, Opcodes.Kad.FINDBUDDY_RES.code(), out);
+        }
+
+        public static BuddyOffer decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            UInt128 buddyId = UInt128.read(in);
+            UInt128 userHash = UInt128.read(in);
+            int port = in.u16();
+            return new BuddyOffer(
+                    buddyId, userHash, port, in.remaining() > 0 ? OptionalInt.of(in.u8()) : OptionalInt.empty());
+        }
+    }
+
+    /**
+     * KADEMLIA_CALLBACK_REQ, sent plain to the buddy of a firewalled source: the source is asked to connect to our
+     * {@code tcpPort} for {@code file}.
+     */
+    public record CallbackRequest(UInt128 buddyId, UInt128 file, int tcpPort) {
+        public CallbackRequest {
+            Objects.requireNonNull(buddyId, "buddyId");
+            Objects.requireNonNull(file, "file");
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter();
+            this.buddyId.write(out);
+            this.file.write(out);
+            out.u16(this.tcpPort);
+            return Packet.of(Protocol.KAD, Opcodes.Kad.CALLBACK_REQ.code(), out);
+        }
+
+        public static CallbackRequest decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new CallbackRequest(UInt128.read(in), UInt128.read(in), in.u16());
+        }
+    }
+
+    /**
+     * KADEMLIA2_FIREWALLUDP: the datagram a helper of the UDP firewall test sends to {@code port}; {@code error} is
+     * non-zero when the helper knew us already, which makes the outcome worthless.
+     */
+    public record FirewallUdp(int error, int port) {
+        public Packet encode() {
+            return Packet.of(
+                    Protocol.KAD,
+                    Opcodes.Kad.FIREWALLUDP.code(),
+                    new PacketWriter().u8(this.error).u16(this.port));
+        }
+
+        public static FirewallUdp decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new FirewallUdp(in.u8(), in.u16());
+        }
     }
 
     public static Packet ping() {
