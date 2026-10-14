@@ -591,3 +591,5 @@ All notable changes to this project are documented here. The format follows
 - Kad lookups no longer trust a single node's word: a contact two nodes place at the same address
   (or one of our own) gets the search or publish first, one only a single node knows of only once
   nothing better is left, and one two nodes place at different addresses never.
+- Kad searches wait for silent nodes only as long as nodes have been taking to answer (at most 3
+  seconds, as before) before asking the next ones; publishes keep the full wait.

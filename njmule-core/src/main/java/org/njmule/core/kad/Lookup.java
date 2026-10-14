@@ -68,6 +68,11 @@ final class Lookup {
         Duration lifetime() {
             return this.lifetime;
         }
+
+        // Publishes run in the background: they wait the full time for silent nodes.
+        boolean stores() {
+            return this == STORE_SOURCE || this == STORE_KEYWORD || this == STORE_NOTES;
+        }
     }
 
     /** What a lookup sends. */
@@ -84,7 +89,7 @@ final class Lookup {
 
     private static final int ALPHA = 3;
     private static final int START_CONTACTS = 50;
-    private static final long STALL_NANOS = 3_000_000_000L;
+    private static final long STALL_NANOS = ResponseTimes.MAX_WAIT.toNanos();
     // Once no node is left to ask, or it has all it wants, a search or publish waits this long for its last answers.
     private static final long LATE_ANSWER_NANOS = 15_000_000_000L;
     // A search or publish sends nothing new in the last seconds of its life, which its last answers need.
@@ -100,11 +105,14 @@ final class Lookup {
     private final Kind kind;
     private final Requests requests;
     private final IntPredicate lan;
+    private final ResponseTimes times;
     private final long started;
     // Both by distance to the target.
     private final TreeMap<UInt128, KadMessages.Contact> possible = new TreeMap<>();
     private final TreeMap<UInt128, KadMessages.Contact> tried = new TreeMap<>();
     private final Set<UInt128> responded = new HashSet<>();
+    // When each node was asked, by distance, until it answers.
+    private final Map<UInt128, Long> askedAt = new HashMap<>();
     private final Set<UInt128> requested = new HashSet<>();
     // Addresses sent the search or publish: only they may answer it.
     private final Set<Integer> requestedIps = new HashSet<>();
@@ -123,10 +131,16 @@ final class Lookup {
     private long stopAt;
 
     Lookup(UInt128 target, Kind kind, Requests requests, IntPredicate lan, long now) {
+        this(target, kind, requests, lan, new ResponseTimes(), now);
+    }
+
+    /** A lookup that waits for answers as long as {@code times} says nodes take. */
+    Lookup(UInt128 target, Kind kind, Requests requests, IntPredicate lan, ResponseTimes times, long now) {
         this.target = Objects.requireNonNull(target, "target");
         this.kind = Objects.requireNonNull(kind, "kind");
         this.requests = Objects.requireNonNull(requests, "requests");
         this.lan = Objects.requireNonNull(lan, "lan");
+        this.times = Objects.requireNonNull(times, "times");
         this.started = now;
         this.lastAnswer = now;
     }
@@ -181,7 +195,7 @@ final class Lookup {
             if (this.tried.size() >= first) {
                 break;
             }
-            this.ask(c, this.kind.count());
+            this.ask(c, this.kind.count(), this.started);
         }
         if (this.tried.isEmpty()) {
             this.stopped = true;
@@ -231,6 +245,10 @@ final class Lookup {
         }
         this.lastAnswer = now;
         this.responded.add(responder.id());
+        Long asked = this.askedAt.remove(responder.id().xor(this.target));
+        if (asked != null) {
+            this.times.answered(ip, now - asked);
+        }
         if (this.kind == Kind.NODE) {
             this.stopped = true;
             return;
@@ -261,7 +279,7 @@ final class Lookup {
             this.possible.put(distance, c);
             this.referrers.computeIfAbsent(distance, d -> new HashSet<>()).add(responder.ip());
             if (distance.compareTo(responderDistance) < 0 && this.isAmongBest(distance)) {
-                this.ask(c, this.kind.count());
+                this.ask(c, this.kind.count(), now);
             }
         }
     }
@@ -311,7 +329,7 @@ final class Lookup {
             this.stopped = now - this.stopAt >= 0;
             return;
         }
-        if (now - this.lastAnswer < STALL_NANOS) {
+        if (now - this.lastAnswer < (this.kind.stores() ? STALL_NANOS : this.times.waitNanos())) {
             return;
         }
         if (this.nothingLeftToAsk()) {
@@ -329,7 +347,7 @@ final class Lookup {
         for (Map.Entry<UInt128, KadMessages.Contact> e : List.copyOf(this.possible.entrySet())) {
             KadMessages.Contact c = e.getValue();
             if (!this.tried.containsKey(e.getKey())) {
-                this.ask(c, this.kind.count());
+                this.ask(c, this.kind.count(), now);
                 return;
             }
             if (this.responded.contains(c.id())) {
@@ -411,8 +429,10 @@ final class Lookup {
         return this.possible.headMap(distance).size() < ALPHA;
     }
 
-    private void ask(KadMessages.Contact contact, int count) {
-        this.tried.put(contact.id().xor(this.target), contact);
+    private void ask(KadMessages.Contact contact, int count, long now) {
+        UInt128 distance = contact.id().xor(this.target);
+        this.tried.put(distance, contact);
+        this.askedAt.put(distance, now);
         this.requests.ask(this, contact, count);
     }
 }

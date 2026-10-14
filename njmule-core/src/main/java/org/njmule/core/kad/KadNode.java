@@ -284,6 +284,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private final RoutingTable table;
     private final PacketTracking tracking = new PacketTracking();
     private final ProvenIds provenIds = new ProvenIds();
+    private final ResponseTimes responseTimes = new ResponseTimes();
     private final KadIndex index = new KadIndex();
     private final Transport transport;
     private final Host host;
@@ -1623,7 +1624,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.lookups.containsKey(target)) {
             return null;
         }
-        Lookup lookup = new Lookup(target, kind, new Requests(), this.settings.trusted(), this.ticker.read());
+        Lookup lookup = new Lookup(
+                target, kind, new Requests(), this.settings.trusted(), this.responseTimes, this.ticker.read());
         this.lookups.put(target, lookup);
         lookup.start(this.table);
         if (lookup.isStopped()) {
