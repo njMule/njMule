@@ -84,14 +84,17 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
     }
 
     public int sources() {
-        return (int) Math.min(
-                Integer.MAX_VALUE, Tags.intValue(this.tags, FileTag.SOURCES).orElse(0));
+        return this.count(FileTag.SOURCES);
     }
 
     public int completeSources() {
-        return (int) Math.min(
-                Integer.MAX_VALUE,
-                Tags.intValue(this.tags, FileTag.COMPLETE_SOURCES).orElse(0));
+        return this.count(FileTag.COMPLETE_SOURCES);
+    }
+
+    // Counts are unsigned on the wire: a 64-bit value with the top bit set is huge, not negative.
+    private int count(int tag) {
+        long value = Tags.intValue(this.tags, tag).orElse(0);
+        return value < 0 || value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
     }
 
     /** The type servers report, e.g. {@code Video} or {@code Pro}. */

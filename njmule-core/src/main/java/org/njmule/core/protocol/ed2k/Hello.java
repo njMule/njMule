@@ -124,7 +124,7 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     /** The listening port: a port tag, when present, overrides the header. */
     public int listenPort() {
-        return (int) Tags.intValue(this.tags, ClientTag.PORT).orElse(this.tcpPort);
+        return (int) (Tags.intValue(this.tags, ClientTag.PORT).orElse(this.tcpPort) & 0xFFFF);
     }
 
     public int udpPort() {

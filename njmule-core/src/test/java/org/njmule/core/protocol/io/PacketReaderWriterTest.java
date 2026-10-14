@@ -84,6 +84,14 @@ class PacketReaderWriterTest {
     }
 
     @Test
+    void sliceRejectsANegativeLength() {
+        PacketReader in = PacketReader.of(new byte[4]);
+
+        assertThatThrownBy(() -> in.slice(-1)).isInstanceOf(DecodeException.class);
+        assertThat(in.position()).isZero();
+    }
+
+    @Test
     void patchesCountsWrittenEarlier() {
         PacketWriter out = new PacketWriter();
         out.u32(0);

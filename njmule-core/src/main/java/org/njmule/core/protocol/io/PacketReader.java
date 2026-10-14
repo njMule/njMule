@@ -118,6 +118,9 @@ public final class PacketReader {
 
     /** A reader over the next {@code length} bytes, which this reader then skips. */
     public PacketReader slice(int length) throws DecodeException {
+        if (length < 0) {
+            throw new DecodeException("negative length " + length);
+        }
         this.need(length);
         ByteBuffer view = this.buffer.slice(this.buffer.position(), length);
         this.buffer.position(this.buffer.position() + length);

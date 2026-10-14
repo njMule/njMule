@@ -33,6 +33,7 @@ import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.protocol.tag.ClientTag;
 import org.njmule.core.protocol.tag.Ed2kTagFormat;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.ServerTag;
@@ -258,6 +259,30 @@ class Ed2kMessagesTest {
         assertThat(hello.miscOptions2()).isEqualTo(0x2DBA);
         assertThat(hello.emuleVersion()).hasValue(0x00012000);
         assertThat(hello.serverIp()).isZero();
+    }
+
+    @Test
+    void sourceCountsBeyondTheSignedRangeSaturate() {
+        FileEntry huge = new FileEntry(
+                HASH, 0, 0, List.of(Tag.of(FileTag.SOURCES, -1L), Tag.of(FileTag.COMPLETE_SOURCES, Long.MIN_VALUE)));
+        FileEntry wide = new FileEntry(HASH, 0, 0, List.of(Tag.of(FileTag.SOURCES, 1L << 32)));
+        FileEntry none = new FileEntry(HASH, 0, 0, List.of());
+
+        assertThat(huge.sources()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(huge.completeSources()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(wide.sources()).isEqualTo(Integer.MAX_VALUE);
+        assertThat(none.sources()).isZero();
+        assertThat(none.completeSources()).isZero();
+    }
+
+    @Test
+    void theListenPortTagKeepsSixteenBits() {
+        Hello wide = new Hello(HASH, 0, 4662, List.of(Tag.of(ClientTag.PORT, 0x1_1234L)), 0, 0);
+        Hello allBits = new Hello(HASH, 0, 4662, List.of(Tag.of(ClientTag.PORT, -1L)), 0, 0);
+
+        assertThat(wide.listenPort()).isEqualTo(0x1234);
+        assertThat(allBits.listenPort()).isEqualTo(0xFFFF);
+        assertThat(new Hello(HASH, 0, 4662, List.of(), 0, 0).listenPort()).isEqualTo(4662);
     }
 
     @Test
