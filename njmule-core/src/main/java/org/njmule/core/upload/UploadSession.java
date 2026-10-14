@@ -242,39 +242,36 @@ final class UploadSession implements PeerLink.Role {
         this.slot = true;
         this.pending.clear();
         this.sent.clear();
-        this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        this.sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
     }
 
     /** Tells the client its place in our queue. */
     void sendRank(int rank) {
-        this.send(rankPacket(rank));
-    }
-
-    private static Packet rankPacket(int rank) {
-        return Packet.of(
+        this.sendData(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.QUEUERANKING.code(),
-                new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10]));
+                new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10])));
     }
 
-    /**
-     * Takes the slot away; the client goes back to waiting at {@code rank}. Both go after the data still queued, which
-     * a client drops once told its slot ended.
-     */
+    /** Takes the slot away; the client goes back to waiting at {@code rank}. */
     void endSlot(int rank) {
         if (this.slot) {
             this.slot = false;
             this.pending.clear();
             this.sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
         }
-        this.sendData(rankPacket(rank));
+        this.sendRank(rank);
     }
 
     boolean send(Packet packet) {
         return !this.closed && this.connection.send(packet);
     }
 
-    /** Sends file data, which waits behind our other packets to the client. */
+    /**
+     * Sends file data, which waits behind our other packets to the client. What tells the client where it stands (slot
+     * given or ended, place in the queue) goes this way too, in order with the data: a client drops the data that comes
+     * after the end of its slot.
+     */
     boolean sendData(Packet packet) {
         return !this.closed && this.connection.sendData(packet);
     }
