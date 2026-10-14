@@ -367,9 +367,18 @@ public final class SearchParser {
             if (this.state == State.LENGTH) {
                 Matcher hms = HMS.matcher(this.in).region(start, this.in.length());
                 if (hms.lookingAt()) {
-                    long a = Long.parseLong(hms.group(1));
-                    long b = Long.parseLong(hms.group(2));
-                    long seconds = hms.group(3) == null ? a * 60 + b : a * 3600 + b * 60 + Long.parseLong(hms.group(3));
+                    long seconds;
+                    try {
+                        long a = Long.parseLong(hms.group(1));
+                        long b = Long.parseLong(hms.group(2));
+                        seconds = hms.group(3) == null
+                                ? Math.addExact(Math.multiplyExact(a, 60), b)
+                                : Math.addExact(
+                                        Math.addExact(Math.multiplyExact(a, 3600), Math.multiplyExact(b, 60)),
+                                        Long.parseLong(hms.group(3)));
+                    } catch (NumberFormatException | ArithmeticException e) {
+                        throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number too large");
+                    }
                     this.pos = hms.end();
                     this.numberToken(seconds, start);
                     return;

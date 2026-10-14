@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HexFormat;
+import java.util.List;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.Combinators;
@@ -161,6 +162,88 @@ class SearchParserTest {
         assertThatThrownBy(() -> SearchParser.parse(text))
                 .isInstanceOfSatisfying(
                         SearchSyntaxException.class, e -> assertThat(e.reason()).isEqualTo(reason));
+    }
+
+    @Test
+    void lengthsTooLargeForANumberAreASyntaxError() {
+        for (String text : new String[] {
+            "@length>99999999999999999999:00",
+            "@length>1:99999999999999999999",
+            "@length>1:00:99999999999999999999",
+            "@length>3000000000000000:00:00",
+            "@length>5000000000000000:00:00",
+            "@length>2562047788015215:30:08",
+            "@length>153722867280912931:00"
+        }) {
+            assertThatThrownBy(() -> SearchParser.parse(text))
+                    .as(text)
+                    .isInstanceOfSatisfying(
+                            SearchSyntaxException.class,
+                            e -> assertThat(e.reason()).isEqualTo(Reason.INVALID_ATTRIBUTE_VALUE));
+        }
+        assertThat(SearchParser.parse("@length>2562047788015215:30:07"))
+                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, Long.MAX_VALUE));
+        assertThat(SearchParser.parse("@length>0:0:0"))
+                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 0));
+    }
+
+    @Test
+    void numbersTooLargeOrMalformedAreASyntaxError() {
+        for (String text : new String[] {"@size>1e999", "@sources>1e30", "@size>9999999999999999g", "@bitrate>."}) {
+            assertThatThrownBy(() -> SearchParser.parse(text)).as(text).isInstanceOf(SearchSyntaxException.class);
+        }
+        assertThat(SearchParser.parse("@size>.5k"))
+                .isEqualTo(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 512));
+    }
+
+    @Property
+    void fragmentsOfTheSyntaxParseOrFailWithASyntaxError(@ForAll("fragments") List<String> parts) {
+        String text = String.join("", parts);
+        try {
+            SearchExpr tree = SearchParser.parse(text);
+            PacketWriter out = new PacketWriter();
+            SearchTreeCodec.write(out, tree, true);
+            assertThat(SearchTreeCodec.read(PacketReader.of(out.toByteArray()))).isNotNull();
+        } catch (SearchSyntaxException expected) {
+            // invalid expression
+        } catch (DecodeException e) {
+            throw new AssertionError(text, e);
+        }
+    }
+
+    @Provide
+    Arbitrary<List<String>> fragments() {
+        return Arbitraries.of(
+                        "(",
+                        ")",
+                        "\"",
+                        " ",
+                        "a",
+                        "b1",
+                        "@size>",
+                        "@length>",
+                        "@length=",
+                        "@type=",
+                        "@ext=",
+                        "AND",
+                        "OR",
+                        "NOT",
+                        "-",
+                        ":",
+                        "99999999999999999999",
+                        "123",
+                        "1.5",
+                        "e9",
+                        "k",
+                        "m",
+                        "g",
+                        "=",
+                        "<",
+                        ">",
+                        "video",
+                        "\\")
+                .list()
+                .ofMaxSize(12);
     }
 
     @Test
