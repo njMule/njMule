@@ -40,6 +40,8 @@ public final class Inputs {
 
     // Links pasted together, apart by spaces or lines; a name may hold spaces of its own.
     private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+    // One word: a space would end the attribute and make a keyword of the rest.
+    private static final Pattern EXTENSION = Pattern.compile("\\.?[\\p{L}\\p{Nd}]+");
 
     private static final int MAX_HOST = 253;
     private static final int MAX_TEXT = 4096;
@@ -71,13 +73,28 @@ public final class Inputs {
 
     /** Nothing, or a whole number in {@code [min, max]}. */
     public Input<OptionalInt> optionalNumber(TextField field, String name, int min, int max) {
+        return this.optionalNumber(field, name, () -> min, max);
+    }
+
+    /** Nothing, or a whole number in {@code [min, max]}, where {@code min} moves; check again after it did. */
+    public Input<OptionalInt> optionalNumber(TextField field, String name, IntSupplier min, int max) {
         return Input.of(
                 field,
                 name,
-                this.gui.f("nj.input.optionalNumber", min, max),
+                this.gui.f("nj.input.optionalNumber", min.getAsInt(), max),
                 Inputs::digit,
                 digits(max),
-                t -> t.isEmpty() ? OptionalInt.empty() : OptionalInt.of(inRange(t, min, max)));
+                t -> t.isEmpty() ? OptionalInt.empty() : OptionalInt.of(inRange(t, min.getAsInt(), max)));
+    }
+
+    /** Nothing, or a file extension of letters and digits, which may start with a dot. */
+    public Input<String> extension(TextField field, String name, int maxLength) {
+        return Input.of(field, name, this.gui.t("nj.input.extension"), Inputs::extensionChar, maxLength, t -> {
+            if (!t.isEmpty() && !EXTENSION.matcher(t).matches()) {
+                throw new IllegalArgumentException(t);
+            }
+            return t;
+        });
     }
 
     /** A time of the day, {@code hh:mm}. */
@@ -201,6 +218,10 @@ public final class Inputs {
 
     private static boolean digit(char c) {
         return c >= '0' && c <= '9';
+    }
+
+    private static boolean extensionChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '.';
     }
 
     private static boolean timeChar(char c) {

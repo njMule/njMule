@@ -240,11 +240,17 @@ public final class SearchScreen implements Screen {
         }
         this.extension.setPrefColumnCount(5);
         this.minSizeInput = inputs.optionalNumber(this.minSize, this.gui.t("IDS_SEARCHMINSIZE"), 0, MAX_SIZE_MB);
-        this.maxSizeInput = inputs.optionalNumber(this.maxSize, this.gui.t("IDS_SEARCHMAXSIZE"), 1, MAX_SIZE_MB);
+        // The maximum is never below the minimum, which its hint tells.
+        this.maxSizeInput =
+                inputs.optionalNumber(this.maxSize, this.gui.t("IDS_SEARCHMAXSIZE"), this::lowestMaxSize, MAX_SIZE_MB);
+        this.minSize.textProperty().addListener((o, was, now) -> {
+            this.maxSizeInput.check();
+            this.maxSize.getTooltip().setText(this.gui.f("nj.input.optionalNumber", this.lowestMaxSize(), MAX_SIZE_MB));
+        });
         this.availabilityInput =
                 inputs.optionalNumber(this.availability, this.gui.t("IDS_SEARCHAVAIL"), 1, MAX_SOURCES);
         this.completeInput = inputs.optionalNumber(this.complete, this.gui.t("IDS_COMPLSOURCES"), 1, MAX_SOURCES);
-        this.extensionInput = inputs.text(this.extension, this.gui.t("IDS_SEARCHEXTENTION"), MAX_EXTENSION, false);
+        this.extensionInput = inputs.extension(this.extension, this.gui.t("IDS_SEARCHEXTENTION"), MAX_EXTENSION);
         HBox row = new HBox(
                 8,
                 new Label(this.gui.t("IDS_TYPE")),
@@ -263,6 +269,12 @@ public final class SearchScreen implements Screen {
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("search-parameters");
         return row;
+    }
+
+    private int lowestMaxSize() {
+        return this.minSizeInput != null && this.minSizeInput.isValid()
+                ? Math.max(1, this.minSizeInput.value().orElse(1))
+                : 1;
     }
 
     void resetParameters() {
@@ -643,6 +655,22 @@ public final class SearchScreen implements Screen {
 
     TextField minSizeField() {
         return this.minSize;
+    }
+
+    TextField maxSizeField() {
+        return this.maxSize;
+    }
+
+    Input<OptionalInt> maxSizeInput() {
+        return this.maxSizeInput;
+    }
+
+    TextField extensionField() {
+        return this.extension;
+    }
+
+    Input<String> extensionInput() {
+        return this.extensionInput;
     }
 
     TabPane tabs() {
