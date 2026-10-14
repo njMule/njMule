@@ -298,11 +298,12 @@ public final class EmuleImporter {
         // An unknown capacity is stored as "unlimited", which says nothing about the line.
         capacity(ini, "DownloadCapacity").ifPresent(b::downloadCapacityKiBps);
         capacity(ini, "UploadCapacityNew").ifPresent(b::uploadCapacityKiBps);
-        // eMule keeps a minimum in bytes, used only while its check is on; ours is always on.
+        // eMule keeps a minimum in bytes, used only while its check is on; ours is always on. The unsigned 32-bit
+        // count is written signed, so 2 GiB and more come out negative.
         if (ini.getBoolean(SECTION, "CheckDiskspace").orElse(false)) {
             ini.getLong(SECTION, "MinFreeDiskSpace")
-                    .ifPresent(
-                            v -> b.minFreeSpaceMiB(Math.clamp(v / (1024 * 1024), 0, Preferences.MAX_MIN_FREE_SPACE)));
+                    .ifPresent(v -> b.minFreeSpaceMiB(Math.clamp(
+                            (v < 0 ? v & 0xFFFF_FFFFL : v) / (1024 * 1024), 0, Preferences.MAX_MIN_FREE_SPACE)));
         }
         ini.getLong(SECTION, "MaxConnections").ifPresent(v -> b.maxConnections(Math.clamp(v, 1, 10_000)));
         ini.getLong(SECTION, "MaxSourcesPerFile").ifPresent(v -> b.maxSourcesPerFile(Math.clamp(v, 1, 10_000)));

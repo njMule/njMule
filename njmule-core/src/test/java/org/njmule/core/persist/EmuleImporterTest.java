@@ -489,6 +489,16 @@ class EmuleImporterTest {
     }
 
     @Test
+    void aFreeSpaceMinimumOfTwoGigabytesOrMoreKeepsItsSize() {
+        // eMule writes the 32-bit byte count as a signed number: 3 GiB comes out negative.
+        IniFile ini = IniFile.parse(
+                "[eMule]\nCheckDiskspace=1\nMinFreeDiskSpace=-1073741824\n".getBytes(StandardCharsets.US_ASCII));
+
+        assertThat(EmuleImporter.mapPreferences(ini, Preferences.defaults()).minFreeSpaceMiB())
+                .isEqualTo(3072);
+    }
+
+    @Test
     void theProxyIsTakenWhenEmuleUsesOne() {
         String socks = """
                 [eMule]
