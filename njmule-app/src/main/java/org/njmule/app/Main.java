@@ -264,6 +264,9 @@ public final class Main {
             try {
                 return new NetworkCommands(engine, out, err).run(tasks);
             } catch (InterruptedException e) {
+                // Closed before the flag is set again: an interrupted close would not wait for the saves and the
+                // configuration would stay locked.
+                engine.close();
                 Thread.currentThread().interrupt();
                 return EXIT_FAILURE;
             } finally {

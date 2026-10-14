@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -424,6 +426,32 @@ class MainTest {
                 .contains("What would be imported from " + emule)
                 .doesNotContain("already running");
         assertThat(this.dir.resolve("njmule/temp/001.part.met")).doesNotExist();
+    }
+
+    @Test
+    void anInterruptedCommandFailsAndStillUnlocksTheConfiguration() throws Exception {
+        try (ServerSocket silent = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            AtomicInteger code = new AtomicInteger(-1);
+            Thread run = Thread.ofPlatform()
+                    .start(() -> code.set(Main.run(
+                            new String[] {
+                                "--config-dir", this.dir.toString(), "--hello", "127.0.0.1:" + silent.getLocalPort()
+                            },
+                            new PrintStream(this.out, true, UTF_8),
+                            new PrintStream(this.err, true, UTF_8),
+                            new CompletableFuture<>())));
+            silent.setSoTimeout(20_000);
+            // A peer that takes the connection and never answers the hello.
+            try (Socket _ = silent.accept()) {
+                run.interrupt();
+                run.join(Duration.ofSeconds(20));
+            }
+            assertThat(code.get()).isEqualTo(Main.EXIT_FAILURE);
+        }
+        // The engine was closed, its saves done, before the run returned: another may start at once.
+        assertThat(LinkHandoff.awaitGone(this.dir.resolve("config"), Duration.ofMillis(500)))
+                .as("the configuration is unlocked")
+                .isTrue();
     }
 
     @Test
