@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.Objects;
 import java.util.ResourceBundle;
+import java.util.Set;
 
 /**
  * The interface texts of one language: eMule's strings ({@code IDS_*} keys, converted from its string tables) and
@@ -40,8 +41,11 @@ public final class I18n {
             Locale.of("nl"),
             Locale.of("pl"),
             Locale.of("pt", "BR"),
-            Locale.of("ru"));
+            Locale.of("ru"),
+            Locale.SIMPLIFIED_CHINESE);
 
+    // Where Chinese is written in the traditional script when the locale names no script.
+    private static final Set<String> TRADITIONAL_REGIONS = Set.of("TW", "HK", "MO");
     private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
 
@@ -62,11 +66,20 @@ public final class I18n {
     public static I18n of(Locale locale) {
         Objects.requireNonNull(locale, "locale");
         for (Locale language : LANGUAGES) {
-            if (language.getLanguage().equals(locale.getLanguage())) {
+            if (language.getLanguage().equals(locale.getLanguage()) && !traditionalChinese(locale)) {
                 return new I18n(language);
             }
         }
         return new I18n(Locale.ENGLISH);
+    }
+
+    // Only simplified Chinese is translated: the traditional script is another written language.
+    private static boolean traditionalChinese(Locale locale) {
+        if (!locale.getLanguage().equals("zh")) {
+            return false;
+        }
+        String script = locale.getScript();
+        return script.equals("Hant") || (script.isEmpty() && TRADITIONAL_REGIONS.contains(locale.getCountry()));
     }
 
     public Locale locale() {

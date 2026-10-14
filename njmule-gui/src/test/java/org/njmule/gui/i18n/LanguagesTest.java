@@ -70,7 +70,8 @@ class LanguagesTest {
                 arguments(Locale.of("nl"), "Nederlands", "Taal"),
                 arguments(Locale.of("pl"), "Polski", "Język"),
                 arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"),
-                arguments(Locale.of("ru"), "Русский", "Язык"));
+                arguments(Locale.of("ru"), "Русский", "Язык"),
+                arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"));
     }
 
     static Stream<Locale> translations() {
@@ -90,7 +91,8 @@ class LanguagesTest {
                 Locale.of("nl"),
                 Locale.of("pl"),
                 Locale.of("pt", "BR"),
-                Locale.of("ru"));
+                Locale.of("ru"),
+                Locale.SIMPLIFIED_CHINESE);
     }
 
     @ParameterizedTest
@@ -101,6 +103,14 @@ class LanguagesTest {
         this.thenTheTextsAreIn(language);
         this.thenTheLanguageIsNamed(name);
         this.thenTheTextOfIs("IDS_PW_LANG", languageWord);
+    }
+
+    @Test
+    void chineseTextsLoseTheMnemonicInBrackets() {
+        this.whenTheTextsOfALanguageAreLoaded(Locale.SIMPLIFIED_CHINESE);
+
+        this.thenTheTextOfIs("IDS_EM_SEARCH", "搜索");
+        this.thenTheTextOfIs("IDS_DL_PREVIEW", "预览");
     }
 
     @ParameterizedTest
@@ -116,6 +126,13 @@ class LanguagesTest {
         "pt-BR, pt-BR",
         "pt-PT, pt-BR",
         "ru-RU, ru",
+        "zh, zh-CN",
+        "zh-CN, zh-CN",
+        "zh-SG, zh-CN",
+        "zh-Hans-HK, zh-CN",
+        "zh-TW, en",
+        "zh-HK, en",
+        "zh-Hant, en",
         "sv-SE, en",
         "ja-JP, en"
     })
