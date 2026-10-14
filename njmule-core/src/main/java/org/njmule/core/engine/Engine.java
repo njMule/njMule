@@ -92,6 +92,7 @@ import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.OsFamily;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.net.WebLists;
@@ -167,6 +168,12 @@ public final class Engine implements NjMuleEngine {
         this.eventExecutor = Executors.newSingleThreadExecutor(
                 Thread.ofPlatform().name("njmule-events").daemon(true).factory());
         this.events = new SubmissionPublisher<>(this.eventExecutor, EVENT_BUFFER);
+        // Before the network starts, so that a disk short of space at the start runs its command too.
+        this.events.subscribe(new EventCommandRunner(
+                () -> this.preferences.eventCommands(),
+                EventCommandRunner::launch,
+                command -> Thread.ofVirtual().name("njmule-event-command").start(command),
+                OsFamily.current() == OsFamily.WINDOWS));
         this.network = new Network(
                 loop,
                 directories.config(),

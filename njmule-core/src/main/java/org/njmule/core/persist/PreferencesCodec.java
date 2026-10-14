@@ -32,6 +32,7 @@ import java.util.Properties;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
@@ -137,6 +138,14 @@ public final class PreferencesCodec {
                 "server.manualHighPriority",
                 Preferences::manualServersHighPriority,
                 Preferences.Builder::manualServersHighPriority);
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            String name = "events." + event.id();
+            boolKey(name + ".enabled", p -> p.eventCommands().get(event).enabled(), (b, v) -> b.eventEnabled(event, v));
+            key(
+                    name + ".command",
+                    p -> p.eventCommands().get(event).commandLine(),
+                    (b, v) -> b.eventCommandLine(event, v));
+        }
         key("proxy.host", p -> p.proxy().host(), Preferences.Builder::proxyHost);
         key("proxy.port", p -> String.valueOf(p.proxy().port()), (b, v) -> b.proxyPort(Integer.parseInt(v.strip())));
         key("proxy.user", p -> p.proxy().user(), Preferences.Builder::proxyUser);

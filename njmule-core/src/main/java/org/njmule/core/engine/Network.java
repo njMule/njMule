@@ -1957,6 +1957,7 @@ final class Network {
                         LogLine.Level.WARNING,
                         "Not enough free space on the temp disk: downloads wait until there is room");
             }
+            Network.this.publish.accept(new EngineEvent.DiskSpace(Network.this.tempDir(), enough));
         }
 
         @Override

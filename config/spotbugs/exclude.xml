@@ -119,4 +119,12 @@
             <Class name="org.njmule.gui.infra.Preview"/>
         </Or>
     </Match>
+
+    <!-- The event commands run the program the user set in the settings. Names and messages from
+         the network only fill in its arguments, which go as a list, so no shell parses them; on
+         Windows, where they travel as one command line, their quotes are replaced first. -->
+    <Match>
+        <Bug pattern="COMMAND_INJECTION"/>
+        <Class name="org.njmule.core.engine.EventCommandRunner"/>
+    </Match>
 </FindBugsFilter>

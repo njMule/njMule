@@ -79,6 +79,12 @@ public sealed interface EngineEvent {
     /** The download was cancelled and its data deleted. */
     record DownloadRemoved(Hash16 hash) implements EngineEvent {}
 
+    /**
+     * The disk of the temp folder {@code directory} ran short of free space and the downloads wait ({@code enough}
+     * false), or it has room again.
+     */
+    record DiskSpace(Path directory, boolean enough) implements EngineEvent {}
+
     /** A client sent us a message; {@code address} is its IP and listening port. */
     record MessageReceived(String address, Hash16 userHash, Optional<String> nick, String text)
             implements EngineEvent {}

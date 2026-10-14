@@ -35,6 +35,7 @@ import org.njmule.core.security.IpWhitelist;
  * @param uploadCapacityKiBps what the line can upload
  * @param minFreeSpaceMiB downloads wait while the temp disk has less free space; {@code 0} = never
  * @param ipFilterWhitelist addresses the IP filter never blocks, one per line (see {@link #invalidWhitelistEntry})
+ * @param eventCommands the programs run when a download ends, a chat message arrives or the disk runs short
  */
 public record Preferences(
         String nick,
@@ -84,7 +85,8 @@ public record Preferences(
         String videoPlayer,
         String videoPlayerArgs,
         String commentFilter,
-        String ipFilterWhitelist) {
+        String ipFilterWhitelist,
+        EventCommands eventCommands) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -179,6 +181,7 @@ public record Preferences(
             throw new IllegalArgumentException(
                     "ipFilterWhitelist: not an address, CIDR block or range: " + invalid.get());
         }
+        Objects.requireNonNull(eventCommands, "eventCommands");
     }
 
     /**
@@ -239,7 +242,8 @@ public record Preferences(
                 "",
                 "",
                 DEFAULT_COMMENT_FILTER,
-                "");
+                "",
+                EventCommands.NONE);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -332,6 +336,7 @@ public record Preferences(
         private String videoPlayerArgs;
         private String commentFilter;
         private String ipFilterWhitelist;
+        private EventCommands eventCommands;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -382,6 +387,7 @@ public record Preferences(
             this.videoPlayerArgs = p.videoPlayerArgs;
             this.commentFilter = p.commentFilter;
             this.ipFilterWhitelist = p.ipFilterWhitelist;
+            this.eventCommands = p.eventCommands;
         }
 
         public Builder nick(String value) {
@@ -653,6 +659,26 @@ public record Preferences(
             return this;
         }
 
+        public Builder eventCommands(EventCommands value) {
+            this.eventCommands = value;
+            return this;
+        }
+
+        /** Turns the command of {@code event} on or off, keeping its command line. */
+        public Builder eventEnabled(EventCommands.Event event, boolean value) {
+            EventCommands.Command command = this.eventCommands.get(event);
+            this.eventCommands =
+                    this.eventCommands.with(event, new EventCommands.Command(value, command.commandLine()));
+            return this;
+        }
+
+        /** Sets the command line of {@code event}, keeping whether it runs. */
+        public Builder eventCommandLine(EventCommands.Event event, String value) {
+            EventCommands.Command command = this.eventCommands.get(event);
+            this.eventCommands = this.eventCommands.with(event, new EventCommands.Command(command.enabled(), value));
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -703,7 +729,8 @@ public record Preferences(
                     this.videoPlayer,
                     this.videoPlayerArgs,
                     this.commentFilter,
-                    this.ipFilterWhitelist);
+                    this.ipFilterWhitelist,
+                    this.eventCommands);
         }
     }
 }

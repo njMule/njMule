@@ -290,6 +290,10 @@ All notable changes to this project are documented here. The format follows
   file now, swap them to it by itself when possible, swap every source of this file to other files)
   and Swap to this file on an A4AF source; the downloading clients show each state with an icon of
   its own, and an A4AF source the file it is asked for.
+- Event commands, run by the desktop and the headless app alike: a program of the user's on a
+  completed or failed download, a chat message and a temp disk short of space, with `%NAME`,
+  `%FILE`, `%HASH`, `%SIZE`, `%SENDER` and `%MESSAGE` filled in inside its arguments
+  (`events.*` in `njmule.properties`). No shell runs it, and at most four run at once.
 
 ### Changed
 

@@ -370,6 +370,7 @@ final class ApiJson {
             case EngineEvent.DownloadCompleted e -> "download.completed";
             case EngineEvent.DownloadFailed e -> "download.failed";
             case EngineEvent.DownloadRemoved e -> "download.removed";
+            case EngineEvent.DiskSpace e -> "disk.space";
             case EngineEvent.MessageReceived e -> "message.received";
             case EngineEvent.CaptchaRequested e -> "captcha.requested";
             case EngineEvent.CaptchaAnswered e -> "captcha.answered";
@@ -433,6 +434,10 @@ final class ApiJson {
             }
             case EngineEvent.DownloadRemoved e ->
                 g.writeStringProperty("hash", e.hash().toHex());
+            case EngineEvent.DiskSpace e -> {
+                g.writeStringProperty("directory", e.directory().toString());
+                g.writeBooleanProperty("enough", e.enough());
+            }
             case EngineEvent.MessageReceived e -> {
                 g.writeStringProperty("address", e.address());
                 g.writeStringProperty("userHash", e.userHash().toHex());
