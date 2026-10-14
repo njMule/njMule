@@ -95,6 +95,25 @@ class EngineImportTest {
     }
 
     @Test
+    void theEngineStartsAfterTwoIdentityImports() throws Exception {
+        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
+        AppDirectories dirs = this.directories(freePort());
+        ImportOptions identity = new ImportOptions(false, true, false);
+
+        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
+            engine.importFromEmule(emule.config, identity).get(30, TimeUnit.SECONDS);
+            engine.importFromEmule(emule.config, identity).get(30, TimeUnit.SECONDS);
+        }
+
+        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
+            assertThat(engine.isRunning()).isTrue();
+            assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+            assertThat(dirs.config().resolve("cryptkey.dat"))
+                    .hasSameBinaryContentAs(emule.config.resolve("cryptkey.dat"));
+        }
+    }
+
+    @Test
     void aDryRunLeavesTheEngineAsItWas() throws Exception {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
         AppDirectories dirs = this.directories(freePort());

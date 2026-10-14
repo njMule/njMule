@@ -333,6 +333,78 @@ class EmuleImporterTest {
     }
 
     @Test
+    void anIdentityImportedTwiceBeforeARestartIsStillTaken() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        this.run(new ImportOptions(false, true, false), false);
+
+        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
+
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+        assertThat(this.ours.resolve("preferences.dat"))
+                .hasSameBinaryContentAs(this.emule.config.resolve("preferences.dat"));
+    }
+
+    @Test
+    void leftoversInThePendingIdentityDoNotStopTheStart() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+        Files.writeString(pending.resolve("preferences.dat.bak"), "older");
+        Files.writeString(pending.resolve("cryptkey.dat.tmp"), "interrupted");
+        Files.writeString(Files.createDirectories(pending.resolve("unexpected")).resolve("x"), "x");
+
+        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
+
+        assertThat(pending.resolve("preferences.dat.bak")).doesNotExist();
+        assertThat(pending.resolve("cryptkey.dat.tmp")).doesNotExist();
+        assertThat(this.ours.resolve("cryptkey.dat")).hasSameBinaryContentAs(this.emule.config.resolve("cryptkey.dat"));
+    }
+
+    @Test
+    void anotherProfileReplacesTheWholePendingIdentity() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        SyntheticEmuleProfile other = SyntheticEmuleProfile.create(this.dir.resolve("other"));
+        Files.delete(other.config.resolve("clients.met"));
+        Files.delete(other.config.resolve("preferencesKad.dat"));
+        Path ini = other.config.resolve("preferences.ini");
+        Files.writeString(
+                ini,
+                Files.readString(ini, StandardCharsets.ISO_8859_1).replace("KadUDPKey=", "Unused="),
+                StandardCharsets.ISO_8859_1);
+
+        new EmuleImporter(other.config, new ImportOptions(false, true, false), this.target, () -> false).run();
+
+        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+        assertThat(pending.resolve("preferences.dat")).hasSameBinaryContentAs(other.config.resolve("preferences.dat"));
+        assertThat(pending.resolve("clients.met")).doesNotExist();
+        assertThat(pending.resolve("preferencesKad.dat")).doesNotExist();
+        assertThat(pending.resolve("kadudpkey.dat")).doesNotExist();
+    }
+
+    @Test
+    void aUserHashWithoutItsKeyIsNotApplied() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+        Files.delete(pending.resolve("cryptkey.dat"));
+
+        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isFalse();
+
+        assertThat(this.ours.resolve("preferences.dat")).doesNotExist();
+        assertThat(pending).doesNotExist();
+    }
+
+    @Test
+    void aDryRunKeepsThePendingIdentity() throws IOException {
+        this.run(new ImportOptions(false, true, false), false);
+        Files.delete(this.emule.config.resolve("cryptkey.dat"));
+
+        this.run(new ImportOptions(true, true, false), false);
+
+        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+        assertThat(pending.resolve("preferences.dat")).exists();
+        assertThat(pending.resolve("cryptkey.dat")).exists();
+    }
+
+    @Test
     void preferencesTakeOnlyUsableValues() {
         IniFile ini = IniFile.parse(String.join(
                         "\n",

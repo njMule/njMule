@@ -101,8 +101,9 @@ public final class EmuleImporter {
     // Limits at or above this mean "no limit".
     private static final long UNLIMITED = 65_535;
     private static final String KAD_KEY_FILE = "kadudpkey.dat";
+    private static final String KEY_FILE = "cryptkey.dat";
     private static final List<String> IDENTITY =
-            List.of(UserHashStore.FILE_NAME, "cryptkey.dat", "clients.met", "preferencesKad.dat", KAD_KEY_FILE);
+            List.of(UserHashStore.FILE_NAME, KEY_FILE, "clients.met", "preferencesKad.dat", KAD_KEY_FILE);
 
     private final Path emule;
     private final ImportOptions options;
@@ -145,16 +146,39 @@ public final class EmuleImporter {
             logger.warn("eMule runs: its identity is taken over once it is closed");
             return false;
         }
-        for (String name : IDENTITY) {
-            Path file = pending.resolve(name);
-            if (Files.exists(file)) {
-                AtomicFiles.writeBytes(configDir.resolve(name), Files.readAllBytes(file));
-                Files.delete(file);
+        // Our key with another user hash would fail every identification, and the reverse.
+        boolean complete = Files.isRegularFile(pending.resolve(UserHashStore.FILE_NAME))
+                && Files.isRegularFile(pending.resolve(KEY_FILE));
+        if (complete) {
+            // Every file is in place before the folder goes: a start that fails half way takes all of them again.
+            for (String name : IDENTITY) {
+                Path file = pending.resolve(name);
+                if (Files.isRegularFile(file)) {
+                    AtomicFiles.writeBytes(configDir.resolve(name), Files.readAllBytes(file));
+                }
             }
+            logger.info("Using the identity imported from eMule");
+        } else {
+            logger.warn("Leaving out the identity imported from eMule: its user hash or key is missing");
         }
-        Files.delete(pending);
-        logger.info("Using the identity imported from eMule");
-        return true;
+        removeFolder(pending);
+        return complete;
+    }
+
+    // With what an interrupted or repeated import left in it; a folder that stays is taken again at the next start.
+    private static void removeFolder(Path folder) {
+        try {
+            if (Files.isDirectory(folder)) {
+                try (DirectoryStream<Path> files = Files.newDirectoryStream(folder)) {
+                    for (Path file : files) {
+                        Files.deleteIfExists(file);
+                    }
+                }
+            }
+            Files.deleteIfExists(folder);
+        } catch (IOException e) {
+            logger.warn("Cannot remove {}", folder, e);
+        }
     }
 
     public ImportReport run() {
@@ -568,20 +592,26 @@ public final class EmuleImporter {
             }
             return;
         }
+        if (!this.options.dryRun()) {
+            // An identity waiting from an earlier import goes as a whole: its files must not mix with these.
+            this.dropPendingIdentity();
+        }
         boolean hash = this.pending(UserHashStore.FILE_NAME, data -> {
             if (!PreferencesDat.isMarkedUserHash(PreferencesDat.read(data).userHash())) {
                 throw new IOException("not a usable user hash");
             }
             return "user hash";
         });
-        boolean key = this.pending("cryptkey.dat", data -> {
+        boolean key = this.pending(KEY_FILE, data -> {
             String text = new String(data, StandardCharsets.US_ASCII);
             RsaKeys.decodePrivate(Base64.getDecoder().decode(text.replaceAll("\\s+", "")));
             return "secure identification key";
         });
         if (!hash || !key) {
             // Our key with eMule's user hash would fail every identification, and the reverse.
-            this.dropPendingIdentity();
+            if (!this.options.dryRun()) {
+                this.dropPendingIdentity();
+            }
             this.report(
                     this.emule,
                     ImportReport.Outcome.SKIPPED,
@@ -601,7 +631,7 @@ public final class EmuleImporter {
             Path pending = this.target.configDir().resolve(PENDING_IDENTITY);
             try {
                 Files.createDirectories(pending);
-                AtomicFiles.writeBytes(
+                writePending(
                         pending.resolve(KAD_KEY_FILE),
                         new PacketWriter().u32(udpKey).toByteArray());
             } catch (IOException e) {
@@ -611,15 +641,12 @@ public final class EmuleImporter {
     }
 
     private void dropPendingIdentity() {
-        Path pending = this.target.configDir().resolve(PENDING_IDENTITY);
-        try {
-            for (String name : IDENTITY) {
-                Files.deleteIfExists(pending.resolve(name));
-            }
-            Files.deleteIfExists(pending);
-        } catch (IOException e) {
-            logger.warn("Cannot remove {}", pending, e);
-        }
+        removeFolder(this.target.configDir().resolve(PENDING_IDENTITY));
+    }
+
+    // Without a backup: the folder holds only what the next start takes.
+    private static void writePending(Path file, byte[] data) throws IOException {
+        AtomicFiles.write(file, out -> out.write(data), false);
     }
 
     /** Checks an identity file and puts it aside for the next start; returns whether it could. */
@@ -631,7 +658,7 @@ public final class EmuleImporter {
             }
             Path pending = this.target.configDir().resolve(PENDING_IDENTITY);
             Files.createDirectories(pending);
-            AtomicFiles.writeBytes(pending.resolve(name), data);
+            writePending(pending.resolve(name), data);
             return item(file, ImportReport.Outcome.IMPORTED, what + ", from the next start");
         });
         return outcome == ImportReport.Outcome.IMPORTED || outcome == ImportReport.Outcome.WOULD_IMPORT;
