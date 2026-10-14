@@ -90,6 +90,14 @@ final class DownloadSession implements PeerLink.Role {
         /** The session let blocks go that other sources may now download. */
         default void released(DownloadSession session) {}
 
+        /** How many of {@code blocks} more blocks the session may ask for now; with none, it waits to be woken. */
+        default int allowance(DownloadSession session, int blocks) {
+            return blocks;
+        }
+
+        /** The session asked the source for {@code bytes} more. */
+        default void requested(DownloadSession session, long bytes) {}
+
         /** The source told which parts it has. */
         default void partsKnown(DownloadSession session) {}
 
@@ -547,7 +555,14 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         int wanted = ClientMessages.BLOCKS_PER_REQUEST - this.pending.size();
-        List<PartFile.Block> next = wanted > 0 ? this.download.file().nextBlocks(this.sourceParts, wanted) : List.of();
+        int allowed = wanted > 0 ? this.listener.allowance(this, wanted) : 0;
+        if (wanted > 0 && allowed == 0) {
+            // Over the download limit: woken once there is budget again, and not idle meanwhile.
+            this.stopIdle();
+            return;
+        }
+        List<PartFile.Block> next =
+                allowed > 0 ? this.download.file().nextBlocks(this.sourceParts, allowed) : List.of();
         if (next.isEmpty()) {
             if (this.pending.isEmpty() && this.idle == null) {
                 this.idle = this.loop.schedule("idle download slot", IDLE_SLOT, () -> {
@@ -568,11 +583,14 @@ final class DownloadSession implements PeerLink.Role {
         this.stopIdle();
         List<ClientMessages.Range> ranges = new ArrayList<>(ClientMessages.BLOCKS_PER_REQUEST);
         boolean wide = false;
+        long bytes = 0;
         for (PartFile.Block block : next) {
             this.pending.put(block.start(), new Pending(block));
             ranges.add(new ClientMessages.Range(block.start(), block.end()));
             wide |= block.end() > 0xFFFF_FFFFL;
+            bytes += block.length();
         }
+        this.listener.requested(this, bytes);
         while (ranges.size() < ClientMessages.BLOCKS_PER_REQUEST) {
             ranges.add(new ClientMessages.Range(0, 0));
         }

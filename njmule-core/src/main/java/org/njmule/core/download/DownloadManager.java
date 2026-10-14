@@ -31,11 +31,13 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -57,6 +59,7 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.hash.AichRecovery;
 import org.njmule.core.files.hash.AichVotes;
+import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
@@ -122,6 +125,7 @@ public final class DownloadManager implements AutoCloseable {
      * @param filterLan whether sources at LAN addresses are left out
      * @param previewFirst whether every playable download fetches its first and last parts first
      * @param commentFilter words, apart by {@code |}, that leave the sources' comments holding them out
+     * @param maxDownloadKiBps the download limit, 0 for none
      */
     public record Settings(
             ObfuscationMode obfuscation,
@@ -130,7 +134,8 @@ public final class DownloadManager implements AutoCloseable {
             long minFreeSpace,
             boolean filterLan,
             boolean previewFirst,
-            String commentFilter) {
+            String commentFilter,
+            int maxDownloadKiBps) {
 
         public Settings(
                 ObfuscationMode obfuscation,
@@ -138,7 +143,7 @@ public final class DownloadManager implements AutoCloseable {
                 int listenPort,
                 long minFreeSpace,
                 boolean filterLan) {
-            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "");
+            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "", 0);
         }
     }
 
@@ -152,6 +157,8 @@ public final class DownloadManager implements AutoCloseable {
     public static final Duration SERVER_SOURCES_INTERVAL = Duration.ofMinutes(20);
 
     private static final Duration TICK = Duration.ofSeconds(1);
+    // The download limit is shared out in tenths of a second.
+    private static final Duration BUDGET_TICK = Duration.ofMillis(100);
     private static final int MAX_COMMENTS = 100;
     private static final int MAX_STARTING = 8;
     private static final int MAX_FAILURES = 3;
@@ -276,6 +283,11 @@ public final class DownloadManager implements AutoCloseable {
     private final SessionEvents sessionEvents = new SessionEvents();
     private DownloadQueue queue;
     private ScheduledFuture<?> ticking;
+    private ScheduledFuture<?> budgeting;
+    // Bytes that may still be asked for under the download limit; below zero once more was asked.
+    private long budget;
+    // Sessions waiting for budget, first come first served.
+    private final Set<DownloadSession> throttled = new LinkedHashSet<>();
 
     private DownloadManager(
             EngineLoop loop,
@@ -343,6 +355,7 @@ public final class DownloadManager implements AutoCloseable {
             manager.entries.put(download.hash(), new Entry(download, now));
         }
         manager.ticking = loop.scheduleRepeating("downloads", TICK, TICK, manager::tick);
+        manager.budgeting = loop.scheduleRepeating("download budget", BUDGET_TICK, BUDGET_TICK, manager::refill);
         return manager;
     }
 
@@ -642,6 +655,9 @@ public final class DownloadManager implements AutoCloseable {
         if (this.ticking != null) {
             this.ticking.cancel(false);
         }
+        if (this.budgeting != null) {
+            this.budgeting.cancel(false);
+        }
         for (Entry entry : this.entries.values()) {
             this.closeSessions(entry, "shutting down");
         }
@@ -805,6 +821,42 @@ public final class DownloadManager implements AutoCloseable {
                 this.listener.progress(this.info(entry));
             }
         }
+    }
+
+    // Each tick adds a tenth of the limit, up to a second's worth; without a limit nothing is counted, so a limit set
+    // later starts from nothing.
+    private void refill() {
+        int limit = this.settings.get().maxDownloadKiBps();
+        if (limit <= 0) {
+            this.budget = 0;
+        } else {
+            long second = limit * 1024L;
+            this.budget = Math.min(this.budget + second / 10, second);
+        }
+        if (this.throttled.isEmpty() || (limit > 0 && this.budget <= 0)) {
+            return;
+        }
+        List<DownloadSession> waiting = List.copyOf(this.throttled);
+        this.throttled.clear();
+        for (DownloadSession session : waiting) {
+            if (limit > 0 && this.budget <= 0) {
+                this.throttled.add(session);
+            } else {
+                session.wake();
+            }
+        }
+    }
+
+    // Under a limit, the blocks the budget covers, at least one while any budget is left.
+    private int allowance(DownloadSession session, int wanted) {
+        if (this.settings.get().maxDownloadKiBps() <= 0) {
+            return wanted;
+        }
+        if (this.budget <= 0) {
+            this.throttled.add(session);
+            return 0;
+        }
+        return (int) Math.min(wanted, (this.budget + Ed2k.EMBLOCKSIZE - 1) / Ed2k.EMBLOCKSIZE);
     }
 
     // Higher priorities first: they ask the server, start sessions and search Kad before the others.
@@ -1317,6 +1369,18 @@ public final class DownloadManager implements AutoCloseable {
         @Override
         public void aichAnswered(DownloadSession session, int part, Hash20 master, byte[] data) {
             DownloadManager.this.aichAnswered(session, part, master, data);
+        }
+
+        @Override
+        public int allowance(DownloadSession session, int blocks) {
+            return DownloadManager.this.allowance(session, blocks);
+        }
+
+        @Override
+        public void requested(DownloadSession session, long bytes) {
+            if (DownloadManager.this.settings.get().maxDownloadKiBps() > 0) {
+                DownloadManager.this.budget -= bytes;
+            }
         }
 
         @Override

@@ -342,7 +342,8 @@ final class Network {
                             prefs.minFreeSpaceMiB() * 1024L * 1024L,
                             prefs.filterLanAddresses(),
                             prefs.previewFirst(),
-                            prefs.commentFilter());
+                            prefs.commentFilter(),
+                            prefs.maxDownloadKiBps());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
