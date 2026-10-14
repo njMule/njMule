@@ -16,7 +16,6 @@
  */
 package org.njmule.core.download;
 
-import com.google.common.base.Splitter;
 import com.google.common.base.Ticker;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
@@ -34,7 +33,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -57,6 +55,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.CommentFilter;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.hash.AichRecovery;
 import org.njmule.core.files.hash.AichVotes;
@@ -1574,12 +1573,8 @@ public final class DownloadManager implements AutoCloseable {
         if (entry == null || comment.isEmpty()) {
             return;
         }
-        String text = comment.text().toLowerCase(Locale.ROOT);
-        for (String word : Splitter.on('|').split(this.settings.get().commentFilter())) {
-            String w = word.strip().toLowerCase(Locale.ROOT);
-            if (!w.isEmpty() && text.contains(w)) {
-                return;
-            }
+        if (CommentFilter.of(this.settings.get().commentFilter()).leavesOut(comment.text())) {
+            return;
         }
         String user = session.peer()
                 .flatMap(Hello::nick)
