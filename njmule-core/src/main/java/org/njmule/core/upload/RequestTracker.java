@@ -36,10 +36,13 @@ final class RequestTracker {
     // Clients re-asking on a timer of exactly the shortest time come a little early now and then.
     private static final Duration TOLERANCE = Duration.ofSeconds(10);
     private static final int MAX_FILES = 32;
+    private static final long UNKNOWN_FILES_KEPT = Duration.ofHours(2).toNanos();
 
     private final long fastAsk;
     private final long window;
     private final Map<Key, History> histories = new HashMap<>();
+    // By address: connections dropped for asking for files we do not have.
+    private final Map<InetAddress, Drops> unknownFiles = new HashMap<>();
 
     /**
      * @param minAsk the shortest time between two asks for a file that does not count against a client
@@ -84,9 +87,24 @@ final class RequestTracker {
         }
     }
 
+    /**
+     * A connection from {@code ip} was dropped for asking for files we do not have; returns how many were within two
+     * hours, whatever the user hash.
+     */
+    int unknownFiles(InetAddress ip, long now) {
+        Drops drops = this.unknownFiles.get(ip);
+        if (drops == null || now - drops.last >= UNKNOWN_FILES_KEPT) {
+            drops = new Drops();
+            this.unknownFiles.put(ip, drops);
+        }
+        drops.last = now;
+        return ++drops.count;
+    }
+
     /** Forgets the clients not heard of within the window. */
     void purge(long now) {
         this.histories.values().removeIf(r -> now - r.seen >= this.window);
+        this.unknownFiles.values().removeIf(d -> now - d.last >= UNKNOWN_FILES_KEPT);
     }
 
     int size() {
@@ -104,6 +122,11 @@ final class RequestTracker {
         private long seen;
         private int idleSlots;
         private long firstIdle;
+    }
+
+    private static final class Drops {
+        private int count;
+        private long last;
     }
 
     /** The last ask for a file and how many came too soon. */

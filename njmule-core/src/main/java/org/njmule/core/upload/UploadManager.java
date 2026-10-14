@@ -111,6 +111,9 @@ public final class UploadManager implements AutoCloseable {
 
     static final Duration IDLE_SLOTS_WINDOW = Duration.ofHours(4);
 
+    // Connections from an address dropped for asking for files we do not have, at which it is banned.
+    private static final int UNKNOWN_FILES_DROPS = 2;
+
     /** A waiting client that does not ask again for this long is forgotten. */
     public static final Duration PURGE_AFTER = Duration.ofHours(1);
 
@@ -1118,6 +1121,24 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public void misbehaved(UploadSession session, String reason) {
             UploadManager.this.ban(session.address().getAddress(), UploadManager.this.ticker.read(), reason);
+        }
+
+        @Override
+        public boolean isOurs(Hash16 file) {
+            UploadManager manager = UploadManager.this;
+            return manager.shared.apply(file).isPresent()
+                    || manager.downloads.apply(file).isPresent();
+        }
+
+        // Dropped once for it, an address is banned the second time within a while.
+        @Override
+        public void askedForUnknownFiles(UploadSession session) {
+            UploadManager manager = UploadManager.this;
+            long now = manager.ticker.read();
+            InetAddress ip = session.address().getAddress();
+            if (manager.requests.unknownFiles(ip, now) >= UNKNOWN_FILES_DROPS) {
+                manager.ban(ip, now, "asked for files we do not have again and again");
+            }
         }
 
         // A request with the user hash of a known client comes from that client when it comes

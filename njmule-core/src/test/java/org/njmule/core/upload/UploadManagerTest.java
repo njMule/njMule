@@ -515,6 +515,16 @@ class UploadManagerTest {
     }
 
     private DownloadQueue.Download downloadLastPart(Ed2kLink.FileLink link, byte[] last) throws Exception {
+        DownloadQueue.Download download = this.addDownload(link);
+        this.onLoop(() -> {
+            this.downloads.received(download, Ed2k.PARTSIZE, last);
+            return null;
+        });
+        this.await("the last part checked", () -> download.verifiedParts().get(1));
+        return download;
+    }
+
+    private DownloadQueue.Download addDownload(Ed2kLink.FileLink link) throws Exception {
         this.downloads = this.onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
@@ -533,13 +543,7 @@ class UploadManagerTest {
                     @Override
                     public void failed(DownloadQueue.Download download, String reason) {}
                 }));
-        DownloadQueue.Download download = this.onLoop(() -> this.downloads.add(link));
-        this.onLoop(() -> {
-            this.downloads.received(download, Ed2k.PARTSIZE, last);
-            return null;
-        });
-        this.await("the last part checked", () -> download.verifiedParts().get(1));
-        return download;
+        return this.onLoop(() -> this.downloads.add(link));
     }
 
     private static SharedFiles.SharedFile withPath(SharedFiles.SharedFile file, Path path) {
@@ -1000,6 +1004,63 @@ class UploadManagerTest {
 
     private void thenItGetsItsSlotBack() throws IOException {
         this.client.until(Opcodes.Client.ACCEPTUPLOADREQ);
+    }
+
+    @Test
+    void aClientAskingForManyFilesWeDoNotHaveIsDroppedAndBannedTheSecondTime() throws Exception {
+        this.givenAClientThatWasDroppedForAskingForFilesWeDoNotHave();
+
+        this.whenAnotherConnectionFromItsAddressAsksForThem(UploadSession.UNKNOWN_FILES_LIMIT);
+
+        this.thenItIsBanned();
+    }
+
+    @Test
+    void filesWeDownloadDoNotCountAsUnknown() throws Exception {
+        this.givenADownloadWithNothingToShareYet();
+
+        this.whenAClientAsksForItAndForUnknownFiles(UploadSession.UNKNOWN_FILES_LIMIT - 1);
+
+        this.thenItStillGetsAnswers();
+    }
+
+    private void givenAClientThatWasDroppedForAskingForFilesWeDoNotHave() throws Exception {
+        this.file = this.share("known.bin", random(3000, 23));
+        this.start();
+        this.whenAnotherConnectionFromItsAddressAsksForThem(UploadSession.UNKNOWN_FILES_LIMIT);
+        assertThat(this.client.closedWithin(WAIT)).isTrue();
+        assertThat(this.onLoop(this.manager::bans)).isEmpty();
+    }
+
+    private void givenADownloadWithNothingToShareYet() throws Exception {
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                "pending.bin", 5000, hashOf(90), Optional.empty(), List.of(), List.of(), List.of());
+        this.addDownload(link);
+        this.file = this.share("known.bin", random(3000, 24));
+        this.start();
+    }
+
+    private void whenAnotherConnectionFromItsAddressAsksForThem(int files) throws Exception {
+        this.client = this.client(30 + this.slotHolders.size(), 0, 0);
+        this.slotHolders.add(this.client);
+        for (int i = 0; i < files; i++) {
+            this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, hashOf(100 + i)));
+        }
+    }
+
+    private void whenAClientAsksForItAndForUnknownFiles(int unknown) throws Exception {
+        this.client = this.client(30, 0, 0);
+        this.client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, hashOf(90)));
+        this.client.until(Opcodes.Client.FILEREQANSNOFIL);
+        for (int i = 0; i < unknown; i++) {
+            this.client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, hashOf(100 + i)));
+            this.client.until(Opcodes.Client.FILEREQANSNOFIL);
+        }
+    }
+
+    private void thenItStillGetsAnswers() throws IOException {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        assertThat(this.client.until(Opcodes.Client.REQFILENAMEANSWER)).isNotNull();
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

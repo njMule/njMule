@@ -431,6 +431,8 @@ All notable changes to this project are documented here. The format follows
   leaving the queue and coming back no longer clears its quick re-asks, and a client that takes
   eight slots within four hours without asking for any data is banned; a slot that sends data
   forgives the idle ones.
+- A connection that asks for six files we neither share nor download is closed, and an address
+  closed this way twice within two hours is banned.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

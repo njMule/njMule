@@ -96,6 +96,12 @@ final class UploadSession implements PeerLink.Role {
         /** The client broke the rules in a way that only an attacker would; it is banned. */
         void misbehaved(UploadSession session, String reason);
 
+        /** Whether {@code file} is ours, shared or downloading, even with nothing of it to send yet. */
+        boolean isOurs(Hash16 file);
+
+        /** The client asked for too many files we do not have on its connection, which closes. */
+        void askedForUnknownFiles(UploadSession session);
+
         /** The AICH master hash of {@code file}, shared with its tree or downloading with the hash known. */
         Optional<Hash20> aichMaster(Hash16 file);
 
@@ -135,6 +141,9 @@ final class UploadSession implements PeerLink.Role {
 
     private static final int MAX_NAMED = 32;
 
+    /** Files neither shared nor downloaded a client may ask us for on one connection before it is dropped. */
+    static final int UNKNOWN_FILES_LIMIT = 6;
+
     private static final Logger logger = LoggerFactory.getLogger(UploadSession.class);
 
     private PeerChannel connection;
@@ -147,6 +156,8 @@ final class UploadSession implements PeerLink.Role {
     private final Set<Hash16> commented = new HashSet<>();
     // Files of ours the client asked for on this connection, the latest ones.
     private final Set<Hash16> named = new LinkedHashSet<>();
+    // Files not ours it asked for.
+    private final Set<Hash16> unknown = new HashSet<>();
     private Optional<Uploadable> file = Optional.empty();
     private Optional<Identities.Session> identity = Optional.empty();
     private final List<Packet> held = new ArrayList<>();
@@ -571,9 +582,19 @@ final class UploadSession implements PeerLink.Role {
     }
 
     // Files above 4 GB only for clients that can take them.
+    // A client asking for one file we do not have after another floods us: past a few the connection ends.
     private Optional<Uploadable> lookup(Hash16 hash) {
+        Optional<Uploadable> found = this.queue.find(hash);
+        if (found.isEmpty()
+                && !this.queue.isOurs(hash)
+                && this.unknown.add(hash)
+                && this.unknown.size() >= UNKNOWN_FILES_LIMIT) {
+            logger.debug("{} asked for {} files we do not have", this.address(), this.unknown.size());
+            this.queue.askedForUnknownFiles(this);
+            this.disconnect();
+        }
         boolean large = (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0;
-        return this.queue.find(hash).filter(f -> large || f.size() <= Ed2k.OLD_MAX_FILE_SIZE);
+        return found.filter(f -> large || f.size() <= Ed2k.OLD_MAX_FILE_SIZE);
     }
 
     /** Fails reads that wait longer than {@code timeout}. */
