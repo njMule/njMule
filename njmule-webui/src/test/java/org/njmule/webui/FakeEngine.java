@@ -47,7 +47,6 @@ final class FakeEngine {
                         }
                         case "toString" -> "FakeEngine";
                         case "hashCode" -> System.identityHashCode(proxy);
-                        case "equals" -> proxy == args[0];
                         default -> {
                             Function<Object[], CompletableFuture<?>> answer = this.answers.get(name);
                             yield answer != null

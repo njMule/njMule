@@ -43,6 +43,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
@@ -83,6 +84,9 @@ public final class WebUi implements AutoCloseable {
     private static final int RESULTS_KEPT = 1000;
     private static final long ENGINE_WAIT_SECONDS = 10;
 
+    // Each check keeps a core busy for a while: logins from many addresses cannot take them all.
+    private static final int PASSWORD_CHECKS = 2;
+
     // Pasted links are separated by white space, which file names may contain too.
     private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
@@ -95,19 +99,27 @@ public final class WebUi implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Sessions sessions = new Sessions(new SecureRandom(), System::nanoTime);
+    private final int passwordChecks;
+    private final Semaphore checking;
 
     // Results of the latest searches, by search id, oldest first.
     private final LinkedHashMap<Long, Map<Hash16, SearchResult>> results = new LinkedHashMap<>();
     private volatile Flow.Subscription subscription;
 
-    private WebUi(NjMuleEngine engine, WebUiSettings settings, HttpServer server) {
+    private WebUi(NjMuleEngine engine, WebUiSettings settings, HttpServer server, int passwordChecks) {
         this.engine = engine;
         this.settings = settings;
         this.server = server;
+        this.passwordChecks = passwordChecks;
+        this.checking = new Semaphore(passwordChecks);
     }
 
     /** Starts the interface; it must be enabled and have a password. */
     public static WebUi start(NjMuleEngine engine, WebUiSettings settings) throws IOException {
+        return start(engine, settings, PASSWORD_CHECKS);
+    }
+
+    static WebUi start(NjMuleEngine engine, WebUiSettings settings, int passwordChecks) throws IOException {
         Objects.requireNonNull(engine, "engine");
         if (!settings.usable()) {
             throw new IllegalArgumentException("the web interface is off or has no password");
@@ -116,7 +128,7 @@ public final class WebUi implements AutoCloseable {
                 ? new InetSocketAddress(settings.port())
                 : new InetSocketAddress(InetAddress.getLoopbackAddress(), settings.port());
         HttpServer server = HttpServer.create(bind, 0);
-        WebUi ui = new WebUi(engine, settings, server);
+        WebUi ui = new WebUi(engine, settings, server, passwordChecks);
         server.setExecutor(ui.executor);
         server.createContext("/", ui::handle);
         engine.events().subscribe(ui.new Results());
@@ -127,6 +139,11 @@ public final class WebUi implements AutoCloseable {
 
     public int port() {
         return this.server.getAddress().getPort();
+    }
+
+    /** Passwords being checked now. */
+    int checkingPasswords() {
+        return this.passwordChecks - this.checking.availablePermits();
     }
 
     @Override
@@ -239,10 +256,19 @@ public final class WebUi implements AutoCloseable {
             return;
         }
         char[] password = form(exchange).getOrDefault("password", "").toCharArray();
-        boolean right = Passwords.matches(password, this.settings.passwordHash());
-        Passwords.wipe(password);
+        if (!this.checking.tryAcquire()) {
+            Passwords.wipe(password);
+            this.send(exchange, 429, HTML, loginPage("Busy: try again in a moment."));
+            return;
+        }
+        boolean right;
+        try {
+            right = Passwords.matches(password, this.settings.passwordHash());
+        } finally {
+            this.checking.release();
+            Passwords.wipe(password);
+        }
         if (!right) {
-            this.sessions.failed(address);
             this.send(exchange, 401, HTML, loginPage("Wrong password."));
             return;
         }

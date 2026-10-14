@@ -23,24 +23,28 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 
 /**
  * Logged-in sessions: a random 128-bit token in a cookie, a separate token for forms against cross-site requests, and
- * an end after half an hour without use. Failed logins slow an address down. Thread-safe.
+ * an end after half an hour without use. Login attempts slow an address down. Thread-safe.
  */
 final class Sessions {
 
     /** A session ends after this long without a request. */
     static final Duration IDLE = Duration.ofMinutes(30);
 
-    /** Failed logins from one address before it must wait. */
+    /** Logins without success from one address before it must wait. */
     static final int MAX_FAILURES = 5;
 
-    /** How long an address that failed too often waits. */
+    /** How long an address that failed too often waits, and how long its attempts are remembered. */
     static final Duration LOCKOUT = Duration.ofMinutes(1);
+
+    /** Addresses whose attempts are remembered at most; the oldest are forgotten first. */
+    static final int MAX_ADDRESSES = 4096;
 
     private static final int TOKEN_BYTES = 16;
 
@@ -54,7 +58,8 @@ final class Sessions {
     private final SecureRandom random;
     private final LongSupplier clock;
     private final Map<String, Entry> sessions = new HashMap<>();
-    private final Map<String, Failures> failures = new HashMap<>();
+    // By last attempt, oldest first.
+    private final LinkedHashMap<String, Failures> failures = new LinkedHashMap<>();
 
     /** @param clock monotonic nanoseconds */
     Sessions(SecureRandom random, LongSupplier clock) {
@@ -90,26 +95,34 @@ final class Sessions {
                         session.csrf().getBytes(StandardCharsets.US_ASCII), given.getBytes(StandardCharsets.US_ASCII));
     }
 
-    /** Whether {@code address} may try to log in now. */
+    /**
+     * Whether {@code address} may try to log in now; the attempt counts as failed until {@link #succeeded}, so that
+     * parallel attempts cannot all pass while their passwords are checked.
+     */
     synchronized boolean mayTry(String address) {
-        Failures f = this.failures.get(address);
-        if (f == null || f.count() < MAX_FAILURES) {
-            return true;
+        long now = this.clock.getAsLong();
+        Iterator<Failures> oldest = this.failures.values().iterator();
+        while (oldest.hasNext() && now - oldest.next().since() >= LOCKOUT.toNanos()) {
+            oldest.remove();
         }
-        if (this.clock.getAsLong() - f.since() >= LOCKOUT.toNanos()) {
-            this.failures.remove(address);
-            return true;
-        }
-        return false;
-    }
-
-    synchronized void failed(String address) {
         Failures f = this.failures.get(address);
-        this.failures.put(address, new Failures(f == null ? 1 : f.count() + 1, this.clock.getAsLong()));
+        if (f != null && f.count() >= MAX_FAILURES) {
+            return false;
+        }
+        this.failures.remove(address);
+        this.failures.put(address, new Failures(f == null ? 1 : f.count() + 1, now));
+        if (this.failures.size() > MAX_ADDRESSES) {
+            this.failures.pollFirstEntry();
+        }
+        return true;
     }
 
     synchronized void succeeded(String address) {
         this.failures.remove(address);
+    }
+
+    synchronized int addresses() {
+        return this.failures.size();
     }
 
     synchronized int count() {

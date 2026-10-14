@@ -82,15 +82,32 @@ class WebUiPartsTest {
 
         for (int i = 0; i < Sessions.MAX_FAILURES; i++) {
             assertThat(sessions.mayTry("10.0.0.1")).isTrue();
-            sessions.failed("10.0.0.1");
         }
-        assertThat(sessions.mayTry("10.0.0.1")).isFalse();
+        assertThat(sessions.mayTry("10.0.0.1"))
+                .as("attempts count before their password is checked: parallel ones too")
+                .isFalse();
         assertThat(sessions.mayTry("10.0.0.2")).isTrue();
         now.addAndGet(Sessions.LOCKOUT.toNanos());
         assertThat(sessions.mayTry("10.0.0.1")).isTrue();
-        sessions.failed("10.0.0.2");
         sessions.succeeded("10.0.0.2");
-        assertThat(sessions.mayTry("10.0.0.2")).isTrue();
+        for (int i = 0; i < Sessions.MAX_FAILURES; i++) {
+            assertThat(sessions.mayTry("10.0.0.2")).isTrue();
+        }
+    }
+
+    @Test
+    void addressesThatFailedAreForgottenAndBounded() {
+        AtomicLong now = new AtomicLong();
+        Sessions sessions = new Sessions(new SecureRandom(), now::get);
+        for (int i = 0; i < Sessions.MAX_ADDRESSES + 10; i++) {
+            sessions.mayTry("10.0." + (i >> 8) + "." + (i & 0xFF));
+        }
+        assertThat(sessions.addresses()).isEqualTo(Sessions.MAX_ADDRESSES);
+        assertThat(sessions.mayTry("10.0.0.0")).as("the oldest went first").isTrue();
+
+        now.addAndGet(Sessions.LOCKOUT.toNanos());
+        sessions.mayTry("10.1.0.1");
+        assertThat(sessions.addresses()).isEqualTo(1);
     }
 
     @Test

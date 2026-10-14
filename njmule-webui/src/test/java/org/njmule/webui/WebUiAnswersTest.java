@@ -69,6 +69,25 @@ class WebUiAnswersTest {
         assertThat(this.get("/").statusCode()).as("a fault of the page").isEqualTo(500);
     }
 
+    @Test
+    void checksFewPasswordsAtOnce() throws Exception {
+        // Two million rounds keep the first check busy for a while.
+        String slow = "pbkdf2-sha512$2000000$" + "A".repeat(22) + "$" + "A".repeat(86);
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, slow), 1);
+        CompletableFuture<HttpResponse<String>> first = this.http.sendAsync(
+                this.request("/login").POST(form(Map.of("password", "first"))).build(),
+                HttpResponse.BodyHandlers.ofString());
+        long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (this.ui.checkingPasswords() == 0) {
+            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
+            Thread.sleep(5);
+        }
+        HttpResponse<String> second = this.post("/login", Map.of("password", "second"));
+        assertThat(second.statusCode()).isEqualTo(429);
+        assertThat(second.body()).contains("try again");
+        assertThat(first.get().statusCode()).isEqualTo(401);
+    }
+
     private void start() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
