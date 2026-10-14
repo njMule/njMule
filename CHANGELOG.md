@@ -507,6 +507,10 @@ All notable changes to this project are documented here. The format follows
   two copies keeps the content shared; a file renamed while being hashed stays shared; case-only
   renames work; NTFS junctions no longer lead a shared tree outside itself or round in a loop;
   renaming or completing a file during its upload keeps the client's slot.
+- Files that other programs keep beside their work are never shared: Office owner files (`~$…`,
+  which carry the user's name), macOS `._` files, lock files, NFS and sync-tool leftovers, and
+  downloads a browser or another client is still writing (`.crdownload`, `.partial`, `.download`,
+  `.!qB`, `.!ut`, …).
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

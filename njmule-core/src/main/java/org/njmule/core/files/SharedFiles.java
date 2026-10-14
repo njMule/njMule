@@ -120,7 +120,22 @@ public final class SharedFiles implements AutoCloseable {
     private static final int MAX_TREE_DIRS = 10_000;
     // AICH trees kept built, for the files clients ask recovery data of now.
     private static final int MAX_BUILT_TREES = 64;
-    private static final Set<String> SKIPPED = Set.of("desktop.ini", "thumbs.db", ".ds_store", "folder.jpg");
+    private static final Set<String> SKIPPED = Set.of(
+            "desktop.ini",
+            "thumbs.db",
+            "ehthumbs.db",
+            "ehthumbs_vista.db",
+            ".ds_store",
+            ".localized",
+            ".directory",
+            "icon\r",
+            "folder.jpg");
+    // Files other programs keep beside their work: Office owner files (they carry the user's name), macOS resource
+    // forks, lock files, NFS leftovers and the temporary files of sync tools.
+    private static final List<String> SKIPPED_PREFIXES = List.of("~$", "._", ".~lock.", ".nfs", ".sb-", ".syncthing.");
+    // Downloads still being written by browsers and other clients, and editor backups.
+    private static final List<String> SKIPPED_SUFFIXES =
+            List.of(".crdownload", ".download", ".partial", ".opdownload", ".!ut", ".!qb", ".bc!", ".temp", "~");
     private static final Logger logger = LoggerFactory.getLogger(SharedFiles.class);
 
     /** A client's private key: a directory holding one is a client's configuration. */
@@ -913,6 +928,8 @@ public final class SharedFiles implements AutoCloseable {
     private static boolean isSkipped(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
         return SKIPPED.contains(lower)
+                || SKIPPED_PREFIXES.stream().anyMatch(lower::startsWith)
+                || SKIPPED_SUFFIXES.stream().anyMatch(lower::endsWith)
                 || lower.endsWith(".lnk")
                 || lower.endsWith(PartFile.DATA_SUFFIX)
                 || lower.endsWith(PartFile.MET_SUFFIX)
