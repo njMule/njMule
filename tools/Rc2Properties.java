@@ -46,6 +46,8 @@ public final class Rc2Properties {
     private static final Pattern CONTINUATION = Pattern.compile("^\\s*\"((?:[^\"]|\"\")*)\"\\s*(?://.*)?$");
     private static final Pattern PRINTF =
             Pattern.compile("%([-+ 0#]*\\d*(?:\\.\\d+)?)(I64|ll|l|h)?([diuxXsScfgeE])");
+    // Chinese, Japanese and Korean texts write the mnemonic as a Latin letter in brackets: 打开文件(&O).
+    private static final Pattern BRACKETED_MNEMONIC = Pattern.compile("\\(&[A-Za-z0-9]\\)");
     private static final String BUNDLE = "emule";
 
     private Rc2Properties() {}
@@ -108,7 +110,8 @@ public final class Rc2Properties {
     }
 
     /** Unescapes a resource string, drops mnemonics and turns C specifiers into Java ones. */
-    static String convert(String text) {
+    static String convert(String raw) {
+        String text = BRACKETED_MNEMONIC.matcher(raw).replaceAll("");
         StringBuilder plain = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
