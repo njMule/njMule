@@ -19,13 +19,17 @@ package org.njmule.core.files;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -278,6 +282,55 @@ class SharedFilesTest {
         assertThat(first.size()).isEqualTo(a.length);
         this.onLoop(() -> {
             shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void aFileThatCannotBeReadDoesNotStopTheScanOfItsDirectory() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        for (int i = 0; i < 6; i++) {
+            Files.write(incoming.resolve("f" + i + ".bin"), bytes(3000, 20 + i));
+        }
+        SharedFiles first = this.open(config, incoming);
+        List<String> order = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            order.add(this.events.poll(30, TimeUnit.SECONDS).substring("shared ".length()));
+        }
+        this.onLoop(() -> {
+            first.close();
+            return null;
+        });
+
+        // The second file goes while the directory is read: it is listed, but gone.
+        List<String> seen = new CopyOnWriteArrayList<>();
+        SharedFiles again = this.onLoop(() -> SharedFiles.open(
+                this.loop, config, () -> List.of(incoming), () -> List.of(), new SharedFiles.Listener() {
+                    @Override
+                    public void shared(SharedFiles.SharedFile file) {
+                        if (seen.isEmpty()) {
+                            try {
+                                Files.delete(incoming.resolve(order.get(1)));
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
+                        }
+                        seen.add(file.name());
+                    }
+
+                    @Override
+                    public void unshared(SharedFiles.SharedFile file) {
+                        seen.add("unshared " + file.name());
+                    }
+                }));
+
+        assertThat(this.onLoop(() ->
+                        again.all().stream().map(SharedFiles.SharedFile::name).toList()))
+                .containsExactlyInAnyOrderElementsOf(
+                        order.stream().filter(n -> !n.equals(order.get(1))).toList());
+        this.onLoop(() -> {
+            again.close();
             return null;
         });
     }

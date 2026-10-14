@@ -19,11 +19,13 @@ package org.njmule.core.files;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardWatchEventKinds;
@@ -472,9 +474,17 @@ public final class SharedFiles implements AutoCloseable {
             }
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
                 for (Path file : files) {
-                    this.consider(file, seen);
+                    try {
+                        this.consider(file, seen);
+                    } catch (IOException e) {
+                        // A file gone or locked meanwhile leaves the others alone; a locked one stays shared.
+                        if (!(e instanceof NoSuchFileException) && this.byPath.containsKey(file)) {
+                            seen.add(file);
+                        }
+                        logger.debug("Cannot look at {}: {}", file, e.toString());
+                    }
                 }
-            } catch (IOException e) {
+            } catch (IOException | DirectoryIteratorException e) {
                 logger.warn("Cannot list the shared directory {}", dir, e);
             }
         }
