@@ -49,8 +49,9 @@ public final class IniFile {
         sections.put(GLOBAL, current);
         for (String raw : TextFiles.lines(data)) {
             String line = raw.strip();
-            if (line.length() > 2 && line.charAt(0) == '[' && line.charAt(line.length() - 1) == ']') {
-                String name = line.substring(1, line.length() - 1).strip();
+            int close = sectionEnd(line);
+            if (close > 1) {
+                String name = line.substring(1, close).strip();
                 String key = name.toLowerCase(Locale.ROOT);
                 current = sections.computeIfAbsent(key, k -> new Section(name, new LinkedHashMap<>()));
                 continue;
@@ -63,6 +64,20 @@ public final class IniFile {
             current.values().putIfAbsent(key, line.substring(eq + 1).strip());
         }
         return new IniFile(sections);
+    }
+
+    // The ']' of a "[name]" line, which may end with a ';' comment; -1 when the line opens no section.
+    private static int sectionEnd(String line) {
+        if (line.isEmpty() || line.charAt(0) != '[') {
+            return -1;
+        }
+        for (int close = line.indexOf(']'); close >= 0; close = line.indexOf(']', close + 1)) {
+            String rest = line.substring(close + 1).strip();
+            if (rest.isEmpty() || rest.charAt(0) == ';') {
+                return close;
+            }
+        }
+        return -1;
     }
 
     public List<String> sections() {
