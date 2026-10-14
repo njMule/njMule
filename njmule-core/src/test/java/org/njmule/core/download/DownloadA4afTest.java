@@ -67,6 +67,8 @@ class DownloadA4afTest {
     private static final String SECOND_NAME = "second.bin";
     private static final int SIZE = 5000;
     private static final Duration WAIT = ScriptedSource.WAIT;
+    // Long enough for a few ticks of the downloads.
+    private static final Duration QUIET = Duration.ofSeconds(3);
 
     @TempDir
     Path dir;
@@ -187,6 +189,19 @@ class DownloadA4afTest {
         this.thenTheConnectionCloses();
         this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
         this.thenTheSourceIs(SECOND, SourceInfo.State.WAITING);
+        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+    }
+
+    @Test
+    void shouldWaitAMinuteMoreThanSourcesAllowBeforeAskingForAnotherDownload() throws Exception {
+        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        this.givenTheClientIsAskedFor(FIRST);
+        this.givenTheClientQueuesUsAt(3);
+
+        this.whenTheDownloadIsPaused(FIRST);
+
+        this.thenTheConnectionCloses();
+        this.thenTheClientIsNotAskedAgainWithin(DownloadManager.MIN_REASK);
         this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
@@ -402,11 +417,16 @@ class DownloadA4afTest {
         assertThat(this.askedFor).isEqualTo(file);
     }
 
-    // Not before the shortest wait sources allow between two asks.
+    // Not before the shortest wait sources allow between two asks, with a margin.
     private void thenTheClientIsAskedAgainOnceItAllowsFor(Hash16 file) throws Exception {
-        this.now.addAndGet(DownloadManager.MIN_REASK.toNanos());
+        this.now.addAndGet(DownloadManager.EARLIEST_REASK.toNanos());
         this.whenTheClientIsAsked();
         this.thenItIsAskedFor(file);
+    }
+
+    private void thenTheClientIsNotAskedAgainWithin(Duration wait) throws Exception {
+        this.now.addAndGet(wait.toNanos());
+        assertThat(this.client.isConnectedToWithin(QUIET)).isFalse();
     }
 
     private void thenTheClientIsAskedAgainAtItsTimeFor(Hash16 file) throws Exception {

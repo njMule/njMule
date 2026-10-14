@@ -557,3 +557,6 @@ All notable changes to this project are documented here. The format follows
   other, is told to stop with a cancel and its slot is left.
 - A compressed block that does not inflate no longer costs the source: the block is asked for again
   and the rest of its stream dropped; only a third such block in a session drops the source.
+- A source asked for another download, or again before its time, waits at least 11 minutes since
+  the last ask instead of exactly the 10 that sources allow, so it no longer takes us for a client
+  that asks too often.

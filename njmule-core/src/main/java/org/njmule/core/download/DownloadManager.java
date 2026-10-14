@@ -195,6 +195,12 @@ public final class DownloadManager implements AutoCloseable {
     /** Sources ban clients that ask more often than this. */
     public static final Duration MIN_REASK = Duration.ofMinutes(10);
 
+    /**
+     * A client asked for another download, or again before its time, waits at least this long since its last ask: a
+     * margin over {@link #MIN_REASK}, which the source measures from when our request reached it.
+     */
+    public static final Duration EARLIEST_REASK = MIN_REASK.plusMinutes(1);
+
     /** A place in a source's queue up to this rank is kept: the client is not swapped to another download by itself. */
     public static final int GOOD_RANK = 50;
 
@@ -731,7 +737,7 @@ public final class DownloadManager implements AutoCloseable {
         for (Source source : entry.sources.values()) {
             Client client = source.client;
             if (client.current == source) {
-                client.nextAsk = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
+                client.nextAsk = earliestAsk(client, now);
             } else if (client.session == null && !client.current.entry.download.isActive()) {
                 // Idle while the download it was asked for waits: asked for this one now.
                 this.swap(client, source, now);
@@ -1353,10 +1359,15 @@ public final class DownloadManager implements AutoCloseable {
     private void swap(Client client, Source to, long now) {
         this.makeCurrent(client, to);
         client.pinned = false;
-        long allowed = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
+        long allowed = earliestAsk(client, now);
         if (client.nextAsk - allowed > 0) {
             client.nextAsk = allowed;
         }
+    }
+
+    // The soonest a client may be asked again, without being taken for one that asks too often.
+    private static long earliestAsk(Client client, long now) {
+        return client.asked ? Math.max(now, client.lastAsk + EARLIEST_REASK.toNanos()) : now;
     }
 
     // The download does not run any more: the clients asked for it are asked for another they are sources of.
@@ -2156,7 +2167,7 @@ public final class DownloadManager implements AutoCloseable {
             }
             if (enough) {
                 for (Client client : DownloadManager.this.clients.values()) {
-                    client.nextAsk = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
+                    client.nextAsk = earliestAsk(client, now);
                 }
             }
             DownloadManager.this.listener.diskSpace(enough);

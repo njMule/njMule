@@ -689,7 +689,7 @@ class DownloadSourcesTest {
         this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
         assertThat(this.await("space ")).isEqualTo("space enough");
         // With room again, the source is asked as soon as it allows, not after the whole wait of a queued one.
-        this.advance(DownloadManager.MIN_REASK);
+        this.advance(DownloadManager.EARLIEST_REASK);
         ScriptedSource.Link again = source.accept();
         again.until(Opcodes.Client.SETREQFILEID);
         this.onLoop(() -> manager.pause(hash));
