@@ -42,6 +42,8 @@ import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Bytes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A file being downloaded, {@code NNN.part} with its metadata {@code NNN.part.met}: which byte ranges are still
@@ -49,6 +51,8 @@ import org.njmule.core.util.Bytes;
  * only; the data itself is read and written by {@link PartFileStorage}.
  */
 public final class PartFile {
+
+    private static final Logger logger = LoggerFactory.getLogger(PartFile.class);
 
     // njMule's own tag, which other clients skip: the parts that passed their check.
     private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
@@ -132,11 +136,10 @@ public final class PartFile {
             Hash16 hash,
             Optional<Hash20> aichHash,
             List<Hash16> partHashes) {
-        PartFile file = new PartFile(number, directory, name, size, hash, aichHash, List.of());
+        // The hash set of a link is optional: one that proves nothing is asked from the sources instead.
+        PartFile file = new PartFile(
+                number, directory, name, size, hash, aichHash, fits(size, hash, partHashes) ? partHashes : List.of());
         file.missing.add(Range.closedOpen(0L, size));
-        if (!partHashes.isEmpty()) {
-            file.setHashSet(partHashes);
-        }
         return file;
     }
 
@@ -145,6 +148,10 @@ public final class PartFile {
         Path met = directory.resolve(fileName(number) + MET_SUFFIX);
         PartMet.Contents contents = AtomicFiles.read(met, in -> PartMet.read(in.readAllBytes()));
         long size = contents.size().orElseThrow();
+        boolean fits = fits(size, contents.fileHash(), contents.partHashes());
+        if (!fits && !contents.partHashes().isEmpty()) {
+            logger.warn("The part hashes in {} do not give the file hash; they are asked again", met);
+        }
         PartFile file = new PartFile(
                 number,
                 directory,
@@ -152,7 +159,7 @@ public final class PartFile {
                 size,
                 contents.fileHash(),
                 contents.aichHash(),
-                contents.partHashes().size() == Ed2k.hashSetSize(size) ? contents.partHashes() : List.of());
+                fits ? contents.partHashes() : List.of());
         for (PartMet.Gap gap : contents.gaps()) {
             file.missing.add(Range.closedOpen(gap.start(), gap.end()));
         }
@@ -318,11 +325,17 @@ public final class PartFile {
      * @throws IllegalArgumentException if they do not hash to the file hash
      */
     public void setHashSet(List<Hash16> hashes) {
-        if (hashes.size() != Ed2k.hashSetSize(this.size)
-                || !Ed2k.fileHash(hashes).equals(this.hash)) {
+        if (!fits(this.size, this.hash, hashes)) {
             throw new IllegalArgumentException("the hash set does not match the file hash");
         }
         this.partHashes = List.copyOf(hashes);
+    }
+
+    // A hash per eD2K part, the empty one after an exact multiple of PARTSIZE too, that hash to the file hash.
+    private static boolean fits(long size, Hash16 hash, List<Hash16> hashes) {
+        return !hashes.isEmpty()
+                && hashes.size() == Ed2k.hashSetSize(size)
+                && Ed2k.fileHash(hashes).equals(hash);
     }
 
     /** The part hashes, empty until known and for files below one part. */

@@ -167,6 +167,52 @@ class PartFileTest {
     }
 
     @Test
+    void aLinkHashSetThatProvesNothingIsAskedFromTheSources() {
+        List<Hash16> exact = List.of(hash(1), Ed2k.EMPTY_PART_HASH);
+        Hash16 exactHash = Ed2k.fileHash(exact);
+
+        PartFile noEmptyPart = PartFile.create(1, this.dir, "a", P, exactHash, Optional.empty(), List.of(hash(1)));
+        assertThat(noEmptyPart.hasHashSet())
+                .as("an exact multiple also hashes the empty part after it")
+                .isFalse();
+        PartFile wrong = PartFile.create(
+                2,
+                this.dir,
+                "b",
+                P + 1,
+                Ed2k.fileHash(List.of(hash(1), hash(2))),
+                Optional.empty(),
+                List.of(hash(2), hash(1)));
+        assertThat(wrong.hasHashSet()).isFalse();
+        assertThat(wrong.partHashes()).isEmpty();
+        PartFile small = PartFile.create(3, this.dir, "c", 1000, hash(3), Optional.empty(), List.of(hash(3)));
+        assertThat(small.hasHashSet()).isTrue();
+        assertThat(small.partHashes()).as("one part needs only the file hash").isEmpty();
+
+        PartFile right = PartFile.create(4, this.dir, "d", P, exactHash, Optional.empty(), exact);
+        assertThat(right.partHashes()).isEqualTo(exact);
+        assertThat(right.partCount()).isEqualTo(1);
+        assertThat(right.partHash(0)).contains(hash(1));
+    }
+
+    @Test
+    void aSavedHashSetThatDoesNotGiveTheFileHashIsDropped() throws Exception {
+        List<Hash16> parts = List.of(hash(1), hash(2));
+        PartFile file = PartFile.create(5, this.dir, "e", P + 1, Ed2k.fileHash(parts), Optional.empty(), parts);
+        file.save();
+        PartMet.Contents saved = PartMet.read(Files.readAllBytes(file.metFile()));
+        Files.write(
+                file.metFile(),
+                PartMet.write(new PartMet.Contents(
+                        saved.version(), saved.mtime(), saved.fileHash(), List.of(hash(2), hash(1)), saved.tags())));
+
+        PartFile loaded = PartFile.load(this.dir, 5);
+
+        assertThat(loaded.hasHashSet()).as("asked from the sources again").isFalse();
+        assertThat(loaded.partHash(0)).isEmpty();
+    }
+
+    @Test
     void savesAndLoadsItsProgress() throws Exception {
         List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
         PartFile file =

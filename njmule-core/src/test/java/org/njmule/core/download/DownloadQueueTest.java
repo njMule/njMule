@@ -107,6 +107,24 @@ class DownloadQueueTest {
     }
 
     @Test
+    void aLinkWithAWrongHashSetIsStillDownloaded() throws Exception {
+        DownloadQueue queue = this.queue();
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                "exact.bin",
+                Ed2k.PARTSIZE,
+                Hash16.parseHex("56".repeat(16)),
+                Optional.empty(),
+                List.of(Hash16.parseHex("78".repeat(16))),
+                List.of(),
+                List.of());
+
+        DownloadQueue.Download download = this.onLoop(() -> queue.add(link));
+
+        assertThat(this.events.take()).isEqualTo("added");
+        assertThat(download.file().hasHashSet()).as("asked from the sources").isFalse();
+    }
+
+    @Test
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
         DownloadQueue first = this.queue();
