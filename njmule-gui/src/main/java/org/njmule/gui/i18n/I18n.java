@@ -42,6 +42,7 @@ public final class I18n {
             Locale.of("es"),
             Locale.FRENCH,
             Locale.ITALIAN,
+            Locale.of("lt"),
             Locale.of("hu"),
             Locale.of("nl"),
             Locale.of("nb"),
