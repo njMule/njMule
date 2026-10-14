@@ -123,4 +123,13 @@ class LinkHandoffTest {
 
         assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
     }
+
+    @Test
+    void aDamagedFileIsNoRunningInstance() throws Exception {
+        for (String port : new String[] {"70000", "65536", "-1", "0"}) {
+            Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), port + " " + "ab".repeat(32) + "\n");
+
+            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).as(port).isFalse();
+        }
+    }
 }

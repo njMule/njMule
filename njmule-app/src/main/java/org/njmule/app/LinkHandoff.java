@@ -107,6 +107,9 @@ public final class LinkHandoff implements AutoCloseable {
         } catch (NumberFormatException e) {
             return false;
         }
+        if (port < 1 || port > 0xFFFF) {
+            return false;
+        }
         try (Socket client = new Socket()) {
             client.connect(
                     new InetSocketAddress(InetAddress.getLoopbackAddress(), port), Math.toIntExact(TIMEOUT.toMillis()));
