@@ -536,6 +536,10 @@ All notable changes to this project are documented here. The format follows
 - A finished download is shared and recorded in known.met without the AICH hash its link or its
   sources gave until hashing it once more proves its own; a shared file whose record has no AICH
   tree is hashed again for one.
+- Intelligent corruption handling: a part that fails its check keeps its data while it is
+  downloaded again and is hashed after each block written into it, so it is whole again as soon as
+  the bad block came again, without AICH; data for a range already whole is no longer written over
+  it.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

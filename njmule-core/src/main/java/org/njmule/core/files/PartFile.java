@@ -395,6 +395,12 @@ public final class PartFile {
         return this.missing.subRangeSet(Range.closedOpen(start, end)).isEmpty();
     }
 
+    /** The ranges of {@code [start, end)} still missing. */
+    public List<Range<Long>> missing(long start, long end) {
+        return List.copyOf(
+                this.missing.subRangeSet(Range.closedOpen(start, end)).asRanges());
+    }
+
     public boolean isComplete(int part) {
         return this.missing.subRangeSet(partRange(this.size, part)).isEmpty();
     }

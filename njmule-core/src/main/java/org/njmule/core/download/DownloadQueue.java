@@ -16,6 +16,7 @@
  */
 package org.njmule.core.download;
 
+import com.google.common.collect.Range;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
@@ -27,8 +28,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -118,6 +121,11 @@ public final class DownloadQueue implements AutoCloseable {
         private final AtomicLong saves = new AtomicLong();
         // Moves of its finished file tried again because another program held it.
         private int finishRetries;
+        // Parts that failed their check and are being downloaded again, the bytes written into each since it was last
+        // hashed, and those being hashed.
+        private final BitSet corrupted = new BitSet();
+        private final Map<Integer, Long> sinceIch = new HashMap<>();
+        private final BitSet ichRunning = new BitSet();
 
         Download(PartFile file, PartFileStorage storage) {
             this.file = file;
@@ -350,8 +358,16 @@ public final class DownloadQueue implements AutoCloseable {
         if (!download.isActive() || end > download.file.size()) {
             return;
         }
-        this.loop.whenDone(
-                download.storage.write(start, data), (ok, failure) -> this.written(download, start, end, failure));
+        // Only what is still missing: a part made whole meanwhile, by AICH or ICH, holds checked data already.
+        for (Range<Long> gap : download.file.missing(start, end)) {
+            long from = gap.lowerEndpoint();
+            long to = gap.upperEndpoint();
+            byte[] slice = from == start && to == end
+                    ? data
+                    : Arrays.copyOfRange(data, (int) (from - start), (int) (to - start));
+            this.loop.whenDone(
+                    download.storage.write(from, slice), (ok, failure) -> this.written(download, from, to, failure));
+        }
     }
 
     /** The hash set arrived: parts finished before it can now be checked, unless checked before a restart. */
@@ -508,10 +524,53 @@ public final class DownloadQueue implements AutoCloseable {
         int first = (int) (start / Ed2k.PARTSIZE);
         int last = (int) ((end - 1) / Ed2k.PARTSIZE);
         for (int part = first; part <= last; part++) {
-            if (download.file.isComplete(part) && !download.verified.get(part)) {
-                this.verify(download, part);
+            if (download.file.isComplete(part)) {
+                if (!download.verified.get(part)) {
+                    this.verify(download, part);
+                }
+            } else if (download.corrupted.get(part)) {
+                Range<Long> range = PartFile.partRange(download.file.size(), part);
+                long bytes = Math.min(end, range.upperEndpoint()) - Math.max(start, range.lowerEndpoint());
+                this.mayBeWholeAgain(download, part, bytes);
             }
         }
+        this.listener.progress(download);
+    }
+
+    // Intelligent corruption handling: a corrupt part keeps its data on disk while it is downloaded again, so once the
+    // bad bytes were overwritten the part as it stands is whole. It is hashed after each block written into it.
+    private void mayBeWholeAgain(Download download, int part, long bytes) {
+        long written = download.sinceIch.merge(part, bytes, Long::sum);
+        Optional<Hash16> expected = download.file.partHash(part);
+        if (written < Ed2k.EMBLOCKSIZE || download.ichRunning.get(part) || expected.isEmpty()) {
+            return;
+        }
+        download.sinceIch.put(part, 0L);
+        download.ichRunning.set(part);
+        this.loop.whenDone(
+                download.storage.hashPart(download.file.size(), part),
+                (actual, failure) -> this.ichChecked(download, part, expected.get(), actual, failure));
+    }
+
+    private void ichChecked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
+        download.ichRunning.clear(part);
+        if (!this.isQueued(download)
+                || failure != null
+                || !expected.equals(actual)
+                || !download.corrupted.get(part)
+                || download.file.isComplete(part)) {
+            return;
+        }
+        Range<Long> range = PartFile.partRange(download.file.size(), part);
+        long saved = 0;
+        for (Range<Long> gap : download.file.missing(range.lowerEndpoint(), range.upperEndpoint())) {
+            saved += gap.upperEndpoint() - gap.lowerEndpoint();
+        }
+        logger.info("ICH saved {} bytes of part {} of {}", saved, part, download.file.name());
+        download.file.written(range.lowerEndpoint(), range.upperEndpoint());
+        download.dirty = true;
+        // Checked once more after any write queued meanwhile: no other can come, the part being whole.
+        this.verify(download, part);
         this.listener.progress(download);
     }
 
@@ -537,6 +596,8 @@ public final class DownloadQueue implements AutoCloseable {
         if (failure != null || !expected.equals(actual)) {
             logger.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
+            download.corrupted.set(part);
+            download.sinceIch.remove(part);
             download.dirty = true;
             // Before progress, which asks for blocks: a part that waits for its recovery data is not among them.
             this.listener.corrupt(download, part);
@@ -545,6 +606,8 @@ public final class DownloadQueue implements AutoCloseable {
         }
         download.verified.set(part);
         download.file.verified(part);
+        download.corrupted.clear(part);
+        download.sinceIch.remove(part);
         download.dirty = true;
         if (download.file.isComplete()
                 && download.verified.cardinality() == download.file.partCount()
