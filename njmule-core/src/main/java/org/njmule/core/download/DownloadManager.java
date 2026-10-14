@@ -1059,6 +1059,7 @@ public final class DownloadManager implements AutoCloseable {
     public int dropBlockedSources() {
         int dropped = 0;
         for (Entry entry : this.entries.values()) {
+            boolean released = false;
             for (Source source : List.copyOf(entry.sources.values())) {
                 if (!this.blocked.test(
                         Ipv4.fromBytes(source.address.getAddress().getAddress()))) {
@@ -1071,7 +1072,12 @@ public final class DownloadManager implements AutoCloseable {
                 if (session != null) {
                     source.session = null;
                     session.close("the IP filter blocks it");
+                    released = true;
                 }
+            }
+            // The blocks the dropped sessions held may come from the sources left.
+            if (released) {
+                this.wakeSessions(entry);
             }
         }
         return dropped;

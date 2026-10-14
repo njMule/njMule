@@ -48,6 +48,8 @@ import org.njmule.core.api.Hash20;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.persist.format.IpFilterDat;
+import org.njmule.core.util.Ipv4;
 
 /** Downloads that must recover from corrupt parts and from sources that leave. */
 @Timeout(120)
@@ -91,6 +93,35 @@ class DownloadRecoveryFlowTest {
         await(() -> second.bytesSent() == data.length - 3L * BLOCK, "the second source sent the blocks left");
         Thread.sleep(500);
         silent.dropDownloaders();
+
+        Path file = events.completed(added.hash(), SOON).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+    }
+
+    @Test
+    void aSourceWithASlotTakesTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
+        byte[] data = content(5 * BLOCK - 1000, 28);
+        Path shared = this.share(data);
+        FakePeer filtered = FakePeer.start(
+                InetAddress.getByName("127.0.0.2"),
+                shared,
+                new FakePeer.Config(hash(28), false, FakePeer.Slot.NOW, 0, Set.of()));
+        this.resources.add(filtered);
+        filtered.stall();
+        // The range blocks only once the filter level is raised above its own.
+        NjMuleEngine engine =
+                this.engine(List.of(new IpFilterDat.Range(Ipv4.of(127, 0, 0, 2), Ipv4.of(127, 0, 0, 2), 150, "test")));
+        Events events = new Events(engine);
+        DownloadInfo added = engine.addDownload(filtered.link()).get(10, TimeUnit.SECONDS);
+        await(() -> filtered.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
+        FakePeer second = this.peer(shared, new FakePeer.Config(hash(29), false, FakePeer.Slot.NOW, 0, Set.of()));
+        assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
+                        .get(10, TimeUnit.SECONDS))
+                .isTrue();
+        await(() -> second.bytesSent() == data.length - 3L * BLOCK, "the second source sent the blocks left");
+        Thread.sleep(500);
+
+        engine.updatePreferences(p -> p.toBuilder().ipFilterLevel(200).build()).get(10, TimeUnit.SECONDS);
 
         Path file = events.completed(added.hash(), SOON).file();
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
@@ -185,8 +216,15 @@ class DownloadRecoveryFlowTest {
     }
 
     private NjMuleEngine engine() throws IOException {
+        return this.engine(List.of());
+    }
+
+    private NjMuleEngine engine(List<IpFilterDat.Range> ipFilter) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
+        if (!ipFilter.isEmpty()) {
+            Files.write(dirs.config().resolve("ipfilter.dat"), IpFilterDat.write(ipFilter));
+        }
         int port;
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
