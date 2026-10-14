@@ -56,6 +56,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.Preferences;
@@ -70,6 +71,7 @@ class TransfersMenusTest {
     private static final String LINK = "ed2k://|file|test%20file.bin|10000|0123456789ABCDEF0123456789ABCDEF|/";
     private static final Hash16 FILE = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
     private static final Hash16 PEER = Hash16.parseHex("00112233445566778899AABBCCDDEEFF");
+    private static final Hash16 OTHER = Hash16.parseHex("FEDCBA9876543210FEDCBA9876543210");
 
     @TempDir
     Path dir;
@@ -78,6 +80,7 @@ class TransfersMenusTest {
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final AtomicBoolean sourceTaken = new AtomicBoolean(true);
     private final AtomicReference<List<DownloadInfo>> downloads = new AtomicReference<>();
+    private TransfersScreen transfers;
 
     @AfterEach
     void close() throws Exception {
@@ -273,6 +276,116 @@ class TransfersMenusTest {
     }
 
     @Test
+    void shouldSwapSourcesWithTheSourceHandlingMenuOfADownload() throws Exception {
+        this.givenTheTransfersScreenWithADownload();
+
+        this.whenEveryA4afItemOfTheDownloadMenuIsUsed();
+
+        this.thenTheEngineIsAskedTo("sources here " + FILE, "sources away " + FILE);
+        this.thenTheUserIsTold("Sources swapped: 2", "Sources swapped: 1");
+        this.thenTheDownloadTakesA4afSourcesByItself();
+    }
+
+    @Test
+    void shouldShowAnA4afSourceWithTheFileItIsAskedForAndSwapIt() throws Exception {
+        this.givenTheListOfSourcesIsShown();
+
+        this.whenTheA4afSourceIsSwappedToItsDownload();
+
+        this.thenTheSourcesShow("Asked for another file", "other.bin");
+        this.thenTheEngineIsAskedTo("source here 10.0.0.3:4667");
+        this.thenTheUserIsTold("The source cannot move now: it is being asked or sends data");
+    }
+
+    private void givenTheTransfersScreenWithADownload() throws Exception {
+        this.transfers = this.screen();
+        FxTesting.onFx(() -> {
+            this.transfers.linkField().setText(LINK);
+            this.transfers.addLink();
+        });
+        FxTesting.await(
+                "the download row", () -> this.transfers.downloads().getItems().size() == 1);
+    }
+
+    private void givenTheListOfSourcesIsShown() throws Exception {
+        this.transfers = this.screen();
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.onFx(this.test.model::tick);
+        this.showTab(this.transfers, 2);
+        FxTesting.await("the A4AF source", () -> this.a4afRow() >= 0);
+    }
+
+    private void whenEveryA4afItemOfTheDownloadMenuIsUsed() throws Exception {
+        ContextMenu menu = FxTesting.onFx(() -> this.transfers.downloads().getContextMenu());
+        FxTesting.onFx(() -> {
+            this.transfers.downloads().getSelectionModel().select(0);
+            menu.getOnShowing().handle(null);
+            Menu handling = (Menu) this.item(menu, "IDS_A4AF");
+            MenuItem here = this.item(handling.getItems(), "nj.a4af.toThis");
+            assertThat(here.isDisable()).as("the download runs").isFalse();
+            here.fire();
+            CheckMenuItem auto = (CheckMenuItem) this.item(handling.getItems(), "nj.a4af.auto");
+            assertThat(auto.isSelected()).isFalse();
+            auto.setSelected(true);
+            auto.fire();
+            this.item(handling.getItems(), "nj.a4af.toOther").fire();
+        });
+    }
+
+    private void whenTheA4afSourceIsSwappedToItsDownload() throws Exception {
+        FxTesting.onFx(() -> {
+            int row = this.a4afRow();
+            this.transfers.sources().scrollTo(row);
+            this.transfers.sources().getSelectionModel().clearAndSelect(row);
+            ContextMenu menu = this.transfers.sources().getContextMenu();
+            menu.getOnShowing().handle(null);
+            MenuItem swap = this.item(menu.getItems(), "nj.a4af.swapToThis");
+            assertThat(swap.isDisable()).as("an A4AF source").isFalse();
+            swap.fire();
+        });
+    }
+
+    private void thenTheEngineIsAskedTo(String... asked) throws Exception {
+        FxTesting.await("the engine asked", () -> this.calls.containsAll(List.of(asked)));
+    }
+
+    private void thenTheUserIsTold(String... messages) throws Exception {
+        FxTesting.await("the user told", () -> this.test.told.containsAll(List.of(messages)));
+    }
+
+    private void thenTheDownloadTakesA4afSourcesByItself() throws Exception {
+        FxTesting.await("taking A4AF sources", () -> this.first(this.transfers).autoSwap());
+        FxTesting.onFx(() -> {
+            ContextMenu menu = this.transfers.downloads().getContextMenu();
+            menu.getOnShowing().handle(null);
+            Menu handling = (Menu) this.item(menu, "IDS_A4AF");
+            assertThat(((CheckMenuItem) this.item(handling.getItems(), "nj.a4af.auto")).isSelected())
+                    .isTrue();
+        });
+    }
+
+    private void thenTheSourcesShow(String... texts) throws Exception {
+        FxTesting.await(
+                "the A4AF texts",
+                () -> FxTesting.cellTexts(this.transfers.sources()).containsAll(List.of(texts)));
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(this.transfers.view(), "transfers-a4af");
+            return null;
+        });
+    }
+
+    // The row of the source asked for another file, -1 while there is none.
+    private int a4afRow() {
+        List<LiveList.Row<SourceInfo>> rows = this.transfers.sources().getItems();
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).get().state() == SourceInfo.State.A4AF) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @Test
     void aPreviewNeedsAPlayerAndTellsWhyItCannotStart() throws Exception {
         TransfersScreen screen = this.screen();
         FxTesting.onFx(() -> {
@@ -412,6 +525,7 @@ class TransfersMenusTest {
             List<SourceInfo> sources = new ArrayList<>();
             int port = 4662;
             for (SourceInfo.State state : SourceInfo.State.values()) {
+                boolean a4af = state == SourceInfo.State.A4AF;
                 sources.add(new SourceInfo(
                         FILE,
                         "film.mkv",
@@ -422,7 +536,9 @@ class TransfersMenusTest {
                         state == SourceInfo.State.QUEUED ? 7 : 0,
                         2000,
                         state == SourceInfo.State.WAITING ? 0 : 2,
-                        state == SourceInfo.State.WAITING ? 0 : 4));
+                        state == SourceInfo.State.WAITING ? 0 : 4,
+                        a4af ? Optional.of(OTHER) : Optional.empty(),
+                        a4af ? "other.bin" : ""));
             }
             return CompletableFuture.completedFuture(sources);
         });
@@ -442,11 +558,29 @@ class TransfersMenusTest {
         });
         commands.put(
                 "downloadData", args -> CompletableFuture.completedFuture(Optional.of(this.dir.resolve("data.part"))));
+        this.swapCommands(commands);
         this.test =
                 TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.with(real, commands)));
         TransfersScreen screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
         return screen;
+    }
+
+    // The swaps of A4AF sources answer at once.
+    private void swapCommands(Map<String, Engines.Command> commands) {
+        commands.put("swapSourcesToDownload", args -> {
+            this.calls.add("sources here " + args[0]);
+            return CompletableFuture.completedFuture(2);
+        });
+        commands.put("swapSourcesFromDownload", args -> {
+            this.calls.add("sources away " + args[0]);
+            return CompletableFuture.completedFuture(1);
+        });
+        commands.put("swapSourceToDownload", args -> {
+            ServerAddress source = (ServerAddress) args[1];
+            this.calls.add("source here " + source.host() + ":" + source.port());
+            return CompletableFuture.completedFuture(false);
+        });
     }
 
     // The downloads are the engine's, unless the test gives its own.
@@ -491,10 +625,11 @@ class TransfersMenusTest {
     }
 
     private MenuItem item(ContextMenu menu, String key) {
+        return this.item(menu.getItems(), key);
+    }
+
+    private MenuItem item(List<MenuItem> items, String key) {
         String text = this.test.gui.t(key);
-        return menu.getItems().stream()
-                .filter(i -> text.equals(i.getText()))
-                .findFirst()
-                .orElseThrow();
+        return items.stream().filter(i -> text.equals(i.getText())).findFirst().orElseThrow();
     }
 }

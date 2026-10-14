@@ -286,6 +286,10 @@ All notable changes to this project are documented here. The format follows
   By hand the A4AF sources of a download can be swapped to it, its sources to other downloads, or
   one source; a download can also take its A4AF sources by itself, kept in its `.part.met` as an
   njMule tag (eMule stores no such flag). Category-based A4AF options are not there.
+- The transfers screen has a Source Handling menu on the downloads (swap every A4AF source to this
+  file now, swap them to it by itself when possible, swap every source of this file to other files)
+  and Swap to this file on an A4AF source; the downloading clients show each state with an icon of
+  its own, and an A4AF source the file it is asked for.
 
 ### Changed
 

@@ -434,3 +434,12 @@
     -fx-background-color: -color-warning-subtle;
     -fx-text-fill: -color-fg-default;
 }
+
+/* What a source does, told by an icon of its own beside its words. */
+.source-state {
+    -fx-icon-color: -color-fg-muted;
+}
+
+.source-state.downloading {
+    -fx-icon-color: -color-success-fg;
+}

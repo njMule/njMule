@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
@@ -179,6 +180,15 @@ public final class TransfersScreen implements Screen {
         CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
         previewFirst.setOnAction(e -> Fx.selected(this.downloads)
                 .forEach(d -> this.gui.model().setPreviewFirst(d.hash(), previewFirst.isSelected())));
+        // A client that is a source of several downloads is asked for one: the others list it as A4AF.
+        MenuItem swapHere = new MenuItem(this.gui.t("nj.a4af.toThis"));
+        swapHere.setOnAction(e -> this.swapSourcesHere());
+        CheckMenuItem autoSwap = new CheckMenuItem(this.gui.t("nj.a4af.auto"));
+        autoSwap.setOnAction(e -> Fx.selected(this.downloads)
+                .forEach(d -> this.gui.model().setAutoSwap(d.hash(), autoSwap.isSelected())));
+        MenuItem swapAway = new MenuItem(this.gui.t("nj.a4af.toOther"));
+        swapAway.setOnAction(e -> this.swapSourcesAway());
+        Menu sourceHandling = new Menu(this.gui.t("IDS_A4AF"), null, swapHere, autoSwap, swapAway);
         Menu category = new Menu(this.gui.t("IDS_CAT"));
         this.downloads.setContextMenu(new ContextMenu(
                 pause,
@@ -190,6 +200,7 @@ public final class TransfersScreen implements Screen {
                 previewFirst,
                 comments,
                 addSource,
+                sourceHandling,
                 this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
                 category,
                 new SeparatorMenuItem(),
@@ -241,6 +252,14 @@ public final class TransfersScreen implements Screen {
             comments.setDisable(selected.size() != 1);
             addSource.setDisable(!active);
             previewFirst.setSelected(!selected.isEmpty() && selected.stream().allMatch(DownloadInfo::previewFirst));
+            boolean unfinished =
+                    !selected.isEmpty() && selected.stream().noneMatch(d -> d.status() == DownloadInfo.Status.COMPLETE);
+            // Sources are swapped only to a download that runs.
+            swapHere.setDisable(selected.isEmpty()
+                    || selected.stream().anyMatch(d -> d.status() != DownloadInfo.Status.DOWNLOADING));
+            swapAway.setDisable(!unfinished);
+            autoSwap.setDisable(!unfinished);
+            autoSwap.setSelected(unfinished && selected.stream().allMatch(DownloadInfo::autoSwap));
         });
         this.categoryBar.getStyleClass().add("category-bar");
         this.showCategories();
@@ -485,6 +504,36 @@ public final class TransfersScreen implements Screen {
         });
     }
 
+    void swapSourcesHere() {
+        for (DownloadInfo d : Fx.selected(this.downloads)) {
+            this.gui.model().swapSourcesHere(d.hash(), this::toldSwapped);
+        }
+    }
+
+    void swapSourcesAway() {
+        for (DownloadInfo d : Fx.selected(this.downloads)) {
+            this.gui.model().swapSourcesAway(d.hash(), this::toldSwapped);
+        }
+    }
+
+    private void toldSwapped(int count) {
+        this.gui.inform().accept(this.gui.f("nj.a4af.swapped", count));
+    }
+
+    // The selected A4AF source is asked next for the download of its row.
+    void swapSelectedSource() {
+        List<SourceInfo> selected = Fx.selected(this.sources);
+        if (selected.size() != 1 || selected.getFirst().state() != SourceInfo.State.A4AF) {
+            return;
+        }
+        SourceInfo source = selected.getFirst();
+        this.gui.model().swapSource(source.file(), ServerAddress.parse(source.address()), moved -> {
+            if (!moved) {
+                this.gui.inform().accept(this.gui.t("nj.a4af.cannotSwap"));
+            }
+        });
+    }
+
     void commentSelected() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (selected.size() == 1) {
@@ -610,6 +659,9 @@ public final class TransfersScreen implements Screen {
         var formats = this.gui.formats();
         TableView<LiveList.Row<SourceInfo>> table =
                 Fx.table(this.gui.model().sources(), this.gui.t("nj.transfers.noSources"));
+        TableColumn<LiveList.Row<SourceInfo>, SourceInfo.State> state =
+                Fx.column(this.gui.t("IDS_STATUS"), 180, SourceInfo::state, this::sourceState);
+        state.setCellFactory(c -> new SourceStateCell());
         table.getColumns()
                 .addAll(List.of(
                         Fx.column(
@@ -618,7 +670,8 @@ public final class TransfersScreen implements Screen {
                                 s -> s.nick().orElse(s.address())),
                         Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, SourceInfo::software),
                         Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, SourceInfo::fileName),
-                        Fx.column(this.gui.t("IDS_STATUS"), 120, SourceInfo::state, this::sourceState),
+                        state,
+                        Fx.column(this.gui.t("nj.transfers.askedFor"), 200, SourceInfo::askedForName),
                         Fx.column(
                                 this.gui.t("nj.transfers.queueRank"),
                                 90,
@@ -632,6 +685,15 @@ public final class TransfersScreen implements Screen {
                         Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size)));
         TableLayout.remember(table, "sources", this.gui.settings());
         this.browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
+        MenuItem swap = Fx.menuItem(this.gui.t("nj.a4af.swapToThis"), Material2MZ.SWAP_HORIZ, this::swapSelectedSource);
+        ContextMenu menu = table.getContextMenu();
+        menu.getItems().add(swap);
+        var browsing = menu.getOnShowing();
+        menu.setOnShowing(e -> {
+            browsing.handle(e);
+            List<SourceInfo> selected = Fx.selected(table);
+            swap.setDisable(selected.size() != 1 || selected.getFirst().state() != SourceInfo.State.A4AF);
+        });
         return table;
     }
 
@@ -645,6 +707,17 @@ public final class TransfersScreen implements Screen {
                     case DOWNLOADING -> "IDS_TRANSFERRING";
                     case A4AF -> "IDS_ASKED4ANOTHERFILE";
                 });
+    }
+
+    private static Ikon sourceIcon(SourceInfo.State state) {
+        return switch (state) {
+            case WAITING -> Material2MZ.SCHEDULE;
+            case CONNECTING -> Material2AL.LINK;
+            case ASKING -> Material2MZ.QUESTION_ANSWER;
+            case QUEUED -> Material2MZ.QUEUE;
+            case DOWNLOADING -> Material2AL.ARROW_DOWNWARD;
+            case A4AF -> Material2MZ.SWAP_HORIZ;
+        };
     }
 
     private TableView<LiveList.Row<BanInfo>> banTable() {
@@ -671,6 +744,28 @@ public final class TransfersScreen implements Screen {
 
     TextField linkField() {
         return this.link;
+    }
+
+    /** The state of a source with an icon of its own; an A4AF source tells which download it is asked for. */
+    private final class SourceStateCell extends TableCell<LiveList.Row<SourceInfo>, SourceInfo.State> {
+        @Override
+        protected void updateItem(SourceInfo.State state, boolean empty) {
+            super.updateItem(state, empty);
+            LiveList.Row<SourceInfo> row =
+                    this.getTableRow() == null ? null : this.getTableRow().getItem();
+            if (empty || state == null) {
+                this.setText(null);
+                this.setGraphic(null);
+                this.setTooltip(null);
+                return;
+            }
+            this.setText(TransfersScreen.this.sourceState(state));
+            FontIcon icon = Fx.icon(sourceIcon(state));
+            icon.getStyleClass().addAll("source-state", state.name().toLowerCase(Locale.ROOT));
+            this.setGraphic(icon);
+            String other = row == null ? "" : row.get().askedForName();
+            this.setTooltip(state == SourceInfo.State.A4AF && !other.isEmpty() ? new Tooltip(other) : null);
+        }
     }
 
     /** The part bar of the download, with the percentage next to it. */

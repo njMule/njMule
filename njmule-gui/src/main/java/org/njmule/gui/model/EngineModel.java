@@ -556,6 +556,42 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.setDownloadPreview(file, value), ok -> this.refreshDownloads());
     }
 
+    /** Swaps the A4AF sources of a download to it; {@code swapped} tells on the FX thread how many moved. */
+    public void swapSourcesHere(Hash16 file, Consumer<Integer> swapped) {
+        this.later(this.engine.swapSourcesToDownload(file), count -> {
+            this.refreshSources();
+            swapped.accept(count);
+        });
+    }
+
+    /** Swaps the sources asked for a download to other downloads; {@code swapped} tells how many moved. */
+    public void swapSourcesAway(Hash16 file, Consumer<Integer> swapped) {
+        this.later(this.engine.swapSourcesFromDownload(file), count -> {
+            this.refreshSources();
+            swapped.accept(count);
+        });
+    }
+
+    /** Has a download take its A4AF sources whenever they are free to move, or stops. */
+    public void setAutoSwap(Hash16 file, boolean value) {
+        this.later(this.engine.setDownloadAutoSwap(file, value), ok -> {
+            this.refreshDownloads();
+            this.refreshSources();
+        });
+    }
+
+    /** Swaps one A4AF source of a download to it; {@code swapped} tells on the FX thread whether it moved. */
+    public void swapSource(Hash16 file, ServerAddress source, Consumer<Boolean> swapped) {
+        this.later(this.engine.swapSourceToDownload(file, source), moved -> {
+            this.refreshSources();
+            swapped.accept(moved);
+        });
+    }
+
+    private void refreshSources() {
+        this.later(this.engine.sources(), this.sources::update);
+    }
+
     /**
      * The data file of a download, for a player; {@code then} gets it on the FX thread, empty for an unknown download
      * and until the start of the file has come.
