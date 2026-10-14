@@ -149,6 +149,28 @@ class UploadQueueTest {
     }
 
     @Test
+    void uploadsGoOnAfterSettingALimitWhereThereWasNone() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        Client client = this.client(engine.preferences().tcpPort(), 15);
+        assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        Thread.sleep(300);
+
+        engine.updatePreferences(p -> p.toBuilder().maxUploadKiBps(10).build()).get(10, TimeUnit.SECONDS);
+        Thread.sleep(300);
+        client.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
+
+        assertThat(client.poll(Duration.ofSeconds(5)))
+                .hasValueSatisfying(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code()));
+    }
+
+    @Test
     void theFriendWithTheFriendSlotGoesBeforeTheQueue() throws Exception {
         NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);

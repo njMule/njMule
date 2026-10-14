@@ -369,7 +369,9 @@ public final class UploadManager implements AutoCloseable {
     private void tick() {
         long now = this.ticker.read();
         int limit = this.settings.get().maxUploadKiBps();
-        this.budget = limit == 0 ? Long.MAX_VALUE : Math.min(this.budget + limit * 1024L / 10, limit * 1024L);
+        // Nothing carries over from unlimited: the sum would overflow and stop the uploads.
+        long carried = this.budget == Long.MAX_VALUE ? 0 : this.budget;
+        this.budget = limit == 0 ? Long.MAX_VALUE : Math.min(carried + limit * 1024L / 10, limit * 1024L);
         this.bans.values().removeIf(until -> now - until >= 0);
         this.waiting
                 .values()
