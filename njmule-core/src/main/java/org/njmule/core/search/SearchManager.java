@@ -16,6 +16,7 @@
  */
 package org.njmule.core.search;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -95,6 +96,10 @@ public final class SearchManager {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(SearchManager.class);
+    // Control characters, and the embeddings, overrides and isolates that reorder text.
+    private static final CharMatcher UNSHOWN = CharMatcher.javaIsoControl()
+            .or(CharMatcher.inRange((char) 0x202A, (char) 0x202E))
+            .or(CharMatcher.inRange((char) 0x2066, (char) 0x2069));
 
     private final EngineLoop loop;
     private final ServerSession session;
@@ -389,13 +394,13 @@ public final class SearchManager {
     private void mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
         List<SearchResult> changed = new ArrayList<>();
         for (SearchResult reported : found) {
-            if (!SearchResult.isDownloadable(reported.name(), reported.size())) {
+            SearchResult file = asShown(reported);
+            if (!SearchResult.isDownloadable(file.name(), file.size())) {
                 continue;
             }
-            if (search.kind.isPresent() && !FileTypes.isA(search.kind.get(), reported.name())) {
+            if (search.kind.isPresent() && !FileTypes.isA(search.kind.get(), file.name())) {
                 continue;
             }
-            SearchResult file = withOwnType(reported);
             if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {
                 continue;
             }
@@ -425,20 +430,16 @@ public final class SearchManager {
         }
     }
 
-    // The publisher's type may lie (a program shown as a video) or be no type at all: the name's extension tells
-    // first, and a reported type counts only when it is a real one.
-    private static SearchResult withOwnType(SearchResult file) {
-        Optional<String> type = FileTypes.of(file.name()).or(() -> file.type().filter(FileTypes::isKnown));
-        return type.equals(file.type())
+    // Names are shown and printed: no terminal escapes, line breaks or direction overrides that would hide the real
+    // extension. The publisher's type may lie (a program shown as a video) or be no type at all: the name's extension
+    // tells first, and a reported type counts only when it is a real one.
+    private static SearchResult asShown(SearchResult file) {
+        String name = UNSHOWN.removeFrom(file.name()).strip();
+        Optional<String> type = FileTypes.of(name).or(() -> file.type().filter(FileTypes::isKnown));
+        return name.equals(file.name()) && type.equals(file.type())
                 ? file
                 : new SearchResult(
-                        file.hash(),
-                        file.name(),
-                        file.size(),
-                        file.sources(),
-                        file.completeSources(),
-                        type,
-                        file.media());
+                        file.hash(), name, file.size(), file.sources(), file.completeSources(), type, file.media());
     }
 
     private void end(Search search) {

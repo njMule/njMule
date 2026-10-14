@@ -640,3 +640,6 @@ All notable changes to this project are documented here. The format follows
 - Searches for archives or disc images (`@type=arc`, `@type=iso`) ask servers and Kad for programs,
   the type both index them under, and keep only the archives or disc images among the answers; they
   found nothing before.
+- Search result names lose their control characters and text direction overrides, and server names
+  and descriptions from server lists their control characters, so the command line, the desktop app
+  and the web interface never show terminal escapes or a disguised file extension.

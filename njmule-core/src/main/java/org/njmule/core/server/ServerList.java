@@ -128,14 +128,31 @@ public final class ServerList {
         this.blocked = Objects.requireNonNull(blocks, "blocks");
     }
 
-    /** Adds a server unless its address is already known, blocked or cannot be one of a server. */
+    /**
+     * Adds a server unless its address is already known, blocked or cannot be one of a server. Its name and description
+     * come from other clients' lists and are shown: they lose their control characters.
+     */
     public boolean add(ServerMet.Server server) {
         if (server.port() == 0
                 || !(isUsable(server.ip()) || server.dynamicIp().isPresent())
                 || (server.ip() != 0 && this.blocked.test(server.ip()))) {
             return false;
         }
-        return this.servers.putIfAbsent(addressOf(server), server) == null;
+        return this.servers.putIfAbsent(addressOf(server), shown(server)) == null;
+    }
+
+    private static ServerMet.Server shown(ServerMet.Server server) {
+        ServerMet.Server shown = server;
+        Optional<String> name = server.name();
+        if (name.isPresent() && CONTROL.matchesAnyOf(name.get())) {
+            shown = shown.with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), CONTROL.removeFrom(name.get())));
+        }
+        Optional<String> description = server.description();
+        if (description.isPresent() && CONTROL.matchesAnyOf(description.get())) {
+            shown = shown.with(
+                    new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), CONTROL.removeFrom(description.get())));
+        }
+        return shown;
     }
 
     public Optional<ServerMet.Server> get(Address address) {

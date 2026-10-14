@@ -201,6 +201,15 @@ class SearchManagerTest {
     }
 
     @Test
+    void shouldKeepControlAndDirectionCharactersOutOfResultNames() throws Exception {
+        this.givenAKadSearchFor("song");
+
+        this.whenKadAnswers(new SearchResult(hash(16), "\u001b[2Jsong\u202Egpj.exe\r\n", 10, 1, 0, Optional.empty()));
+
+        this.thenTheResultsReportedAre("[2Jsonggpj.exe");
+    }
+
+    @Test
     void shouldAskKadForArchivesAsProgramsAndKeepOnlyTheArchives() throws Exception {
         this.givenAKadSearchFor("linux @type=archive");
 

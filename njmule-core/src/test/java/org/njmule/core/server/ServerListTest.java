@@ -37,6 +37,27 @@ class ServerListTest {
     @TempDir
     Path dir;
 
+    private final ServerList taken = new ServerList();
+
+    @Test
+    void shouldDropTheControlCharactersOfTheNamesAServerListGives() {
+        this.givenAServerList(server("1.2.3.4", 4661)
+                .with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "\u001b[31mBig\u0007 server"))
+                .with(new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), "line\r\nbreak")));
+
+        this.thenTheServerIsNamed("[31mBig server", "linebreak");
+    }
+
+    private void givenAServerList(ServerMet.Server... servers) {
+        this.taken.addAll(List.of(servers));
+    }
+
+    private void thenTheServerIsNamed(String name, String description) {
+        ServerMet.Server server = this.taken.all().getFirst();
+        assertThat(server.name()).contains(name);
+        assertThat(server.description()).contains(description);
+    }
+
     @Test
     void keepsOneEntryPerAddressAndRejectsUnusableOnes() {
         ServerList list = new ServerList();
