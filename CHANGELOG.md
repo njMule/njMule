@@ -555,3 +555,5 @@ All notable changes to this project are documented here. The format follows
   seconds with a cancel, even while it keeps sending other packets.
 - A source that sends data of blocks we did not ask for, three times within ten seconds of each
   other, is told to stop with a cancel and its slot is left.
+- A compressed block that does not inflate no longer costs the source: the block is asked for again
+  and the rest of its stream dropped; only a third such block in a session drops the source.

@@ -27,6 +27,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -165,6 +166,9 @@ final class DownloadSession implements PeerLink.Role {
 
     static final Duration UNEXPECTED_GAP = Duration.ofSeconds(10);
 
+    /** Compressed blocks that do not inflate, in one session, that end it: the source is broken. */
+    static final int MAX_CORRUPT_STREAMS = 3;
+
     private static final Logger logger = LoggerFactory.getLogger(DownloadSession.class);
 
     /** One requested block and the bytes of it still to come. */
@@ -172,6 +176,8 @@ final class DownloadSession implements PeerLink.Role {
         private final PartFile.Block block;
         private final RangeSet<Long> missing = TreeRangeSet.create();
         private BlockInflater inflater;
+        // Compressed bytes of the block's stream received so far.
+        private long compressed;
 
         Pending(PartFile.Block block) {
             this.block = block;
@@ -222,6 +228,9 @@ final class DownloadSession implements PeerLink.Role {
     // Data of no block asked for, in a row, and when the last came.
     private int unexpected;
     private long unexpectedAt;
+    private int corruptStreams;
+    // The compressed bytes still to come of streams that failed, by block start: dropped as they arrive.
+    private final Map<Long, Long> broken = new HashMap<>();
 
     DownloadSession(
             EngineLoop loop,
@@ -683,11 +692,16 @@ final class DownloadSession implements PeerLink.Role {
     }
 
     private void compressed(ClientMessages.CompressedPart part) throws DecodeException {
-        Pending block = this.pending.get(part.blockStart());
         if (this.state != State.DOWNLOADING) {
             return;
         }
-        if (block == null || !part.file().equals(this.download.hash())) {
+        byte[] chunk = part.chunk();
+        boolean ours = part.file().equals(this.download.hash());
+        if (ours && this.dropsBroken(part.blockStart(), chunk.length)) {
+            return;
+        }
+        Pending block = this.pending.get(part.blockStart());
+        if (block == null || !ours) {
             this.unexpected(part.blockStart());
             return;
         }
@@ -696,9 +710,15 @@ final class DownloadSession implements PeerLink.Role {
         }
         // zlib may hold the output of a chunk back: the chunk alone is progress.
         this.progressAt = this.ticker.read();
+        block.compressed += chunk.length;
         long position = block.inflater.position();
-        byte[] chunk = part.chunk();
-        byte[] data = block.inflater.inflate(chunk);
+        byte[] data;
+        try {
+            data = block.inflater.inflate(chunk);
+        } catch (DecodeException e) {
+            this.corrupt(block, part.compressedSize(), e);
+            return;
+        }
         boolean ended = block.inflater.finished();
         this.accept(position, data, chunk.length);
         // A stream that ended before its block did brings nothing more: the rest is asked for again now.
@@ -710,6 +730,39 @@ final class DownloadSession implements PeerLink.Role {
             }
             this.requestBlocks();
         }
+    }
+
+    // A stream that does not inflate costs its block, asked for again; the next streams may be fine, but a source that
+    // keeps sending broken ones is broken itself.
+    private void corrupt(Pending block, long compressedSize, DecodeException cause) throws DecodeException {
+        if (++this.corruptStreams >= MAX_CORRUPT_STREAMS) {
+            throw cause;
+        }
+        logger.debug("Compressed block {} from {}: {}", block.block.start(), this.address, cause.getMessage());
+        this.pending.remove(block.block.start());
+        block.dispose();
+        for (Range<Long> rest : block.missing.asRanges()) {
+            this.download.file().release(rest.lowerEndpoint(), rest.upperEndpoint());
+        }
+        long left = compressedSize - block.compressed;
+        if (left > 0) {
+            this.broken.put(block.block.start(), left);
+        }
+        this.requestBlocks();
+    }
+
+    // Whether the chunk belongs to the rest of a stream that failed.
+    private boolean dropsBroken(long blockStart, int length) {
+        Long left = this.broken.get(blockStart);
+        if (left == null) {
+            return false;
+        }
+        if (left > length) {
+            this.broken.put(blockStart, left - length);
+        } else {
+            this.broken.remove(blockStart);
+        }
+        return true;
     }
 
     // Data counts only inside a block we asked for and still wait for.

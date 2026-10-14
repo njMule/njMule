@@ -141,6 +141,28 @@ class DownloadSlotTest {
         this.thenTheSlotIsKept();
     }
 
+    @Test
+    void shouldAskAgainForABlockWhoseCompressedDataDoesNotInflateAndDropTheRestOfItQuietly() throws Exception {
+        this.givenASourceThatGaveUsASlot();
+
+        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 4);
+
+        this.thenTheBlockIsAskedForAgain(0);
+        this.thenTheSlotIsKept();
+    }
+
+    @Test
+    void shouldDropASourceWhoseCompressedDataDoesNotInflateAgainAndAgain() throws Exception {
+        this.givenASourceThatGaveUsASlot();
+
+        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 1);
+        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(1, 1);
+        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(2, 1);
+
+        this.thenTheConnectionCloses();
+        this.thenTheDownloadHasNoSource();
+    }
+
     private void givenASourceThatGaveUsASlot() throws Exception {
         this.source = new ScriptedSource(PEER, 0, 0);
         this.resources.add(this.source);
@@ -196,6 +218,25 @@ class DownloadSlotTest {
             this.whenTheSourceSendsSomeDataAfter(Duration.ZERO);
             this.now.addAndGet(gap.toNanos());
         }
+    }
+
+    // A stream of {@code chunks} chunks for the block, whose first one is no zlib data.
+    private void whenTheSourceSendsACompressedBlockThatDoesNotInflate(int block, int chunks) throws Exception {
+        long start = this.requested.get(block).start();
+        for (int i = 0; i < chunks; i++) {
+            byte[] chunk = new byte[64];
+            Arrays.fill(chunk, (byte) 0xFF);
+            this.link.send(new ClientMessages.CompressedPart(this.hash, start, 64L * chunks, chunk).encode(false));
+        }
+    }
+
+    private void thenTheBlockIsAskedForAgain(int block) throws Exception {
+        List<Packet> read = this.link.until(Opcodes.Client.REQUESTPARTS);
+        assertThat(ClientMessages.RequestParts.decode(read.getLast()).ranges()).contains(this.requested.get(block));
+    }
+
+    private void thenTheDownloadHasNoSource() throws Exception {
+        this.await("no source", () -> this.manager.sources().isEmpty());
     }
 
     private void thenWeCancelTheTransfer() throws Exception {
