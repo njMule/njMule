@@ -18,7 +18,6 @@ package org.njmule.gui.ui;
 
 import java.util.List;
 import java.util.function.ToLongFunction;
-import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -49,8 +48,10 @@ public final class RateGraph extends Region {
     /**
      * @param down the legend swatch of the download line
      * @param up the legend swatch of the upload line
+     * @param subscriptions where the graph's following of {@code samples} is kept
      */
-    public RateGraph(ObservableList<EngineModel.RateSample> samples, Region down, Region up) {
+    public RateGraph(
+            ObservableList<EngineModel.RateSample> samples, Region down, Region up, Subscriptions subscriptions) {
         this.samples = samples;
         this.down = down;
         this.up = up;
@@ -60,7 +61,7 @@ public final class RateGraph extends Region {
         this.getChildren().addAll(this.canvas, this.grid);
         this.setMinHeight(160);
         this.setPrefHeight(260);
-        samples.addListener((ListChangeListener<EngineModel.RateSample>) c -> this.draw());
+        subscriptions.onListChange(samples, c -> this.draw());
         for (Region r : List.of(down, up, this.grid)) {
             r.backgroundProperty().addListener((o, was, now) -> this.draw());
         }

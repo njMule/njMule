@@ -131,7 +131,7 @@ public final class TransfersScreen implements Screen {
     private Node build() {
         var formats = this.gui.formats();
         this.downloads = Fx.table(this.gui.model().downloads(), this.gui.t("nj.transfers.none"), this.shown);
-        this.gui.model().categories().addListener((ListChangeListener<Category>) c -> {
+        this.gui.subscriptions().onListChange(this.gui.model().categories(), c -> {
             this.showCategories();
             this.downloads.refresh();
         });

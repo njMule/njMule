@@ -60,7 +60,6 @@ import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
-import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
@@ -69,7 +68,6 @@ import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
-import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
@@ -210,12 +208,10 @@ public final class SearchScreen implements Screen {
                 Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected));
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded, shared or marked since shows so in every list.
-        this.gui.model().spamMarksProperty().addListener((o, was, now) -> this.refreshAll());
-        this.gui.model().historyProperty().addListener((o, was, now) -> this.refreshAll());
-        this.gui.model().downloads().rows().addListener((ListChangeListener<LiveList.Row<DownloadInfo>>)
-                this::knownChanged);
-        this.gui.model().sharedFiles().rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
-                this::knownChanged);
+        this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> this.refreshAll());
+        this.gui.subscriptions().onChange(this.gui.model().historyProperty(), (was, now) -> this.refreshAll());
+        this.gui.subscriptions().onListChange(this.gui.model().downloads().rows(), this::knownChanged);
+        this.gui.subscriptions().onListChange(this.gui.model().sharedFiles().rows(), this::knownChanged);
         // The tabs left open at the last exit come back with the results they had.
         if (this.gui.model().preferencesProperty().get().storeSearches()) {
             this.gui.model().savedSearches(saved -> {
@@ -496,7 +492,7 @@ public final class SearchScreen implements Screen {
             count.setText(this.gui.f("nj.search.count", visible == all ? String.valueOf(all) : visible + "/" + all));
         };
         table.getItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>) c -> counted.run());
-        search.results().rows().addListener((ListChangeListener<LiveList.Row<SearchResult>>) c -> counted.run());
+        this.gui.subscriptions().onListChange(search.results().rows(), c -> counted.run());
         counted.run();
         HBox head = new HBox(8, count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), filter);
         head.setAlignment(Pos.CENTER_LEFT);

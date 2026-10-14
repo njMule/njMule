@@ -31,6 +31,7 @@ import org.njmule.gui.model.EngineModel;
  *
  * @param inform shows a short message to the user
  * @param relaunch rebuilds the window, after a language change
+ * @param subscriptions what the window follows of the model, ended when it is rebuilt
  */
 public record Gui(
         I18n i18n,
@@ -40,7 +41,8 @@ public record Gui(
         GuiSettings settings,
         AppDirectories directories,
         Consumer<String> inform,
-        Runnable relaunch) {
+        Runnable relaunch,
+        Subscriptions subscriptions) {
 
     public Gui {
         Objects.requireNonNull(i18n, "i18n");
@@ -51,6 +53,20 @@ public record Gui(
         Objects.requireNonNull(directories, "directories");
         Objects.requireNonNull(inform, "inform");
         Objects.requireNonNull(relaunch, "relaunch");
+        Objects.requireNonNull(subscriptions, "subscriptions");
+    }
+
+    /** A context with subscriptions of its own. */
+    public Gui(
+            I18n i18n,
+            Formats formats,
+            EngineModel model,
+            Themes themes,
+            GuiSettings settings,
+            AppDirectories directories,
+            Consumer<String> inform,
+            Runnable relaunch) {
+        this(i18n, formats, model, themes, settings, directories, inform, relaunch, new Subscriptions());
     }
 
     public String t(String key) {

@@ -545,10 +545,13 @@ public final class DesktopApp implements AutoCloseable {
         return this.window.root();
     }
 
-    // After a language change the window is built again around the same engine model.
+    // After a language change the window is built again around the same engine model, which the old one stops
+    // following.
     void relaunch() {
         String screen = this.window.current();
+        Gui old = this.gui;
         this.scene.setRoot(this.build());
+        old.subscriptions().unsubscribe();
         this.window.show(screen);
         if (this.tray != null) {
             this.trayWindows();
@@ -558,6 +561,10 @@ public final class DesktopApp implements AutoCloseable {
 
     TrayMenu trayMenu() {
         return this.trayMenu;
+    }
+
+    EngineModel model() {
+        return this.model;
     }
 
     // A minimised window does not report where it shows (on Windows -32000): its last place is kept.

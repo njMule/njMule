@@ -24,7 +24,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import javafx.beans.binding.Bindings;
-import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -106,7 +105,7 @@ public final class MessagesScreen implements Screen {
                 this.setText(empty || row == null ? null : MessagesScreen.this.friendText(row.get()));
             }
         });
-        this.gui.model().friendSlotProperty().addListener((o, was, now) -> this.friends.refresh());
+        this.gui.subscriptions().onChange(this.gui.model().friendSlotProperty(), (was, now) -> this.friends.refresh());
         Label friendsTitle = new Label(this.gui.t("IDS_PW_FRIENDS"));
         friendsTitle.getStyleClass().add("settings-section");
         VBox left = new VBox(
@@ -131,7 +130,7 @@ public final class MessagesScreen implements Screen {
         start.disableProperty().bind(this.addressInput.validProperty().not());
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         Chats chats = this.gui.model().chats();
-        chats.all().addListener((ListChangeListener<Chats.Chat>) c -> {
+        this.gui.subscriptions().onListChange(chats.all(), c -> {
             while (c.next()) {
                 c.getAddedSubList().forEach(this::opened);
                 c.getRemoved().forEach(this::closed);
@@ -293,8 +292,10 @@ public final class MessagesScreen implements Screen {
             ListView<Chats.Line> lines = new ListView<>(chat.lines());
             lines.setUserData(chat);
             lines.setCellFactory(l -> new LineCell());
-            chat.lines().addListener((ListChangeListener<Chats.Line>)
-                    c -> lines.scrollTo(chat.lines().size() - 1));
+            MessagesScreen.this
+                    .gui
+                    .subscriptions()
+                    .onListChange(chat.lines(), c -> lines.scrollTo(chat.lines().size() - 1));
             VBox.setVgrow(lines, Priority.ALWAYS);
             Label request = new Label(MessagesScreen.this.gui.t("IDS_CAPTCHAREQUEST"));
             request.setWrapText(true);
@@ -308,7 +309,10 @@ public final class MessagesScreen implements Screen {
                             this.solution,
                             Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::solve)));
             this.captchaBox.getStyleClass().add("stat-card");
-            chat.captchaProperty().addListener((o, was, now) -> this.showCaptcha(now));
+            MessagesScreen.this
+                    .gui
+                    .subscriptions()
+                    .onChange(chat.captchaProperty(), (was, now) -> this.showCaptcha(now));
             this.showCaptcha(chat.captchaProperty().get());
             this.input.setOnAction(e -> this.send());
             HBox.setHgrow(this.input, Priority.ALWAYS);

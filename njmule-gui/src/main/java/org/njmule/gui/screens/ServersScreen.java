@@ -188,8 +188,8 @@ public final class ServersScreen implements Screen {
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         this.connectButton.setOnAction(e -> this.connectOrDisconnect());
         this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.showConnect());
-        this.gui.model().connectionProperty().addListener((o, was, now) -> this.showConnect());
-        this.gui.model().serverAddressProperty().addListener((o, was, now) -> this.showConnect());
+        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.showConnect());
+        this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> this.showConnect());
         this.showConnect();
         var tools = Fx.toolRow(
                 this.connectButton,
@@ -217,13 +217,18 @@ public final class ServersScreen implements Screen {
         ListView<EngineModel.ServerNote> info = new ListView<>(this.gui.model().serverInfo());
         info.getStyleClass().add("log-list");
         info.setCellFactory(l -> new ServerNoteCell(this.gui));
-        info.getItems().addListener((ListChangeListener<EngineModel.ServerNote>)
-                c -> info.scrollTo(info.getItems().size() - 1));
+        this.gui
+                .subscriptions()
+                .onListChange(
+                        this.gui.model().serverInfo(),
+                        c -> info.scrollTo(info.getItems().size() - 1));
         ListView<LogLine> log = new ListView<>(this.gui.model().log());
         log.getStyleClass().add("log-list");
         log.setCellFactory(l -> new LogCell(this.gui.formats()));
-        log.getItems().addListener((ListChangeListener<LogLine>)
-                c -> log.scrollTo(log.getItems().size() - 1));
+        this.gui
+                .subscriptions()
+                .onListChange(
+                        this.gui.model().log(), c -> log.scrollTo(log.getItems().size() - 1));
         Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info);
         Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log);
         TabPane tabs = new TabPane(infoTab, logTab);
@@ -323,8 +328,7 @@ public final class ServersScreen implements Screen {
         });
         this.count.getStyleClass().add(Styles.TEXT_BOLD);
         this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> this.showCount());
-        this.gui.model().servers().rows().addListener((ListChangeListener<LiveList.Row<ServerInfo>>)
-                c -> this.showCount());
+        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> this.showCount());
         this.showCount();
         HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
         head.setAlignment(Pos.CENTER_LEFT);

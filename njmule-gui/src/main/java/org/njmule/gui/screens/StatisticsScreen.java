@@ -83,7 +83,7 @@ public final class StatisticsScreen implements Screen {
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
-        RateGraph graph = new RateGraph(this.gui.model().rates(), downSwatch, upSwatch);
+        RateGraph graph = new RateGraph(this.gui.model().rates(), downSwatch, upSwatch, this.gui.subscriptions());
         HBox legend = new HBox(
                 8,
                 downSwatch,
@@ -108,7 +108,7 @@ public final class StatisticsScreen implements Screen {
                 KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
                 KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions),
                 KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
-        this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         // A short window scrolls the cards instead of setting a tall minimum for the whole window.
         ScrollPane scroll = new ScrollPane(new VBox(10, graph, legend, cards));

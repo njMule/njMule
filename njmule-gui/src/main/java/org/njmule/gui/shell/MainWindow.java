@@ -132,9 +132,9 @@ public final class MainWindow {
             }
         });
         EngineModel model = gui.model();
-        model.connectionProperty().addListener((o, was, now) -> this.showConnection());
-        model.serverNameProperty().addListener((o, was, now) -> this.showConnection());
-        model.statusProperty().addListener((o, was, now) -> this.showStatus(now));
+        gui.subscriptions().onChange(model.connectionProperty(), (was, now) -> this.showConnection());
+        gui.subscriptions().onChange(model.serverNameProperty(), (was, now) -> this.showConnection());
+        gui.subscriptions().onChange(model.statusProperty(), (was, now) -> this.showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> this.message(gui.f("nj.transfers.completed", d.name())));
         model.chats().onMessage(chat -> {

@@ -79,8 +79,8 @@ final class MyInfoPane {
         VBox pane = new VBox(6, top, scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
         pane.setMinWidth(220);
-        this.gui.model().statusProperty().addListener((o, was, now) -> this.refresh());
-        this.gui.model().connectionProperty().addListener((o, was, now) -> this.refresh());
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.refresh());
+        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.refresh());
         this.readWebUi();
         this.refresh();
         return pane;

@@ -115,7 +115,7 @@ public final class KadScreen implements Screen {
                 card(this.gui.t("IDS_KADID"), this.id));
         Label hint = new Label(this.gui.t("nj.kad.hint"));
         hint.setWrapText(true);
-        this.gui.model().statusProperty().addListener((o, was, now) -> this.show(now));
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         TabPane lists = this.lists();
         VBox content = new VBox(16, this.nodesRow(), cards, hint, lists);

@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.control.Label;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -33,6 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions;
+import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.shell.TrayMenu;
 
@@ -140,6 +143,48 @@ class DesktopAppTest {
         assertThat(GuiSettings.load(gui).window())
                 .as("the place before the window was minimised")
                 .hasValueSatisfying(b -> assertThat(b[0]).isNotEqualTo(10));
+    }
+
+    @Test
+    void theWindowLeftByALanguageChangeNoLongerFollowsTheEngine() throws Exception {
+        DesktopApp app = this.open();
+        AtomicReference<Stage> stage = new AtomicReference<>();
+        try {
+            FxTesting.onFx(() -> {
+                stage.set(new Stage());
+                app.show(stage.get());
+            });
+            Label oldChip = FxTesting.onFx(() -> (Label) app.window().root().lookup(".connection-chip"));
+            String before = FxTesting.onFx(() -> oldChip.getText());
+
+            FxTesting.onFx(app::relaunch);
+            ServerInfo big = new ServerInfo(
+                    "81.2.3.4:4661",
+                    "Big",
+                    "",
+                    10,
+                    20,
+                    30,
+                    0,
+                    ServerInfo.Priority.NORMAL,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "",
+                    false,
+                    false);
+            FxTesting.onFx(() -> app.model().handle(new EngineEvent.ServerConnecting(big)));
+
+            Label newChip = FxTesting.onFx(() -> (Label) app.window().root().lookup(".connection-chip"));
+            assertThat(FxTesting.onFx(() -> newChip.getText())).contains("Big");
+            assertThat(FxTesting.onFx(() -> oldChip.getText()))
+                    .as("the old window is not updated any more")
+                    .isEqualTo(before);
+            FxTesting.onFx(() -> stage.get().close());
+        } finally {
+            app.close();
+        }
     }
 
     // An app in the test's folder, on free ports and without Kad: never on the ports of a running eMule.
