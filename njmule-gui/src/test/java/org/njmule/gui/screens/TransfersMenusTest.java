@@ -32,11 +32,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.input.Clipboard;
@@ -61,6 +63,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
+import org.njmule.gui.model.LiveList;
 
 @Timeout(120)
 class TransfersMenusTest {
@@ -100,7 +103,7 @@ class TransfersMenusTest {
         this.showTab(screen, 0);
         FxTesting.await(
                 "the upload",
-                () -> FxTesting.cellTexts(screen.uploads()).containsAll(List.of("Peer", "eMule v0.72", "film.mkv")));
+                () -> FxTesting.cellTexts(screen.uploads()).containsAll(List.of("Peer", "eMule", "film.mkv")));
         this.showTab(screen, 1);
         FxTesting.await(
                 "the waiting client", () -> FxTesting.cellTexts(screen.queue()).contains("10.0.0.2:4662"));
@@ -260,6 +263,14 @@ class TransfersMenusTest {
         FxTesting.onFx(() ->
                 this.item(screen.downloads().getContextMenu(), "IDS_CMT_ADD").fire());
         FxTesting.await("the comment window", () -> this.window("Comments: test file.bin") != null);
+
+        FxTesting.onFx(() -> screen.view().lookupAll(".button").stream()
+                .filter(n -> n instanceof Button b && "Categories".equals(b.getAccessibleText()))
+                .map(Button.class::cast)
+                .findFirst()
+                .orElseThrow()
+                .fire());
+        FxTesting.await("the categories window", () -> this.window("Categories") != null);
     }
 
     @Test
@@ -315,6 +326,20 @@ class TransfersMenusTest {
                                 "Auto [Lo]",
                                 "?")));
 
+        // Sorted by priority, as each download acts: the rarest first.
+        FxTesting.onFx(() -> {
+            TableColumn<LiveList.Row<DownloadInfo>, ?> priority = screen.downloads().getColumns().stream()
+                    .filter(c -> "Priority".equals(c.getText()))
+                    .findFirst()
+                    .orElseThrow();
+            priority.setSortType(TableColumn.SortType.DESCENDING);
+            screen.downloads().getSortOrder().setAll(List.of(priority));
+        });
+        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().stream()
+                        .map(r -> r.get().name())
+                        .toList()))
+                .endsWith("stopped.bin", "full.bin");
+
         // The bar of the categories: All, then one button each; a click on the chosen one keeps it chosen.
         FxTesting.onFx(() -> this.test
                 .gui
@@ -334,6 +359,26 @@ class TransfersMenusTest {
             this.categoryButtons(screen).getFirst().fire();
         });
         assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size())).isEqualTo(4);
+
+        // The category shown stays chosen when the categories change.
+        int music = FxTesting.onFx(
+                () -> this.test.gui.model().categories().getFirst().id());
+        FxTesting.onFx(() -> {
+            screen.showCategory(music);
+            this.test
+                    .gui
+                    .model()
+                    .setCategories(
+                            List.of(
+                                    this.test.gui.model().categories().getFirst(),
+                                    new Category(
+                                            4, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false)),
+                            () -> {});
+        });
+        FxTesting.await(
+                "two category buttons", () -> this.categoryButtons(screen).size() == 3);
+        assertThat(FxTesting.onFx(() -> this.categoryButtons(screen).get(1).isSelected()))
+                .isTrue();
         FxTesting.onFx(() -> screen.showCategory(3));
         FxTesting.onFx(() -> this.test.gui.model().setCategories(List.of(), () -> {}));
         FxTesting.await("all shown again", () -> screen.downloads().getItems().size() == 4);
@@ -348,7 +393,7 @@ class TransfersMenusTest {
                                 "10.0.0.1:4662",
                                 PEER,
                                 Optional.of("Peer"),
-                                "eMule v0.72",
+                                "eMule",
                                 "film.mkv",
                                 UploadInfo.State.UPLOADING,
                                 1000,

@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -79,6 +81,8 @@ class SearchResultsTest {
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final AtomicLong ids = new AtomicLong();
     private final AtomicReference<EngineStatus> status = new AtomicReference<>();
+    // Commands a test replaces beside those of every test.
+    private final Map<String, Function<Object[], Object>> extra = new HashMap<>();
 
     @AfterEach
     void close() {
@@ -287,6 +291,52 @@ class SearchResultsTest {
     }
 
     @Test
+    void theEdgesOfTheParametersAndOfASearchWithoutSelection() throws Exception {
+        this.extra.put("saveSearches", args -> CompletableFuture.failedFuture(new IOException("disk full")));
+        SearchScreen screen = this.screen();
+        FxTesting.onFx(() -> {
+            // Without a tab these do nothing.
+            screen.searchRelated();
+            screen.copyHtml();
+            screen.markSpam(true);
+            screen.queryField().setText("x".repeat(SearchRequest.MAX_EXPRESSION_LENGTH));
+            screen.methodBox().setValue(SearchScreen.Method.SERVER);
+            screen.typeBox().setValue(SearchScreen.FileType.VIDEO);
+            screen.start();
+        });
+        assertThat(this.test.told).as("too long with its type").hasSize(1);
+        assertThat(this.calls).isEmpty();
+
+        // A minimum out of range leaves the maximum its own lowest value.
+        FxTesting.onFx(() -> screen.minSizeField().setText("999999"));
+        assertThat(FxTesting.onFx(() -> screen.maxSizeField().getTooltip().getText()))
+                .isEqualTo(this.test.gui.f("nj.input.optionalNumber", 1, 256 * 1024));
+
+        FxTesting.onFx(() -> {
+            screen.minSizeField().clear();
+            screen.typeBox().setValue(SearchScreen.FileType.ANY);
+            screen.extensionField().setText(".mkv");
+        });
+        Tab found = this.search(screen, "film", SearchScreen.Method.SERVER);
+        assertThat(this.calls).containsExactly("search film @ext=mkv SERVER");
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(FILM_DVD))));
+        FxTesting.onFx(() -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString("unchanged");
+            Clipboard.getSystemClipboard().setContent(content);
+            screen.table(found).getSelectionModel().clearSelection();
+            screen.copyLinks();
+            screen.markSpam(true);
+        });
+        assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
+                .as("nothing selected")
+                .isEqualTo("unchanged");
+
+        // The exit goes on when the open searches cannot be kept.
+        FxTesting.onFx(screen::closing);
+    }
+
+    @Test
     void searchesAreNotKeptWhenTheSettingsSaySo() throws Exception {
         SearchScreen screen = this.screen();
         this.test
@@ -327,6 +377,7 @@ class SearchResultsTest {
                         SHARED.size(),
                         this.dir.resolve(SHARED.name()),
                         UploadPriority.NORMAL))));
+        commands.putAll(this.extra);
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> this.wrap(real, commands));
         SearchScreen screen = new SearchScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
