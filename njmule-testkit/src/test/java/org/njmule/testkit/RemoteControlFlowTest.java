@@ -102,6 +102,15 @@ class RemoteControlFlowTest {
     }
 
     @Test
+    void shouldSayWhenThereAreNoServers() throws Exception {
+        this.givenNjMuleRunningWithTheApi();
+
+        this.whenRunRemotely("servers");
+
+        this.thenItPrints("No servers.");
+    }
+
+    @Test
     void shouldSayWhenTheApiIsOff() throws Exception {
         this.whenRunRemotely("status");
 

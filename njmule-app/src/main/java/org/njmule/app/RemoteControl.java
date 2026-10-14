@@ -255,7 +255,12 @@ final class RemoteControl {
     }
 
     private void servers() throws IOException, InterruptedException {
-        for (Object s : list(this.api.get("/servers"))) {
+        List<?> all = list(this.api.get("/servers"));
+        if (all.isEmpty()) {
+            this.out.println("No servers.");
+            return;
+        }
+        for (Object s : all) {
             this.out.printf(
                     Locale.ROOT,
                     "%-21s  %8d users  %10d files  %s%n",
