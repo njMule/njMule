@@ -34,15 +34,16 @@ import org.slf4j.LoggerFactory;
  *
  * @param lan whether to listen on every address instead of this computer's only
  * @param passwordHash empty until a password is set; the interface does not start without one
+ * @param api whether the remote-control API answers too, to holders of its token
  */
-public record WebUiSettings(boolean enabled, int port, boolean lan, String passwordHash) {
+public record WebUiSettings(boolean enabled, int port, boolean lan, String passwordHash, boolean api) {
 
     public static final String FILE_NAME = "webui.properties";
 
     /** The port eMule's web interface uses too. */
     public static final int DEFAULT_PORT = 4711;
 
-    public static final WebUiSettings DEFAULTS = new WebUiSettings(false, DEFAULT_PORT, false, "");
+    public static final WebUiSettings DEFAULTS = new WebUiSettings(false, DEFAULT_PORT, false, "", false);
 
     private static final Logger logger = LoggerFactory.getLogger(WebUiSettings.class);
 
@@ -51,6 +52,11 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
             throw new IllegalArgumentException("port must be in [1, 65535]: " + port);
         }
         Objects.requireNonNull(passwordHash, "passwordHash");
+    }
+
+    /** Settings without the remote-control API. */
+    public WebUiSettings(boolean enabled, int port, boolean lan, String passwordHash) {
+        this(enabled, port, lan, passwordHash, false);
     }
 
     /** Whether the interface can start: enabled, with a password. */
@@ -71,7 +77,8 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
                     Integer.parseInt(
                             p.getProperty("port", String.valueOf(DEFAULT_PORT)).strip()),
                     Boolean.parseBoolean(p.getProperty("lan", "false").strip()),
-                    p.getProperty("password", "").strip());
+                    p.getProperty("password", "").strip(),
+                    Boolean.parseBoolean(p.getProperty("api", "false").strip()));
         } catch (IOException | IllegalArgumentException e) {
             logger.warn("The web interface stays off: cannot read {}: {}", file, e.toString());
             return DEFAULTS;
@@ -92,6 +99,9 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
                 + "\n"
                 + "password="
                 + this.passwordHash
+                + "\n"
+                + "api="
+                + this.api
                 + "\n";
         Files.createDirectories(configDir);
         Path tmp = configDir.resolve(FILE_NAME + ".tmp");
@@ -107,6 +117,7 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
 
     @Override
     public String toString() {
-        return "WebUiSettings[enabled=" + this.enabled + ", port=" + this.port + ", lan=" + this.lan + "]";
+        return "WebUiSettings[enabled=" + this.enabled + ", port=" + this.port + ", lan=" + this.lan + ", api="
+                + this.api + "]";
     }
 }

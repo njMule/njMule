@@ -16,7 +16,7 @@
 
     <artifactId>njmule-webui</artifactId>
     <name>njMule Web UI</name>
-    <description>Web interface of njMule: server-rendered pages over the engine's public API.</description>
+    <description>Web interface of njMule: server-rendered pages and a JSON remote-control API over the engine's public API.</description>
 
     <dependencies>
         <dependency>
@@ -26,6 +26,10 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
         </dependency>
 
         <dependency>

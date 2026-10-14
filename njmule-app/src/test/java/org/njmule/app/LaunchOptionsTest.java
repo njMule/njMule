@@ -227,11 +227,11 @@ class LaunchOptionsTest {
     void parsesTheWebInterfacePassword() throws Exception {
         LaunchOptions cli = LaunchOptions.parse("--webui-password", "--webui-port", "8080");
         assertThat(cli.action()).isEqualTo(Action.WEBUI_PASSWORD);
-        assertThat(cli.webUi()).contains(new LaunchOptions.WebUiSetup(java.util.Optional.of(8080), false));
+        assertThat(cli.webUi()).contains(new LaunchOptions.WebUiSetup(java.util.Optional.of(8080), false, false));
         assertThat(LaunchOptions.parse("--webui-password", "--webui-lan")
                         .webUi()
                         .orElseThrow())
-                .isEqualTo(new LaunchOptions.WebUiSetup(java.util.Optional.empty(), true));
+                .isEqualTo(new LaunchOptions.WebUiSetup(java.util.Optional.empty(), true, false));
         assertThat(LaunchOptions.parse().webUi()).isEmpty();
         assertThatThrownBy(() -> LaunchOptions.parse("--webui-lan")).hasMessageContaining("apply to --webui-password");
         assertThatThrownBy(() -> LaunchOptions.parse("--webui-password", "--webui-port", "0"))

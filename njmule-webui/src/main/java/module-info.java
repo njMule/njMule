@@ -16,10 +16,12 @@
  */
 
 module org.njmule.webui {
-    // The web interface: pages served by the JDK's HTTP server over the engine's public API.
+    // The web interface: pages and a JSON API served by the JDK's HTTP server over the engine's public API.
     requires transitive org.njmule.core;
     requires jdk.httpserver;
     requires org.slf4j;
+    requires java.net.http;
+    requires tools.jackson.core;
 
     exports org.njmule.webui;
 }

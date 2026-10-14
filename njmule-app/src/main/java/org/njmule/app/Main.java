@@ -41,6 +41,8 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.webui.ApiClient;
+import org.njmule.webui.ApiToken;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
@@ -58,6 +60,11 @@ public final class Main {
 
     /** How long --exit waits for the running instance to stop. */
     private static final Duration EXIT_WAIT = Duration.ofSeconds(30);
+
+    private static final Duration REMOTE_SEARCH_WAIT = Duration.ofSeconds(10);
+
+    /** Where {@code --remote-url} finds the token of the other computer's API. */
+    static final String API_TOKEN_VARIABLE = "NJMULE_API_TOKEN";
 
     /** Where a password comes from: the terminal, or a line of standard input. */
     @FunctionalInterface
@@ -127,8 +134,77 @@ public final class Main {
             case RUN -> {
                 return runEngine(cli, out, err, stop);
             }
+            case REMOTE -> {
+                return remote(cli, out, err);
+            }
+            case API_TOKEN, NEW_API_TOKEN -> {
+                return apiToken(cli, out, err);
+            }
         }
         return EXIT_OK;
+    }
+
+    // A command for a running njMule, through its remote-control API.
+    private static int remote(LaunchOptions cli, PrintStream out, PrintStream err) {
+        LaunchOptions.Remote remote = cli.remote().orElseThrow();
+        if (remote.command().equals(List.of("help"))) {
+            out.print(RemoteControl.COMMANDS);
+            return EXIT_OK;
+        }
+        Path config = AppDirectories.resolve(cli.configDir()).config();
+        Optional<ApiClient> api;
+        try {
+            if (remote.url().isPresent()) {
+                String token = System.getenv(API_TOKEN_VARIABLE);
+                if (token == null || token.isBlank()) {
+                    err.println("Set " + API_TOKEN_VARIABLE
+                            + " to the API token of that njMule (njmule --api-token there).");
+                    return EXIT_USAGE;
+                }
+                api = Optional.of(new ApiClient(remote.url().get(), token.strip()));
+            } else {
+                api = ApiClient.local(config);
+            }
+        } catch (IOException e) {
+            err.println("Cannot read the settings of the web interface: " + e.getMessage());
+            return EXIT_FAILURE;
+        }
+        if (api.isEmpty()) {
+            err.println("The remote-control API of " + config + " is off: turn the web interface on with its API"
+                    + " (njmule --webui-password --webui-api, or in the settings) and start njMule.");
+            return EXIT_FAILURE;
+        }
+        try {
+            new RemoteControl(api.get(), out, REMOTE_SEARCH_WAIT).run(remote.command());
+            return EXIT_OK;
+        } catch (RemoteControl.Usage e) {
+            err.println(e.getMessage());
+            err.print(RemoteControl.COMMANDS);
+            return EXIT_USAGE;
+        } catch (ApiClient.Failure e) {
+            err.println(e.getMessage());
+            return EXIT_FAILURE;
+        } catch (IOException e) {
+            err.println("No njMule answers there: " + e.getMessage());
+            return EXIT_FAILURE;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return EXIT_FAILURE;
+        }
+    }
+
+    private static int apiToken(LaunchOptions cli, PrintStream out, PrintStream err) {
+        Path config = AppDirectories.resolve(cli.configDir()).config();
+        try {
+            out.println(
+                    cli.action() == LaunchOptions.Action.NEW_API_TOKEN
+                            ? ApiToken.renew(config, new SecureRandom())
+                            : ApiToken.loadOrCreate(config, new SecureRandom()));
+            return EXIT_OK;
+        } catch (IOException e) {
+            err.println("Cannot keep the API token: " + e.getMessage());
+            return EXIT_FAILURE;
+        }
     }
 
     // Prints the link of each file (without part hashes) and the hashing speed.
@@ -174,7 +250,11 @@ public final class Main {
             }
             WebUiSettings old = WebUiSettings.load(dirs.config());
             WebUiSettings settings = new WebUiSettings(
-                    true, setup.port().orElse(old.port()), setup.lan(), Passwords.hash(first, new SecureRandom()));
+                    true,
+                    setup.port().orElse(old.port()),
+                    setup.lan(),
+                    Passwords.hash(first, new SecureRandom()),
+                    setup.api() || old.api());
             settings.save(dirs.config());
             out.println("The web interface starts with "
                     + NjMuleInfo.NAME
@@ -212,14 +292,15 @@ public final class Main {
         };
     }
 
-    private static Optional<WebUi> startWebUi(NjMuleEngine engine, AppDirectories dirs, PrintStream out) {
+    private static Optional<WebUi> startWebUi(
+            NjMuleEngine engine, AppDirectories dirs, PrintStream out, CompletableFuture<Void> stop) {
         WebUiSettings settings = WebUiSettings.load(dirs.config());
         if (!settings.usable()) {
             return Optional.empty();
         }
         try {
-            WebUi ui = WebUi.start(engine, settings);
-            out.println("Web interface on port " + ui.port());
+            WebUi ui = WebUi.start(engine, settings, () -> stop.complete(null));
+            out.println("Web interface on port " + ui.port() + (settings.api() ? ", with the remote-control API" : ""));
             return Optional.of(ui);
         } catch (IOException e) {
             logger.warn("Cannot start the web interface on port {}: {}", settings.port(), e.toString());
@@ -290,7 +371,7 @@ public final class Main {
             Thread.currentThread().interrupt();
         }
 
-        Optional<WebUi> web = startWebUi(engine, dirs, out);
+        Optional<WebUi> web = startWebUi(engine, dirs, out, stop);
         for (Ed2kLink link : cli.links()) {
             follow(engine, link, err);
         }

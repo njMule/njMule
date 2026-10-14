@@ -243,7 +243,8 @@ public final class DesktopApp implements AutoCloseable {
             return Optional.empty();
         }
         try {
-            return Optional.of(WebUi.start(engine, web));
+            // Asked by the API: no question, as for njmule --exit.
+            return Optional.of(WebUi.start(engine, web, Platform::exit));
         } catch (IOException e) {
             logger.warn("Cannot start the web interface on port {}: {}", web.port(), e.toString());
             return Optional.empty();

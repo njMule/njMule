@@ -31,15 +31,13 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.util.ArrayList;
+import java.time.Duration;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.SequencedMap;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -68,7 +66,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The web interface: status, transfers, searches and servers as plain HTML pages behind a password. Every change is a
  * POST carrying the session's form token; pages run no scripts and cannot be framed, and the session cookie is
- * HTTP-only and same-site.
+ * HTTP-only and same-site. When its settings ask for it, the remote-control API answers under {@value Api#PREFIX}.
  */
 public final class WebUi implements AutoCloseable {
 
@@ -88,8 +86,6 @@ public final class WebUi implements AutoCloseable {
     // full field fits MAX_BODY.
     private static final int MAX_LINKS_LENGTH = 65_536;
     private static final int MAX_BODY = 1024 * 1024;
-    private static final int SEARCHES_KEPT = 10;
-    private static final int RESULTS_KEPT = 1000;
     private static final long ENGINE_WAIT_SECONDS = 10;
 
     // Each check keeps a core busy for a while: logins from many addresses cannot take them all.
@@ -113,43 +109,65 @@ public final class WebUi implements AutoCloseable {
     // Browsers keep cookies by host, whatever the port: two instances on one computer need two names.
     private final String cookie;
 
-    // Results of the latest searches started here, by search id, oldest first.
-    private final LinkedHashMap<Long, Map<Hash16, SearchResult>> results = new LinkedHashMap<>();
-
-    // Results of other searches, such as the desktop window's, which may be ours whose id is not
-    // noted yet; apart, so that they never push ours out. Guarded by the results' lock.
-    private final LinkedHashMap<Long, Map<Hash16, SearchResult>> others = new LinkedHashMap<>();
+    private final SearchCollector searches = new SearchCollector();
+    private final RecentLog log = new RecentLog();
+    private final EventStreams streams;
     private volatile Flow.Subscription subscription;
 
-    private WebUi(NjMuleEngine engine, WebUiSettings settings, HttpServer server, int passwordChecks) {
+    private WebUi(
+            NjMuleEngine engine, WebUiSettings settings, HttpServer server, int passwordChecks, Duration heartbeat) {
         this.engine = engine;
         this.settings = settings;
         this.server = server;
         this.passwordChecks = passwordChecks;
         this.checking = new Semaphore(passwordChecks);
         this.cookie = "njmule-session-" + server.getAddress().getPort();
+        this.streams = new EventStreams(engine, heartbeat);
     }
 
-    /** Starts the interface; it must be enabled and have a password. */
+    /** Starts the interface; it must be enabled and have a password. The API cannot stop njMule. */
     public static WebUi start(NjMuleEngine engine, WebUiSettings settings) throws IOException {
-        return start(engine, settings, PASSWORD_CHECKS);
+        return start(engine, settings, Optional.empty(), PASSWORD_CHECKS, EventStreams.HEARTBEAT);
+    }
+
+    /** Starts the interface, whose API may stop njMule through {@code exit}. */
+    public static WebUi start(NjMuleEngine engine, WebUiSettings settings, Runnable exit) throws IOException {
+        return start(engine, settings, Optional.of(exit), PASSWORD_CHECKS, EventStreams.HEARTBEAT);
     }
 
     static WebUi start(NjMuleEngine engine, WebUiSettings settings, int passwordChecks) throws IOException {
+        return start(engine, settings, Optional.empty(), passwordChecks, EventStreams.HEARTBEAT);
+    }
+
+    static WebUi start(
+            NjMuleEngine engine,
+            WebUiSettings settings,
+            Optional<Runnable> exit,
+            int passwordChecks,
+            Duration heartbeat)
+            throws IOException {
         Objects.requireNonNull(engine, "engine");
         if (!settings.usable()) {
             throw new IllegalArgumentException("the web interface is off or has no password");
+        }
+        if (settings.api()) {
+            // Made before the first call, so that a command line on this computer finds it.
+            ApiToken.loadOrCreate(engine.directories().config(), new SecureRandom());
         }
         InetSocketAddress bind = settings.lan()
                 ? new InetSocketAddress(settings.port())
                 : new InetSocketAddress(InetAddress.getLoopbackAddress(), settings.port());
         HttpServer server = HttpServer.create(bind, 0);
-        WebUi ui = new WebUi(engine, settings, server, passwordChecks);
+        WebUi ui = new WebUi(engine, settings, server, passwordChecks, heartbeat);
         server.setExecutor(ui.executor);
         server.createContext("/", ui::handle);
+        if (settings.api()) {
+            Api api = new Api(engine, ui.sessions, ui.searches, ui.log, ui.streams, exit);
+            server.createContext("/api/", api::handle);
+        }
         engine.events().subscribe(ui.new Results());
         server.start();
-        logger.info("Web interface on {}", server.getAddress());
+        logger.info("Web interface on {}{}", server.getAddress(), settings.api() ? " with the remote-control API" : "");
         return ui;
     }
 
@@ -168,6 +186,7 @@ public final class WebUi implements AutoCloseable {
         if (s != null) {
             s.cancel();
         }
+        this.streams.close();
         this.server.stop(0);
         this.executor.close();
     }
@@ -205,6 +224,10 @@ public final class WebUi implements AutoCloseable {
         }
         if (method.equals(POST) && !sameOrigin(exchange.getRequestHeaders())) {
             this.send(exchange, 403, TEXT, "Cross-site request refused.");
+            return;
+        }
+        if (path.startsWith("/api/")) {
+            this.send(exchange, 404, TEXT, "The remote-control API is off.");
             return;
         }
         if (path.equals("/style.css") && method.equals(GET)) {
@@ -420,13 +443,9 @@ public final class WebUi implements AutoCloseable {
         if (form.containsKey("download")) {
             long id = Long.parseLong(form.getOrDefault("search", ""));
             Hash16 hash = Hash16.parseHex(form.get("download"));
-            SearchResult result;
-            synchronized (this.results) {
-                result = this.results.getOrDefault(id, Map.of()).get(hash);
-            }
-            if (result == null) {
-                throw new IllegalArgumentException("That result is gone: search again.");
-            }
+            SearchResult result = this.searches
+                    .result(id, hash)
+                    .orElseThrow(() -> new IllegalArgumentException("That result is gone: search again."));
             this.await(this.engine.addDownload(result.link()));
             return TRANSFERS;
         }
@@ -437,34 +456,8 @@ public final class WebUi implements AutoCloseable {
         SearchRequest.checkExpression(expression);
         SearchRequest.Scope scope = SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
         SearchId id = this.await(this.engine.search(new SearchRequest(expression, scope)));
-        synchronized (this.results) {
-            this.remember(id.value());
-        }
+        this.searches.started(id.value());
         return SEARCH + "?id=" + id.value();
-    }
-
-    // Called holding the results' lock.
-    private void remember(long search) {
-        Map<Hash16, SearchResult> early = this.others.remove(search);
-        this.results.put(search, early == null ? new LinkedHashMap<>() : early);
-        trim(this.results);
-    }
-
-    // The results of search, ours or another one's; called holding the results' lock.
-    private Map<Hash16, SearchResult> resultsOf(long search) {
-        Map<Hash16, SearchResult> ours = this.results.get(search);
-        if (ours != null) {
-            return ours;
-        }
-        Map<Hash16, SearchResult> found = this.others.computeIfAbsent(search, k -> new LinkedHashMap<>());
-        trim(this.others);
-        return found;
-    }
-
-    private static void trim(SequencedMap<Long, ?> searches) {
-        while (searches.size() > SEARCHES_KEPT) {
-            searches.pollFirstEntry();
-        }
     }
 
     private void server(Map<String, String> form) {
@@ -601,11 +594,7 @@ public final class WebUi implements AutoCloseable {
                         true))
                 .append("</p>");
         Long id = parseId(idText);
-        List<SearchResult> found;
-        synchronized (this.results) {
-            Map<Hash16, SearchResult> all = id == null ? null : this.results.get(id);
-            found = all == null ? null : new ArrayList<>(all.values());
-        }
+        List<SearchResult> found = id == null ? null : this.searches.results(id).orElse(null);
         if (found == null) {
             return Html.page("Search", csrf, body.toString());
         }
@@ -780,7 +769,7 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    /** Collects search results from the engine's events. */
+    /** Collects search results and log lines from the engine's events. */
     private final class Results implements Flow.Subscriber<EngineEvent> {
         @Override
         public void onSubscribe(Flow.Subscription s) {
@@ -790,17 +779,11 @@ public final class WebUi implements AutoCloseable {
 
         @Override
         public void onNext(EngineEvent event) {
-            if (!(event instanceof EngineEvent.SearchResults r)) {
-                return;
-            }
-            // Results may arrive before the request that started the search notes its id.
-            synchronized (WebUi.this.results) {
-                Map<Hash16, SearchResult> found =
-                        WebUi.this.resultsOf(r.search().value());
-                for (SearchResult result : r.results()) {
-                    if (found.size() < RESULTS_KEPT || found.containsKey(result.hash())) {
-                        found.put(result.hash(), result);
-                    }
+            switch (event) {
+                case EngineEvent.SearchResults r -> WebUi.this.searches.add(r);
+                case EngineEvent.Log l -> WebUi.this.log.add(l.line());
+                default -> {
+                    // Pages read the rest when they are asked for.
                 }
             }
         }

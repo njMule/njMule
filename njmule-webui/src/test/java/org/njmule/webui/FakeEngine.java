@@ -30,9 +30,15 @@ final class FakeEngine {
 
     final SubmissionPublisher<EngineEvent> events = new SubmissionPublisher<>();
     private final Map<String, Function<Object[], CompletableFuture<?>>> answers = new ConcurrentHashMap<>();
+    private final Map<String, Object> values = new ConcurrentHashMap<>();
 
     void answer(String method, Function<Object[], CompletableFuture<?>> answer) {
         this.answers.put(method, answer);
+    }
+
+    /** What a method that returns no future answers, such as directories(). */
+    void value(String method, Object value) {
+        this.values.put(method, value);
     }
 
     NjMuleEngine engine() {
@@ -48,6 +54,9 @@ final class FakeEngine {
                         case "toString" -> "FakeEngine";
                         case "hashCode" -> System.identityHashCode(proxy);
                         default -> {
+                            if (this.values.containsKey(name)) {
+                                yield this.values.get(name);
+                            }
                             Function<Object[], CompletableFuture<?>> answer = this.answers.get(name);
                             yield answer != null
                                     ? answer.apply(args)

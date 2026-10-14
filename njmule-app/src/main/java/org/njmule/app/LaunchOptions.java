@@ -16,6 +16,8 @@
  */
 package org.njmule.app;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -47,7 +49,8 @@ public record LaunchOptions(
         boolean headless,
         NetworkTasks network,
         Optional<WebUiSetup> webUi,
-        List<Ed2kLink> links) {
+        List<Ed2kLink> links,
+        Optional<Remote> remote) {
 
     public LaunchOptions {
         files = List.copyOf(files);
@@ -100,8 +103,20 @@ public record LaunchOptions(
      *
      * @param port the port to listen on, the current one when empty
      * @param lan whether other computers may connect, instead of this one only
+     * @param api whether the remote-control API answers too
      */
-    public record WebUiSetup(Optional<Integer> port, boolean lan) {}
+    public record WebUiSetup(Optional<Integer> port, boolean lan, boolean api) {}
+
+    /**
+     * A command for a running njMule, through its remote-control API.
+     *
+     * @param url the API of another computer, as {@code http://host:4711/api/v1}; this computer's when empty
+     */
+    public record Remote(List<String> command, Optional<URI> url) {
+        public Remote {
+            command = List.copyOf(command);
+        }
+    }
 
     /** An import of the eMule profile in {@code dir}. */
     public record EmuleImport(Path dir, ImportOptions options) {}
@@ -116,7 +131,10 @@ public record LaunchOptions(
         NOTICE,
         HASH,
         WEBUI_PASSWORD,
-        EXIT
+        EXIT,
+        REMOTE,
+        API_TOKEN,
+        NEW_API_TOKEN
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -149,6 +167,11 @@ public record LaunchOptions(
     private static final String EXIT_OPTION = "--exit";
     private static final String WEBUI_PORT_OPTION = "--webui-port";
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
+    private static final String WEBUI_API_OPTION = "--webui-api";
+    private static final String REMOTE_OPTION = "--remote";
+    private static final String REMOTE_URL_OPTION = "--remote-url";
+    private static final String API_TOKEN_OPTION = "--api-token";
+    private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
 
     // What --exit may come with: where and how to run, nothing to do.
     private static final Set<String> WITH_EXIT =
@@ -219,7 +242,8 @@ public record LaunchOptions(
                 result.hasMatchedOption(HEADLESS_OPTION),
                 network,
                 webUi(result),
-                links(result.matchedPositionalValue(0, List.<String>of())));
+                links(result.matchedPositionalValue(0, List.<String>of())),
+                remote(result));
     }
 
     /** The help text, without colours. */
@@ -248,6 +272,15 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption(EXIT_OPTION)) {
             return Action.EXIT;
+        }
+        if (result.hasMatchedOption(REMOTE_OPTION)) {
+            return Action.REMOTE;
+        }
+        if (result.hasMatchedOption(NEW_API_TOKEN_OPTION)) {
+            return Action.NEW_API_TOKEN;
+        }
+        if (result.hasMatchedOption(API_TOKEN_OPTION)) {
+            return Action.API_TOKEN;
         }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
@@ -313,6 +346,28 @@ public record LaunchOptions(
         spec.addOption(flag(
                 WEBUI_LAN_OPTION,
                 "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));
+        spec.addOption(flag(
+                WEBUI_API_OPTION,
+                "with " + WEBUI_PASSWORD_OPTION + ": let the remote-control API answer too, to holders of its token"));
+        spec.addOption(OptionSpec.builder(REMOTE_OPTION)
+                .paramLabel("<command>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .arity("1..*")
+                .description("run a command in the njMule running on this configuration (or at "
+                        + REMOTE_URL_OPTION
+                        + "), through its remote-control API: "
+                        + REMOTE_OPTION
+                        + " help lists them")
+                .build());
+        spec.addOption(valued(
+                REMOTE_URL_OPTION,
+                "<url>",
+                "with " + REMOTE_OPTION + ": the API of another computer, as http://host:4711/api/v1; the token"
+                        + " comes from the NJMULE_API_TOKEN environment variable"));
+        spec.addOption(flag(API_TOKEN_OPTION, "print the token of the remote-control API, making one if needed"));
+        spec.addOption(
+                flag(NEW_API_TOKEN_OPTION, "replace the token of the remote-control API, print the new one and exit"));
         spec.addOption(OptionSpec.builder("-V", "--version")
                 .versionHelp(true)
                 .description("print the version and exit")
@@ -385,10 +440,16 @@ public record LaunchOptions(
     private static Optional<WebUiSetup> webUi(ParseResult result) throws UsageException {
         boolean port = result.hasMatchedOption(WEBUI_PORT_OPTION);
         boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
+        boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
         if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
-            if (port || lan) {
-                throw new UsageException(
-                        WEBUI_PORT_OPTION + " and " + WEBUI_LAN_OPTION + " apply to " + WEBUI_PASSWORD_OPTION);
+            if (port || lan || api) {
+                throw new UsageException(WEBUI_PORT_OPTION
+                        + ", "
+                        + WEBUI_LAN_OPTION
+                        + " and "
+                        + WEBUI_API_OPTION
+                        + " apply to "
+                        + WEBUI_PASSWORD_OPTION);
             }
             return Optional.empty();
         }
@@ -404,7 +465,30 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan));
+        return Optional.of(new WebUiSetup(number, lan, api));
+    }
+
+    private static Optional<Remote> remote(ParseResult result) throws UsageException {
+        if (!result.hasMatchedOption(REMOTE_OPTION)) {
+            if (result.hasMatchedOption(REMOTE_URL_OPTION)) {
+                throw new UsageException(REMOTE_URL_OPTION + " applies to " + REMOTE_OPTION);
+            }
+            return Optional.empty();
+        }
+        Optional<URI> url = Optional.empty();
+        if (result.hasMatchedOption(REMOTE_URL_OPTION)) {
+            String value = result.matchedOptionValue(REMOTE_URL_OPTION, "");
+            try {
+                URI uri = new URI(value.strip());
+                if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+                    throw new URISyntaxException(value, "not http or https");
+                }
+                url = Optional.of(uri);
+            } catch (URISyntaxException e) {
+                throw new UsageException("Invalid address for " + REMOTE_URL_OPTION + ": " + value);
+            }
+        }
+        return Optional.of(new Remote(result.matchedOptionValue(REMOTE_OPTION, List.<String>of()), url));
     }
 
     private static Optional<EmuleImport> emuleImport(ParseResult result) throws UsageException {
