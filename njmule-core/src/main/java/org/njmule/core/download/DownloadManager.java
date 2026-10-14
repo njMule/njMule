@@ -562,12 +562,13 @@ public final class DownloadManager implements AutoCloseable {
         return Optional.ofNullable(best);
     }
 
-    /** Stops the download and deletes its data. */
+    /** Stops the download and deletes its data; {@code false} if unknown or while its finished file is moved. */
     public boolean cancel(Hash16 hash) {
-        Entry entry = this.entries.remove(hash);
-        if (entry == null) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null || entry.download.isFinishing()) {
             return false;
         }
+        this.entries.remove(hash);
         this.closeSessions(entry, "the download is cancelled");
         this.queue.cancel(entry.download);
         this.listener.removed(hash);

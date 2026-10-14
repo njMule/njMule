@@ -82,6 +82,11 @@ public final class PartFileStorage implements AutoCloseable {
         return new PartFileStorage(path, channel);
     }
 
+    /** Whether the file still takes operations: not after {@link #finish} or {@link #close}. */
+    public boolean isOpen() {
+        return this.channel.isOpen() && !this.io.isShutdown();
+    }
+
     /** Writes {@code data} at {@code position}. */
     public CompletableFuture<Void> write(long position, byte[] data) {
         return CompletableFuture.runAsync(
@@ -210,9 +215,12 @@ public final class PartFileStorage implements AutoCloseable {
         }
     }
 
-    /** Closes the file after the queued operations. */
+    /** Closes the file after the queued operations; closing it again does nothing. */
     @Override
     public void close() {
+        if (this.io.isShutdown()) {
+            return;
+        }
         this.io.execute(() -> {
             try {
                 if (this.channel.isOpen()) {

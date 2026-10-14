@@ -118,6 +118,15 @@ public final class DownloadQueue implements AutoCloseable {
                     && !DownloadQueue.this.spaceShort;
         }
 
+        PartFileStorage storage() {
+            return this.storage;
+        }
+
+        /** Whether its finished file is being moved to the incoming directory. */
+        boolean isFinishing() {
+            return this.finishing;
+        }
+
         /** The parts whose hash was checked: the ones other clients may download from us. */
         public BitSet verifiedParts() {
             return (BitSet) this.verified.clone();
@@ -324,8 +333,14 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
-    /** Stops the download and deletes its files. */
-    public void cancel(Download download) {
+    /**
+     * Stops the download and deletes its files; {@code false} while its finished file is being moved, as a link added
+     * again would take the same files.
+     */
+    public boolean cancel(Download download) {
+        if (download.finishing) {
+            return false;
+        }
         this.downloads.remove(download.hash());
         download.storage.close();
         try {
@@ -335,6 +350,7 @@ public final class DownloadQueue implements AutoCloseable {
         } catch (IOException e) {
             logger.warn("Cannot delete the files of {}", download.file.name(), e);
         }
+        return true;
     }
 
     /** Saves every part file and closes the storages. */
@@ -462,6 +478,11 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     private void finished(Download download, Path moved, Throwable failure) {
+        // Moved or not, the data file is closed: a retry opens it again.
+        download.storage.close();
+        if (!this.isQueued(download)) {
+            return;
+        }
         if (failure != null) {
             download.finishing = false;
             download.file.setStatus(PartFile.Status.ERROR);

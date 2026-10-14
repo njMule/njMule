@@ -18,6 +18,8 @@ package org.njmule.core.download;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
@@ -34,6 +36,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -159,6 +164,47 @@ class DownloadQueueTest {
             return download.file().nextBlocks(all, 3);
         });
         assertThat(again).containsExactly(new PartFile.Block(0, Ed2k.EMBLOCKSIZE));
+    }
+
+    @Test
+    void aDownloadIsNotCancelledWhileItsFileIsMoved() throws Exception {
+        byte[] data = random(1000, 6);
+        Ed2kLink.FileLink link = Ed2kLink.FileLink.of("moved.bin", data.length, Ed2k.md4(data, 0, data.length));
+        AtomicReference<DownloadQueue> queue = new AtomicReference<>();
+        AtomicReference<Boolean> keptAfterCancel = new AtomicReference<>();
+        queue.set(this.queue(file -> {
+            // The user cancels and adds the link again while the finished file is being moved.
+            this.loop.post(() -> {
+                DownloadQueue q = queue.get();
+                q.cancel(q.get(link.hash()).orElseThrow());
+                keptAfterCancel.set(q.get(link.hash()).isPresent());
+                try {
+                    q.add(link);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+            return this.dir.resolve("incoming");
+        }));
+        DownloadQueue.Download download = this.onLoop(() -> queue.get().add(link));
+
+        this.onLoop(() -> {
+            queue.get().received(download, 0, data);
+            return null;
+        });
+
+        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(keptAfterCancel.get())
+                .as("the cancel waits for nothing it could undo")
+                .isTrue();
+        assertThat(this.onLoop(() -> queue.get().all())).isEmpty();
+        try (Stream<Path> left = Files.list(this.dir.resolve("temp"))) {
+            assertThat(left).as("nothing left behind").isEmpty();
+        }
+        assertThat(this.onLoop(() -> download.storage().isOpen()))
+                .as("its disk thread ends")
+                .isFalse();
     }
 
     @Test
@@ -295,12 +341,12 @@ class DownloadQueueTest {
     }
 
     private DownloadQueue queue() throws Exception {
+        return this.queue(file -> this.dir.resolve("incoming"));
+    }
+
+    private DownloadQueue queue(Function<PartFile, Path> incoming) throws Exception {
         return this.onLoop(() -> DownloadQueue.load(
-                this.loop,
-                this.dir.resolve("temp"),
-                file -> this.dir.resolve("incoming"),
-                this.minFree::get,
-                new DownloadQueue.Listener() {
+                this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, new DownloadQueue.Listener() {
                     @Override
                     public void diskSpace(boolean enough) {
                         DownloadQueueTest.this.events.add(enough ? "space enough" : "space short");
