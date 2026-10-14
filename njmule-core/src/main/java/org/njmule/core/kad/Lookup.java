@@ -93,6 +93,8 @@ final class Lookup {
     // Contacts a search asks each node for; publishes ask for more.
     private static final int FIND_VALUE = 2;
     private static final int PER_SUBNET = 2;
+    // Nodes that must place a contact at the same address before it gets the request ahead of the others.
+    private static final int VOUCHERS = 2;
 
     private final UInt128 target;
     private final Kind kind;
@@ -106,6 +108,11 @@ final class Lookup {
     private final Set<UInt128> requested = new HashSet<>();
     // Addresses sent the search or publish: only they may answer it.
     private final Set<Integer> requestedIps = new HashSet<>();
+    // By distance: the addresses of the nodes that told of each contact, and the contacts of our own table.
+    private final Map<UInt128, Set<Integer>> referrers = new HashMap<>();
+    private final Set<UInt128> fromTable = new HashSet<>();
+    // Contacts two nodes placed at different addresses: one of them lies, and neither is believed.
+    private final Set<UInt128> disputed = new HashSet<>();
     private long lastAnswer;
     private int answers;
     private long loadSum;
@@ -165,7 +172,9 @@ final class Lookup {
     /** Starts with the contacts of the routing table closest to the target. */
     void start(RoutingTable table) {
         for (KadContact c : table.closest(this.target, KadContact.NEW, START_CONTACTS)) {
-            this.possible.put(c.id().xor(this.target), c.message());
+            UInt128 distance = c.id().xor(this.target);
+            this.possible.put(distance, c.message());
+            this.fromTable.add(distance);
         }
         int first = this.kind == Kind.NODE ? 1 : ALPHA;
         for (KadMessages.Contact c : List.copyOf(this.possible.values())) {
@@ -237,16 +246,34 @@ final class Lookup {
         subnets.put(responder.ip() & 0xFFFF_FF00, 1);
         for (KadMessages.Contact c : contacts) {
             UInt128 distance = c.id().xor(this.target);
-            if (this.tried.containsKey(distance)
-                    || this.possible.containsKey(distance)
-                    || !ips.add(c.ip())
+            KadMessages.Contact known =
+                    this.tried.containsKey(distance) ? this.tried.get(distance) : this.possible.get(distance);
+            if (known != null || this.disputed.contains(distance) || distance.equals(responderDistance)) {
+                if (known != null && !distance.equals(responderDistance)) {
+                    this.referred(distance, known, c, responder.ip());
+                }
+                continue;
+            }
+            if (!ips.add(c.ip())
                     || (!this.lan.test(c.ip()) && subnets.merge(c.ip() & 0xFFFF_FF00, 1, Integer::sum) > PER_SUBNET)) {
                 continue;
             }
             this.possible.put(distance, c);
+            this.referrers.computeIfAbsent(distance, d -> new HashSet<>()).add(responder.ip());
             if (distance.compareTo(responderDistance) < 0 && this.isAmongBest(distance)) {
                 this.ask(c, this.kind.count());
             }
+        }
+    }
+
+    // Another node told of a contact we know: at the same address it vouches for it; elsewhere, unless our own table
+    // has it, the contact is believed no more.
+    private void referred(UInt128 distance, KadMessages.Contact known, KadMessages.Contact told, int referrer) {
+        if (known.ip() == told.ip() && known.udpPort() == told.udpPort()) {
+            this.referrers.computeIfAbsent(distance, d -> new HashSet<>()).add(referrer);
+        } else if (!this.fromTable.contains(distance)) {
+            this.disputed.add(distance);
+            this.possible.remove(distance);
         }
     }
 
@@ -274,7 +301,10 @@ final class Lookup {
             this.stopped = true;
             return;
         }
-        if (this.kind.value && now - this.started >= this.kind.lifetime.toNanos() - LAST_SENDING_NANOS) {
+        if (this.kind.value
+                && !this.stopping
+                && now - this.started >= this.kind.lifetime.toNanos() - LAST_SENDING_NANOS) {
+            this.requestWaiting();
             this.prepareToStop(now);
         }
         if (this.stopping) {
@@ -286,6 +316,7 @@ final class Lookup {
         }
         if (this.nothingLeftToAsk()) {
             if (this.kind.value) {
+                this.requestWaiting();
                 this.prepareToStop(now);
             } else {
                 this.stopped = true;
@@ -302,9 +333,11 @@ final class Lookup {
                 return;
             }
             if (this.responded.contains(c.id())) {
-                if (this.kind.value && e.getKey().top32() <= TOLERANCE && this.requested.add(c.id())) {
-                    this.requestedIps.add(c.ip());
-                    this.requests.request(this, c);
+                if (this.isWaiting(e.getKey(), c)) {
+                    continue;
+                }
+                if (this.kind.value && e.getKey().top32() <= TOLERANCE && !this.requested.contains(c.id())) {
+                    this.request(c);
                     if (this.stopped) {
                         return;
                     }
@@ -317,15 +350,45 @@ final class Lookup {
         }
     }
 
-    // Asked nodes that stay silent are kept for a late answer, but bring the lookup no further.
+    // Asked nodes that stay silent are kept for a late answer, and nodes only one other knew of for the end; neither
+    // brings the lookup further.
     private boolean nothingLeftToAsk() {
         for (Map.Entry<UInt128, KadMessages.Contact> e : this.possible.entrySet()) {
             if (!this.tried.containsKey(e.getKey())
-                    || this.responded.contains(e.getValue().id())) {
+                    || (this.responded.contains(e.getValue().id()) && !this.isWaiting(e.getKey(), e.getValue()))) {
                 return false;
             }
         }
         return true;
+    }
+
+    // A node close enough for the request that only one other knew of waits for a second one, or the end.
+    private boolean isWaiting(UInt128 distance, KadMessages.Contact c) {
+        return this.kind.value
+                && distance.top32() <= TOLERANCE
+                && !this.requested.contains(c.id())
+                && !this.fromTable.contains(distance)
+                && !this.lan.test(c.ip())
+                && this.referrers.getOrDefault(distance, Set.of()).size() < VOUCHERS;
+    }
+
+    // Before the lookup stops sending, the nodes still waiting get the request, closest first.
+    private void requestWaiting() {
+        for (Map.Entry<UInt128, KadMessages.Contact> e : List.copyOf(this.possible.entrySet())) {
+            KadMessages.Contact c = e.getValue();
+            if (this.responded.contains(c.id()) && this.isWaiting(e.getKey(), c)) {
+                this.request(c);
+                if (this.stopped) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void request(KadMessages.Contact c) {
+        this.requested.add(c.id());
+        this.requestedIps.add(c.ip());
+        this.requests.request(this, c);
     }
 
     // A search whose two closest asked nodes are silent asks the closest one that answered for more contacts.
