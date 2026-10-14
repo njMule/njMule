@@ -506,8 +506,12 @@ public final class TransfersScreen implements Screen {
         }
         String args = this.gui.model().preferencesProperty().get().videoPlayerArgs();
         this.gui.model().downloadData(selected.getFirst().hash(), data -> {
+            if (data.isEmpty()) {
+                this.gui.inform().accept(this.gui.t("nj.preview.notYet"));
+                return;
+            }
             try {
-                Preview.start(player, args, data);
+                Preview.start(player, args, data.get());
             } catch (IOException e) {
                 this.gui.inform().accept(e.getMessage());
             }

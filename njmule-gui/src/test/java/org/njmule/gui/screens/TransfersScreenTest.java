@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
@@ -32,6 +33,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.config.Preferences;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 import org.njmule.gui.i18n.I18n;
@@ -89,6 +91,41 @@ class TransfersScreenTest {
                     .as("comments")
                     .isFalse();
         });
+    }
+
+    @Test
+    void aPreviewBeforeTheStartOfTheFileCameSaysSo() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        Preferences prefs = this.test
+                .engine
+                .updatePreferences(p -> p.toBuilder().videoPlayer("player").build())
+                .get(10, TimeUnit.SECONDS);
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
+        TransfersScreen screen = new TransfersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        DownloadInfo started = new DownloadInfo(
+                FILE,
+                "film.mkv",
+                100_000,
+                5000,
+                DownloadInfo.Status.DOWNLOADING,
+                DownloadPriority.AUTO,
+                0,
+                1,
+                1,
+                0,
+                PartMap.EMPTY);
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadAdded(started)));
+        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
+
+        FxTesting.onFx(() -> {
+            screen.downloads().getSelectionModel().select(0);
+            screen.previewSelected();
+        });
+
+        String notYet = this.test.gui.t("nj.preview.notYet");
+        assertThat(notYet).isNotEqualTo("nj.preview.notYet");
+        FxTesting.await("told so", () -> this.test.told.contains(notYet));
     }
 
     @Test
