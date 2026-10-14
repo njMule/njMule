@@ -24,6 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.config.EventCommands;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -34,6 +35,7 @@ class SettingsScreenTest {
     Path dir;
 
     private TestGui test;
+    private SettingsScreen screen;
 
     @AfterEach
     void close() {
@@ -100,5 +102,59 @@ class SettingsScreenTest {
         FxTesting.onFx(screen::apply);
         FxTesting.await("saved", () -> this.test.engine.preferences().nick().equals("annxxxxxyyyy"));
         assertThat(this.test.told).noneMatch(m -> m.startsWith("Not saved"));
+    }
+
+    @Test
+    void shouldSaveTheEventCommandTheUserTyped() throws Exception {
+        this.givenTheSettingsShow();
+
+        this.whenTheUserTurnsOnTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME done\"");
+        this.whenTheUserApplies();
+
+        this.thenTheEngineRunsOn(
+                EventCommands.Event.DOWNLOAD_COMPLETED, new EventCommands.Command(true, "notify \"%NAME done\""));
+    }
+
+    @Test
+    void shouldNotSaveACommandWithAQuoteLeftOpen() throws Exception {
+        this.givenTheSettingsShow();
+
+        this.whenTheUserTurnsOnTheCommand(EventCommands.Event.CHAT_MESSAGE, "say \"%MESSAGE");
+        this.whenTheUserApplies();
+
+        this.thenTheUserIsToldItWasNotSaved();
+        this.thenTheEngineHasNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
+    }
+
+    private void givenTheSettingsShow() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.screen = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(this.screen::view));
+        FxTesting.onFx(this.screen::shown);
+    }
+
+    private void whenTheUserTurnsOnTheCommand(EventCommands.Event event, String commandLine) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.eventSwitch(event).setSelected(true);
+            this.screen.eventField(event).setText(commandLine);
+        });
+    }
+
+    private void whenTheUserApplies() throws Exception {
+        FxTesting.onFx(this.screen::apply);
+    }
+
+    private void thenTheEngineRunsOn(EventCommands.Event event, EventCommands.Command expected) throws Exception {
+        FxTesting.await(
+                "saved",
+                () -> this.test.engine.preferences().eventCommands().get(event).equals(expected));
+    }
+
+    private void thenTheUserIsToldItWasNotSaved() {
+        assertThat(this.test.told).anyMatch(m -> m.startsWith("Not saved"));
+    }
+
+    private void thenTheEngineHasNoCommandFor(EventCommands.Event event) {
+        assertThat(this.test.engine.preferences().eventCommands().get(event)).isEqualTo(EventCommands.Command.NONE);
     }
 }

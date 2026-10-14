@@ -23,8 +23,10 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -44,6 +46,7 @@ import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputControl;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
@@ -51,6 +54,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.app.LinkAssociation;
+import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
@@ -172,6 +176,8 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
+    private final Map<EventCommands.Event, CheckBox> eventSwitches = new EnumMap<>(EventCommands.Event.class);
+    private final Map<EventCommands.Event, Input<String>> eventInputs = new EnumMap<>(EventCommands.Event.class);
     // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
     private Preferences loaded;
 
@@ -359,6 +365,11 @@ public final class SettingsScreen implements Screen {
         grid.add(this.spamFilter, 1, row++);
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
         grid.add(this.scheduler(), 0, row++, 2, 1);
+        row = section(grid, row, this.gui.t("nj.settings.events"));
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            grid.add(this.eventSwitches.get(event), 0, row);
+            grid.add(this.eventInputs.get(event).field(), 1, row++);
+        }
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
         grid.add(this.webUi, 1, row++);
         row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
@@ -382,33 +393,33 @@ public final class SettingsScreen implements Screen {
         grid.add(note, 0, row, 2, 1);
 
         Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply));
-        apply.disableProperty()
-                .bind(Input.allValid(List.of(
-                                this.nickInput,
-                                this.tcpPortInput,
-                                this.udpPortInput,
-                                this.uploadInput,
-                                this.downloadInput,
-                                this.downloadCapacityInput,
-                                this.uploadCapacityInput,
-                                this.connectionsInput,
-                                this.newConnectionsInput,
-                                this.queueSizeInput,
-                                this.sourcesInput,
-                                this.proxyHostInput,
-                                this.proxyPortInput,
-                                this.proxyUserInput,
-                                this.incomingInput,
-                                this.tempInput,
-                                this.minFreeSpaceInput,
-                                this.deadRetriesInput,
-                                this.backupsInput,
-                                this.filterLevelInput,
-                                this.whitelistInput,
-                                this.webUiPortInput,
-                                this.webUiPasswordInput,
-                                this.webUiAgainInput))
-                        .not());
+        List<Input<?>> checked = new ArrayList<>(List.of(
+                this.nickInput,
+                this.tcpPortInput,
+                this.udpPortInput,
+                this.uploadInput,
+                this.downloadInput,
+                this.downloadCapacityInput,
+                this.uploadCapacityInput,
+                this.connectionsInput,
+                this.newConnectionsInput,
+                this.queueSizeInput,
+                this.sourcesInput,
+                this.proxyHostInput,
+                this.proxyPortInput,
+                this.proxyUserInput,
+                this.incomingInput,
+                this.tempInput,
+                this.minFreeSpaceInput,
+                this.deadRetriesInput,
+                this.backupsInput,
+                this.filterLevelInput,
+                this.whitelistInput,
+                this.webUiPortInput,
+                this.webUiPasswordInput,
+                this.webUiAgainInput));
+        checked.addAll(this.eventInputs.values());
+        apply.disableProperty().bind(Input.allValid(checked).not());
         var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
         ScrollPane scroll = new ScrollPane(grid);
         scroll.setFitToWidth(true);
@@ -506,6 +517,15 @@ public final class SettingsScreen implements Screen {
                         })
                 .keepSpaces();
         this.webUiPassword.textProperty().addListener((o, was, now) -> this.webUiAgainInput.check());
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            String name = this.gui.t("nj.events." + event.id());
+            this.eventSwitches.put(event, new CheckBox(name));
+            TextField line = new TextField();
+            line.setPrefColumnCount(40);
+            line.setPromptText(String.join(" ", event.placeholders()));
+            line.setAccessibleText(name);
+            this.eventInputs.put(event, inputs.commandLine(line, name, event.placeholders()));
+        }
     }
 
     // An IP filter from the web, from an address typed or used before.
@@ -623,6 +643,11 @@ public final class SettingsScreen implements Screen {
         this.webUiApi.setSelected(web.api());
         this.webUiPassword.clear();
         this.webUiAgain.clear();
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            EventCommands.Command command = p.eventCommands().get(event);
+            this.eventSwitches.get(event).setSelected(command.enabled());
+            this.eventInputs.get(event).field().setText(command.commandLine());
+        }
         this.loadLinks();
     }
 
@@ -718,6 +743,20 @@ public final class SettingsScreen implements Screen {
 
     // Each field of the form, against the preferences it was loaded from.
     private Changes read() {
+        Changes changes = this.readEngine();
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            changes.set(
+                    p -> p.eventCommands().get(event),
+                    (b, command) ->
+                            b.eventEnabled(event, command.enabled()).eventCommandLine(event, command.commandLine()),
+                    new EventCommands.Command(
+                            this.eventSwitches.get(event).isSelected(),
+                            this.eventInputs.get(event).value()));
+        }
+        return changes;
+    }
+
+    private Changes readEngine() {
         return new Changes(this.loaded)
                 .set(Preferences::nick, Preferences.Builder::nick, this.nickInput.value())
                 .set(Preferences::tcpPort, Preferences.Builder::tcpPort, this.tcpPortInput.value())
@@ -1031,6 +1070,14 @@ public final class SettingsScreen implements Screen {
 
     Input<String> whitelistInput() {
         return this.whitelistInput;
+    }
+
+    CheckBox eventSwitch(EventCommands.Event event) {
+        return this.eventSwitches.get(event);
+    }
+
+    TextInputControl eventField(EventCommands.Event event) {
+        return this.eventInputs.get(event).field();
     }
 
     /** A cell showing a name for its item. */

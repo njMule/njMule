@@ -34,6 +34,7 @@ import javafx.scene.control.TextField;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.config.EventCommands;
 
 /** The kinds of values the interface asks for, each with its characters, its check and its hint. */
 public final class Inputs {
@@ -210,6 +211,15 @@ public final class Inputs {
                     return links;
                 })
                 .whenTooLong(() -> this.gui.inform().accept(this.gui.f("nj.input.tooLong", MAX_LINKS_TEXT)));
+    }
+
+    /** Nothing, or a program and its arguments, which may hold {@code placeholders}; see EventCommands. */
+    public Input<String> commandLine(TextField field, String name, List<String> placeholders) {
+        String hint = this.gui.f("nj.input.commandLine", String.join(" ", placeholders));
+        return Input.of(field, name, hint, Inputs::printable, EventCommands.MAX_COMMAND_LINE, t -> {
+            EventCommands.arguments(t);
+            return t;
+        });
     }
 
     /** A search expression in the eMule syntax. */

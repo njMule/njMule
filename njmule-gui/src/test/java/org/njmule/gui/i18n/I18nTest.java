@@ -53,6 +53,10 @@ class I18nTest {
             "nj.import.outcome.skipped",
             "nj.import.outcome.missing",
             "nj.import.outcome.failed",
+            "nj.events.downloadCompleted",
+            "nj.events.downloadFailed",
+            "nj.events.chatMessage",
+            "nj.events.diskSpaceShort",
             "nj.proxy.none",
             "nj.proxy.socks",
             "nj.proxy.http");
