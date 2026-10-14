@@ -281,8 +281,12 @@ class EngineApiTest {
 
             Recorder slow = new Recorder(1);
             engine.events().subscribe(slow);
+            // In steps the others can follow: any subscriber that falls a buffer behind misses events.
             for (int i = 0; i < 3_000; i++) {
                 engine.userLog(LogLine.Level.INFO, "more " + i);
+                if (i % 500 == 499) {
+                    assertThat(late.awaitLog("more " + i)).isPresent();
+                }
             }
             assertThat(late.awaitLog("more 2999"))
                     .as("the others still get everything")
