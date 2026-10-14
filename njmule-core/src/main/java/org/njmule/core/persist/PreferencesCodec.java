@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.njmule.core.config.NextDownload;
@@ -157,19 +158,42 @@ public final class PreferencesCodec {
         }
     }
 
+    /**
+     * Writes the preferences; keys of the file this version does not know stay, so that an older version loses none.
+     */
     public static void save(Path file, Preferences preferences) throws IOException {
+        Properties unknown = unknownKeys(file);
         AtomicFiles.write(file, out -> {
             Writer w = new OutputStreamWriter(out, StandardCharsets.UTF_8);
             format(preferences, w);
+            if (!unknown.isEmpty()) {
+                StringBuilder kept = new StringBuilder("# Not used by this version of njMule, kept as they were.\n");
+                for (String name : new TreeSet<>(unknown.stringPropertyNames())) {
+                    PropertyLines.append(kept, name, unknown.getProperty(name));
+                }
+                w.write(kept.toString());
+            }
             w.flush();
         });
+    }
+
+    private static Properties unknownKeys(Path file) {
+        Properties props;
+        try {
+            props = AtomicFiles.read(
+                    file, in -> PropertyLines.parse(new InputStreamReader(in, StandardCharsets.UTF_8)));
+        } catch (IOException e) {
+            return new Properties();
+        }
+        props.keySet().removeIf(KEYS::containsKey);
+        return props;
     }
 
     static Preferences parse(Reader reader) throws IOException {
         Properties props = PropertyLines.parse(reader);
         for (String name : props.stringPropertyNames()) {
             if (!KEYS.containsKey(name)) {
-                logger.debug("Ignoring unknown preference {}", name);
+                logger.debug("Keeping the unknown preference {} as it is", name);
             }
         }
         // In the order the keys are declared: a value checked against others comes after them.

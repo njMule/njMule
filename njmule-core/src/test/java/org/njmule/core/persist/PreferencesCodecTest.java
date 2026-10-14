@@ -19,6 +19,7 @@ package org.njmule.core.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
@@ -110,6 +111,22 @@ class PreferencesCodecTest {
         assertThat(p.nick()).isEqualTo(Preferences.defaults().nick());
         assertThat(p.tcpPort()).isEqualTo(12_345);
         assertThat(p.messageFilter()).isEqualTo("abé");
+    }
+
+    @Test
+    void keysOfANewerVersionSurviveASave() throws IOException {
+        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+        Files.writeString(file, "net.tcpPort=12345\nfuture.option=on: yes\n");
+
+        PreferencesCodec.save(
+                file, PreferencesCodec.load(file).toBuilder().udpPort(5000).build());
+
+        Properties saved = new Properties();
+        try (Reader in = Files.newBufferedReader(file)) {
+            saved.load(in);
+        }
+        assertThat(saved).containsEntry("future.option", "on: yes").containsEntry("net.udpPort", "5000");
+        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
     }
 
     @Test
