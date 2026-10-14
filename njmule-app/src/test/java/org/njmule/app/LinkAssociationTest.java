@@ -17,6 +17,7 @@
 package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
@@ -190,6 +191,197 @@ class LinkAssociationTest {
                 .isTrue();
         assertThat(LinkAssociation.isDesktopProgram(Path.of("jdk", "bin", "java.exe")))
                 .isFalse();
+    }
+
+    @Test
+    void onlyTheInstalledProgramOnWindowsOrLinuxIsAssociated() throws IOException {
+        assertThat(LinkAssociation.forThisSystem(this.dir))
+                .as("tests run on the java launcher, as a development build does")
+                .isEmpty();
+        Path installed = Path.of("njMule", "njmule-gui.exe");
+        FakeRegistry registry = new FakeRegistry();
+        assertThat(LinkAssociation.forProgram(this.dir, registry, Path.of("bin", "java"), "Windows 11", null, "home"))
+                .isEmpty();
+        assertThat(LinkAssociation.forProgram(this.dir, registry, installed, "Mac OS X", null, "home"))
+                .as("macOS hands links over as system events")
+                .isEmpty();
+
+        assertThat(LinkAssociation.forProgram(this.dir, registry, installed, "Windows 11", null, "home"))
+                .get()
+                .isInstanceOfSatisfying(
+                        LinkAssociation.Windows.class,
+                        windows -> assertThat(windows.command()).isEqualTo("\"" + installed + "\" \"%1\""));
+    }
+
+    @Test
+    void onLinuxTheUserListIsTheOneOfTheDesktopConfiguration() throws IOException {
+        Path xdg = Files.createDirectories(this.dir.resolve("xdg"));
+        Path home = Files.createDirectories(this.dir.resolve("home/.config")).getParent();
+        String ours = "[Default Applications]\nx-scheme-handler/ed2k=" + LinkAssociation.DESKTOP_ID + "\n";
+        Files.writeString(xdg.resolve("mimeapps.list"), ours, StandardCharsets.UTF_8);
+        Files.writeString(home.resolve(".config/mimeapps.list"), ours, StandardCharsets.UTF_8);
+        LinkAssociation.Shell ourDefault = command -> new LinkAssociation.Result(0, LinkAssociation.DESKTOP_ID + "\n");
+        Path program = Path.of("usr", "bin", "njmule-gui");
+
+        LinkAssociation.forProgram(this.dir, ourDefault, program, "Linux", xdg.toString(), home.toString())
+                .orElseThrow()
+                .giveBack();
+        assertThat(Files.readString(xdg.resolve("mimeapps.list"), StandardCharsets.UTF_8))
+                .isEqualTo("[Default Applications]\n");
+        assertThat(Files.readString(home.resolve(".config/mimeapps.list"), StandardCharsets.UTF_8))
+                .isEqualTo(ours);
+
+        LinkAssociation.forProgram(this.dir, ourDefault, program, "Linux", " ", home.toString())
+                .orElseThrow()
+                .giveBack();
+        assertThat(Files.readString(home.resolve(".config/mimeapps.list"), StandardCharsets.UTF_8))
+                .as("with a blank configuration directory, the one in the home")
+                .isEqualTo("[Default Applications]\n");
+
+        Files.writeString(home.resolve(".config/mimeapps.list"), ours, StandardCharsets.UTF_8);
+        LinkAssociation.forProgram(this.dir, ourDefault, program, "Linux", null, home.toString())
+                .orElseThrow()
+                .giveBack();
+        assertThat(Files.readString(home.resolve(".config/mimeapps.list"), StandardCharsets.UTF_8))
+                .as("without a configuration directory of its own, the one in the home")
+                .isEqualTo("[Default Applications]\n");
+    }
+
+    @Test
+    void onLinuxTakingTwiceKeepsWhatCameFirst() throws IOException {
+        List<List<String>> commands = new ArrayList<>();
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir,
+                command -> {
+                    commands.add(command);
+                    return new LinkAssociation.Result(0, LinkAssociation.DESKTOP_ID + "\n");
+                },
+                this.dir.resolve("mimeapps.list"));
+
+        linux.take();
+
+        assertThat(commands)
+                .contains(List.of("xdg-mime", "default", LinkAssociation.DESKTOP_ID, "x-scheme-handler/ed2k"));
+        assertThat(this.dir.resolve(LinkAssociation.Linux.PREVIOUS)).doesNotExist();
+    }
+
+    @Test
+    void onLinuxNothingIsGivenBackThatIsNotOurs() throws IOException {
+        Path mimeApps = this.dir.resolve("mimeapps.list");
+        String theirs = "[Default Applications]\nx-scheme-handler/ed2k=amule.desktop;\n";
+        Files.writeString(mimeApps, theirs, StandardCharsets.UTF_8);
+        List<List<String>> commands = new ArrayList<>();
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir,
+                command -> {
+                    commands.add(command);
+                    return new LinkAssociation.Result(0, "amule.desktop\n");
+                },
+                mimeApps);
+
+        linux.giveBack();
+
+        assertThat(commands).containsExactly(List.of("xdg-mime", "query", "default", "x-scheme-handler/ed2k"));
+        assertThat(Files.readString(mimeApps, StandardCharsets.UTF_8)).isEqualTo(theirs);
+    }
+
+    @Test
+    void onLinuxAListWithoutOurEntryIsLeftAsItIs() throws IOException {
+        Path mimeApps = this.dir.resolve("mimeapps.list");
+        String theirs = "[Default Applications]\nx-scheme-handler/ed2k=amule.desktop;\ntext/html=firefox.desktop\n";
+        Files.writeString(mimeApps, theirs, StandardCharsets.UTF_8);
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir, command -> new LinkAssociation.Result(0, LinkAssociation.DESKTOP_ID + "\n"), mimeApps);
+
+        linux.giveBack();
+
+        assertThat(Files.readString(mimeApps, StandardCharsets.UTF_8)).isEqualTo(theirs);
+    }
+
+    @Test
+    void onLinuxWithoutXdgMimeAnswersThereWasNoDefault() throws IOException {
+        String[] current = {null};
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir,
+                command -> {
+                    if (command.get(1).equals("default")) {
+                        current[0] = command.get(2);
+                    }
+                    return current[0] == null
+                            ? new LinkAssociation.Result(4, "no default\n")
+                            : new LinkAssociation.Result(0, current[0] + "\n");
+                },
+                this.dir.resolve("mimeapps.list"));
+
+        assertThat(linux.isOurs()).isFalse();
+        linux.take();
+        assertThat(this.dir.resolve(LinkAssociation.Linux.PREVIOUS)).exists();
+        linux.giveBack();
+
+        assertThat(this.dir.resolve(LinkAssociation.Linux.PREVIOUS)).doesNotExist();
+        assertThat(this.dir.resolve("mimeapps.list")).as("no list to clean").doesNotExist();
+    }
+
+    @Test
+    void aCommandThatFailsIsReportedWithItsOutput() {
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir,
+                command -> command.get(1).equals("default")
+                        ? new LinkAssociation.Result(3, "xdg-mime: no desktop environment\n")
+                        : new LinkAssociation.Result(0, "amule.desktop\n"),
+                this.dir.resolve("mimeapps.list"));
+
+        assertThatThrownBy(linux::take)
+                .isInstanceOf(IOException.class)
+                .hasMessage("xdg-mime default " + LinkAssociation.DESKTOP_ID
+                        + " x-scheme-handler/ed2k failed: xdg-mime: no desktop environment");
+    }
+
+    @Test
+    void onWindowsWithoutAHandlerBeforeNothingIsSaved() throws IOException {
+        FakeRegistry registry = new FakeRegistry();
+        LinkAssociation.Windows windows = new LinkAssociation.Windows(this.dir, registry, PROGRAM);
+
+        windows.take();
+        windows.take();
+        assertThat(registry.exported).as("neither before nor once ours").isFalse();
+        assertThat(this.dir.resolve(LinkAssociation.Windows.BACKUP)).doesNotExist();
+        windows.giveBack();
+
+        assertThat(registry.imported).hasSize(3);
+        assertThat(registry.imported.getLast()).contains("[-HKEY_CURRENT_USER\\Software\\Classes\\ed2k]");
+        assertThat(windows.isOurs()).isFalse();
+    }
+
+    @Test
+    void readsTheDefaultValueOfAnExportedKey() {
+        assertThat(LinkAssociation.Windows.defaultValue("Windows Registry Editor Version 5.00\r\n\r\n[HKEY]\r\n"))
+                .isEmpty();
+        assertThat(LinkAssociation.Windows.defaultValue("@=\"\r\n@=dword:00000001\r\n@=\"unterminated\r\n"))
+                .as("no string value")
+                .isEmpty();
+        assertThat(LinkAssociation.Windows.defaultValue(
+                        "[HKEY]\n@=\"\\\"C:\\\\njMule\\\\njmule-gui.exe\\\" \\\"%1\\\"\"\n"))
+                .contains("\"C:\\njMule\\njmule-gui.exe\" \"%1\"");
+        assertThat(LinkAssociation.Windows.defaultValue("@=\"ends with \\\"")).contains("ends with \\");
+    }
+
+    @Test
+    void runsACommandAndKeepsItsOutput() throws IOException {
+        Path bin = Path.of(System.getProperty("java.home"), "bin");
+        String java =
+                (Files.exists(bin.resolve("java.exe")) ? bin.resolve("java.exe") : bin.resolve("java")).toString();
+
+        LinkAssociation.Result version = LinkAssociation.run(List.of(java, "-version"));
+        assertThat(version.exit()).isZero();
+        assertThat(version.output()).contains("version");
+
+        LinkAssociation.Result wrong = LinkAssociation.run(List.of(java, "--no-such-option"));
+        assertThat(wrong.exit()).isNotZero();
+        assertThat(wrong.output()).contains("--no-such-option");
+
+        List<String> missing = List.of(bin.resolve("no-such-program").toString());
+        assertThatThrownBy(() -> LinkAssociation.run(missing)).isInstanceOf(IOException.class);
     }
 
     /** The registry seen through reg.exe: one ed2k command value, exports and imports recorded. */

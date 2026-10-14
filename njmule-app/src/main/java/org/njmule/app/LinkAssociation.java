@@ -63,21 +63,33 @@ public abstract sealed class LinkAssociation {
      * where links come as system events, and when running from a development build.
      */
     public static Optional<LinkAssociation> forThisSystem(Path configDir) {
-        Optional<Path> program =
-                ProcessHandle.current().info().command().map(Path::of).filter(LinkAssociation::isDesktopProgram);
-        if (program.isEmpty()) {
+        return ProcessHandle.current()
+                .info()
+                .command()
+                .flatMap(command -> forProgram(
+                        configDir,
+                        LinkAssociation::run,
+                        Path.of(command),
+                        System.getProperty("os.name", ""),
+                        System.getenv("XDG_CONFIG_HOME"),
+                        System.getProperty("user.home")));
+    }
+
+    // The system's parts as arguments, so that tests choose them and never touch the real ones.
+    static Optional<LinkAssociation> forProgram(
+            Path configDir, Shell shell, Path program, String osName, String xdgConfigHome, String home) {
+        if (!isDesktopProgram(program)) {
             return Optional.empty();
         }
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String os = osName.toLowerCase(Locale.ROOT);
         if (os.startsWith("windows")) {
-            return Optional.of(new Windows(configDir, LinkAssociation::run, program.get()));
+            return Optional.of(new Windows(configDir, shell, program));
         }
         if (os.startsWith("linux")) {
-            String config = System.getenv("XDG_CONFIG_HOME");
-            Path base = config == null || config.isBlank()
-                    ? Path.of(System.getProperty("user.home"), ".config")
-                    : Path.of(config);
-            return Optional.of(new Linux(configDir, LinkAssociation::run, base.resolve("mimeapps.list")));
+            Path base = xdgConfigHome == null || xdgConfigHome.isBlank()
+                    ? Path.of(home, ".config")
+                    : Path.of(xdgConfigHome);
+            return Optional.of(new Linux(configDir, shell, base.resolve("mimeapps.list")));
         }
         return Optional.empty();
     }
