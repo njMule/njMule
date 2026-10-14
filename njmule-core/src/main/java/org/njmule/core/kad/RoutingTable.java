@@ -18,7 +18,6 @@ package org.njmule.core.kad;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -235,14 +234,40 @@ final class RoutingTable {
 
     /** Up to {@code count} verified contacts of type at most {@code maxType}, closest first. */
     List<KadContact> closest(UInt128 target, int maxType, int count) {
-        List<KadContact> candidates = new ArrayList<>();
-        for (KadContact c : this.byId.values()) {
-            if (c.isVerified() && c.type() <= maxType) {
-                candidates.add(c);
-            }
+        List<KadContact> out = new ArrayList<>(Math.max(0, Math.min(count, this.byId.size())));
+        if (count > 0) {
+            this.closest(this.root, target.xor(this.own), target, maxType, count, out);
         }
-        candidates.sort(Comparator.comparing(c -> c.id().xor(target)));
-        return candidates.size() > count ? candidates.subList(0, count) : candidates;
+        return out;
+    }
+
+    // Every contact of a zone's half on the side of the target is closer to it than any of the other half, so the
+    // zones are walked from the target's side and only the bins needed are sorted.
+    private void closest(Zone zone, UInt128 distance, UInt128 target, int maxType, int count, List<KadContact> out) {
+        if (zone.isLeaf()) {
+            List<KadContact> usable = new ArrayList<>(zone.bin.size());
+            for (KadContact c : zone.bin) {
+                if (c.isVerified() && c.type() <= maxType) {
+                    usable.add(c);
+                }
+            }
+            usable.sort((a, b) -> compareDistances(a.id(), b.id(), target));
+            for (int i = 0; i < usable.size() && out.size() < count; i++) {
+                out.add(usable.get(i));
+            }
+            return;
+        }
+        boolean far = distance.bit(zone.level) == 1;
+        this.closest(far ? zone.far : zone.near, distance, target, maxType, count, out);
+        if (out.size() < count) {
+            this.closest(far ? zone.near : zone.far, distance, target, maxType, count, out);
+        }
+    }
+
+    // Compares the distances of two ids to the target without building them.
+    private static int compareDistances(UInt128 a, UInt128 b, UInt128 target) {
+        int high = Long.compareUnsigned(a.high() ^ target.high(), b.high() ^ target.high());
+        return high != 0 ? high : Long.compareUnsigned(a.low() ^ target.low(), b.low() ^ target.low());
     }
 
     /** Contacts to hand to a joining node: those of the zones near the root. */

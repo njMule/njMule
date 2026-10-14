@@ -593,3 +593,5 @@ All notable changes to this project are documented here. The format follows
   nothing better is left, and one two nodes place at different addresses never.
 - Kad searches wait for silent nodes only as long as nodes have been taking to answer (at most 3
   seconds, as before) before asking the next ones; publishes keep the full wait.
+- Kad: the contacts closest to a target are found by walking the routing table from the target's
+  side, sorting only the bins needed, instead of sorting every contact at each lookup and answer.
