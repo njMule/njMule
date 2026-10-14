@@ -26,11 +26,13 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
 import org.njmule.core.api.FileComment;
@@ -59,8 +61,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * One source of one download: the connection, the file request, the place in the source's upload queue and the transfer
- * of blocks. Engine thread only; connection callbacks are posted to it.
+ * One source of one download at a time: the connection, the file request, the place in the source's upload queue and
+ * the transfer of blocks. A source with nothing for the download may be asked for another one on the same connection.
+ * Engine thread only; connection callbacks are posted to it.
  */
 final class DownloadSession implements PeerLink.Role {
 
@@ -106,6 +109,15 @@ final class DownloadSession implements PeerLink.Role {
 
         /** The source told its comment on the file. */
         default void commented(DownloadSession session, FileComment comment) {}
+
+        /**
+         * The source has nothing for the download asked for: no part we need, or not the file at all when
+         * {@code hasFile} is false. Returns another download it is a source of, to ask it for on this connection
+         * instead.
+         */
+        default Optional<DownloadQueue.Download> another(DownloadSession session, boolean hasFile) {
+            return Optional.empty();
+        }
     }
 
     /** How a session ended, which decides when the source is asked again. */
@@ -171,7 +183,9 @@ final class DownloadSession implements PeerLink.Role {
 
     private final EngineLoop loop;
     private final DownloadQueue queue;
-    private final DownloadQueue.Download download;
+    private DownloadQueue.Download download;
+    // The downloads asked for on this connection, whose answers may still come after a swap to another.
+    private final Map<Hash16, DownloadQueue.Download> asked = new LinkedHashMap<>();
     private final InetSocketAddress address;
     private final Supplier<Hello> ourHello;
     private final PeerLinks links;
@@ -189,7 +203,8 @@ final class DownloadSession implements PeerLink.Role {
     private Optional<Identities.Session> identity = Optional.empty();
     private PeerLink link;
     private Optional<Hello> peer = Optional.empty();
-    private boolean sourcesAsked;
+    // The files the source was asked for other sources of, whose answers we take.
+    private final Set<Hash16> sourcesAsked = new HashSet<>();
     // The part whose AICH recovery data we asked for, or -1.
     private int aichAsked = -1;
 
@@ -299,6 +314,11 @@ final class DownloadSession implements PeerLink.Role {
     /** Our place in the source's queue, once it told us. */
     int queueRank() {
         return this.queueRank;
+    }
+
+    /** Whether the source was asked for an upload, or offered us one: its answer tells our place in its queue. */
+    boolean uploadAsked() {
+        return this.uploadRequested;
     }
 
     /** Connects to the source, obfuscated with its user hash when known, and says hello. */
@@ -428,7 +448,7 @@ final class DownloadSession implements PeerLink.Role {
                 }
             }
             case FILEREQANSNOFIL -> {
-                if (ClientMessages.fileOf(packet).equals(file)) {
+                if (ClientMessages.fileOf(packet).equals(file) && !this.askForAnother(false)) {
                     this.end(Outcome.GONE, "the source does not have the file");
                 }
             }
@@ -466,9 +486,8 @@ final class DownloadSession implements PeerLink.Role {
             }
             case ANSWERSOURCES2 -> {
                 SourceExchange.Answer answer = SourceExchange.Answer.decode(packet);
-                // Only answers we asked for, about this file.
-                if (this.sourcesAsked && answer.file().equals(this.download.hash())) {
-                    this.sourcesAsked = false;
+                // Only answers we asked for, about a file we asked for.
+                if (this.sourcesAsked.remove(answer.file())) {
                     this.listener.sourcesFound(this, answer);
                 }
             }
@@ -480,6 +499,7 @@ final class DownloadSession implements PeerLink.Role {
 
     private void requestFile() {
         Hash16 file = this.download.hash();
+        this.asked.put(file, this.download);
         this.connection.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file));
         this.connection.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
         // Without a trusted AICH hash, the sources' announcements may make one.
@@ -495,9 +515,32 @@ final class DownloadSession implements PeerLink.Role {
                 .map(p -> (p.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0)
                 .orElse(false);
         if (exchanges && this.listener.maySourcesBeAsked(this)) {
-            this.sourcesAsked = true;
+            this.sourcesAsked.add(file);
             this.connection.send(SourceExchange.request(file));
         }
+    }
+
+    // One file request at a time: the next goes out once the source answered the last, and before any upload request.
+    private boolean askForAnother(boolean hasFile) {
+        if (this.uploadRequested || this.state == State.ENDED) {
+            return false;
+        }
+        Optional<DownloadQueue.Download> next = this.listener.another(this, hasFile);
+        if (next.isEmpty()) {
+            return false;
+        }
+        if (this.sourceParts != null) {
+            this.download.file().addAvailability(this.sourceParts, -1);
+            this.sourceParts = null;
+        }
+        logger.debug(
+                "Asking {} for {} instead of {}",
+                this.address,
+                next.get().file().name(),
+                this.download.file().name());
+        this.download = next.get();
+        this.requestFile();
+        return true;
     }
 
     private void setParts(BitSet parts) {
@@ -509,7 +552,9 @@ final class DownloadSession implements PeerLink.Role {
         file.addAvailability(parts, 1);
         this.listener.partsKnown(this);
         if (!this.hasNeededParts()) {
-            this.close("the source has no part we need");
+            if (!this.askForAnother(true)) {
+                this.close("the source has no part we need");
+            }
             return;
         }
         if (!this.uploadRequested) {
@@ -521,10 +566,14 @@ final class DownloadSession implements PeerLink.Role {
         this.startDownloading();
     }
 
+    // The hash set of a download asked for before a swap to another still counts, while the download is ours.
     private void hashSet(ClientMessages.HashSet set) {
-        if (set.file().equals(this.download.hash()) && !this.download.file().hasHashSet()) {
-            this.download.file().setHashSet(set.parts());
-            this.queue.hashSetKnown(this.download);
+        DownloadQueue.Download target = this.asked.get(set.file());
+        if (target != null
+                && this.queue.get(set.file()).orElse(null) == target
+                && !target.file().hasHashSet()) {
+            target.file().setHashSet(set.parts());
+            this.queue.hashSetKnown(target);
         }
     }
 

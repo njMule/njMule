@@ -277,6 +277,15 @@ All notable changes to this project are documented here. The format follows
   before (an upgrade keeps them); the release workflow checks it on the arm64 runner.
 - On macOS the app declares the ed2k scheme and follows the links the browser opens, which the
   system sends as events, also those that start it.
+- A4AF (asked for another file): a client that is a source of several downloads is asked for one
+  at a time, on one re-ask clock whatever the number of downloads, and the others list it as asked
+  for another file. It is asked for another of them on the same connection when it has no part we
+  need or lacks the file (then it is dropped for that one), moves to another when the download
+  asked for is paused, stopped, cancelled or finished, and at its next ask goes to a better one
+  (higher priority, parts we need) unless it sends us data or keeps us within rank 50 of its queue.
+  By hand the A4AF sources of a download can be swapped to it, its sources to other downloads, or
+  one source; a download can also take its A4AF sources by itself, kept in its `.part.met` as an
+  njMule tag (eMule stores no such flag). Category-based A4AF options are not there.
 
 ### Changed
 

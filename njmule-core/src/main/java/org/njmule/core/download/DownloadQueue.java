@@ -390,6 +390,11 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
+    public void setAutoSwap(Download download, boolean value) {
+        download.file.setAutoSwap(value);
+        download.dirty = true;
+    }
+
     public void setPriority(Download download, DownloadPriority priority) {
         download.file.setPriority(priority);
         download.dirty = true;

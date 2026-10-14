@@ -18,7 +18,11 @@ package org.njmule.core.api;
 
 import java.util.Objects;
 
-/** The state of a download, as front ends show it. */
+/**
+ * The state of a download, as front ends show it.
+ *
+ * @param autoSwap whether sources asked for another file are swapped to this one whenever they are free to move
+ */
 public record DownloadInfo(
         Hash16 hash,
         String name,
@@ -31,7 +35,8 @@ public record DownloadInfo(
         int transferring,
         long bytesPerSecond,
         PartMap parts,
-        boolean previewFirst) {
+        boolean previewFirst,
+        boolean autoSwap) {
 
     public enum Status {
         DOWNLOADING,
@@ -69,6 +74,37 @@ public record DownloadInfo(
                 transferring,
                 bytesPerSecond,
                 parts,
+                false,
+                false);
+    }
+
+    /** A download that takes no sources asked for other files by itself. */
+    public DownloadInfo(
+            Hash16 hash,
+            String name,
+            long size,
+            long completed,
+            Status status,
+            DownloadPriority priority,
+            int category,
+            int sources,
+            int transferring,
+            long bytesPerSecond,
+            PartMap parts,
+            boolean previewFirst) {
+        this(
+                hash,
+                name,
+                size,
+                completed,
+                status,
+                priority,
+                category,
+                sources,
+                transferring,
+                bytesPerSecond,
+                parts,
+                previewFirst,
                 false);
     }
 

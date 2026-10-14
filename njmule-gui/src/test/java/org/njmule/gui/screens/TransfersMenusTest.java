@@ -98,7 +98,7 @@ class TransfersMenusTest {
         assertThat(FxTesting.onFx(() -> screen.lowerTabs().getTabs().stream()
                         .map(t -> t.getText())
                         .toList()))
-                .containsExactly("Uploading (1)", "On Queue (1)", "Downloading (5)", "Banned (1)");
+                .containsExactly("Uploading (1)", "On Queue (1)", "Downloading (6)", "Banned (1)");
         this.showTab(screen, 0);
         FxTesting.await(
                 "the upload",

@@ -770,6 +770,33 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Integer> swapSourcesToDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.swapSourcesToDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Integer> swapSourcesFromDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.swapSourcesFromDownload(hash));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setDownloadAutoSwap(Hash16 hash, boolean autoSwap) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.setDownloadAutoSwap(hash, autoSwap));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> swapSourceToDownload(Hash16 download, ServerAddress source) {
+        Objects.requireNonNull(download, "download");
+        Objects.requireNonNull(source, "source");
+        return resolve(source.host())
+                .thenCompose(ip -> this.loop.submit(() -> this.network.swapSourceToDownload(
+                        download, new InetSocketAddress(Ipv4.format(ip), source.port()))));
+    }
+
+    @Override
     public CompletableFuture<Optional<Path>> downloadData(Hash16 hash) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.downloadData(hash));

@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,8 +75,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The downloads and their sources: sources come from links and from the server, each one is asked for a place in its
- * upload queue and asked again while it keeps us there, and data flows from those that give us a slot. Engine thread
- * only.
+ * upload queue and asked again while it keeps us there, and data flows from those that give us a slot. A client that is
+ * a source of several downloads is asked for one at a time, on its own clock; the others count it as asked for another
+ * file (A4AF) until it is swapped to one of them. Engine thread only.
  */
 public final class DownloadManager implements AutoCloseable {
 
@@ -153,6 +155,9 @@ public final class DownloadManager implements AutoCloseable {
     /** Sources ban clients that ask more often than this. */
     public static final Duration MIN_REASK = Duration.ofMinutes(10);
 
+    /** A place in a source's queue up to this rank is kept: the client is not swapped to another download by itself. */
+    public static final int GOOD_RANK = 50;
+
     /** The server is asked for the sources of each download this often. */
     public static final Duration SERVER_SOURCES_INTERVAL = Duration.ofMinutes(20);
 
@@ -164,6 +169,10 @@ public final class DownloadManager implements AutoCloseable {
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
     private static final int CRYPT_SUPPORTED = 0x01;
+    // A source that told it has no part we need is asked for something else first this long.
+    private static final Duration NO_PARTS_WAIT = Duration.ofMinutes(58);
+    // A source swapped away from by hand waits this long before it is asked for that download again by itself.
+    private static final Duration AWAY = Duration.ofHours(1);
     private static final Duration KAD_SEARCH_STEP = Duration.ofHours(1);
     private static final int KAD_SEARCH_MAX_STEPS = 7;
     private static final int KAD_SEARCHES = 5;
@@ -205,25 +214,64 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
-    private static final class Source {
+    // A client known as a source of one or more downloads: one session at a time, for the source it is asked for, and
+    // one clock for its asks whatever the number of downloads.
+    private static final class Client {
         private final InetSocketAddress address;
+        // Its sources, one per download, in the order they were found.
+        private final List<Source> sources = new ArrayList<>();
+        // The source it is asked for; the others are A4AF.
+        private Source current;
+        // The source the last file request went to: a slot the client offers later is for that file.
+        private Source requested;
+        private DownloadSession session;
+        // The sources tried on the open session, each with nothing for us.
+        private final Set<Source> tried = new HashSet<>();
+        // Swapped by hand: asked next for the current source, whatever the others.
+        private boolean pinned;
         private Optional<Hash16> userHash = Optional.empty();
+        private int cryptOptions;
+        // The id of a firewalled source on our server, reached only by callbacks; 0 otherwise.
+        private long lowId;
         private long nextAsk;
         private long lastAsk;
         private boolean asked;
         private int failures;
-        private BitSet parts;
-        private DownloadSession session;
-        private long sourcesAsked;
-        private boolean sourcesEverAsked;
-        private int cryptOptions;
-        // The id of a firewalled source on our server, reached only by callbacks; 0 otherwise.
-        private long lowId;
-        private long received;
 
-        Source(InetSocketAddress address, long now) {
+        Client(InetSocketAddress address, long now) {
             this.address = address;
             this.nextAsk = now;
+        }
+
+        // The session, when it is for this source.
+        DownloadSession session(Source source) {
+            return this.current == source ? this.session : null;
+        }
+    }
+
+    // A client as a source of one download.
+    private static final class Source {
+        private final Entry entry;
+        private final Client client;
+        private BitSet parts;
+        // When the client last told the parts it has of the file.
+        private long partsAt;
+        // Our place in the client's queue for the file, as it last told; 0 for none.
+        private int rank;
+        private long sourcesAsked;
+        private boolean sourcesEverAsked;
+        private long received;
+        // Swapped away from by hand: other downloads go first until then.
+        private boolean away;
+        private long awayUntil;
+
+        Source(Entry entry, Client client) {
+            this.entry = entry;
+            this.client = client;
+        }
+
+        InetSocketAddress address() {
+            return this.client.address;
         }
     }
 
@@ -280,6 +328,8 @@ public final class DownloadManager implements AutoCloseable {
     private final RateMeter rate = new RateMeter(5);
     private long nextKadStart;
     private final Map<Hash16, Entry> entries = new LinkedHashMap<>();
+    // The clients that are sources of any download, by the address they are reached at.
+    private final Map<InetSocketAddress, Client> clients = new LinkedHashMap<>();
     // Firewalled sources asked, through the server, to connect to us: by their LowID.
     private final Map<Long, Callback> callbacks = new LinkedHashMap<>();
     private final SessionEvents sessionEvents = new SessionEvents();
@@ -433,17 +483,18 @@ public final class DownloadManager implements AutoCloseable {
         }
         List<SourceExchange.Source> sources = new ArrayList<>();
         for (Source source : entry.sources.values()) {
-            if (source.userHash.isPresent()
+            Client client = source.client;
+            if (client.userHash.isPresent()
                     && source.parts != null
-                    && source.address.getAddress() instanceof Inet4Address ip) {
+                    && client.address.getAddress() instanceof Inet4Address ip) {
                 sources.add(new SourceExchange.Source(
                         Ipv4.fromBytes(ip.getAddress()),
                         0,
-                        source.address.getPort(),
+                        client.address.getPort(),
                         0,
                         0,
-                        source.userHash,
-                        source.cryptOptions));
+                        client.userHash,
+                        client.cryptOptions));
             }
         }
         return sources;
@@ -479,9 +530,16 @@ public final class DownloadManager implements AutoCloseable {
                     .append(entry.download.file().missingBytes())
                     .append(':');
             for (Source source : entry.sources.values()) {
-                text.append(' ').append(source.session == null ? source.address : source.session.describe());
-                if (source.failures > 0) {
-                    text.append(" (failed ").append(source.failures).append(')');
+                DownloadSession session = source.client.session(source);
+                text.append(' ')
+                        .append(
+                                session != null
+                                        ? session.describe()
+                                        : source.client.current == source
+                                                ? source.address()
+                                                : source.address() + " A4AF");
+                if (source.client.failures > 0) {
+                    text.append(" (failed ").append(source.client.failures).append(')');
                 }
             }
             text.append('\n');
@@ -505,6 +563,7 @@ public final class DownloadManager implements AutoCloseable {
         }
         this.queue.pause(entry.download);
         this.closeSessions(entry, "the download is paused");
+        this.release(entry);
         this.listener.progress(this.info(entry));
         return true;
     }
@@ -517,7 +576,7 @@ public final class DownloadManager implements AutoCloseable {
         }
         this.queue.stop(entry.download);
         this.closeSessions(entry, "the download is stopped");
-        entry.sources.clear();
+        this.forget(entry);
         this.callbacks.values().removeIf(callback -> callback.file.equals(hash));
         this.listener.progress(this.info(entry));
         return true;
@@ -593,7 +652,13 @@ public final class DownloadManager implements AutoCloseable {
         entry.nextKadSearch = now;
         entry.kadSearches = 0;
         for (Source source : entry.sources.values()) {
-            source.nextAsk = source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
+            Client client = source.client;
+            if (client.current == source) {
+                client.nextAsk = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
+            } else if (client.session == null && !client.current.entry.download.isActive()) {
+                // Idle while the download it was asked for waits: asked for this one now.
+                this.swap(client, source, now);
+            }
         }
         entry.nextServerAsk = now;
         this.listener.progress(this.info(entry));
@@ -638,6 +703,7 @@ public final class DownloadManager implements AutoCloseable {
         }
         this.entries.remove(hash);
         this.closeSessions(entry, "the download is cancelled");
+        this.forget(entry);
         this.queue.cancel(entry.download);
         this.listener.removed(hash);
         return true;
@@ -675,8 +741,7 @@ public final class DownloadManager implements AutoCloseable {
             }
             Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
             if (fresh != null) {
-                fresh.userHash = source.userHash();
-                fresh.cryptOptions = source.cryptOptions();
+                learn(fresh.client, source.userHash(), source.cryptOptions());
                 added++;
             }
         }
@@ -754,19 +819,21 @@ public final class DownloadManager implements AutoCloseable {
                 return false;
             }
         }
-        if (source.session != null) {
+        Client client = source.client;
+        if (client.session != null) {
             return false;
         }
         long now = this.ticker.read();
-        source.lowId = peer.clientId();
-        source.userHash = Optional.of(peer.userHash());
-        source.cryptOptions = callback.cryptOptions;
-        source.asked = true;
-        source.lastAsk = now;
-        source.nextAsk = now + REASK_INTERVAL.toNanos();
+        client.lowId = peer.clientId();
+        client.userHash = Optional.of(peer.userHash());
+        client.cryptOptions = callback.cryptOptions;
+        client.asked = true;
+        client.lastAsk = now;
+        client.nextAsk = now + REASK_INTERVAL.toNanos();
+        this.startAsking(client, source);
         DownloadSession session = new DownloadSession(
                 this.loop, this.queue, entry.download, address, this.ourHello, this.links, this.sessionEvents);
-        source.session = session;
+        client.session = session;
         logger.debug("{} called us back for {}", address, entry.download.file().name());
         session.adopt(link, Optional.empty(), false);
         return true;
@@ -782,41 +849,46 @@ public final class DownloadManager implements AutoCloseable {
             return true;
         }
         InetAddress from = link.remoteAddress().getAddress();
-        for (Entry entry : this.entries.values()) {
-            if (!entry.download.isActive()) {
+        for (Client client : this.clients.values()) {
+            boolean same = client.userHash.map(peer.userHash()::equals).orElse(false)
+                    || (client.address.getAddress().equals(from) && client.address.getPort() == peer.tcpPort());
+            if (!same || !client.asked) {
                 continue;
             }
-            for (Source source : entry.sources.values()) {
-                boolean same = source.userHash.map(peer.userHash()::equals).orElse(false)
-                        || (source.address.getAddress().equals(from) && source.address.getPort() == peer.tcpPort());
-                if (!same || !source.asked) {
-                    continue;
-                }
-                DownloadSession old = source.session;
-                if (old != null && old.state() != DownloadSession.State.QUEUED) {
-                    return false;
-                }
-                if (old != null) {
-                    source.session = null;
-                    old.close("the source called back");
-                }
-                DownloadSession session = new DownloadSession(
-                        this.loop,
-                        this.queue,
-                        entry.download,
-                        source.address,
-                        this.ourHello,
-                        this.links,
-                        this.sessionEvents);
-                source.session = session;
-                source.userHash = Optional.of(peer.userHash());
-                logger.debug(
-                        "{} called back for {}",
-                        source.address,
-                        entry.download.file().name());
-                session.adopt(link, Optional.ofNullable(source.parts), true);
-                return true;
+            // A slot is for the client, whatever download it was asked for: one that runs takes it.
+            Source source = client.current.entry.download.isActive()
+                    ? client.current
+                    : this.best(client, this.ticker.read(), Set.of());
+            if (source == null) {
+                continue;
             }
+            DownloadSession old = client.session;
+            if (old != null && old.state() != DownloadSession.State.QUEUED) {
+                return false;
+            }
+            if (old != null) {
+                client.session = null;
+                old.close("the source called back");
+            }
+            // The file it was asked for last needs no request again, another does.
+            Optional<BitSet> known = client.requested == source ? Optional.ofNullable(source.parts) : Optional.empty();
+            this.startAsking(client, source);
+            DownloadSession session = new DownloadSession(
+                    this.loop,
+                    this.queue,
+                    source.entry.download,
+                    client.address,
+                    this.ourHello,
+                    this.links,
+                    this.sessionEvents);
+            client.session = session;
+            client.userHash = Optional.of(peer.userHash());
+            logger.debug(
+                    "{} called back for {}",
+                    client.address,
+                    source.entry.download.file().name());
+            session.adopt(link, known, true);
+            return true;
         }
         return false;
     }
@@ -827,10 +899,10 @@ public final class DownloadManager implements AutoCloseable {
         boolean preview = this.settings.get().previewFirst();
         for (Entry entry : this.entries.values()) {
             entry.download.file().previewAlways(preview);
-            for (Source source : entry.sources.values()) {
-                if (source.session != null && isStarting(source.session)) {
-                    starting++;
-                }
+        }
+        for (Client client : this.clients.values()) {
+            if (client.session != null && isStarting(client.session)) {
+                starting++;
             }
         }
         this.sendCallbacks(now);
@@ -940,51 +1012,224 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
+    // The clients asked for the entry's download whose time has come are asked again, each for the download it is best
+    // asked for now.
     private int startSessions(Entry entry, long now, int budget) {
         int started = 0;
         boolean required = this.settings.get().obfuscation() == ObfuscationMode.REQUIRED;
         boolean disabled = this.settings.get().obfuscation() == ObfuscationMode.DISABLED;
-        for (Source source : entry.sources.values()) {
+        for (Source due : List.copyOf(entry.sources.values())) {
             if (started >= budget) {
                 break;
             }
-            if (source.session != null || now - source.nextAsk < 0) {
+            Client client = due.client;
+            if (client.current != due || client.session != null || now - client.nextAsk < 0) {
                 continue;
             }
-            if (required && source.userHash.isEmpty()) {
+            if (required && client.userHash.isEmpty()) {
                 continue;
             }
-            if (source.lowId != 0) {
+            Source source = this.chooseToAsk(client, now);
+            if (client.lowId != 0) {
                 // Firewalled: asked again through the server, while it keeps the same LowID.
-                source.nextAsk = now + REASK_INTERVAL.toNanos();
+                this.makeCurrent(client, source);
+                client.pinned = false;
+                client.nextAsk = now + REASK_INTERVAL.toNanos();
                 if (this.server.clientId() >= ServerMessages.LOW_ID_LIMIT) {
-                    this.askCallback(entry, source.lowId, source.userHash, source.cryptOptions);
+                    this.askCallback(source.entry, client.lowId, client.userHash, client.cryptOptions);
                 }
                 continue;
             }
-            source.asked = true;
-            source.lastAsk = now;
-            source.nextAsk = now + REASK_INTERVAL.toNanos();
-            source.session = new DownloadSession(
+            client.asked = true;
+            client.lastAsk = now;
+            client.nextAsk = now + REASK_INTERVAL.toNanos();
+            this.startAsking(client, source);
+            DownloadSession session = new DownloadSession(
                     this.loop,
                     this.queue,
-                    entry.download,
-                    source.address,
+                    source.entry.download,
+                    client.address,
                     this.ourHello,
                     this.links,
                     this.sessionEvents);
+            client.session = session;
             // A client connected to download from us is asked over the same connection.
-            Optional<PeerLink> open = this.links.find(source.address).filter(link -> !link.has(PeerLink.Side.DOWNLOAD));
+            Optional<PeerLink> open = this.links.find(client.address).filter(link -> !link.has(PeerLink.Side.DOWNLOAD));
             if (open.isPresent()) {
-                source.session.adopt(open.get(), Optional.empty(), false);
+                session.adopt(open.get(), Optional.empty(), false);
                 continue;
             }
             // Obfuscated only towards sources known to take it, which needs their user hash.
-            boolean crypt = !disabled && (source.cryptOptions & CRYPT_SUPPORTED) != 0;
-            source.session.connect(crypt ? source.userHash : Optional.empty(), this.random);
+            boolean crypt = !disabled && (client.cryptOptions & CRYPT_SUPPORTED) != 0;
+            session.connect(crypt ? client.userHash : Optional.empty(), this.random);
             started++;
         }
         return started;
+    }
+
+    // At its time the client is asked for the download it is best asked for: the one swapped to by hand, or the one
+    // asked for while we keep a good place in its queue for it, otherwise the best of its sources.
+    private Source chooseToAsk(Client client, long now) {
+        Source current = client.current;
+        if (client.pinned || holdsPlace(current)) {
+            return current;
+        }
+        Source best = this.best(client, now, Set.of());
+        if (best == null || best == current) {
+            return current;
+        }
+        logger.debug(
+                "{} is asked for {} rather than {}",
+                client.address,
+                best.entry.download.file().name(),
+                current.entry.download.file().name());
+        return best;
+    }
+
+    // The client is asked for the source's download now.
+    private void startAsking(Client client, Source source) {
+        this.makeCurrent(client, source);
+        client.requested = source;
+        client.tried.clear();
+        client.tried.add(source);
+        client.pinned = false;
+    }
+
+    private void makeCurrent(Client client, Source source) {
+        if (client.current != source) {
+            client.current.entry.changed = true;
+            source.entry.changed = true;
+            client.current = source;
+        }
+    }
+
+    // A place in the client's queue that a swap could lose: a slot, or a good rank.
+    private static boolean holdsPlace(Source source) {
+        DownloadSession session = source.client.session(source);
+        if (session != null && session.state() == DownloadSession.State.DOWNLOADING) {
+            return true;
+        }
+        int rank = session != null && session.queueRank() > 0 ? session.queueRank() : source.rank;
+        return rank > 0 && rank <= GOOD_RANK;
+    }
+
+    // The source of a running download the client is best asked for, of those not in skipped: one not swapped away
+    // from by hand, one that may have parts we need, of a download that takes A4AF sources by itself, of a higher
+    // priority, whose parts we know, the current one, the first found; null when no download of it runs.
+    private Source best(Client client, long now, Set<Source> skipped) {
+        Comparator<Source> order = Comparator.<Source, Boolean>comparing(s -> !isAway(s, now))
+                .thenComparing(s -> !hasNothing(s, now))
+                .thenComparing(s -> s.entry.download.file().autoSwap())
+                .thenComparing(s -> priority(s.entry))
+                .thenComparing(s -> s.parts != null)
+                .thenComparing(s -> s == client.current);
+        Source best = null;
+        for (Source source : client.sources) {
+            if (!skipped.contains(source)
+                    && source.entry.download.isActive()
+                    && (best == null || order.compare(source, best) > 0)) {
+                best = source;
+            }
+        }
+        return best;
+    }
+
+    private static boolean isAway(Source source, long now) {
+        if (source.away && now - source.awayUntil >= 0) {
+            source.away = false;
+        }
+        return source.away;
+    }
+
+    // The client told lately that it has no part of the file we need.
+    private static boolean hasNothing(Source source, long now) {
+        return source.parts != null
+                && now - source.partsAt < NO_PARTS_WAIT.toNanos()
+                && !needs(source.entry.download.file(), source.parts);
+    }
+
+    private static boolean needs(PartFile file, BitSet parts) {
+        for (int part = parts.nextSetBit(0); part >= 0 && part < file.partCount(); part = parts.nextSetBit(part + 1)) {
+            if (!file.isComplete(part)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Asked for another download, at the client's time but no later than the shortest wait sources allow.
+    private void swap(Client client, Source to, long now) {
+        this.makeCurrent(client, to);
+        client.pinned = false;
+        long allowed = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
+        if (client.nextAsk - allowed > 0) {
+            client.nextAsk = allowed;
+        }
+    }
+
+    // The download does not run any more: the clients asked for it are asked for another they are sources of.
+    private void release(Entry entry) {
+        long now = this.ticker.read();
+        for (Source source : entry.sources.values()) {
+            Client client = source.client;
+            if (client.current != source || client.session != null) {
+                continue;
+            }
+            Source next = this.best(client, now, Set.of());
+            if (next != null) {
+                this.swap(client, next, now);
+            }
+        }
+    }
+
+    // The download leaves for good, with its sources.
+    private void forget(Entry entry) {
+        long now = this.ticker.read();
+        for (Source source : List.copyOf(entry.sources.values())) {
+            this.detach(source, now);
+        }
+    }
+
+    // Takes the source off its download and its client; a client asked for that download is asked for another.
+    private void detach(Source source, long now) {
+        Client client = source.client;
+        source.entry.sources.remove(client.address);
+        source.entry.changed = true;
+        DownloadSession session = client.session(source);
+        if (session != null) {
+            client.session = null;
+            session.close("the source is dropped");
+        }
+        client.sources.remove(source);
+        client.tried.remove(source);
+        if (client.requested == source) {
+            client.requested = null;
+        }
+        if (client.sources.isEmpty()) {
+            this.clients.remove(client.address);
+            return;
+        }
+        if (client.current == source) {
+            Source next = this.best(client, now, Set.of());
+            client.current = client.sources.getFirst();
+            this.swap(client, next != null ? next : client.current, now);
+        }
+    }
+
+    // A client of no use any more, dropped from every download.
+    private void drop(Client client) {
+        long now = this.ticker.read();
+        for (Source source : List.copyOf(client.sources)) {
+            this.detach(source, now);
+        }
+    }
+
+    // What the server or another client tells of a source; what the source showed us itself counts more.
+    private static void learn(Client client, Optional<Hash16> userHash, int cryptOptions) {
+        if (client.userHash.isEmpty() && userHash.isPresent()) {
+            client.userHash = userHash;
+            client.cryptOptions = cryptOptions;
+        }
     }
 
     private static boolean isStarting(DownloadSession session) {
@@ -1061,26 +1306,21 @@ public final class DownloadManager implements AutoCloseable {
      */
     public int dropBlockedSources() {
         int dropped = 0;
-        for (Entry entry : this.entries.values()) {
-            boolean released = false;
-            for (Source source : List.copyOf(entry.sources.values())) {
-                if (!this.blocked.test(
-                        Ipv4.fromBytes(source.address.getAddress().getAddress()))) {
-                    continue;
-                }
-                entry.sources.remove(source.address);
-                entry.changed = true;
-                dropped++;
-                DownloadSession session = source.session;
-                if (session != null) {
-                    source.session = null;
-                    session.close("the IP filter blocks it");
-                    released = true;
-                }
+        for (Client client : List.copyOf(this.clients.values())) {
+            if (!this.blocked.test(Ipv4.fromBytes(client.address.getAddress().getAddress()))) {
+                continue;
             }
-            // The blocks the dropped sessions held may come from the sources left.
-            if (released) {
-                this.wakeSessions(entry);
+            dropped += client.sources.size();
+            DownloadSession session = client.session;
+            Entry released = session == null ? null : client.current.entry;
+            if (session != null) {
+                client.session = null;
+                session.close("the IP filter blocks it");
+            }
+            this.drop(client);
+            // The blocks the dropped session held may come from the sources left.
+            if (released != null) {
+                this.wakeSessions(released);
             }
         }
         return dropped;
@@ -1100,23 +1340,32 @@ public final class DownloadManager implements AutoCloseable {
                         && port == this.settings.get().listenPort());
     }
 
-    // Returns the new source, or null if it was known or the list is full.
+    // Returns the new source, or null if it was known or the list is full. A client known already as a source of
+    // another download keeps its clock: it counts as asked for another file, unless that download waits.
     private Source addSource(Entry entry, InetSocketAddress address) {
         if (entry.sources.containsKey(address)
                 || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
             return null;
         }
-        Source source = new Source(address, this.ticker.read());
+        long now = this.ticker.read();
+        Client client = this.clients.computeIfAbsent(address, a -> new Client(a, now));
+        Source source = new Source(entry, client);
         entry.sources.put(address, source);
+        client.sources.add(source);
+        if (client.current == null) {
+            client.current = source;
+        } else if (client.session == null && !client.current.entry.download.isActive() && entry.download.isActive()) {
+            this.swap(client, source, now);
+        }
         entry.changed = true;
         return source;
     }
 
+    // Ends the sessions of the entry's download; the clients stay its sources.
     private void closeSessions(Entry entry, String reason) {
         for (Source source : List.copyOf(entry.sources.values())) {
-            DownloadSession session = source.session;
+            DownloadSession session = source.client.session(source);
             if (session != null) {
-                source.session = null;
                 session.close(reason);
             }
         }
@@ -1128,22 +1377,34 @@ public final class DownloadManager implements AutoCloseable {
         for (Entry entry : this.entries.values()) {
             PartFile file = entry.download.file();
             for (Source source : entry.sources.values()) {
-                DownloadSession session = source.session;
-                Optional<Hello> hello = session == null ? Optional.empty() : session.peer();
+                Client client = source.client;
+                DownloadSession session = client.session(source);
+                // The client is the same whatever download it is asked for.
+                Optional<Hello> hello = client.session == null ? Optional.empty() : client.session.peer();
                 BitSet parts = session != null && session.sourceParts().isPresent()
                         ? session.sourceParts().get()
                         : source.parts;
+                boolean a4af = client.current != source;
+                SourceInfo.State state;
+                if (a4af) {
+                    state = SourceInfo.State.A4AF;
+                } else {
+                    state = session == null ? SourceInfo.State.WAITING : state(session.state());
+                }
+                PartFile askedFor = client.current.entry.download.file();
                 all.add(new SourceInfo(
                         file.hash(),
                         file.name(),
-                        source.address.getAddress().getHostAddress() + ":" + source.address.getPort(),
+                        client.address.getAddress().getHostAddress() + ":" + client.address.getPort(),
                         hello.flatMap(Hello::nick),
                         hello.map(PeerSoftware::describe).orElse(""),
-                        session == null ? SourceInfo.State.WAITING : state(session.state()),
-                        session == null ? 0 : session.queueRank(),
+                        state,
+                        a4af ? 0 : session != null ? session.queueRank() : source.rank,
                         source.received,
                         parts == null ? 0 : parts.cardinality(),
-                        file.partCount()));
+                        file.partCount(),
+                        a4af ? Optional.of(askedFor.hash()) : Optional.empty(),
+                        a4af ? askedFor.name() : ""));
             }
         }
         return all;
@@ -1176,9 +1437,10 @@ public final class DownloadManager implements AutoCloseable {
         file.hold(part);
         this.loop.schedule("AICH recovery wait", RECOVERY_WAIT, () -> this.unhold(download, part));
         for (Source source : entry.sources.values()) {
-            if (source.session != null && source.session.mayRecover(part)) {
-                logger.info("Asking {} for AICH recovery data of part {} of {}", source.address, part, file.name());
-                source.session.requestAich(part, file.aichHash().get());
+            DownloadSession session = source.client.session(source);
+            if (session != null && session.mayRecover(part)) {
+                logger.info("Asking {} for AICH recovery data of part {} of {}", source.address(), part, file.name());
+                session.requestAich(part, file.aichHash().get());
                 return;
             }
         }
@@ -1255,8 +1517,9 @@ public final class DownloadManager implements AutoCloseable {
     // Blocks were let go or a part may be downloaded again: a session with nothing to ask for asks now.
     private void wakeSessions(Entry entry) {
         for (Source source : List.copyOf(entry.sources.values())) {
-            if (source.session != null) {
-                source.session.wake();
+            DownloadSession session = source.client.session(source);
+            if (session != null) {
+                session.wake();
             }
         }
     }
@@ -1265,7 +1528,8 @@ public final class DownloadManager implements AutoCloseable {
         PartFile file = entry.download.file();
         int transferring = 0;
         for (Source source : entry.sources.values()) {
-            if (source.session != null && source.session.state() == DownloadSession.State.DOWNLOADING) {
+            DownloadSession session = source.client.session(source);
+            if (session != null && session.state() == DownloadSession.State.DOWNLOADING) {
                 transferring++;
             }
         }
@@ -1283,7 +1547,8 @@ public final class DownloadManager implements AutoCloseable {
                 transferring,
                 entry.rate(),
                 file.map(),
-                file.previewFirst());
+                file.previewFirst(),
+                file.autoSwap());
     }
 
     /** Fetches the first and last parts of the download first, or stops doing so; {@code false} if unknown. */
@@ -1386,8 +1651,7 @@ public final class DownloadManager implements AutoCloseable {
             }
             Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
             if (fresh != null) {
-                fresh.userHash = s.userHash().filter(h -> !h.equals(Hash16.ZERO));
-                fresh.cryptOptions = s.cryptOptions();
+                learn(fresh.client, s.userHash().filter(h -> !h.equals(Hash16.ZERO)), s.cryptOptions());
                 added++;
             }
         }
@@ -1397,6 +1661,138 @@ public final class DownloadManager implements AutoCloseable {
                 answer.sources().size(),
                 session.address(),
                 entry.download.file().name());
+    }
+
+    // The client has nothing for the download the session asks for: the next of its downloads that may have something,
+    // asked for on the same connection; a download it lacks loses it as a source.
+    private Optional<DownloadQueue.Download> another(DownloadSession session, boolean hasFile) {
+        Client client = this.clients.get(session.address());
+        if (client == null || client.session != session) {
+            return Optional.empty();
+        }
+        long now = this.ticker.read();
+        Source from = client.current;
+        session.sourceParts().ifPresent(parts -> {
+            from.parts = parts;
+            from.partsAt = now;
+        });
+        client.tried.add(from);
+        Source next = this.best(client, now, client.tried);
+        if (next == null || hasNothing(next, now) || isAway(next, now)) {
+            return Optional.empty();
+        }
+        this.makeCurrent(client, next);
+        client.requested = next;
+        client.tried.add(next);
+        if (!hasFile) {
+            this.detach(from, now);
+        }
+        return Optional.of(next.entry.download);
+    }
+
+    /**
+     * Swaps the A4AF sources of the download to it: each client is asked for it next, unless it sends us data or is
+     * being asked now; returns how many were swapped.
+     */
+    public int swapSourcesHere(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null || !entry.download.isActive()) {
+            return 0;
+        }
+        long now = this.ticker.read();
+        int swapped = 0;
+        for (Source source : List.copyOf(entry.sources.values())) {
+            if (source.client.current != source && this.swapByHand(source, now)) {
+                swapped++;
+            }
+        }
+        return swapped;
+    }
+
+    /**
+     * Swaps the clients asked for the download to another download they are sources of, which goes first for a while;
+     * returns how many were swapped.
+     */
+    public int swapSourcesAway(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return 0;
+        }
+        long now = this.ticker.read();
+        int swapped = 0;
+        for (Source source : List.copyOf(entry.sources.values())) {
+            if (source.client.current != source) {
+                continue;
+            }
+            Source next = this.best(source.client, now, Set.of(source));
+            if (next != null && this.swapByHand(next, now)) {
+                source.away = true;
+                source.awayUntil = now + AWAY.toNanos();
+                swapped++;
+            }
+        }
+        return swapped;
+    }
+
+    /**
+     * Swaps the client at {@code address}, an A4AF source of the download, to it; {@code false} if it is none, the
+     * download does not run or the client cannot move now.
+     */
+    public boolean swapSource(Hash16 hash, InetSocketAddress address) {
+        Entry entry = this.entries.get(hash);
+        Source source = entry == null ? null : entry.sources.get(address);
+        return source != null
+                && entry.download.isActive()
+                && source.client.current != source
+                && this.swapByHand(source, this.ticker.read());
+    }
+
+    /**
+     * Has the A4AF sources of the download swapped to it whenever they are free to move, or stops; kept with the
+     * download. {@code false} if unknown.
+     */
+    public boolean setAutoSwap(Hash16 hash, boolean value) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        this.queue.setAutoSwap(entry.download, value);
+        if (value && entry.download.isActive()) {
+            // Those free now move at once, keeping their clock.
+            long now = this.ticker.read();
+            for (Source source : entry.sources.values()) {
+                Client client = source.client;
+                if (client.current != source
+                        && client.session == null
+                        && !client.pinned
+                        && !holdsPlace(client.current)
+                        && this.best(client, now, Set.of()) == source) {
+                    this.makeCurrent(client, source);
+                }
+            }
+        }
+        this.listener.progress(this.info(entry));
+        return true;
+    }
+
+    // By hand a client waiting in a queue moves too; one being asked or sending data does not.
+    private boolean swapByHand(Source to, long now) {
+        Client client = to.client;
+        DownloadSession session = client.session;
+        if (session != null) {
+            if (session.state() != DownloadSession.State.QUEUED) {
+                return false;
+            }
+            session.close("swapped to another download");
+        }
+        to.away = false;
+        this.swap(client, to, now);
+        client.pinned = true;
+        logger.debug(
+                "{} swapped by hand to {}",
+                client.address,
+                to.entry.download.file().name());
+        return true;
     }
 
     private final class SessionEvents implements DownloadSession.Listener {
@@ -1456,6 +1852,11 @@ public final class DownloadManager implements AutoCloseable {
         }
 
         @Override
+        public Optional<DownloadQueue.Download> another(DownloadSession session, boolean hasFile) {
+            return DownloadManager.this.another(session, hasFile);
+        }
+
+        @Override
         public void received(DownloadSession session, int bytes, int transferred) {
             Entry entry = DownloadManager.this.entries.get(session.download().hash());
             if (entry != null) {
@@ -1473,36 +1874,49 @@ public final class DownloadManager implements AutoCloseable {
 
         @Override
         public void ended(DownloadSession session, DownloadSession.Outcome outcome, String reason) {
-            Entry entry = DownloadManager.this.entries.get(session.download().hash());
-            Source source = entry == null ? null : entry.sources.get(session.address());
-            if (source == null || source.session != session) {
+            // The download may have left already, its client not.
+            Client client = DownloadManager.this.clients.get(session.address());
+            if (client == null || client.session != session) {
                 return;
             }
-            source.session = null;
-            session.sourceParts().ifPresent(parts -> source.parts = parts);
-            session.peerHash().ifPresent(hash -> source.userHash = Optional.of(hash));
-            if (session.peerHash().isPresent()) {
-                source.cryptOptions = session.peerCryptOptions();
-            }
-            logger.debug("{} ({}): {}", source.address, outcome, reason);
+            client.session = null;
+            Source source = client.current;
+            Entry entry = source.entry;
             long now = DownloadManager.this.ticker.read();
+            session.sourceParts().ifPresent(parts -> {
+                source.parts = parts;
+                source.partsAt = now;
+            });
+            if (session.uploadAsked()) {
+                source.rank = session.queueRank();
+            }
+            session.peerHash().ifPresent(hash -> client.userHash = Optional.of(hash));
+            if (session.peerHash().isPresent()) {
+                client.cryptOptions = session.peerCryptOptions();
+            }
+            logger.debug("{} ({}): {}", client.address, outcome, reason);
             switch (outcome) {
                 case QUEUED, LATER -> {
-                    source.failures = 0;
-                    source.nextAsk = source.lastAsk + REASK_INTERVAL.toNanos();
+                    client.failures = 0;
+                    client.nextAsk = client.lastAsk + REASK_INTERVAL.toNanos();
                 }
                 case UNREACHABLE -> {
-                    source.failures++;
-                    source.nextAsk = now + MIN_REASK.toNanos();
-                    if (source.failures >= MAX_FAILURES) {
-                        entry.sources.remove(source.address);
+                    client.failures++;
+                    client.nextAsk = now + MIN_REASK.toNanos();
+                    if (client.failures >= MAX_FAILURES) {
+                        DownloadManager.this.drop(client);
                     }
                 }
-                case GONE -> entry.sources.remove(source.address);
+                case GONE -> {
+                    client.nextAsk = client.lastAsk + REASK_INTERVAL.toNanos();
+                    DownloadManager.this.detach(source, now);
+                }
             }
             entry.changed = true;
             // The blocks it held may come from another source with a slot.
-            DownloadManager.this.wakeSessions(entry);
+            if (entry.download.isActive() && DownloadManager.this.entries.get(entry.download.hash()) == entry) {
+                DownloadManager.this.wakeSessions(entry);
+            }
         }
     }
 
@@ -1536,7 +1950,9 @@ public final class DownloadManager implements AutoCloseable {
                 return;
             }
             DownloadManager.this.closeSessions(entry, "the download is complete");
-            DownloadManager.this.listener.completed(DownloadManager.this.info(entry), file, download.file());
+            DownloadInfo done = DownloadManager.this.info(entry);
+            DownloadManager.this.forget(entry);
+            DownloadManager.this.listener.completed(done, file, download.file());
         }
 
         @Override
@@ -1549,8 +1965,10 @@ public final class DownloadManager implements AutoCloseable {
                     continue;
                 }
                 entry.nextServerAsk = now;
-                for (Source source : entry.sources.values()) {
-                    source.nextAsk = source.asked ? Math.max(now, source.lastAsk + MIN_REASK.toNanos()) : now;
+            }
+            if (enough) {
+                for (Client client : DownloadManager.this.clients.values()) {
+                    client.nextAsk = client.asked ? Math.max(now, client.lastAsk + MIN_REASK.toNanos()) : now;
                 }
             }
             DownloadManager.this.listener.diskSpace(enough);
@@ -1563,6 +1981,7 @@ public final class DownloadManager implements AutoCloseable {
                 return;
             }
             DownloadManager.this.closeSessions(entry, reason);
+            DownloadManager.this.release(entry);
             DownloadManager.this.listener.failed(DownloadManager.this.info(entry), reason);
         }
     }

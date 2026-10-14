@@ -26,6 +26,7 @@ import java.util.Optional;
  * @param queueRank our place in its queue, 0 when unknown or not queued
  * @param received bytes it sent us in this session
  * @param parts the parts of the file it has, of {@code partCount}; 0 when not known yet
+ * @param askedFor in state {@link State#A4AF}, the download the client is asked for instead, with its name
  */
 public record SourceInfo(
         Hash16 file,
@@ -37,7 +38,9 @@ public record SourceInfo(
         int queueRank,
         long received,
         int parts,
-        int partCount) {
+        int partCount,
+        Optional<Hash16> askedFor,
+        String askedForName) {
 
     public enum State {
         /** Asked again later. */
@@ -46,7 +49,9 @@ public record SourceInfo(
         /** Greeted and asked for the file. */
         ASKING,
         QUEUED,
-        DOWNLOADING
+        DOWNLOADING,
+        /** Asked for another file: a client is asked for one download at a time, here for {@code askedFor}. */
+        A4AF
     }
 
     public SourceInfo {
@@ -56,5 +61,34 @@ public record SourceInfo(
         Objects.requireNonNull(nick, "nick");
         Objects.requireNonNull(software, "software");
         Objects.requireNonNull(state, "state");
+        Objects.requireNonNull(askedFor, "askedFor");
+        Objects.requireNonNull(askedForName, "askedForName");
+    }
+
+    /** A source asked for this download, or waiting to be. */
+    public SourceInfo(
+            Hash16 file,
+            String fileName,
+            String address,
+            Optional<String> nick,
+            String software,
+            State state,
+            int queueRank,
+            long received,
+            int parts,
+            int partCount) {
+        this(
+                file,
+                fileName,
+                address,
+                nick,
+                software,
+                state,
+                queueRank,
+                received,
+                parts,
+                partCount,
+                Optional.empty(),
+                "");
     }
 }

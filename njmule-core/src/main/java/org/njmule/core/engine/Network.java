@@ -743,6 +743,22 @@ final class Network {
         return this.downloads.setPreviewFirst(hash, previewFirst);
     }
 
+    int swapSourcesToDownload(Hash16 hash) {
+        return this.downloads.swapSourcesHere(hash);
+    }
+
+    int swapSourcesFromDownload(Hash16 hash) {
+        return this.downloads.swapSourcesAway(hash);
+    }
+
+    boolean setDownloadAutoSwap(Hash16 hash, boolean autoSwap) {
+        return this.downloads.setAutoSwap(hash, autoSwap);
+    }
+
+    boolean swapSourceToDownload(Hash16 download, InetSocketAddress source) {
+        return this.downloads.swapSource(download, source);
+    }
+
     Optional<Path> downloadData(Hash16 hash) {
         return this.downloads.dataFile(hash);
     }

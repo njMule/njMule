@@ -643,6 +643,7 @@ public final class TransfersScreen implements Screen {
                     case ASKING -> "IDS_ASKING";
                     case QUEUED -> "IDS_ONQUEUE";
                     case DOWNLOADING -> "IDS_TRANSFERRING";
+                    case A4AF -> "IDS_ASKED4ANOTHERFILE";
                 });
     }
 

@@ -39,6 +39,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,6 +75,53 @@ class EngineApiTest {
 
     @TempDir
     Path dir;
+
+    private Engine engine;
+    private final Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("f4".repeat(16)));
+    private List<Object> swapAnswers;
+
+    @AfterEach
+    void closeEngine() {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+    }
+
+    @Test
+    void shouldSwapSourcesAndTakeThemByItselfThroughTheEngine() throws Exception {
+        this.givenADownloadWithoutSources();
+
+        this.whenEverySwapIsAskedForTheDownload();
+
+        this.thenTheSwapAnswersAre(0, 0, true, false);
+        this.thenTheDownloadTakesA4afSourcesByItself();
+    }
+
+    private void givenADownloadWithoutSources() throws Exception {
+        this.engine = this.start("");
+        this.engine.addDownload(this.song).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenEverySwapIsAskedForTheDownload() throws Exception {
+        Hash16 hash = this.song.hash();
+        this.swapAnswers = List.of(
+                this.engine.swapSourcesToDownload(hash).get(5, TimeUnit.SECONDS),
+                this.engine.swapSourcesFromDownload(hash).get(5, TimeUnit.SECONDS),
+                this.engine.setDownloadAutoSwap(hash, true).get(5, TimeUnit.SECONDS),
+                this.engine
+                        .swapSourceToDownload(hash, new ServerAddress("127.0.0.1", 4662))
+                        .get(5, TimeUnit.SECONDS));
+    }
+
+    private void thenTheSwapAnswersAre(Object... expected) {
+        assertThat(this.swapAnswers).containsExactly(expected);
+    }
+
+    private void thenTheDownloadTakesA4afSourcesByItself() throws Exception {
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(d -> assertThat(d.autoSwap()).isTrue());
+    }
 
     @Test
     void listsAreNeverFetchedFromThisMachine() throws Exception {

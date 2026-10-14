@@ -186,6 +186,27 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst);
 
     /**
+     * Swaps the A4AF sources of a download, clients asked for another download, to it: each is asked for it next,
+     * unless it sends us data or is being asked now. Completes with how many were swapped.
+     */
+    CompletableFuture<Integer> swapSourcesToDownload(Hash16 hash);
+
+    /**
+     * Swaps the clients asked for a download to other downloads they are sources of, which go first for a while.
+     * Completes with how many were swapped.
+     */
+    CompletableFuture<Integer> swapSourcesFromDownload(Hash16 hash);
+
+    /** Has a download take its A4AF sources whenever they are free to move, or stops; {@code false} if unknown. */
+    CompletableFuture<Boolean> setDownloadAutoSwap(Hash16 hash, boolean autoSwap);
+
+    /**
+     * Swaps one A4AF source of a download to it; {@code false} if it is none, the download does not run or the client
+     * cannot move now.
+     */
+    CompletableFuture<Boolean> swapSourceToDownload(Hash16 download, ServerAddress source);
+
+    /**
      * The data file of a download, which a player can show while it grows; empty for an unknown download and until its
      * first 16 KiB have come.
      */

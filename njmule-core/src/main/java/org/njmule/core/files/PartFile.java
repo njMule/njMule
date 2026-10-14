@@ -54,10 +54,11 @@ public final class PartFile {
 
     private static final Logger logger = LoggerFactory.getLogger(PartFile.class);
 
-    // njMule's own tags, which other clients skip: the parts that passed their check, and the place of the download in
-    // the order downloads were added.
+    // njMule's own tags, which other clients skip: the parts that passed their check, the place of the download in the
+    // order downloads were added, and whether it takes sources asked for other files by itself.
     private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
     private static final TagName ADDED_TAG = TagName.of("njm_added");
+    private static final TagName AUTO_SWAP_TAG = TagName.of("njm_a4af_auto");
 
     /** Where a download stands. */
     public enum Status {
@@ -98,6 +99,7 @@ public final class PartFile {
     private final BitSet held = new BitSet();
     private boolean previewFirst;
     private boolean previewAlways;
+    private boolean autoSwap;
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
@@ -176,6 +178,7 @@ public final class PartFile {
         file.added = Math.max(0, Tags.intValue(contents.tags(), ADDED_TAG).orElse(0));
         // Bit 0: first and last parts first, for a preview.
         file.previewFirst = (Tags.intValue(contents.tags(), FileTag.DL_PREVIEW).orElse(0) & 1) != 0;
+        file.autoSwap = Tags.intValue(contents.tags(), AUTO_SWAP_TAG).orElse(0) != 0;
         // Parts checked before are trusted only while the data file is as it was saved.
         if (dataDate(file.dataFile()).equals(OptionalLong.of(contents.mtime()))) {
             for (Tag tag : contents.tags()) {
@@ -215,6 +218,9 @@ public final class PartFile {
         }
         if (this.added > 0) {
             tags.add(new Tag.IntTag(ADDED_TAG, this.added));
+        }
+        if (this.autoSwap) {
+            tags.add(new Tag.IntTag(AUTO_SWAP_TAG, 1));
         }
         this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
@@ -534,6 +540,15 @@ public final class PartFile {
 
     public void setPreviewFirst(boolean value) {
         this.previewFirst = value;
+    }
+
+    /** Whether sources asked for other downloads are swapped to this one whenever they are free to move. */
+    public boolean autoSwap() {
+        return this.autoSwap;
+    }
+
+    public void setAutoSwap(boolean value) {
+        this.autoSwap = value;
     }
 
     /**
