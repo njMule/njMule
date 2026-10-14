@@ -42,12 +42,17 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.TextFiles;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 
 @Timeout(60)
 class SharedFilesTest {
@@ -479,6 +484,197 @@ class SharedFilesTest {
             shares.close();
             return null;
         });
+    }
+
+    @Test
+    void unreadableListsAndRecordsAreLeftOutAndTheFilesHashedAgain() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        // known.met is a directory: it can be neither read nor written.
+        Files.createDirectories(config.resolve(SharedFiles.KNOWN_MET).resolve("x"));
+        Files.write(config.resolve(SharedFiles.KNOWN2_MET), new byte[] {9, 9, 9});
+        Files.createDirectories(config.resolve(SharedFiles.SHARED_DIRS));
+        Files.write(
+                config.resolve(SharedFiles.SHARED_TREES),
+                TextFiles.writeLines(
+                        List.of("\u0000bad", this.dir.resolve("missing").toString())));
+        Files.write(incoming.resolve("a.bin"), bytes(3000, 38));
+        Files.write(incoming.resolve("empty.bin"), new byte[0]);
+        Path hidden = Files.write(incoming.resolve(".hidden.bin"), bytes(3000, 39));
+        if (Files.getFileStore(hidden).supportsFileAttributeView("dos")) {
+            Files.setAttribute(hidden, "dos:hidden", true);
+        }
+
+        SharedFiles shares = this.open(config, incoming);
+
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
+        assertThat(this.onLoop(shares::directories)).isEmpty();
+        assertThat(this.onLoop(shares::trees)).containsExactly(this.dir.resolve("missing"));
+        this.onLoop(() -> {
+            shares.close();
+            shares.scan();
+            return null;
+        });
+        assertThat(this.events.poll(200, TimeUnit.MILLISECONDS)).isNull();
+        assertThat(config.resolve(SharedFiles.KNOWN_MET)).isDirectory();
+    }
+
+    @Test
+    void anotherClientsRecordsAreTakenWhenUsableWithTheirTrees() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(400_000, 40);
+        byte[] b = bytes(400_000, 41);
+        Path fileA = Files.write(incoming.resolve("a.bin"), a);
+        Path fileB = Files.write(incoming.resolve("b.bin"), b);
+        FileTime time = FileTime.fromMillis(1_700_000_000_000L);
+        Files.setLastModifiedTime(fileA, time);
+        Files.setLastModifiedTime(fileB, time);
+        Hash20 treeA = Hash20.parseBase32("A".repeat(32));
+        Hash20 treeB = Hash20.parseBase32("B".repeat(32));
+        List<KnownMet.KnownFile> records = List.of(
+                record("a.bin", a, treeA, time),
+                record("b.bin", b, treeB, time),
+                new KnownMet.KnownFile(0, Hash16.parseHex("21".repeat(16)), List.of(), List.of()),
+                new KnownMet.KnownFile(
+                        0,
+                        Hash16.parseHex("22".repeat(16)),
+                        List.of(Hash16.parseHex("23".repeat(16))),
+                        List.of(
+                                new Tag.StringTag(TagName.id(FileTag.FILENAME), "odd.bin"),
+                                new Tag.IntTag(TagName.id(FileTag.FILESIZE), 10))));
+        Hash20 sha = Hash20.of(AichTree.sha1().digest(new byte[1]));
+        List<Known2Met.Entry> trees = List.of(
+                new Known2Met.Entry(treeA, List.of(sha)),
+                new Known2Met.Entry(treeB, List.of(sha, sha, sha)),
+                new Known2Met.Entry(Hash20.parseBase32("C".repeat(32)), List.of(sha)));
+        SharedFiles shares = this.open(config, Files.createDirectories(this.dir.resolve("empty")));
+
+        int added = this.onLoop(() -> shares.addKnown(records, trees));
+        assertThat(added).isEqualTo(2);
+        this.onLoop(() -> {
+            shares.addDirectory(incoming);
+            return null;
+        });
+
+        Hash16 hashA = Ed2k.md4(a, 0, a.length);
+        Hash16 hashB = Ed2k.md4(b, 0, b.length);
+        assertThat(this.onLoop(() -> shares.get(hashA)))
+                .as("shared without hashing")
+                .hasValueSatisfying(f -> assertThat(f.aichHash()).contains(treeA));
+        assertThat(this.onLoop(() -> shares.aichTree(hashA)))
+                .as("one block hash for three blocks")
+                .isEmpty();
+        assertThat(this.onLoop(() -> shares.aichTree(hashB)))
+                .as("block hashes of another tree")
+                .isEmpty();
+        assertThat(this.onLoop(() -> shares.rename(hashA, "a.bin")))
+                .as("the same name")
+                .isPresent();
+        assertThat(this.onLoop(() -> shares.rename(hashA, "kept.bin")))
+                .hasValueSatisfying(f -> assertThat(f.name()).isEqualTo("kept.bin"));
+        assertThat(this.onLoop(() -> shares.rename(Hash16.parseHex("24".repeat(16)), "x.bin")))
+                .isEmpty();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+        assertThat(KnownMet.read(Files.readAllBytes(config.resolve(SharedFiles.KNOWN_MET))))
+                .filteredOn(r -> r.fileHash().equals(hashA))
+                .singleElement()
+                .satisfies(r -> {
+                    assertThat(r.name()).contains("kept.bin");
+                    assertThat(r.tags())
+                            .as("its other tags stay")
+                            .anyMatch(t -> !t.name().isId());
+                });
+    }
+
+    @Test
+    void everyUploadPriorityIsKeptUnderTheCodeOtherClientsUse() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(2000, 42);
+        Files.write(incoming.resolve("a.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
+
+        for (UploadPriority priority : UploadPriority.values()) {
+            assertThat(this.onLoop(() -> {
+                        shares.setPriority(hash, priority);
+                        return shares.priority(hash);
+                    }))
+                    .isEqualTo(priority);
+        }
+        assertThat(this.onLoop(() -> shares.priority(Hash16.parseHex("25".repeat(16)))))
+                .isEqualTo(UploadPriority.AUTO);
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void aFinishedFileIsHashedForItsOwnTreeAndOneThatCannotBeHashedIsLeftOut() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        SharedFiles shares = this.open(config, incoming);
+        Path other = Files.createDirectories(this.dir.resolve("other"));
+        Path large = Files.write(other.resolve("large.bin"), bytes(32_000_000, 43));
+        PartFile busy = PartFile.create(
+                3,
+                this.dir,
+                "large.bin",
+                Files.size(large),
+                Hash16.parseHex("26".repeat(16)),
+                Optional.empty(),
+                List.of());
+        byte[] data = bytes(400_000, 44);
+        Hash16 hash = Ed2k.md4(data, 0, data.length);
+        Path done = Files.write(other.resolve("done.bin"), data);
+        Hash20 wrong = Hash20.parseBase32("D".repeat(32));
+        PartFile download = PartFile.create(4, this.dir, "done.bin", data.length, hash, Optional.of(wrong), List.of());
+        Path extra = Files.createDirectories(this.dir.resolve("extra"));
+        Path gone = Files.write(extra.resolve("gone.bin"), bytes(3000, 45));
+
+        this.onLoop(() -> {
+            shares.finished(large, busy);
+            shares.finished(this.dir.resolve("never.bin"), download);
+            shares.finished(done, download);
+            // Found by the scan, then gone before the hashing thread reads it.
+            shares.addDirectory(extra);
+            Files.delete(gone);
+            return null;
+        });
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+            assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().aichHash()))
+                .as("the file's own AICH hash, not the link's")
+                .hasValueSatisfying(h -> assertThat(h).isNotEqualTo(wrong));
+        assertThat(this.onLoop(() ->
+                        shares.all().stream().map(SharedFiles.SharedFile::name).toList()))
+                .doesNotContain("gone.bin", "never.bin");
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    private static KnownMet.KnownFile record(String name, byte[] data, Hash20 aich, FileTime time) {
+        return new KnownMet.KnownFile(
+                time.toMillis() / 1000,
+                Ed2k.md4(data, 0, data.length),
+                List.of(),
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), data.length),
+                        new Tag.StringTag(TagName.id(FileTag.AICH_HASH), aich.toBase32()),
+                        new Tag.StringTag(TagName.of("note"), "from another client")));
     }
 
     @Test

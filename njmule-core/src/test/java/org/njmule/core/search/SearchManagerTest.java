@@ -182,7 +182,8 @@ class SearchManagerTest {
             this.manager.serverResults(
                     new ServerMet.Server(LOOPBACK, 4661, List.of()),
                     new ServerMessages.SearchResults(List.of(), false));
-            this.manager.datagramResults(new InetSocketAddress("127.0.0.1", 4665), List.of(entry(1, "x.iso", 10, 1)));
+            this.manager.datagramResults(
+                    new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665), List.of(entry(1, "x.iso", 10, 1)));
             return null;
         });
         assertThat(this.events.poll(200, TimeUnit.MILLISECONDS))

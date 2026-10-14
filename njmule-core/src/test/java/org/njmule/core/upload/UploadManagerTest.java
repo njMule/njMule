@@ -235,7 +235,7 @@ class UploadManagerTest {
         assertThat(rank(this.ask(e, release.hash())))
                 .as("it has waited for nothing yet")
                 .isEqualTo(3);
-        this.advance(Duration.ofSeconds(120));
+        this.advance(Duration.ofMinutes(2));
         // Waited 240 s at 2, 180 s at 7 and 120 s at 18.
         assertThat(this.waitingFiles()).containsExactly("release.txt", "normal.txt", "very-low.txt");
 
@@ -515,8 +515,11 @@ class UploadManagerTest {
         client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
         while (true) {
             Packet packet = client.next();
-            if (packet.opcode() == Opcodes.Client.ACCEPTUPLOADREQ.code() && packet.protocol() == Protocol.EDONKEY
-                    || packet.opcode() == Opcodes.Extended.QUEUERANKING.code() && packet.protocol() == Protocol.EMULE) {
+            boolean slot =
+                    packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.ACCEPTUPLOADREQ.code();
+            boolean rank =
+                    packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.QUEUERANKING.code();
+            if (slot || rank) {
                 return packet;
             }
         }

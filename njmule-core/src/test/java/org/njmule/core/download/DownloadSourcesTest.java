@@ -19,6 +19,7 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -370,8 +371,22 @@ class DownloadSourcesTest {
         return new Recovery(data, link, tree, served, helper);
     }
 
-    private record Recovery(
-            byte[] data, Ed2kLink.FileLink link, AichTree tree, ScriptedSource.Link first, ScriptedSource helper) {}
+    /** The data of the download, its link and AICH tree, the first source's link and the second source. */
+    private static final class Recovery {
+        private final byte[] data;
+        private final Ed2kLink.FileLink link;
+        private final AichTree tree;
+        private final ScriptedSource.Link first;
+        private final ScriptedSource helper;
+
+        Recovery(byte[] data, Ed2kLink.FileLink link, AichTree tree, ScriptedSource.Link first, ScriptedSource helper) {
+            this.data = data;
+            this.link = link;
+            this.tree = tree;
+            this.first = first;
+            this.helper = helper;
+        }
+    }
 
     private static Packet aichAnswer(Hash16 file, Hash20 master, byte[] data) {
         return Packet.of(
@@ -520,7 +535,8 @@ class DownloadSourcesTest {
         Thread.sleep(1500);
 
         assertThat(this.server.callbacks).isEmpty();
-        assertThat(this.onLoop(() -> manager.addSourceByHand(hash, new InetSocketAddress("127.0.0.2", PORT))))
+        assertThat(this.onLoop(() -> manager.addSourceByHand(
+                        hash, new InetSocketAddress(InetAddresses.forString("127.0.0.2"), PORT))))
                 .isFalse();
         link.close();
     }
@@ -563,9 +579,10 @@ class DownloadSourcesTest {
                         manager.resume(unknown),
                         manager.setPreviewFirst(unknown, true),
                         manager.setCategory(unknown, Category.NONE),
-                        manager.addSourceByHand(unknown, new InetSocketAddress("127.0.0.1", PORT)),
-                        manager.addSourceByHand(hash, new InetSocketAddress("::1", PORT)),
-                        manager.addSourceByHand(hash, new InetSocketAddress("127.0.0.1", 0)))))
+                        manager.addSourceByHand(
+                                unknown, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), PORT)),
+                        manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("::1"), PORT)),
+                        manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), 0)))))
                 .containsOnly(false);
         assertThat(this.onLoop(() -> manager.comments(unknown))).isEmpty();
         assertThat(this.onLoop(() -> manager.exchangeable(unknown))).isEmpty();
