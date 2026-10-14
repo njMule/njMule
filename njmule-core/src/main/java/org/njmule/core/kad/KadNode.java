@@ -1267,7 +1267,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private void notePublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.NotesPublish publish = KadMessages.NotesPublish.decode(packet);
-        if (!this.inTolerance(publish.file())) {
+        // Like keywords and sources: a node others cannot ask over UDP keeps nothing for them.
+        if (this.isFirewalledUdp() || !this.inTolerance(publish.file())) {
             return;
         }
         OptionalLong load = this.index.publishNote(

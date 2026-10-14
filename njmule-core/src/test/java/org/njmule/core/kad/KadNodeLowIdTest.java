@@ -322,6 +322,16 @@ class KadNodeLowIdTest {
     }
 
     @Test
+    void aNodeFirewalledOnUdpKeepsNoNoteOfOthers() throws Exception {
+        this.givenAConnectedNode();
+        this.givenUdpIsFirewalled();
+
+        this.whenANoteOnAFileNearUsIsPublished();
+
+        this.thenNoNoteIsKept();
+    }
+
+    @Test
     void aFirewalledNodeNobodyCanReachIsNotPublishedAsASource() throws Exception {
         this.givenAConnectedNode();
         this.givenUdpIsFirewalled();
@@ -503,6 +513,20 @@ class KadNodeLowIdTest {
         this.found.addAll(KadNode.sourceResults(entries));
     }
 
+    private void whenANoteOnAFileNearUsIsPublished() {
+        List<Tag> note = List.of(
+                new Tag.StringTag(TagName.id(FileTag.FILENAME), "film.mkv"),
+                new Tag.IntTag(TagName.id(FileTag.FILERATING), 4),
+                new Tag.IntTag(TagName.id(FileTag.FILESIZE), 1000));
+        this.node.received(
+                CONTACTS.getFirst(),
+                PORT,
+                new KadMessages.NotesPublish(this.identity.id(), UInt128.random(this.random), note).encode(),
+                false,
+                0,
+                0);
+    }
+
     private void whenWeArePublishedAsASource(long size) throws Exception {
         Hash16 hash = Hash16.parseHex("dd".repeat(16));
         UInt128 target = UInt128.of(hash);
@@ -607,6 +631,10 @@ class KadNodeLowIdTest {
         assertThat(request.receiverKey()).isZero();
         assertThat(KadMessages.CallbackRequest.decode(request.packet()))
                 .isEqualTo(new KadMessages.CallbackRequest(buddyId, UInt128.of(file), TCP));
+    }
+
+    private void thenNoNoteIsKept() {
+        assertThat(this.node.indexedNotes()).isZero();
     }
 
     private void thenTheSourcesFoundAre(KadNode.Source... sources) {
