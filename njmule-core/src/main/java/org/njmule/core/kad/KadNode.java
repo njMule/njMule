@@ -617,8 +617,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return Optional.empty();
         }
         this.lookupData.put(lookup, tree);
+        Optional<KadIndex.Matcher> matcher = expression.map(KadIndex.Matcher::new);
         this.resultSinks.put(lookup, entries -> {
-            List<FileResult> found = fileResults(entries, keywords, expression);
+            List<FileResult> found = fileResults(entries, keywords, matcher);
             results.accept(found);
             return found.size();
         });
@@ -1866,7 +1867,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     // A node may answer what it holds under the keyword without the filter: the whole expression is checked again.
     private static List<FileResult> fileResults(
-            List<KadMessages.Entry> entries, List<String> keywords, Optional<SearchExpr> expression) {
+            List<KadMessages.Entry> entries, List<String> keywords, Optional<KadIndex.Matcher> matcher) {
         List<FileResult> results = new ArrayList<>();
         for (KadMessages.Entry e : entries) {
             Optional<String> name = Tags.stringValue(e.tags(), FileTag.FILENAME);
@@ -1874,7 +1875,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (name.isEmpty()
                     || size <= 0
                     || !Keywords.of(name.get()).containsAll(keywords)
-                    || (expression.isPresent() && !KadIndex.matches(expression.get(), name.get(), size, e.tags()))) {
+                    || (matcher.isPresent()
+                            && !matcher.get()
+                                    .matches(name.get(), KadLowerCase.toLowerCase(name.get()), size, e.tags()))) {
                 continue;
             }
             long sources = Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0);

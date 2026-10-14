@@ -595,3 +595,5 @@ All notable changes to this project are documented here. The format follows
   seconds, as before) before asking the next ones; publishes keep the full wait.
 - Kad: the contacts closest to a target are found by walking the routing table from the target's
   side, sorting only the bins needed, instead of sorting every contact at each lookup and answer.
+- Kad index searches split and lower-case the words searched for once per search and keep each
+  file's most popular name until its names change, instead of working both out for every file.

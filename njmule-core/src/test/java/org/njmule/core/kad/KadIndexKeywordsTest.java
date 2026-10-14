@@ -27,6 +27,7 @@ import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
+import org.njmule.core.search.SearchExpr;
 import org.njmule.core.util.Ipv4;
 
 /** The files other nodes publish to us under a keyword: who counts for a name, for how long, and how much is kept. */
@@ -85,6 +86,31 @@ class KadIndexKeywordsTest {
 
         this.thenNothingIsFound();
         this.thenTheIndexHoldsKeywordEntries(0);
+    }
+
+    @Test
+    void shouldAnswerWithTheNameMostPublishersGiveWhileTheyChange() {
+        this.givenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW);
+        this.givenTheKeywordWasSearchedFor(new SearchExpr.Keyword("first"));
+
+        this.whenTheFileIsPublishedByAddresses(IP + 10, 2, "Second Name.avi", NOW + HOUR);
+        this.whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("second"), NOW + HOUR);
+
+        this.thenTheNameFoundIs("Second Name.avi");
+
+        this.whenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW + 23 * HOUR);
+        this.whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("FIRST name"), NOW + 25 * HOUR);
+
+        this.thenTheNameFoundIs("First Name.avi");
+    }
+
+    private void givenTheKeywordWasSearchedFor(SearchExpr expression) {
+        this.whenTheKeywordIsSearchedFor(expression, NOW);
+        assertThat(this.found).hasSize(1);
+    }
+
+    private void whenTheKeywordIsSearchedFor(SearchExpr expression, long at) {
+        this.found = this.index.searchKeyword(this.keyword, Optional.of(expression), 0, at);
     }
 
     private void givenTheFileIsPublishedByAddresses(int firstIp, int count, String name, long at) {

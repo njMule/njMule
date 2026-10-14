@@ -18,6 +18,7 @@ package org.njmule.core.kad;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,6 +96,9 @@ final class KadIndex {
         // By address, the one that published longest ago first.
         private final Map<Integer, Publisher> publishers = new LinkedHashMap<>();
         private long expires;
+        // The most popular name and its lower case, worked out again only once the names changed.
+        private String popular;
+        private String popularLower;
 
         KeywordEntry(long size) {
             this.size = size;
@@ -113,6 +117,7 @@ final class KadIndex {
                     this.drop(before.name());
                 }
                 this.names.merge(name, 1, Integer::sum);
+                this.popular = null;
             }
         }
 
@@ -130,18 +135,28 @@ final class KadIndex {
 
         private void drop(String name) {
             this.names.computeIfPresent(name, (n, count) -> count > 1 ? count - 1 : null);
+            this.popular = null;
         }
 
         String popularName() {
-            String best = "";
-            int count = -1;
-            for (Map.Entry<String, Integer> e : this.names.entrySet()) {
-                if (e.getValue() > count) {
-                    best = e.getKey();
-                    count = e.getValue();
+            if (this.popular == null) {
+                String best = "";
+                int count = -1;
+                for (Map.Entry<String, Integer> e : this.names.entrySet()) {
+                    if (e.getValue() > count) {
+                        best = e.getKey();
+                        count = e.getValue();
+                    }
                 }
+                this.popular = best;
+                this.popularLower = KadLowerCase.toLowerCase(best);
             }
-            return best;
+            return this.popular;
+        }
+
+        String popularNameLower() {
+            this.popularName();
+            return this.popularLower;
         }
     }
 
@@ -254,6 +269,7 @@ final class KadIndex {
         if (files == null) {
             return results;
         }
+        Optional<Matcher> matcher = expression.map(Matcher::new);
         int skipped = 0;
         for (Map.Entry<UInt128, KeywordEntry> e : files.entrySet()) {
             KeywordEntry entry = e.getValue();
@@ -264,7 +280,8 @@ final class KadIndex {
             entry.forget(now);
             String name = entry.popularName();
             if (name.isEmpty()
-                    || (expression.isPresent() && !matches(expression.get(), name, entry.size, entry.tags))) {
+                    || (matcher.isPresent()
+                            && !matcher.get().matches(name, entry.popularNameLower(), entry.size, entry.tags))) {
                 continue;
             }
             if (skipped++ < start) {
@@ -476,32 +493,84 @@ final class KadIndex {
         return kept;
     }
 
-    /** Whether the file {@code name} of {@code size} bytes with {@code tags} matches {@code expr}. */
-    static boolean matches(SearchExpr expr, String name, long size, List<Tag> tags) {
-        return switch (expr) {
-            case SearchExpr.And and -> matches(and.left(), name, size, tags) && matches(and.right(), name, size, tags);
-            case SearchExpr.Or or -> matches(or.left(), name, size, tags) || matches(or.right(), name, size, tags);
-            case SearchExpr.Not not -> matches(not.left(), name, size, tags) && !matches(not.right(), name, size, tags);
-            case SearchExpr.Keyword keyword -> containsWords(name, keyword.text());
-            case SearchExpr.StringAttr attr -> matchesString(attr, name, tags);
-            case SearchExpr.NumericAttr attr -> matchesNumber(attr, size, tags);
-        };
+    /** An expression whose words are split and put in lower case once, for all the files it is matched against. */
+    static final class Matcher {
+        private final SearchExpr expression;
+        private final Map<String, List<String>> words = new HashMap<>();
+
+        Matcher(SearchExpr expression) {
+            this.expression = expression;
+            this.split(expression);
+        }
+
+        /** Whether the file {@code name} ({@code lower} in the network's lower case) matches. */
+        boolean matches(String name, String lower, long size, List<Tag> tags) {
+            return this.matches(this.expression, name, lower, size, tags);
+        }
+
+        private boolean matches(SearchExpr expr, String name, String lower, long size, List<Tag> tags) {
+            return switch (expr) {
+                case SearchExpr.And and ->
+                    this.matches(and.left(), name, lower, size, tags)
+                            && this.matches(and.right(), name, lower, size, tags);
+                case SearchExpr.Or or ->
+                    this.matches(or.left(), name, lower, size, tags)
+                            || this.matches(or.right(), name, lower, size, tags);
+                case SearchExpr.Not not ->
+                    this.matches(not.left(), name, lower, size, tags)
+                            && !this.matches(not.right(), name, lower, size, tags);
+                case SearchExpr.Keyword keyword -> containsAll(lower, this.words.get(keyword.text()));
+                case SearchExpr.StringAttr attr -> matchesString(attr, name, tags);
+                case SearchExpr.NumericAttr attr -> matchesNumber(attr, size, tags);
+            };
+        }
+
+        private void split(SearchExpr expr) {
+            switch (expr) {
+                case SearchExpr.And and -> {
+                    this.split(and.left());
+                    this.split(and.right());
+                }
+                case SearchExpr.Or or -> {
+                    this.split(or.left());
+                    this.split(or.right());
+                }
+                case SearchExpr.Not not -> {
+                    this.split(not.left());
+                    this.split(not.right());
+                }
+                case SearchExpr.Keyword keyword -> this.words.computeIfAbsent(keyword.text(), KadIndex::words);
+                case SearchExpr.StringAttr attr -> {
+                    // Matched against the tags as they are.
+                }
+                case SearchExpr.NumericAttr attr -> {
+                    // Matched against the size or the tags.
+                }
+            }
+        }
     }
 
-    private static boolean containsWords(String name, String words) {
-        String haystack = KadLowerCase.toLowerCase(name);
-        boolean anyWord = false;
-        for (String part : KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
-            if (part.isEmpty()) {
-                continue;
+    private static List<String> words(String text) {
+        List<String> parts = new ArrayList<>();
+        for (String part : KadLowerCase.toLowerCase(text).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
+            if (!part.isEmpty()) {
+                parts.add(part);
             }
-            if (!haystack.contains(part)) {
+        }
+        return parts;
+    }
+
+    // A term made only of separators names no word: it matches nothing.
+    private static boolean containsAll(String lower, List<String> words) {
+        if (words.isEmpty()) {
+            return false;
+        }
+        for (String word : words) {
+            if (!lower.contains(word)) {
                 return false;
             }
-            anyWord = true;
         }
-        // A term made only of separators names no word: it matches nothing.
-        return anyWord;
+        return true;
     }
 
     private static boolean matchesString(SearchExpr.StringAttr attr, String name, List<Tag> tags) {
