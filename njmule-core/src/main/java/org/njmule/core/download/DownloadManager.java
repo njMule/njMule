@@ -516,12 +516,13 @@ public final class DownloadManager implements AutoCloseable {
         return true;
     }
 
+    /** Resumes a paused, stopped or failed download; {@code false} if unknown or running already. */
     public boolean resume(Hash16 hash) {
         Entry entry = this.entries.get(hash);
-        if (entry == null) {
+        // A running download keeps its timers: its sources and the server are not asked before their time.
+        if (entry == null || !this.queue.resume(entry.download)) {
             return false;
         }
-        this.queue.resume(entry.download);
         long now = this.ticker.read();
         entry.nextKadSearch = now;
         entry.kadSearches = 0;

@@ -248,6 +248,26 @@ class DownloadManagerTest {
         assertThat(server.asked).startsWith(high, low);
     }
 
+    @Test
+    void resumingARunningDownloadChangesNothing() throws Exception {
+        HighIdServer server = new HighIdServer(true);
+        DownloadManager manager = this.manager(server);
+        Hash16 hash = Hash16.parseHex("bd".repeat(16));
+        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("running.bin", 5000, hash)));
+        for (int i = 0; i < 100 && server.asked.isEmpty(); i++) {
+            Thread.sleep(100);
+        }
+        assertThat(server.asked).hasSize(1);
+
+        assertThat(this.onLoop(() -> manager.resume(hash)))
+                .as("it runs already")
+                .isFalse();
+        Thread.sleep(2500);
+
+        assertThat(server.asked).as("not asked again before its time").hasSize(1);
+        this.onLoop(() -> manager.pause(hash));
+    }
+
     private DownloadManager manager() throws Exception {
         return this.manager(new HighIdServer(false));
     }
