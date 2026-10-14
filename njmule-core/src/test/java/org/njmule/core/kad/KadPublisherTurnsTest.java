@@ -42,7 +42,7 @@ class KadPublisherTurnsTest {
     private record Asked(String what, boolean taken) {}
 
     /** A node that takes or refuses every publish, and remembers them. */
-    private final class FakeNode implements KadPublisher.Node {
+    private static final class FakeNode implements KadPublisher.Node {
         boolean accepting = true;
         int running;
         final List<Asked> asked = new ArrayList<>();
