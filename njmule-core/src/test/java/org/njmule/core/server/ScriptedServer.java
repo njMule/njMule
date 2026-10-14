@@ -16,16 +16,22 @@
  */
 package org.njmule.core.server;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -85,6 +91,22 @@ public final class ScriptedServer implements AutoCloseable {
     /** As {@link #start}, on another address of this computer: one the server list takes, unlike loopback. */
     public static ScriptedServer startAt(InetAddress address, long clientId, int flags) throws IOException {
         return new ScriptedServer(address, clientId, flags, false);
+    }
+
+    /** This computer's LAN address, which the server list takes, unlike loopback; the test is skipped without one. */
+    public static InetAddress lanAddress() throws SocketException {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) {
+                continue;
+            }
+            for (InetAddress address : Collections.list(nic.getInetAddresses())) {
+                if (address instanceof Inet4Address && !address.isLinkLocalAddress()) {
+                    return address;
+                }
+            }
+        }
+        assumeTrue(false, "no LAN address");
+        throw new IllegalStateException();
     }
 
     public int ip() {

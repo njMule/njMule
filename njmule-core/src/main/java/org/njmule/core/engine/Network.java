@@ -509,6 +509,19 @@ final class Network {
                 this.servers.size(),
                 this.ipFilter.rangeCount(),
                 this.userHash);
+        if (this.automaticConnections) {
+            this.connectAtStart();
+        }
+    }
+
+    // The "connect at start" preference: any known server, when eD2K is on.
+    private void connectAtStart() {
+        Preferences prefs = this.preferences.get();
+        if (prefs.ed2kEnabled()
+                && prefs.autoConnect()
+                && !this.servers.connectable().isEmpty()) {
+            this.session.connect(Optional.empty());
+        }
     }
 
     // Any free port but the one Kad and clients use, which the preferences may give later.

@@ -664,3 +664,5 @@ All notable changes to this project are documented here. The format follows
   when it was lost again soon after a reconnect), and when no server accepts us every server is
   tried again after 30 seconds, until Cancel or Disconnect; a list with nothing to try still ends at
   once. One-shot command-line runs and embedded engines connect only as asked.
+- The "Connect at start" preference works: the desktop app and the headless service connect to a
+  known server when they start.

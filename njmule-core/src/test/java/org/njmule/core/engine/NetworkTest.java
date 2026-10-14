@@ -860,7 +860,65 @@ class NetworkTest {
         assertThat(port.getAsInt()).isNotEqualTo(this.serverSocketPort);
     }
 
+    @Test
+    void aRunForTheUserConnectsAtStartWhenThePreferencesSaySo() throws Exception {
+        this.givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
+        this.givenConnectingAtStart(true);
+
+        this.whenTheNetworkStartsForTheUser();
+
+        this.thenItConnectsToThatServer();
+    }
+
+    @Test
+    void aRunForTheUserStaysDisconnectedWhenThePreferencesSaySo() throws Exception {
+        this.givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
+        this.givenConnectingAtStart(false);
+
+        this.whenTheNetworkStartsForTheUser();
+
+        this.thenItStaysDisconnected();
+    }
+
+    private void givenTheServerListHolds(ScriptedServer server) throws IOException {
+        this.scripted = server;
+        // Known to be plain: no obfuscation is tried first.
+        ServerMet.Server listed = new ServerMet.Server(server.ip(), server.port(), List.of())
+                .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0));
+        Files.write(this.dirs.config().resolve(ServerList.FILE_NAME), ServerMet.write(List.of(listed)));
+    }
+
+    private void givenConnectingAtStart(boolean connect) {
+        this.preferences = this.preferences.toBuilder()
+                .autoConnect(connect)
+                .filterLanAddresses(false)
+                .build();
+    }
+
+    private void whenTheNetworkStartsForTheUser() throws Exception {
+        Network created = this.create(true);
+        this.onLoop(() -> {
+            created.start();
+            return null;
+        });
+    }
+
+    private void thenItConnectsToThatServer() throws Exception {
+        EngineEvent.ServerConnected connected = this.next(EngineEvent.ServerConnected.class);
+        assertThat(connected.server().address()).endsWith(":" + this.scripted.port());
+    }
+
+    private void thenItStaysDisconnected() throws Exception {
+        Thread.sleep(2000);
+        assertThat(this.events).noneMatch(e -> e instanceof EngineEvent.ServerConnecting);
+        assertThat(this.scripted.connections()).isZero();
+    }
+
     private Network create() throws Exception {
+        return this.create(false);
+    }
+
+    private Network create(boolean automaticConnections) throws Exception {
         this.network = this.onLoop(() -> new Network(
                 this.loop,
                 this.dirs.config(),
@@ -871,7 +929,7 @@ class NetworkTest {
                 this.dirs.data().resolve("temp"),
                 () -> this.dirs.data().resolve("incoming"),
                 Optional.empty(),
-                false));
+                automaticConnections));
         return this.network;
     }
 

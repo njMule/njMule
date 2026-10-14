@@ -17,16 +17,11 @@
 package org.njmule.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -133,7 +128,7 @@ class ServerConnectingTest {
     @Test
     void aServerThatDoesNotAnswerDoesNotHoldUpTheNextOne() throws Exception {
         this.givenObfuscation(ObfuscationMode.REQUESTED);
-        InetAddress lan = lanAddress();
+        InetAddress lan = ScriptedServer.lanAddress();
         this.givenTheKnownServers(ScriptedServer.startAt(lan, 0, 0), ScriptedServer.startAt(lan, HIGH_ID, 0));
 
         this.whenTheSessionLooksForAnyServer();
@@ -144,7 +139,7 @@ class ServerConnectingTest {
     @Test
     void aLostSessionIsReplacedWhenThePreferencesSaySo() throws Exception {
         this.givenTheSessionKeepsConnected(true);
-        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         this.givenTheSessionLoggedInToAnyServer();
 
         this.whenTheServerHangsUp();
@@ -156,7 +151,7 @@ class ServerConnectingTest {
     @Test
     void aSessionLostAgainSoonAfterAReconnectWaitsBeforeTheNext() throws Exception {
         this.givenTheSessionKeepsConnected(true);
-        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         this.givenTheSessionLoggedInToAnyServer();
         this.givenTheServerHungUpAndTheSessionCameBack();
 
@@ -170,7 +165,7 @@ class ServerConnectingTest {
     @Test
     void whenEveryServerFailsTheyAreTriedAgainLater() throws Exception {
         this.givenTheSessionKeepsConnected(true);
-        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), 0, 0));
+        this.givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), 0, 0));
         this.givenTheServerIsGone();
 
         this.whenTheSessionLooksForAnyServer();
@@ -191,7 +186,7 @@ class ServerConnectingTest {
     @Test
     void aLostSessionIsNotReplacedUnlessThePreferencesSaySo() throws Exception {
         this.givenTheSessionKeepsConnected(false);
-        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         this.givenTheSessionLoggedInToAnyServer();
 
         this.whenTheServerHangsUp();
@@ -350,22 +345,6 @@ class ServerConnectingTest {
             }
         }
         throw new AssertionError("no " + kind + " in " + this.seen);
-    }
-
-    // Servers at loopback are not taken in the server list: this computer's LAN address is.
-    private static InetAddress lanAddress() throws SocketException {
-        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-            if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) {
-                continue;
-            }
-            for (InetAddress address : Collections.list(nic.getInetAddresses())) {
-                if (address instanceof Inet4Address && !address.isLinkLocalAddress()) {
-                    return address;
-                }
-            }
-        }
-        assumeTrue(false, "no LAN address");
-        throw new IllegalStateException();
     }
 
     private <T> T onLoop(Callable<T> task) throws Exception {
