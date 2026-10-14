@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.ToIntFunction;
@@ -138,7 +139,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     // Where the results of a lookup go; each returns how many of them were usable.
     private final Map<Lookup, ToIntFunction<List<KadMessages.Entry>>> resultSinks = new HashMap<>();
     private final Map<Lookup, Object> lookupData = new HashMap<>();
-    private final Map<Integer, Long> firewallChecks = new HashMap<>();
+    // Nodes asked to connect to our TCP port, and when; read by the listener's threads too.
+    private final Map<Integer, Long> firewallChecks = new ConcurrentHashMap<>();
     private final Set<Integer> firewallAcks = new HashSet<>();
     private int publicIp;
     private int pendingIp;
@@ -476,6 +478,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return dropped;
     }
 
+    /** Whether the node at {@code ip} was asked to connect to our TCP port and has yet to say it did; any thread. */
+    public boolean awaitsConnectionFrom(int ip) {
+        return this.firewallChecks.containsKey(ip);
+    }
+
     /** A node we asked to check our TCP port connected and said so. */
     public void reachableConfirmed(int ip) {
         if (this.firewallChecks.containsKey(ip)) {
@@ -521,7 +528,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         if (now - this.nextFirewallCheck >= 0) {
             this.nextFirewallCheck = now + FIREWALL_CHECK_EVERY.toNanos();
-            this.wasOpen = this.firewallAcks.size() >= FIREWALL_ACKS;
+            // Only a check that ended gives the outcome that stands while the next one runs.
+            boolean open = this.firewallAcks.size() >= FIREWALL_ACKS;
+            if (open || this.firewallReports >= FIREWALL_CHECKS) {
+                this.wasOpen = open;
+            }
             this.firewallReports = 0;
             this.firewallAcks.clear();
         }

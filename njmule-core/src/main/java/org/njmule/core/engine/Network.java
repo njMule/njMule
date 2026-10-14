@@ -207,7 +207,8 @@ final class Network {
     private final Credits credits;
     private final UploadManager uploads;
     private final FilePublisher publisher;
-    private KadNode kad;
+    // Replaced on the engine thread, read by the connection threads too.
+    private volatile KadNode kad;
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
     private boolean kadStoppedByHand;
@@ -408,7 +409,8 @@ final class Network {
         ProxyRoute.install(() -> this.preferences.get().proxy());
         this.guard = new ConnectionGuard(
                 () -> this.ipFilter,
-                this::isOurServer,
+                // Refusing the server or a Kad node that checks our port would leave us a LowID or firewalled.
+                ip -> this.isOurServer(ip) || this.kadAwaits(ip),
                 ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
                 () -> new ConnectionGuard.Limits(
                         this.preferences.get().maxConnections(),
@@ -1690,6 +1692,12 @@ final class Network {
 
     private boolean isOurServer(int ip) {
         return ip != 0 && ip == this.serverIp;
+    }
+
+    // Any thread: a Kad node we asked to connect to our TCP port.
+    private boolean kadAwaits(int ip) {
+        KadNode node = this.kad;
+        return node != null && node.awaitsConnectionFrom(ip);
     }
 
     private static IpFilter loadIpFilter(Path file, int level) {

@@ -162,6 +162,39 @@ class KadNodeTest {
     }
 
     @Test
+    void aNodeAskedToConnectToUsIsAwaitedUntilItDid() throws Exception {
+        KadNode node = this.node();
+        this.hello(node, PEER);
+
+        assertThat(node.awaitsConnectionFrom(PEER)).isTrue();
+        assertThat(node.awaitsConnectionFrom(Ipv4.of(21, 1, 1, 1))).isFalse();
+        node.reachableConfirmed(PEER);
+        assertThat(node.awaitsConnectionFrom(PEER)).isFalse();
+    }
+
+    @Test
+    void aRecheckDuringAnotherKeepsTheLastOutcome() throws Exception {
+        KadNode node = this.node();
+        for (int ip : new int[] {PEER, Ipv4.of(21, 1, 1, 1)}) {
+            this.hello(node, ip);
+            node.reachableConfirmed(ip);
+        }
+        assertThat(node.isFirewalled()).isFalse();
+
+        node.recheckFirewall();
+        node.tick();
+        assertThat(node.isFirewalled()).as("while the check runs").isFalse();
+        this.hello(node, Ipv4.of(22, 1, 1, 1));
+        node.reachableConfirmed(Ipv4.of(22, 1, 1, 1));
+        node.recheckFirewall();
+        node.tick();
+
+        assertThat(node.isFirewalled())
+                .as("a check started before the last one ended")
+                .isFalse();
+    }
+
+    @Test
     void anAnswerThatComesAfterTheLastRequestStillReachesTheSearch() throws Exception {
         KadNode node = this.node();
         UInt128 target = Keywords.id("ubuntu");
@@ -264,6 +297,12 @@ class KadNodeTest {
                 this.dir,
                 this.random,
                 this.ticker);
+    }
+
+    // A hello from a node recent enough to check our TCP port.
+    private void hello(KadNode node, int ip) {
+        KadMessages.Self sender = new KadMessages.Self(UInt128.random(this.random), 4662, 8);
+        node.received(ip, PORT, new KadMessages.Hello(sender, List.of()).encode(false), false, 0, 0);
     }
 
     private void answer(KadNode node, UInt128 target, KadMessages.Contact... contacts) {

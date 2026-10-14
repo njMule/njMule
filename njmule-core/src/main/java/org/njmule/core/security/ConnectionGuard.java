@@ -144,7 +144,10 @@ public final class ConnectionGuard {
         if (fromAddress >= limits.maxPerAddress()) {
             return new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS);
         }
-        this.recentAccepts.addLast(now);
+        // Exempt connections leave the accept rate to the others.
+        if (!exempted) {
+            this.recentAccepts.addLast(now);
+        }
         this.perAddress.put(ip, fromAddress + 1);
         this.total++;
         return new Admission.Admitted(new Permit(ip));
