@@ -19,9 +19,12 @@ package org.njmule.core.persist.format;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import org.njmule.core.protocol.io.Ed2kStrings;
 import org.njmule.core.util.Ipv4;
 
@@ -63,8 +66,8 @@ public final class IpFilterDat {
     private IpFilterDat() {}
 
     /**
-     * Parses any of the formats, then sorts by start and merges overlapping ranges and adjacent ones with the same
-     * level; identical ranges keep the lowest level.
+     * Parses any of the formats, then sorts by start and merges the overlapping and adjacent ranges of one level;
+     * identical ranges keep the lowest level, and ranges of other levels stay apart even where they overlap.
      *
      * @param fileName used only to recognise {@code .p2p} and {@code .prefix} files
      */
@@ -276,8 +279,31 @@ public final class IpFilterDat {
         return true;
     }
 
+    // Only ranges of one level merge: a range overlapping one of another level keeps blocking at its own level.
     private static List<Range> merge(List<Range> input) {
-        List<Range> sorted = new ArrayList<>(input);
+        Map<Long, Range> distinct = new LinkedHashMap<>();
+        for (Range r : input) {
+            distinct.merge(
+                    (Integer.toUnsignedLong(r.start()) << 32) | Integer.toUnsignedLong(r.end()),
+                    r,
+                    (kept, same) -> new Range(
+                            kept.start(), kept.end(), Math.min(kept.level(), same.level()), kept.description()));
+        }
+        Map<Integer, List<Range>> byLevel = new TreeMap<>();
+        for (Range r : distinct.values()) {
+            byLevel.computeIfAbsent(r.level(), level -> new ArrayList<>()).add(r);
+        }
+        List<Range> out = new ArrayList<>(distinct.size());
+        for (List<Range> level : byLevel.values()) {
+            out.addAll(mergeOneLevel(level));
+        }
+        out.sort(Comparator.comparing(Range::start, Integer::compareUnsigned)
+                .thenComparing(Range::end, Integer::compareUnsigned));
+        return out;
+    }
+
+    private static List<Range> mergeOneLevel(List<Range> ranges) {
+        List<Range> sorted = new ArrayList<>(ranges);
         sorted.sort(Comparator.comparing(Range::start, Integer::compareUnsigned));
         List<Range> out = new ArrayList<>(sorted.size());
         for (Range cur : sorted) {
@@ -287,18 +313,11 @@ public final class IpFilterDat {
             }
             Range prev = out.getLast();
             boolean overlapping = Integer.compareUnsigned(cur.start(), prev.end()) <= 0;
-            boolean adjacent = prev.end() != -1 && cur.start() == prev.end() + 1 && cur.level() == prev.level();
-            if (overlapping || adjacent) {
-                if (cur.start() == prev.start() && cur.end() == prev.end()) {
-                    out.set(
-                            out.size() - 1,
-                            new Range(
-                                    prev.start(), prev.end(), Math.min(prev.level(), cur.level()), prev.description()));
-                } else if (Integer.compareUnsigned(cur.end(), prev.end()) > 0) {
-                    out.set(out.size() - 1, new Range(prev.start(), cur.end(), prev.level(), prev.description()));
-                }
-            } else {
+            boolean adjacent = prev.end() != -1 && cur.start() == prev.end() + 1;
+            if (!overlapping && !adjacent) {
                 out.add(cur);
+            } else if (Integer.compareUnsigned(cur.end(), prev.end()) > 0) {
+                out.set(out.size() - 1, new Range(prev.start(), cur.end(), prev.level(), prev.description()));
             }
         }
         return out;

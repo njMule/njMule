@@ -629,3 +629,5 @@ All notable changes to this project are documented here. The format follows
   is left out of the configuration backups.
 - Web interface: login attempts from IPv6 are counted per /64 network, so changing the host part
   of the address no longer escapes the limit, and wrong passwords and API tokens are logged.
+- IP filter lists whose ranges overlap with other levels keep each level: a blocked range inside an
+  allowed one stays blocked, and a blocked range no longer grows over an allowed one.
