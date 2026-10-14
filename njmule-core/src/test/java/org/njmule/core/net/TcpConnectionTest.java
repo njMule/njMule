@@ -57,6 +57,13 @@ class TcpConnectionTest {
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
     private static final Hash16 OWN_HASH = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
     private static final InetAddress LOOPBACK = InetAddress.getLoopbackAddress();
+    private static final int DATA = 0x46;
+    private static final int CONTROL = 0x58;
+    // About 10 MB: more than a loopback socket buffers for a peer that does not read.
+    private static final int DATA_FRAMES = 1_000;
+
+    private TcpConnection connection;
+    private Socket peer;
 
     @Test
     void talksToAPlainServer() throws Exception {
@@ -216,6 +223,54 @@ class TcpConnectionTest {
             assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
             assertThat(connection.send(Packet.empty(Protocol.EDONKEY, 0x01))).isFalse();
         }
+    }
+
+    @Test
+    void aPacketSentWhileFileDataWaitsGoesOutBeforeIt() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
+            this.givenAConnectionToAPeerThatReadsNothingYet(server);
+            this.givenMuchFileDataQueued();
+
+            this.whenAPacketIsSent();
+
+            this.thenThePeerReadsItBeforeTheDataStillQueued();
+        }
+    }
+
+    private void givenAConnectionToAPeerThatReadsNothingYet(ServerSocket server) throws IOException {
+        this.connection = TcpConnector.connectToClient(
+                new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+        this.peer = server.accept();
+        this.peer.setSoTimeout(5000);
+        this.connection.start(new Recorder(), frame -> frame);
+    }
+
+    private void givenMuchFileDataQueued() {
+        for (int i = 0; i < DATA_FRAMES; i++) {
+            assertThat(this.connection.sendData(Packet.of(Protocol.EDONKEY, DATA, new byte[10_240])))
+                    .isTrue();
+        }
+        assertThat(this.connection.queuedData()).isPositive();
+    }
+
+    private void whenAPacketIsSent() {
+        assertThat(this.connection.send(Packet.of(Protocol.EDONKEY, CONTROL, new byte[1])))
+                .isTrue();
+    }
+
+    private void thenThePeerReadsItBeforeTheDataStillQueued() throws IOException, DecodeException {
+        InputStream in = new BufferedInputStream(this.peer.getInputStream());
+        int dataBefore = 0;
+        while (TcpFraming.read(in, FrameLimits.CLIENT).opcode() == DATA) {
+            dataBefore++;
+        }
+        assertThat(dataBefore).isLessThan(DATA_FRAMES);
+        for (int i = dataBefore; i < DATA_FRAMES; i++) {
+            assertThat(TcpFraming.read(in, FrameLimits.CLIENT).opcode()).isEqualTo(DATA);
+        }
+        assertThat(this.connection.queuedData()).isZero();
+        this.connection.close();
+        this.peer.close();
     }
 
     private void exchangeWithServer(boolean obfuscated) throws Exception {

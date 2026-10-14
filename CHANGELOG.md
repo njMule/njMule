@@ -412,6 +412,9 @@ All notable changes to this project are documented here. The format follows
   client switched to, and banned clients are refused everywhere while the ban lasts.
 - A firewalled client whose turn for an upload slot came while it was not connected gets a slot
   when it asks again, instead of waiting behind every client we can reach.
+- A client that reads its upload slowly no longer takes the bandwidth of the other slots nor fills
+  its connection until it is dropped, and our other packets to a client (answers, chat, the
+  requests of our download from it) no longer wait behind the file data queued for it.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

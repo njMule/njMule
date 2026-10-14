@@ -27,6 +27,16 @@ public interface PeerChannel {
     /** Queues a packet; {@code false} if the connection is closed or this session is done with it. */
     boolean send(Packet packet);
 
+    /** As {@link #send(Packet)}, for file data, which waits behind the other packets. */
+    default boolean sendData(Packet packet) {
+        return this.send(packet);
+    }
+
+    /** Bytes of file data queued and not written yet. */
+    default long queuedData() {
+        return 0;
+    }
+
     InetSocketAddress remoteAddress();
 
     boolean isOpen();

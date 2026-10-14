@@ -125,6 +125,16 @@ public final class UploadManager implements AutoCloseable {
     static final Duration FIRST_REQUEST_WAIT = Duration.ofSeconds(15);
 
     static final Duration IDLE_SLOT = Duration.ofSeconds(30);
+
+    /**
+     * File data a slot may have waiting in its connection before it gets more: a second's worth at its rate, at least
+     * this. A client that reads slowly holds back only its own data, and the budget goes to the others.
+     */
+    static final long MIN_QUEUED = Ed2k.EMBLOCKSIZE;
+
+    // Well below what a connection holds before it drops a peer that does not read.
+    private static final long MAX_QUEUED = 4L << 20;
+
     private static final Duration CREDITS_SAVE = Duration.ofMinutes(13);
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
@@ -188,7 +198,10 @@ public final class UploadManager implements AutoCloseable {
         }
 
         boolean isBusy() {
-            return this.reading || !this.out.isEmpty() || this.session.hasPendingBlocks();
+            return this.reading
+                    || !this.out.isEmpty()
+                    || this.session.hasPendingBlocks()
+                    || this.session.queuedData() > 0;
         }
     }
 
@@ -449,13 +462,18 @@ public final class UploadManager implements AutoCloseable {
         }
     }
 
-    // One data packet per slot in turn, while the budget lasts: every slot gets an equal share.
+    // One data packet per slot in turn, while the budget lasts: every slot whose client reads what it gets has an equal
+    // share. The budget is spent on what goes out, as a slot holds little more than it sends.
     private void send() {
         boolean progress = true;
+        long start = this.ticker.read();
         while (this.budget > 0 && progress && !this.slots.isEmpty()) {
             progress = false;
             for (int i = 0; i < this.slots.size() && this.budget > 0; i++) {
                 Slot slot = this.slots.get((this.turn + i) % this.slots.size());
+                if (slot.session.queuedData() >= Math.clamp(slot.rate.rate(start), MIN_QUEUED, MAX_QUEUED)) {
+                    continue;
+                }
                 Item item = slot.out.poll();
                 if (item == null) {
                     continue;
@@ -465,7 +483,7 @@ public final class UploadManager implements AutoCloseable {
                 if (this.budget != Long.MAX_VALUE) {
                     this.budget -= wire;
                 }
-                if (slot.session.send(item.packet())) {
+                if (slot.session.sendData(item.packet())) {
                     slot.sent += item.payload();
                     long now = this.ticker.read();
                     slot.rate.add(item.payload(), now);
@@ -533,14 +551,13 @@ public final class UploadManager implements AutoCloseable {
     // About one part sent while others wait: the client waits again, from now.
     private void requeue(Slot slot, long now) {
         this.slots.remove(slot);
-        slot.session.endSlot();
-        slot.session.setReadTimeout(WAITING_TIMEOUT);
         Client client = slot.client;
         client.session = slot.session;
         client.waitStart = now;
         client.lastAsk = now;
         this.waiting.put(client.userHash, client);
-        slot.session.sendRank(this.rank(client, now));
+        slot.session.endSlot(this.rank(client, now));
+        slot.session.setReadTimeout(WAITING_TIMEOUT);
     }
 
     /** The banned addresses with the time left. */

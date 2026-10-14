@@ -226,23 +226,41 @@ final class UploadSession implements PeerLink.Role {
 
     /** Tells the client its place in our queue. */
     void sendRank(int rank) {
-        this.send(Packet.of(
-                Protocol.EMULE,
-                Opcodes.Extended.QUEUERANKING.code(),
-                new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10])));
+        this.send(rankPacket(rank));
     }
 
-    /** Takes the slot away; the client goes back to waiting. */
-    void endSlot() {
+    private static Packet rankPacket(int rank) {
+        return Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.QUEUERANKING.code(),
+                new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10]));
+    }
+
+    /**
+     * Takes the slot away; the client goes back to waiting at {@code rank}. Both go after the data still queued, which
+     * a client drops once told its slot ended.
+     */
+    void endSlot(int rank) {
         if (this.slot) {
             this.slot = false;
             this.pending.clear();
-            this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+            this.sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
         }
+        this.sendData(rankPacket(rank));
     }
 
     boolean send(Packet packet) {
         return !this.closed && this.connection.send(packet);
+    }
+
+    /** Sends file data, which waits behind our other packets to the client. */
+    boolean sendData(Packet packet) {
+        return !this.closed && this.connection.sendData(packet);
+    }
+
+    /** Bytes of file data waiting for the client to read them. */
+    long queuedData() {
+        return this.connection.queuedData();
     }
 
     /** Done with the client; a download from it over the same connection goes on. */

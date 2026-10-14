@@ -27,9 +27,11 @@ import java.net.SocketException;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.njmule.core.protocol.io.DecodeException;
@@ -39,7 +41,8 @@ import org.njmule.core.protocol.packet.TcpFraming;
 
 /**
  * A framed eD2K TCP connection over a blocking socket, served by a reading and a writing virtual thread. Sending never
- * blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected.
+ * blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected. File data waits behind
+ * every other packet.
  */
 public final class TcpConnection implements PeerChannel, AutoCloseable {
 
@@ -69,8 +72,13 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     private final OutputStream out;
     private final boolean obfuscated;
     private final InetSocketAddress remote;
-    private final BlockingQueue<byte[]> outbox = new ArrayBlockingQueue<>(OUTBOX_CAPACITY);
+    private final Queue<byte[]> control = new ConcurrentLinkedQueue<>();
+    private final Queue<byte[]> data = new ConcurrentLinkedQueue<>();
+    // One permit for each frame queued, taken by the writer.
+    private final Semaphore ready = new Semaphore(0);
+    private final AtomicInteger frames = new AtomicInteger();
     private final AtomicLong queued = new AtomicLong();
+    private final AtomicLong queuedData = new AtomicLong();
     private final AtomicBoolean started = new AtomicBoolean();
     // Null while open, then the cause of the close: empty after a clean one.
     private final AtomicReference<Optional<IOException>> closure = new AtomicReference<>();
@@ -119,14 +127,37 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
      */
     @Override
     public boolean send(Packet packet) {
+        return this.enqueue(packet, false);
+    }
+
+    /** As {@link #send(Packet)}, for file data: it goes out after the other packets waiting. */
+    @Override
+    public boolean sendData(Packet packet) {
+        return this.enqueue(packet, true);
+    }
+
+    /** Bytes of file data waiting to be written. */
+    @Override
+    public long queuedData() {
+        return this.queuedData.get();
+    }
+
+    private boolean enqueue(Packet packet, boolean fileData) {
         if (!this.isOpen()) {
             return false;
         }
         byte[] frame = TcpFraming.encode(packet);
-        if (this.queued.addAndGet(frame.length) > OUTBOX_BYTES || !this.outbox.offer(frame)) {
+        if (this.queued.addAndGet(frame.length) > OUTBOX_BYTES || this.frames.incrementAndGet() > OUTBOX_CAPACITY) {
             this.fail(new IOException("send queue full, peer not reading"));
             return false;
         }
+        if (fileData) {
+            this.queuedData.addAndGet(frame.length);
+            this.data.add(frame);
+        } else {
+            this.control.add(frame);
+        }
+        this.ready.release();
         return true;
     }
 
@@ -181,7 +212,8 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         }
         Thread w = this.writer;
         if (cause.isPresent() || w == null) {
-            this.outbox.clear();
+            this.control.clear();
+            this.data.clear();
             if (w != null) {
                 w.interrupt();
             }
@@ -241,9 +273,8 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     private void writeLoop() {
         try {
             for (byte[] frame = this.nextFrame(); frame != null; frame = this.nextFrame()) {
-                this.queued.addAndGet(-frame.length);
                 this.out.write(frame);
-                if (this.outbox.isEmpty()) {
+                if (this.frames.get() == 0) {
                     this.out.flush();
                 }
             }
@@ -253,15 +284,31 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         this.closeSocket();
     }
 
-    // The next frame to write; null once closed and the queue is empty.
+    // The next frame to write; null once closed and the queues are empty.
     private byte[] nextFrame() {
         while (this.isOpen()) {
             try {
-                return this.outbox.take();
+                this.ready.acquire();
+                return this.poll();
             } catch (InterruptedException e) {
                 // close() wakes the writer this way; what is queued still goes out.
             }
         }
-        return this.outbox.poll();
+        return this.ready.tryAcquire() ? this.poll() : null;
+    }
+
+    // Every permit stands for a frame queued before it: none is missing unless a failure emptied the queues.
+    private byte[] poll() {
+        byte[] frame = this.control.poll();
+        if (frame == null) {
+            frame = this.data.poll();
+            if (frame == null) {
+                return null;
+            }
+            this.queuedData.addAndGet(-frame.length);
+        }
+        this.queued.addAndGet(-frame.length);
+        this.frames.decrementAndGet();
+        return frame;
     }
 }

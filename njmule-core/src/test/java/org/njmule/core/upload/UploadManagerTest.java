@@ -85,6 +85,7 @@ class UploadManagerTest {
     private static final Duration SILENCE = Duration.ofMillis(500);
     private static final long LOW_ID = 1234;
     private static final Hash16 FAULTY = Hash16.parseHex("fa".repeat(16));
+    private static final int MANY_BLOCKS = 16;
 
     @TempDir
     Path dir;
@@ -111,6 +112,8 @@ class UploadManagerTest {
     private ScriptedDownloader client;
     private SharedFiles.SharedFile file;
     private Packet answer;
+    private long queued;
+    private long dataBeforeAnswer;
 
     @AfterEach
     void stop() throws Exception {
@@ -665,6 +668,68 @@ class UploadManagerTest {
 
     private void thenItGetsASlot() {
         assertThat(this.answer.opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+    }
+
+    @Test
+    void aClientThatReadsNothingGetsLittleQueuedAndOurAnswersPassItsData() throws Exception {
+        this.givenAClientWithASlotThatAsksForManyBlocksAndReadsNothing();
+
+        this.whenItAsksForTheFileNameAndReads();
+
+        this.thenLittleOfWhatItAskedForWasQueued();
+        this.thenOurAnswerCameBeforeMostOfTheData();
+    }
+
+    private void givenAClientWithASlotThatAsksForManyBlocksAndReadsNothing() throws Exception {
+        this.file = this.share("much.bin", random(MANY_BLOCKS * (int) UploadSession.MAX_BLOCK, 17));
+        this.start();
+        this.client = this.client(1, 0, 0);
+        assertThat(this.ask(this.client, this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        for (int at = 0; at < MANY_BLOCKS; at += 3) {
+            List<ClientMessages.Range> ranges = new ArrayList<>();
+            for (int b = at; b < at + 3; b++) {
+                ranges.add(
+                        b < MANY_BLOCKS
+                                ? new ClientMessages.Range(
+                                        b * UploadSession.MAX_BLOCK, (b + 1) * UploadSession.MAX_BLOCK)
+                                : new ClientMessages.Range(0, 0));
+            }
+            this.client.send(new ClientMessages.RequestParts(this.file.hash(), ranges).encode(false));
+        }
+        // Whatever is not held back is handed over within a few ticks.
+        long last = -1;
+        long sent = this.sentToTheSlot();
+        while (sent != last) {
+            Thread.sleep(1_000);
+            last = sent;
+            sent = this.sentToTheSlot();
+        }
+        this.queued = sent;
+    }
+
+    private long sentToTheSlot() throws Exception {
+        return this.onLoop(() -> this.manager.uploads().stream()
+                .mapToLong(UploadInfo::transferred)
+                .sum());
+    }
+
+    private void whenItAsksForTheFileNameAndReads() throws Exception {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        Thread.sleep(500);
+        for (Packet packet : this.client.until(Protocol.EDONKEY, Opcodes.Client.REQFILENAMEANSWER.code())) {
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.SENDINGPART.code()) {
+                this.dataBeforeAnswer +=
+                        ClientMessages.SendingPart.decode(packet).data().length;
+            }
+        }
+    }
+
+    private void thenLittleOfWhatItAskedForWasQueued() {
+        assertThat(this.queued).isLessThan(this.file.size() / 2);
+    }
+
+    private void thenOurAnswerCameBeforeMostOfTheData() {
+        assertThat(this.dataBeforeAnswer).isLessThan(this.file.size() / 2);
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

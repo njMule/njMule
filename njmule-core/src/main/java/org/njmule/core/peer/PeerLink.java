@@ -318,6 +318,16 @@ public final class PeerLink implements TcpConnection.Handler {
         }
 
         @Override
+        public boolean sendData(Packet packet) {
+            return this.isCurrent() && PeerLink.this.connection.sendData(packet);
+        }
+
+        @Override
+        public long queuedData() {
+            return PeerLink.this.connection.queuedData();
+        }
+
+        @Override
         public InetSocketAddress remoteAddress() {
             return PeerLink.this.remoteAddress();
         }
