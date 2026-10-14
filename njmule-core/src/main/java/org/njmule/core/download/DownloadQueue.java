@@ -129,6 +129,8 @@ public final class DownloadQueue implements AutoCloseable {
         private final BitSet corrupted = new BitSet();
         private final Map<Integer, Long> sinceIch = new HashMap<>();
         private final BitSet ichRunning = new BitSet();
+        // Parts whose check is on its way.
+        private final BitSet checking = new BitSet();
         private final CorruptionBlackBox blackBox = new CorruptionBlackBox();
 
         Download(PartFile file, PartFileStorage storage) {
@@ -432,6 +434,7 @@ public final class DownloadQueue implements AutoCloseable {
                 return true;
             }
             download.verified.clear();
+            download.checking.clear();
             for (int part = 0; part < download.file.partCount(); part++) {
                 this.verify(download, part);
             }
@@ -595,17 +598,21 @@ public final class DownloadQueue implements AutoCloseable {
         return this.downloads.get(download.hash()) == download;
     }
 
+    // One check of a part at a time: it runs after the writes queued before it, so writes that end meanwhile, as those
+    // still on their way when ICH made the part whole, need no check of their own.
     private void verify(Download download, int part) {
         Optional<Hash16> expected = download.file.partHash(part);
-        if (expected.isEmpty()) {
+        if (expected.isEmpty() || download.checking.get(part)) {
             return;
         }
+        download.checking.set(part);
         this.loop.whenDone(
                 download.storage.hashPart(download.file.size(), part),
                 (actual, failure) -> this.checked(download, part, expected.get(), actual, failure));
     }
 
     private void checked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
+        download.checking.clear(part);
         if (!this.isQueued(download)) {
             return;
         }
