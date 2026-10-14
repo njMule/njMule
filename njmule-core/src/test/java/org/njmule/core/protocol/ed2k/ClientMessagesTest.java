@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
@@ -37,6 +38,10 @@ class ClientMessagesTest {
 
     private static final HexFormat HEX = HexFormat.of();
     private static final Hash16 FILE = Hash16.parseHex("ab".repeat(16));
+    private static final long FOUR_GIB = 1L << 32;
+
+    private Packet packet;
+    private ClientMessages.RequestParts request;
 
     @Test
     void fileStatusBitsStartWithTheLowestBit() throws DecodeException {
@@ -144,6 +149,46 @@ class ClientMessagesTest {
         ClientMessages.SendingPart last =
                 new ClientMessages.SendingPart(FILE, 0xFFFF_FFFEL, 0xFFFF_FFFFL, new byte[] {1});
         assertThat(ClientMessages.SendingPart.decode(last.encode(false))).isEqualTo(last);
+    }
+
+    @Test
+    void shouldReadANarrowRangeWhoseEndWrappedToZeroAsEndingAtFourGigabytes() throws DecodeException {
+        this.givenANarrowRequestOfTheRange(FOUR_GIB - Ed2k.EMBLOCKSIZE, 0);
+
+        this.whenTheRequestIsDecoded();
+
+        this.thenTheRequestedRangesAre(new ClientMessages.Range(FOUR_GIB - Ed2k.EMBLOCKSIZE, FOUR_GIB));
+    }
+
+    @Test
+    void shouldReadANarrowRangeEndingBeforeItsStartAsNothing() throws DecodeException {
+        this.givenANarrowRequestOfTheRange(5000, 4000);
+
+        this.whenTheRequestIsDecoded();
+
+        this.thenTheRequestedRangesAre();
+    }
+
+    private void givenANarrowRequestOfTheRange(long start, long end) {
+        this.packet = Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Client.REQUESTPARTS.code(),
+                new PacketWriter()
+                        .hash16(FILE)
+                        .u32(start)
+                        .u32(0)
+                        .u32(0)
+                        .u32(end)
+                        .u32(0)
+                        .u32(0));
+    }
+
+    private void whenTheRequestIsDecoded() throws DecodeException {
+        this.request = ClientMessages.RequestParts.decode(this.packet);
+    }
+
+    private void thenTheRequestedRangesAre(ClientMessages.Range... expected) {
+        assertThat(this.request.ranges().stream().filter(r -> !r.isEmpty())).containsExactly(expected);
     }
 
     @Test

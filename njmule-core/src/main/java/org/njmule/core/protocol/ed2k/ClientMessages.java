@@ -223,6 +223,10 @@ public final class ClientMessages {
             List<Range> ranges = new ArrayList<>(BLOCKS_PER_REQUEST);
             for (int i = 0; i < BLOCKS_PER_REQUEST; i++) {
                 long end = wide ? in.u64() : in.u32();
+                // Some clients ask for the block ending at 4 GiB in 32 bits, its end wrapped to 0.
+                if (!wide && end == 0 && starts[i] > 0) {
+                    end = 1L << 32;
+                }
                 if (!isOffset(starts[i]) || !isOffset(end)) {
                     throw new DecodeException("invalid range " + starts[i] + "-" + end);
                 }
