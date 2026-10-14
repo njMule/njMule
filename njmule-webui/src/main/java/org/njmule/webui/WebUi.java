@@ -73,7 +73,6 @@ import org.slf4j.LoggerFactory;
 public final class WebUi implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(WebUi.class);
-    private static final String COOKIE = "njmule-session";
     private static final String HTML = "text/html; charset=utf-8";
     private static final String TEXT = "text/plain; charset=utf-8";
     private static final String GET = "GET";
@@ -111,6 +110,9 @@ public final class WebUi implements AutoCloseable {
     private final int passwordChecks;
     private final Semaphore checking;
 
+    // Browsers keep cookies by host, whatever the port: two instances on one computer need two names.
+    private final String cookie;
+
     // Results of the latest searches started here, by search id, oldest first.
     private final LinkedHashMap<Long, Map<Hash16, SearchResult>> results = new LinkedHashMap<>();
 
@@ -125,6 +127,7 @@ public final class WebUi implements AutoCloseable {
         this.server = server;
         this.passwordChecks = passwordChecks;
         this.checking = new Semaphore(passwordChecks);
+        this.cookie = "njmule-session-" + server.getAddress().getPort();
     }
 
     /** Starts the interface; it must be enabled and have a password. */
@@ -302,7 +305,7 @@ public final class WebUi implements AutoCloseable {
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
         exchange.getResponseHeaders()
-                .add("Set-Cookie", COOKIE + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
+                .add("Set-Cookie", this.cookie + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
         this.redirect(exchange, "/");
     }
 
@@ -349,7 +352,7 @@ public final class WebUi implements AutoCloseable {
                 case "/logout" -> {
                     this.sessions.close(session.id());
                     exchange.getResponseHeaders()
-                            .add("Set-Cookie", COOKIE + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
+                            .add("Set-Cookie", this.cookie + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
                     yield "/login";
                 }
                 case TRANSFERS -> {
@@ -683,7 +686,7 @@ public final class WebUi implements AutoCloseable {
         for (String header : exchange.getRequestHeaders().getOrDefault("Cookie", List.of())) {
             for (String cookie : header.split(";", -1)) {
                 String[] pair = cookie.strip().split("=", 2);
-                if (pair.length == 2 && pair[0].equals(COOKIE)) {
+                if (pair.length == 2 && pair[0].equals(this.cookie)) {
                     return this.sessions.find(pair[1]);
                 }
             }

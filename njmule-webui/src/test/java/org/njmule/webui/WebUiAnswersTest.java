@@ -204,6 +204,32 @@ class WebUiAnswersTest {
         assertThat(this.get("/search?id=2").body()).contains("early.iso");
     }
 
+    @Test
+    void twoInstancesOnOneComputerKeepTheirSessions() throws Exception {
+        this.start();
+        this.login();
+        String mine = this.cookie;
+        FakeEngine otherEngine = new FakeEngine();
+        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
+        try (WebUi other = WebUi.start(otherEngine.engine(), new WebUiSettings(true, freePort(), false, hash))) {
+            HttpResponse<String> in = this.http.send(
+                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + other.port() + "/login"))
+                            .POST(form(Map.of("password", PASSWORD)))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            String set = in.headers().firstValue("Set-Cookie").orElseThrow();
+            String theirs = set.substring(0, set.indexOf(';'));
+            assertThat(mine).startsWith("njmule-session-" + this.ui.port() + "=");
+            assertThat(theirs).startsWith("njmule-session-" + other.port() + "=");
+
+            // Cookies do not depend on the port: the browser sends both to each.
+            this.cookie = theirs + "; " + mine;
+            assertThat(this.get("/search").statusCode()).isEqualTo(200);
+        } finally {
+            otherEngine.events.close();
+        }
+    }
+
     private static SearchResult result(String name) {
         return new SearchResult(
                 Hash16.parseHex(
