@@ -122,6 +122,20 @@ class DownloadRecoveryFlowTest {
     }
 
     @Test
+    void theRestOfABlockWhoseCompressedStreamEndsEarlyIsAskedForAtOnce() throws Exception {
+        byte[] data = content(3 * BLOCK, 26);
+        FakePeer peer = this.peer(this.share(data), FakePeer.Config.simple(hash(26)));
+        peer.truncateNextBlock();
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+
+        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
+
+        Path file = events.completed(added.hash(), SOON).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+    }
+
+    @Test
     void aFileDownloadedAgainRecoversItsCorruptPartsAgain() throws Exception {
         byte[] data = content(3 * PART + 1000, 24);
         Path shared = this.share(data);

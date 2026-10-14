@@ -597,7 +597,17 @@ final class DownloadSession implements PeerLink.Role {
         long position = block.inflater.position();
         byte[] chunk = part.chunk();
         byte[] data = block.inflater.inflate(chunk);
+        boolean ended = block.inflater.finished();
         this.accept(position, data, chunk.length);
+        // A stream that ended before its block did brings nothing more: the rest is asked for again now.
+        if (ended && this.state == State.DOWNLOADING && this.pending.get(block.block.start()) == block) {
+            this.pending.remove(block.block.start());
+            block.dispose();
+            for (Range<Long> rest : block.missing.asRanges()) {
+                this.download.file().release(rest.lowerEndpoint(), rest.upperEndpoint());
+            }
+            this.requestBlocks();
+        }
     }
 
     // Data counts only inside a block we asked for and still wait for.

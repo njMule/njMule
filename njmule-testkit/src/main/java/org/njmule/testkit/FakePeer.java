@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHashing;
@@ -61,8 +62,8 @@ import org.slf4j.LoggerFactory;
 /**
  * An in-process client for tests that shares one file: it answers hellos and file requests, keeps downloaders queued or
  * gives them a slot (also by calling them back), and sends the blocks they ask for, plain or compressed. It can end
- * upload sessions early, send a corrupt copy of chosen parts once, go silent or drop its downloaders. Plain connections
- * only.
+ * upload sessions early, send a corrupt copy of chosen parts or a short compressed block once, go silent or drop its
+ * downloaders. Plain connections only.
  */
 public final class FakePeer implements AutoCloseable {
 
@@ -108,6 +109,7 @@ public final class FakePeer implements AutoCloseable {
     private final AtomicLong sent = new AtomicLong();
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
     private volatile boolean stalled;
+    private final AtomicBoolean truncateNext = new AtomicBoolean();
 
     private FakePeer(Path file, Ed2kLink.FileLink link, Optional<AichTree> aich, Config config, ServerSocket tcp) {
         this.file = file;
@@ -175,6 +177,11 @@ public final class FakePeer implements AutoCloseable {
     /** Stops sending the blocks downloaders ask for, as a source that went silent. */
     public void stall() {
         this.stalled = true;
+    }
+
+    /** Makes the compressed stream of the next block end halfway through the block. */
+    public void truncateNextBlock() {
+        this.truncateNext.set(true);
     }
 
     /** Closes the connections of the downloaders, as a source that went away. */
@@ -431,7 +438,10 @@ public final class FakePeer implements AutoCloseable {
             Hash16 hash = FakePeer.this.link.hash();
             List<Packet> packets = new ArrayList<>();
             if (FakePeer.this.config.compress()) {
-                byte[] stream = Packing.deflate(block, 1);
+                byte[] sent = FakePeer.this.truncateNext.compareAndSet(true, false)
+                        ? Arrays.copyOf(block, block.length / 2)
+                        : block;
+                byte[] stream = Packing.deflate(sent, 1);
                 for (int at = 0; at < stream.length; at += CHUNK) {
                     byte[] chunk = Arrays.copyOfRange(stream, at, Math.min(stream.length, at + CHUNK));
                     packets.add(new ClientMessages.CompressedPart(hash, start, stream.length, chunk).encode(false));
