@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
@@ -65,7 +66,9 @@ class EmuleImporterTest {
         final List<Path> shared = new ArrayList<>();
         final List<Path> refused = new ArrayList<>();
         final List<String> adopted = new ArrayList<>();
+        final Map<String, Integer> adoptedCategories = new HashMap<>();
         final List<Category> categories = new ArrayList<>();
+        boolean ownCategories;
 
         @Override
         public Path configDir() {
@@ -105,14 +108,18 @@ class EmuleImporterTest {
 
         @Override
         public int addCategories(List<Category> taken) {
+            if (this.ownCategories) {
+                return 0;
+            }
             this.categories.addAll(taken);
             return taken.size();
         }
 
         @Override
-        public String adoptDownload(Path met, Path data) {
+        public String adoptDownload(Path met, Path data, int category) {
             assertThat(data).exists();
             this.adopted.add(String.valueOf(met.getFileName()));
+            this.adoptedCategories.put(String.valueOf(met.getFileName()), category);
             return String.valueOf(met.getFileName());
         }
 
@@ -282,6 +289,25 @@ class EmuleImporterTest {
         assertThat(shortened.patterns()).hasSize(Category.MAX_PATTERNS);
         assertThat(this.target.categories.get(1).patterns()).isEmpty();
         assertThat(detail(report, "Category.ini")).contains("2 categories", "Broken");
+    }
+
+    @Test
+    void downloadsKeepOnlyTheCategoriesThatCameWithThem() throws IOException {
+        this.emule.putInCategory(1, 1);
+        this.emule.putInCategory(2, 2);
+        Files.writeString(this.emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
+
+        this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.adoptedCategories)
+                .containsEntry("001.part.met", 1)
+                .as("eMule's category 2 was not taken")
+                .containsEntry("002.part.met", Category.NONE);
+
+        this.target.ownCategories = true;
+        this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.adoptedCategories).containsEntry("001.part.met", Category.NONE);
     }
 
     @Test

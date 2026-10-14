@@ -874,7 +874,7 @@ public final class Engine implements NjMuleEngine {
         }
 
         @Override
-        public String adoptDownload(Path met, Path data) throws IOException {
+        public String adoptDownload(Path met, Path data, int category) throws IOException {
             Path temp = Engine.this.loop.submit(Engine.this.network::tempDir).join();
             String stem = "import-" + UUID.randomUUID();
             // Names the download loader ignores, until the engine takes the copy over.
@@ -885,7 +885,11 @@ public final class Engine implements NjMuleEngine {
                 Files.copy(data, stagedData);
                 return Engine.this
                         .loop
-                        .submit(() -> Engine.this.network.adoptDownload(stagedMet, stagedData))
+                        .submit(() -> {
+                            DownloadInfo adopted = Engine.this.network.adoptDownload(stagedMet, stagedData);
+                            Engine.this.network.setDownloadCategory(adopted.hash(), category);
+                            return adopted;
+                        })
                         .join()
                         .name();
             } finally {

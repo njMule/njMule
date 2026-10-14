@@ -24,6 +24,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -88,8 +89,11 @@ public final class EmuleImporter {
         /** Takes these categories when we have none of our own; returns how many were taken. */
         int addCategories(List<Category> categories) throws IOException;
 
-        /** Downloads on from a copy of another client's part file; returns the file name. */
-        String adoptDownload(Path met, Path data) throws IOException;
+        /**
+         * Downloads on from a copy of another client's part file, in {@code category} ({@link Category#NONE} for none);
+         * returns the file name.
+         */
+        String adoptDownload(Path met, Path data, int category) throws IOException;
     }
 
     /** Under the config directory: the identity files waiting for the next start. */
@@ -121,6 +125,8 @@ public final class EmuleImporter {
     private final Target target;
     private final BooleanSupplier emuleRunning;
     private final List<ImportReport.Item> items = new ArrayList<>();
+    // The ids of eMule's categories taken over: only downloads in these keep theirs.
+    private final Set<Integer> categoriesTaken = new HashSet<>();
 
     /**
      * @param emule eMule's configuration directory
@@ -571,6 +577,9 @@ public final class EmuleImporter {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, found.size() + " categories" + notes);
             }
             int added = this.target.addCategories(found);
+            if (added == found.size()) {
+                found.forEach(c -> this.categoriesTaken.add(c.id()));
+            }
             return added == 0
                     ? item(file, ImportReport.Outcome.SKIPPED, found.size() + " categories; we have our own")
                     : item(file, ImportReport.Outcome.IMPORTED, added + " categories" + notes);
@@ -802,7 +811,14 @@ public final class EmuleImporter {
         if (this.options.dryRun()) {
             return item(met, ImportReport.Outcome.WOULD_IMPORT, name + ", " + mib + " MiB");
         }
-        String adopted = this.target.adoptDownload(met, part);
+        // eMule's number names one of ours only when that category came with this import.
+        long category = contents.category().orElse(Category.NONE);
+        String adopted = this.target.adoptDownload(
+                met,
+                part,
+                category > 0 && category <= Integer.MAX_VALUE && this.categoriesTaken.contains((int) category)
+                        ? (int) category
+                        : Category.NONE);
         return item(met, ImportReport.Outcome.IMPORTED, adopted + ", " + mib + " MiB copied");
     }
 

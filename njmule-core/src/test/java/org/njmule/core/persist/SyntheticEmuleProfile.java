@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -41,6 +42,7 @@ import org.njmule.core.persist.format.CancelledMet;
 import org.njmule.core.persist.format.ClientsMet;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.persist.format.PartMet;
 import org.njmule.core.persist.format.PreferencesDat;
 import org.njmule.core.persist.format.PreferencesKadDat;
 import org.njmule.core.persist.format.ServerMet;
@@ -191,6 +193,23 @@ public final class SyntheticEmuleProfile {
 
     private Path root() {
         return this.config.getParent();
+    }
+
+    /** Puts download {@code number} (1 complete, 2 half done) in eMule's category {@code category}. */
+    public void putInCategory(int number, int category) throws IOException {
+        Path met = this.temp.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX);
+        PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : contents.tags()) {
+            if (!tag.name().equals(TagName.id(FileTag.CATEGORY))) {
+                tags.add(tag);
+            }
+        }
+        tags.add(new Tag.IntTag(TagName.id(FileTag.CATEGORY), category));
+        Files.write(
+                met,
+                PartMet.write(new PartMet.Contents(
+                        contents.version(), contents.mtime(), contents.fileHash(), contents.partHashes(), tags)));
     }
 
     private PartFile download(int number, String name, Hash16 hash) {

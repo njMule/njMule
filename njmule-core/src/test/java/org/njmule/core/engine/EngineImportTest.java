@@ -23,12 +23,15 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -140,6 +143,28 @@ class EngineImportTest {
             assertThat(engine.savedSearches().get(5, TimeUnit.SECONDS))
                     .extracting(SavedSearch::title)
                     .containsExactly("linux");
+        }
+    }
+
+    @Test
+    void aDownloadDoesNotLandInAnUnrelatedCategoryOfOurs() throws Exception {
+        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
+        Files.writeString(emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
+        emule.putInCategory(2, 1);
+        AppDirectories dirs = this.directories(freePort());
+
+        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
+            engine.setCategories(
+                            List.of(new Category(1, "Mine", Optional.empty(), "", 0, DownloadPriority.AUTO, "", false)))
+                    .get(5, TimeUnit.SECONDS);
+            engine.importFromEmule(emule.config, new ImportOptions(false, false, true))
+                    .get(30, TimeUnit.SECONDS);
+
+            assertThat(engine.downloads().get(5, TimeUnit.SECONDS))
+                    .filteredOn(d -> d.hash().equals(emule.halfHash))
+                    .singleElement()
+                    .extracting(DownloadInfo::category)
+                    .isEqualTo(Category.NONE);
         }
     }
 

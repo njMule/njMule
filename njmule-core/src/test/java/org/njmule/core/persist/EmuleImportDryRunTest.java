@@ -88,7 +88,7 @@ class EmuleImportDryRunTest {
             }
 
             @Override
-            public String adoptDownload(Path met, Path data) {
+            public String adoptDownload(Path met, Path data, int category) {
                 return fail("a dry run changes nothing");
             }
         };
