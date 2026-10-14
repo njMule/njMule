@@ -52,6 +52,8 @@ public final class CommentDialog {
     private final ComboBox<Integer> rating = new ComboBox<>();
     private final TextField text = new TextField();
     private final ListView<PeerComment> heard = new ListView<>();
+    private boolean textChanged;
+    private boolean ratingChanged;
 
     public CommentDialog(Gui gui, Window owner, Hash16 file, String name, boolean download) {
         this.gui = gui;
@@ -102,9 +104,16 @@ public final class CommentDialog {
         Scene scene = new Scene(root, 620, download ? 420 : 180);
         gui.themes().attach(scene);
         this.stage.setScene(scene);
+        // The stored comment may come after the user began to type: what the user changed stays.
+        this.text.textProperty().addListener((o, was, now) -> this.textChanged = true);
+        this.rating.valueProperty().addListener((o, was, now) -> this.ratingChanged = true);
         gui.model().fileComment(file, c -> {
-            this.rating.setValue(c.rating());
-            this.text.setText(c.text());
+            if (!this.ratingChanged) {
+                this.rating.setValue(c.rating());
+            }
+            if (!this.textChanged) {
+                this.text.setText(c.text());
+            }
         });
     }
 
@@ -138,5 +147,13 @@ public final class CommentDialog {
 
     Stage stage() {
         return this.stage;
+    }
+
+    TextField textField() {
+        return this.text;
+    }
+
+    ComboBox<Integer> ratingBox() {
+        return this.rating;
     }
 }

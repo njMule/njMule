@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,6 +31,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.FileComment;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.gui.Engines;
@@ -38,6 +41,8 @@ import org.njmule.gui.TestGui;
 
 @Timeout(60)
 class DialogsTest {
+
+    private static final Hash16 FILE = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
 
     @TempDir
     Path dir;
@@ -166,6 +171,28 @@ class DialogsTest {
 
         FxTesting.await("the failure", () -> !dialog.get().checkButton().isDisabled());
         assertThat(FxTesting.onFx(() -> dialog.get().summaryLabel().getText())).contains("preferences.ini is locked");
+        FxTesting.onFx(() -> dialog.get().stage().close());
+    }
+
+    @Test
+    void aLateCommentNeverReplacesWhatTheUserTyped() throws Exception {
+        CompletableFuture<Optional<FileComment>> stored = new CompletableFuture<>();
+        this.test = TestGui.start(
+                this.dir.resolve("njmule"), real -> Engines.overriding(real, Map.of("fileComment", args -> stored)));
+        AtomicReference<CommentDialog> dialog = new AtomicReference<>();
+        FxTesting.onFx(() -> {
+            dialog.set(new CommentDialog(this.test.gui, new Stage(), FILE, "film.mkv", false));
+            dialog.get().show();
+            dialog.get().textField().setText("my own words");
+        });
+
+        stored.complete(Optional.of(FileComment.of("the old comment", 3)));
+        FxTesting.onFx(() -> {});
+
+        assertThat(FxTesting.onFx(() -> dialog.get().textField().getText())).isEqualTo("my own words");
+        assertThat(FxTesting.onFx(() -> dialog.get().ratingBox().getValue()))
+                .as("the rating was not touched")
+                .isEqualTo(3);
         FxTesting.onFx(() -> dialog.get().stage().close());
     }
 
