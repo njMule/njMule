@@ -17,14 +17,18 @@
 package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.List;
@@ -162,6 +166,136 @@ class LinkHandoffTest {
             Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), port + " " + "ab".repeat(32) + "\n");
 
             assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).as(port).isFalse();
+        }
+        for (String content : new String[] {"4711", "port " + "ab".repeat(32), "1 2 3"}) {
+            Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), content + "\n");
+
+            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).as(content).isFalse();
+        }
+    }
+
+    @Test
+    void anUnreadableFileIsNoRunningInstance() throws Exception {
+        Files.createDirectories(this.dir.resolve(LinkHandoff.FILE_NAME));
+
+        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
+    }
+
+    @Test
+    void listeningNeedsAPlaceForTheFile() throws Exception {
+        Path notADirectory = Files.writeString(this.dir.resolve("config"), "a file");
+
+        assertThatThrownBy(() -> LinkHandoff.listen(notADirectory, this.received::add))
+                .isInstanceOf(IOException.class);
+    }
+
+    @Test
+    void closingCopesWithAFileAlreadyGone() throws Exception {
+        LinkHandoff handoff = LinkHandoff.listen(this.dir, this.received::add);
+        Files.delete(this.dir.resolve(LinkHandoff.FILE_NAME));
+
+        handoff.close();
+
+        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
+    }
+
+    @Test
+    void aProgramWithoutTheSecretGetsNoAnswer() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
+            int port = this.port();
+            // Only the first line, which ends the exchange: nothing is left unread to reset the connection.
+            for (String sent : new String[] {"", "not hex\n", "ab\n"}) {
+                try (Socket client = new Socket(InetAddress.getLoopbackAddress(), port)) {
+                    client.getOutputStream().write(sent.getBytes(StandardCharsets.UTF_8));
+                    client.shutdownOutput();
+                    assertThat(client.getInputStream().readAllBytes()).as(sent).isEmpty();
+                }
+            }
+            assertThat(this.received.poll(300, TimeUnit.MILLISECONDS)).isNull();
+        }
+    }
+
+    @Test
+    void takesAtMostSoManyLinksAndTheLastOneWithoutItsLineEnd() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
+            StringBuilder sent = new StringBuilder(this.secret()).append('\n');
+            for (int i = 0; i < LinkHandoff.MAX_LINKS + 10; i++) {
+                sent.append("ed2k://|file|")
+                        .append(i)
+                        .append(".iso|10|")
+                        .append("ab".repeat(16))
+                        .append("|/\n");
+            }
+            assertThat(this.exchange(sent.toString())).startsWith("OK");
+            List<String> links = this.received.poll(5, TimeUnit.SECONDS);
+            assertThat(links).hasSize(LinkHandoff.MAX_LINKS);
+            assertThat(links.getFirst()).contains("|0.iso|");
+
+            assertThat(this.exchange(this.secret() + "\n" + LINK)).startsWith("OK");
+            assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
+        }
+    }
+
+    @Test
+    void aLineTooLongEndsTheExchange() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
+            // One character too many, and no more: nothing is left unread to reset the connection.
+            String tooLong = "ed2k://" + "a".repeat(LinkHandoff.MAX_LINE - 6);
+
+            assertThat(this.exchange(this.secret() + "\n" + tooLong)).isEmpty();
+            assertThat(this.received.poll(300, TimeUnit.MILLISECONDS)).isNull();
+            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
+                    .as("still listening")
+                    .isTrue();
+        }
+    }
+
+    @Test
+    void anInstanceHoldingItsLockHasNotGone() throws Exception {
+        Path lock = this.dir.resolve("njmule.lock");
+        try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                FileLock _ = channel.lock()) {
+            Thread.currentThread().interrupt();
+            try {
+                assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofSeconds(5)))
+                        .as("an interrupted wait")
+                        .isFalse();
+                assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            } finally {
+                Thread.interrupted();
+            }
+        }
+        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofSeconds(5)))
+                .as("a lock nobody holds")
+                .isTrue();
+    }
+
+    @Test
+    void aLockThatCannotBeOpenedGoesByTheHandoffFile() throws Exception {
+        Files.createDirectories(this.dir.resolve("njmule.lock"));
+        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofMillis(300))).isTrue();
+
+        Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), "1 " + "ab".repeat(32) + "\n");
+        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofMillis(300))).isFalse();
+    }
+
+    private int port() throws IOException {
+        return Integer.parseInt(Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
+                .split(" ", -1)[0]);
+    }
+
+    private String secret() throws IOException {
+        return Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
+                .strip()
+                .split(" ", -1)[1];
+    }
+
+    // Sends text as a later start would, and returns the answer.
+    private String exchange(String text) throws IOException {
+        try (Socket client = new Socket(InetAddress.getLoopbackAddress(), this.port())) {
+            client.getOutputStream().write(text.getBytes(StandardCharsets.UTF_8));
+            client.shutdownOutput();
+            return new String(client.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 }
