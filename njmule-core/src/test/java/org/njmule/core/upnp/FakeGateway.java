@@ -63,6 +63,7 @@ public final class FakeGateway implements AutoCloseable {
     private final Map<String, String> statuses = new ConcurrentHashMap<>();
     private final List<Socket> open = new CopyOnWriteArrayList<>();
     private volatile ServerSocket http;
+    private volatile Thread acceptor;
     private volatile String description;
     private volatile Body body = Body.WHOLE;
     private volatile int faultCode;
@@ -77,7 +78,7 @@ public final class FakeGateway implements AutoCloseable {
         this.ssdp = new DatagramSocket(0, LOOPBACK);
         this.http = new ServerSocket(0, 50, LOOPBACK);
         Thread.ofVirtual().start(this::answerDiscovery);
-        this.serve(this.http);
+        this.acceptor = this.serve(this.http);
     }
 
     /** A gateway with one WAN connection service of {@code type} at {@code control}. */
@@ -161,11 +162,13 @@ public final class FakeGateway implements AutoCloseable {
     }
 
     /** The router restarts its web server on another port: the old control address no longer answers. */
-    public void moveHttp() throws IOException {
+    public void moveHttp() throws IOException, InterruptedException {
         ServerSocket old = this.http;
         this.http = new ServerSocket(0, 50, LOOPBACK);
         old.close();
-        this.serve(this.http);
+        // A socket closed while a thread accepts on it keeps listening until that accept returns.
+        this.acceptor.join();
+        this.acceptor = this.serve(this.http);
     }
 
     @Override
@@ -199,8 +202,8 @@ public final class FakeGateway implements AutoCloseable {
         this.ssdp.send(new DatagramPacket(answer, answer.length, search.getSocketAddress()));
     }
 
-    private void serve(ServerSocket server) {
-        Thread.ofVirtual().start(() -> {
+    private Thread serve(ServerSocket server) {
+        return Thread.ofVirtual().start(() -> {
             while (!server.isClosed()) {
                 try {
                     Socket client = server.accept();
