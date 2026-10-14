@@ -127,7 +127,7 @@ public record Preferences(
     public Preferences {
         Objects.requireNonNull(nick, "nick");
         nick = nick.strip();
-        if (nick.isEmpty() || nick.length() > MAX_NICK_LENGTH || nick.chars().anyMatch(Character::isISOControl)) {
+        if (!isValidNick(nick)) {
             throw new IllegalArgumentException("nick must be 1-" + MAX_NICK_LENGTH + " printable characters");
         }
         requireRange("tcpPort", tcpPort, 1, MAX_PORT);
@@ -240,6 +240,18 @@ public record Preferences(
         if (!path.isAbsolute()) {
             throw new IllegalArgumentException(name + " must be an absolute path: " + path);
         }
+    }
+
+    /** Whether {@code nick}, already stripped, can be ours: 1 to 50 characters, none of them a control. */
+    public static boolean isValidNick(String nick) {
+        return !nick.isEmpty()
+                && nick.length() <= MAX_NICK_LENGTH
+                && nick.chars().noneMatch(c -> Character.isISOControl(c) || isBidiControl(c));
+    }
+
+    // Embeddings, overrides and isolates would reverse the text shown after the nick in other users' lists.
+    private static boolean isBidiControl(int c) {
+        return (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069);
     }
 
     /** Mutable copy; {@link #build()} validates. */

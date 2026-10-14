@@ -227,8 +227,7 @@ public final class EmuleImporter {
         Preferences.Builder b = current.toBuilder();
         ini.get(SECTION, "Nick")
                 .map(String::strip)
-                .filter(n -> !n.isEmpty() && n.length() <= Preferences.MAX_NICK_LENGTH)
-                .filter(n -> n.chars().noneMatch(Character::isISOControl))
+                .filter(Preferences::isValidNick)
                 .ifPresent(b::nick);
         limit(ini, "MaxUpload").ifPresent(v -> b.maxUploadKiBps((int) v));
         limit(ini, "MaxDownload").ifPresent(v -> b.maxDownloadKiBps((int) v));
