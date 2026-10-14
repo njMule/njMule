@@ -176,6 +176,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Puts a download in a category, with its priority; {@link Category#NONE} takes it out of any. */
     CompletableFuture<Boolean> setDownloadCategory(Hash16 hash, int category);
 
+    /** Fetches the first and last parts of a download first, for a preview, or stops; {@code false} if unknown. */
+    CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst);
+
+    /** The data file of a download, which a player can show while it grows; empty for an unknown download. */
+    CompletableFuture<Optional<Path>> downloadData(Hash16 hash);
+
     /** Sets how early the download asks for sources and starts transfers, before the others. */
     CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority);
 

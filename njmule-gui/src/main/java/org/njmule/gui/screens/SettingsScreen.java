@@ -117,6 +117,9 @@ public final class SettingsScreen implements Screen {
     private final CheckBox rememberDownloaded = new CheckBox();
     private final CheckBox rememberCancelled = new CheckBox();
     private final CheckBox storeSearches = new CheckBox();
+    private final CheckBox previewFirst = new CheckBox();
+    private final TextField videoPlayer = new TextField();
+    private final TextField videoPlayerArgs = new TextField();
     private final ComboBox<SharedFilesVisibility> visibility = new ComboBox<>();
     private final CheckBox addPaused = new CheckBox();
     private final CheckBox startNext = new CheckBox();
@@ -231,6 +234,10 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setText(this.gui.t("IDS_PW_REMEMBERDOWNLOADED"));
         this.rememberCancelled.setText(this.gui.t("IDS_PW_REMEMBERCANCELLED"));
         this.storeSearches.setText(this.gui.t("IDS_STORESEARCHES"));
+        this.previewFirst.setText(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
+        this.videoPlayer.setPrefColumnCount(26);
+        this.videoPlayerArgs.setPrefColumnCount(14);
+        this.videoPlayerArgs.setPromptText(this.gui.t("nj.preview.args"));
         this.visibility.getItems().addAll(SharedFilesVisibility.values());
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
         this.visibility.setButtonCell(new NamedCell<>(this::visibilityName));
@@ -320,6 +327,8 @@ public final class SettingsScreen implements Screen {
         grid.add(this.rememberDownloaded, 1, row++);
         grid.add(this.rememberCancelled, 1, row++);
         grid.add(this.storeSearches, 1, row++);
+        grid.add(this.previewFirst, 1, row++);
+        row = field(grid, row, this.gui.t("IDS_PW_VIDEOPLAYER"), new HBox(8, this.videoPlayer, this.videoPlayerArgs));
         row = field(grid, row, this.gui.t("IDS_PW_SHARE"), this.visibility);
         grid.add(this.addPaused, 1, row++);
         HBox next = new HBox(8, this.startNext, this.nextCategory);
@@ -547,6 +556,9 @@ public final class SettingsScreen implements Screen {
         this.rememberDownloaded.setSelected(p.rememberDownloadedFiles());
         this.rememberCancelled.setSelected(p.rememberCancelledFiles());
         this.storeSearches.setSelected(p.storeSearches());
+        this.previewFirst.setSelected(p.previewFirst());
+        this.videoPlayer.setText(p.videoPlayer());
+        this.videoPlayerArgs.setText(p.videoPlayerArgs());
         this.visibility.setValue(p.sharedFilesVisibility());
         this.addPaused.setSelected(p.addDownloadsPaused());
         this.startNext.setSelected(p.nextDownload() != NextDownload.NONE);
@@ -698,6 +710,9 @@ public final class SettingsScreen implements Screen {
                 .rememberDownloadedFiles(this.rememberDownloaded.isSelected())
                 .rememberCancelledFiles(this.rememberCancelled.isSelected())
                 .storeSearches(this.storeSearches.isSelected())
+                .previewFirst(this.previewFirst.isSelected())
+                .videoPlayer(this.videoPlayer.getText())
+                .videoPlayerArgs(this.videoPlayerArgs.getText())
                 .sharedFilesVisibility(this.visibility.getValue())
                 .addDownloadsPaused(this.addPaused.isSelected())
                 .nextDownload(this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)

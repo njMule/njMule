@@ -266,6 +266,9 @@ public final class EmuleImporter {
         ini.getBoolean(SECTION, "AdvancedSpamFilter").ifPresent(b::advancedSpamFilter);
         ini.getLong(SECTION, "MaxConnectionsPerFiveSeconds")
                 .ifPresent(v -> b.newConnectionsPerFiveSeconds(Math.clamp(v, 1, Preferences.MAX_NEW_CONNECTIONS)));
+        ini.getBoolean(SECTION, "PreviewPrio").ifPresent(b::previewFirst);
+        ini.get(SECTION, "VideoPlayer").ifPresent(b::videoPlayer);
+        ini.get(SECTION, "VideoPlayerArgs").ifPresent(b::videoPlayerArgs);
         // SeeShare: 0 everybody, 1 friends, 2 nobody.
         ini.getLong(SECTION, "SeeShare").ifPresent(v -> b.sharedFilesVisibility(visibility(v)));
         ini.getLong(SECTION, "QueueSize")

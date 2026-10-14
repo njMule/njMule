@@ -30,7 +30,8 @@ public record DownloadInfo(
         int sources,
         int transferring,
         long bytesPerSecond,
-        PartMap parts) {
+        PartMap parts,
+        boolean previewFirst) {
 
     public enum Status {
         DOWNLOADING,
@@ -41,6 +42,34 @@ public record DownloadInfo(
         NO_SPACE,
         ERROR,
         COMPLETE
+    }
+
+    /** A download that fetches its parts in the usual order. */
+    public DownloadInfo(
+            Hash16 hash,
+            String name,
+            long size,
+            long completed,
+            Status status,
+            DownloadPriority priority,
+            int category,
+            int sources,
+            int transferring,
+            long bytesPerSecond,
+            PartMap parts) {
+        this(
+                hash,
+                name,
+                size,
+                completed,
+                status,
+                priority,
+                category,
+                sources,
+                transferring,
+                bytesPerSecond,
+                parts,
+                false);
     }
 
     public DownloadInfo {

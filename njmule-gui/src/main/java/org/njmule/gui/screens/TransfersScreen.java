@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.screens;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -31,6 +32,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -65,6 +67,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ClientFilesDialog;
+import org.njmule.gui.infra.Preview;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
@@ -166,12 +169,20 @@ public final class TransfersScreen implements Screen {
         html.setOnAction(e -> this.copyHtml());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
+        MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"));
+        preview.setOnAction(e -> this.previewSelected());
+        CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
+        previewFirst.setOnAction(e -> Fx.selected(this.downloads)
+                .forEach(d -> this.gui.model().setPreviewFirst(d.hash(), previewFirst.isSelected())));
         Menu category = new Menu(this.gui.t("IDS_CAT"));
         this.downloads.setContextMenu(new ContextMenu(
                 pause,
                 resume,
                 stop,
                 cancel,
+                new SeparatorMenuItem(),
+                preview,
+                previewFirst,
                 this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
                 category,
                 new SeparatorMenuItem(),
@@ -214,7 +225,12 @@ public final class TransfersScreen implements Screen {
         this.lowerTabs = lowerTabs;
         VBox lower = new VBox(4, lowerTabs);
         VBox.setVgrow(lowerTabs, Priority.ALWAYS);
-        this.downloads.getContextMenu().setOnShowing(e -> category.getItems().setAll(this.categoryItems()));
+        this.downloads.getContextMenu().setOnShowing(e -> {
+            category.getItems().setAll(this.categoryItems());
+            List<DownloadInfo> selected = Fx.selected(this.downloads);
+            preview.setDisable(selected.size() != 1 || selected.getFirst().completed() == 0);
+            previewFirst.setSelected(!selected.isEmpty() && selected.stream().allMatch(DownloadInfo::previewFirst));
+        });
         this.categoryBar.getStyleClass().add("category-bar");
         this.showCategories();
         VBox upper = new VBox(this.categoryBar, this.downloads);
@@ -423,6 +439,27 @@ public final class TransfersScreen implements Screen {
 
     void cancel(List<DownloadInfo> selected) {
         selected.forEach(d -> this.gui.model().cancel(d.hash()));
+    }
+
+    // The player of the settings shows the data downloaded so far.
+    void previewSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (selected.size() != 1) {
+            return;
+        }
+        String player = this.gui.model().preferencesProperty().get().videoPlayer();
+        if (player.isEmpty()) {
+            this.gui.inform().accept(this.gui.t("nj.preview.noPlayer"));
+            return;
+        }
+        String args = this.gui.model().preferencesProperty().get().videoPlayerArgs();
+        this.gui.model().downloadData(selected.getFirst().hash(), data -> {
+            try {
+                Preview.start(player, args, data);
+            } catch (IOException e) {
+                this.gui.inform().accept(e.getMessage());
+            }
+        });
     }
 
     void copyLinks() {

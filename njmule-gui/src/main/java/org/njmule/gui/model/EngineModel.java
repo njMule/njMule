@@ -506,6 +506,16 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.renameSharedFile(file, name), ok -> this.refreshShared());
     }
 
+    /** Fetches the first and last parts of a download first, for a preview, or stops. */
+    public void setPreviewFirst(Hash16 file, boolean value) {
+        this.later(this.engine.setDownloadPreview(file, value), ok -> this.refreshDownloads());
+    }
+
+    /** The data file of a download, for a player; {@code then} gets it on the FX thread, when the download exists. */
+    public void downloadData(Hash16 file, Consumer<Path> then) {
+        this.later(this.engine.downloadData(file), data -> data.ifPresent(then));
+    }
+
     public void setUploadPriority(Hash16 file, UploadPriority priority) {
         this.later(this.engine.setUploadPriority(file, priority), ok -> this.refreshShared());
     }

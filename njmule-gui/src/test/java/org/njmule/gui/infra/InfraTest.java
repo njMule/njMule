@@ -157,6 +157,15 @@ class InfraTest {
         assertThat(Folders.command("Mac OS X", dir)).containsExactly("open", dir.toString());
         assertThat(Folders.command("Linux", dir)).containsExactly("xdg-open", dir.toString());
         Path file = dir.resolve("film.mkv");
+        assertThat(Preview.command("C:\\VLC\\vlc.exe", " --fullscreen  --no-audio ", file))
+                .as("each argument apart, the file last")
+                .containsExactly(
+                        "C:\\VLC\\vlc.exe",
+                        "--fullscreen",
+                        "--no-audio",
+                        file.toAbsolutePath().toString());
+        assertThat(Preview.command("mpv", "", file))
+                .containsExactly("mpv", file.toAbsolutePath().toString());
         assertThat(Folders.revealCommand("Windows 11", file))
                 .as("the file selected")
                 .containsExactly("explorer.exe", "/select,", file.toString());

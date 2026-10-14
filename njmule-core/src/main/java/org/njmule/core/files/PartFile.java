@@ -40,6 +40,7 @@ import org.njmule.core.persist.format.PartMet;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Bytes;
 
 /**
@@ -89,6 +90,8 @@ public final class PartFile {
     private final BitSet trusted = new BitSet();
     // Corrupt parts waiting for their AICH recovery data.
     private final BitSet held = new BitSet();
+    private boolean previewFirst;
+    private boolean previewAlways;
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
@@ -160,6 +163,8 @@ public final class PartFile {
         }
         contents.downloadPriority().ifPresent(code -> file.priority = priority(code));
         contents.category().ifPresent(id -> file.category = Math.clamp(id, 0, Integer.MAX_VALUE));
+        // Bit 0: first and last parts first, for a preview.
+        file.previewFirst = (Tags.intValue(contents.tags(), FileTag.DL_PREVIEW).orElse(0) & 1) != 0;
         // Parts checked before are trusted only while the data file is as it was saved.
         if (dataDate(file.dataFile()).equals(OptionalLong.of(contents.mtime()))) {
             for (Tag tag : contents.tags()) {
@@ -191,6 +196,9 @@ public final class PartFile {
         tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), statusCode(this.status)));
         tags.add(new Tag.IntTag(TagName.id(FileTag.DLPRIORITY), priorityCode(this.priority)));
+        if (this.previewFirst) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.DL_PREVIEW), 1));
+        }
         if (this.category != Category.NONE) {
             tags.add(new Tag.IntTag(TagName.id(FileTag.CATEGORY), this.category));
         }
@@ -476,11 +484,47 @@ public final class PartFile {
         return fileName(this.number) + DATA_SUFFIX;
     }
 
-    // Rarest first; among equally rare parts, one begun already, so that parts complete, are checked and can be shared
-    // sooner; then the lowest, which helps previews.
+    /** Whether the first and last parts come first, so that a player can show the file before it completes. */
+    public boolean previewFirst() {
+        return this.previewFirst;
+    }
+
+    public void setPreviewFirst(boolean value) {
+        this.previewFirst = value;
+    }
+
+    /**
+     * The parts a player needs to start: the first and the last, and the one before the last when the last is short.
+     * None for a file of two parts or less, or of a type no player shows.
+     */
+    BitSet previewParts(boolean always) {
+        BitSet parts = new BitSet();
+        int count = this.partCount();
+        boolean playable = FileTypes.of(this.name)
+                .filter(t -> t.equals(FileTypes.VIDEO) || t.equals(FileTypes.AUDIO))
+                .isPresent();
+        if ((this.previewFirst || always) && playable && this.size > 2 * Ed2k.PARTSIZE) {
+            parts.set(0);
+            parts.set(count - 1);
+            if (this.size - Ed2k.partStart(count - 1) < Ed2k.PARTSIZE / 3) {
+                parts.set(count - 2);
+            }
+        }
+        return parts;
+    }
+
+    /** Sets whether every playable file gets its first and last parts first. */
+    public void previewAlways(boolean value) {
+        this.previewAlways = value;
+    }
+
+    // The parts for a preview first; then the rarest; among equally rare parts, one begun already, so that parts
+    // complete, are checked and can be shared sooner; then the lowest.
     private int pickPart(BitSet sourceParts) {
+        BitSet preview = this.previewParts(this.previewAlways);
         int best = -1;
         boolean bestBegun = false;
+        boolean bestPreview = false;
         for (int part = sourceParts.nextSetBit(0);
                 part >= 0 && part < this.partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
@@ -495,11 +539,17 @@ public final class PartFile {
                 continue;
             }
             boolean begun = !missingHere.encloses(range);
+            boolean forPreview = preview.get(part);
+            if (bestPreview && !forPreview) {
+                continue;
+            }
             if (best < 0
+                    || (forPreview && !bestPreview)
                     || this.availability[part] < this.availability[best]
                     || (this.availability[part] == this.availability[best] && begun && !bestBegun)) {
                 best = part;
                 bestBegun = begun;
+                bestPreview = forPreview;
             }
         }
         return best;

@@ -621,6 +621,18 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.setDownloadPreview(hash, previewFirst));
+    }
+
+    @Override
+    public CompletableFuture<Optional<Path>> downloadData(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        return this.loop.submit(() -> this.network.downloadData(hash));
+    }
+
+    @Override
     public CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority) {
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(priority, "priority");

@@ -100,6 +100,9 @@ public final class PreferencesCodec {
                 Preferences::newConnectionsPerFiveSeconds,
                 Preferences.Builder::newConnectionsPerFiveSeconds);
         intKey("upload.queueSize", Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize);
+        boolKey("download.previewFirst", Preferences::previewFirst, Preferences.Builder::previewFirst);
+        key("preview.player", Preferences::videoPlayer, Preferences.Builder::videoPlayer);
+        key("preview.args", Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs);
         key(
                 "share.visibleTo",
                 p -> p.sharedFilesVisibility().name(),

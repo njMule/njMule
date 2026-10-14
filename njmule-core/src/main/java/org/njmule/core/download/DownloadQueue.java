@@ -309,6 +309,11 @@ public final class DownloadQueue implements AutoCloseable {
         }
     }
 
+    public void setPreviewFirst(Download download, boolean value) {
+        download.file.setPreviewFirst(value);
+        download.dirty = true;
+    }
+
     public void setPriority(Download download, DownloadPriority priority) {
         download.file.setPriority(priority);
         download.dirty = true;

@@ -321,7 +321,8 @@ final class Network {
                             prefs.maxSourcesPerFile(),
                             this.listenPort(),
                             prefs.minFreeSpaceMiB() * 1024L * 1024L,
-                            prefs.filterLanAddresses());
+                            prefs.filterLanAddresses(),
+                            prefs.previewFirst());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
@@ -697,6 +698,14 @@ final class Network {
 
     boolean stopDownload(Hash16 hash) {
         return this.downloads.stop(hash);
+    }
+
+    boolean setDownloadPreview(Hash16 hash, boolean previewFirst) {
+        return this.downloads.setPreviewFirst(hash, previewFirst);
+    }
+
+    Optional<Path> downloadData(Hash16 hash) {
+        return this.downloads.dataFile(hash);
     }
 
     boolean setDownloadPriority(Hash16 hash, DownloadPriority priority) {

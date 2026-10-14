@@ -116,9 +116,25 @@ public final class DownloadManager implements AutoCloseable {
      *
      * @param minFreeSpace in bytes, 0 for none
      * @param filterLan whether sources at LAN addresses are left out
+     * @param previewFirst whether every playable download fetches its first and last parts first
      */
     public record Settings(
-            ObfuscationMode obfuscation, int maxSourcesPerFile, int listenPort, long minFreeSpace, boolean filterLan) {}
+            ObfuscationMode obfuscation,
+            int maxSourcesPerFile,
+            int listenPort,
+            long minFreeSpace,
+            boolean filterLan,
+            boolean previewFirst) {
+
+        public Settings(
+                ObfuscationMode obfuscation,
+                int maxSourcesPerFile,
+                int listenPort,
+                long minFreeSpace,
+                boolean filterLan) {
+            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false);
+        }
+    }
 
     /** A source that keeps us in its queue is asked again this often. */
     public static final Duration REASK_INTERVAL = Duration.ofMinutes(29);
@@ -727,7 +743,9 @@ public final class DownloadManager implements AutoCloseable {
     private void tick() {
         long now = this.ticker.read();
         int starting = 0;
+        boolean preview = this.settings.get().previewFirst();
         for (Entry entry : this.entries.values()) {
+            entry.download.file().previewAlways(preview);
             for (Source source : entry.sources.values()) {
                 if (source.session != null && isStarting(source.session)) {
                     starting++;
@@ -1081,7 +1099,25 @@ public final class DownloadManager implements AutoCloseable {
                 entry.sources.size(),
                 transferring,
                 entry.rate(),
-                file.map());
+                file.map(),
+                file.previewFirst());
+    }
+
+    /** Fetches the first and last parts of the download first, or stops doing so; {@code false} if unknown. */
+    public boolean setPreviewFirst(Hash16 hash, boolean value) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        this.queue.setPreviewFirst(entry.download, value);
+        this.listener.progress(this.info(entry));
+        return true;
+    }
+
+    /** The data file of the download, which a player can show while it grows. */
+    public Optional<Path> dataFile(Hash16 hash) {
+        return Optional.ofNullable(this.entries.get(hash))
+                .map(e -> e.download.file().dataFile());
     }
 
     private static DownloadInfo.Status status(PartFile.Status status) {

@@ -243,6 +243,9 @@ All notable changes to this project are documented here. The format follows
   SeeShare setting is imported).
 - A friend can be given the friend slot for the run: it goes before the queue, also when it is
   full, and keeps its upload slot.
+- Preview: a download can fetch its first and last parts first (or every playable download, as
+  set in the settings), and Preview opens what is downloaded so far in the video player of the
+  settings; eMule's PreviewPrio and video player are imported.
 
 ### Changed
 

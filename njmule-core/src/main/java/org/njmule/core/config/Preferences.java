@@ -77,7 +77,10 @@ public record Preferences(
         boolean advancedSpamFilter,
         int newConnectionsPerFiveSeconds,
         int uploadQueueSize,
-        SharedFilesVisibility sharedFilesVisibility) {
+        SharedFilesVisibility sharedFilesVisibility,
+        boolean previewFirst,
+        String videoPlayer,
+        String videoPlayerArgs) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -148,6 +151,9 @@ public record Preferences(
         requireRange("newConnectionsPerFiveSeconds", newConnectionsPerFiveSeconds, 1, MAX_NEW_CONNECTIONS);
         requireRange("uploadQueueSize", uploadQueueSize, MIN_UPLOAD_QUEUE, MAX_UPLOAD_QUEUE);
         Objects.requireNonNull(sharedFilesVisibility, "sharedFilesVisibility");
+        videoPlayer = Objects.requireNonNull(videoPlayer, "videoPlayer").strip();
+        videoPlayerArgs =
+                Objects.requireNonNull(videoPlayerArgs, "videoPlayerArgs").strip();
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
@@ -198,7 +204,10 @@ public record Preferences(
                 true,
                 DEFAULT_NEW_CONNECTIONS,
                 DEFAULT_UPLOAD_QUEUE,
-                SharedFilesVisibility.NOBODY);
+                SharedFilesVisibility.NOBODY,
+                false,
+                "",
+                "");
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -274,6 +283,9 @@ public record Preferences(
         private int newConnectionsPerFiveSeconds;
         private int uploadQueueSize;
         private SharedFilesVisibility sharedFilesVisibility;
+        private boolean previewFirst;
+        private String videoPlayer;
+        private String videoPlayerArgs;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -319,6 +331,9 @@ public record Preferences(
             this.newConnectionsPerFiveSeconds = p.newConnectionsPerFiveSeconds;
             this.uploadQueueSize = p.uploadQueueSize;
             this.sharedFilesVisibility = p.sharedFilesVisibility;
+            this.previewFirst = p.previewFirst;
+            this.videoPlayer = p.videoPlayer;
+            this.videoPlayerArgs = p.videoPlayerArgs;
         }
 
         public Builder nick(String value) {
@@ -565,6 +580,21 @@ public record Preferences(
             return this;
         }
 
+        public Builder previewFirst(boolean value) {
+            this.previewFirst = value;
+            return this;
+        }
+
+        public Builder videoPlayer(String value) {
+            this.videoPlayer = value;
+            return this;
+        }
+
+        public Builder videoPlayerArgs(String value) {
+            this.videoPlayerArgs = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -610,7 +640,10 @@ public record Preferences(
                     this.advancedSpamFilter,
                     this.newConnectionsPerFiveSeconds,
                     this.uploadQueueSize,
-                    this.sharedFilesVisibility);
+                    this.sharedFilesVisibility,
+                    this.previewFirst,
+                    this.videoPlayer,
+                    this.videoPlayerArgs);
         }
     }
 }

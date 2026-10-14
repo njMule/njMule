@@ -109,12 +109,14 @@
 
     <!-- The link association and the folder opener run fixed system tools (reg, xdg-mime, the file
          manager) with arguments built from our own paths and constants, never from the network; the
+         preview runs the player the user chose in the settings on one of our own data files. The
          command line is a list, so no shell parses it. -->
     <Match>
         <Bug pattern="COMMAND_INJECTION"/>
         <Or>
             <Class name="org.njmule.app.LinkAssociation"/>
             <Class name="org.njmule.gui.infra.Folders"/>
+            <Class name="org.njmule.gui.infra.Preview"/>
         </Or>
     </Match>
 </FindBugsFilter>

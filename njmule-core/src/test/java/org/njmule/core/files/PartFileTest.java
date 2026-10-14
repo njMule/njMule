@@ -85,6 +85,42 @@ class PartFileTest {
     }
 
     @Test
+    void aPreviewFetchesTheFirstAndLastPartsBeforeRarerOnes() throws Exception {
+        List<Hash16> parts = List.of(hash(1), hash(2), hash(3), hash(4));
+        PartFile film =
+                PartFile.create(3, this.dir, "film.mkv", 3 * P + 100, Ed2k.fileHash(parts), Optional.empty(), parts);
+        BitSet all = new BitSet();
+        all.set(0, 4);
+        film.addAvailability(all, 5);
+        BitSet rare = new BitSet();
+        rare.set(1);
+        film.addAvailability(rare, -4);
+        assertThat(film.nextBlocks(all, 1).getFirst().start())
+                .as("the rarest part")
+                .isEqualTo(P);
+
+        film.setPreviewFirst(true);
+        BitSet rest = new BitSet();
+        rest.set(0);
+        rest.set(2, 4);
+        assertThat(film.nextBlocks(rest, 1).getFirst().start())
+                .as("the first part, before rarer ones")
+                .isZero();
+        BitSet twoLast = new BitSet();
+        twoLast.set(2, 4);
+        assertThat(film.nextBlocks(twoLast, 1).getFirst().start())
+                .as("the last part, and the one before as the last is short")
+                .isEqualTo(2 * P);
+        film.save();
+        assertThat(PartFile.load(this.dir, 3).previewFirst()).isTrue();
+
+        PartFile notes =
+                PartFile.create(4, this.dir, "notes.txt", 3 * P + 100, Ed2k.fileHash(parts), Optional.empty(), parts);
+        notes.setPreviewFirst(true);
+        assertThat(notes.previewParts(false).isEmpty()).as("no player shows it").isTrue();
+    }
+
+    @Test
     void finishesABegunPartFirstAndCutsBlocksOnTheAichBoundaries() {
         List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
         PartFile file =
