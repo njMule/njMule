@@ -343,6 +343,30 @@ class DownloadManagerTest {
         assertThat(otherAich.sources()).as("another AICH hash").isEqualTo(1);
     }
 
+    @Test
+    void aPreviewNeedsTheStartOfTheFile() throws Exception {
+        DownloadManager manager = this.manager();
+        Hash16 hash = Hash16.parseHex("4d".repeat(16));
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("film.avi", 100_000, hash));
+            return manager.pause(hash);
+        });
+
+        this.onLoop(() -> {
+            manager.find(hash).orElseThrow().file().written(16 * 1024, 100_000);
+            return null;
+        });
+        assertThat(this.onLoop(() -> manager.dataFile(hash)))
+                .as("all but the start")
+                .isEmpty();
+
+        this.onLoop(() -> {
+            manager.find(hash).orElseThrow().file().written(0, 16 * 1024);
+            return null;
+        });
+        assertThat(this.onLoop(() -> manager.dataFile(hash))).isPresent();
+    }
+
     private static Ed2kLink.FileLink link(Hash16 hash, long size, Optional<Hash20> aich, int source) {
         return new Ed2kLink.FileLink(
                 "same.bin",

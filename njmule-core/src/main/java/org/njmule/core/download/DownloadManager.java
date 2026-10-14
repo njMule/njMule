@@ -173,6 +173,9 @@ public final class DownloadManager implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadManager.class);
 
+    // A player needs the header at the start of the file.
+    private static final int PREVIEW_START = 16 * 1024;
+
     /** How long a corrupt part waits for its AICH recovery data before it is downloaded again whole. */
     static final Duration RECOVERY_WAIT = Duration.ofSeconds(30);
 
@@ -1214,10 +1217,12 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
-    /** The data file of the download, which a player can show while it grows. */
+    /** The data file of the download, which a player can show while it grows once the start of it has come. */
     public Optional<Path> dataFile(Hash16 hash) {
         return Optional.ofNullable(this.entries.get(hash))
-                .map(e -> e.download.file().dataFile());
+                .map(e -> e.download.file())
+                .filter(file -> file.isComplete(0, Math.min(file.size(), PREVIEW_START)))
+                .map(PartFile::dataFile);
     }
 
     private static DownloadInfo.Status status(PartFile.Status status) {

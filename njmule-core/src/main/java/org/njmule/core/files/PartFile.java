@@ -355,6 +355,11 @@ public final class PartFile {
         return this.missing.isEmpty();
     }
 
+    /** Whether every byte of {@code [start, end)} has been written. */
+    public boolean isComplete(long start, long end) {
+        return this.missing.subRangeSet(Range.closedOpen(start, end)).isEmpty();
+    }
+
     public boolean isComplete(int part) {
         return this.missing.subRangeSet(partRange(this.size, part)).isEmpty();
     }

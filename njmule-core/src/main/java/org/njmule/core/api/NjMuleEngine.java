@@ -185,7 +185,10 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Fetches the first and last parts of a download first, for a preview, or stops; {@code false} if unknown. */
     CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst);
 
-    /** The data file of a download, which a player can show while it grows; empty for an unknown download. */
+    /**
+     * The data file of a download, which a player can show while it grows; empty for an unknown download and until its
+     * first 16 KiB have come.
+     */
     CompletableFuture<Optional<Path>> downloadData(Hash16 hash);
 
     /** Sets how early the download asks for sources and starts transfers, before the others. */
