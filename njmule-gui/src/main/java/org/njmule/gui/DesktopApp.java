@@ -88,7 +88,7 @@ public final class DesktopApp implements AutoCloseable {
     private final AppDirectories directories;
     private final GuiSettings settings;
     private final Optional<WebUi> webUi;
-    private final SoundPlayer sound = new WavPlayer();
+    private final SoundPlayer sound;
     private Optional<Autostart> autostart = Optional.empty();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
@@ -111,6 +111,7 @@ public final class DesktopApp implements AutoCloseable {
     private DesktopApp(NjMuleEngine engine, AppDirectories directories, GuiSettings settings, Optional<WebUi> webUi) {
         this.engine = engine;
         this.directories = directories;
+        this.sound = new WavPlayer(directories.cache());
         this.settings = settings;
         this.webUi = webUi;
     }

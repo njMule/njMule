@@ -19,11 +19,15 @@ package org.njmule.gui.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.locks.LockSupport;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,9 +39,15 @@ class WavPlayerTest {
     @TempDir
     Path dir;
 
-    private final WavPlayer player = new WavPlayer();
+    private WavPlayer player;
     private Path file;
     private long took;
+    private Optional<Path> settings;
+
+    @BeforeEach
+    void createThePlayer() {
+        this.player = new WavPlayer(this.dir.resolve("cache"));
+    }
 
     @Test
     void shouldBeReadyAgainAfterAFileThatIsNoSound() throws IOException {
@@ -67,6 +77,22 @@ class WavPlayerTest {
         this.thenThePlayerIsReadyAgain();
     }
 
+    @Test
+    void shouldGiveTheSoundSystemEmptySettingsWhereThereIsNoJavaHome() throws IOException {
+        this.whenTheSettingsAreAskedFor(null, null);
+
+        this.thenTheSettingsAreAnEmptyFileInTheCache();
+    }
+
+    @Test
+    void shouldLeaveTheSoundSystemAloneWithAJavaHomeOrNamedSettings() throws IOException {
+        this.whenTheSettingsAreAskedFor("/opt/jdk", null);
+        this.thenNoSettingsAreGiven();
+
+        this.whenTheSettingsAreAskedFor(null, "/etc/sound.properties");
+        this.thenNoSettingsAreGiven();
+    }
+
     private void givenAFileThatIsNoSound() throws IOException {
         this.file = Files.writeString(this.dir.resolve("notes.wav"), "not a sound", StandardCharsets.UTF_8);
     }
@@ -79,6 +105,24 @@ class WavPlayerTest {
         long start = System.nanoTime();
         this.player.play(this.file);
         this.took = System.nanoTime() - start;
+    }
+
+    private void whenTheSettingsAreAskedFor(String javaHome, String named) throws IOException {
+        this.settings = WavPlayer.soundSettings(javaHome, named, this.dir.resolve("cache"));
+    }
+
+    private void thenTheSettingsAreAnEmptyFileInTheCache() throws IOException {
+        assertThat(this.settings).contains(this.dir.resolve("cache").resolve("sound.properties"));
+        Properties read = new Properties();
+        try (Reader in = Files.newBufferedReader(this.settings.orElseThrow())) {
+            read.load(in);
+        }
+        assertThat(read).isEmpty();
+    }
+
+    private void thenNoSettingsAreGiven() {
+        assertThat(this.settings).isEmpty();
+        assertThat(this.dir.resolve("cache")).doesNotExist();
     }
 
     private void thenThePlayerIsReadyAgain() {

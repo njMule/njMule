@@ -19,6 +19,7 @@ package org.njmule.gui.infra;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,10 +41,19 @@ public final class WavPlayer implements SoundPlayer {
     // A notification sound lasts a few seconds; a long file is cut, a huge one never read into memory.
     private static final long MAX_SECONDS = 30;
     private static final long MAX_BYTES = 16L * 1024 * 1024;
+    /** Where the JDK's sound system reads its settings from, before it looks under {@code java.home}. */
+    static final String CONFIG_PROPERTY = "javax.sound.config.file";
+
     private static final Logger logger = LoggerFactory.getLogger(WavPlayer.class);
 
+    private final Path cache;
     private final AtomicBoolean playing = new AtomicBoolean();
     private final AtomicBoolean warned = new AtomicBoolean();
+
+    /** A player that keeps what the sound system needs, if anything, in {@code cache}. */
+    public WavPlayer(Path cache) {
+        this.cache = cache;
+    }
 
     @Override
     public void play(Path file) {
@@ -52,6 +62,7 @@ public final class WavPlayer implements SoundPlayer {
         }
         Thread.ofVirtual().name("njmule-sound").start(() -> {
             try {
+                configureSoundSystem(this.cache);
                 playNow(file);
             } catch (IOException | UnsupportedAudioFileException | LineUnavailableException | RuntimeException e) {
                 this.failed(file, e);
@@ -66,6 +77,32 @@ public final class WavPlayer implements SoundPlayer {
     /** Whether a sound plays now, or is about to. */
     boolean isPlaying() {
         return this.playing.get();
+    }
+
+    // Without a JDK around it, as in the native app, there is no java.home, where the sound system looks for its
+    // optional settings, and it fails instead of doing without them: it is given empty ones of ours.
+    private static synchronized void configureSoundSystem(Path cache) throws IOException {
+        Optional<Path> settings =
+                soundSettings(System.getProperty("java.home"), System.getProperty(CONFIG_PROPERTY), cache);
+        if (settings.isPresent()) {
+            System.setProperty(CONFIG_PROPERTY, settings.get().toString());
+        }
+    }
+
+    /**
+     * The settings file to name to the sound system: an empty one in {@code cache} when there is neither a
+     * {@code java.home} nor a settings file named already.
+     */
+    static Optional<Path> soundSettings(String javaHome, String named, Path cache) throws IOException {
+        if (javaHome != null || named != null) {
+            return Optional.empty();
+        }
+        Path file = cache.resolve("sound.properties");
+        if (!Files.isRegularFile(file)) {
+            Files.createDirectories(cache);
+            Files.writeString(file, "# The settings of the sound system: none.\n");
+        }
+        return Optional.of(file);
     }
 
     private static void playNow(Path file)
