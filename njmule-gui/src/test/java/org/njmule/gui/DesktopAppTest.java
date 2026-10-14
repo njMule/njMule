@@ -114,9 +114,10 @@ class DesktopAppTest {
         DesktopApp app = this.open();
         AtomicReference<Stage> stage = new AtomicReference<>();
         try {
+            // Without the tray: minimising must never put a real icon in the system tray.
             FxTesting.onFx(() -> {
                 stage.set(new Stage());
-                app.show(stage.get());
+                app.show(stage.get(), false);
             });
             Rectangle2D shown = FxTesting.onFx(() -> new Rectangle2D(
                     stage.get().getX(),
