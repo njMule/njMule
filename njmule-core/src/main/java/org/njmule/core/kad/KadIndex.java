@@ -18,7 +18,7 @@ package org.njmule.core.kad;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,7 +26,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -62,14 +61,28 @@ final class KadIndex {
 
     /** A file published under a keyword. */
     private static final class KeywordEntry {
+        // How many publishers give each name: no more names than publishers are kept.
         private final Map<String, Integer> names = new LinkedHashMap<>();
         private final long size;
         private List<Tag> tags;
-        private final Set<Integer> publishers = new HashSet<>();
+        private final Map<Integer, String> publishers = new HashMap<>();
         private long expires;
 
         KeywordEntry(long size) {
             this.size = size;
+        }
+
+        // A publisher counts once, for the name it gave last, so repeating or switching names gains nothing.
+        void published(int ip, String name) {
+            String before = this.publishers.get(ip);
+            if (name.equals(before) || (before == null && this.publishers.size() >= MAX_PUBLISHERS)) {
+                return;
+            }
+            if (before != null) {
+                this.names.computeIfPresent(before, (n, count) -> count > 1 ? count - 1 : null);
+            }
+            this.publishers.put(ip, name);
+            this.names.merge(name, 1, Integer::sum);
         }
 
         String popularName() {
@@ -107,16 +120,15 @@ final class KadIndex {
             if (this.keywordEntries >= MAX_KEYWORD_ENTRIES || count >= MAX_FILES_PER_KEYWORD) {
                 return 100;
             }
+            boolean replacing = entry != null;
             entry = new KeywordEntry(size.getAsLong());
             this.keywords.computeIfAbsent(keyword, k -> new LinkedHashMap<>()).put(file.id(), entry);
-            this.keywordEntries++;
-            count++;
+            if (!replacing) {
+                this.keywordEntries++;
+                count++;
+            }
         }
-        // A name published again gains popularity on the entry we keep.
-        if (entry.publishers.add(ip) && entry.publishers.size() > MAX_PUBLISHERS) {
-            entry.publishers.remove(ip);
-        }
-        entry.names.merge(name.get(), 1, Integer::sum);
+        entry.published(ip, name.get());
         entry.tags = otherTags(file.tags());
         entry.expires = now + KEYWORD_LIFETIME.toNanos();
         return count == 1 ? 1 : load(count, MAX_FILES_PER_KEYWORD);
@@ -156,6 +168,10 @@ final class KadIndex {
                 it.remove();
                 this.sourceEntries--;
             }
+        }
+        // The same source from another address replaces itself.
+        if (entries.remove(source) != null) {
+            this.sourceEntries--;
         }
         if (entries.size() >= MAX_SOURCES_PER_FILE || this.sourceEntries >= MAX_SOURCES) {
             if (entries.isEmpty()) {
@@ -293,12 +309,18 @@ final class KadIndex {
 
     private static boolean containsWords(String name, String words) {
         String haystack = KadLowerCase.toLowerCase(name);
+        boolean anyWord = false;
         for (String part : KadLowerCase.toLowerCase(words).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
-            if (!part.isEmpty() && !haystack.contains(part)) {
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!haystack.contains(part)) {
                 return false;
             }
+            anyWord = true;
         }
-        return true;
+        // A term made only of separators names no word: it matches nothing.
+        return anyWord;
     }
 
     private static boolean matchesString(SearchExpr.StringAttr attr, String name, KeywordEntry entry) {

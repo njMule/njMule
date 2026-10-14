@@ -230,6 +230,82 @@ class KadIndexTest {
                 .hasSize(KadIndex.MAX_RESULTS);
     }
 
+    @Test
+    void aFileRepublishedWithAnotherSizeCountsOnce() {
+        UInt128 file = UInt128.random(this.random);
+        this.index.publishKeyword(this.keyword, entry(file, "a.avi", 10), IP, NOW);
+        this.index.publishKeyword(this.keyword, entry(file, "a.avi", 20), IP, NOW);
+
+        assertThat(this.index.keywordEntries()).isEqualTo(1);
+        this.index.clean(NOW + KadIndex.KEYWORD_LIFETIME.toNanos());
+        assertThat(this.index.keywordEntries()).isZero();
+    }
+
+    @Test
+    void aSourceRepublishedFromAnotherAddressCountsOnce() {
+        UInt128 file = UInt128.random(this.random);
+        UInt128 source = UInt128.random(this.random);
+        this.index.publishSource(file, source, sourceTags(4662), IP, 4672, NOW);
+        this.index.publishSource(file, source, sourceTags(4662), IP + 1, 4672, NOW);
+
+        assertThat(this.index.sourceEntries()).isEqualTo(1);
+        List<KadMessages.Entry> found = this.index.searchSources(file, 0, 0, NOW);
+        assertThat(found)
+                .singleElement()
+                .satisfies(e ->
+                        assertThat(Tags.intValue(e.tags(), FileTag.SOURCEIP)).hasValue(Integer.toUnsignedLong(IP + 1)));
+        this.index.clean(NOW + KadIndex.SOURCE_LIFETIME.toNanos());
+        assertThat(this.index.sourceEntries()).isZero();
+    }
+
+    @Test
+    void aTermWithoutAnyWordMatchesNothing() {
+        this.index.publishKeyword(this.keyword, entry(UInt128.random(this.random), "linux.iso", 10), IP, NOW);
+
+        assertThat(this.search(new SearchExpr.Keyword("-._"))).isEmpty();
+        assertThat(this.search(new SearchExpr.Keyword("\"\""))).isEmpty();
+        assertThat(this.search(new SearchExpr.Keyword("(linux)"))).hasSize(1);
+    }
+
+    @Test
+    void aPublisherCountsOnceForItsNameAndNamesStayFew() {
+        UInt128 file = UInt128.random(this.random);
+        this.index.publishKeyword(this.keyword, entry(file, "Popular.avi", 10), IP, NOW);
+        this.index.publishKeyword(this.keyword, entry(file, "Popular.avi", 10), IP + 1, NOW);
+        for (int i = 0; i < 5; i++) {
+            this.index.publishKeyword(this.keyword, entry(file, "Pushed.avi", 10), IP + 2, NOW);
+        }
+        assertThat(this.name(file)).as("one address publishing again").isEqualTo("Popular.avi");
+
+        // Switching names back and forth does not add up either.
+        for (int i = 0; i < 5; i++) {
+            this.index.publishKeyword(this.keyword, entry(file, "Pushed.avi", 10), IP + 3, NOW);
+            this.index.publishKeyword(this.keyword, entry(file, "Other.avi", 10), IP + 3, NOW);
+        }
+        assertThat(this.name(file)).isEqualTo("Popular.avi");
+
+        for (int i = 0; i < 1_000; i++) {
+            this.index.publishKeyword(this.keyword, entry(file, "name " + i + ".avi", 10), IP + 10 + i, NOW);
+        }
+        long info = Tags.intValue(
+                        this.index
+                                .searchKeyword(this.keyword, Optional.empty(), 0, NOW)
+                                .getFirst()
+                                .tags(),
+                        FileTag.PUBLISHINFO)
+                .orElseThrow();
+        assertThat(info >>> 24).as("distinct names kept").isLessThanOrEqualTo(255);
+        assertThat(this.name(file)).isEqualTo("Popular.avi");
+    }
+
+    private String name(UInt128 file) {
+        return this.index.searchKeyword(this.keyword, Optional.empty(), 0, NOW).stream()
+                .filter(e -> e.id().equals(file))
+                .findFirst()
+                .flatMap(e -> Tags.stringValue(e.tags(), FileTag.FILENAME))
+                .orElseThrow();
+    }
+
     private List<KadMessages.Entry> search(SearchExpr expression) {
         return this.index.searchKeyword(this.keyword, Optional.of(expression), 0, NOW);
     }
