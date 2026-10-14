@@ -236,9 +236,11 @@ public final class TransfersScreen implements Screen {
         this.downloads.getContextMenu().setOnShowing(e -> {
             category.getItems().setAll(this.categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
-            preview.setDisable(selected.size() != 1 || selected.getFirst().completed() == 0);
+            // A finished download has left the engine: there is nothing to preview or to fetch any more.
+            boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
+            preview.setDisable(!active || selected.getFirst().completed() == 0);
             comments.setDisable(selected.size() != 1);
-            addSource.setDisable(selected.size() != 1);
+            addSource.setDisable(!active);
             previewFirst.setSelected(!selected.isEmpty() && selected.stream().allMatch(DownloadInfo::previewFirst));
         });
         this.categoryBar.getStyleClass().add("category-bar");
