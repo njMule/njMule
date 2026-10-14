@@ -512,16 +512,30 @@ public final class SharedFiles implements AutoCloseable {
         }
     }
 
-    // The directories of a tree, without hidden or private ones and without following links.
+    // The directories of a tree, without hidden or private ones and without following links. A junction is walked as a
+    // directory, so only into a directory of the tree not walked yet: never out of the tree, nor round in a loop.
     private void walk(Path root, Set<Path> dirs) {
         if (!Files.isDirectory(root)) {
             return;
         }
+        Path top = real(root);
+        Set<Path> walked = new HashSet<>();
         try {
             Files.walkFileTree(root, Set.of(), MAX_TREE_DEPTH, new SimpleFileVisitor<>() {
                 @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    if (!dir.equals(root) && (Files.isHidden(dir) || SharedFiles.this.isPrivate(dir))) {
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    Path real = real(dir);
+                    boolean hidden;
+                    try {
+                        hidden = !dir.equals(root) && Files.isHidden(dir);
+                    } catch (IOException e) {
+                        // A directory that cannot be read leaves the rest of the tree alone.
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    if (hidden
+                            || !real.startsWith(top)
+                            || !walked.add(real)
+                            || (!dir.equals(root) && SharedFiles.this.isPrivate(dir))) {
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                     dirs.add(dir);
@@ -859,16 +873,28 @@ public final class SharedFiles implements AutoCloseable {
      */
     boolean isPrivate(Path dir) {
         Path d = dir.toAbsolutePath().normalize();
+        // Through a link or a junction, the directory itself may be a private one.
+        Path real = real(d);
         List<Path> roots = new ArrayList<>(this.privateDirs.get());
         roots.add(this.configDir);
         for (Path root : roots) {
-            if (d.startsWith(root.toAbsolutePath().normalize())) {
+            Path r = root.toAbsolutePath().normalize();
+            if (d.startsWith(r) || real.startsWith(r)) {
                 return true;
             }
         }
         String home = System.getProperty("user.home");
-        return (home != null && d.equals(Path.of(home).toAbsolutePath().normalize()))
-                || Files.exists(d.resolve(CLIENT_KEY));
+        Path h = home == null ? null : Path.of(home).toAbsolutePath().normalize();
+        return (h != null && (d.equals(h) || real.equals(h))) || Files.exists(d.resolve(CLIENT_KEY));
+    }
+
+    // The path with its links and junctions resolved; as given when that cannot be done.
+    private static Path real(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException e) {
+            return path.toAbsolutePath().normalize();
+        }
     }
 
     private static boolean isSkipped(String name) {

@@ -38,6 +38,8 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.UploadPriority;
@@ -480,6 +482,45 @@ class SharedFilesTest {
             shares.close();
             return null;
         });
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void aSharedTreeKeepsToItselfThroughJunctions() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Path tree = Files.createDirectories(this.dir.resolve("tree").resolve("sub"));
+        Files.write(tree.resolve("in.bin"), bytes(3000, 36));
+        Path outside = Files.createDirectories(this.dir.resolve("outside"));
+        Files.write(outside.resolve("secret.bin"), bytes(3000, 37));
+        junction(this.dir.resolve("tree").resolve("escape"), outside);
+        junction(this.dir.resolve("tree").resolve("loop"), this.dir.resolve("tree"));
+        SharedFiles shares = this.open(config, incoming);
+
+        this.onLoop(() -> {
+            shares.addDirectory(this.dir.resolve("tree"), true);
+            return null;
+        });
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared in.bin");
+
+        assertThat(this.events.poll(3, TimeUnit.SECONDS))
+                .as("nothing from outside the tree")
+                .isNull();
+        assertThat(this.onLoop(shares::all))
+                .singleElement()
+                .satisfies(f -> assertThat(f.path()).isEqualTo(tree.resolve("in.bin")));
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    private static void junction(Path link, Path target) throws Exception {
+        Process mklink = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J", link.toString(), target.toString())
+                .redirectErrorStream(true)
+                .start();
+        mklink.getInputStream().readAllBytes();
+        assertThat(mklink.waitFor()).as("mklink /J").isZero();
     }
 
     @Test
