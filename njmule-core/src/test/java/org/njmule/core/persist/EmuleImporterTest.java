@@ -236,6 +236,7 @@ class EmuleImporterTest {
                         "Title=",
                         "[Cat#3]",
                         "Title=Linux",
+                        "Incoming=" + this.emule.shared,
                         "Color=16711680",
                         "AutoCat=ubuntu|debian"));
 
@@ -245,9 +246,12 @@ class EmuleImporterTest {
         assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 3);
         Category films = this.target.categories.getFirst();
         assertThat(films.name()).isEqualTo("Films");
-        assertThat(films.incoming()).contains(this.emule.incoming);
+        assertThat(films.incoming())
+                .as("eMule's incoming folder is not ours: our own takes its place")
+                .isEmpty();
         assertThat(films.color()).as("red").isEqualTo(1);
         assertThat(films.matches("Big Buck Bunny.MKV")).isTrue();
+        assertThat(this.target.categories.get(1).incoming()).contains(this.emule.shared);
         assertThat(this.target.categories.get(1).color()).as("blue").isEqualTo(6);
         assertThat(EmuleImporter.color(OptionalLong.of(0x808080))).as("grey").isZero();
         assertThat(EmuleImporter.color(OptionalLong.of(0x00A5FF))).as("orange").isEqualTo(2);

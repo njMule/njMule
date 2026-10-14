@@ -241,7 +241,7 @@ public final class EmuleImporter {
                 "AC_ServerMetURLs.dat", "AC_IPFilterUpdateURLs.dat", "AC_BootstrapIPs.dat", "AC_SearchStrings.dat")) {
             this.kept(history, data -> TextFiles.entries(data).size() + " entries");
         }
-        this.categories();
+        this.categories(ini);
         this.kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
             Path file = this.emule.resolve(name);
@@ -521,7 +521,12 @@ public final class EmuleImporter {
     }
 
     // eMule's categories keep their numbers, so downloads taken from its temp folder stay in theirs.
-    private void categories() {
+    private void categories(Optional<IniFile> preferences) {
+        // eMule's own incoming folder is never ours: those categories finish into njMule's.
+        Optional<Path> emuleIncoming = preferences
+                .flatMap(p -> p.get(SECTION, "IncomingDir"))
+                .flatMap(EmuleImporter::path)
+                .map(Path::normalize);
         this.with(this.emule.resolve("Category.ini"), (file, data) -> {
             IniFile ini = IniFile.parse(data);
             List<Category> found = new ArrayList<>();
@@ -537,7 +542,8 @@ public final class EmuleImporter {
                             ini.get(section, "Title").orElse(""),
                             ini.get(section, "Incoming")
                                     .flatMap(EmuleImporter::path)
-                                    .filter(Path::isAbsolute),
+                                    .filter(Path::isAbsolute)
+                                    .filter(dir -> !emuleIncoming.equals(Optional.of(dir.normalize()))),
                             ini.get(section, "Comment").orElse(""),
                             color(ini.getLong(section, "Color")),
                             DownloadPriority.AUTO,
