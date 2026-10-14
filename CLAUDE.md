@@ -208,3 +208,14 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   Loggers are `private static final Logger logger` (lowerCamelCase: per the Google style a logger
   is not a constant), never `LOG`.
 - Never write into the user's eMule installation or config directory.
+
+## Tests
+
+- Tests follow the given/when/then form of Gherkin in plain JUnit (no Cucumber): each test method
+  has a meaningful name stating the expected behaviour and its body only calls private step
+  methods `given...()`, `when...()` and `then...()`, named as lowerCamelCase sentences and taking
+  parameters when reused; shared state lives in fields, and a failing `when...()` keeps its
+  exception for `thenExceptionOccurred(...)` / `thenNoExceptionOccurred()`. Example in
+  `CONTRIBUTING.md`.
+- Existing tests not written this way yet stay as they are until the planned migration; every new
+  or rewritten test follows the rule.

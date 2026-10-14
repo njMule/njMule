@@ -52,3 +52,49 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 New behaviour needs tests (JUnit 5, AssertJ; jqwik for codecs and parsers). Never commit personal
 data: copies of a real eMule profile, captures or screenshots belong in the git-ignored
 `fixtures-private/` folder.
+
+Tests follow the given/when/then form of Gherkin inside plain JUnit classes (no Cucumber):
+
+- each test method has a meaningful name that states the expected behaviour, and its body only
+  calls step methods: one or more `given...()`, then `when...()`, then one or more `then...()`;
+- the steps are private methods of the test class, named as sentences in lowerCamelCase and taking
+  parameters when a step is reused with other values; the state they share lives in fields;
+- a `when...()` step that can fail keeps the exception in a field, and `thenExceptionOccurred(...)`
+  or `thenNoExceptionOccurred()` checks it.
+
+```java
+class PathSanitizerTest {
+
+    private String networkName;
+    private String safeName;
+
+    @Test
+    void shouldEscapeAReservedNameHiddenByTheLengthCut() {
+        givenANameFromTheNetwork("CON" + " ".repeat(300) + "x");
+
+        whenTheNameIsMadeSafe();
+
+        thenTheSafeNameIs("_CON");
+        thenTheSafeNameFitsTheLengthLimit();
+    }
+
+    private void givenANameFromTheNetwork(String name) {
+        this.networkName = name;
+    }
+
+    private void whenTheNameIsMadeSafe() {
+        this.safeName = PathSanitizer.fileName(this.networkName);
+    }
+
+    private void thenTheSafeNameIs(String expected) {
+        assertThat(this.safeName).isEqualTo(expected);
+    }
+
+    private void thenTheSafeNameFitsTheLengthLimit() {
+        assertThat(this.safeName.getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(200);
+    }
+}
+```
+
+Existing tests that are not written this way yet will be migrated later; every new or rewritten
+test follows it.
