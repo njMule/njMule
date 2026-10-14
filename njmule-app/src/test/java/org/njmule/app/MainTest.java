@@ -47,6 +47,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -68,6 +69,12 @@ class MainTest {
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+    // A one-shot run lowers the console log to its errors: the tests that read logs must not depend on the order.
+    @AfterEach
+    void restoreTheLogLevel() {
+        LoggingSetup.setLevel("INFO");
+    }
 
     private int run(String... args) {
         return Main.run(
