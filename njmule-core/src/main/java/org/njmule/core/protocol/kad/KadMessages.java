@@ -285,7 +285,7 @@ public final class KadMessages {
         }
     }
 
-    /** KADEMLIA2_SEARCH_NOTES_REQ: comments on a file of {@code size} bytes. */
+    /** KADEMLIA2_SEARCH_NOTES_REQ: comments on a file of {@code size} bytes (0: any). */
     public record NotesSearch(UInt128 target, long size) {
         public NotesSearch {
             Objects.requireNonNull(target, "target");
@@ -432,6 +432,28 @@ public final class KadMessages {
         public static SourcePublish decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             return new SourcePublish(UInt128.read(in), UInt128.read(in), TagCodec.readKadList(in));
+        }
+    }
+
+    /** KADEMLIA2_PUBLISH_NOTES_REQ: the comment and rating on {@code file} of the node {@code publisher}. */
+    public record NotesPublish(UInt128 file, UInt128 publisher, List<Tag> tags) {
+        public NotesPublish {
+            Objects.requireNonNull(file, "file");
+            Objects.requireNonNull(publisher, "publisher");
+            tags = List.copyOf(tags);
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter();
+            this.file.write(out);
+            this.publisher.write(out);
+            TagCodec.writeKadList(out, this.tags);
+            return Packet.of(Protocol.KAD, Opcodes.Kad.PUBLISH_NOTES_REQ.code(), out);
+        }
+
+        public static NotesPublish decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new NotesPublish(UInt128.read(in), UInt128.read(in), TagCodec.readKadList(in));
         }
     }
 

@@ -157,8 +157,10 @@ public final class KadScreen implements Screen {
                     case NODE -> "IDS_KAD_NODE";
                     case KEYWORD -> "IDS_KAD_SEARCHKW";
                     case SOURCES -> "IDS_KAD_SEARCHSRC";
+                    case NOTES -> "IDS_NOTES";
                     case STORE_KEYWORD -> "IDS_KAD_STOREKW";
                     case STORE_SOURCE -> "IDS_KAD_STOREFILE";
+                    case STORE_NOTES -> "IDS_STORENOTES";
                 });
     }
 

@@ -24,7 +24,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.tag.FileTag;
@@ -86,6 +89,16 @@ class KadPublisherTest {
                 this.sources.add(hash);
             }
             return this.accepting;
+        }
+
+        @Override
+        public int runningNotePublishes() {
+            return 0;
+        }
+
+        @Override
+        public boolean publishNote(Hash16 hash, String name, long size, Supplier<Optional<FileComment>> comment) {
+            return false;
         }
     }
 

@@ -39,8 +39,10 @@ final class Lookup {
         NODE_COMPLETE(11, Duration.ofSeconds(45), 0, false),
         SOURCES(2, Duration.ofSeconds(45), 300, true),
         KEYWORD(2, Duration.ofSeconds(45), 300, true),
+        NOTES(2, Duration.ofSeconds(45), 50, true),
         STORE_SOURCE(4, Duration.ofSeconds(140), 10, true),
-        STORE_KEYWORD(4, Duration.ofSeconds(140), 10, true);
+        STORE_KEYWORD(4, Duration.ofSeconds(140), 10, true),
+        STORE_NOTES(4, Duration.ofSeconds(100), 10, true);
 
         private final int count;
         private final Duration lifetime;
@@ -123,6 +125,11 @@ final class Lookup {
 
     boolean isStopped() {
         return this.stopped;
+    }
+
+    /** Ends the lookup at once. */
+    void stop() {
+        this.stopped = true;
     }
 
     /** Whether the node at {@code ip} was sent the search or publish. */
@@ -256,6 +263,9 @@ final class Lookup {
                 if (this.kind.value && e.getKey().top32() <= TOLERANCE && this.requested.add(c.id())) {
                     this.requestedIps.add(c.ip());
                     this.requests.request(this, c);
+                    if (this.stopped) {
+                        return;
+                    }
                 }
                 this.possible.remove(e.getKey());
             }

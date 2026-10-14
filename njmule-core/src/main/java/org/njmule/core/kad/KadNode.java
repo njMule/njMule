@@ -36,7 +36,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
+import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
@@ -64,7 +66,7 @@ import org.slf4j.LoggerFactory;
  * Our Kad node: answers other nodes, keeps the routing table fresh, runs lookups for searches and publishes, indexes
  * what others publish to us and checks whether we can be reached. Engine thread only.
  */
-public final class KadNode implements KadPublisher.Node, AutoCloseable {
+public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCloseable {
 
     /** Sends Kad packets, obfuscated with the receiver's id or key when given. */
     public interface Transport {
@@ -83,6 +85,18 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     /** A file a keyword search found. */
     public record FileResult(
             Hash16 hash, String name, long size, int sources, Optional<String> type, SearchResult.Media media) {}
+
+    /** A note a search found: what the node {@code publisher} said of a file, under the name it gave the file. */
+    public record Note(UInt128 publisher, String fileName, long size, FileComment comment) {
+        public Note {
+            Objects.requireNonNull(publisher, "publisher");
+            Objects.requireNonNull(fileName, "fileName");
+            Objects.requireNonNull(comment, "comment");
+        }
+    }
+
+    /** Our note being published; the comment is read again for each node, and an empty one ends the publish. */
+    private record OwnNote(String fileName, long size, Supplier<Optional<FileComment>> comment) {}
 
     /**
      * Settings that are not the protocol's.
@@ -142,6 +156,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     // Where the results of a lookup go; each returns how many of them were usable.
     private final Map<Lookup, ToIntFunction<List<KadMessages.Entry>>> resultSinks = new HashMap<>();
     private final Map<Lookup, Object> lookupData = new HashMap<>();
+    private final Map<Lookup, Runnable> endActions = new HashMap<>();
     // Nodes asked to connect to our TCP port, and when; read by the listener's threads too.
     private final Map<Integer, Long> firewallChecks = new ConcurrentHashMap<>();
     private final Set<Integer> firewallAcks = new HashSet<>();
@@ -370,6 +385,33 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return true;
     }
 
+    /**
+     * Looks for the notes on the file {@code hash} of {@code size} bytes: each publisher's note comes once, then
+     * {@code ended} runs. False when the search cannot start now.
+     */
+    @Override
+    public boolean findNotes(Hash16 hash, long size, Consumer<List<Note>> notes, Runnable ended) {
+        UInt128 target = UInt128.of(hash);
+        if (this.lookups.containsKey(target)) {
+            return false;
+        }
+        Lookup lookup = this.startLookup(target, Lookup.Kind.NOTES);
+        if (lookup == null) {
+            return false;
+        }
+        this.lookupData.put(lookup, size);
+        Set<UInt128> publishers = new HashSet<>();
+        this.resultSinks.put(lookup, entries -> {
+            List<Note> found = noteResults(entries, size, publishers);
+            if (!found.isEmpty()) {
+                notes.accept(found);
+            }
+            return found.size();
+        });
+        this.endActions.put(lookup, ended);
+        return true;
+    }
+
     /** Publishes {@code files} under the keyword {@code word}. */
     @Override
     public boolean publishKeyword(String word, List<KadMessages.Entry> files) {
@@ -398,9 +440,28 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         return lookup != null;
     }
 
+    /** Publishes our comment on the file {@code hash}, under our id, to the nodes closest to it. */
+    @Override
+    public boolean publishNote(Hash16 hash, String name, long size, Supplier<Optional<FileComment>> comment) {
+        UInt128 target = UInt128.of(hash);
+        if (this.lookups.containsKey(target)) {
+            return false;
+        }
+        Lookup lookup = this.startLookup(target, Lookup.Kind.STORE_NOTES);
+        if (lookup != null) {
+            this.lookupData.put(lookup, new OwnNote(name, size, comment));
+        }
+        return lookup != null;
+    }
+
     /** Files indexed under keywords and sources indexed, for tests. */
     int[] indexed() {
         return new int[] {this.index.keywordEntries(), this.index.sourceEntries()};
+    }
+
+    /** Notes indexed, for tests. */
+    int indexedNotes() {
+        return this.index.noteEntries();
     }
 
     /** Keyword publishes running now. */
@@ -413,6 +474,12 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     @Override
     public int runningSourcePublishes() {
         return this.running(Lookup.Kind.STORE_SOURCE);
+    }
+
+    /** Note publishes running now. */
+    @Override
+    public int runningNotePublishes() {
+        return this.running(Lookup.Kind.STORE_NOTES);
     }
 
     private int running(Lookup.Kind kind) {
@@ -464,8 +531,10 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             case NODE, NODE_COMPLETE -> KadSearchInfo.Kind.NODE;
             case KEYWORD -> KadSearchInfo.Kind.KEYWORD;
             case SOURCES -> KadSearchInfo.Kind.SOURCES;
+            case NOTES -> KadSearchInfo.Kind.NOTES;
             case STORE_KEYWORD -> KadSearchInfo.Kind.STORE_KEYWORD;
             case STORE_SOURCE -> KadSearchInfo.Kind.STORE_SOURCE;
+            case STORE_NOTES -> KadSearchInfo.Kind.STORE_NOTES;
         };
     }
 
@@ -574,9 +643,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                 case RES -> this.lookupAnswered(peer, packet);
                 case SEARCH_KEY_REQ -> this.keywordSearchRequested(peer, packet);
                 case SEARCH_SOURCE_REQ -> this.sourceSearchRequested(peer, packet);
+                case SEARCH_NOTES_REQ -> this.notesSearchRequested(peer, packet);
                 case SEARCH_RES -> this.searchAnswered(peer, packet);
                 case PUBLISH_KEY_REQ -> this.keywordPublished(peer, packet);
                 case PUBLISH_SOURCE_REQ -> this.sourcePublished(peer, packet);
+                case PUBLISH_NOTES_REQ -> this.notePublished(peer, packet);
                 case PUBLISH_RES -> this.publishAnswered(peer, packet);
                 case FIREWALLED2_REQ -> this.firewallCheckRequested(peer, packet);
                 case FIREWALLED_RES -> this.firewallAnswered(peer, packet);
@@ -731,6 +802,12 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         this.answerResults(peer, search.target(), results);
     }
 
+    private void notesSearchRequested(Peer peer, Packet packet) throws DecodeException {
+        KadMessages.NotesSearch search = KadMessages.NotesSearch.decode(packet);
+        this.answerResults(
+                peer, search.target(), this.index.searchNotes(search.target(), search.size(), this.ticker.read()));
+    }
+
     private void answerResults(Peer peer, UInt128 target, List<KadMessages.Entry> results) {
         if (results.isEmpty()) {
             return;
@@ -775,6 +852,18 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         OptionalLong load = this.index.publishSource(
                 publish.file(), publish.source(), publish.tags(), peer.ip(), peer.port(), this.ticker.read());
+        if (load.isPresent()) {
+            this.answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
+        }
+    }
+
+    private void notePublished(Peer peer, Packet packet) throws DecodeException {
+        KadMessages.NotesPublish publish = KadMessages.NotesPublish.decode(packet);
+        if (!this.inTolerance(publish.file())) {
+            return;
+        }
+        OptionalLong load = this.index.publishNote(
+                publish.file(), publish.publisher(), publish.tags(), peer.ip(), this.ticker.read());
         if (load.isPresent()) {
             this.answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
         }
@@ -899,6 +988,10 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (lookup.kind() == Lookup.Kind.NODE_COMPLETE) {
             this.selfLookupDone = true;
         }
+        Runnable ended = this.endActions.remove(lookup);
+        if (ended != null) {
+            ended.run();
+        }
     }
 
     /** The packets lookups send. */
@@ -924,6 +1017,11 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                             contact,
                             new KadMessages.SourceSearch(lookup.target(), 0, (Long) data).encode(),
                             Opcodes.Kad.SEARCH_SOURCE_REQ);
+                case NOTES ->
+                    node.requestTo(
+                            contact,
+                            new KadMessages.NotesSearch(lookup.target(), (Long) data).encode(),
+                            Opcodes.Kad.SEARCH_NOTES_REQ);
                 case STORE_KEYWORD -> {
                     @SuppressWarnings("unchecked")
                     List<KadMessages.Entry> files = (List<KadMessages.Entry>) data;
@@ -945,6 +1043,21 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                                             node.sourceTags((Long) data))
                                     .encode(),
                             Opcodes.Kad.PUBLISH_SOURCE_REQ);
+                case STORE_NOTES -> {
+                    OwnNote note = (OwnNote) data;
+                    Optional<FileComment> comment = note.comment().get().filter(c -> !c.isEmpty());
+                    if (comment.isEmpty()) {
+                        // The comment was taken away meanwhile: the nodes left hear nothing of it.
+                        lookup.stop();
+                        return;
+                    }
+                    node.requestTo(
+                            contact,
+                            new KadMessages.NotesPublish(
+                                            lookup.target(), node.identity.id(), noteTags(note, comment.get()))
+                                    .encode(),
+                            Opcodes.Kad.PUBLISH_NOTES_REQ);
+                }
                 default -> {
                     // Node lookups only collect contacts.
                 }
@@ -959,6 +1072,19 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEPORT), this.settings.tcpPort()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size));
         tags.add(new Tag.IntTag(TagName.id(FileTag.ENCRYPTION), this.settings.connectOptions()));
+        return tags;
+    }
+
+    private static List<Tag> noteTags(OwnNote note, FileComment comment) {
+        List<Tag> tags = new ArrayList<>();
+        tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), note.fileName()));
+        if (comment.rating() > 0) {
+            tags.add(new Tag.IntTag(TagName.id(FileTag.FILERATING), comment.rating()));
+        }
+        if (!comment.text().isEmpty()) {
+            tags.add(new Tag.StringTag(TagName.id(FileTag.DESCRIPTION), comment.text()));
+        }
+        tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), note.size()));
         return tags;
     }
 
@@ -1051,6 +1177,23 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                     MediaTags.read(e.tags())));
         }
         return results;
+    }
+
+    // A note on a file of another size, or with neither comment nor rating, says nothing of this file.
+    private static List<Note> noteResults(List<KadMessages.Entry> entries, long size, Set<UInt128> publishers) {
+        List<Note> notes = new ArrayList<>();
+        for (KadMessages.Entry e : entries) {
+            FileComment comment = KadIndex.noteComment(e.tags());
+            long noteSize =
+                    Math.max(0, Tags.intValue(e.tags(), FileTag.FILESIZE).orElse(0));
+            if (comment.isEmpty() || (size != 0 && noteSize != 0 && noteSize != size) || !publishers.add(e.id())) {
+                continue;
+            }
+            String name =
+                    KadIndex.cut(Tags.stringValue(e.tags(), FileTag.FILENAME).orElse(""), KadIndex.MAX_NOTE_NAME);
+            notes.add(new Note(e.id(), name, noteSize, comment));
+        }
+        return notes;
     }
 
     private static List<Source> sourceResults(List<KadMessages.Entry> entries) {

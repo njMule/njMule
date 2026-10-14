@@ -25,8 +25,10 @@ public record KadSearchInfo(String target, Kind kind, int answers) {
         NODE,
         KEYWORD,
         SOURCES,
+        NOTES,
         STORE_KEYWORD,
-        STORE_SOURCE
+        STORE_SOURCE,
+        STORE_NOTES
     }
 
     public KadSearchInfo {

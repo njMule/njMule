@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -34,13 +35,25 @@ import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.search.SearchExpr;
 
 /**
- * What other nodes publish to us: files under keywords and sources of files, with global and per-key limits and an
- * expiry, answered to searches. Engine thread only.
+ * What other nodes publish to us: files under keywords, sources of files and notes (comments and ratings) on files,
+ * with global and per-key limits and an expiry, answered to searches. Engine thread only.
  */
 final class KadIndex {
 
     static final Duration KEYWORD_LIFETIME = Duration.ofHours(24);
     static final Duration SOURCE_LIFETIME = Duration.ofHours(5);
+
+    // Publishers renew their notes once a day, so a note nobody renews goes after a day.
+    static final Duration NOTE_LIFETIME = Duration.ofHours(24);
+
+    /** Notes per file at most, and per answer. */
+    static final int MAX_NOTES_PER_FILE = 150;
+
+    /** Notes of all files at most. */
+    static final int MAX_NOTES = 50_000;
+
+    // What a note keeps of the file name the publisher gave, so that a note stays small.
+    static final int MAX_NOTE_NAME = 255;
 
     /** Keyword entries in total at most. */
     static final int MAX_KEYWORD_ENTRIES = 60_000;
@@ -101,10 +114,16 @@ final class KadIndex {
     /** A source of a file. */
     private record SourceEntry(int ip, int tcpPort, int udpPort, List<Tag> tags, long expires) {}
 
+    /** A note on a file, as an answer carries it. */
+    private record NoteEntry(int ip, long size, List<Tag> tags, long expires) {}
+
     private final Map<UInt128, Map<UInt128, KeywordEntry>> keywords = new LinkedHashMap<>();
     private final Map<UInt128, Map<UInt128, SourceEntry>> sources = new LinkedHashMap<>();
+    // By file, then by the publisher's id, oldest first.
+    private final Map<UInt128, Map<UInt128, NoteEntry>> notes = new LinkedHashMap<>();
     private int keywordEntries;
     private int sourceEntries;
+    private int noteEntries;
 
     /** Stores a file published under {@code keyword} by {@code ip}; returns the keyword's load. */
     int publishKeyword(UInt128 keyword, KadMessages.Entry file, int ip, long now) {
@@ -250,6 +269,66 @@ final class KadIndex {
         return results;
     }
 
+    /**
+     * Stores the note of the node {@code publisher} on {@code file}, sent from {@code ip}; returns the file's load,
+     * empty when refused. A publisher, and an address, hold one note on a file: a new one replaces it.
+     */
+    OptionalLong publishNote(UInt128 file, UInt128 publisher, List<Tag> tags, int ip, long now) {
+        FileComment comment = noteComment(tags);
+        if (ip == 0 || comment.isEmpty()) {
+            return OptionalLong.empty();
+        }
+        // Only what a note says is kept, no longer than clients show it.
+        String name = cut(Tags.stringValue(tags, FileTag.FILENAME).orElse(""), MAX_NOTE_NAME);
+        long size = Math.max(0, Tags.intValue(tags, FileTag.FILESIZE).orElse(0));
+        List<Tag> stored = new ArrayList<>();
+        if (!name.isEmpty()) {
+            stored.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), name));
+        }
+        if (size > 0) {
+            stored.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size));
+        }
+        if (comment.rating() > 0) {
+            stored.add(new Tag.IntTag(TagName.id(FileTag.FILERATING), comment.rating()));
+        }
+        if (!comment.text().isEmpty()) {
+            stored.add(new Tag.StringTag(TagName.id(FileTag.DESCRIPTION), comment.text()));
+        }
+        Map<UInt128, NoteEntry> entries = this.notes.computeIfAbsent(file, f -> new LinkedHashMap<>());
+        int before = entries.size();
+        entries.values().removeIf(e -> e.ip() == ip);
+        entries.remove(publisher);
+        this.noteEntries -= before - entries.size();
+        if (entries.size() >= MAX_NOTES_PER_FILE || this.noteEntries >= MAX_NOTES) {
+            if (entries.isEmpty()) {
+                this.notes.remove(file);
+                return OptionalLong.empty();
+            }
+            entries.remove(entries.keySet().iterator().next());
+            this.noteEntries--;
+        }
+        entries.put(publisher, new NoteEntry(ip, size, List.copyOf(stored), now + NOTE_LIFETIME.toNanos()));
+        this.noteEntries++;
+        return OptionalLong.of(load(entries.size(), MAX_NOTES_PER_FILE));
+    }
+
+    /** The notes on {@code file} for a file of {@code size} bytes (0: any). */
+    List<KadMessages.Entry> searchNotes(UInt128 file, long size, long now) {
+        Map<UInt128, NoteEntry> entries = this.notes.get(file);
+        List<KadMessages.Entry> results = new ArrayList<>();
+        if (entries == null) {
+            return results;
+        }
+        for (Map.Entry<UInt128, NoteEntry> e : entries.entrySet()) {
+            NoteEntry note = e.getValue();
+            if (now - note.expires() >= 0 || (size != 0 && note.size() != 0 && note.size() != size)) {
+                continue;
+            }
+            results.add(new KadMessages.Entry(e.getKey(), note.tags()));
+        }
+        return results;
+    }
+
     /** Drops what expired. */
     void clean(long now) {
         for (Iterator<Map<UInt128, KeywordEntry>> it = this.keywords.values().iterator(); it.hasNext(); ) {
@@ -270,6 +349,15 @@ final class KadIndex {
                 it.remove();
             }
         }
+        for (Iterator<Map<UInt128, NoteEntry>> it = this.notes.values().iterator(); it.hasNext(); ) {
+            Map<UInt128, NoteEntry> entries = it.next();
+            int before = entries.size();
+            entries.values().removeIf(e -> now - e.expires() >= 0);
+            this.noteEntries -= before - entries.size();
+            if (entries.isEmpty()) {
+                it.remove();
+            }
+        }
     }
 
     int keywordEntries() {
@@ -280,8 +368,28 @@ final class KadIndex {
         return this.sourceEntries;
     }
 
+    int noteEntries() {
+        return this.noteEntries;
+    }
+
     private static int load(int count, int max) {
         return (int) Math.min(100, count * 100L / max);
+    }
+
+    /** The comment and rating a note carries, made fit; a rating out of range counts as none. */
+    static FileComment noteComment(List<Tag> tags) {
+        long rating = Tags.intValue(tags, FileTag.FILERATING).orElse(0);
+        return FileComment.of(
+                Tags.stringValue(tags, FileTag.DESCRIPTION).orElse(""),
+                rating > 0 && rating <= FileComment.MAX_RATING ? (int) rating : 0);
+    }
+
+    // Never between the two halves of a surrogate pair.
+    static String cut(String text, int max) {
+        if (text.length() <= max) {
+            return text;
+        }
+        return text.substring(0, Character.isHighSurrogate(text.charAt(max - 1)) ? max - 1 : max);
     }
 
     // Name and size are kept as fields, the rest as they came, except what only answers carry.
