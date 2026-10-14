@@ -38,6 +38,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
@@ -316,6 +317,41 @@ class DownloadManagerTest {
             assertThat(info.category()).isEqualTo(1);
             assertThat(info.priority()).isEqualTo(DownloadPriority.HIGH);
         });
+    }
+
+    @Test
+    void aLinkAddedAgainGivesSourcesOnlyWhenItIsOfTheSameFile() throws Exception {
+        DownloadManager manager = this.manager();
+        Hash16 hash = Hash16.parseHex("4c".repeat(16));
+        Hash20 aich = Hash20.parseBase32("A".repeat(32));
+        Hash20 other = Hash20.parseBase32("B".repeat(32));
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("same.bin", 5000, hash));
+            return manager.pause(hash);
+        });
+
+        DownloadInfo bigger = this.onLoop(() -> manager.add(link(hash, 6000, Optional.empty(), Ipv4.of(192, 0, 2, 1))));
+        assertThat(bigger.sources()).as("another size").isZero();
+        DownloadInfo withAich =
+                this.onLoop(() -> manager.add(link(hash, 5000, Optional.of(aich), Ipv4.of(192, 0, 2, 2))));
+        assertThat(withAich.sources()).isEqualTo(1);
+        assertThat(this.onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
+                .as("the link's AICH hash is taken")
+                .contains(aich);
+        DownloadInfo otherAich =
+                this.onLoop(() -> manager.add(link(hash, 5000, Optional.of(other), Ipv4.of(192, 0, 2, 3))));
+        assertThat(otherAich.sources()).as("another AICH hash").isEqualTo(1);
+    }
+
+    private static Ed2kLink.FileLink link(Hash16 hash, long size, Optional<Hash20> aich, int source) {
+        return new Ed2kLink.FileLink(
+                "same.bin",
+                size,
+                hash,
+                aich,
+                List.of(),
+                List.of(new Ed2kLink.Source(Ipv4.format(source), PORT)),
+                List.of());
     }
 
     private DownloadManager manager() throws Exception {

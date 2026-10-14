@@ -345,13 +345,16 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     /**
-     * Adds a download, or the link's sources to the existing one. A new download goes in the first category whose names
-     * it matches, with that category's priority.
+     * Adds a download, or the link's sources to the existing one of the same file. A new download goes in the first
+     * category whose names it matches, with that category's priority.
      */
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
+        Optional<DownloadQueue.Download> known = this.queue.get(link.hash());
+        // A link of another file under the same hash would give sources that cannot serve this one.
+        boolean same = known.map(d -> DownloadQueue.sameFile(d.file(), link)).orElse(true);
         int category = Category.NONE;
         DownloadPriority priority = DownloadPriority.AUTO;
-        if (this.queue.get(link.hash()).isEmpty()) {
+        if (known.isEmpty()) {
             // Set before the download is announced, so the news of it tells them.
             String name = PathSanitizer.fileName(link.name());
             for (Category c : this.categories.get()) {
@@ -364,7 +367,13 @@ public final class DownloadManager implements AutoCloseable {
         }
         DownloadQueue.Download download = this.queue.add(link, category, priority);
         Entry entry = this.entries.computeIfAbsent(download.hash(), hash -> new Entry(download, this.ticker.read()));
-        this.addLinkSources(entry, link.sources());
+        if (same) {
+            this.addLinkSources(entry, link.sources());
+        } else {
+            logger.warn(
+                    "A link of {} gives another size or AICH hash than the download: its sources are left out",
+                    download.file().name());
+        }
         return this.info(entry);
     }
 

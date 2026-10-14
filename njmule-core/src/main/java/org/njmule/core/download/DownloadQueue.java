@@ -204,11 +204,20 @@ public final class DownloadQueue implements AutoCloseable {
         return this.add(link, Category.NONE, DownloadPriority.AUTO);
     }
 
-    /** Adds a download in {@code category} with {@code priority}; an existing one only gets the link's sources. */
+    /**
+     * Adds a download in {@code category} with {@code priority}. An existing one gets the link's sources, and its AICH
+     * hash if it has none, when the link is of the same file (see {@link #sameFile}).
+     */
     public Download add(Ed2kLink.FileLink link, int category, DownloadPriority priority) throws IOException {
         Download existing = this.downloads.get(link.hash());
         if (existing != null) {
-            existing.sources.addAll(link.sources());
+            if (sameFile(existing.file, link)) {
+                existing.sources.addAll(link.sources());
+                if (existing.file.aichHash().isEmpty() && link.aichHash().isPresent()) {
+                    existing.file.trustAich(link.aichHash().get());
+                    existing.dirty = true;
+                }
+            }
             return existing;
         }
         PartFile file = PartFile.create(
@@ -259,6 +268,16 @@ public final class DownloadQueue implements AutoCloseable {
         this.listener.added(download);
         this.hashSetKnown(download);
         return download;
+    }
+
+    /**
+     * Whether {@code link} names the file of {@code file}: the same size, and the same AICH hash when both have one.
+     */
+    static boolean sameFile(PartFile file, Ed2kLink.FileLink link) {
+        return file.size() == link.size()
+                && (file.aichHash().isEmpty()
+                        || link.aichHash().isEmpty()
+                        || file.aichHash().equals(link.aichHash()));
     }
 
     public Path tempDir() {
