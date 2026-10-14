@@ -589,8 +589,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     }
 
     /**
-     * Looks for files under the first keyword of {@code words}, filtered by {@code expression}; the handle ends this
-     * search and no later one for the same keyword. Empty when the search cannot start now.
+     * Looks for files under the first keyword of {@code words}, filtered by {@code expression} there and here; the
+     * handle ends this search and no later one for the same keyword. Empty when the search cannot start now.
      */
     public Optional<Runnable> searchKeyword(
             String words, Optional<SearchExpr> expression, Consumer<List<FileResult>> results) {
@@ -614,7 +614,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         this.lookupData.put(lookup, tree);
         this.resultSinks.put(lookup, entries -> {
-            List<FileResult> found = fileResults(entries, keywords);
+            List<FileResult> found = fileResults(entries, keywords, expression);
             results.accept(found);
             return found.size();
         });
@@ -1831,12 +1831,17 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return this.ticker.read() / 1_000_000L;
     }
 
-    private static List<FileResult> fileResults(List<KadMessages.Entry> entries, List<String> keywords) {
+    // A node may answer what it holds under the keyword without the filter: the whole expression is checked again.
+    private static List<FileResult> fileResults(
+            List<KadMessages.Entry> entries, List<String> keywords, Optional<SearchExpr> expression) {
         List<FileResult> results = new ArrayList<>();
         for (KadMessages.Entry e : entries) {
             Optional<String> name = Tags.stringValue(e.tags(), FileTag.FILENAME);
             long size = Tags.intValue(e.tags(), FileTag.FILESIZE).orElse(0);
-            if (name.isEmpty() || size <= 0 || !Keywords.of(name.get()).containsAll(keywords)) {
+            if (name.isEmpty()
+                    || size <= 0
+                    || !Keywords.of(name.get()).containsAll(keywords)
+                    || (expression.isPresent() && !KadIndex.matches(expression.get(), name.get(), size, e.tags()))) {
                 continue;
             }
             long sources = Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0);

@@ -583,3 +583,5 @@ All notable changes to this project are documented here. The format follows
   next ones each time instead of always the same.
 - Kad searches and publishes send nothing new in their last 20 seconds, and one that has all the
   answers it wants still takes those arriving in the next 15 seconds instead of dropping them.
+- Kad keyword search results must match the whole expression (other words, NOT terms, size, type
+  and other attributes), not only the word looked up, whatever the answering node filtered.

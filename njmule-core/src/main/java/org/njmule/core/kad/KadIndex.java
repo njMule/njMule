@@ -263,7 +263,8 @@ final class KadIndex {
             // Refreshed only by publishers that found no place, an entry may have no name left.
             entry.forget(now);
             String name = entry.popularName();
-            if (name.isEmpty() || (expression.isPresent() && !matches(expression.get(), name, entry))) {
+            if (name.isEmpty()
+                    || (expression.isPresent() && !matches(expression.get(), name, entry.size, entry.tags))) {
                 continue;
             }
             if (skipped++ < start) {
@@ -475,14 +476,15 @@ final class KadIndex {
         return kept;
     }
 
-    private static boolean matches(SearchExpr expr, String name, KeywordEntry entry) {
+    /** Whether the file {@code name} of {@code size} bytes with {@code tags} matches {@code expr}. */
+    static boolean matches(SearchExpr expr, String name, long size, List<Tag> tags) {
         return switch (expr) {
-            case SearchExpr.And and -> matches(and.left(), name, entry) && matches(and.right(), name, entry);
-            case SearchExpr.Or or -> matches(or.left(), name, entry) || matches(or.right(), name, entry);
-            case SearchExpr.Not not -> matches(not.left(), name, entry) && !matches(not.right(), name, entry);
+            case SearchExpr.And and -> matches(and.left(), name, size, tags) && matches(and.right(), name, size, tags);
+            case SearchExpr.Or or -> matches(or.left(), name, size, tags) || matches(or.right(), name, size, tags);
+            case SearchExpr.Not not -> matches(not.left(), name, size, tags) && !matches(not.right(), name, size, tags);
             case SearchExpr.Keyword keyword -> containsWords(name, keyword.text());
-            case SearchExpr.StringAttr attr -> matchesString(attr, name, entry);
-            case SearchExpr.NumericAttr attr -> matchesNumber(attr, entry);
+            case SearchExpr.StringAttr attr -> matchesString(attr, name, tags);
+            case SearchExpr.NumericAttr attr -> matchesNumber(attr, size, tags);
         };
     }
 
@@ -502,20 +504,20 @@ final class KadIndex {
         return anyWord;
     }
 
-    private static boolean matchesString(SearchExpr.StringAttr attr, String name, KeywordEntry entry) {
+    private static boolean matchesString(SearchExpr.StringAttr attr, String name, List<Tag> tags) {
         if (attr.tag() == FileTag.FILEFORMAT) {
             int dot = name.lastIndexOf('.');
             return dot >= 0 && name.substring(dot + 1).equalsIgnoreCase(attr.value());
         }
-        return Tags.stringValue(entry.tags, attr.tag())
+        return Tags.stringValue(tags, attr.tag())
                 .map(v -> v.toLowerCase(Locale.ROOT).equals(attr.value().toLowerCase(Locale.ROOT)))
                 .orElse(false);
     }
 
-    private static boolean matchesNumber(SearchExpr.NumericAttr attr, KeywordEntry entry) {
+    private static boolean matchesNumber(SearchExpr.NumericAttr attr, long size, List<Tag> tags) {
         long value = attr.tag() == FileTag.FILESIZE
-                ? entry.size
-                : Tags.intValue(entry.tags, attr.tag()).orElse(Long.MIN_VALUE);
+                ? size
+                : Tags.intValue(tags, attr.tag()).orElse(Long.MIN_VALUE);
         if (value == Long.MIN_VALUE) {
             return false;
         }
