@@ -74,6 +74,7 @@ import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.CancelledFiles;
 import org.njmule.core.files.PartFile;
@@ -1244,7 +1245,10 @@ final class Network {
                         | Hello.MISC1_UNICODE
                         | Hello.MISC1_DATA_COMPRESSION
                         | IdentityHandshake.SUPPORTED << 16
-                        | Hello.MISC1_NO_VIEW_SHARED_FILES,
+                        // Clients do not ask for files that nobody may see.
+                        | (prefs.sharedFilesVisibility() == SharedFilesVisibility.NOBODY
+                                ? Hello.MISC1_NO_VIEW_SHARED_FILES
+                                : 0),
                 Hello.MISC2_LARGE_FILES
                         | Hello.MISC2_SOURCE_EXCHANGE2
                         | Hello.MISC2_SUPPORTS_CAPTCHA
