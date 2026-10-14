@@ -151,7 +151,7 @@ public final class SharedScreen implements Screen {
     }
 
     // With its subfolders unless unticked; a folder where personal or system files may be gets a warning first.
-    private void confirmShare(Path directory) {
+    void confirmShare(Path directory) {
         CheckBox subfolders = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
         subfolders.setSelected(true);
         VBox content = new VBox(8, new Label(directory.toString()), subfolders);
