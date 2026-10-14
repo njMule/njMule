@@ -135,6 +135,7 @@ public final class PortForwarding implements AutoCloseable {
             }
         } catch (InterruptedException e) {
             // Closing.
+            Thread.currentThread().interrupt();
         } catch (IOException e) {
             if (!this.closed) {
                 this.report.line(false, "UPnP failed: " + e.getMessage());
