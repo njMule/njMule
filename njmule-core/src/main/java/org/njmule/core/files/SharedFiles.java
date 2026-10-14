@@ -248,6 +248,7 @@ public final class SharedFiles implements AutoCloseable {
      * not shared.
      *
      * @throws java.nio.file.FileAlreadyExistsException when the directory has a file of that name
+     * @throws IllegalArgumentException for a name never shared, such as that of a backup or of a hidden file
      */
     public Optional<SharedFile> rename(Hash16 hash, String newName) throws IOException {
         SharedFile file = this.byHash.get(hash);
@@ -257,6 +258,10 @@ public final class SharedFiles implements AutoCloseable {
         String name = PathSanitizer.fileName(newName);
         if (name.isEmpty() || name.equals(file.name())) {
             return Optional.of(file);
+        }
+        // The scans skip such a file: renamed so, it would be unshared a moment later.
+        if (name.startsWith(".") || isSkipped(name)) {
+            throw new IllegalArgumentException("a file named " + name + " is not shared");
         }
         Path target = file.path().resolveSibling(name);
         if (target.equals(file.path())) {

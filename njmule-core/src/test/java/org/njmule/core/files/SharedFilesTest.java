@@ -460,6 +460,29 @@ class SharedFilesTest {
     }
 
     @Test
+    void refusesNamesThatAreNeverShared() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(3000, 35);
+        Files.write(incoming.resolve("kept.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared kept.bin");
+
+        for (String name : List.of("kept.bak", "kept.tmp", "001.part", "Desktop.ini", "link.lnk", ".hidden")) {
+            assertThatThrownBy(() -> this.onLoop(() -> shares.rename(hash, name)))
+                    .as(name)
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(incoming.resolve("kept.bin")).exists();
+        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("kept.bin");
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
     void forgetsTheFilesNoLongerSharedWhenTheyAreNotToBeRemembered() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));

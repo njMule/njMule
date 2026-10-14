@@ -205,7 +205,7 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /**
      * Renames a shared file in its directory; completes with {@code false} for a file not shared, and fails when the
-     * directory has a file of that name.
+     * directory has a file of that name or for a name never shared (a backup, a hidden file).
      */
     CompletableFuture<Boolean> renameSharedFile(Hash16 hash, String name);
 
