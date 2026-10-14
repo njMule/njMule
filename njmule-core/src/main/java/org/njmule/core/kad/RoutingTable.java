@@ -335,7 +335,12 @@ final class RoutingTable {
             return true;
         }
         int subnet = ip & 0xFFFF_FF00;
-        if (this.perSubnet.getOrDefault(subnet, 0) >= PER_SUBNET) {
+        int inSubnet = this.perSubnet.getOrDefault(subnet, 0);
+        // A contact moving inside its own /24 leaves its place there.
+        if (moving != null && (moving.ip() & 0xFFFF_FF00) == subnet) {
+            inSubnet--;
+        }
+        if (inSubnet >= PER_SUBNET) {
             return false;
         }
         int inBin = 0;
