@@ -49,6 +49,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -73,6 +74,7 @@ import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
@@ -974,6 +976,22 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<List<PeerComment>> peerComments(Hash16 download) {
         Objects.requireNonNull(download, "download");
         return this.loop.submit(() -> this.network.peerComments(download));
+    }
+
+    @Override
+    public CompletableFuture<List<KadNote>> kadNotes(Hash16 file) {
+        Objects.requireNonNull(file, "file");
+        return this.loop.submit(() -> this.network.kadNotes(file));
+    }
+
+    @Override
+    public CompletableFuture<List<KadNote>> searchKadNotes(Hash16 file) {
+        Objects.requireNonNull(file, "file");
+        CompletableFuture<List<KadNote>> notes = new CompletableFuture<>();
+        if (!this.loop.post(() -> this.network.searchKadNotes(file, notes))) {
+            notes.completeExceptionally(new RejectedExecutionException("engine loop not accepting"));
+        }
+        return notes;
     }
 
     @Override

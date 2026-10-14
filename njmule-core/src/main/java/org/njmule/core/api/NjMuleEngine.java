@@ -269,6 +269,15 @@ public interface NjMuleEngine extends AutoCloseable {
     /** What the sources of a download said of the file. */
     CompletableFuture<List<PeerComment>> peerComments(Hash16 download);
 
+    /** What Kad nodes said of a download or shared file, as far as searching Kad found it. */
+    CompletableFuture<List<KadNote>> kadNotes(Hash16 file);
+
+    /**
+     * Searches Kad for what nodes said of a download or shared file, or joins the search running for it; completes with
+     * all the notes known once it ends, and fails when Kad is not connected or cannot search for the file now.
+     */
+    CompletableFuture<List<KadNote>> searchKadNotes(Hash16 file);
+
     /** The friend that has the friend slot, served before anyone else, if any. */
     CompletableFuture<Optional<Hash16>> friendSlot();
 

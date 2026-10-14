@@ -61,6 +61,7 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerComment;
@@ -81,11 +82,13 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.CancelledFiles;
+import org.njmule.core.files.CommentFilter;
 import org.njmule.core.files.FileComments;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.SharedFiles;
 import org.njmule.core.kad.KadIdentity;
 import org.njmule.core.kad.KadNode;
+import org.njmule.core.kad.KadNotes;
 import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
 import org.njmule.core.kad.UInt128;
@@ -227,6 +230,7 @@ final class Network {
     private final Friends friends;
     private final long started;
     private KadPublisher kadPublisher;
+    private final KadNotes kadNotes;
     private final Identities identities;
     private final SecureRandom random;
     private final Path configDir;
@@ -354,6 +358,11 @@ final class Network {
                 () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
                 () -> this.categories,
                 new DownloadEvents());
+        this.kadNotes = new KadNotes(
+                () -> Optional.ofNullable(this.kad).filter(KadNode::isConnected).map(k -> k),
+                this::runningDownloads,
+                () -> CommentFilter.of(this.preferences.get().commentFilter()),
+                Ticker.systemTicker());
         this.uploads = new UploadManager(
                 loop,
                 hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
@@ -1272,6 +1281,7 @@ final class Network {
         this.kad = null;
         this.kadSocket = null;
         this.kadPublisher = null;
+        this.kadNotes.kadStopped();
     }
 
     private void closeListener() {
@@ -1295,6 +1305,7 @@ final class Network {
             this.kad.close();
             this.kadSocket.close();
         }
+        this.kadNotes.kadStopped();
         this.uploads.close();
         this.downloads.close();
         if (this.shares != null) {
@@ -1400,6 +1411,35 @@ final class Network {
         return this.downloads.comments(download);
     }
 
+    List<KadNote> kadNotes(Hash16 file) {
+        return this.kadNotes.notes(file);
+    }
+
+    void searchKadNotes(Hash16 file, CompletableFuture<List<KadNote>> done) {
+        Optional<Long> size = this.downloads
+                .download(file)
+                .map(DownloadInfo::size)
+                .or(() -> Optional.ofNullable(this.shares)
+                        .flatMap(s -> s.get(file))
+                        .map(SharedFiles.SharedFile::size));
+        if (size.isEmpty()) {
+            done.completeExceptionally(new IllegalArgumentException("Neither downloaded nor shared: " + file));
+            return;
+        }
+        this.kadNotes.search(file, size.get(), done);
+    }
+
+    // The downloads Kad is asked once a run what others said of.
+    private List<KadNotes.Download> runningDownloads() {
+        List<KadNotes.Download> running = new ArrayList<>();
+        for (DownloadInfo d : this.downloads.downloads()) {
+            if (d.status() == DownloadInfo.Status.DOWNLOADING) {
+                running.add(new KadNotes.Download(d.hash(), d.size()));
+            }
+        }
+        return running;
+    }
+
     Optional<Hash16> friendSlot() {
         return this.friendSlot;
     }
@@ -1462,10 +1502,11 @@ final class Network {
                     Ticker.systemTicker());
             this.kadSocket.deliverTo(this.kad);
             this.kad.loadNodes();
-            this.kadPublisher = new KadPublisher(this.kad, this::kadShared, Ticker.systemTicker());
+            this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
             this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
                 this.kad.tick();
                 this.kadPublisher.tick();
+                this.kadNotes.tick();
             });
             logger.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
         } catch (IOException e) {
