@@ -368,7 +368,8 @@ public final class Main {
         try {
             dirs.createAll();
             LoggingSetup.enableFileLog(dirs.logs());
-            engine = NjMuleEngine.start(new EngineConfig(dirs));
+            // A one-shot command connects as it asks, and once.
+            engine = NjMuleEngine.start(new EngineConfig(dirs, !cli.network().isOneShot()));
         } catch (IOException | RuntimeException e) {
             logger.error("Cannot start {}", NjMuleInfo.NAME, e);
             err.println("Cannot start " + NjMuleInfo.NAME + ": " + e.getMessage());

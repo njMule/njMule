@@ -660,3 +660,7 @@ All notable changes to this project are documented here. The format follows
 - Looking for any server, two are tried at once, so a dead or silent server no longer holds up the
   connection for 25 seconds; each failed attempt shows in the log, and every server being tried may
   check our port for a HighID.
+- The "Reconnect" preference works: a lost server connection is replaced at once (after 30 seconds
+  when it was lost again soon after a reconnect), and when no server accepts us every server is
+  tried again after 30 seconds, until Cancel or Disconnect; a list with nothing to try still ends at
+  once. One-shot command-line runs and embedded engines connect only as asked.

@@ -19,10 +19,20 @@ package org.njmule.core.api;
 import java.util.Objects;
 import org.njmule.core.config.AppDirectories;
 
-/** Start-up parameters of the engine. */
-public record EngineConfig(AppDirectories directories) {
+/**
+ * Start-up parameters of the engine.
+ *
+ * @param automaticConnections whether the engine connects to a server at start and reconnects as the preferences say:
+ *     on for a run that serves the user, off for a one-shot command and an embedded engine
+ */
+public record EngineConfig(AppDirectories directories, boolean automaticConnections) {
 
     public EngineConfig {
         Objects.requireNonNull(directories, "directories");
+    }
+
+    /** Without automatic connections. */
+    public EngineConfig(AppDirectories directories) {
+        this(directories, false);
     }
 }

@@ -88,6 +88,7 @@ class SearchManagerTest {
             Hash16.parseHex("01".repeat(16)),
             () -> 4662,
             new Session(),
+            () -> false,
             new SecureRandom());
     private final SearchManager manager =
             new SearchManager(this.loop, this.session, this.servers, () -> this.udp, () -> this.kad, new Events());

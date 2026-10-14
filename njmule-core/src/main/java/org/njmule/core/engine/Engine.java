@@ -156,7 +156,8 @@ public final class Engine implements NjMuleEngine {
             Hash16 userHash,
             BooleanSupplier emuleRunning,
             InstanceLock lock,
-            Optional<InetSocketAddress> upnp)
+            Optional<InetSocketAddress> upnp,
+            boolean automaticConnections)
             throws IOException {
         this.directories = directories;
         this.lock = lock;
@@ -185,7 +186,8 @@ public final class Engine implements NjMuleEngine {
                 userHash,
                 preferences.effectiveTempDir(directories),
                 () -> this.preferences.effectiveIncomingDir(directories),
-                upnp);
+                upnp,
+                automaticConnections);
     }
 
     public static Engine start(EngineConfig config) throws IOException {
@@ -221,7 +223,8 @@ public final class Engine implements NjMuleEngine {
             Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
             EngineLoop loop = EngineLoop.start();
             try {
-                engine = new Engine(dirs, prefs, loop, userHash, emuleRunning, lock, upnp);
+                engine = new Engine(
+                        dirs, prefs, loop, userHash, emuleRunning, lock, upnp, config.automaticConnections());
             } catch (IOException | RuntimeException e) {
                 loop.close();
                 throw e;

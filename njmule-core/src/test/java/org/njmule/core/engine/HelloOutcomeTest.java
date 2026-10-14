@@ -78,7 +78,8 @@ class HelloOutcomeTest {
                         Hash16.parseHex("0a".repeat(16)),
                         dirs.data().resolve("temp"),
                         () -> dirs.data().resolve("incoming"),
-                        Optional.empty()))
+                        Optional.empty(),
+                        false))
                 .get(10, TimeUnit.SECONDS);
     }
 

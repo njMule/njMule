@@ -120,7 +120,7 @@ public final class DesktopApp implements AutoCloseable {
         AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         dirs.createAll();
         LoggingSetup.enableFileLog(dirs.logs());
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
+        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs, true));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
         DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
         // A start at login keeps the configuration of this one; starting minimised follows the settings.

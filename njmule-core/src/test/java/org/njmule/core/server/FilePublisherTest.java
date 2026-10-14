@@ -68,6 +68,7 @@ class FilePublisherTest {
             Hash16.parseHex("01".repeat(16)),
             () -> LISTEN_PORT,
             new Connected(),
+            () -> false,
             new SecureRandom());
     private final FilePublisher publisher =
             new FilePublisher(this.session, () -> List.copyOf(this.files), () -> LISTEN_PORT, new Ticker() {

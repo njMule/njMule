@@ -870,7 +870,8 @@ class NetworkTest {
                 USER,
                 this.dirs.data().resolve("temp"),
                 () -> this.dirs.data().resolve("incoming"),
-                Optional.empty()));
+                Optional.empty(),
+                false));
         return this.network;
     }
 

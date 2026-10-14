@@ -70,6 +70,7 @@ class ServerSessionTest {
             Hash16.parseHex("01".repeat(16)),
             () -> 4662,
             new Recorder(),
+            () -> false,
             new SecureRandom());
 
     @AfterEach

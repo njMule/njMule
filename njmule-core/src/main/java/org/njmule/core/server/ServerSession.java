@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -63,8 +64,9 @@ import org.slf4j.LoggerFactory;
 /**
  * The connection to one eD2K server at a time: connect, log in, then serve the session. Looking for any server, two are
  * tried at once. When the preferences ask for obfuscation, the servers that take it, and once those never pinged, are
- * tried obfuscated first, then every server plainly unless obfuscation is required. Used on the engine thread only;
- * network callbacks are posted to it, and those of an abandoned attempt are ignored.
+ * tried obfuscated first, then every server plainly unless obfuscation is required. When asked to keep connected, every
+ * server is tried again {@link #RETRY_AFTER} after all failed, and a lost session is replaced. Used on the engine
+ * thread only; network callbacks are posted to it, and those of an abandoned attempt are ignored.
  */
 public final class ServerSession {
 
@@ -82,6 +84,9 @@ public final class ServerSession {
 
         /** An attempt to log in to {@code server} failed; others may go on. */
         default void attemptFailed(ServerMet.Server server, String reason) {}
+
+        /** No server could be logged in to: they are tried again after {@code wait}. */
+        default void retrying(Duration wait) {}
 
         void message(ServerMet.Server server, String line);
 
@@ -104,6 +109,9 @@ public final class ServerSession {
 
     /** Servers tried at once when any will do: a dead or silent one does not hold up the next. */
     public static final int ATTEMPTS_AT_ONCE = 2;
+
+    /** Wait before trying every server again, and before a reconnect that follows another too soon. */
+    public static final Duration RETRY_AFTER = Duration.ofSeconds(30);
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
     private static final String VERSION_LINE = "server version";
@@ -134,6 +142,7 @@ public final class ServerSession {
     private final Hash16 userHash;
     private final IntSupplier listenPort;
     private final Listener listener;
+    private final BooleanSupplier keepConnected;
     private final SecureRandom random;
     // The servers left to try in this pass.
     private final Deque<ServerMet.Server> pending = new ArrayDeque<>();
@@ -151,6 +160,10 @@ public final class ServerSession {
     private Optional<ServerMet.Server> last = Optional.empty();
     private String lastFailure = "";
     private long lastClientId;
+    // A new round of attempts, once every server failed or after a reconnect that followed another too soon.
+    private ScheduledFuture<?> retry;
+    // A reconnect less than RETRY_AFTER ago: a server that takes us and drops us at once is not hammered.
+    private boolean reconnectedLately;
 
     public ServerSession(
             EngineLoop loop,
@@ -159,6 +172,7 @@ public final class ServerSession {
             Hash16 userHash,
             IntSupplier listenPort,
             Listener listener,
+            BooleanSupplier keepConnected,
             SecureRandom random) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.servers = Objects.requireNonNull(servers, "servers");
@@ -166,6 +180,7 @@ public final class ServerSession {
         this.userHash = Objects.requireNonNull(userHash, "userHash");
         this.listenPort = Objects.requireNonNull(listenPort, "listenPort");
         this.listener = Objects.requireNonNull(listener, "listener");
+        this.keepConnected = Objects.requireNonNull(keepConnected, "keepConnected");
         this.random = Objects.requireNonNull(random, "random");
     }
 
@@ -175,7 +190,11 @@ public final class ServerSession {
      */
     public void connect(Optional<ServerMet.Server> target) {
         this.stop("reconnecting");
-        this.target = Objects.requireNonNull(target, "target");
+        this.look(Objects.requireNonNull(target, "target"));
+    }
+
+    private void look(Optional<ServerMet.Server> target) {
+        this.target = target;
         this.looking = true;
         this.attempted = false;
         this.lastFailure = "";
@@ -267,6 +286,11 @@ public final class ServerSession {
             this.next();
             return;
         }
+        // Without a server tried, waiting would change nothing.
+        if (this.target.isEmpty() && this.attempted && this.keepConnected.getAsBoolean()) {
+            this.retryLater();
+            return;
+        }
         Optional<ServerMet.Server> tried = this.last;
         this.looking = false;
         this.last = Optional.empty();
@@ -288,7 +312,8 @@ public final class ServerSession {
         Optional<String> host = server.dynamicIp();
         if (host.isEmpty()) {
             if (server.ip() >>> 24 == 0) {
-                this.fail(attempt, "no address to connect to");
+                // Later, as every other outcome: the attempts are being started.
+                this.loop.post(() -> this.fail(attempt, "no address to connect to"));
             } else {
                 this.dial(attempt);
             }
@@ -604,12 +629,42 @@ public final class ServerSession {
         drop(attempt);
         this.session = null;
         this.listener.disconnected(Optional.of(attempt.server), reason);
+        if (this.session == null && !this.looking && this.keepConnected.getAsBoolean()) {
+            this.reconnect();
+        }
+    }
+
+    // Any server will do; at once, unless the last reconnect was too recent.
+    private void reconnect() {
+        if (this.reconnectedLately) {
+            this.target = Optional.empty();
+            this.looking = true;
+            this.retryLater();
+            return;
+        }
+        this.reconnectedLately = true;
+        this.loop.schedule("server reconnect pause", RETRY_AFTER, () -> this.reconnectedLately = false);
+        this.look(Optional.empty());
+    }
+
+    private void retryLater() {
+        this.retry = this.loop.schedule("server retry", RETRY_AFTER, () -> {
+            this.retry = null;
+            if (this.looking && this.session == null && this.attempts.isEmpty()) {
+                this.look(Optional.empty());
+            }
+        });
+        this.listener.retrying(RETRY_AFTER);
     }
 
     // Drops the session and the attempts; tells it when there was one.
     private void stop(String reason) {
         Optional<ServerMet.Server> was = this.server().or(() -> this.last);
         boolean active = this.session != null || this.looking;
+        if (this.retry != null) {
+            this.retry.cancel(false);
+            this.retry = null;
+        }
         for (Attempt attempt : this.attempts) {
             drop(attempt);
         }

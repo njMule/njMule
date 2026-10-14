@@ -235,6 +235,8 @@ final class Network {
     private volatile boolean kadStoppedByHand;
     // Where UPnP discovery goes; empty: the router is never asked.
     private final Optional<InetSocketAddress> upnp;
+    // Whether this run connects at start and reconnects as the preferences say.
+    private final boolean automaticConnections;
     // Changes of the router's mappings run one after the other, off the engine thread, so old mappings are gone before
     // new ones are asked for and none is left behind.
     private CompletableFuture<Void> upnpChanges = CompletableFuture.completedFuture(null);
@@ -277,9 +279,11 @@ final class Network {
             Hash16 userHash,
             Path tempDir,
             Supplier<Path> incomingDir,
-            Optional<InetSocketAddress> upnp)
+            Optional<InetSocketAddress> upnp,
+            boolean automaticConnections)
             throws IOException {
         this.upnp = Objects.requireNonNull(upnp, "upnp");
+        this.automaticConnections = automaticConnections;
         this.loop = Objects.requireNonNull(loop, "loop");
         this.preferences = Objects.requireNonNull(preferences, "preferences");
         this.publish = Objects.requireNonNull(publish, "publish");
@@ -323,7 +327,14 @@ final class Network {
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get());
         this.servers.filter(ip -> this.ipFilter.blocks(ip) || this.isFilteredLan(ip));
         this.session = new ServerSession(
-                loop, this.servers, preferences, userHash, this::listenPort, new SessionEvents(), random);
+                loop,
+                this.servers,
+                preferences,
+                userHash,
+                this::listenPort,
+                new SessionEvents(),
+                () -> this.automaticConnections && this.preferences.get().reconnect(),
+                random);
         this.searches = new SearchManager(
                 loop,
                 this.session,
@@ -2232,6 +2243,14 @@ final class Network {
             Network.this.serverIps = Network.this.session.addresses();
             Network.this.userLog.log(
                     LogLine.Level.INFO, "Cannot connect to " + describe(Network.this.info(server)) + ": " + reason);
+        }
+
+        @Override
+        public void retrying(Duration wait) {
+            Network.this.serverIps = Network.this.session.addresses();
+            Network.this.userLog.log(
+                    LogLine.Level.INFO,
+                    "No server accepted the connection: trying again in " + wait.toSeconds() + " s");
         }
 
         // Our hello, the sources and Kad tell the id the server gave us last.

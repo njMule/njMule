@@ -60,6 +60,7 @@ class ServerConnectingTest {
     private final List<String> seen = new CopyOnWriteArrayList<>();
     private final List<ScriptedServer> scripted = new ArrayList<>();
     private volatile Preferences preferences = Preferences.defaults();
+    private volatile boolean keepConnected;
     private final ServerList servers = new ServerList();
     private final ServerSession session = new ServerSession(
             this.loop,
@@ -68,6 +69,7 @@ class ServerConnectingTest {
             Hash16.parseHex("01".repeat(16)),
             () -> 4662,
             new Recorder(),
+            () -> this.keepConnected,
             new SecureRandom());
     private ServerMet.Server target;
 
@@ -140,6 +142,65 @@ class ServerConnectingTest {
     }
 
     @Test
+    void aLostSessionIsReplacedWhenThePreferencesSaySo() throws Exception {
+        this.givenTheSessionKeepsConnected(true);
+        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheSessionLoggedInToAnyServer();
+
+        this.whenTheServerHangsUp();
+
+        this.thenTheSessionIsLost();
+        this.thenTheSessionIsLoggedInWithin(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void aSessionLostAgainSoonAfterAReconnectWaitsBeforeTheNext() throws Exception {
+        this.givenTheSessionKeepsConnected(true);
+        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheSessionLoggedInToAnyServer();
+        this.givenTheServerHungUpAndTheSessionCameBack();
+
+        this.whenTheServerHangsUp();
+
+        this.thenTheSessionIsLost();
+        this.thenTheServersAreTriedAgainAfter(ServerSession.RETRY_AFTER);
+        this.thenNoSessionIsOpenFor(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void whenEveryServerFailsTheyAreTriedAgainLater() throws Exception {
+        this.givenTheSessionKeepsConnected(true);
+        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), 0, 0));
+        this.givenTheServerIsGone();
+
+        this.whenTheSessionLooksForAnyServer();
+
+        this.thenTheServersAreTriedAgainAfter(ServerSession.RETRY_AFTER);
+        this.thenTheSessionIsStillLooking();
+    }
+
+    @Test
+    void withoutAServerToTryTheSessionGivesUpAtOnce() throws Exception {
+        this.givenTheSessionKeepsConnected(true);
+
+        this.whenTheSessionLooksForAnyServer();
+
+        this.thenTheSessionGivesUp();
+    }
+
+    @Test
+    void aLostSessionIsNotReplacedUnlessThePreferencesSaySo() throws Exception {
+        this.givenTheSessionKeepsConnected(false);
+        this.givenTheKnownServers(ScriptedServer.startAt(lanAddress(), HIGH_ID, 0));
+        this.givenTheSessionLoggedInToAnyServer();
+
+        this.whenTheServerHangsUp();
+
+        this.thenTheSessionIsLost();
+        this.thenNoSessionIsOpenFor(Duration.ofSeconds(2));
+    }
+
+    @Test
     void aServerKnownToBePlainIsTriedPlainlyAtOnce() throws Exception {
         this.givenObfuscation(ObfuscationMode.REQUESTED);
         this.givenAPlainServerPingedBefore(this.plainServer());
@@ -186,6 +247,25 @@ class ServerConnectingTest {
         this.servers.setPriority(new ServerList.Address(known[0].ip(), known[0].port()), ServerInfo.Priority.HIGH);
     }
 
+    private void givenTheSessionKeepsConnected(boolean keep) {
+        this.keepConnected = keep;
+    }
+
+    private void givenTheSessionLoggedInToAnyServer() throws Exception {
+        this.whenTheSessionLooksForAnyServer();
+        this.thenTheSessionIsLoggedInWithin(Duration.ofSeconds(10));
+    }
+
+    private void givenTheServerHungUpAndTheSessionCameBack() throws Exception {
+        this.whenTheServerHangsUp();
+        this.thenTheSessionIsLost();
+        this.thenTheSessionIsLoggedInWithin(Duration.ofSeconds(10));
+    }
+
+    private void givenTheServerIsGone() throws Exception {
+        this.scripted.getLast().close();
+    }
+
     private void givenTheSessionConnectedAndLeft() throws Exception {
         this.whenTheSessionConnects();
         this.thenTheSessionIsLoggedIn(false);
@@ -208,6 +288,28 @@ class ServerConnectingTest {
             this.session.connect(Optional.empty());
             return null;
         });
+    }
+
+    private void whenTheServerHangsUp() throws Exception {
+        this.scripted.getLast().hangUp();
+    }
+
+    private void thenTheSessionIsLost() throws Exception {
+        assertThat(this.next("disconnected")).startsWith("disconnected");
+    }
+
+    private void thenTheServersAreTriedAgainAfter(Duration wait) throws Exception {
+        assertThat(this.next("retrying")).isEqualTo("retrying " + wait.toSeconds());
+    }
+
+    private void thenTheSessionIsStillLooking() throws Exception {
+        assertThat(this.onLoop(this.session::isConnected)).isFalse();
+        assertThat(this.seen).noneMatch(e -> e.startsWith("disconnected"));
+    }
+
+    private void thenNoSessionIsOpenFor(Duration time) throws Exception {
+        Thread.sleep(time.toMillis());
+        assertThat(this.onLoop(this.session::isConnected)).isFalse();
     }
 
     private void thenTheSessionIsLoggedInWithin(Duration time) throws Exception {
@@ -289,6 +391,11 @@ class ServerConnectingTest {
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
             this.add("disconnected " + reason);
+        }
+
+        @Override
+        public void retrying(Duration wait) {
+            this.add("retrying " + wait.toSeconds());
         }
 
         @Override
