@@ -38,6 +38,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.kad.Keywords;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -85,13 +86,10 @@ public final class SearchManager {
     /** Kad, when it runs. */
     public interface KadSearches {
         /**
-         * Looks for files under {@code keyword}, filtered by {@code expression}; returns {@code false} when Kad cannot
-         * search for it now.
+         * Looks for files under {@code keyword}, filtered by {@code expression}; the handle ends this search and no
+         * other. Empty when Kad cannot search for it now.
          */
-        boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
-
-        /** Ends the search for {@code keyword}, so that it can start again at once. */
-        void stop(String keyword);
+        Optional<Runnable> search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results);
     }
 
     private static final Logger logger = LoggerFactory.getLogger(SearchManager.class);
@@ -153,41 +151,69 @@ public final class SearchManager {
         return search.id;
     }
 
-    // The longest word of the expression is the keyword looked up, as short common words land on
+    // The longest word every result must have is the keyword looked up, as short common words land on
     // overloaded nodes; the whole expression filters.
     private SearchId startKad(SearchRequest request, SearchExpr expression) {
         KadSearches searches = this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
-        String keyword = kadKeyword(request.expression());
+        String keyword = kadKeyword(expression);
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
-        search.kadKeyword = keyword;
-        boolean started = searches.search(keyword, expression, results -> {
+        Optional<Runnable> started = searches.search(keyword, expression, results -> {
             if (!search.ended) {
                 this.mergeResults(search, results, false);
             }
         });
-        if (!started) {
+        if (started.isEmpty()) {
             throw new IllegalStateException("Kad cannot search for \"" + keyword + "\" now");
         }
+        search.kadStop = started.get();
         this.searches.put(search.id, search);
         search.serverTimer = this.loop.schedule("Kad search", KAD_WAIT, () -> this.end(search));
         return search.id;
     }
 
-    /** The longest word of {@code expression}, leaving out operators and attributes. */
-    static String kadKeyword(String expression) {
-        String best = "";
-        for (String token : expression.strip().split("\\s+", -1)) {
-            String word = token.replace("\"", "").replace("(", "").replace(")", "");
-            boolean operator =
-                    word.equalsIgnoreCase("AND") || word.equalsIgnoreCase("OR") || word.equalsIgnoreCase("NOT");
-            if (operator || word.startsWith("@") || word.matches(".*[=<>].*")) {
-                continue;
-            }
+    /**
+     * The longest word, as Kad indexes words, that every match of {@code expression} has: joined by AND or on the left
+     * of NOT, preferably outside quotes.
+     *
+     * @throws IllegalArgumentException when there is none
+     */
+    static String kadKeyword(SearchExpr expression) {
+        List<String> plain = new ArrayList<>();
+        List<String> quoted = new ArrayList<>();
+        boolean alternatives = requiredWords(expression, plain, quoted);
+        List<String> words = plain.isEmpty() ? quoted : plain;
+        if (words.isEmpty()) {
+            throw new IllegalArgumentException(
+                    alternatives
+                            ? "Kad cannot search for words joined by OR: search for each on its own"
+                            : "Kad needs a word of at least three letters to search for");
+        }
+        String best = words.getFirst();
+        for (String word : words) {
             if (word.codePointCount(0, word.length()) > best.codePointCount(0, best.length())) {
                 best = word;
             }
         }
         return best;
+    }
+
+    // Adds the words every match has; true when alternatives (OR) were left out.
+    private static boolean requiredWords(SearchExpr expression, List<String> plain, List<String> quoted) {
+        return switch (expression) {
+            case SearchExpr.And and -> {
+                boolean left = requiredWords(and.left(), plain, quoted);
+                boolean right = requiredWords(and.right(), plain, quoted);
+                yield left || right;
+            }
+            case SearchExpr.Not not -> requiredWords(not.left(), plain, quoted);
+            case SearchExpr.Or or -> true;
+            case SearchExpr.Keyword keyword -> {
+                (keyword.text().startsWith("\"") ? quoted : plain).addAll(Keywords.of(keyword.text()));
+                yield false;
+            }
+            case SearchExpr.StringAttr attr -> false;
+            case SearchExpr.NumericAttr attr -> false;
+        };
     }
 
     /**
@@ -391,8 +417,8 @@ public final class SearchManager {
         if (search.udpTimer != null) {
             search.udpTimer.cancel(false);
         }
-        if (search.kadKeyword != null) {
-            this.kad.get().ifPresent(k -> k.stop(search.kadKeyword));
+        if (search.kadStop != null) {
+            search.kadStop.run();
         }
         this.listener.ended(search.id, search.results.size());
     }
@@ -410,7 +436,8 @@ public final class SearchManager {
         final Set<Integer> askedOverUdp = new HashSet<>();
         ScheduledFuture<?> serverTimer;
         ScheduledFuture<?> udpTimer;
-        String kadKeyword;
+        // Ends this search's Kad lookup, not a newer one for the same keyword.
+        Runnable kadStop;
         boolean globalStarted;
         boolean moreAvailable;
         int moreRequests;

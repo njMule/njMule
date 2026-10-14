@@ -149,7 +149,7 @@ class KadSimulationTest {
         List<KadNode.FileResult> found = new ArrayList<>();
         for (int attempt = 0; attempt < SEARCHES && found.isEmpty(); attempt++) {
             assertThat(this.nodes.get(150).searchKeyword(word, Optional.empty(), found::addAll))
-                    .isTrue();
+                    .isPresent();
             this.run(60);
         }
         assertThat(found).isNotEmpty();

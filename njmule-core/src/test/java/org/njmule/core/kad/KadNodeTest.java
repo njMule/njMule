@@ -72,7 +72,7 @@ class KadNodeTest {
         this.blocked.add(blockedIp);
 
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isPresent();
         this.answer(
                 node,
                 UInt128.random(this.random),
@@ -102,7 +102,7 @@ class KadNodeTest {
                 false,
                 List.of(this.record(PEER), this.record(Ipv4.of(70, 1, 1, 1)), this.record(Ipv4.of(71, 1, 1, 1)))));
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isPresent();
 
         List<KadContactInfo> contacts = node.contactInfos();
         assertThat(contacts).hasSize(3);
@@ -124,13 +124,29 @@ class KadNodeTest {
         KadNode node = this.node();
         node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
 
+        Optional<Runnable> search = node.searchKeyword("ubuntu", Optional.empty(), results -> {});
+        assertThat(search).isPresent();
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isEmpty();
+        search.orElseThrow().run();
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isFalse();
-        node.stopKeywordSearch("ubuntu");
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isPresent();
+    }
+
+    @Test
+    void stoppingAnOldSearchLeavesANewerOneForTheSameKeyword() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        Runnable first =
+                node.searchKeyword("ubuntu", Optional.empty(), results -> {}).orElseThrow();
+        first.run();
+        assertThat(node.searchKeyword("ubuntu iso", Optional.empty(), results -> {}))
+                .isPresent();
+
+        // The first search's own end comes later.
+        first.run();
+
+        assertThat(node.lookupInfos()).as("the newer search goes on").hasSize(1);
     }
 
     @Test
@@ -141,7 +157,7 @@ class KadNodeTest {
                 2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
         List<KadNode.FileResult> found = new ArrayList<>();
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), found::addAll))
-                .isTrue();
+                .isPresent();
         this.answer(node, target);
         this.time.addAndGet(4 * SECOND);
         node.tick();
@@ -165,7 +181,7 @@ class KadNodeTest {
         node.addContacts(new NodesDat.Contents(
                 2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isPresent();
         this.answer(node, target);
         this.time.addAndGet(4 * SECOND);
         node.tick();
@@ -180,14 +196,14 @@ class KadNodeTest {
 
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
                 .as("the search still runs")
-                .isFalse();
+                .isEmpty();
 
         // With no node left to ask, it ends after waiting a little for late answers.
         this.time.addAndGet(16 * SECOND);
         node.tick();
         node.tick();
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isTrue();
+                .isPresent();
     }
 
     @Test

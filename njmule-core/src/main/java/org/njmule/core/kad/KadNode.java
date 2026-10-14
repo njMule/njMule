@@ -312,15 +312,19 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         this.tracking.sent(ip, Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
     }
 
-    /** Looks for files under the first keyword of {@code words}, filtered by {@code expression}. */
-    public boolean searchKeyword(String words, Optional<SearchExpr> expression, Consumer<List<FileResult>> results) {
+    /**
+     * Looks for files under the first keyword of {@code words}, filtered by {@code expression}; the handle ends this
+     * search and no later one for the same keyword. Empty when the search cannot start now.
+     */
+    public Optional<Runnable> searchKeyword(
+            String words, Optional<SearchExpr> expression, Consumer<List<FileResult>> results) {
         List<String> keywords = Keywords.of(words);
         if (keywords.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
         UInt128 target = Keywords.id(keywords.getFirst());
         if (this.lookups.containsKey(target)) {
-            return false;
+            return Optional.empty();
         }
         byte[] tree = new byte[0];
         if (expression.isPresent()) {
@@ -330,7 +334,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         Lookup lookup = this.startLookup(target, Lookup.Kind.KEYWORD);
         if (lookup == null) {
-            return false;
+            return Optional.empty();
         }
         this.lookupData.put(lookup, tree);
         this.resultSinks.put(lookup, entries -> {
@@ -338,19 +342,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
             results.accept(found);
             return found.size();
         });
-        return true;
-    }
-
-    /** Ends the keyword search for {@code words}, so that it can start again at once. */
-    public void stopKeywordSearch(String words) {
-        List<String> keywords = Keywords.of(words);
-        if (keywords.isEmpty()) {
-            return;
-        }
-        Lookup lookup = this.lookups.get(Keywords.id(keywords.getFirst()));
-        if (lookup != null && lookup.kind() == Lookup.Kind.KEYWORD) {
-            this.lookupEnded(lookup);
-        }
+        // Ending a lookup that already ended leaves the one now running for the keyword alone.
+        return Optional.of(() -> this.lookupEnded(lookup));
     }
 
     /** Looks for sources of the file {@code hash} of {@code size} bytes. */

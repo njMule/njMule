@@ -337,10 +337,22 @@ class SearchParserTest {
 
     @Test
     void kadLooksUpTheLongestWordOfTheExpression() {
-        assertThat(SearchManager.kadKeyword("the matrix reloaded")).isEqualTo("reloaded");
-        assertThat(SearchManager.kadKeyword("\"linux\" AND (debian OR ubuntu) @size>700m"))
-                .isEqualTo("debian");
-        assertThat(SearchManager.kadKeyword("  único  ")).isEqualTo("único");
-        assertThat(SearchManager.kadKeyword("NOT")).isEmpty();
+        assertThat(kad("the matrix reloaded")).isEqualTo("reloaded");
+        assertThat(kad("\"linux\" AND (debian OR ubuntu) @size>700m"))
+                .as("a word every result has")
+                .isEqualTo("linux");
+        assertThat(kad("  Único  ")).isEqualTo("único");
+        assertThat(kad("ubuntu 22.04.3")).as("a word Kad indexes").isEqualTo("ubuntu");
+        assertThat(kad("linux -distribution")).isEqualTo("linux");
+        assertThat(kad("linux NOT (distribution OR distro)")).isEqualTo("linux");
+        assertThat(kad("iso \"the matrix\"")).isEqualTo("iso");
+        assertThatThrownBy(() -> kad("linux OR windows"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("OR");
+        assertThatThrownBy(() -> kad("22.04 @size>700m")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static String kad(String expression) {
+        return SearchManager.kadKeyword(SearchParser.parse(expression));
     }
 }

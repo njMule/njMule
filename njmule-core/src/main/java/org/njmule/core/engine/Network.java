@@ -117,7 +117,6 @@ import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
-import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchManager;
 import org.njmule.core.search.SpamFilter;
 import org.njmule.core.search.StoredSearches;
@@ -1423,23 +1422,13 @@ final class Network {
     }
 
     private SearchManager.KadSearches kadSearches(KadNode node) {
-        return new SearchManager.KadSearches() {
-            @Override
-            public boolean search(String keyword, SearchExpr expression, Consumer<List<SearchResult>> results) {
-                return node.searchKeyword(keyword, Optional.of(expression), found -> {
-                    List<SearchResult> converted = new ArrayList<>();
-                    for (KadNode.FileResult r : found) {
-                        converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type()));
-                    }
-                    results.accept(converted);
-                });
+        return (keyword, expression, results) -> node.searchKeyword(keyword, Optional.of(expression), found -> {
+            List<SearchResult> converted = new ArrayList<>();
+            for (KadNode.FileResult r : found) {
+                converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type()));
             }
-
-            @Override
-            public void stop(String keyword) {
-                node.stopKeywordSearch(keyword);
-            }
-        };
+            results.accept(converted);
+        });
     }
 
     private DownloadManager.KadSources kadSources(KadNode node) {
