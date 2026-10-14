@@ -45,8 +45,9 @@ public record ServerAddress(String host, int port) {
         return new ServerAddress(parsed.getHost(), parsed.getPort());
     }
 
+    /** {@code host:port}, with an IPv6 address in brackets, as {@link #parse} reads it. */
     @Override
     public String toString() {
-        return this.host + ":" + this.port;
+        return this.host.indexOf(':') >= 0 ? "[" + this.host + "]:" + this.port : this.host + ":" + this.port;
     }
 }

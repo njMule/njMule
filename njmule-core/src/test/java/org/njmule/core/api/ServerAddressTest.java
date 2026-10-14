@@ -33,6 +33,19 @@ class ServerAddressTest {
     }
 
     @Test
+    void writesAddressesThatParseBack() {
+        for (ServerAddress address : new ServerAddress[] {
+            new ServerAddress("2001:db8::1", 4661),
+            new ServerAddress("::1", 1),
+            new ServerAddress("192.168.1.10", 65535),
+            new ServerAddress("server.example.org", 4242)
+        }) {
+            assertThat(ServerAddress.parse(address.toString())).isEqualTo(address);
+        }
+        assertThat(new ServerAddress("2001:db8::1", 4661)).hasToString("[2001:db8::1]:4661");
+    }
+
+    @Test
     void tellsWellFormedHosts() {
         assertThat(ServerAddress.isValidHost("server.example.org")).isTrue();
         assertThat(ServerAddress.isValidHost("localhost")).isTrue();
