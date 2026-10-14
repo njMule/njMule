@@ -235,6 +235,31 @@ class DownloadQueueTest {
     }
 
     @Test
+    void twoPartFilesOfOneFileLoadAsOneDownload() throws Exception {
+        Hash16 hash = Hash16.parseHex("9c".repeat(16));
+        DownloadQueue first = this.queue();
+        this.onLoop(() -> first.add(Ed2kLink.FileLink.of("twice.bin", 1000, hash)));
+        this.onLoop(() -> {
+            first.close();
+            return null;
+        });
+        Path temp = this.dir.resolve("temp");
+        Files.copy(temp.resolve("001" + PartFile.MET_SUFFIX), temp.resolve("002" + PartFile.MET_SUFFIX));
+        Files.copy(temp.resolve("001" + PartFile.DATA_SUFFIX), temp.resolve("002" + PartFile.DATA_SUFFIX));
+
+        DownloadQueue again = this.queue();
+
+        assertThat(this.onLoop(again::all))
+                .singleElement()
+                .satisfies(d ->
+                        assertThat(d.file().number()).as("the first is kept").isEqualTo(1));
+        this.onLoop(() -> {
+            again.close();
+            return null;
+        });
+    }
+
+    @Test
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
         DownloadQueue first = this.queue();

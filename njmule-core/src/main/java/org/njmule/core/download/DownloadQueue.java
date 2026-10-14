@@ -185,6 +185,14 @@ public final class DownloadQueue implements AutoCloseable {
         for (int number : numbers) {
             try {
                 PartFile file = PartFile.load(tempDir, number);
+                Download same = queue.downloads.get(file.hash());
+                if (same != null) {
+                    logger.warn(
+                            "{} downloads the same file as {}; it is left alone",
+                            PartFile.fileName(number),
+                            PartFile.fileName(same.file.number()));
+                    continue;
+                }
                 Download download = queue.new Download(file, PartFileStorage.open(file.dataFile()));
                 queue.downloads.put(file.hash(), download);
                 // A crash may have come between writing a part and checking it.
