@@ -82,7 +82,12 @@ public final class WebUi implements AutoCloseable {
     private static final String SEARCH = "/search";
     private static final String SERVERS = "/servers";
     private static final String ACTION = "action";
-    private static final int MAX_BODY = 16 * 1024;
+    private static final int MAX_LOGIN_BODY = 16 * 1024;
+
+    // The longest text of the link field: percent-encoded, a character takes at most 9 bytes, so a
+    // full field fits MAX_BODY.
+    private static final int MAX_LINKS_LENGTH = 65_536;
+    private static final int MAX_BODY = 1024 * 1024;
     private static final int SEARCHES_KEPT = 10;
     private static final int RESULTS_KEPT = 1000;
     private static final long ENGINE_WAIT_SECONDS = 10;
@@ -91,7 +96,7 @@ public final class WebUi implements AutoCloseable {
     private static final int PASSWORD_CHECKS = 2;
 
     // Pasted links are separated by white space, which file names may contain too.
-    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://|magnet:\\?)", Pattern.CASE_INSENSITIVE);
 
     // Names under which a browser on this computer reaches the interface; other computers use its
     // address. Any other Host header may be a DNS-rebinding attempt.
@@ -269,7 +274,10 @@ public final class WebUi implements AutoCloseable {
             this.send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;
         }
-        char[] password = form(exchange).getOrDefault("password", "").toCharArray();
+        char[] password = form(exchange, MAX_LOGIN_BODY)
+                .orElseThrow(() -> new IllegalArgumentException("form too large"))
+                .getOrDefault("password", "")
+                .toCharArray();
         if (!this.checking.tryAcquire()) {
             Passwords.wipe(password);
             this.send(exchange, 429, HTML, loginPage("Busy: try again in a moment."));
@@ -320,7 +328,12 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void post(HttpExchange exchange, String path, Sessions.Session session) throws IOException {
-        Map<String, String> form = form(exchange);
+        Optional<Map<String, String>> posted = form(exchange, MAX_BODY);
+        if (posted.isEmpty()) {
+            this.send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
+            return;
+        }
+        Map<String, String> form = posted.get();
         if (!Sessions.validForm(session, form.get("csrf"))) {
             this.send(exchange, 403, TEXT, "Expired form: reload the page.");
             return;
@@ -346,18 +359,7 @@ public final class WebUi implements AutoCloseable {
                 default -> null;
             };
         } catch (IllegalArgumentException | EngineFailure e) {
-            this.send(
-                    exchange,
-                    400,
-                    HTML,
-                    Html.page(
-                            "Not done",
-                            session.csrf(),
-                            "<p class=\"error\">"
-                                    + Html.text(String.valueOf(e.getMessage()))
-                                    + "</p><p><a href=\""
-                                    + path
-                                    + "\">Back</a></p>"));
+            this.send(exchange, 400, HTML, notDone(session, path, String.valueOf(e.getMessage())));
             return;
         }
         if (next == null) {
@@ -365,6 +367,13 @@ public final class WebUi implements AutoCloseable {
         } else {
             this.redirect(exchange, next);
         }
+    }
+
+    private static String notDone(Sessions.Session session, String path, String message) {
+        return Html.page(
+                "Not done",
+                session.csrf(),
+                "<p class=\"error\">" + Html.text(message) + "</p><p><a href=\"" + Html.text(path) + "\">Back</a></p>");
     }
 
     private void transfer(Map<String, String> form) {
@@ -479,8 +488,9 @@ public final class WebUi implements AutoCloseable {
                         csrf,
                         Html.hidden(ACTION, "add")
                                 + "<input type=\"text\" name=\"link\" size=\"60\" required"
-                                + " pattern=\"\\s*[eE][dD]2[kK]://.+\" maxlength=\"65536\""
-                                + " title=\"One or more eD2K file links\""
+                                + " pattern=\"\\s*([eE][dD]2[kK]://|[mM][aA][gG][nN][eE][tT]:\\?).+\""
+                                + " maxlength=\"" + MAX_LINKS_LENGTH + "\""
+                                + " title=\"One or more eD2K file or magnet links\""
                                 + " placeholder=\"ed2k://|file|...|/\"> ",
                         "Download",
                         true))
@@ -674,13 +684,14 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private static Map<String, String> form(HttpExchange exchange) throws IOException {
+    // The posted fields; empty when there are more than limit bytes.
+    private static Optional<Map<String, String>> form(HttpExchange exchange, int limit) throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
-            byte[] body = in.readNBytes(MAX_BODY + 1);
-            if (body.length > MAX_BODY) {
-                throw new IllegalArgumentException("form too large");
+            byte[] body = in.readNBytes(limit + 1);
+            if (body.length > limit) {
+                return Optional.empty();
             }
-            return decode(new String(body, StandardCharsets.UTF_8));
+            return Optional.of(decode(new String(body, StandardCharsets.UTF_8)));
         }
     }
 

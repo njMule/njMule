@@ -28,14 +28,17 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.njmule.core.api.Ed2kLink;
 
 /** How the web interface answers what the engine does, against an engine a test controls. */
 @Timeout(60)
@@ -123,6 +126,49 @@ class WebUiAnswersTest {
             assertThat(gone.statusCode()).as(action).isEqualTo(400);
             assertThat(gone.body()).as(action).contains("That download is gone");
         }
+    }
+
+    @Test
+    void theLinkFieldTakesWhatTheServerTakes() throws Exception {
+        this.start();
+        this.login();
+        List<String> added = new CopyOnWriteArrayList<>();
+        this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of()));
+        this.fake.answer("addDownload", args -> {
+            added.add(((Ed2kLink.FileLink) args[0]).name());
+            return CompletableFuture.completedFuture(null);
+        });
+        String page = this.get("/transfers").body();
+        Matcher field = Pattern.compile("name=\"link\"[^>]* pattern=\"([^\"]+)\" maxlength=\"(\\d+)\"")
+                .matcher(page);
+        assertThat(field.find()).isTrue();
+        Pattern browser = Pattern.compile(field.group(1));
+        int maxLength = Integer.parseInt(field.group(2));
+        String hash = "AB".repeat(16);
+        String ed2k = "ed2k://|file|a.bin|1000|" + hash + "|/";
+        String magnet = "magnet:?xt=urn:ed2k:" + "CD".repeat(16) + "&xl=1000&dn=b.bin";
+        assertThat(browser.matcher(ed2k).matches()).isTrue();
+        assertThat(browser.matcher(" " + magnet).matches()).isTrue();
+
+        assertThat(this.post("/transfers", Map.of("action", "add", "link", ed2k + "\n" + magnet, "csrf", this.csrf()))
+                        .statusCode())
+                .isEqualTo(303);
+        assertThat(added).containsExactly("a.bin", "b.bin");
+
+        // The longest text the field takes, each character taking 9 bytes once encoded.
+        String head = "ed2k://|file|";
+        String tail = "|1000|" + hash + "|/";
+        String longest = head + "\u20AC".repeat(maxLength - head.length() - tail.length()) + tail;
+        assertThat(this.post("/transfers", Map.of("action", "add", "link", longest, "csrf", this.csrf()))
+                        .statusCode())
+                .isEqualTo(303);
+        assertThat(added).hasSize(3);
+
+        HttpResponse<String> tooMuch =
+                this.post("/transfers", Map.of("action", "add", "link", longest + " " + longest, "csrf", this.csrf()));
+        assertThat(tooMuch.statusCode()).isEqualTo(413);
+        assertThat(tooMuch.headers().firstValue("Content-Type")).hasValue("text/html; charset=utf-8");
+        assertThat(tooMuch.body()).contains("Too much text");
     }
 
     private void start() throws IOException {
