@@ -231,7 +231,22 @@ class MainTest {
         }
 
         assertThat(this.run("--config-dir", config, "--exit")).isZero();
+        // It returns once the instance has gone: another may start at once.
+        try (NjMuleEngine next = NjMuleEngine.start(new EngineConfig(AppDirectories.resolve(Optional.of(this.dir))))) {
+            assertThat(next.directories().config()).isEqualTo(this.dir.resolve("config"));
+        }
+        assertThat(this.out.toString(UTF_8)).contains("has exited");
         assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
+    }
+
+    @Test
+    void anInstanceHasGoneOnceItsEngineIsClosed() throws Exception {
+        AppDirectories dirs = AppDirectories.resolve(Optional.of(this.dir));
+        try (NjMuleEngine _ = NjMuleEngine.start(new EngineConfig(dirs))) {
+            assertThat(LinkHandoff.awaitGone(dirs.config(), Duration.ofMillis(300)))
+                    .isFalse();
+        }
+        assertThat(LinkHandoff.awaitGone(dirs.config(), Duration.ofMillis(300))).isTrue();
     }
 
     @Test

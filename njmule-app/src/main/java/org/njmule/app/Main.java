@@ -25,6 +25,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +55,9 @@ public final class Main {
     public static final int EXIT_FAILURE = 1;
 
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
+
+    /** How long --exit waits for the running instance to stop. */
+    private static final Duration EXIT_WAIT = Duration.ofSeconds(30);
 
     /** Where a password comes from: the terminal, or a line of standard input. */
     @FunctionalInterface
@@ -107,11 +111,18 @@ public final class Main {
             }
             case EXIT -> {
                 Path config = AppDirectories.resolve(cli.configDir()).config();
-                if (LinkHandoff.deliver(config, List.of(LinkHandoff.EXIT))) {
-                    return EXIT_OK;
+                if (!LinkHandoff.deliver(config, List.of(LinkHandoff.EXIT))) {
+                    err.println("No njMule runs on " + config);
+                    return EXIT_FAILURE;
                 }
-                err.println("No njMule runs on " + config);
-                return EXIT_FAILURE;
+                // Scripts go on once it has saved and stopped, not as soon as it was asked.
+                if (!LinkHandoff.awaitGone(config, EXIT_WAIT)) {
+                    err.println(
+                            NjMuleInfo.NAME + " on " + config + " still runs after " + EXIT_WAIT.toSeconds() + " s");
+                    return EXIT_FAILURE;
+                }
+                out.println(NjMuleInfo.NAME + " on " + config + " has exited.");
+                return EXIT_OK;
             }
             case RUN -> {
                 return runEngine(cli, out, err, stop);

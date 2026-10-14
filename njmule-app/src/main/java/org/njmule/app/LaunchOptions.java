@@ -307,7 +307,9 @@ public record LaunchOptions(
                 "ask for a password for the web interface, turn the interface on (from" + " the next start) and exit"));
         spec.addOption(valued(
                 WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
-        spec.addOption(flag(EXIT_OPTION, "ask the njMule running on this configuration to save and exit"));
+        spec.addOption(flag(
+                EXIT_OPTION,
+                "ask the njMule running on this configuration to save and exit, and wait for it (30 s at most)"));
         spec.addOption(flag(
                 WEBUI_LAN_OPTION,
                 "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));

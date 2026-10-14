@@ -169,7 +169,7 @@ performs a single task and exits. `njmule --help` lists all options.
 | Command | Description |
 |---|---|
 | `njmule` | run the engine headless |
-| `njmule --exit` | ask the running instance (desktop or headless) to save its state and exit |
+| `njmule --exit` | ask the running instance (desktop or headless) to save its state and exit, and wait for it (30 s at most) |
 | `njmule --search "<expression>" [--global \| --kad]` | search, print the results and exit |
 | `njmule --download <ed2k link>...` | download the given files, then exit |
 | `njmule --share <dir>...` | share additional directories (persisted) |

@@ -27,12 +27,16 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -65,6 +69,10 @@ public final class LinkHandoff implements AutoCloseable {
 
     /** How long a later start may take to hand over its links. */
     static final Duration DEADLINE = Duration.ofSeconds(10);
+
+    // The engine's instance lock in the configuration directory.
+    private static final String LOCK_FILE = "njmule.lock";
+    private static final Duration POLL = Duration.ofMillis(100);
 
     private static final Logger logger = LoggerFactory.getLogger(LinkHandoff.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
@@ -139,6 +147,43 @@ public final class LinkHandoff implements AutoCloseable {
             // A file left by a crash: nobody listens there any more.
             logger.debug("No njMule took the links: {}", e.toString());
             return false;
+        }
+    }
+
+    /** Waits until the instance running with {@code configDir} has stopped; {@code false} if it still runs. */
+    public static boolean awaitGone(Path configDir, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (!gone(configDir)) {
+            if (System.nanoTime() - deadline >= 0) {
+                return false;
+            }
+            try {
+                Thread.sleep(POLL);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // An instance holds the engine's lock of its configuration until it has saved and stopped.
+    private static boolean gone(Path configDir) {
+        try (FileChannel channel = FileChannel.open(configDir.resolve(LOCK_FILE), StandardOpenOption.WRITE)) {
+            FileLock lock = channel.tryLock();
+            if (lock == null) {
+                return false;
+            }
+            lock.release();
+            return true;
+        } catch (NoSuchFileException e) {
+            return true;
+        } catch (OverlappingFileLockException e) {
+            // Held in this very process.
+            return false;
+        } catch (IOException e) {
+            // The handoff file goes first when an instance stops.
+            return !Files.exists(configDir.resolve(FILE_NAME));
         }
     }
 
