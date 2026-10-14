@@ -171,6 +171,39 @@ class TcpConnectionTest {
     }
 
     @Test
+    void aHandlerThatFailsClosesTheConnectionOnce() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
+            TcpConnection connection = TcpConnector.connectToClient(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+            BlockingQueue<Optional<IOException>> closes = new LinkedBlockingQueue<>();
+            connection.start(
+                    new TcpConnection.Handler() {
+                        @Override
+                        public void onPacket(TcpConnection c, Packet packet) {
+                            throw new IllegalStateException("bug");
+                        }
+
+                        @Override
+                        public void onClosed(TcpConnection c, Optional<IOException> cause) {
+                            closes.add(cause);
+                        }
+                    },
+                    frame -> frame);
+            try (Socket peer = server.accept()) {
+                peer.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x01, new byte[1])));
+
+                assertThat(closes.poll(5, TimeUnit.SECONDS))
+                        .hasValueSatisfying(e -> assertThat(e).hasMessageContaining("handler failed"));
+                connection.close();
+                assertThat(closes.poll(300, TimeUnit.MILLISECONDS))
+                        .as("told once")
+                        .isNull();
+                assertThat(connection.isOpen()).isFalse();
+            }
+        }
+    }
+
+    @Test
     void aConnectionClosedBeforeItStartsSaysSoWhenStarted() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
             TcpConnection connection = TcpConnector.connectToClient(

@@ -132,6 +132,49 @@ class ServerSessionTest {
     }
 
     @Test
+    void anIdOfZeroIsNoLoginAndALaterIdIs() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of());
+            this.onLoop(() -> {
+                this.session.connect(Optional.of(target));
+                return null;
+            });
+            try (Socket socket = server.accept()) {
+                socket.setSoTimeout(10_000);
+                InputStream in = new BufferedInputStream(socket.getInputStream());
+                OutputStream out = socket.getOutputStream();
+                TcpFraming.read(in, FrameLimits.SERVER);
+                out.write(TcpFraming.encode(new ServerMessages.IdChange(0, 0, 0).encode()));
+                out.write(TcpFraming.encode(new ServerMessages.IdChange(HIGH_ID, 0, 0).encode()));
+                out.flush();
+
+                assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
+                assertThat(this.onLoop(() -> this.session.id().map(ServerMessages.IdChange::clientId)))
+                        .contains(HIGH_ID);
+                assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
+            }
+        }
+    }
+
+    @Test
+    void aServerHangingUpBeforeTheIdEndsTheAttempt() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of());
+            this.onLoop(() -> {
+                this.session.connect(Optional.of(target));
+                return null;
+            });
+            try (Socket socket = server.accept()) {
+                TcpFraming.read(new BufferedInputStream(socket.getInputStream()), FrameLimits.SERVER);
+            }
+
+            assertThat(this.next("disconnected")).startsWith("disconnected");
+            assertThat(this.onLoop(this.session::isConnected)).isFalse();
+            assertThat(this.onLoop(this.session::server)).isEmpty();
+        }
+    }
+
+    @Test
     void aServerKnownByAHostNameIsNeverDialedAtNoAddress() throws Exception {
         try (ServerSocket trap = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             // localhost resolves without any network, to an address no server may have.
