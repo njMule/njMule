@@ -260,6 +260,39 @@ class DownloadQueueTest {
     }
 
     @Test
+    void filesOfExactlyOnePartAndOneByteMoreComplete() throws Exception {
+        DownloadQueue queue = this.queue();
+        for (int size : new int[] {(int) Ed2k.PARTSIZE, (int) Ed2k.PARTSIZE + 1}) {
+            byte[] data = random(size, size);
+            List<Hash16> parts = size == Ed2k.PARTSIZE
+                    ? List.of(Ed2k.md4(data, 0, size), Ed2k.EMPTY_PART_HASH)
+                    : List.of(Ed2k.md4(data, 0, (int) Ed2k.PARTSIZE), Ed2k.md4(data, (int) Ed2k.PARTSIZE, 1));
+            DownloadQueue.Download download = this.onLoop(() -> queue.add(new Ed2kLink.FileLink(
+                    "edge" + size + ".bin",
+                    size,
+                    Ed2k.fileHash(parts),
+                    Optional.empty(),
+                    parts,
+                    List.of(),
+                    List.of())));
+            assertThat(download.file().hasHashSet()).isTrue();
+
+            this.onLoop(() -> {
+                queue.received(download, 0, new byte[0]);
+                for (int at = size; at > 0; at -= 1_000_000) {
+                    int from = Math.max(0, at - 1_000_000);
+                    queue.received(download, from, Arrays.copyOfRange(data, from, at));
+                }
+                return null;
+            });
+
+            Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+            assertThat(Files.size(file)).isEqualTo(size);
+            assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        }
+    }
+
+    @Test
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
         DownloadQueue first = this.queue();

@@ -89,6 +89,54 @@ class BlockInflaterTest {
         }
     }
 
+    @Test
+    void takesAStreamOneByteAtATimeUpToExactlyTheBlock() throws DecodeException {
+        byte[] block = new byte[5000];
+        new Random(9).nextBytes(block);
+        byte[] stream = deflate(block);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (BlockInflater inflater = new BlockInflater(0, block.length)) {
+            assertThat(inflater.inflate(new byte[0])).isEmpty();
+            for (byte b : stream) {
+                out.writeBytes(inflater.inflate(new byte[] {b}));
+            }
+            assertThat(inflater.finished()).isTrue();
+            assertThat(inflater.inflate(new byte[] {1, 2, 3}))
+                    .as("after the end")
+                    .isEmpty();
+        }
+        assertThat(out.toByteArray()).isEqualTo(block);
+
+        try (BlockInflater inflater = new BlockInflater(0, block.length - 1)) {
+            assertThatThrownBy(() -> inflater.inflate(stream)).isInstanceOf(DecodeException.class);
+        }
+    }
+
+    @Test
+    void refusesStreamsWithoutTheZlibWrapperOrWithADictionary() {
+        Deflater raw = new Deflater(1, true);
+        raw.setInput(new byte[1000]);
+        raw.finish();
+        byte[] buffer = new byte[2000];
+        byte[] noHeader = Arrays.copyOf(buffer, raw.deflate(buffer));
+        raw.end();
+        try (BlockInflater inflater = new BlockInflater(0, 1000)) {
+            assertThatThrownBy(() -> inflater.inflate(noHeader)).isInstanceOf(DecodeException.class);
+        }
+
+        Deflater withDictionary = new Deflater(1);
+        withDictionary.setDictionary(new byte[] {1, 2, 3, 4});
+        withDictionary.setInput(new byte[1000]);
+        withDictionary.finish();
+        byte[] needsDictionary = Arrays.copyOf(buffer, withDictionary.deflate(buffer));
+        withDictionary.end();
+        try (BlockInflater inflater = new BlockInflater(0, 1000)) {
+            assertThatThrownBy(() -> inflater.inflate(needsDictionary))
+                    .isInstanceOf(DecodeException.class)
+                    .hasMessageContaining("dictionary");
+        }
+    }
+
     private static byte[] deflate(byte[] data) {
         Deflater deflater = new Deflater(1);
         deflater.setInput(data);
