@@ -31,13 +31,36 @@ public final class Preview {
 
     /** Starts {@code player} with its {@code args} and the {@code data} file; the player runs on its own. */
     public static void start(String player, String args, Path data) throws IOException {
-        new ProcessBuilder(command(player, args, data)).start();
+        process(player, args, data).start();
+    }
+
+    /** Whether {@code player} names a program. */
+    public static boolean isSet(String player) {
+        return !program(player).isEmpty();
+    }
+
+    // Nobody reads what the player writes: a full pipe would stop a verbose one.
+    static ProcessBuilder process(String player, String args, Path data) {
+        return new ProcessBuilder(command(player, args, data))
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
+    }
+
+    // A path copied from a file manager may come in quotes, which no system takes as part of a program's name.
+    static String program(String player) {
+        String program = player.strip();
+        for (String quote : List.of("\"", "'")) {
+            if (program.length() >= 2 && program.startsWith(quote) && program.endsWith(quote)) {
+                return program.substring(1, program.length() - 1).strip();
+            }
+        }
+        return program;
     }
 
     // The player, its arguments apart by spaces, then the file: each one argument, never parsed by a shell.
     static List<String> command(String player, String args, Path data) {
         List<String> command = new ArrayList<>();
-        command.add(player.strip());
+        command.add(program(player));
         WHITESPACE.splitAsStream(args.strip()).filter(a -> !a.isEmpty()).forEach(command::add);
         command.add(data.toAbsolutePath().toString());
         return command;

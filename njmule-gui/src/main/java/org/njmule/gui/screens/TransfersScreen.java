@@ -499,7 +499,7 @@ public final class TransfersScreen implements Screen {
             return;
         }
         String player = this.gui.model().preferencesProperty().get().videoPlayer();
-        if (player.isEmpty()) {
+        if (!Preview.isSet(player)) {
             this.gui.inform().accept(this.gui.t("nj.preview.noPlayer"));
             return;
         }

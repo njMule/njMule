@@ -18,6 +18,7 @@ package org.njmule.gui.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -171,5 +172,33 @@ class InfraTest {
                 .containsExactly("explorer.exe", "/select,", file.toString());
         assertThat(Folders.revealCommand("Mac OS X", file)).containsExactly("open", "-R", file.toString());
         assertThat(Folders.revealCommand("Linux", file)).containsExactly("xdg-open", dir.toString());
+    }
+
+    @Test
+    void thePlayerAndTheFileManagerHaveTheirOutputDropped() {
+        Path file = Path.of("downloads", "film.mkv");
+        // Never started here: only how they would start.
+        for (ProcessBuilder process :
+                List.of(Preview.process("vlc", "-v", file), Folders.process(Folders.command("Linux", file)))) {
+            assertThat(process.redirectOutput())
+                    .as("a verbose program never fills a pipe")
+                    .isEqualTo(Redirect.DISCARD);
+            assertThat(process.redirectError()).isEqualTo(Redirect.DISCARD);
+        }
+    }
+
+    @Test
+    void aPlayerPathCopiedWithItsQuotesWorks() {
+        Path file = Path.of("downloads", "film.mkv");
+        assertThat(Preview.command(" \"C:\\Program Files\\VLC\\vlc.exe\" ", "--fullscreen", file))
+                .containsExactly(
+                        "C:\\Program Files\\VLC\\vlc.exe",
+                        "--fullscreen",
+                        file.toAbsolutePath().toString());
+        assertThat(Preview.command("'/opt/my player/mpv'", "", file))
+                .containsExactly("/opt/my player/mpv", file.toAbsolutePath().toString());
+        assertThat(Preview.isSet("mpv")).isTrue();
+        assertThat(Preview.isSet("   ")).as("blank").isFalse();
+        assertThat(Preview.isSet(" \"\" ")).as("only quotes").isFalse();
     }
 }

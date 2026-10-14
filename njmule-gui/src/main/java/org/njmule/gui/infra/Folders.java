@@ -30,12 +30,20 @@ public final class Folders {
     /** Opens {@code folder}, creating it first; the file manager runs on its own. */
     public static void open(Path folder) throws IOException {
         Path dir = Files.createDirectories(folder).toAbsolutePath();
-        new ProcessBuilder(command(System.getProperty("os.name", ""), dir)).start();
+        process(command(System.getProperty("os.name", ""), dir)).start();
     }
 
     /** Shows the folder of {@code file} with the file selected, where the file manager can. */
     public static void reveal(Path file) throws IOException {
-        new ProcessBuilder(revealCommand(System.getProperty("os.name", ""), file.toAbsolutePath())).start();
+        process(revealCommand(System.getProperty("os.name", ""), file.toAbsolutePath()))
+                .start();
+    }
+
+    // Nobody reads what the file manager writes: a full pipe would stop it.
+    static ProcessBuilder process(List<String> command) {
+        return new ProcessBuilder(command)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
     }
 
     static List<String> revealCommand(String os, Path file) {
