@@ -61,6 +61,22 @@ class LinkAssociationTest {
     }
 
     @Test
+    void onWindowsAProgramFolderOutsideAsciiIsRecognised() throws IOException {
+        Path program = Path.of("C:\\Users\\J\u00FCrgen\\AppData\\Local\\Programs\\njMule\\njmule-gui.exe");
+        FakeRegistry registry = new FakeRegistry(program);
+        LinkAssociation.Windows windows = new LinkAssociation.Windows(this.dir, registry, program);
+
+        windows.take();
+
+        assertThat(windows.isOurs()).isTrue();
+        windows.giveBack();
+        assertThat(registry.imported.getLast()).contains("[-HKEY_CURRENT_USER\\Software\\Classes\\ed2k]");
+        try (var left = Files.list(this.dir)) {
+            assertThat(left).as("no export left behind").isEmpty();
+        }
+    }
+
+    @Test
     void onWindowsNothingIsGivenBackThatIsNotOurs() throws IOException {
         FakeRegistry registry = new FakeRegistry();
         registry.command = "\"C:\\eMule\\emule.exe\" \"%1\"";
@@ -178,21 +194,47 @@ class LinkAssociationTest {
 
     /** The registry seen through reg.exe: one ed2k command value, exports and imports recorded. */
     private static final class FakeRegistry implements LinkAssociation.Shell {
+        private final Path program;
         private String command;
         private boolean exported;
         private final List<String> imported = new ArrayList<>();
+
+        FakeRegistry() {
+            this(PROGRAM);
+        }
+
+        FakeRegistry(Path program) {
+            this.program = program;
+        }
 
         @Override
         public LinkAssociation.Result run(List<String> args) throws IOException {
             switch (args.get(1)) {
                 case "query" -> {
+                    // reg.exe writes in the console's code page, not in UTF-8 as the output is read.
                     return this.command == null
                             ? new LinkAssociation.Result(1, "not found")
-                            : new LinkAssociation.Result(0, "    (Default)    REG_SZ    " + this.command + "\r\n");
+                            : new LinkAssociation.Result(
+                                    0,
+                                    new String(
+                                            ("    (Default)    REG_SZ    " + this.command + "\r\n")
+                                                    .getBytes(StandardCharsets.ISO_8859_1),
+                                            StandardCharsets.UTF_8));
                 }
                 case "export" -> {
-                    Files.writeString(Path.of(args.get(3)), "eMule's key", StandardCharsets.UTF_8);
-                    this.exported = true;
+                    if (args.get(2).equals(LinkAssociation.Windows.KEY)) {
+                        Files.writeString(Path.of(args.get(3)), "eMule's key", StandardCharsets.UTF_8);
+                        this.exported = true;
+                    } else if (this.command == null) {
+                        return new LinkAssociation.Result(1, "not found");
+                    } else {
+                        Files.writeString(
+                                Path.of(args.get(3)),
+                                "﻿Windows Registry Editor Version 5.00\r\n\r\n["
+                                        + args.get(2).replace("HKCU", "HKEY_CURRENT_USER") + "]\r\n@="
+                                        + LinkAssociation.Windows.regString(this.command) + "\r\n\r\n",
+                                StandardCharsets.UTF_16LE);
+                    }
                 }
                 case "import" -> {
                     Path file = Path.of(args.get(2));
@@ -203,7 +245,7 @@ class LinkAssociationTest {
                     if (body.contains("[-HKEY")) {
                         this.command = null;
                     } else if (body.contains("njmule-gui.exe")) {
-                        this.command = "\"" + PROGRAM + "\" \"%1\"";
+                        this.command = "\"" + this.program + "\" \"%1\"";
                     } else {
                         this.command = "\"C:\\eMule\\emule.exe\" \"%1\"";
                     }

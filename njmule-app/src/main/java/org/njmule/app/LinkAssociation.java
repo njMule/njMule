@@ -124,6 +124,7 @@ public abstract sealed class LinkAssociation {
     /** The user's ed2k key in the registry, exported before njMule writes its own and imported back. */
     static final class Windows extends LinkAssociation {
         static final String KEY = "HKCU\\Software\\Classes\\ed2k";
+        static final String COMMAND_KEY = KEY + "\\shell\\open\\command";
         static final String BACKUP = "ed2k-handler-backup.reg";
         private static final String KEY_PATH = "HKEY_CURRENT_USER\\Software\\Classes\\ed2k";
 
@@ -136,11 +137,37 @@ public abstract sealed class LinkAssociation {
 
         @Override
         public boolean isOurs() throws IOException {
-            Result query = this.shell.run(List.of("reg", "query", KEY + "\\shell\\open\\command", "/ve"));
-            return query.exit() == 0
-                    && query.output()
-                            .toLowerCase(Locale.ROOT)
-                            .contains(this.command().toLowerCase(Locale.ROOT));
+            // reg query prints in the console's code page, which may lack letters of the program's path; an export is
+            // in UTF-16.
+            Path file = Files.createTempFile(this.configDir, "ed2k-", ".reg");
+            try {
+                Result export = this.shell.run(List.of("reg", "export", COMMAND_KEY, file.toString(), "/y"));
+                if (export.exit() != 0) {
+                    return false;
+                }
+                String ours = this.command().toLowerCase(Locale.ROOT);
+                return defaultValue(Files.readString(file, StandardCharsets.UTF_16))
+                        .filter(value -> value.toLowerCase(Locale.ROOT).contains(ours))
+                        .isPresent();
+            } finally {
+                Files.deleteIfExists(file);
+            }
+        }
+
+        // The default value of an exported key when it is a string, without the escapes of the format.
+        static Optional<String> defaultValue(String reg) {
+            for (String line : reg.split("\r?\n", -1)) {
+                if (line.length() >= 4 && line.startsWith("@=\"") && line.endsWith("\"")) {
+                    String quoted = line.substring(3, line.length() - 1);
+                    StringBuilder value = new StringBuilder(quoted.length());
+                    for (int i = 0; i < quoted.length(); i++) {
+                        char c = quoted.charAt(i);
+                        value.append(c == '\\' && i + 1 < quoted.length() ? quoted.charAt(++i) : c);
+                    }
+                    return Optional.of(value.toString());
+                }
+            }
+            return Optional.empty();
         }
 
         @Override
