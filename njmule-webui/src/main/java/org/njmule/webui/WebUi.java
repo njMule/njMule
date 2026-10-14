@@ -22,6 +22,8 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -90,8 +92,8 @@ public final class WebUi implements AutoCloseable {
     // Pasted links are separated by white space, which file names may contain too.
     private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
 
-    // Names under which a browser on this computer reaches a loopback-only interface; any other
-    // Host header is a DNS-rebinding attempt.
+    // Names under which a browser on this computer reaches the interface; other computers use its
+    // address. Any other Host header may be a DNS-rebinding attempt.
     private static final Set<String> LOOPBACK_NAMES = Set.of("localhost", "127.0.0.1", "[::1]");
 
     private final NjMuleEngine engine;
@@ -182,7 +184,7 @@ public final class WebUi implements AutoCloseable {
     private void route(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
-        if (!this.trustedHost(exchange.getRequestHeaders())) {
+        if (!trustedHost(exchange.getRequestHeaders().getFirst("Host"), this.settings.lan())) {
             this.send(exchange, 421, TEXT, "Unknown host name.");
             return;
         }
@@ -214,17 +216,27 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private boolean trustedHost(Headers headers) {
-        if (this.settings.lan()) {
-            return true;
-        }
-        String host = headers.getFirst("Host");
+    static boolean trustedHost(String host, boolean lan) {
         if (host == null) {
             return false;
         }
         int colon = host.lastIndexOf(':');
-        String name = colon > host.lastIndexOf(']') ? host.substring(0, colon) : host;
-        return LOOPBACK_NAMES.contains(name.toLowerCase(Locale.ROOT));
+        String name = (colon > host.lastIndexOf(']') ? host.substring(0, colon) : host).toLowerCase(Locale.ROOT);
+        return LOOPBACK_NAMES.contains(name) || (lan && isAddress(name));
+    }
+
+    // An IP address literal, which no DNS answer can point elsewhere.
+    private static boolean isAddress(String name) {
+        try {
+            if (name.startsWith("[") && name.endsWith("]")) {
+                Inet6Address.ofLiteral(name.substring(1, name.length() - 1));
+            } else {
+                Inet4Address.ofLiteral(name);
+            }
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     // Browsers send Origin with every POST; a different one is another site's form.

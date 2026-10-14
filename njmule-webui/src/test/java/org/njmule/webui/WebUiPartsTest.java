@@ -111,6 +111,25 @@ class WebUiPartsTest {
     }
 
     @Test
+    void onlyAddressesAndLoopbackNamesReachTheInterface() {
+        assertThat(WebUi.trustedHost("localhost:4711", false)).isTrue();
+        assertThat(WebUi.trustedHost("127.0.0.1:4711", false)).isTrue();
+        assertThat(WebUi.trustedHost("[::1]:4711", false)).isTrue();
+        assertThat(WebUi.trustedHost("192.168.1.10:4711", false)).isFalse();
+        assertThat(WebUi.trustedHost(null, false)).isFalse();
+
+        assertThat(WebUi.trustedHost("192.168.1.10:4711", true)).isTrue();
+        assertThat(WebUi.trustedHost("192.168.1.10", true)).isTrue();
+        assertThat(WebUi.trustedHost("[fe80::1]:4711", true)).isTrue();
+        assertThat(WebUi.trustedHost("LOCALHOST:4711", true)).isTrue();
+        // A name of the attacker's that resolves to this computer: DNS rebinding.
+        assertThat(WebUi.trustedHost("rebound.example:4711", true)).isFalse();
+        assertThat(WebUi.trustedHost("192.168.1.10.nip.io:4711", true)).isFalse();
+        assertThat(WebUi.trustedHost("[rebound.example]:4711", true)).isFalse();
+        assertThat(WebUi.trustedHost(null, true)).isFalse();
+    }
+
+    @Test
     void settingsSurviveASaveAndHideTheHash() throws IOException {
         assertThat(WebUiSettings.load(this.dir)).isEqualTo(WebUiSettings.DEFAULTS);
         assertThat(WebUiSettings.DEFAULTS.usable()).isFalse();
