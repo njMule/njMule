@@ -17,7 +17,6 @@
 package org.njmule.core.files;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -54,28 +53,29 @@ public final class CancelledFiles {
         return new CancelledFiles(file, random);
     }
 
-    /** Reads {@code file}; a missing one is an empty list. */
+    /** Reads {@code file}, or its backup when it is missing or damaged; none is an empty list. */
     public static CancelledFiles load(Path file, RandomGenerator random) throws IOException {
         CancelledFiles cancelled = new CancelledFiles(file, random);
         AtomicFiles.cleanupInterruptedWrite(file);
-        byte[] data;
+        CancelledMet.Contents contents;
         try {
-            data = Files.readAllBytes(file);
+            contents = AtomicFiles.read(file, in -> {
+                try {
+                    return CancelledMet.read(in.readAllBytes());
+                } catch (DecodeException e) {
+                    throw new IOException(file + ": " + e.getMessage(), e);
+                }
+            });
         } catch (NoSuchFileException e) {
             return cancelled;
         }
-        try {
-            CancelledMet.Contents contents = CancelledMet.read(data);
-            if (contents.legacy()) {
-                // The old format holds the file hashes themselves: they get keys.
-                cancelled.seed = cancelled.newSeed();
-                contents.keys().forEach(h -> cancelled.keys.add(CancelledMet.key(cancelled.seed, h)));
-            } else {
-                cancelled.seed = contents.seed();
-                cancelled.keys.addAll(contents.keys());
-            }
-        } catch (DecodeException e) {
-            throw new IOException(file + ": " + e.getMessage(), e);
+        if (contents.legacy()) {
+            // The old format holds the file hashes themselves: they get keys.
+            cancelled.seed = cancelled.newSeed();
+            contents.keys().forEach(h -> cancelled.keys.add(CancelledMet.key(cancelled.seed, h)));
+        } else {
+            cancelled.seed = contents.seed();
+            cancelled.keys.addAll(contents.keys());
         }
         return cancelled;
     }

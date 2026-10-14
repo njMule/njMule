@@ -51,4 +51,15 @@ class FileCommentsTest {
         assertThat(FileComments.load(file).get(song)).isEmpty();
         assertThat(FileComments.load(this.dir.resolve("none")).get(FILM)).isEmpty();
     }
+
+    @Test
+    void aMissingFileIsReadFromItsBackup() throws Exception {
+        Path file = this.dir.resolve(FileComments.FILE_NAME);
+        FileComments comments = FileComments.load(file);
+        comments.set(FILM, FileComment.of("kept", 4));
+        comments.set(FILM, FileComment.of("changed", 5));
+        Files.delete(file);
+
+        assertThat(FileComments.load(file).get(FILM)).contains(FileComment.of("kept", 4));
+    }
 }

@@ -73,6 +73,19 @@ class CancelledFilesTest {
     }
 
     @Test
+    void aDamagedListIsReadFromItsBackup() throws Exception {
+        Path file = this.dir.resolve(CancelledFiles.FILE_NAME);
+        CancelledFiles cancelled = CancelledFiles.load(file, new SecureRandom());
+        cancelled.add(FILM);
+        cancelled.add(SONG);
+        Files.write(file, new byte[] {0x0F, 1, 2});
+
+        CancelledFiles again = CancelledFiles.load(file, new SecureRandom());
+
+        assertThat(again.contains(FILM)).as("as it was before the last change").isTrue();
+    }
+
+    @Test
     void aSnapshotKeepsTheListAsItWas() throws Exception {
         CancelledFiles cancelled = CancelledFiles.load(this.dir.resolve(CancelledFiles.FILE_NAME), new SecureRandom());
         cancelled.add(FILM);

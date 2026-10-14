@@ -18,7 +18,6 @@ package org.njmule.core.files;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Map;
@@ -50,17 +49,16 @@ public final class FileComments {
         return new FileComments(file);
     }
 
-    /** Reads {@code file}; a missing one holds no comments. */
+    /** Reads {@code file}, or its backup when it is missing or unreadable; none holds no comments. */
     public static FileComments load(Path file) throws IOException {
         FileComments store = new FileComments(file);
         AtomicFiles.cleanupInterruptedWrite(file);
-        byte[] data;
+        IniFile ini;
         try {
-            data = Files.readAllBytes(file);
+            ini = AtomicFiles.read(file, in -> IniFile.parse(in.readAllBytes()));
         } catch (NoSuchFileException e) {
             return store;
         }
-        IniFile ini = IniFile.parse(data);
         for (String section : ini.sections()) {
             Hash16 hash;
             try {
