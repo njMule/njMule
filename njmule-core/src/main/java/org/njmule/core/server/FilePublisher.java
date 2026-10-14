@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -39,7 +40,8 @@ import org.njmule.core.protocol.tag.TagName;
 
 /**
  * Tells the connected server which files we share, so that it gives us as a source to the clients that look for them:
- * the files not offered yet, in batches, at most one batch a minute. Engine thread only.
+ * the files not offered yet, in batches, at most one batch a minute, and no more than the server's soft limit. Engine
+ * thread only.
  */
 public final class FilePublisher {
 
@@ -106,10 +108,11 @@ public final class FilePublisher {
         }
         int flags = id.get().serverFlags();
         boolean large = (flags & ServerMessages.TCP_LARGEFILES) != 0;
+        long room = Math.min(BATCH, this.room());
         List<FileEntry> batch = new ArrayList<>();
         List<Hash16> hashes = new ArrayList<>();
         for (Offer offer : this.files.get()) {
-            if (batch.size() >= BATCH) {
+            if (batch.size() >= room) {
                 break;
             }
             if (this.offered.contains(offer.hash()) || (offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large)) {
@@ -130,6 +133,19 @@ public final class FilePublisher {
             this.offered.addAll(hashes);
             this.next = now + INTERVAL.toNanos();
         }
+    }
+
+    // A server takes up to its soft limit of files from each client, when it told one; offering more is wasted on it
+    // and, past its hard limit, gets the client dropped.
+    private long room() {
+        long limit = this.session
+                .server()
+                .flatMap(s -> {
+                    OptionalLong soft = s.softFiles();
+                    return soft.isPresent() && soft.getAsLong() > 0 ? Optional.of(soft.getAsLong()) : Optional.empty();
+                })
+                .orElse(Long.MAX_VALUE);
+        return Math.max(0, limit - this.offered.size());
     }
 
     private FileEntry entry(Offer offer, ServerMessages.IdChange id, int flags) {

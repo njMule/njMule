@@ -652,3 +652,4 @@ All notable changes to this project are documented here. The format follows
 - The UDP socket for servers never takes the client UDP port Kad listens on: it picks another at
   start, and moves when Kad is turned on or set to the port it holds, instead of leaving Kad unable
   to start.
+- No more shared files are offered to a server than its soft limit, when it told one.

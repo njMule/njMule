@@ -41,6 +41,9 @@ import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Ipv4;
 
@@ -56,6 +59,8 @@ class FilePublisherTest {
     private final AtomicLong time = new AtomicLong(1_000_000_000_000L);
     private final List<FilePublisher.Offer> files = new ArrayList<>();
     private final CountDownLatch connected = new CountDownLatch(1);
+    private final List<FileEntry> offered = new ArrayList<>();
+    private ScriptedServer server;
     private final ServerSession session = new ServerSession(
             this.loop,
             new ServerList(),
@@ -79,6 +84,9 @@ class FilePublisherTest {
             return null;
         });
         this.loop.close();
+        if (this.server != null) {
+            this.server.close();
+        }
     }
 
     @Test
@@ -153,6 +161,56 @@ class FilePublisherTest {
                     .as("a file that completed is offered again")
                     .extracting(FileEntry::hash)
                     .containsExactly(hash(10));
+        }
+    }
+
+    @Test
+    void noMoreFilesAreOfferedThanTheServerTakes() throws Exception {
+        this.givenSharedFiles(5);
+        this.givenALoginToAServerTakingFiles(3);
+
+        this.whenTwoBatchesAreDue();
+
+        this.thenTheServerWasOffered(3);
+    }
+
+    private void givenSharedFiles(int count) {
+        for (int i = 0; i < count; i++) {
+            this.files.add(new FilePublisher.Offer(hash(i + 100), "song " + i + ".mp3", 1000 + i, true));
+        }
+    }
+
+    private void givenALoginToAServerTakingFiles(long softLimit) throws Exception {
+        this.server = ScriptedServer.start(HIGH_ID, 0);
+        ServerMet.Server target = new ServerMet.Server(this.server.ip(), this.server.port(), List.of())
+                .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0))
+                .with(new Tag.IntTag(TagName.id(ServerTag.SOFTFILES), softLimit));
+        this.onLoop(() -> {
+            this.session.connect(Optional.of(target));
+            return null;
+        });
+        assertThat(this.connected.await(10, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void whenTwoBatchesAreDue() throws Exception {
+        for (int batch = 0; batch < 2; batch++) {
+            this.tick();
+            this.server
+                    .next(Opcodes.Server.OFFERFILES.code(), Duration.ofSeconds(2))
+                    .ifPresent(packet -> this.offered.addAll(offersOf(packet)));
+            this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
+        }
+    }
+
+    private void thenTheServerWasOffered(int files) {
+        assertThat(this.offered).hasSize(files);
+    }
+
+    private static List<FileEntry> offersOf(Packet packet) {
+        try {
+            return offers(packet);
+        } catch (Exception e) {
+            throw new AssertionError(e);
         }
     }
 
