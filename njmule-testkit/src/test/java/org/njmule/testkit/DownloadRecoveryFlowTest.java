@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -39,10 +40,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 
 /** Downloads that must recover from corrupt parts and from sources that leave. */
@@ -50,6 +54,9 @@ import org.njmule.core.config.AppDirectories;
 class DownloadRecoveryFlowTest {
 
     private static final int PART = 9_728_000;
+    private static final int BLOCK = 184_320;
+    // Well below the 30 s an idle slot is kept: a source left idle would close first.
+    private static final Duration SOON = Duration.ofSeconds(20);
     private static final Duration WAIT = Duration.ofSeconds(90);
 
     @TempDir
@@ -63,6 +70,55 @@ class DownloadRecoveryFlowTest {
         for (AutoCloseable resource : this.resources) {
             resource.close();
         }
+    }
+
+    @Test
+    void aSourceWithASlotTakesTheBlocksOfOneThatLeft() throws Exception {
+        byte[] data = content(5 * BLOCK - 1000, 21);
+        Path shared = this.share(data);
+        FakePeer silent = this.peer(shared, new FakePeer.Config(hash(21), false, FakePeer.Slot.NOW, 0, Set.of()));
+        silent.stall();
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        DownloadInfo added = engine.addDownload(silent.link()).get(10, TimeUnit.SECONDS);
+        await(() -> silent.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
+
+        // The second source gets the two blocks left, then has nothing to ask for.
+        FakePeer second = this.peer(shared, new FakePeer.Config(hash(22), false, FakePeer.Slot.NOW, 0, Set.of()));
+        assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
+                        .get(10, TimeUnit.SECONDS))
+                .isTrue();
+        await(() -> second.bytesSent() == data.length - 3L * BLOCK, "the second source sent the blocks left");
+        Thread.sleep(500);
+        silent.dropDownloaders();
+
+        Path file = events.completed(added.hash(), SOON).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+    }
+
+    @Test
+    void aPartWithoutRecoveryDataIsDownloadedAgainAtOnce() throws Exception {
+        byte[] data = content(2 * PART + 1000, 23);
+        FakePeer peer =
+                this.peer(this.share(data), new FakePeer.Config(hash(23), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+        // A master hash the source does not know: it answers that it has no recovery data.
+        Ed2kLink.FileLink link = peer.link();
+        Ed2kLink.FileLink unknownAich = new Ed2kLink.FileLink(
+                link.name(),
+                link.size(),
+                link.hash(),
+                Optional.of(Hash20.parseBase32("Q".repeat(32))),
+                link.partHashes(),
+                link.sources(),
+                link.httpSources());
+
+        DownloadInfo added = engine.addDownload(unknownAich).get(10, TimeUnit.SECONDS);
+
+        Path file = events.completed(added.hash(), SOON).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(peer.received()).contains("AICHREQUEST");
     }
 
     @Test
@@ -109,6 +165,18 @@ class DownloadRecoveryFlowTest {
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
         return engine;
+    }
+
+    private interface Condition {
+        boolean holds() throws Exception;
+    }
+
+    private static void await(Condition condition, String what) throws Exception {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (!condition.holds()) {
+            assertThat(System.nanoTime()).as(what).isLessThan(deadline);
+            Thread.sleep(50);
+        }
     }
 
     // Random bytes with runs of zeros.

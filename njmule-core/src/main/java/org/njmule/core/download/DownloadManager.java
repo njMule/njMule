@@ -1078,7 +1078,7 @@ public final class DownloadManager implements AutoCloseable {
         entry.recoveryTried.set(part);
         // The part waits a little for the recovery data rather than come again whole.
         file.hold(part);
-        this.loop.schedule("AICH recovery wait", RECOVERY_WAIT, () -> file.unhold(part));
+        this.loop.schedule("AICH recovery wait", RECOVERY_WAIT, () -> this.unhold(download, part));
         for (Source source : entry.sources.values()) {
             if (source.session != null && source.session.mayRecover(part)) {
                 logger.info("Asking {} for AICH recovery data of part {} of {}", source.address, part, file.name());
@@ -1139,12 +1139,30 @@ public final class DownloadManager implements AutoCloseable {
         }
         Optional<List<Hash20>> blocks = AichRecovery.verify(file.size(), part, master, data);
         if (blocks.isEmpty()) {
-            file.unhold(part);
+            this.unhold(download, part);
             logger.info(
                     "AICH recovery data of part {} of {} from {} proves nothing", part, file.name(), session.address());
             return;
         }
         this.queue.recovered(download, part, blocks.get());
+    }
+
+    // No recovery data will come: the part is downloaded again whole, by the sessions idle now too.
+    private void unhold(DownloadQueue.Download download, int part) {
+        download.file().unhold(part);
+        Entry entry = this.entries.get(download.hash());
+        if (entry != null && entry.download == download) {
+            this.wakeSessions(entry);
+        }
+    }
+
+    // Blocks were let go or a part may be downloaded again: a session with nothing to ask for asks now.
+    private void wakeSessions(Entry entry) {
+        for (Source source : List.copyOf(entry.sources.values())) {
+            if (source.session != null) {
+                source.session.wake();
+            }
+        }
     }
 
     private DownloadInfo info(Entry entry) {
@@ -1302,6 +1320,19 @@ public final class DownloadManager implements AutoCloseable {
         }
 
         @Override
+        public void aichUnavailable(DownloadSession session, int part) {
+            DownloadManager.this.unhold(session.download(), part);
+        }
+
+        @Override
+        public void released(DownloadSession session) {
+            Entry entry = DownloadManager.this.entries.get(session.download().hash());
+            if (entry != null) {
+                DownloadManager.this.wakeSessions(entry);
+            }
+        }
+
+        @Override
         public void partsKnown(DownloadSession session) {
             DownloadManager.this.mayRecoverFrom(session);
         }
@@ -1362,6 +1393,8 @@ public final class DownloadManager implements AutoCloseable {
                 case GONE -> entry.sources.remove(source.address);
             }
             entry.changed = true;
+            // The blocks it held may come from another source with a slot.
+            DownloadManager.this.wakeSessions(entry);
         }
     }
 
@@ -1385,11 +1418,7 @@ public final class DownloadManager implements AutoCloseable {
                 return;
             }
             entry.changed = true;
-            for (Source source : entry.sources.values()) {
-                if (source.session != null) {
-                    source.session.wake();
-                }
-            }
+            DownloadManager.this.wakeSessions(entry);
         }
 
         @Override

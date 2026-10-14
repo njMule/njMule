@@ -493,7 +493,12 @@ public final class DownloadQueue implements AutoCloseable {
 
     private void takeBack(Download download, int part, List<Hash20> blocks, List<Hash20> ours, Throwable failure) {
         download.file.unhold(part);
-        if (!this.isQueued(download) || failure != null || ours.size() != blocks.size()) {
+        if (!this.isQueued(download)) {
+            return;
+        }
+        if (failure != null || ours.size() != blocks.size()) {
+            // The part is downloaded again whole, also by the sessions waiting for it.
+            this.listener.progress(download);
             return;
         }
         long start = Ed2k.partStart(part);

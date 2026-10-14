@@ -84,6 +84,12 @@ final class DownloadSession implements PeerLink.Role {
         /** The source sent AICH recovery data for {@code part}, which we asked for. */
         default void aichAnswered(DownloadSession session, int part, Hash20 master, byte[] data) {}
 
+        /** The source has no AICH recovery data for {@code part}, which we asked for. */
+        default void aichUnavailable(DownloadSession session, int part) {}
+
+        /** The session let blocks go that other sources may now download. */
+        default void released(DownloadSession session) {}
+
         /** The source told which parts it has. */
         default void partsKnown(DownloadSession session) {}
 
@@ -222,8 +228,14 @@ final class DownloadSession implements PeerLink.Role {
     private void aichAnswer(Packet packet) throws DecodeException {
         PacketReader in = packet.reader();
         Hash16 file = in.hash16();
-        if (!file.equals(this.download.hash()) || this.aichAsked < 0 || in.remaining() == 0) {
+        int asked = this.aichAsked;
+        if (!file.equals(this.download.hash()) || asked < 0) {
             this.aichAsked = -1;
+            return;
+        }
+        if (in.remaining() == 0) {
+            this.aichAsked = -1;
+            this.listener.aichUnavailable(this, asked);
             return;
         }
         int part = in.u16();
@@ -540,7 +552,13 @@ final class DownloadSession implements PeerLink.Role {
             if (this.pending.isEmpty() && this.idle == null) {
                 this.idle = this.loop.schedule("idle download slot", IDLE_SLOT, () -> {
                     this.idle = null;
-                    if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
+                    if (this.state != State.DOWNLOADING || !this.pending.isEmpty()) {
+                        return;
+                    }
+                    if (this.hasHeldPart()) {
+                        // The slot stays while a part it has waits for its recovery data.
+                        this.requestBlocks();
+                    } else {
                         this.close("nothing more to download from this source");
                     }
                 });
@@ -614,11 +632,15 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         logger.debug("{}: {}", this.address, reason);
+        boolean hadBlocks = !this.pending.isEmpty();
         this.releaseBlocks();
         this.stopIdle();
         this.accepted = false;
         this.state = State.QUEUED;
         this.setReadTimeout(QUEUED_TIMEOUT);
+        if (hadBlocks) {
+            this.listener.released(this);
+        }
     }
 
     @Override
@@ -666,6 +688,18 @@ final class DownloadSession implements PeerLink.Role {
             this.download.file().release(block.block);
         }
         this.pending.clear();
+    }
+
+    private boolean hasHeldPart() {
+        PartFile file = this.download.file();
+        for (int part = this.sourceParts.nextSetBit(0);
+                part >= 0 && part < file.partCount();
+                part = this.sourceParts.nextSetBit(part + 1)) {
+            if (file.isHeld(part) && !file.isComplete(part)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasNeededParts() {

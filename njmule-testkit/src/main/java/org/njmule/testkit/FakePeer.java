@@ -61,7 +61,8 @@ import org.slf4j.LoggerFactory;
 /**
  * An in-process client for tests that shares one file: it answers hellos and file requests, keeps downloaders queued or
  * gives them a slot (also by calling them back), and sends the blocks they ask for, plain or compressed. It can end
- * upload sessions early and send a corrupt copy of chosen parts once. Plain connections only.
+ * upload sessions early, send a corrupt copy of chosen parts once, go silent or drop its downloaders. Plain connections
+ * only.
  */
 public final class FakePeer implements AutoCloseable {
 
@@ -105,6 +106,8 @@ public final class FakePeer implements AutoCloseable {
     private final Set<Integer> corrupted = ConcurrentHashMap.newKeySet();
     private final Optional<AichTree> aich;
     private final AtomicLong sent = new AtomicLong();
+    private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
+    private volatile boolean stalled;
 
     private FakePeer(Path file, Ed2kLink.FileLink link, Optional<AichTree> aich, Config config, ServerSocket tcp) {
         this.file = file;
@@ -169,6 +172,18 @@ public final class FakePeer implements AutoCloseable {
         });
     }
 
+    /** Stops sending the blocks downloaders ask for, as a source that went silent. */
+    public void stall() {
+        this.stalled = true;
+    }
+
+    /** Closes the connections of the downloaders, as a source that went away. */
+    public void dropDownloaders() throws IOException {
+        for (Socket client : this.clients) {
+            client.close();
+        }
+    }
+
     /** File bytes sent, before compression. */
     public long bytesSent() {
         return this.sent.get();
@@ -210,6 +225,7 @@ public final class FakePeer implements AutoCloseable {
 
     private void serve(Socket client, Answer answer) {
         boolean calledBack = answer == Answer.SLOT;
+        this.clients.add(client);
         try (client;
                 RandomAccessFile data = new RandomAccessFile(this.file.toFile(), "r")) {
             InputStream in = new BufferedInputStream(client.getInputStream());
@@ -222,6 +238,8 @@ public final class FakePeer implements AutoCloseable {
             }
         } catch (IOException e) {
             logger.debug("Fake peer client gone: {}", e.getMessage());
+        } finally {
+            this.clients.remove(client);
         }
     }
 
@@ -376,6 +394,9 @@ public final class FakePeer implements AutoCloseable {
         }
 
         private void blocks(ClientMessages.RequestParts request) throws IOException {
+            if (FakePeer.this.stalled) {
+                return;
+            }
             for (ClientMessages.Range range : request.ranges()) {
                 if (range.isEmpty()) {
                     continue;

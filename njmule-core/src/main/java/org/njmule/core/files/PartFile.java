@@ -430,6 +430,10 @@ public final class PartFile {
         this.held.clear(part);
     }
 
+    public boolean isHeld(int part) {
+        return this.held.get(part);
+    }
+
     /** A requested block that will not arrive (the source is gone). */
     public void release(Block block) {
         this.release(block.start(), block.end());
