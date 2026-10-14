@@ -438,6 +438,50 @@ class SharedFilesTest {
     }
 
     @Test
+    void aFileRenamedBeforeItIsHashedAgainGetsItsAichTreeUnderItsNewName() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        SharedFiles shares = this.open(config, incoming);
+        // A large file hashed first keeps the hashing thread busy until the rename is done.
+        Path large = Files.write(
+                Files.createDirectories(this.dir.resolve("other")).resolve("large.bin"), bytes(32_000_000, 36));
+        PartFile busy = PartFile.create(
+                2,
+                this.dir,
+                "large.bin",
+                Files.size(large),
+                Hash16.parseHex("77".repeat(16)),
+                Optional.empty(),
+                List.of());
+        byte[] data = bytes(600_000, 37);
+        Hash16 hash = Ed2k.md4(data, 0, data.length);
+        Path done = incoming.resolve("done.bin");
+        Files.write(done, data);
+        PartFile download = PartFile.create(1, this.dir, "done.bin", data.length, hash, Optional.empty(), List.of());
+
+        this.onLoop(() -> {
+            shares.finished(large, busy);
+            shares.finished(done, download);
+            return shares.rename(hash, "renamed.bin");
+        });
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+            assertThat(System.nanoTime()).as("hashed under its new name").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+
+        assertThat(this.onLoop(() -> shares.get(hash)))
+                .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(incoming.resolve("renamed.bin")));
+        assertThat(this.onLoop(() -> shares.get(Hash16.parseHex("77".repeat(16)))))
+                .as("a file that is not what was downloaded keeps no tree")
+                .hasValueSatisfying(f -> assertThat(f.aichHash()).isEmpty());
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
     void renamingChangesTheCaseOfANameToo() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));

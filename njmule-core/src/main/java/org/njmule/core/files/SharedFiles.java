@@ -433,8 +433,12 @@ public final class SharedFiles implements AutoCloseable {
             logger.warn("Cannot share {}", file, e);
             return;
         }
-        // The download checked the parts, not the AICH blocks: hashing the file once more gives its tree, and with it
-        // the recovery data other clients may ask for.
+        this.hashFinished(file, mtime, download);
+    }
+
+    // The download checked the parts, not the AICH blocks: hashing the file once more gives its tree, and with it the
+    // recovery data other clients may ask for.
+    private void hashFinished(Path file, long mtime, PartFile download) {
         if (this.hashing.add(file)) {
             this.loop.whenDone(
                     CompletableFuture.supplyAsync(
@@ -451,6 +455,15 @@ public final class SharedFiles implements AutoCloseable {
     }
 
     private void treeOfFinished(Path file, long mtime, PartFile download, FileHasher.Result result, Throwable failure) {
+        if (failure != null && !this.closed && !Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            // Renamed before it could be read: the copy shared now is hashed instead.
+            this.hashing.remove(file);
+            SharedFile current = this.byHash.get(download.hash());
+            if (current != null && !current.path().equals(file)) {
+                this.hashFinished(current.path(), current.mtime(), download);
+            }
+            return;
+        }
         if (failure == null && !result.ed2k().fileHash().equals(download.hash())) {
             this.hashing.remove(file);
             logger.warn("{} changed since its download finished", file);
