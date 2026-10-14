@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# njMule without a window, as a systemd user unit: it runs as the user, never as root, with the
+# user's configuration. Start it now and at each login with
+#   systemctl --user enable --now njmule
+# and, to keep it running while the user is logged out, `loginctl enable-linger`. It shares the
+# configuration with the desktop app, so only one of the two runs at a time.
+[Unit]
+Description=njMule, eD2K and Kad file sharing without a window
+Documentation=https://github.com/njMule/njMule
+# A start that keeps failing, such as while the desktop app runs, gives up after five tries.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/njmule --headless
+# SIGTERM makes njMule save its state and exit, which takes a few seconds; it then ends with 143,
+# a stop asked for and not a failure.
+TimeoutStopSec=60
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

@@ -301,6 +301,8 @@ All notable changes to this project are documented here. The format follows
   user's Run key on Windows, an XDG autostart entry on Linux or a launch agent on macOS, and reads
   the setting back from there; an eMule that started at login has njMule do the same once it is
   imported.
+- The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
+  engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
 
 ### Changed
 

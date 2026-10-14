@@ -115,6 +115,18 @@ and icons. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive conta
 executables and runs from any directory; its `share/` directory provides the desktop entry,
 metadata and icon for manual desktop integration.
 
+The packages also install a systemd user unit that runs the engine headless as the logged-in
+user (never as root), restarting it if it fails:
+
+```bash
+systemctl --user enable --now njmule   # start now and at each login
+loginctl enable-linger                 # optional: keep it running while logged out
+journalctl --user -u njmule            # its log
+```
+
+The unit and the desktop application share the configuration, so only one of them runs at a
+time; control the headless engine through the web interface.
+
 ### macOS
 
 Open the disk image and drag njMule into Applications. The application is ad-hoc signed but not

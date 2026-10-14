@@ -51,6 +51,9 @@ contents:
     dst: /usr/share/applications/org.njmule.njMule.desktop
   - src: packaging/linux/org.njmule.njMule.metainfo.xml
     dst: /usr/share/metainfo/org.njmule.njMule.metainfo.xml
+  # The headless engine as a user unit: systemctl --user enable --now njmule
+  - src: packaging/linux/njmule.service
+    dst: /usr/lib/systemd/user/njmule.service
   - src: branding/njmule-icon.svg
     dst: /usr/share/icons/hicolor/scalable/apps/org.njmule.njMule.svg
   - src: branding/generated/njmule-16.png
