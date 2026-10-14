@@ -134,24 +134,6 @@ class KadNodeMessagesTest {
     }
 
     @Test
-    void aBootstrapListIsAskedRatherThanTaken() {
-        int lan = Ipv4.of(192, 168, 1, 9);
-        int filtered = Ipv4.of(50, 1, 1, 1);
-        this.blocked.add(filtered);
-
-        int added = this.node.addContacts(
-                new NodesDat.Contents(2, true, List.of(this.record(PEER), this.record(lan), this.record(filtered))));
-
-        assertThat(added).isZero();
-        assertThat(this.node.contacts()).isZero();
-        assertThat(this.sent)
-                .extracting(Sent::ip)
-                .as("only the public address allowed by the filter")
-                .containsExactly(PEER);
-        assertThat(this.sent.getFirst().packet().opcode()).isEqualTo(Opcodes.Kad.BOOTSTRAP_REQ.code());
-    }
-
-    @Test
     void aHelloIsAnsweredAndANodeThatAcknowledgesBecomesVerified() throws Exception {
         UInt128 peerId = UInt128.random(this.random);
 

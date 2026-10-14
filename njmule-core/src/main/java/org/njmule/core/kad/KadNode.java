@@ -226,6 +226,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // Fewer contacts than this do not replace a nodes.dat: a short outage must not lose a good one.
     static final int MIN_SAVED_CONTACTS = 25;
 
+    /** Contacts of a bootstrap-only nodes.dat kept to start from: those closest to our id. */
+    static final int BOOTSTRAP_CONTACTS = 50;
+
     private static final Logger logger = LoggerFactory.getLogger(KadNode.class);
     private static final long SECOND = 1_000_000_000L;
     private static final long MINUTE = 60 * SECOND;
@@ -255,6 +258,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final Duration FIND_BUDDY_FIRST = Duration.ofMinutes(5);
     private static final Duration FIND_BUDDY_EVERY = Duration.ofMinutes(20);
     private static final Duration EXTERNAL_PORT_ASK_EVERY = Duration.ofSeconds(15);
+    // A bootstrap contact is asked every so often while we are not connected, more often while we know no one.
+    private static final Duration BOOTSTRAP_EVERY = Duration.ofSeconds(15);
+    private static final Duration BOOTSTRAP_EVERY_ALONE = Duration.ofSeconds(2);
     // Lookups for UDP test helpers in one test at most, and how far apart.
     private static final int UDP_HELPER_LOOKUPS = 3;
     private static final Duration UDP_HELPER_LOOKUP_GAP = Duration.ofMinutes(1);
@@ -283,6 +289,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private final UdpFirewallTest udpTest = new UdpFirewallTest();
     // Nodes we sent datagrams for their UDP test, and when.
     private final Map<Integer, Long> udpHelped = new LinkedHashMap<>();
+    // The contacts of a bootstrap-only nodes.dat, closest to our id first: asked, never added.
+    private final List<KadMessages.Contact> bootstrapList = new ArrayList<>();
+    private long lastBootstrap;
     private Buddies buddies = Buddies.NONE;
     private Buddies.State buddyState = Buddies.State.NONE;
     private boolean findBuddy;
@@ -328,6 +337,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.nextFirewallCheck = now;
         this.nextClean = now + 12 * MINUTE;
         this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
+        this.lastBootstrap = now - BOOTSTRAP_EVERY.toNanos();
     }
 
     /** Where the buddy links are kept; none until set. */
@@ -453,15 +463,26 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         try {
-            this.addContacts(NodesDat.read(Files.readAllBytes(file)));
-            logger.info("{} Kad contacts from {}", this.table.size(), file.getFileName());
+            NodesDat.Contents contents = NodesDat.read(Files.readAllBytes(file));
+            int added = this.addContacts(contents);
+            logger.info(
+                    "{} Kad {} from {}",
+                    added,
+                    contents.bootstrap() ? "contacts to bootstrap from" : "contacts",
+                    file.getFileName());
         } catch (IOException e) {
             logger.warn("Cannot read {}", file, e);
         }
     }
 
-    /** Adds the contacts of a {@code nodes.dat}, or bootstraps from them; returns how many were new. */
+    /**
+     * Adds the contacts of a {@code nodes.dat}, or keeps those of a bootstrap-only one to start from; returns how many
+     * were new.
+     */
     public int addContacts(NodesDat.Contents contents) {
+        if (contents.bootstrap()) {
+            return this.keepForBootstrap(contents.contacts());
+        }
         boolean anyVerified = false;
         for (NodesDat.Contact c : contents.contacts()) {
             anyVerified |= c.verified();
@@ -472,10 +493,6 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (!this.isGoodAddress(c.ip())) {
                 continue;
             }
-            if (contents.bootstrap()) {
-                this.bootstrap(c.ip(), c.udpPort());
-                continue;
-            }
             KadContact contact = new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
             contact.setVerified(c.verified() || !anyVerified);
             if (this.table.add(contact, false, c.udpKey(), this.publicIp, now) == RoutingTable.Outcome.ADDED) {
@@ -483,6 +500,42 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             }
         }
         return added;
+    }
+
+    // A list shipped with a client would flood the nodes on it if every user took them as contacts: they are only asked
+    // for contacts, one at a time, and the closest to us give a start near our own zone.
+    private int keepForBootstrap(List<NodesDat.Contact> contacts) {
+        UInt128 own = this.identity.id();
+        Set<UInt128> known = new HashSet<>();
+        this.bootstrapList.forEach(c -> known.add(c.id()));
+        int before = this.bootstrapList.size();
+        for (NodesDat.Contact c : contacts) {
+            if (this.isGoodAddress(c.ip())
+                    && c.udpPort() != 0
+                    && c.version() > 1
+                    && !(c.udpPort() == 53 && c.version() <= 5)
+                    && known.add(c.id())) {
+                this.bootstrapList.add(new KadMessages.Contact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version()));
+            }
+        }
+        this.bootstrapList.sort(Comparator.comparing(c -> c.id().xor(own)));
+        while (this.bootstrapList.size() > BOOTSTRAP_CONTACTS) {
+            this.bootstrapList.removeLast();
+        }
+        return Math.max(0, this.bootstrapList.size() - before);
+    }
+
+    // The next bootstrap contact is asked while nothing tells us we are connected.
+    private void bootstrapFromList(long now) {
+        long gap = (this.table.size() == 0 ? BOOTSTRAP_EVERY_ALONE : BOOTSTRAP_EVERY).toNanos();
+        if (this.bootstrapList.isEmpty() || this.isConnected() || now - this.lastBootstrap < gap) {
+            return;
+        }
+        this.lastBootstrap = now;
+        KadMessages.Contact c = this.bootstrapList.removeFirst();
+        Optional<UInt128> key = c.version() >= OBFUSCATION_VERSION ? Optional.of(c.id()) : Optional.empty();
+        this.send(c.ip(), c.udpPort(), KadMessages.bootstrapRequest(), key, 0);
+        this.tracking.sent(c.ip(), Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
     }
 
     /** Looks for contacts at once rather than at the next rounds: when asked to connect, or after new ones came. */
@@ -877,6 +930,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
             }
         }
+        this.bootstrapFromList(now);
         this.tickUdpTest(now);
         this.tickBuddies(now);
         if (now - this.nextClean >= 0) {
@@ -1083,7 +1137,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(packet);
         long now = this.ticker.read();
         boolean empty = this.table.size() == 0;
-        if (this.isGoodAddress(peer.ip())) {
+        // A node of a bootstrap list gives contacts but is not taken: everyone starting from that list would.
+        if (this.bootstrapList.isEmpty() && this.isGoodAddress(peer.ip())) {
             KadContact sender = new KadContact(
                     answer.sender().id(),
                     peer.ip(),

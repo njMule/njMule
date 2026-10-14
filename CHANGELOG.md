@@ -567,3 +567,7 @@ All notable changes to this project are documented here. The format follows
 - Kad index: a keyword publisher silent for a day no longer counts for its name nor keeps newer
   publishers out, names are kept up to 255 characters, and a file whose entry no answer could
   carry is not stored.
+- Kad: the contacts of a bootstrap-only nodes.dat are filtered, only the 50 closest to our id are
+  kept, and they are asked one at a time (every 2 seconds while no contact is known, every 15
+  otherwise) only while Kad is not connected, obfuscated for the nodes that take it; the nodes that
+  answer are no longer taken as contacts.
