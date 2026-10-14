@@ -140,14 +140,25 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
+        // The answers go out before the exchange closes.
         try (exchange) {
-            this.route(exchange);
-        } catch (IllegalArgumentException e) {
-            if (exchange.getResponseCode() < 0) {
-                this.send(exchange, 400, TEXT, "Bad request.");
+            try {
+                this.route(exchange);
+            } catch (EngineFailure e) {
+                this.fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
+            } catch (IllegalArgumentException e) {
+                this.fail(exchange, 400, "Bad request.");
+            } catch (RuntimeException e) {
+                logger.warn("Web interface request failed", e);
+                this.fail(exchange, 500, "The request failed.");
             }
-        } catch (RuntimeException e) {
-            logger.warn("Web interface request failed", e);
+        }
+    }
+
+    // An error answer, unless another one has started.
+    private void fail(HttpExchange exchange, int status, String message) throws IOException {
+        if (exchange.getResponseCode() < 0) {
+            this.send(exchange, status, TEXT, message);
         }
     }
 
