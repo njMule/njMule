@@ -649,3 +649,6 @@ All notable changes to this project are documented here. The format follows
   computer) is pinged again instead of never.
 - A new id the server gives while we are logged in is the one our hello, the downloads and Kad use
   from then on, and the log tells it.
+- The UDP socket for servers never takes the client UDP port Kad listens on: it picks another at
+  start, and moves when Kad is turned on or set to the port it holds, instead of leaving Kad unable
+  to start.

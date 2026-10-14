@@ -57,7 +57,29 @@ public final class ServerUdp implements AutoCloseable {
 
     /** Binds {@code port} (0 picks one) on every interface and starts receiving. */
     public static ServerUdp open(int port, Receiver receiver) throws SocketException {
-        ServerUdp udp = new ServerUdp(new DatagramSocket(port), Objects.requireNonNull(receiver, "receiver"));
+        return start(new DatagramSocket(port), receiver);
+    }
+
+    /**
+     * Binds a random port other than {@code kept}, the port Kad and clients use, on every interface and starts
+     * receiving.
+     */
+    public static ServerUdp openBeside(int kept, Receiver receiver) throws SocketException {
+        DatagramSocket socket = new DatagramSocket(0);
+        if (socket.getLocalPort() == kept) {
+            DatagramSocket first = socket;
+            try {
+                // Picked while the first still holds the port, so it is another one.
+                socket = new DatagramSocket(0);
+            } finally {
+                first.close();
+            }
+        }
+        return start(socket, receiver);
+    }
+
+    private static ServerUdp start(DatagramSocket socket, Receiver receiver) {
+        ServerUdp udp = new ServerUdp(socket, Objects.requireNonNull(receiver, "receiver"));
         Thread.ofVirtual().name("njmule-server-udp").start(udp::run);
         return udp;
     }

@@ -106,6 +106,7 @@ class NetworkTest {
     private EngineLoop loop;
     private Network network;
     private ScriptedServer scripted;
+    private int serverSocketPort;
 
     @BeforeEach
     void open() throws IOException {
@@ -826,6 +827,37 @@ class NetworkTest {
             }
             assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
         }
+    }
+
+    @Test
+    void kadGetsItsPortEvenWhenTheServerSocketHoldsIt() throws Exception {
+        this.givenARunningNetworkWithoutKad();
+
+        this.whenKadIsTurnedOnAtThePortOfTheServerSocket();
+
+        this.thenKadListensOnThatPort();
+        this.thenTheServerSocketListensElsewhere();
+    }
+
+    private void givenARunningNetworkWithoutKad() throws Exception {
+        this.started();
+        this.serverSocketPort = this.onLoop(this.network::serverUdpPort).orElseThrow();
+    }
+
+    private void whenKadIsTurnedOnAtThePortOfTheServerSocket() throws Exception {
+        this.reconfigure(this.network, p -> p.udpPort(this.serverSocketPort).kadEnabled(true));
+    }
+
+    private void thenKadListensOnThatPort() throws Exception {
+        assertThat(this.onLoop(this.network::kadInfo))
+                .as("Kad started")
+                .hasValueSatisfying(kad -> assertThat(kad.udpPort()).isEqualTo(this.serverSocketPort));
+    }
+
+    private void thenTheServerSocketListensElsewhere() throws Exception {
+        OptionalInt port = this.onLoop(this.network::serverUdpPort);
+        assertThat(port).isPresent();
+        assertThat(port.getAsInt()).isNotEqualTo(this.serverSocketPort);
     }
 
     private Network create() throws Exception {

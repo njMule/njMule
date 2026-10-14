@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -477,7 +478,7 @@ final class Network {
         this.links.countIn(this.guard);
         this.listen(this.preferences.get().tcpPort());
         try {
-            this.udp = ServerUdp.open(0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
+            this.udp = this.openServerUdp(this.preferences.get().udpPort());
         } catch (IOException e) {
             this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
@@ -497,6 +498,31 @@ final class Network {
                 this.servers.size(),
                 this.ipFilter.rangeCount(),
                 this.userHash);
+    }
+
+    // Any free port but the one Kad and clients use, which the preferences may give later.
+    private ServerUdp openServerUdp(int kadPort) throws SocketException {
+        return ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
+    }
+
+    // The server socket took the port Kad now wants: it moves to another.
+    private void freeForKad(int kadPort) {
+        ServerUdp current = this.udp;
+        if (current == null || current.port() != kadPort) {
+            return;
+        }
+        try {
+            this.udp = this.openServerUdp(kadPort);
+            current.close();
+            logger.info("Server UDP socket moved to port {}: Kad takes port {}", this.udp.port(), kadPort);
+        } catch (IOException e) {
+            logger.warn("Cannot move the server UDP socket off port {}", kadPort, e);
+        }
+    }
+
+    /** The port of the server UDP socket, if it is open. */
+    OptionalInt serverUdpPort() {
+        return this.udp == null ? OptionalInt.empty() : OptionalInt.of(this.udp.port());
     }
 
     List<ServerInfo> servers() {
@@ -1540,6 +1566,7 @@ final class Network {
 
     private void startKad() {
         Preferences prefs = this.preferences.get();
+        this.freeForKad(prefs.udpPort());
         try {
             KadIdentity identity = KadIdentity.loadOrCreate(this.configDir, this.random);
             this.kadSocket = KadSocket.open(
