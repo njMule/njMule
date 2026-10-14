@@ -159,7 +159,10 @@ abstract sealed class SystemAutostart implements Autostart {
             List<String> quoted = new ArrayList<>();
             for (String part : this.command) {
                 // A backslash before the closing quote would escape it.
-                int trailing = part.length() - part.replaceAll("\\\\+$", "").length();
+                int trailing = 0;
+                while (trailing < part.length() && part.charAt(part.length() - 1 - trailing) == '\\') {
+                    trailing++;
+                }
                 quoted.add("\"" + part.replace("\"", "\\\"") + "\\".repeat(trailing) + "\"");
             }
             return String.join(" ", quoted);
