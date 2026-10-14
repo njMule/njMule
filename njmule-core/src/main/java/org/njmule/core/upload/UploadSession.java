@@ -191,10 +191,6 @@ final class UploadSession implements PeerLink.Role {
         return this.connection.remoteAddress();
     }
 
-    Optional<Uploadable> file() {
-        return this.file;
-    }
-
     boolean isOpen() {
         return !this.closed && this.connection.isOpen();
     }
@@ -213,10 +209,6 @@ final class UploadSession implements PeerLink.Role {
             }
         });
         return file;
-    }
-
-    boolean hasSlot() {
-        return this.slot;
     }
 
     /** The next requested block, if any. */
