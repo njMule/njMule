@@ -564,3 +564,6 @@ All notable changes to this project are documented here. The format follows
   user hash, or at our port on the address Kad found us reachable at, are left out, and a source
   that answers our hello with our user hash is dropped from every download; a client that greets
   us with our user hash gets our answer and nothing more.
+- Kad index: a keyword publisher silent for a day no longer counts for its name nor keeps newer
+  publishers out, names are kept up to 255 characters, and a file whose entry no answer could
+  carry is not stored.

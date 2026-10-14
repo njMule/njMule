@@ -331,6 +331,9 @@ public final class KadMessages {
 
     /** KADEMLIA2_SEARCH_RES: what the sender holds for {@code target}. */
     public record SearchAnswer(UInt128 sender, UInt128 target, List<Entry> results) {
+        // The header, both ids and the count.
+        private static final int EMPTY_ANSWER = 2 + 16 + 16 + 2;
+
         public SearchAnswer {
             Objects.requireNonNull(sender, "sender");
             Objects.requireNonNull(target, "target");
@@ -358,6 +361,11 @@ public final class KadMessages {
             return new SearchAnswer(sender, target, results);
         }
 
+        /** Whether an answer of at most {@code maxBytes} can carry {@code entry}. */
+        public static boolean fits(Entry entry, int maxBytes) {
+            return EMPTY_ANSWER + entry.size() <= maxBytes;
+        }
+
         /**
          * Answers no larger than {@code maxBytes} each that together carry {@code results}; an entry too large for an
          * answer of its own is left out.
@@ -365,17 +373,16 @@ public final class KadMessages {
         public static List<Packet> split(UInt128 sender, UInt128 target, List<Entry> results, int maxBytes) {
             List<Packet> packets = new ArrayList<>();
             List<Entry> batch = new ArrayList<>();
-            int empty = 2 + 16 + 16 + 2;
-            int size = empty;
+            int size = EMPTY_ANSWER;
             for (Entry entry : results) {
                 int entrySize = entry.size();
-                if (empty + entrySize > maxBytes) {
+                if (EMPTY_ANSWER + entrySize > maxBytes) {
                     continue;
                 }
                 if (size + entrySize > maxBytes) {
                     packets.add(new SearchAnswer(sender, target, batch).encode());
                     batch = new ArrayList<>();
-                    size = empty;
+                    size = EMPTY_ANSWER;
                 }
                 batch.add(entry);
                 size += entrySize;

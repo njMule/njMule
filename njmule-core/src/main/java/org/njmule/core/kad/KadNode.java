@@ -235,7 +235,6 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final Duration FIREWALL_CHECK_EVERY = Duration.ofHours(1);
     private static final int FIREWALL_CHECKS = 4;
     private static final int FIREWALL_ACKS = 2;
-    private static final int UDP_FRAGMENT = 1_420;
     private static final int HELLO_ACK_VERSION = 8;
     private static final int OBFUSCATION_VERSION = 6;
     private static final int FIREWALL2_VERSION = 7;
@@ -1219,7 +1218,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (results.isEmpty()) {
             return;
         }
-        for (Packet p : KadMessages.SearchAnswer.split(this.identity.id(), target, results, UDP_FRAGMENT)) {
+        for (Packet p : KadMessages.SearchAnswer.split(this.identity.id(), target, results, KadIndex.ANSWER_BYTES)) {
             this.answer(peer, p);
         }
     }

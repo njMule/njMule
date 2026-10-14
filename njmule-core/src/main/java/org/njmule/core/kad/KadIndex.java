@@ -18,7 +18,6 @@ package org.njmule.core.kad;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,6 +54,9 @@ final class KadIndex {
     // What a note keeps of the file name the publisher gave, so that a note stays small.
     static final int MAX_NOTE_NAME = 255;
 
+    // What a keyword entry keeps of a name: no file system takes a longer one.
+    static final int MAX_KEYWORD_NAME = 255;
+
     /** Keyword entries in total at most. */
     static final int MAX_KEYWORD_ENTRIES = 60_000;
 
@@ -70,7 +72,16 @@ final class KadIndex {
     /** Results per answer at most. */
     static final int MAX_RESULTS = 300;
 
+    /** Bytes of a search answer at most: one datagram that no link has to fragment. */
+    static final int ANSWER_BYTES = 1_420;
+
     private static final int MAX_PUBLISHERS = 100;
+
+    // The largest information an answer carries about the publishers of a file.
+    private static final long MAX_PUBLISH_INFO = 0xFFFF_FFFFL;
+
+    /** A publisher of a file under a keyword: the name it gave last, and when. */
+    private record Publisher(String name, long at) {}
 
     /** A file published under a keyword. */
     private static final class KeywordEntry {
@@ -78,7 +89,8 @@ final class KadIndex {
         private final Map<String, Integer> names = new LinkedHashMap<>();
         private final long size;
         private List<Tag> tags;
-        private final Map<Integer, String> publishers = new HashMap<>();
+        // By address, the one that published longest ago first.
+        private final Map<Integer, Publisher> publishers = new LinkedHashMap<>();
         private long expires;
 
         KeywordEntry(long size) {
@@ -86,16 +98,35 @@ final class KadIndex {
         }
 
         // A publisher counts once, for the name it gave last, so repeating or switching names gains nothing.
-        void published(int ip, String name) {
-            String before = this.publishers.get(ip);
-            if (name.equals(before) || (before == null && this.publishers.size() >= MAX_PUBLISHERS)) {
+        void published(int ip, String name, long now) {
+            this.forget(now);
+            Publisher before = this.publishers.remove(ip);
+            if (before == null && this.publishers.size() >= MAX_PUBLISHERS) {
                 return;
             }
-            if (before != null) {
-                this.names.computeIfPresent(before, (n, count) -> count > 1 ? count - 1 : null);
+            this.publishers.put(ip, new Publisher(name, now));
+            if (before == null || !before.name().equals(name)) {
+                if (before != null) {
+                    this.drop(before.name());
+                }
+                this.names.merge(name, 1, Integer::sum);
             }
-            this.publishers.put(ip, name);
-            this.names.merge(name, 1, Integer::sum);
+        }
+
+        // A publisher silent for as long as entries live counts no more and leaves its place to another.
+        void forget(long now) {
+            for (Iterator<Publisher> it = this.publishers.values().iterator(); it.hasNext(); ) {
+                Publisher p = it.next();
+                if (now - p.at() < KEYWORD_LIFETIME.toNanos()) {
+                    return;
+                }
+                it.remove();
+                this.drop(p.name());
+            }
+        }
+
+        private void drop(String name) {
+            this.names.computeIfPresent(name, (n, count) -> count > 1 ? count - 1 : null);
         }
 
         String popularName() {
@@ -129,9 +160,15 @@ final class KadIndex {
     int publishKeyword(UInt128 keyword, KadMessages.Entry file, int ip, long now) {
         Map<UInt128, KeywordEntry> files = this.keywords.get(keyword);
         int count = files == null ? 0 : files.size();
-        Optional<String> name = Tags.stringValue(file.tags(), FileTag.FILENAME);
+        Optional<String> name = Tags.stringValue(file.tags(), FileTag.FILENAME).map(n -> cut(n, MAX_KEYWORD_NAME));
         OptionalLong size = Tags.intValue(file.tags(), FileTag.FILESIZE);
         if (name.isEmpty() || name.get().isEmpty() || size.isEmpty() || size.getAsLong() <= 0) {
+            return load(count, MAX_FILES_PER_KEYWORD);
+        }
+        List<Tag> other = otherTags(file.tags());
+        // What no answer could carry is never asked for.
+        if (!KadMessages.SearchAnswer.fits(
+                answerEntry(file.id(), name.get(), size.getAsLong(), other, MAX_PUBLISH_INFO), ANSWER_BYTES)) {
             return load(count, MAX_FILES_PER_KEYWORD);
         }
         KeywordEntry entry = files == null ? null : files.get(file.id());
@@ -147,8 +184,8 @@ final class KadIndex {
                 count++;
             }
         }
-        entry.published(ip, name.get());
-        entry.tags = otherTags(file.tags());
+        entry.published(ip, name.get(), now);
+        entry.tags = other;
         entry.expires = now + KEYWORD_LIFETIME.toNanos();
         return count == 1 ? 1 : load(count, MAX_FILES_PER_KEYWORD);
     }
@@ -218,22 +255,19 @@ final class KadIndex {
             if (now - entry.expires >= 0) {
                 continue;
             }
+            // Refreshed only by publishers that found no place, an entry may have no name left.
+            entry.forget(now);
             String name = entry.popularName();
-            if (expression.isPresent() && !matches(expression.get(), name, entry)) {
+            if (name.isEmpty() || (expression.isPresent() && !matches(expression.get(), name, entry))) {
                 continue;
             }
             if (skipped++ < start) {
                 continue;
             }
-            List<Tag> tags = new ArrayList<>();
-            tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), name));
-            tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), entry.size));
-            tags.addAll(entry.tags);
             long info = (long) Math.min(entry.names.size(), 255) << 24
                     | (long) Math.min(entry.publishers.size(), 255) << 16
                     | Math.min(entry.publishers.size() * 100L, 0xFFFF);
-            tags.add(new Tag.IntTag(TagName.id(FileTag.PUBLISHINFO), info));
-            results.add(new KadMessages.Entry(e.getKey(), tags));
+            results.add(answerEntry(e.getKey(), name, entry.size, entry.tags, info));
             if (results.size() >= MAX_RESULTS) {
                 break;
             }
@@ -329,12 +363,13 @@ final class KadIndex {
         return results;
     }
 
-    /** Drops what expired. */
+    /** Drops what expired, and the publishers silent for as long. */
     void clean(long now) {
         for (Iterator<Map<UInt128, KeywordEntry>> it = this.keywords.values().iterator(); it.hasNext(); ) {
             Map<UInt128, KeywordEntry> files = it.next();
             int before = files.size();
             files.values().removeIf(e -> now - e.expires >= 0);
+            files.values().forEach(e -> e.forget(now));
             this.keywordEntries -= before - files.size();
             if (files.isEmpty()) {
                 it.remove();
@@ -390,6 +425,15 @@ final class KadIndex {
             return text;
         }
         return text.substring(0, Character.isHighSurrogate(text.charAt(max - 1)) ? max - 1 : max);
+    }
+
+    private static KadMessages.Entry answerEntry(UInt128 file, String name, long size, List<Tag> other, long info) {
+        List<Tag> tags = new ArrayList<>(other.size() + 3);
+        tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), name));
+        tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size));
+        tags.addAll(other);
+        tags.add(new Tag.IntTag(TagName.id(FileTag.PUBLISHINFO), info));
+        return new KadMessages.Entry(file, tags);
     }
 
     // Name and size are kept as fields, the rest as they came, except what only answers carry.
