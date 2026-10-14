@@ -19,13 +19,18 @@ package org.njmule.app;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.Console;
+import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -39,6 +44,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -317,6 +323,170 @@ class MainTest {
                 .satisfies(e -> assertThat(e.getFormattedMessage()).contains(WebUiSettings.FILE_NAME));
     }
 
+    @Test
+    void mainEndsQuietlyAfterAnActionThatSucceeded() {
+        PrintStream original = System.out;
+        ByteArrayOutputStream printed = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(printed, true, UTF_8));
+        try {
+            Main.main(new String[] {"--version"});
+        } finally {
+            System.setOut(original);
+        }
+        assertThat(printed.toString(UTF_8)).contains(NjMuleInfo.version());
+    }
+
+    @Test
+    void withoutATerminalThePasswordIsReadFromStandardInput() {
+        assumeTrue(
+                Optional.ofNullable(System.console())
+                        .filter(Console::isTerminal)
+                        .isEmpty(),
+                "standard input is a terminal");
+        InputStream original = System.in;
+        try {
+            System.setIn(new ByteArrayInputStream("long enough\n".getBytes(UTF_8)));
+            assertThat(Main.run(
+                            new String[] {"--config-dir", this.dir.toString(), "--webui-password"},
+                            new PrintStream(this.out, true, UTF_8),
+                            new PrintStream(this.err, true, UTF_8),
+                            CompletableFuture.completedFuture(null)))
+                    .as("the input ends before the second password")
+                    .isEqualTo(Main.EXIT_USAGE);
+
+            System.setIn(new ByteArrayInputStream("long enough\nlong enough\n".getBytes(UTF_8)));
+            assertThat(Main.run(
+                            new String[] {"--config-dir", this.dir.toString(), "--webui-password", "--webui-lan"},
+                            new PrintStream(this.out, true, UTF_8),
+                            new PrintStream(this.err, true, UTF_8),
+                            CompletableFuture.completedFuture(null)))
+                    .isZero();
+        } finally {
+            System.setIn(original);
+        }
+        assertThat(this.out.toString(UTF_8))
+                .contains("Web interface password: ", "The same password again: ", "open to other computers");
+        assertThat(WebUiSettings.load(this.dir.resolve("config")).lan()).isTrue();
+    }
+
+    @Test
+    void aPasswordTypedOnceOrThatCannotBeSavedSetsNothing() throws Exception {
+        assertThat(this.runWith(List.of("long enough"), "--config-dir", this.dir.toString(), "--webui-password"))
+                .isEqualTo(Main.EXIT_USAGE);
+        assertThat(this.err.toString(UTF_8)).contains("at least " + Passwords.MIN_LENGTH);
+
+        Files.writeString(this.dir.resolve("config"), "a file where the directory goes", UTF_8);
+        assertThat(this.runWith(
+                        List.of("long enough", "long enough"), "--config-dir", this.dir.toString(), "--webui-password"))
+                .isEqualTo(Main.EXIT_FAILURE);
+        assertThat(this.err.toString(UTF_8)).contains("Cannot set the web interface password");
+    }
+
+    @Test
+    void anEngineThatCannotStartIsReported() throws Exception {
+        Files.writeString(this.dir.resolve("config"), "a file where the directory goes", UTF_8);
+
+        assertThat(this.run("--config-dir", this.dir.toString())).isEqualTo(Main.EXIT_FAILURE);
+
+        assertThat(this.err.toString(UTF_8)).contains("Cannot start " + NjMuleInfo.NAME);
+        assertThat(this.out.toString(UTF_8)).contains("ABSOLUTELY NO WARRANTY");
+    }
+
+    @Test
+    void aNetworkTaskThatFailsStopsTheEngine() throws Exception {
+        Path missing = this.dir.resolve("missing.met");
+
+        assertThat(this.run("--config-dir", this.dir.toString(), "--add-servers", missing.toString()))
+                .isEqualTo(Main.EXIT_FAILURE);
+
+        assertThat(this.err.toString(UTF_8)).contains("Failed: ");
+        assertThat(LinkHandoff.awaitGone(this.dir.resolve("config"), Duration.ofSeconds(5)))
+                .as("the engine has stopped")
+                .isTrue();
+    }
+
+    @Test
+    void aOneShotRunLeavesItsLinksAlone() throws Exception {
+        Path emule = Files.createDirectories(this.dir.resolve("emule"));
+
+        assertThat(this.run(
+                        "--config-dir",
+                        this.dir.resolve("njmule").toString(),
+                        "--log-level",
+                        "WARN",
+                        "--import-emule",
+                        emule.toString(),
+                        "--dry-run",
+                        "ed2k://|file|left.iso|1000|" + "ab".repeat(16) + "|/"))
+                .isZero();
+
+        assertThat(this.out.toString(UTF_8))
+                .contains("What would be imported from " + emule)
+                .doesNotContain("already running");
+        assertThat(this.dir.resolve("njmule/temp/001.part.met")).doesNotExist();
+    }
+
+    @Test
+    void aBusyPortLeavesTheWebInterfaceOff() throws Exception {
+        try (ServerSocket busy = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+                Logged logged = new Logged(Main.class)) {
+            new WebUiSettings(true, busy.getLocalPort(), false, "pbkdf2-sha512$1$AA$AA")
+                    .save(this.dir.resolve("config"));
+
+            assertThat(this.run("--config-dir", this.dir.toString())).isZero();
+
+            assertThat(this.out.toString(UTF_8)).doesNotContain("Web interface on port");
+            assertThat(logged.messages())
+                    .anyMatch(m -> m.startsWith("Cannot start the web interface on port " + busy.getLocalPort()));
+        }
+    }
+
+    @Test
+    void withoutItsHandoffFileTheInstanceRunsAlone() throws Exception {
+        // A directory where the file goes, with something in it: nothing can replace it.
+        Path handoff = Files.createDirectories(this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME));
+        Files.writeString(handoff.resolve("kept"), "", UTF_8);
+        try (Logged logged = new Logged(Main.class)) {
+            assertThat(this.run("--config-dir", this.dir.toString())).isZero();
+
+            assertThat(logged.messages()).anyMatch(m -> m.startsWith("Later starts cannot hand their links over"));
+        }
+        assertThat(handoff.resolve("kept")).exists();
+    }
+
+    @Test
+    void linksThatCannotBeFollowedAreReported() throws Exception {
+        // Lists are never fetched from this computer, and ::1 has no IPv4 address: no request leaves it.
+        String serverList = "ed2k://|serverlist|http://127.0.0.1:9/server.met|/";
+        String nodesList = "ed2k://|nodeslist|http://127.0.0.1:9/nodes.dat|/";
+        String search = "ed2k://|search|linux|/";
+        CompletableFuture<Void> stop = new CompletableFuture<>();
+        try (Logged logged = new Logged(Main.class)) {
+            CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                    new String[] {
+                        "--config-dir", this.dir.toString(), serverList, nodesList, "ed2k://|server|::1|4661|/", search
+                    },
+                    new PrintStream(this.out, true, UTF_8),
+                    new PrintStream(this.err, true, UTF_8),
+                    stop));
+            try {
+                await(() -> {
+                    String printed = this.err.toString(UTF_8);
+                    return printed.contains("Cannot take the server list: ")
+                            && printed.contains("Cannot take the Kad contacts: ")
+                            && printed.contains("Cannot add the server: ")
+                            && logged.messages().contains("Not acting on " + search);
+                });
+            } finally {
+                stop.complete(null);
+            }
+            assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
+        }
+        assertThat(this.err.toString(UTF_8))
+                .as("the reason, not the wrapping of the future")
+                .doesNotContain("CompletionException");
+    }
+
     private int runWith(List<String> typed, String... args) {
         Iterator<String> lines = typed.iterator();
         return Main.run(
@@ -325,5 +495,39 @@ class MainTest {
                 new PrintStream(this.err, true, UTF_8),
                 CompletableFuture.completedFuture(null),
                 prompt -> lines.hasNext() ? lines.next().toCharArray() : null);
+    }
+
+    private static void await(BooleanSupplier condition) throws InterruptedException {
+        long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (!condition.getAsBoolean()) {
+            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
+            Thread.sleep(20);
+        }
+    }
+
+    /** The messages a class logs while this is open. */
+    private static final class Logged implements AutoCloseable {
+        private final Logger logger;
+        private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+
+        Logged(Class<?> type) {
+            this.logger = (Logger) LoggerFactory.getLogger(type);
+            this.appender.start();
+            this.logger.addAppender(this.appender);
+        }
+
+        // An appender adds under its own lock.
+        List<String> messages() {
+            synchronized (this.appender) {
+                return this.appender.list.stream()
+                        .map(ILoggingEvent::getFormattedMessage)
+                        .toList();
+            }
+        }
+
+        @Override
+        public void close() {
+            this.logger.detachAppender(this.appender);
+        }
     }
 }
