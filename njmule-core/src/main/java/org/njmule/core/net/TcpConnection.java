@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Packet;
@@ -55,6 +57,10 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private static final int OUTBOX_CAPACITY = 1_024;
+    // What a peer may leave unread, whatever the number of frames.
+    private static final long OUTBOX_BYTES = 16L << 20;
+    // A clean close sends what is queued, for this long at most.
+    private static final Duration FLUSH_WAIT = Duration.ofSeconds(5);
     private static final long WRITER_STACK = 256 * 1024;
 
     private final Socket socket;
@@ -63,8 +69,11 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     private final boolean obfuscated;
     private final InetSocketAddress remote;
     private final BlockingQueue<byte[]> outbox = new ArrayBlockingQueue<>(OUTBOX_CAPACITY);
+    private final AtomicLong queued = new AtomicLong();
     private final AtomicBoolean started = new AtomicBoolean();
-    private final AtomicBoolean closed = new AtomicBoolean();
+    // Null while open, then the cause of the close: empty after a clean one.
+    private final AtomicReference<Optional<IOException>> closure = new AtomicReference<>();
+    private final AtomicBoolean reported = new AtomicBoolean();
     private volatile FrameLimit frameLimit;
     private volatile Unpacker unpacker = frame -> frame;
     private volatile Handler handler;
@@ -79,7 +88,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         this.frameLimit = Objects.requireNonNull(frameLimit, "frameLimit");
     }
 
-    /** Starts the reading and writing threads; packets go to {@code handler}. */
+    /** Starts the reading and writing threads; packets go to {@code handler}, told at once if already closed. */
     public void start(Handler handler, Unpacker unpacker) {
         Objects.requireNonNull(handler, "handler");
         Objects.requireNonNull(unpacker, "unpacker");
@@ -88,6 +97,10 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         }
         this.handler = handler;
         this.unpacker = unpacker;
+        if (!this.isOpen()) {
+            this.report();
+            return;
+        }
         String name = "njmule-tcp-" + this.remote;
         // On Windows a virtual thread blocked in a socket write can miss the wakeup and hang the
         // connection for good, so writes run on a small platform thread.
@@ -100,15 +113,16 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     /**
-     * Queues a packet; returns {@code false} if the connection is closed. A full queue closes the connection: the peer
-     * is not reading.
+     * Queues a packet; returns {@code false} if the connection is closed. A full queue, in frames or in bytes, closes
+     * the connection: the peer is not reading.
      */
     @Override
     public boolean send(Packet packet) {
-        if (this.closed.get()) {
+        if (!this.isOpen()) {
             return false;
         }
-        if (!this.outbox.offer(TcpFraming.encode(packet))) {
+        byte[] frame = TcpFraming.encode(packet);
+        if (this.queued.addAndGet(frame.length) > OUTBOX_BYTES || !this.outbox.offer(frame)) {
             this.fail(new IOException("send queue full, peer not reading"));
             return false;
         }
@@ -137,9 +151,10 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
 
     @Override
     public boolean isOpen() {
-        return !this.closed.get();
+        return this.closure.get() == null;
     }
 
+    /** Closes the connection once the packets already queued are sent, within a few seconds. */
     @Override
     public void close() {
         this.shutdown(Optional.empty());
@@ -155,29 +170,56 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private void shutdown(Optional<IOException> cause) {
-        if (!this.closed.compareAndSet(false, true)) {
+        if (!this.closure.compareAndSet(null, cause)) {
             return;
         }
-        this.outbox.clear();
         Thread w = this.writer;
-        if (w != null) {
+        if (cause.isPresent() || w == null) {
+            this.outbox.clear();
+            if (w != null) {
+                w.interrupt();
+            }
+            this.closeSocket();
+        } else {
+            // The writer sends what is queued, then closes; a peer that does not read is cut off.
             w.interrupt();
+            Thread.ofVirtual().name("njmule-tcp-" + this.remote + "-flush").start(() -> {
+                try {
+                    w.join(FLUSH_WAIT);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                this.closeSocket();
+            });
         }
+        this.report();
+    }
+
+    // Tells the handler once, when there is one.
+    private void report() {
+        Handler h = this.handler;
+        Optional<IOException> cause = this.closure.get();
+        if (h != null && cause != null && this.reported.compareAndSet(false, true)) {
+            h.onClosed(this, cause);
+        }
+    }
+
+    private void closeSocket() {
         try {
             this.socket.close();
         } catch (IOException e) {
             // Closing anyway; nothing else to release.
         }
-        Handler h = this.handler;
-        if (h != null) {
-            h.onClosed(this, cause);
-        }
     }
 
     private void readLoop() {
         try {
-            while (!this.closed.get()) {
+            while (this.isOpen()) {
                 Packet frame = TcpFraming.read(this.in, this.frameLimit);
+                // The handler heard of the close: nothing more for it.
+                if (!this.isOpen()) {
+                    return;
+                }
                 this.handler.onPacket(this, this.unpacker.unpack(frame));
             }
         } catch (EOFException e) {
@@ -192,8 +234,8 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
 
     private void writeLoop() {
         try {
-            while (!this.closed.get()) {
-                byte[] frame = this.outbox.take();
+            for (byte[] frame = this.nextFrame(); frame != null; frame = this.nextFrame()) {
+                this.queued.addAndGet(-frame.length);
                 this.out.write(frame);
                 if (this.outbox.isEmpty()) {
                     this.out.flush();
@@ -201,10 +243,19 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
             }
         } catch (IOException e) {
             this.fail(e);
-        } catch (InterruptedException e) {
-            // close() stops the writer this way.
-            Thread.currentThread().interrupt();
-            this.close();
         }
+        this.closeSocket();
+    }
+
+    // The next frame to write; null once closed and the queue is empty.
+    private byte[] nextFrame() {
+        while (this.isOpen()) {
+            try {
+                return this.outbox.take();
+            } catch (InterruptedException e) {
+                // close() wakes the writer this way; what is queued still goes out.
+            }
+        }
+        return this.outbox.poll();
     }
 }

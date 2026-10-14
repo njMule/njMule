@@ -121,6 +121,70 @@ class TcpConnectionTest {
         }
     }
 
+    @Test
+    void aPeerNotReadingIsDroppedOnceAFewMegabytesWait() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
+            TcpConnection connection = TcpConnector.connectToClient(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+            try (Socket idle = server.accept()) {
+                Recorder recorder = new Recorder();
+                connection.start(recorder, frame -> frame);
+                Packet big = Packet.of(Protocol.EDONKEY, 0x4B, new byte[1 << 20]);
+                int sent = 0;
+                while (sent < 64 && connection.send(big)) {
+                    sent++;
+                }
+
+                assertThat(sent).as("frames queued").isLessThan(64);
+                assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isPresent();
+                assertThat(idle.isClosed()).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void framesQueuedBeforeACloseAreStillSent() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
+            TcpConnection connection = TcpConnector.connectToClient(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+            try (Socket peer = server.accept()) {
+                peer.setSoTimeout(5000);
+                Recorder recorder = new Recorder();
+                connection.start(recorder, frame -> frame);
+                for (int i = 0; i < 200; i++) {
+                    assertThat(connection.send(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {(byte) i})))
+                            .isTrue();
+                }
+                connection.close();
+                assertThat(connection.send(Packet.empty(Protocol.EDONKEY, 0x02)))
+                        .isFalse();
+                assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
+
+                InputStream in = new BufferedInputStream(peer.getInputStream());
+                for (int i = 0; i < 200; i++) {
+                    assertThat(TcpFraming.read(in, FrameLimits.CLIENT).payload())
+                            .containsExactly((byte) i);
+                }
+                assertThat(in.read()).as("closed after the last frame").isEqualTo(-1);
+            }
+        }
+    }
+
+    @Test
+    void aConnectionClosedBeforeItStartsSaysSoWhenStarted() throws Exception {
+        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
+            TcpConnection connection = TcpConnector.connectToClient(
+                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+            connection.close();
+            Recorder recorder = new Recorder();
+
+            connection.start(recorder, frame -> frame);
+
+            assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
+            assertThat(connection.send(Packet.empty(Protocol.EDONKEY, 0x01))).isFalse();
+        }
+    }
+
     private void exchangeWithServer(boolean obfuscated) throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
             CompletableFuture<Packet> received = new CompletableFuture<>();
