@@ -183,6 +183,7 @@ public final class Engine implements NjMuleEngine {
             Preferences prefs = PreferencesCodec.load(prefsFile);
             PreferencesCodec.save(prefsFile, prefs);
             EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
+            EmuleImporter.applyPendingFiles(dirs.config());
 
             Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
             EngineLoop loop = EngineLoop.start();

@@ -95,6 +95,9 @@ public final class EmuleImporter {
     /** Under the config directory: the identity files waiting for the next start. */
     public static final String PENDING_IDENTITY = "import-identity";
 
+    /** Under the config directory: imported files that the running engine would overwrite, waiting for its start. */
+    public static final String PENDING_FILES = "import-files";
+
     private static final Logger logger = LoggerFactory.getLogger(EmuleImporter.class);
     private static final String SECTION = "eMule";
     private static final String PROXY = "Proxy";
@@ -104,6 +107,14 @@ public final class EmuleImporter {
     private static final String KEY_FILE = "cryptkey.dat";
     private static final List<String> IDENTITY =
             List.of(UserHashStore.FILE_NAME, KEY_FILE, "clients.met", "preferencesKad.dat", KAD_KEY_FILE);
+    // Kept up to date by the engine while it runs, which would save its own over them.
+    private static final Set<String> LIVE = Set.of(
+            "cancelled.met",
+            "emfriends.met",
+            "StoredSearches.met",
+            "SearchSpam.met",
+            "fileinfo.ini",
+            "staticservers.dat");
 
     private final Path emule;
     private final ImportOptions options;
@@ -163,6 +174,35 @@ public final class EmuleImporter {
         }
         removeFolder(pending);
         return complete;
+    }
+
+    /**
+     * Before the engine reads its files: puts the imported ones it keeps up to date in place, over what it saved since
+     * the import.
+     *
+     * @return how many were taken
+     */
+    public static int applyPendingFiles(Path configDir) {
+        Path pending = configDir.resolve(PENDING_FILES);
+        if (!Files.isDirectory(pending)) {
+            return 0;
+        }
+        int taken = 0;
+        try {
+            for (String name : LIVE) {
+                Path file = pending.resolve(name);
+                if (Files.isRegularFile(file)) {
+                    AtomicFiles.writeBytes(configDir.resolve(name), Files.readAllBytes(file));
+                    taken++;
+                }
+            }
+        } catch (IOException e) {
+            logger.warn("Cannot take the files imported from eMule, trying again at the next start", e);
+            return taken;
+        }
+        logger.info("Using {} files imported from eMule", taken);
+        removeFolder(pending);
+        return taken;
     }
 
     // With what an interrupted or repeated import left in it; a folder that stays is taken again at the next start.
@@ -559,16 +599,24 @@ public final class EmuleImporter {
         return 1 + (int) (((hue + 22.5) % 360) / 45);
     }
 
-    /** Files for features to come: checked, then kept unless njMule has its own. */
+    /** Files checked, then kept unless njMule has its own; those the engine keeps up to date wait for its start. */
     private void kept(String name, Reader reader) {
         this.with(this.emule.resolve(name), (file, data) -> {
             String what = reader.read(data);
             Path ours = this.target.configDir().resolve(name);
-            if (Files.exists(ours)) {
+            Path staged = this.target.configDir().resolve(PENDING_FILES).resolve(name);
+            boolean live = LIVE.contains(name);
+            // With a copy waiting from an earlier import, ours is only what the engine saved since.
+            if (Files.exists(ours) && !(live && Files.exists(staged))) {
                 return item(file, ImportReport.Outcome.SKIPPED, what + "; we have our own");
             }
             if (this.options.dryRun()) {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
+            }
+            if (live) {
+                Files.createDirectories(staged.getParent());
+                AtomicFiles.write(staged, out -> out.write(data), false);
+                return item(file, ImportReport.Outcome.IMPORTED, what + ", from the next start");
             }
             AtomicFiles.writeBytes(ours, data);
             return item(file, ImportReport.Outcome.IMPORTED, what);

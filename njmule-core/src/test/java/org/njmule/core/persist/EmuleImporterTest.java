@@ -201,7 +201,8 @@ class EmuleImporterTest {
         assertThat(this.target.known).isEqualTo(1);
         assertThat(this.target.shared).containsExactly(this.emule.incoming, this.emule.shared);
         assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
-        assertThat(this.ours.resolve("cancelled.met")).exists();
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve("cancelled.met"))
+                .exists();
         assertThat(this.ours.resolve("ipfilter.dat")).exists();
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         assertThat(pending.resolve("preferences.dat"))
@@ -263,6 +264,44 @@ class EmuleImporterTest {
                 .containsEntry("ipfilter.dat", Outcome.SKIPPED)
                 .containsEntry("cancelled.met", Outcome.SKIPPED);
         assertThat(this.ours.resolve("ipfilter.dat")).isEmptyFile();
+    }
+
+    @Test
+    void filesTheEngineRewritesTakeItsPlaceAtTheNextStart() throws IOException {
+        Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
+
+        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+
+        assertThat(detail(report, "cancelled.met")).endsWith("from the next start");
+        assertThat(this.ours.resolve("cancelled.met")).doesNotExist();
+        // What the engine writes before it stops.
+        Files.writeString(this.ours.resolve("staticservers.dat"), "");
+
+        assertThat(EmuleImporter.applyPendingFiles(this.ours)).isEqualTo(2);
+
+        assertThat(this.ours.resolve("cancelled.met"))
+                .hasSameBinaryContentAs(this.emule.config.resolve("cancelled.met"));
+        assertThat(this.ours.resolve("staticservers.dat"))
+                .hasSameBinaryContentAs(this.emule.config.resolve("staticservers.dat"));
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES)).doesNotExist();
+        assertThat(EmuleImporter.applyPendingFiles(this.ours)).isZero();
+    }
+
+    @Test
+    void aSecondImportReplacesTheFilesWaitingAndKeepsOurOwn() throws IOException {
+        Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
+        Files.writeString(this.ours.resolve("staticservers.dat"), "");
+        this.run(new ImportOptions(false, false, false), false);
+        // Written by the engine after the first import, so not of its own before it.
+        Files.writeString(this.ours.resolve("cancelled.met"), "");
+
+        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+
+        assertThat(outcomes)
+                .containsEntry("cancelled.met", Outcome.IMPORTED)
+                .containsEntry("staticservers.dat", Outcome.SKIPPED);
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve("staticservers.dat"))
+                .doesNotExist();
     }
 
     @Test

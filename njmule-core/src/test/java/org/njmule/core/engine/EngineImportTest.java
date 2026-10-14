@@ -33,6 +33,7 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.kad.KadNode;
 import org.njmule.core.persist.EmuleImporter;
@@ -40,6 +41,8 @@ import org.njmule.core.persist.SyntheticEmuleProfile;
 import org.njmule.core.persist.UserHashStore;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.PreferencesDat;
+import org.njmule.core.persist.format.SearchFiles;
+import org.njmule.core.search.StoredSearches;
 
 @Timeout(60)
 class EngineImportTest {
@@ -110,6 +113,33 @@ class EngineImportTest {
             assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
             assertThat(dirs.config().resolve("cryptkey.dat"))
                     .hasSameBinaryContentAs(emule.config.resolve("cryptkey.dat"));
+        }
+    }
+
+    @Test
+    void eMulesSearchesOutliveTheSessionOfTheImport() throws Exception {
+        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
+        Files.write(
+                emule.config.resolve(StoredSearches.FILE_NAME),
+                SearchFiles.writeStored(
+                        List.of(new SearchFiles.StoredSearch(1, 1, false, "linux", "linux", "", List.of()))));
+        AppDirectories dirs = this.directories(freePort());
+
+        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
+            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, false, false))
+                    .get(30, TimeUnit.SECONDS);
+            assertThat(report.items())
+                    .filteredOn(i -> i.file().equals(StoredSearches.FILE_NAME))
+                    .singleElement()
+                    .satisfies(i -> assertThat(i.detail()).endsWith("from the next start"));
+            // What closing the interface after a look at the searches does.
+            engine.saveSearches(List.of()).get(5, TimeUnit.SECONDS);
+        }
+
+        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
+            assertThat(engine.savedSearches().get(5, TimeUnit.SECONDS))
+                    .extracting(SavedSearch::title)
+                    .containsExactly("linux");
         }
     }
 
