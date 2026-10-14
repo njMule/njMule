@@ -449,3 +449,10 @@ All notable changes to this project are documented here. The format follows
   capped; text direction controls are kept out of the nick (refused by the engine too).
 - Strings with a byte order mark followed by invalid UTF-8 are read as Windows-1252, long chat
   messages are no longer cut inside an emoji, and on Linux the last `XDG_DOWNLOAD_DIR` is used.
+- A hello to a client that answers and closes the connection at once is reported straight away
+  instead of after about 80 seconds.
+- A command-line task that is interrupted still waits for the last saves and frees the
+  configuration for the next start.
+- A finished download renamed before its AICH tree was built is hashed under its new name, so it
+  is shared with recovery data.
+- Pressing Enter on a search the parser refuses tells what the box accepts instead of failing.
