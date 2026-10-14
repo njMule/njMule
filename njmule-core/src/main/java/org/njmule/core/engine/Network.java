@@ -19,6 +19,7 @@ package org.njmule.core.engine;
 import com.google.common.base.Ticker;
 import com.google.common.math.LongMath;
 import com.google.common.net.InetAddresses;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -133,7 +134,6 @@ import org.njmule.core.social.Friends;
 import org.njmule.core.social.Messaging;
 import org.njmule.core.upload.Credits;
 import org.njmule.core.upload.UploadManager;
-import org.njmule.core.upnp.Igd;
 import org.njmule.core.upnp.PortForwarding;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
@@ -212,6 +212,14 @@ final class Network {
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
     private boolean kadStoppedByHand;
+    // Where UPnP discovery goes; empty: the router is never asked.
+    private final Optional<InetSocketAddress> upnp;
+    // Changes of the router's mappings run one after the other, off the engine thread, so old mappings are gone before
+    // new ones are asked for and none is left behind.
+    private CompletableFuture<Void> upnpChanges = CompletableFuture.completedFuture(null);
+    // Whether mappings were last asked for; engine thread.
+    private boolean forwardingWanted;
+    // Touched only by the steps of upnpChanges.
     private PortForwarding forwarding;
     private final Totals totals;
     private final Messaging messaging;
@@ -246,8 +254,10 @@ final class Network {
             UserLog log,
             Hash16 userHash,
             Path tempDir,
-            Supplier<Path> incomingDir)
+            Supplier<Path> incomingDir,
+            Optional<InetSocketAddress> upnp)
             throws IOException {
+        this.upnp = Objects.requireNonNull(upnp, "upnp");
         this.loop = Objects.requireNonNull(loop, "loop");
         this.preferences = Objects.requireNonNull(preferences, "preferences");
         this.publish = Objects.requireNonNull(publish, "publish");
@@ -1155,41 +1165,46 @@ final class Network {
         }
     }
 
-    // The mappings follow the ports: the old ones are removed before new ones are asked for, off the engine thread.
+    // The mappings follow the ports.
     private void restartForwarding() {
-        PortForwarding old = this.forwarding;
-        this.forwarding = null;
-        boolean wanted =
-                this.preferences.get().upnp() && this.listener != null && !Boolean.getBoolean(NO_UPNP_PROPERTY);
-        if (old == null && !wanted) {
+        boolean wanted = this.preferences.get().upnp() && this.listener != null && this.upnp.isPresent();
+        if (!wanted && !this.forwardingWanted) {
             return;
         }
+        this.forwardingWanted = wanted;
         int tcp = this.listenPort();
         OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
-        Thread.ofVirtual().name("njmule-upnp").start(() -> {
-            if (old != null) {
-                old.close();
-            }
-            if (!wanted) {
-                return;
-            }
-            PortForwarding started = PortForwarding.start(
-                    Igd.SSDP,
-                    tcp,
-                    udp,
-                    (fine, line) -> this.loop.post(
-                            () -> this.userLog.log(fine ? LogLine.Level.SUCCESS : LogLine.Level.WARNING, line)));
-            boolean kept = this.loop.post(() -> {
-                if (this.closed) {
-                    Thread.ofVirtual().start(started::close);
-                } else {
-                    this.forwarding = started;
-                }
-            });
-            if (!kept) {
-                started.close();
+        this.changeMappings(() -> {
+            this.unmap();
+            if (wanted && !this.closed) {
+                this.forwarding = PortForwarding.start(
+                        this.upnp.orElseThrow(),
+                        tcp,
+                        udp,
+                        (fine, line) -> this.loop.post(
+                                () -> this.userLog.log(fine ? LogLine.Level.SUCCESS : LogLine.Level.WARNING, line)));
             }
         });
+    }
+
+    private void changeMappings(Runnable change) {
+        this.upnpChanges = this.upnpChanges.thenRunAsync(
+                () -> {
+                    try {
+                        change.run();
+                    } catch (RuntimeException e) {
+                        logger.warn("UPnP failed", e);
+                    }
+                },
+                task -> Thread.ofVirtual().name("njmule-upnp").start(task));
+    }
+
+    // Steps of upnpChanges only.
+    private void unmap() {
+        if (this.forwarding != null) {
+            this.forwarding.close();
+            this.forwarding = null;
+        }
     }
 
     /** Starts Kad, or looks for contacts at once when it runs: the Kad screen's Connect. */
@@ -1240,13 +1255,12 @@ final class Network {
         }
     }
 
-    void close() {
+    /** Saves and closes everything; the router's mappings go last, off the engine thread: done when they are gone. */
+    @CanIgnoreReturnValue
+    CompletableFuture<Void> close() {
         this.closed = true;
         this.saveTotals();
         this.messaging.close();
-        if (this.forwarding != null) {
-            this.forwarding.close();
-        }
         if (this.kad != null) {
             this.kad.close();
             this.kadSocket.close();
@@ -1269,6 +1283,8 @@ final class Network {
             this.udp.close();
         }
         this.saveServers();
+        this.changeMappings(this::unmap);
+        return this.upnpChanges;
     }
 
     private int listenPort() {

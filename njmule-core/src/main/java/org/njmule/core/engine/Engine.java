@@ -53,6 +53,7 @@ import java.util.concurrent.SubmissionPublisher;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -107,6 +108,7 @@ import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.upnp.Igd;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,6 +123,7 @@ public final class Engine implements NjMuleEngine {
     private static final Duration BACKUP_EVERY = Duration.ofDays(1);
     private static final int EVENT_BUFFER = 1_024;
     private static final int LOG_REPLAY = 100;
+    private static final Duration UNMAP_WAIT = Duration.ofSeconds(5);
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
     private final AppDirectories directories;
@@ -149,7 +152,8 @@ public final class Engine implements NjMuleEngine {
             EngineLoop loop,
             Hash16 userHash,
             BooleanSupplier emuleRunning,
-            InstanceLock lock)
+            InstanceLock lock,
+            Optional<InetSocketAddress> upnp)
             throws IOException {
         this.directories = directories;
         this.lock = lock;
@@ -171,7 +175,8 @@ public final class Engine implements NjMuleEngine {
                 this::userLog,
                 userHash,
                 preferences.effectiveTempDir(directories),
-                () -> this.preferences.effectiveIncomingDir(directories));
+                () -> this.preferences.effectiveIncomingDir(directories),
+                upnp);
     }
 
     public static Engine start(EngineConfig config) throws IOException {
@@ -180,6 +185,16 @@ public final class Engine implements NjMuleEngine {
 
     /** As {@link #start(EngineConfig)}, telling whether an eMule runs as tests need. */
     static Engine start(EngineConfig config, BooleanSupplier emuleRunning) throws IOException {
+        // Tests set the property: they must never change the mappings of the router they run behind.
+        return start(
+                config,
+                emuleRunning,
+                Boolean.getBoolean(Network.NO_UPNP_PROPERTY) ? Optional.empty() : Optional.of(Igd.SSDP));
+    }
+
+    /** As {@link #start(EngineConfig, BooleanSupplier)}, sending UPnP discovery to {@code upnp}, for tests. */
+    static Engine start(EngineConfig config, BooleanSupplier emuleRunning, Optional<InetSocketAddress> upnp)
+            throws IOException {
         Objects.requireNonNull(config, "config");
         AppDirectories dirs = config.directories();
         dirs.createAll();
@@ -197,7 +212,7 @@ public final class Engine implements NjMuleEngine {
             Hash16 userHash = UserHashStore.loadOrCreate(dirs.config(), new SecureRandom());
             EngineLoop loop = EngineLoop.start();
             try {
-                engine = new Engine(dirs, prefs, loop, userHash, emuleRunning, lock);
+                engine = new Engine(dirs, prefs, loop, userHash, emuleRunning, lock, upnp);
             } catch (IOException | RuntimeException e) {
                 loop.close();
                 throw e;
@@ -1105,19 +1120,28 @@ public final class Engine implements NjMuleEngine {
         }
         this.publish(new EngineEvent.Stopping());
         logger.info("Stopping {}", NjMuleInfo.NAME);
+        AtomicReference<CompletableFuture<Void>> unmapped =
+                new AtomicReference<>(CompletableFuture.completedFuture(null));
+        CompletableFuture<Void> closing = this.loop.submit(() -> {
+            unmapped.set(this.network.close());
+            // After the last saves.
+            this.backUp();
+            return null;
+        });
         try {
-            this.loop
-                    .submit(() -> {
-                        this.network.close();
-                        // After the last saves.
-                        this.backUp();
-                        return null;
-                    })
-                    .get(10, TimeUnit.SECONDS);
+            closing.get(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException | TimeoutException e) {
             logger.warn("Closing the network failed", e);
+        }
+        try {
+            // The router is told last; one that does not answer drops our ports when their lease ends.
+            unmapped.get().get(UNMAP_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            logger.info("The router may keep our ports until their lease ends: {}", e.toString());
         }
         this.loop.close();
         this.events.close();
@@ -1130,7 +1154,12 @@ public final class Engine implements NjMuleEngine {
             Thread.currentThread().interrupt();
             this.eventExecutor.shutdownNow();
         }
-        this.lock.close();
+        // Another engine may take the files only once this one is done writing them.
+        if (closing.isDone()) {
+            this.lock.close();
+        } else {
+            logger.warn("The network is still closing: the configuration stays locked until njMule ends");
+        }
     }
 
     // The configuration, copied into the data directory as the preferences ask; on the engine thread, between saves.

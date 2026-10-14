@@ -108,7 +108,8 @@ class ServerControlTest {
                             (level, line) -> {},
                             Hash16.ZERO,
                             dirs.data().resolve("temp"),
-                            () -> dirs.data().resolve("incoming")))
+                            () -> dirs.data().resolve("incoming"),
+                            Optional.empty()))
                     .get(10, TimeUnit.SECONDS);
             InetSocketAddress ipv6 = new InetSocketAddress(InetAddress.ofLiteral("::1"), 4665);
             FileEntry file = new FileEntry(
