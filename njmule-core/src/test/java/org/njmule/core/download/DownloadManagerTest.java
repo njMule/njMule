@@ -62,6 +62,7 @@ class DownloadManagerTest {
     private final CompletableFuture<Consumer<List<InetSocketAddress>>> kadSearch = new CompletableFuture<>();
     private DownloadManager manager;
     private List<Category> categories = List.of();
+    private DownloadManager.Listener listener = new Quiet();
 
     @AfterEach
     void stop() throws Exception {
@@ -268,6 +269,30 @@ class DownloadManagerTest {
         this.onLoop(() -> manager.pause(hash));
     }
 
+    @Test
+    void refusesSourcesNoClientCanHave() throws Exception {
+        DownloadManager manager = this.manager();
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|odd.bin|5000|" + "4a".repeat(16)
+                + "|/|sources,0.1.2.3:" + PORT + ",224.0.0.251:" + PORT + ",240.1.2.3:" + PORT
+                + ",255.255.255.255:" + PORT + "|/");
+
+        DownloadInfo info = this.onLoop(() -> {
+            DownloadInfo added = manager.add(link);
+            manager.pause(link.hash());
+            return added;
+        });
+
+        assertThat(info.sources()).isZero();
+        for (int ip : new int[] {0, Ipv4.of(0, 0, 0, 1), Ipv4.of(239, 255, 255, 250), -1}) {
+            assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(ip, PORT))))
+                    .as(Ipv4.format(ip))
+                    .isFalse();
+        }
+        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(127, 0, 0, 1), PORT))))
+                .as("loopback, as the user chose")
+                .isTrue();
+    }
+
     private DownloadManager manager() throws Exception {
         return this.manager(new HighIdServer(false));
     }
@@ -296,7 +321,7 @@ class DownloadManagerTest {
                 (hash, bytes) -> {},
                 () -> Optional.of(kad),
                 () -> this.categories,
-                new Quiet()));
+                this.listener));
         return this.manager;
     }
 
@@ -341,7 +366,7 @@ class DownloadManagerTest {
         }
     }
 
-    private static final class Quiet implements DownloadManager.Listener {
+    private static class Quiet implements DownloadManager.Listener {
         @Override
         public void added(DownloadInfo download) {}
 

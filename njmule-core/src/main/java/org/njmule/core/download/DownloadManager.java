@@ -922,9 +922,11 @@ public final class DownloadManager implements AutoCloseable {
         });
     }
 
+    // No client is at 0.x.x.x, at a multicast address or above.
     private void addLinkSource(Entry entry, InetSocketAddress address) {
         int ip = Ipv4.fromBytes(address.getAddress().getAddress());
-        if (address.getPort() != 0 && !this.blocked.test(ip)) {
+        int first = ip >>> 24;
+        if (address.getPort() != 0 && first != 0 && first < 224 && !this.blocked.test(ip)) {
             this.addSource(entry, address);
         }
     }
