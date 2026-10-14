@@ -523,6 +523,7 @@ All notable changes to this project are documented here. The format follows
   written only when its trees change. A damaged known2_64.met is read from its backup, and when a
   file and its backup are both damaged the records before the damage are kept. A save before the
   first scan of the shared folders no longer forgets the files not shared yet.
+- The AICH trees of the shared files take about a third of the memory they took.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

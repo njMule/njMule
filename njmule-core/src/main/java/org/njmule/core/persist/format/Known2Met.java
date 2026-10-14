@@ -17,6 +17,7 @@
 package org.njmule.core.persist.format;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import org.njmule.core.api.Hash20;
@@ -32,11 +33,59 @@ public final class Known2Met {
 
     public static final int VERSION = 0x02;
 
-    /** The leaves of one file's AICH tree, as rebuilt by {@code AichTree.fromBlockHashes}. */
-    public record Entry(Hash20 masterHash, List<Hash20> blockHashes) {
-        public Entry {
-            Objects.requireNonNull(masterHash, "masterHash");
-            blockHashes = List.copyOf(blockHashes);
+    /**
+     * The leaves of one file's AICH tree, as rebuilt by {@code AichTree.fromBlockHashes}. They are kept packed, 20
+     * bytes each: the trees of every shared file stay in memory, about six million leaves per terabyte.
+     */
+    public static final class Entry {
+        private final Hash20 masterHash;
+        private final byte[] leaves;
+
+        public Entry(Hash20 masterHash, List<Hash20> blockHashes) {
+            this.masterHash = Objects.requireNonNull(masterHash, "masterHash");
+            this.leaves = new byte[blockHashes.size() * Hash20.LENGTH];
+            for (int i = 0; i < blockHashes.size(); i++) {
+                blockHashes.get(i).copyTo(this.leaves, i * Hash20.LENGTH);
+            }
+        }
+
+        private Entry(Hash20 masterHash, byte[] leaves) {
+            this.masterHash = masterHash;
+            this.leaves = leaves;
+        }
+
+        public Hash20 masterHash() {
+            return this.masterHash;
+        }
+
+        /** The leaves, unpacked anew at each call. */
+        public List<Hash20> blockHashes() {
+            List<Hash20> hashes = new ArrayList<>(this.blockCount());
+            for (int at = 0; at < this.leaves.length; at += Hash20.LENGTH) {
+                hashes.add(Hash20.of(this.leaves, at));
+            }
+            return hashes;
+        }
+
+        public int blockCount() {
+            return this.leaves.length / Hash20.LENGTH;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Entry entry
+                    && this.masterHash.equals(entry.masterHash)
+                    && Arrays.equals(this.leaves, entry.leaves);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * this.masterHash.hashCode() + Arrays.hashCode(this.leaves);
+        }
+
+        @Override
+        public String toString() {
+            return "Entry[" + this.masterHash.toBase32() + ", " + this.blockCount() + " leaves]";
         }
     }
 
@@ -74,10 +123,7 @@ public final class Known2Met {
         PacketWriter out = new PacketWriter();
         out.u8(VERSION);
         for (Entry e : entries) {
-            out.hash20(e.masterHash()).u32(e.blockHashes().size());
-            for (Hash20 h : e.blockHashes()) {
-                out.hash20(h);
-            }
+            out.hash20(e.masterHash).u32(e.blockCount()).bytes(e.leaves);
         }
         return out.toByteArray();
     }
@@ -87,11 +133,7 @@ public final class Known2Met {
             Hash20 master = in.hash20();
             long count = wideCounts ? in.u32() : in.u16();
             int n = in.count(count, Hash20.LENGTH, Integer.MAX_VALUE / Hash20.LENGTH);
-            List<Hash20> leaves = new ArrayList<>(n);
-            for (int i = 0; i < n; i++) {
-                leaves.add(in.hash20());
-            }
-            entries.add(new Entry(master, leaves));
+            entries.add(new Entry(master, in.bytes(n * Hash20.LENGTH)));
         }
     }
 }
