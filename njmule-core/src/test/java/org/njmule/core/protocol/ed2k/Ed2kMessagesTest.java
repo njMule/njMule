@@ -136,6 +136,34 @@ class Ed2kMessagesTest {
     }
 
     @Test
+    void aCutSearchAnswerKeepsTheResultsBeforeTheCut() throws DecodeException {
+        PacketWriter tcp = new PacketWriter().u32(3);
+        writeFile(tcp, HASH, "a", 1, 1);
+        writeFile(tcp, Hash16.parseHex("22".repeat(16)), "b", 2, 2);
+        PacketWriter third = new PacketWriter();
+        writeFile(third, Hash16.parseHex("33".repeat(16)), "c", 3, 3);
+        tcp.bytes(third.toByteArray(), 0, third.size() - 3);
+
+        ServerMessages.SearchResults results =
+                ServerMessages.SearchResults.decode(Packet.of(Protocol.EDONKEY, 0x33, tcp));
+
+        assertThat(results.files()).extracting(f -> f.name().orElseThrow()).containsExactly("a", "b");
+        assertThat(results.more()).isFalse();
+
+        PacketWriter udp = new PacketWriter();
+        writeFile(udp, HASH, "a", 1, 1);
+        udp.u8(Protocol.EDONKEY).u8(Opcodes.ServerUdp.GLOBSEARCHRES.code());
+        writeFile(udp, Hash16.parseHex("22".repeat(16)), "b", 2, 2);
+        udp.u8(Protocol.EDONKEY).u8(Opcodes.ServerUdp.GLOBSEARCHRES.code());
+        udp.bytes(third.toByteArray(), 0, third.size() - 3);
+
+        assertThat(ServerDatagrams.decodeSearchResults(
+                        Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHRES.code(), udp)))
+                .extracting(f -> f.name().orElseThrow())
+                .containsExactly("a", "b");
+    }
+
+    @Test
     void encodersRefuseCountsTheirFieldCannotHold() {
         ServerMessages.Endpoint server = new ServerMessages.Endpoint(Ipv4.parse("1.1.1.1"), 4242);
         ServerMessages.Source source = new ServerMessages.Source(7, 1, 0, Optional.empty());

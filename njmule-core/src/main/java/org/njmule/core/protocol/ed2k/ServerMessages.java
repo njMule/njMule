@@ -214,12 +214,20 @@ public final class ServerMessages {
             return Packet.of(Protocol.EDONKEY, Opcodes.Server.SEARCHRESULT.code(), out);
         }
 
+        /** Decodes an answer; one cut short keeps the files before the cut, provided there is one. */
         public static SearchResults decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
-            int count = in.count(in.u32(), FileEntry.MIN_SIZE, MAX_RESULTS);
-            List<FileEntry> files = new ArrayList<>(count);
+            int count = in.count(in.u32(), 0, MAX_RESULTS);
+            List<FileEntry> files = new ArrayList<>(Math.min(count, in.remaining() / FileEntry.MIN_SIZE));
             for (int i = 0; i < count; i++) {
-                files.add(FileEntry.read(in));
+                try {
+                    files.add(FileEntry.read(in));
+                } catch (DecodeException e) {
+                    if (files.isEmpty()) {
+                        throw e;
+                    }
+                    return new SearchResults(files, false);
+                }
             }
             // A single trailing byte is the "more results" flag.
             boolean more = in.remaining() == 1 && in.u8() == 1;

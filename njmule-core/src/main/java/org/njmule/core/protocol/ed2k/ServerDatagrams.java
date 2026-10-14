@@ -150,7 +150,8 @@ public final class ServerDatagrams {
 
     /**
      * The results of a global search answer. One datagram may carry several results, each after its own {@code E3 99}
-     * header; parsing stops at anything else.
+     * header; parsing stops at anything else, and a result cut short is dropped with what follows it. Only a first
+     * result that cannot be read fails the whole answer.
      */
     public static List<FileEntry> decodeSearchResults(Packet packet) throws DecodeException {
         PacketReader in = packet.reader();
@@ -162,7 +163,11 @@ public final class ServerDatagrams {
             if (protocol != Protocol.EDONKEY || opcode != Opcodes.ServerUdp.GLOBSEARCHRES.code()) {
                 break;
             }
-            files.add(FileEntry.read(in));
+            try {
+                files.add(FileEntry.read(in));
+            } catch (DecodeException e) {
+                break;
+            }
         }
         return files;
     }
