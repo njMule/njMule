@@ -275,6 +275,8 @@ All notable changes to this project are documented here. The format follows
   took them, when it still has them.
 - Uninstalling the Windows MSI runs it, so the ed2k links go back to eMule or whatever opened them
   before (an upgrade keeps them); the release workflow checks it on the arm64 runner.
+- On macOS the app declares the ed2k scheme and follows the links the browser opens, which the
+  system sends as events, also those that start it.
 
 ### Changed
 

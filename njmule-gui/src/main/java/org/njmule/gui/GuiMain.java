@@ -50,10 +50,15 @@ public final class GuiMain {
         if (LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
             System.exit(0);
         }
+        // On macOS links come as events; the handler is set first, on the thread that starts JavaFX.
         if (MacMainThread.needed()) {
-            MacMainThread.run(() -> Application.launch(NjMuleFxApp.class, args));
+            MacMainThread.run(() -> {
+                MacLinks.install();
+                Application.launch(NjMuleFxApp.class, args);
+            });
             return;
         }
+        MacLinks.install();
         Application.launch(NjMuleFxApp.class, args);
         // The window has closed and the engine stopped; the notification area keeps AWT threads alive.
         System.exit(0);

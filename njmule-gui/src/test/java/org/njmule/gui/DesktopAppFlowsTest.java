@@ -259,6 +259,37 @@ class DesktopAppFlowsTest {
     }
 
     @Test
+    void shouldFollowTheLinksMacOsOpenedBeforeAndAfterTheWindowShowed() throws Exception {
+        this.givenAnAppWithoutLinks();
+        this.givenMacOsOpened(FILE_LINK);
+        this.givenTheWindowShowed();
+
+        this.whenMacOsOpens("ed2k://|server|81.2.3.4|4661|/");
+
+        this.thenTheWindowTells("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
+    }
+
+    private void givenAnAppWithoutLinks() throws Exception {
+        this.app = this.open(this.dir.resolve("njmule"), ENGLISH);
+    }
+
+    private void givenMacOsOpened(String link) {
+        MacLinks.SYSTEM.offer(link);
+    }
+
+    private void givenTheWindowShowed() throws Exception {
+        this.show(false);
+    }
+
+    private void whenMacOsOpens(String link) {
+        MacLinks.SYSTEM.offer(link);
+    }
+
+    private void thenTheWindowTells(String... messages) throws Exception {
+        FxTesting.await("the messages", () -> this.messages().containsAll(List.of(messages)));
+    }
+
+    @Test
     void anAppNeverShownClosesToo() throws Exception {
         DesktopApp unseen = this.open(this.dir.resolve("njmule"), null);
         unseen.close();

@@ -24,6 +24,21 @@
     <string>njMule</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- ed2k links opened in a browser come to the app as events (magnet links stay with the
+         BitTorrent clients: njMule only reads their eD2K form, as on Windows and Linux). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>org.njmule.njMule.ed2k</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>ed2k</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleShortVersionString</key>
     <string>@VERSION@</string>
     <key>CFBundleVersion</key>

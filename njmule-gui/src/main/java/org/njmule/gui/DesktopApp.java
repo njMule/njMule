@@ -326,6 +326,8 @@ public final class DesktopApp implements AutoCloseable {
         });
         this.handedOver(List.copyOf(this.startLinks));
         this.startLinks.clear();
+        // Links opened on macOS, those that started the app first.
+        MacLinks.SYSTEM.attach(links -> Platform.runLater(() -> this.handedOver(links)));
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, this.trayTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
@@ -520,6 +522,7 @@ public final class DesktopApp implements AutoCloseable {
         if (this.handoff != null) {
             this.handoff.close();
         }
+        MacLinks.SYSTEM.detach();
         if (this.tray != null) {
             this.tray.close();
         }
