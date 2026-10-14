@@ -38,6 +38,7 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUi;
@@ -323,12 +324,22 @@ public final class Main {
         }
     }
 
-    // A file link downloads, a server list or nodes.dat link takes the servers or the Kad contacts at its address.
+    // A file link downloads, a server link adds the server, a server list or nodes.dat link takes the servers or the
+    // Kad contacts at its address.
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-ups report their own outcome
     private static void follow(NjMuleEngine engine, Ed2kLink link, PrintStream err) {
         try {
             switch (link) {
                 case Ed2kLink.FileLink file -> added(engine.addDownload(file), err);
+                case Ed2kLink.ServerLink server ->
+                    engine.addServer(new ServerAddress(server.host(), server.port()))
+                            .whenComplete((added, failure) -> {
+                                if (failure != null) {
+                                    err.println("Cannot add the server: " + reason(failure));
+                                } else {
+                                    logger.info("Server {}:{} added: {}", server.host(), server.port(), added);
+                                }
+                            });
                 case Ed2kLink.ServerListLink list ->
                     engine.addServers(URI.create(list.url())).whenComplete((n, failure) -> {
                         if (failure != null) {

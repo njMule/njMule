@@ -16,6 +16,7 @@
  */
 package org.njmule.app;
 
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,13 +36,18 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.logging.LoggingSetup;
+import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.ServerInfo;
+import org.njmule.core.config.AppDirectories;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 import org.slf4j.LoggerFactory;
@@ -172,6 +178,33 @@ class MainTest {
         assertThat(this.dir.resolve("temp").resolve("001.part.met"))
                 .as("the links after them are followed")
                 .exists();
+    }
+
+    @Test
+    void aServerLinkAddsTheServer() throws Exception {
+        CompletableFuture<Void> stop = new CompletableFuture<>();
+        CompletableFuture<Integer> exit = CompletableFuture.supplyAsync(() -> Main.run(
+                new String[] {"--config-dir", this.dir.toString(), "ed2k://|server|1.2.3.4|4661|/"},
+                new PrintStream(this.out, true, UTF_8),
+                new PrintStream(this.err, true, UTF_8),
+                stop));
+        Path met = this.dir.resolve("config").resolve("server.met");
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        // The address as server.met holds it.
+        while (!(Files.exists(met)
+                        && new String(Files.readAllBytes(met), ISO_8859_1).contains("\u0001\u0002\u0003\u0004"))
+                && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        stop.complete(null);
+        assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
+
+        try (NjMuleEngine engine =
+                NjMuleEngine.start(new EngineConfig(AppDirectories.resolve(Optional.of(this.dir))))) {
+            assertThat(engine.servers().get(20, TimeUnit.SECONDS))
+                    .extracting(ServerInfo::address)
+                    .contains("1.2.3.4:4661");
+        }
     }
 
     @Test
