@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.BlockingQueue;
@@ -53,17 +54,20 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.files.CancelledFiles;
 import org.njmule.core.kad.KadNode;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -72,6 +76,9 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.search.SpamFilter;
 import org.njmule.core.search.StoredSearches;
 import org.njmule.core.server.ScriptedServer;
@@ -354,6 +361,98 @@ class NetworkTest {
     }
 
     @Test
+    void kadSearchesNeedKadAndContacts() throws Exception {
+        Network network = this.started();
+        SearchRequest kad = new SearchRequest("ubuntu", SearchRequest.Scope.KAD);
+        assertThatThrownBy(() -> this.onLoop(() -> network.search(kad)))
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not running");
+
+        this.onLoop(() -> {
+            network.connectKad();
+            return null;
+        });
+
+        assertThatThrownBy(() -> this.onLoop(() -> network.search(kad)))
+                .as("no contact to ask")
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("now");
+        assertThat(this.onLoop(network::kadSearches)).isEmpty();
+    }
+
+    @Test
+    void ourHelloSaysHowMuchObfuscationWeWant() throws Exception {
+        Network network = this.create();
+        int crypt = Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT | Hello.MISC2_REQUIRES_CRYPT;
+        Map<ObfuscationMode, Integer> wanted = Map.of(
+                ObfuscationMode.DISABLED,
+                0,
+                ObfuscationMode.SUPPORTED,
+                Hello.MISC2_SUPPORTS_CRYPT,
+                ObfuscationMode.REQUESTED,
+                Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT,
+                ObfuscationMode.REQUIRED,
+                crypt);
+        try (ServerSocket peer = new ServerSocket(0, 4, InetAddress.getLoopbackAddress())) {
+            for (Map.Entry<ObfuscationMode, Integer> mode : wanted.entrySet()) {
+                this.preferences =
+                        this.preferences.toBuilder().obfuscation(mode.getKey()).build();
+                CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
+                try (Socket socket = peer.accept()) {
+                    assertThat(Hello.decode(read(socket)).miscOptions2() & crypt)
+                            .as(mode.getKey().name())
+                            .isEqualTo(mode.getValue());
+                }
+                assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
+            }
+        }
+    }
+
+    @Test
+    void kadThatCannotTakeItsPortIsReportedAndTurnedOffQuietly() throws Exception {
+        try (DatagramSocket taken = new DatagramSocket(this.preferences.udpPort())) {
+            this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
+            Network network = this.started();
+            assertThat(this.log)
+                    .anySatisfy(l ->
+                            assertThat(l.text()).startsWith("Cannot start Kad on UDP port " + taken.getLocalPort()));
+
+            this.onLoop(() -> {
+                network.connectKad();
+                return null;
+            });
+            assertThat(this.onLoop(network::kadInfo)).as("still no port").isEmpty();
+
+            this.reconfigure(network, p -> p.kadEnabled(false));
+
+            assertThat(this.onLoop(network::kadInfo)).isEmpty();
+            assertThat(this.log).noneMatch(l -> l.text().equals("Kad stopped"));
+        }
+    }
+
+    @Test
+    void cancelledFilesThatCannotBeForgottenStayOnDisk() throws Exception {
+        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f4".repeat(16)));
+        Network first = this.create();
+        this.onLoop(() -> first.addDownload(film) != null && first.cancelDownload(film.hash()));
+        assertThat(this.onLoop(first::history).cancelled(film.hash())).isTrue();
+        this.onLoop(() -> {
+            first.close();
+            return null;
+        });
+        Path file = this.dirs.config().resolve(CancelledFiles.FILE_NAME);
+        byte[] remembered = Files.readAllBytes(file);
+        blockWrites(file);
+        this.preferences =
+                this.preferences.toBuilder().rememberCancelledFiles(false).build();
+
+        Network forgetting = this.create();
+
+        assertThat(this.onLoop(forgetting::history).cancelled(film.hash())).isFalse();
+        assertThat(Files.readAllBytes(file)).as("left as it was").isEqualTo(remembered);
+    }
+
+    @Test
     void kadContactsGoToNodesDatWhileKadIsOff() throws Exception {
         Network network = this.create();
         NodesDat.Contact first = new NodesDat.Contact(
@@ -413,6 +512,12 @@ class NetworkTest {
                     .isEqualTo(udp)
                     .isNotEqualTo(kadPort);
             this.next(EngineEvent.ServerConnected.class);
+            // Not asked for: not taken.
+            server.send(
+                    ServerMessages.serverList(List.of(new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 31), 65_534))));
+            server.send(ServerMessages.message("after the list"));
+            this.next(EngineEvent.ServerMessage.class);
+            assertThat(this.onLoop(network::servers)).isEmpty();
 
             this.reconfigure(network, p -> p.ed2kEnabled(false).rememberCancelledFiles(false));
 
@@ -432,6 +537,13 @@ class NetworkTest {
                 this.dirs.config().resolve(Network.IPFILTER_FILE),
                 IpFilterDat.write(List.of(new IpFilterDat.Range(blocked, blocked, 0, "test"))));
         Network network = this.started();
+        // Failed too often: gone once logged in, before any could be pinged.
+        List<ServerMet.Server> dead = List.of(
+                new ServerMet.Server(
+                        Ipv4.of(198, 51, 100, 21), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))),
+                new ServerMet.Server(
+                        Ipv4.of(198, 51, 100, 22), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))));
+        assertThat(this.onLoop(() -> network.addServers(dead))).isEqualTo(2);
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH)) {
             this.connect(network, server);
             EngineEvent.ServerConnected connected = this.next(EngineEvent.ServerConnected.class);
@@ -460,14 +572,27 @@ class NetworkTest {
                     .contains(
                             new Logged(LogLine.Level.ERROR, "ERROR: no more room"),
                             new Logged(LogLine.Level.WARNING, "WARNING: low id"),
+                            new Logged(LogLine.Level.INFO, "2 dead servers removed"),
                             new Logged(LogLine.Level.INFO, "2 new servers from 127.0.0.1:" + server.port()));
             assertThat(this.onLoop(network::servers)).hasSize(2);
+            server.send(new ServerMessages.ServerIdent(
+                            Hash16.parseHex("33".repeat(16)),
+                            server.ip(),
+                            server.port(),
+                            Optional.of("Scripted"),
+                            Optional.empty())
+                    .encode());
+            assertThat(this.next(EngineEvent.ServerUpdated.class).server().name())
+                    .isEqualTo("Scripted");
 
             server.hangUp();
 
             EngineEvent.ServerDisconnected gone = this.next(EngineEvent.ServerDisconnected.class);
             assertThat(gone.server()).isPresent();
             assertThat(this.onLoop(network::status).clientId()).isZero();
+            assertThat(this.log)
+                    .anySatisfy(l -> assertThat(l.text())
+                            .startsWith("Disconnected from Scripted (127.0.0.1:" + server.port() + ")"));
         }
     }
 
@@ -505,6 +630,9 @@ class NetworkTest {
             network.addFriend(new Friend(pal, "pal", Optional.empty()));
             return null;
         });
+        assertThat(this.onLoop(() -> network.setFriendSlot(Optional.of(USER))))
+                .as("not a friend")
+                .isFalse();
         assertThat(this.onLoop(() -> network.setFriendSlot(Optional.of(pal)))).isTrue();
 
         assertThat(this.onLoop(() -> network.removeFriend(pal))).isTrue();
@@ -623,6 +751,8 @@ class NetworkTest {
                 Hello ours = Hello.decode(read(socket));
                 assertThat(ours.userHash()).isEqualTo(USER);
                 Hello theirs = Hello.of(peerHash, 0, 4999, "peer", 0, 0, 0, 0, 0, 0);
+                // A hello before the answer is not taken for it.
+                socket.getOutputStream().write(TcpFraming.encode(theirs.encode(false)));
                 socket.getOutputStream().write(TcpFraming.encode(theirs.encode(true)));
 
                 PeerInfo info = answer.get(20, TimeUnit.SECONDS);
@@ -630,7 +760,10 @@ class NetworkTest {
                 assertThat(info.nick()).contains("peer");
                 assertThat(info.identification()).isEqualTo(PeerInfo.Identification.NOT_SUPPORTED);
 
-                // A hello of its own afterwards is answered.
+                // Other packets afterwards are ignored; a hello of its own is answered.
+                socket.getOutputStream().write(TcpFraming.encode(emule()));
+                socket.getOutputStream()
+                        .write(TcpFraming.encode(Packet.empty(Protocol.EDONKEY, Opcodes.Client.HELLOANSWER.code())));
                 socket.getOutputStream().write(TcpFraming.encode(theirs.encode(false)));
                 assertThat(read(socket).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
             }
@@ -717,6 +850,11 @@ class NetworkTest {
     private static Packet read(Socket socket) throws IOException {
         socket.setSoTimeout(10_000);
         return TcpFraming.read(new BufferedInputStream(socket.getInputStream()), FrameLimit.fixed(1 << 20));
+    }
+
+    // A packet of the extended protocol that has nothing to do with the hello.
+    private static Packet emule() {
+        return Packet.empty(Protocol.EMULE, Opcodes.Extended.KAD_FWTCPCHECK_ACK.code());
     }
 
     // A request of the server that we call a client back.

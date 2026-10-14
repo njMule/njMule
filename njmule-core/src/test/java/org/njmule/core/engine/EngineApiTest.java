@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -316,6 +317,48 @@ class EngineApiTest {
     }
 
     @Test
+    void kadCommandsGoToARunningKad() throws Exception {
+        int port;
+        try (DatagramSocket probe = new DatagramSocket(0)) {
+            port = probe.getLocalPort();
+        }
+        try (Engine engine = this.start("net.kad.enabled=true\nnet.udpPort=" + port + "\n")) {
+            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
+
+            // A bootstrap request to a closed port on this machine.
+            engine.kadBootstrap(new ServerAddress("127.0.0.1", port == 65_535 ? port - 1 : port + 1))
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(engine.recheckKadFirewall().get(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void aBackupThatCannotBeWrittenLeavesTheWayClear() throws Exception {
+        AppDirectories dirs = this.dirs("");
+        Files.createDirectories(dirs.data());
+        Path blocked = Files.writeString(dirs.data().resolve(ConfigBackup.FOLDER), "not a folder");
+
+        Engine.start(new EngineConfig(dirs), () -> false).close();
+
+        assertThat(blocked).isRegularFile();
+        Engine.start(new EngineConfig(dirs), () -> false).close();
+    }
+
+    @Test
+    void whatIsLoggedAfterTheEndGoesNowhere() throws Exception {
+        Engine engine = this.start("");
+        Recorder recorder = new Recorder(Long.MAX_VALUE);
+        engine.events().subscribe(recorder);
+        engine.close();
+
+        engine.userLog(LogLine.Level.INFO, "too late");
+
+        assertThat(recorder.completed.get(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(recorder.events).last().isInstanceOf(EngineEvent.Stopping.class);
+    }
+
+    @Test
     void anIpFilterAtAnAddressWithoutAPathIsReadInEitherForm() {
         byte[] data = "1.2.3.4 - 1.2.3.5 , 100 , one\n".getBytes(StandardCharsets.US_ASCII);
 
@@ -364,6 +407,7 @@ class EngineApiTest {
         private final long initial;
         private final List<EngineEvent> events = new CopyOnWriteArrayList<>();
         private final CompletableFuture<Throwable> error = new CompletableFuture<>();
+        private final CompletableFuture<Boolean> completed = new CompletableFuture<>();
 
         Recorder(long initial) {
             this.initial = initial;
@@ -386,7 +430,7 @@ class EngineApiTest {
 
         @Override
         public void onComplete() {
-            // Nothing to do.
+            this.completed.complete(true);
         }
 
         List<EngineEvent.Log> logs() {
