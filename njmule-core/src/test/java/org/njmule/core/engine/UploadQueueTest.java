@@ -177,6 +177,36 @@ class UploadQueueTest {
     }
 
     @Test
+    void aFileRenamedDuringItsUploadKeepsBeingSent() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        Client client = this.client(engine.preferences().tcpPort(), 20);
+        assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        client.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(0, 1000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.SENDINGPART.code());
+
+        assertThat(engine.renameSharedFile(file.hash(), "renamed.bin").get(10, TimeUnit.SECONDS))
+                .isTrue();
+        client.send(new ClientMessages.RequestParts(
+                        file.hash(),
+                        List.of(
+                                new ClientMessages.Range(1000, 2000),
+                                new ClientMessages.Range(0, 0),
+                                new ClientMessages.Range(0, 0)))
+                .encode(false));
+
+        ClientMessages.SendingPart part = ClientMessages.SendingPart.decode(client.next());
+        byte[] expected = Files.readAllBytes(this.dir.resolve("njmule/incoming/renamed.bin"));
+        assertThat(part.data()).isEqualTo(Arrays.copyOfRange(expected, 1000, 2000));
+    }
+
+    @Test
     void theFriendWithTheFriendSlotGoesBeforeTheQueue() throws Exception {
         NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);

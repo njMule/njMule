@@ -457,8 +457,10 @@ public final class UploadManager implements AutoCloseable {
         if (next.isEmpty()) {
             return;
         }
-        UploadSession.Block block = next.get();
-        Uploadable file = block.file();
+        this.read(slot, next.get().file(), next.get());
+    }
+
+    private void read(Slot slot, Uploadable file, UploadSession.Block block) {
         slot.client.file = file;
         slot.reading = true;
         this.loop.whenDone(
@@ -469,6 +471,15 @@ public final class UploadManager implements AutoCloseable {
     private void blockRead(Slot slot, Uploadable file, UploadSession.Block block, byte[] data, Throwable failure) {
         slot.reading = false;
         if (!this.slots.contains(slot)) {
+            return;
+        }
+        // A file renamed, or a download completed, since the block was asked for is read where it is now.
+        Optional<Uploadable> moved = failure == null
+                ? Optional.empty()
+                : this.find(file.hash())
+                        .filter(f -> !f.data().equals(file.data()) && f.has(block.start(), block.end()));
+        if (moved.isPresent()) {
+            this.read(slot, moved.get(), block);
             return;
         }
         if (failure != null) {
