@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import javafx.event.ActionEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -76,6 +77,21 @@ class SearchScreenTest {
         assertThat(FxTesting.onFx(() -> screen.maxSizeInput().isValid()))
                 .as("checked again when the minimum changes")
                 .isTrue();
+    }
+
+    @Test
+    void enterOnAWrongExpressionTellsWhatTheBoxTakes() throws Exception {
+        SearchScreen screen = this.screen();
+
+        FxTesting.onFx(() -> {
+            screen.queryField().setText("(film");
+            screen.queryField().fireEvent(new ActionEvent());
+        });
+
+        assertThat(this.test.told).containsExactly(this.test.gui.t("nj.input.search"));
+        assertThat(FxTesting.onFx(() -> screen.queryField().getTooltip().getText()))
+                .as("the hint of the box")
+                .isEqualTo(this.test.gui.t("nj.input.search"));
     }
 
     private SearchScreen screen() throws Exception {

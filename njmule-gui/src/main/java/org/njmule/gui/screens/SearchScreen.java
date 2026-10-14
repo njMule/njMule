@@ -192,6 +192,8 @@ public final class SearchScreen implements Screen {
         this.query.getEditor().setOnAction(e -> this.start());
         this.queryInput = inputs.searchExpression(this.query.getEditor(), this.gui.t("IDS_SEARCH_TEXT"))
                 .quietWhenEmpty();
+        // The box's skin binds the editor's tooltip to the box's own: the hint must be there.
+        this.query.setTooltip(this.query.getEditor().getTooltip());
         Button start = Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start));
         start.disableProperty().bind(this.queryInput.validProperty().not());
         this.method.getItems().addAll(Method.values());
