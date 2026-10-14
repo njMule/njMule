@@ -728,7 +728,15 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         Optional<Known2Met.Entry> tree = result.aich().map(t -> new Known2Met.Entry(t.masterHash(), t.blockHashes()));
-        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+        BasicFileAttributes now = attributes(file);
+        if (now != null
+                && (now.size() != result.ed2k().size() || now.lastModifiedTime().toMillis() / 1000 != mtime)) {
+            // Written to while it was read: the hashes may be of neither content. A scan hashes it again once it rests.
+            logger.debug("{} changed while it was hashed", file);
+            this.changed();
+            return;
+        }
+        if (now == null) {
             // Renamed or gone while hashed: the copy shared now, if any, gets the AICH tree.
             SharedFile current = this.byHash.get(result.ed2k().fileHash());
             if (current != null && current.size() == result.ed2k().size()) {
@@ -953,6 +961,15 @@ public final class SharedFiles implements AutoCloseable {
                 || lower.endsWith(PartFile.MET_SUFFIX)
                 || lower.endsWith(".tmp")
                 || lower.endsWith(".bak");
+    }
+
+    // Null when the file cannot be looked at, as when it is gone.
+    private static BasicFileAttributes attributes(Path file) {
+        try {
+            return Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static long mtime(Path file) throws IOException {

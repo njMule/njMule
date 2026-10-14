@@ -24,6 +24,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.hash.Ed2k;
 
 /** How the scan of the shared directories picks the files it shares. */
 @Timeout(60)
@@ -51,6 +53,7 @@ class SharedFilesScanTest {
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
     private Path config;
     private Path incoming;
+    private Path other;
     private SharedFiles shares;
     private final List<String> sharedNames = new ArrayList<>();
 
@@ -108,6 +111,51 @@ class SharedFilesScanTest {
         }
     }
 
+    @Test
+    void aFileThatChangesWhileItIsHashedIsSharedWithItsNewContent() throws Exception {
+        this.givenTheIncomingDirectoryHolds();
+        this.givenALargeFileKeepsTheHashingBusy();
+        this.givenAnotherDirectoryHolds("changing.bin", bytes(3000, 7));
+
+        this.whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(bytes(5000, 8));
+
+        this.thenTheFileIsSharedWithItsContentAndDateNow("changing.bin");
+    }
+
+    private void givenALargeFileKeepsTheHashingBusy() throws Exception {
+        Files.write(this.incoming.resolve("large.bin"), bytes(32_000_000, 9));
+        this.shares = this.open();
+    }
+
+    private void givenAnotherDirectoryHolds(String name, byte[] content) throws Exception {
+        this.other = Files.createDirectories(this.dir.resolve("other"));
+        Files.write(this.other.resolve(name), content);
+    }
+
+    private void whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(byte[] content) throws Exception {
+        Path file = this.other.resolve("changing.bin");
+        this.onLoop(() -> {
+            this.shares.addDirectory(this.other);
+            Files.write(file, content);
+            Files.setLastModifiedTime(
+                    file, FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() + 60_000));
+            return null;
+        });
+        this.awaitShared("changing.bin");
+    }
+
+    private void thenTheFileIsSharedWithItsContentAndDateNow(String name) throws Exception {
+        Path file = this.other.resolve(name);
+        byte[] content = Files.readAllBytes(file);
+        SharedFiles.SharedFile shared = this.onLoop(() -> this.shares.all().stream()
+                .filter(f -> f.path().equals(file))
+                .findFirst()
+                .orElseThrow());
+        assertThat(shared.hash()).isEqualTo(Ed2k.md4(content, 0, content.length));
+        assertThat(shared.size()).isEqualTo(content.length);
+        assertThat(shared.mtime()).isEqualTo(Files.getLastModifiedTime(file).toMillis() / 1000);
+    }
+
     // A lock on Windows keeps other handles from reading the file, as a program writing it does.
     private void givenAnotherProgramLocksItFor(String name, Duration time) throws Exception {
         FileChannel channel = FileChannel.open(this.incoming.resolve(name), StandardOpenOption.WRITE);
@@ -125,7 +173,20 @@ class SharedFilesScanTest {
 
     // Waits for the file expected last, then a moment for any other.
     private void whenTheDirectoriesAreScanned(String awaited) throws Exception {
-        this.shares = this.onLoop(() -> SharedFiles.open(
+        this.shares = this.open();
+        this.awaitShared(awaited);
+        this.collect(this.events.poll(1, TimeUnit.SECONDS));
+    }
+
+    private void awaitShared(String name) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (!this.sharedNames.contains(name) && System.nanoTime() < deadline) {
+            this.collect(this.events.poll(100, TimeUnit.MILLISECONDS));
+        }
+    }
+
+    private SharedFiles open() throws Exception {
+        return this.onLoop(() -> SharedFiles.open(
                 this.loop,
                 this.config,
                 () -> List.of(this.incoming),
@@ -141,11 +202,6 @@ class SharedFilesScanTest {
                         SharedFilesScanTest.this.events.add("unshared " + file.name());
                     }
                 }));
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (!this.sharedNames.contains(awaited) && System.nanoTime() < deadline) {
-            this.collect(this.events.poll(100, TimeUnit.MILLISECONDS));
-        }
-        this.collect(this.events.poll(1, TimeUnit.SECONDS));
     }
 
     private void collect(String event) {
