@@ -70,6 +70,7 @@ public final class I18n {
             Locale.of("uk"),
             Locale.of("ar"),
             Locale.of("fa"),
+            Locale.of("he"),
             Locale.SIMPLIFIED_CHINESE,
             Locale.TRADITIONAL_CHINESE,
             Locale.JAPANESE,

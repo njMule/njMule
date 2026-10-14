@@ -59,6 +59,15 @@ class RightToLeftTextsTest {
     }
 
     @Test
+    void aNameInHebrewLettersKeepsItsOwnDirectionToo() {
+        this.givenTheTextsOf(Locale.of("he"));
+
+        this.whenTheTextIsFilledIn("nj.chat.from", "דני 2");
+
+        this.thenTheTextShows(RLE + "דני 2" + PDF);
+    }
+
+    @Test
     void eachLineKeepsTheDirectionOfItsOwnFirstLetters() {
         this.givenTheTextsOf(Locale.of("ar"));
 
