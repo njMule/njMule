@@ -418,6 +418,9 @@ All notable changes to this project are documented here. The format follows
 - An address that opens connections in a row can no longer use up the rate of new connections and
   lock everyone else out, and our own connections to clients count in the maximum number of
   connections: sources and waiting clients are called once there is room.
+- The secure identification works with a LowID and without a server too: signatures are bound to
+  and checked with the address the server reports or the one Kad nodes see, so peers that bind
+  them to our address get their credits.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

@@ -100,7 +100,7 @@ public final class Identities {
     /**
      * @param pinnedKeys the key a user hash proved to own before, if any
      * @param identified called when a user hash proves it owns a key
-     * @param ourPublicAddress our public address when a server gave us a HighID
+     * @param ourPublicAddress our public address, once a server or Kad told it
      */
     public Identities(
             IdentityHandshake.Identity own,

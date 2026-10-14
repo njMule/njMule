@@ -114,7 +114,7 @@ public final class IdentityHandshake {
 
     /**
      * @param pinnedKey the key this user hash proved to own before, if any
-     * @param ourPublicAddress our public address when a server gave us a HighID
+     * @param ourPublicAddress our public address, once a server or Kad told it
      * @param ourLocalAddress our address on the connection
      */
     public IdentityHandshake(

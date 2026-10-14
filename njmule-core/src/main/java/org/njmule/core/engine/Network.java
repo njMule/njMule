@@ -1945,14 +1945,20 @@ final class Network {
         return offers;
     }
 
-    // Our public address, known when the server gave us a HighID.
     private Optional<Inet4Address> ourPublicAddress() {
-        long id = this.context.clientId();
-        if (id < ServerMessages.LOW_ID_LIMIT) {
+        KadNode node = this.kad;
+        return publicAddress(this.session.id(), node == null ? 0 : node.publicIp());
+    }
+
+    // Our public address, which signatures of the secure identification are bound to: a HighID, else the address the
+    // server reports with a LowID, else the one Kad nodes see.
+    static Optional<Inet4Address> publicAddress(Optional<ServerMessages.IdChange> id, int kadIp) {
+        int ip = id.map(ServerMessages.IdChange::publicIp).filter(a -> a != 0).orElse(kadIp);
+        if (ip == 0) {
             return Optional.empty();
         }
         try {
-            return Optional.of((Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(Ipv4.fromEd2k(id))));
+            return Optional.of((Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(ip)));
         } catch (UnknownHostException e) {
             return Optional.empty();
         }
