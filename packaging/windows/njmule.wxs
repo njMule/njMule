@@ -103,6 +103,24 @@
                         KeyPath="yes"/>
             </Component>
         </ComponentGroup>
+
+        <!-- The desktop app may have taken the ed2k links: at uninstall it gives them back to
+             what opened them before, if it still has them. Not at an upgrade, which keeps them,
+             and never a reason to stop the uninstall. The program still exists before
+             RemoveFiles; deferred and impersonated, it changes the user's own settings. -->
+        <CustomAction
+                Id="RestoreLinks"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule-gui.exe&quot; --restore-links"
+                Execute="deferred"
+                Impersonate="yes"
+                Return="ignore"/>
+        <InstallExecuteSequence>
+            <Custom
+                    Action="RestoreLinks"
+                    Before="RemoveFiles"
+                    Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
+        </InstallExecuteSequence>
         <?endif?>
 
         <Feature Id="Main" Title="njMule">

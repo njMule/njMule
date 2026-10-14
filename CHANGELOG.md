@@ -273,6 +273,8 @@ All notable changes to this project are documented here. The format follows
   ranges, one per line, that the IP filter never blocks; a change applies at once.
 - `njmule-gui --restore-links` gives the ed2k links back to what opened them before the desktop app
   took them, when it still has them.
+- Uninstalling the Windows MSI runs it, so the ed2k links go back to eMule or whatever opened them
+  before (an upgrade keeps them); the release workflow checks it on the arm64 runner.
 
 ### Changed
 

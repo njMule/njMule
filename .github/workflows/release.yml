@@ -95,6 +95,7 @@ jobs:
                   foreach ($exe in "njmule.exe", "njmule-gui.exe") {
                       if (-not (Select-String -Quiet -SimpleMatch $exe "$env:RUNNER_TEMP\msi.wxs")) { throw "$exe is missing from the MSI" }
                   }
+                  if (-not (Select-String -Quiet -SimpleMatch "--restore-links" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not give the ed2k links back" }
                   Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -210,8 +211,19 @@ jobs:
                   $gui = Start-Process (Join-Path $dir "njmule-gui.exe") -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
                   if (-not $gui.WaitForExit(300000)) { $gui.Kill(); throw "the GUI tour did not finish" }
                   if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
+                  # As if the desktop app had taken the ed2k links from another program: the
+                  # uninstaller must give them back.
+                  $command = "HKCU:\Software\Classes\ed2k\shell\open\command"
+                  New-Item -Force $command | Out-Null
+                  Set-Item $command -Value "`"$(Join-Path $dir "njmule-gui.exe")`" `"%1`""
+                  $config = Join-Path $env:APPDATA "njMule\config"
+                  New-Item -ItemType Directory -Force $config | Out-Null
+                  Set-Content -Encoding Unicode (Join-Path $config "ed2k-handler-backup.reg") "Windows Registry Editor Version 5.00`r`n`r`n[HKEY_CURRENT_USER\Software\Classes\ed2k\shell\open\command]`r`n@=`"previous.exe %1`"`r`n"
                   $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn") -PassThru -Wait
                   if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+                  $key = Get-Item $command -ErrorAction SilentlyContinue
+                  $after = if ($key) { $key.GetValue("") } else { "no ed2k key" }
+                  if ($after -ne "previous.exe %1") { throw "the uninstaller did not give the ed2k links back: $after" }
 
     macos-arm64:
         name: macos-arm64

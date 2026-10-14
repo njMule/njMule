@@ -90,7 +90,8 @@ sha256sum --check --ignore-missing SHA256SUMS
 The MSI performs a per-user installation and requires no administrator rights. It installs the
 executables in `%LOCALAPPDATA%\Programs\njMule`, creates Start menu and desktop shortcuts and adds
 the installation directory to the user's `PATH`. Installing a newer MSI upgrades the existing
-installation; uninstall from *Settings → Apps*. A per-machine installation, for all users, requires
+installation; uninstall from *Settings → Apps*, which gives ed2k links back to the program that
+opened them before, if njMule still opens them. A per-machine installation, for all users, requires
 administrator rights:
 
 ```powershell
