@@ -635,3 +635,5 @@ All notable changes to this project are documented here. The format follows
   seconds, instead of one a second without end, which got them ignored or the client dropped.
 - A server search answer that cannot be read at all still counts as the answer to its search, so the
   answers that follow keep going to the searches that asked for them.
+- The type of a search result comes from its file name, as for our own files; the type the publisher
+  reported counts only for names that do not tell it, and only when it is a real file type.

@@ -172,6 +172,33 @@ class SearchManagerTest {
         this.thenTheLastResultHasTheMedia(new SearchResult.Media("Some Band", "First Album", "", 205, 192, "mp3"));
     }
 
+    @Test
+    void shouldTakeTheTypeFromTheFileNameRatherThanFromThePublisher() throws Exception {
+        this.givenAKadSearchFor("holiday clip");
+
+        this.whenKadAnswers(new SearchResult(hash(11), "holiday clip.exe", 1000, 1, 0, Optional.of("Video")));
+
+        this.thenTheLastResultHasTheType(Optional.of("Pro"));
+    }
+
+    @Test
+    void shouldKeepTheReportedTypeOfANameThatDoesNotTellIt() throws Exception {
+        this.givenAKadSearchFor("readme");
+
+        this.whenKadAnswers(new SearchResult(hash(12), "readme", 10, 1, 0, Optional.of("Doc")));
+
+        this.thenTheLastResultHasTheType(Optional.of("Doc"));
+    }
+
+    @Test
+    void shouldDropAReportedTypeThatIsNoFileType() throws Exception {
+        this.givenAKadSearchFor("notes");
+
+        this.whenKadAnswers(new SearchResult(hash(13), "notes", 10, 1, 0, Optional.of("\u001b[2JFree")));
+
+        this.thenTheLastResultHasTheType(Optional.empty());
+    }
+
     private void givenAKadSearchFor(String words) throws Exception {
         this.kad = Optional.of((keyword, expression, results) -> {
             this.kadAnswers = results;
@@ -194,6 +221,10 @@ class SearchManagerTest {
 
     private void thenTheLastResultHasTheMedia(SearchResult.Media expected) {
         assertThat(this.reported.getLast().media()).isEqualTo(expected);
+    }
+
+    private void thenTheLastResultHasTheType(Optional<String> expected) {
+        assertThat(this.reported.getLast().type()).isEqualTo(expected);
     }
 
     private static SearchResult song(SearchResult.Media media) {

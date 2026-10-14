@@ -72,6 +72,11 @@ public final class FileTypes {
         return Optional.empty();
     }
 
+    /** Whether {@code type} is one of the eD2K file types. */
+    public static boolean isKnown(String type) {
+        return CODES.containsKey(type);
+    }
+
     /** The number servers with integer type tags use for {@code type}. */
     public static int code(String type) {
         Integer code = CODES.get(type);

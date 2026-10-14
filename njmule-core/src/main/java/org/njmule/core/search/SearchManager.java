@@ -38,6 +38,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.files.FileTypes;
 import org.njmule.core.kad.Keywords;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.FileEntry;
@@ -373,10 +374,11 @@ public final class SearchManager {
      */
     private void mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
         List<SearchResult> changed = new ArrayList<>();
-        for (SearchResult file : found) {
-            if (!SearchResult.isDownloadable(file.name(), file.size())) {
+        for (SearchResult reported : found) {
+            if (!SearchResult.isDownloadable(reported.name(), reported.size())) {
                 continue;
             }
+            SearchResult file = withOwnType(reported);
             if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {
                 continue;
             }
@@ -404,6 +406,22 @@ public final class SearchManager {
         if (!changed.isEmpty()) {
             this.listener.results(search.id, changed);
         }
+    }
+
+    // The publisher's type may lie (a program shown as a video) or be no type at all: the name's extension tells
+    // first, and a reported type counts only when it is a real one.
+    private static SearchResult withOwnType(SearchResult file) {
+        Optional<String> type = FileTypes.of(file.name()).or(() -> file.type().filter(FileTypes::isKnown));
+        return type.equals(file.type())
+                ? file
+                : new SearchResult(
+                        file.hash(),
+                        file.name(),
+                        file.size(),
+                        file.sources(),
+                        file.completeSources(),
+                        type,
+                        file.media());
     }
 
     private void end(Search search) {
