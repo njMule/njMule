@@ -424,6 +424,9 @@ All notable changes to this project are documented here. The format follows
 - Source exchange: sources are told only for a file the client asked for on its connection and
   never to a banned address; the wait between two answers goes by address and user hash, so
   another address claiming a user hash cannot take its answers, and old answers are forgotten.
+- A client counts as asking too often only when it asks again for the same file within ten
+  minutes, with a few seconds of tolerance: asks for its other files and the end of its upload
+  slot no longer count against it, while asking again from a slot does.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

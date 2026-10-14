@@ -101,8 +101,12 @@ public final class UploadManager implements AutoCloseable {
     /** Payload a slot gets before the client waits again, while others wait. */
     public static final long SESSION_LIMIT = Ed2k.PARTSIZE + 20_480;
 
-    /** Clients asking again sooner than this are counted; at {@code BAD_LIMIT} they are banned. */
+    /** Clients asking again for a file sooner than this are counted; at {@code BAD_LIMIT} they are banned. */
     public static final Duration MIN_REQUEST_TIME = Duration.ofMinutes(10);
+
+    // Clients re-asking on a timer of exactly MIN_REQUEST_TIME come a little early now and then.
+    private static final long FAST_ASK = MIN_REQUEST_TIME.minusSeconds(10).toNanos();
+    private static final int MAX_ASKED_FILES = 32;
 
     public static final Duration BAN_TIME = Duration.ofHours(2);
 
@@ -156,8 +160,9 @@ public final class UploadManager implements AutoCloseable {
         private Uploadable file;
         private UploadSession session;
         private long waitStart;
+        // When it was last heard of, to forget it when it stops asking.
         private long lastAsk;
-        private int bad;
+        private final Map<Hash16, Ask> asks = new LinkedHashMap<>();
         private boolean connecting;
         // A LowID we cannot call whose turn came while it was away: it gets a slot when it asks again.
         private boolean nextConnect;
@@ -175,6 +180,33 @@ public final class UploadManager implements AutoCloseable {
             this.session = session;
             this.waitStart = now;
             this.lastAsk = now;
+            this.asks.put(file.hash(), new Ask(now));
+        }
+
+        // Counts an ask for the file: one too soon after the last counts against the client, a later one forgives one.
+        int asked(Hash16 file, long now) {
+            this.lastAsk = now;
+            Ask ask = this.asks.get(file);
+            if (ask == null) {
+                this.asks.put(file, new Ask(now));
+                if (this.asks.size() > MAX_ASKED_FILES) {
+                    this.asks.remove(this.asks.keySet().iterator().next());
+                }
+                return 0;
+            }
+            ask.bad = now - ask.last < FAST_ASK ? ask.bad + 1 : Math.max(0, ask.bad - 1);
+            ask.last = now;
+            return ask.bad;
+        }
+    }
+
+    /** The last ask for a file and how many came too soon. */
+    private static final class Ask {
+        private long last;
+        private int bad;
+
+        Ask(long last) {
+            this.last = last;
         }
     }
 
@@ -706,6 +738,18 @@ public final class UploadManager implements AutoCloseable {
         return open < Math.max(MIN_SLOTS, limit * 1_024L / perSlot) + (extra ? 1 : 0);
     }
 
+    // A client asking for the same file again too soon BAD_LIMIT times, with no slower ask between, is banned unless it
+    // holds the friend slot. Asks for its other files and the end of its slot, which is ours, do not count.
+    private boolean askedTooOften(Client client, UploadSession session, Uploadable file, long now) {
+        int bad = client.asked(file.hash(), now);
+        if (bad < BAD_LIMIT
+                || this.hasFriendSlot(client.userHash, session.trust().credits())) {
+            return false;
+        }
+        this.ban(session.address().getAddress(), now, "asked again too often");
+        return true;
+    }
+
     // The friend with the friend slot, unless it has a LowID, comes before anyone and keeps its slot; only with its
     // identity trusted, as anyone can send a user hash.
     private boolean hasFriendSlot(Hash16 userHash, boolean trusted) {
@@ -954,7 +998,7 @@ public final class UploadManager implements AutoCloseable {
             }
             for (Slot slot : manager.slots) {
                 if (slot.client.userHash.equals(session.userHash())) {
-                    if (!sameClient(slot.client, session)) {
+                    if (!sameClient(slot.client, session) || manager.askedTooOften(slot.client, session, file, now)) {
                         return;
                     }
                     // Already uploading to it, maybe over a new connection or for another file.
@@ -967,15 +1011,7 @@ public final class UploadManager implements AutoCloseable {
             }
             Client client = manager.waiting.get(session.userHash());
             if (client != null) {
-                if (!sameClient(client, session)) {
-                    return;
-                }
-                client.bad = now - client.lastAsk < MIN_REQUEST_TIME.toNanos()
-                        ? client.bad + 1
-                        : Math.max(0, client.bad - 1);
-                client.lastAsk = now;
-                if (client.bad >= BAD_LIMIT) {
-                    manager.ban(ip, now, "asked again too often");
+                if (!sameClient(client, session) || manager.askedTooOften(client, session, file, now)) {
                     return;
                 }
                 client.session = session;

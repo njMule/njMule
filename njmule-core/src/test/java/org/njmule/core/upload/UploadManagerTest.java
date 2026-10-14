@@ -110,6 +110,7 @@ class UploadManagerTest {
     private int port;
     private final List<String> udpChecks = new CopyOnWriteArrayList<>();
     private final List<ScriptedDownloader> slotHolders = new ArrayList<>();
+    private final List<SharedFiles.SharedFile> others = new ArrayList<>();
     private ScriptedDownloader client;
     private SharedFiles.SharedFile file;
     private SharedFiles.SharedFile other;
@@ -826,6 +827,74 @@ class UploadManagerTest {
 
     private void thenNoSourceAnswerIsRemembered() throws Exception {
         this.await("the answer forgotten", () -> this.manager.describe().contains(", 0 source answers"));
+    }
+
+    @Test
+    void asksForOtherFilesDoNotCountAsAskingTooOften() throws Exception {
+        this.givenTwoSlotsBusyUnderALimit();
+        this.givenOtherFilesShared(UploadManager.BAD_LIMIT);
+        this.givenAClientWaiting();
+
+        this.whenItAsksForEachOtherFileRightAway();
+
+        this.thenItIsStillTold(Opcodes.Extended.QUEUERANKING);
+    }
+
+    @Test
+    void theEndOfASlotDoesNotCountAsAnAskOfTheClient() throws Exception {
+        this.givenTwoSlotsBusyUnderALimit();
+        this.givenAClientWaiting();
+        this.givenItAskedAgainRightAway(UploadManager.BAD_LIMIT - 1);
+        this.givenItGotASlotThatEndedBecauseItAskedForNothing();
+
+        this.whenItAsksAgainAsLongAfterItsLastAskAsAllowed();
+
+        this.thenItIsStillTold(Opcodes.Extended.QUEUERANKING);
+    }
+
+    private void givenOtherFilesShared(int count) throws IOException {
+        for (int i = 0; i < count; i++) {
+            this.others.add(this.share("other-" + i + ".bin", random(3000, 30 + i)));
+        }
+    }
+
+    private void givenAClientWaiting() throws Exception {
+        this.client = this.client(6, 0, 0);
+        assertThat(rank(this.ask(this.client, this.file.hash()))).isEqualTo(1);
+    }
+
+    private void givenItAskedAgainRightAway(int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            this.advance(Duration.ofSeconds(1));
+            assertThat(rank(this.ask(this.client, this.file.hash()))).isEqualTo(1);
+        }
+    }
+
+    private void givenItGotASlotThatEndedBecauseItAskedForNothing() throws Exception {
+        ScriptedDownloader later = this.client(7, 0, 0);
+        assertThat(rank(this.ask(later, this.file.hash()))).isEqualTo(2);
+        this.slotHolders.getFirst().close();
+        this.client.until(Opcodes.Client.ACCEPTUPLOADREQ);
+        this.advance(UploadManager.FIRST_REQUEST_WAIT.plusSeconds(1));
+        this.client.until(Opcodes.Client.OUTOFPARTREQS);
+    }
+
+    private void whenItAsksForEachOtherFileRightAway() throws Exception {
+        for (SharedFiles.SharedFile wanted : this.others) {
+            this.advance(Duration.ofSeconds(1));
+            this.answer = this.ask(this.client, wanted.hash());
+        }
+    }
+
+    // Ten minutes after its last ask, less the time its slot took.
+    private void whenItAsksAgainAsLongAfterItsLastAskAsAllowed() throws Exception {
+        this.advance(UploadManager.MIN_REQUEST_TIME.minus(UploadManager.FIRST_REQUEST_WAIT));
+        this.answer = this.ask(this.client, this.file.hash());
+    }
+
+    private void thenItIsStillTold(Opcodes.Extended opcode) {
+        assertThat(this.answer.protocol()).isEqualTo(Protocol.EMULE);
+        assertThat(this.answer.opcode()).isEqualTo(opcode.code());
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {
