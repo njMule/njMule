@@ -77,6 +77,19 @@ class LinkHandoffTest {
     }
 
     @Test
+    void aReceiverThatFailsStillTakesTheLinks() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, links -> {
+            this.received.add(links);
+            throw new IllegalArgumentException("cannot follow");
+        })) {
+            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
+                    .as("the later start must not try to run beside it")
+                    .isTrue();
+            assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
+        }
+    }
+
+    @Test
     void aFileLeftByACrashIsNoRunningInstance() throws Exception {
         Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), "1 " + "ab".repeat(32) + "\n");
 

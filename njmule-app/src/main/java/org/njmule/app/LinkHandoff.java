@@ -200,7 +200,12 @@ public final class LinkHandoff implements AutoCloseable {
                 links.add(line);
             }
         }
-        this.receiver.accept(links);
+        try {
+            this.receiver.accept(links);
+        } catch (RuntimeException e) {
+            // The links reached this instance all the same: the later start must not run beside it.
+            logger.warn("Cannot follow the links handed over: {}", e.toString());
+        }
         OutputStream out = client.getOutputStream();
         out.write((OK + "\n").getBytes(StandardCharsets.UTF_8));
         out.flush();

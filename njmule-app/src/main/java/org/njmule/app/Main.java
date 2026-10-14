@@ -326,25 +326,30 @@ public final class Main {
     // A file link downloads, a server list or nodes.dat link takes the servers or the Kad contacts at its address.
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-ups report their own outcome
     private static void follow(NjMuleEngine engine, Ed2kLink link, PrintStream err) {
-        switch (link) {
-            case Ed2kLink.FileLink file -> added(engine.addDownload(file), err);
-            case Ed2kLink.ServerListLink list ->
-                engine.addServers(URI.create(list.url())).whenComplete((n, failure) -> {
-                    if (failure != null) {
-                        err.println("Cannot take the server list: " + reason(failure));
-                    } else {
-                        logger.info("{} new servers from {}", n, list.url());
-                    }
-                });
-            case Ed2kLink.NodesListLink list ->
-                engine.addKadContacts(URI.create(list.url())).whenComplete((n, failure) -> {
-                    if (failure != null) {
-                        err.println("Cannot take the Kad contacts: " + reason(failure));
-                    } else {
-                        logger.info("{} new Kad contacts from {}", n, list.url());
-                    }
-                });
-            default -> logger.info("Not acting on {}", link.toUri());
+        try {
+            switch (link) {
+                case Ed2kLink.FileLink file -> added(engine.addDownload(file), err);
+                case Ed2kLink.ServerListLink list ->
+                    engine.addServers(URI.create(list.url())).whenComplete((n, failure) -> {
+                        if (failure != null) {
+                            err.println("Cannot take the server list: " + reason(failure));
+                        } else {
+                            logger.info("{} new servers from {}", n, list.url());
+                        }
+                    });
+                case Ed2kLink.NodesListLink list ->
+                    engine.addKadContacts(URI.create(list.url())).whenComplete((n, failure) -> {
+                        if (failure != null) {
+                            err.println("Cannot take the Kad contacts: " + reason(failure));
+                        } else {
+                            logger.info("{} new Kad contacts from {}", n, list.url());
+                        }
+                    });
+                default -> logger.info("Not acting on {}", link.toUri());
+            }
+        } catch (IllegalArgumentException e) {
+            // An address the link format allows but a URI does not: the other links still count.
+            err.println("Cannot follow " + link.toUri() + ": " + e.getMessage());
         }
     }
 

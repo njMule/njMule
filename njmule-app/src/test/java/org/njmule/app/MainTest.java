@@ -159,6 +159,22 @@ class MainTest {
     }
 
     @Test
+    void aLinkToAnUnusableListAddressStopsNothing() throws Exception {
+        assertThat(this.run(
+                        "--config-dir",
+                        this.dir.toString(),
+                        "ed2k://|serverlist|http://|/",
+                        "ed2k://|nodeslist|http://a b/nodes.dat|/",
+                        "ed2k://|file|after.iso|1000|" + "ef".repeat(16) + "|/"))
+                .isZero();
+        assertThat(this.err.toString(UTF_8))
+                .contains("Cannot follow ed2k://|serverlist|http://|/", "Cannot follow ed2k://|nodeslist|");
+        assertThat(this.dir.resolve("temp").resolve("001.part.met"))
+                .as("the links after them are followed")
+                .exists();
+    }
+
+    @Test
     void exitAsksTheRunningOneToStop() throws Exception {
         String config = this.dir.toString();
         assertThat(this.run("--config-dir", config, "--exit")).isNotZero();
