@@ -252,6 +252,13 @@ All notable changes to this project are documented here. The format follows
   The hello now tells that we take comments, and that our files may be viewed when they may.
 - Add Sources lets a download take a source typed as host:port, at a LAN address too; the sources of
   a link are not held to the LAN filter either, the IP filter still applying to both.
+- Remote control: a JSON API under `/api/v1` of the web interface (status, downloads, sources,
+  uploads, shared files, servers, Kad, searches, categories, friends, messages, bans, speed limits,
+  IP filter updates, log, shutdown) and the engine's events as server-sent events, for holders of
+  the token in `api-token` (off by default: `--webui-api` or the web interface settings);
+  `njmule --remote <command>` drives a running njMule through it, here or on another computer
+  (`--remote-url`, `NJMULE_API_TOKEN`), and `--api-token` / `--new-api-token` print or replace the
+  token.
 
 ### Changed
 

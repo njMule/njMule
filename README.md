@@ -192,6 +192,24 @@ It starts together with the engine, headless or with the desktop application, on
 listen on all interfaces. The interface is served over plain HTTP: enable LAN access only on a
 trusted network.
 
+### Remote control
+
+With `--webui-api` (or the box in the web interface settings) the same server also answers a JSON
+API under `/api/v1`, with the engine's events as server-sent events at `/api/v1/events`. Callers
+send the token kept in the `api-token` file of the configuration directory as
+`Authorization: Bearer <token>`; `njmule --api-token` prints it and `njmule --new-api-token`
+replaces it. A running njMule is driven from the command line with `--remote`:
+
+```bash
+njmule --remote status
+njmule --remote search kad ubuntu iso
+njmule --remote get <search id> <hash>
+njmule --remote help
+```
+
+`--remote-url http://<host>:4711/api/v1` reaches another computer, whose token is taken from the
+`NJMULE_API_TOKEN` environment variable.
+
 ## Building from source
 
 | Tool | Required for |
