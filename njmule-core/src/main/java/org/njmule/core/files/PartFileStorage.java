@@ -32,12 +32,14 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BooleanSupplier;
 import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.format.PartMet;
 import org.njmule.core.security.PathSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +58,7 @@ public final class PartFileStorage implements AutoCloseable {
     private final Path path;
     private final FileChannel channel;
     private final ExecutorService io;
+    private final CompletableFuture<Void> closed = new CompletableFuture<>();
 
     private PartFileStorage(Path path, FileChannel channel) {
         this.path = path;
@@ -97,6 +100,25 @@ public final class PartFileStorage implements AutoCloseable {
                         while (buffer.hasRemaining()) {
                             at += this.channel.write(buffer, at);
                         }
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                },
+                this.io);
+    }
+
+    /**
+     * Writes the metadata {@code contents} to {@code met}, after the writes queued before, dated as the data is then;
+     * nothing when {@code current} says a newer save is on its way.
+     */
+    public CompletableFuture<Void> saveMet(Path met, PartMet.Contents contents, BooleanSupplier current) {
+        return CompletableFuture.runAsync(
+                () -> {
+                    if (!current.getAsBoolean()) {
+                        return;
+                    }
+                    try {
+                        PartFile.writeMet(met, contents, this.path);
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }
@@ -229,8 +251,15 @@ public final class PartFileStorage implements AutoCloseable {
                 }
             } catch (IOException e) {
                 // The data written so far stays on disk; the next start re-checks parts.
+            } finally {
+                this.closed.complete(null);
             }
         });
         this.io.shutdown();
+    }
+
+    /** Completes once {@link #close} closed the file, after the operations queued before it. */
+    public CompletableFuture<Void> whenClosed() {
+        return this.closed.copy();
     }
 }

@@ -204,6 +204,11 @@ public final class PartFile {
 
     /** Writes {@code NNN.part.met} crash-safely, keeping the previous one as backup. */
     public void save() throws IOException {
+        writeMet(this.metFile(), this.metContents(), this.dataFile());
+    }
+
+    /** What {@link #save} writes, but for the date of the data, which {@link #writeMet} takes when it writes. */
+    public PartMet.Contents metContents() {
         List<Tag> tags = new ArrayList<>();
         tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), this.name));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), this.size));
@@ -227,14 +232,22 @@ public final class PartFile {
         for (Range<Long> gap : this.missing.asRanges()) {
             gaps.add(new PartMet.Gap(gap.lowerEndpoint(), gap.upperEndpoint()));
         }
-        // The date is that of the data: a data file changed since the save has its parts checked again.
-        long dataDate = dataDate(this.dataFile()).orElse(System.currentTimeMillis() / 1000);
         if (!this.verified.isEmpty()) {
             tags.add(new Tag.BlobTag(VERIFIED_TAG, Bytes.of(this.verified.toByteArray())));
         }
-        PartMet.Contents contents =
-                new PartMet.Contents(PartMet.VERSION, dataDate, this.hash, this.partHashes, tags).withGaps(gaps);
-        AtomicFiles.writeBytes(this.metFile(), PartMet.write(contents));
+        return new PartMet.Contents(PartMet.VERSION, 0, this.hash, this.partHashes, tags).withGaps(gaps);
+    }
+
+    /**
+     * Writes {@code contents} to {@code met} crash-safely, dated as the {@code data} file is now: a data file changed
+     * since has its parts checked again.
+     */
+    public static void writeMet(Path met, PartMet.Contents contents, Path data) throws IOException {
+        long dataDate = dataDate(data).orElse(System.currentTimeMillis() / 1000);
+        AtomicFiles.writeBytes(
+                met,
+                PartMet.write(new PartMet.Contents(
+                        contents.version(), dataDate, contents.fileHash(), contents.partHashes(), contents.tags())));
     }
 
     private static OptionalLong dataDate(Path data) {

@@ -34,7 +34,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
@@ -84,6 +89,9 @@ public final class DownloadQueue implements AutoCloseable {
     /** The free space of the temp disk is looked at this often. */
     public static final Duration SPACE_CHECK = Duration.ofSeconds(10);
 
+    // How long closing waits for the last saves and writes.
+    private static final Duration CLOSE_WAIT = Duration.ofSeconds(30);
+
     private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
     private static final Pattern MET_NAME = Pattern.compile(
             "(\\d{1,6})" + Pattern.quote(PartFile.MET_SUFFIX) + "(?:" + Pattern.quote(AtomicFiles.BAK_SUFFIX) + ")?");
@@ -96,6 +104,8 @@ public final class DownloadQueue implements AutoCloseable {
         private final BitSet verified = new BitSet();
         private boolean dirty;
         private boolean finishing;
+        // The generation of its last part.met save: a save is skipped once a newer one follows, and so after a cancel.
+        private final AtomicLong saves = new AtomicLong();
 
         Download(PartFile file, PartFileStorage storage) {
             this.file = file;
@@ -251,6 +261,7 @@ public final class DownloadQueue implements AutoCloseable {
         file.setCategory(category);
         file.setPriority(priority);
         file.setAdded(this.nextAdded());
+        // Written at once, so that a download that cannot be kept is not added.
         file.save();
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.sources.addAll(link.sources());
@@ -414,15 +425,21 @@ public final class DownloadQueue implements AutoCloseable {
             return false;
         }
         this.downloads.remove(download.hash());
+        // Saves still queued are skipped, and the files go once its disk thread is done with them.
+        download.saves.incrementAndGet();
         download.storage.close();
-        try {
-            Files.deleteIfExists(download.file.metFile());
-            Files.deleteIfExists(AtomicFiles.bakPath(download.file.metFile().toAbsolutePath()));
-            Files.deleteIfExists(download.file.dataFile());
-        } catch (IOException e) {
-            logger.warn("Cannot delete the files of {}", download.file.name(), e);
-        }
+        download.storage.whenClosed().whenComplete((ok, failure) -> deleteFiles(download.file));
         return true;
+    }
+
+    private static void deleteFiles(PartFile file) {
+        try {
+            Files.deleteIfExists(file.metFile());
+            Files.deleteIfExists(AtomicFiles.bakPath(file.metFile().toAbsolutePath()));
+            Files.deleteIfExists(file.dataFile());
+        } catch (IOException e) {
+            logger.warn("Cannot delete the files of {}", file.name(), e);
+        }
     }
 
     /** Saves every part file and closes the storages. */
@@ -438,8 +455,19 @@ public final class DownloadQueue implements AutoCloseable {
             download.dirty = true;
         }
         this.saveChanged();
+        List<CompletableFuture<Void>> closing = new ArrayList<>();
         for (Download download : this.downloads.values()) {
             download.storage.close();
+            closing.add(download.storage.whenClosed());
+        }
+        // The saves and the last writes end before njMule does.
+        try {
+            CompletableFuture.allOf(closing.toArray(CompletableFuture<?>[]::new))
+                    .get(CLOSE_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            logger.warn("Not every download could be saved", e);
         }
     }
 
@@ -597,17 +625,39 @@ public final class DownloadQueue implements AutoCloseable {
         }
     }
 
-    private void saveChanged() {
+    void saveChanged() {
         for (Download download : this.downloads.values()) {
-            if (download.dirty) {
-                try {
-                    download.file.save();
-                    download.dirty = false;
-                } catch (IOException e) {
-                    logger.warn("Cannot save {}", download.file.metFile(), e);
-                }
+            // One being moved is complete and saved: its part.met goes once it is moved.
+            if (download.dirty && !download.finishing) {
+                this.save(download);
             }
         }
+    }
+
+    // Built here and written on the download's disk thread, after the data queued before it. A failed save is made
+    // again at the next round, unless a newer one is on its way.
+    private void save(Download download) {
+        download.dirty = false;
+        long generation = download.saves.incrementAndGet();
+        PartMet.Contents contents = download.file.metContents();
+        if (!download.storage.isOpen()) {
+            // Closed after its finished file could not be moved: rare enough to be written here.
+            try {
+                PartFile.writeMet(download.file.metFile(), contents, download.file.dataFile());
+            } catch (IOException e) {
+                logger.warn("Cannot save {}", download.file.metFile(), e);
+                download.dirty = true;
+            }
+            return;
+        }
+        this.loop.whenDone(
+                download.storage.saveMet(download.file.metFile(), contents, () -> download.saves.get() == generation),
+                (ok, failure) -> {
+                    if (failure != null && download.saves.get() == generation && this.isQueued(download)) {
+                        logger.warn("Cannot save {}: {}", download.file.metFile(), failure.toString());
+                        download.dirty = true;
+                    }
+                });
     }
 
     private long nextAdded() {
