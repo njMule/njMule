@@ -97,7 +97,7 @@ class MainWindowTest {
                                 window.root(),
                                 screen
                                         + "-"
-                                        + language.getLanguage()
+                                        + language.toLanguageTag()
                                         + "-"
                                         + mode.name().toLowerCase(Locale.ROOT));
                         return null;

@@ -42,7 +42,8 @@ public final class I18n {
             Locale.of("pl"),
             Locale.of("pt", "BR"),
             Locale.of("ru"),
-            Locale.SIMPLIFIED_CHINESE);
+            Locale.SIMPLIFIED_CHINESE,
+            Locale.TRADITIONAL_CHINESE);
 
     // Where Chinese is written in the traditional script when the locale names no script.
     private static final Set<String> TRADITIONAL_REGIONS = Set.of("TW", "HK", "MO");
@@ -66,18 +67,22 @@ public final class I18n {
     public static I18n of(Locale locale) {
         Objects.requireNonNull(locale, "locale");
         for (Locale language : LANGUAGES) {
-            if (language.getLanguage().equals(locale.getLanguage()) && !traditionalChinese(locale)) {
+            if (language.getLanguage().equals(locale.getLanguage()) && sameWriting(language, locale)) {
                 return new I18n(language);
             }
         }
         return new I18n(Locale.ENGLISH);
     }
 
-    // Only simplified Chinese is translated: the traditional script is another written language.
+    // Chinese is written in two scripts: the locale picks the translation.
+    private static boolean sameWriting(Locale language, Locale locale) {
+        return switch (language.getLanguage()) {
+            case "zh" -> language.equals(Locale.TRADITIONAL_CHINESE) == traditionalChinese(locale);
+            default -> true;
+        };
+    }
+
     private static boolean traditionalChinese(Locale locale) {
-        if (!locale.getLanguage().equals("zh")) {
-            return false;
-        }
         String script = locale.getScript();
         return script.equals("Hant") || (script.isEmpty() && TRADITIONAL_REGIONS.contains(locale.getCountry()));
     }

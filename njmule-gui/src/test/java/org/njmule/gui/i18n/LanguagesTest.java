@@ -71,7 +71,8 @@ class LanguagesTest {
                 arguments(Locale.of("pl"), "Polski", "Język"),
                 arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"),
                 arguments(Locale.of("ru"), "Русский", "Язык"),
-                arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"));
+                arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
+                arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"));
     }
 
     static Stream<Locale> translations() {
@@ -92,7 +93,8 @@ class LanguagesTest {
                 Locale.of("pl"),
                 Locale.of("pt", "BR"),
                 Locale.of("ru"),
-                Locale.SIMPLIFIED_CHINESE);
+                Locale.SIMPLIFIED_CHINESE,
+                Locale.TRADITIONAL_CHINESE);
     }
 
     @ParameterizedTest
@@ -130,9 +132,12 @@ class LanguagesTest {
         "zh-CN, zh-CN",
         "zh-SG, zh-CN",
         "zh-Hans-HK, zh-CN",
-        "zh-TW, en",
-        "zh-HK, en",
-        "zh-Hant, en",
+        "zh-Hans-TW, zh-CN",
+        "zh-TW, zh-TW",
+        "zh-HK, zh-TW",
+        "zh-MO, zh-TW",
+        "zh-Hant, zh-TW",
+        "zh-Hant-CN, zh-TW",
         "sv-SE, en",
         "ja-JP, en"
     })
