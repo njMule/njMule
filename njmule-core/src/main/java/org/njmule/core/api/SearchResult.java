@@ -29,7 +29,12 @@ public record SearchResult(
         Objects.requireNonNull(type, "type");
     }
 
-    /** The ed2k link of the file. */
+    /** Whether {@code name} and {@code size} make a file that can be downloaded, as {@link #link()} needs. */
+    public static boolean isDownloadable(String name, long size) {
+        return !name.isBlank() && size > 0 && size <= Ed2kLink.MAX_FILE_SIZE;
+    }
+
+    /** The ed2k link of the file; only for a {@linkplain #isDownloadable downloadable} name and size. */
     public Ed2kLink.FileLink link() {
         return Ed2kLink.FileLink.of(this.name, this.size, this.hash);
     }

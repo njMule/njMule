@@ -38,7 +38,6 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.engine.EngineLoop;
-import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -339,7 +338,7 @@ public final class SearchManager {
     private void mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
         List<SearchResult> changed = new ArrayList<>();
         for (SearchResult file : found) {
-            if (file.name().isBlank() || file.size() <= 0 || file.size() > Ed2k.MAX_FILE_SIZE) {
+            if (!SearchResult.isDownloadable(file.name(), file.size())) {
                 continue;
             }
             if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {

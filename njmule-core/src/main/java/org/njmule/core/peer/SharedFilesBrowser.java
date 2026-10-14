@@ -106,7 +106,8 @@ public final class SharedFilesBrowser {
             FileEntry entry = FileEntry.read(in);
             if (entry.name().isPresent()
                     && entry.size().isPresent()
-                    && entry.size().getAsLong() > 0) {
+                    && SearchResult.isDownloadable(
+                            entry.name().get(), entry.size().getAsLong())) {
                 files.add(new SearchResult(
                         entry.hash(), entry.name().get(), entry.size().getAsLong(), 1, 0, entry.type()));
             }

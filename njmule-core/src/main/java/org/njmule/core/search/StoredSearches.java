@@ -17,7 +17,6 @@
 package org.njmule.core.search;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,24 +43,31 @@ public final class StoredSearches {
 
     private StoredSearches() {}
 
-    /** The searches in {@code file}; none when there is no file. */
+    /**
+     * The searches in {@code file}, or in its backup when it is damaged; none when there is no file. Tabs that browsed
+     * a client's shared files are left out: they cannot be asked again.
+     */
     public static List<SavedSearch> load(Path file) throws IOException {
         AtomicFiles.cleanupInterruptedWrite(file);
-        byte[] data;
+        List<SearchFiles.StoredSearch> stored;
         try {
-            data = Files.readAllBytes(file);
+            stored = AtomicFiles.read(file, in -> {
+                try {
+                    return SearchFiles.readStored(in.readAllBytes());
+                } catch (DecodeException e) {
+                    throw new IOException(file + ": " + e.getMessage(), e);
+                }
+            });
         } catch (NoSuchFileException e) {
             return List.of();
         }
-        try {
-            List<SavedSearch> searches = new ArrayList<>();
-            for (SearchFiles.StoredSearch stored : SearchFiles.readStored(data)) {
-                searches.add(saved(stored));
+        List<SavedSearch> searches = new ArrayList<>();
+        for (SearchFiles.StoredSearch search : stored) {
+            if (!search.clientSharedFiles()) {
+                searches.add(saved(search));
             }
-            return List.copyOf(searches);
-        } catch (DecodeException e) {
-            throw new IOException(file + ": " + e.getMessage(), e);
         }
+        return List.copyOf(searches);
     }
 
     public static void save(Path file, List<SavedSearch> searches) throws IOException {
@@ -84,7 +90,8 @@ public final class StoredSearches {
             FileEntry entry = new FileEntry(r.fileHash(), r.clientId(), r.port(), r.tags());
             if (entry.name().isPresent()
                     && entry.size().isPresent()
-                    && entry.size().getAsLong() > 0) {
+                    && SearchResult.isDownloadable(
+                            entry.name().get(), entry.size().getAsLong())) {
                 results.add(new SearchResult(
                         entry.hash(),
                         entry.name().get(),
@@ -94,7 +101,24 @@ public final class StoredSearches {
                         entry.type()));
             }
         }
-        return new SavedSearch(stored.title(), new SearchRequest(stored.expression(), scope), results);
+        return new SavedSearch(
+                stored.title(),
+                new SearchRequest(withFileType(stored.expression(), stored.fileType()), scope),
+                results);
+    }
+
+    // Other clients keep the file type apart from the expression; it becomes a type condition when it is one we know.
+    private static String withFileType(String expression, String fileType) {
+        if (fileType.isBlank()) {
+            return expression;
+        }
+        String typed = expression + " @type=" + fileType.strip();
+        try {
+            SearchParser.parse(typed);
+            return typed;
+        } catch (SearchSyntaxException e) {
+            return expression;
+        }
     }
 
     private static SearchFiles.StoredSearch stored(long id, SavedSearch search) {

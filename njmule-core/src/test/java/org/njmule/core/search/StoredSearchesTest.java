@@ -28,7 +28,10 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.SearchFiles;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
 
 class StoredSearchesTest {
 
@@ -55,6 +58,73 @@ class StoredSearchesTest {
                 .extracting(SearchFiles.StoredSearch::type)
                 .as("the numbers other clients use for the methods")
                 .containsExactly(3, 1);
+    }
+
+    @Test
+    void leavesOutResultsThatCannotBeDownloaded() throws Exception {
+        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
+        Files.write(
+                file,
+                SearchFiles.writeStored(List.of(stored(
+                        1,
+                        false,
+                        "film",
+                        "",
+                        List.of(
+                                result(1, "good.mkv", 1000),
+                                result(2, " ", 1000),
+                                result(3, "zero.bin", 0),
+                                result(4, "huge.bin", Ed2k.MAX_FILE_SIZE + 1),
+                                result(5, "largest.bin", Ed2k.MAX_FILE_SIZE))))));
+
+        List<SearchResult> results = StoredSearches.load(file).getFirst().results();
+
+        assertThat(results).extracting(SearchResult::name).containsExactly("good.mkv", "largest.bin");
+        assertThat(results).allSatisfy(r -> assertThat(r.link().size()).isEqualTo(r.size()));
+    }
+
+    @Test
+    void keepsTheFileTypeOfAnImportedSearchAndSkipsBrowsedClients() throws Exception {
+        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
+        Files.write(
+                file,
+                SearchFiles.writeStored(List.of(
+                        stored(1, false, "film", "Video", List.of()),
+                        stored(2, true, "SomeUser", "", List.of(result(1, "shared.mkv", 1000))),
+                        stored(2, false, "setup", "Pro", List.of()),
+                        stored(2, false, "set", "EmuleCollection", List.of()),
+                        stored(2, false, "anything", "", List.of()))));
+
+        List<SavedSearch> searches = StoredSearches.load(file);
+
+        assertThat(searches)
+                .extracting(s -> s.request().expression())
+                .containsExactly("film @type=Video", "setup @type=Pro", "set", "anything");
+        assertThat(SearchParser.parse(searches.getFirst().request().expression()))
+                .isEqualTo(SearchParser.parse("film @type=video"));
+    }
+
+    @Test
+    void fallsBackToTheBackupOfACorruptFile() throws Exception {
+        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
+        List<SavedSearch> first =
+                List.of(new SavedSearch("", new SearchRequest("first", SearchRequest.Scope.SERVER), List.of()));
+        StoredSearches.save(file, first);
+        StoredSearches.save(
+                file, List.of(new SavedSearch("", new SearchRequest("second", SearchRequest.Scope.SERVER), List.of())));
+        Files.write(file, new byte[] {0x0F, 1, 5});
+
+        assertThat(StoredSearches.load(file)).isEqualTo(first);
+    }
+
+    private static SearchFiles.StoredSearch stored(
+            int type, boolean clientShared, String expression, String fileType, List<SearchFiles.Result> results) {
+        return new SearchFiles.StoredSearch(0, type, clientShared, "", expression, fileType, results);
+    }
+
+    private static SearchFiles.Result result(int seed, String name, long size) {
+        return new SearchFiles.Result(
+                hash(seed), 0, 0, List.of(Tag.of(FileTag.FILENAME, name), Tag.of(FileTag.FILESIZE, size)));
     }
 
     private static Hash16 hash(int seed) {
