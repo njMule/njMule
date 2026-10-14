@@ -110,7 +110,7 @@ class ServerControlTest {
                             dirs.data().resolve("temp"),
                             () -> dirs.data().resolve("incoming")))
                     .get(10, TimeUnit.SECONDS);
-            InetSocketAddress ipv6 = new InetSocketAddress(InetAddress.getByName("::1"), 4665);
+            InetSocketAddress ipv6 = new InetSocketAddress(InetAddress.ofLiteral("::1"), 4665);
             FileEntry file = new FileEntry(
                     Hash16.parseHex("ab".repeat(16)),
                     0,
