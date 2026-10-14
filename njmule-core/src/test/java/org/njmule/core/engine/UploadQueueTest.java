@@ -42,10 +42,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.BanInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
@@ -286,6 +288,26 @@ class UploadQueueTest {
         // A list can take a megabyte: one a connection.
         client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code()));
         assertThat(client.poll(Duration.ofSeconds(1))).isEmpty();
+    }
+
+    @Test
+    void theAichHashOfADownloadIsToldToClientsThatAskForIt() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        Hash16 hash = Hash16.parseHex("5A".repeat(16));
+        Hash20 aich = Hash20.of(new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
+        engine.addDownload(new Ed2kLink.FileLink(
+                        "partial.bin", 1_000_000, hash, Optional.of(aich), List.of(), List.of(), List.of()))
+                .get(10, TimeUnit.SECONDS);
+        Client client = this.client(engine.preferences().tcpPort(), 19);
+
+        client.send(
+                Packet.of(Protocol.EMULE, Opcodes.Extended.AICHFILEHASHREQ.code(), new PacketWriter().hash16(hash)));
+        Optional<Packet> answer = client.poll(Duration.ofSeconds(3));
+        assertThat(answer).isPresent();
+        assertThat(answer.get().opcode()).isEqualTo(Opcodes.Extended.AICHFILEHASHANS.code());
+        PacketReader in = answer.get().reader();
+        assertThat(in.hash16()).isEqualTo(hash);
+        assertThat(in.hash20()).isEqualTo(aich);
     }
 
     @Test

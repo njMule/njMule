@@ -91,7 +91,7 @@ final class UploadSession implements PeerLink.Role {
         /** The client broke the rules in a way that only an attacker would; it is banned. */
         void misbehaved(UploadSession session, String reason);
 
-        /** The AICH master hash of the shared {@code file}, when we have its tree. */
+        /** The AICH master hash of {@code file}, shared with its tree or downloading with the hash known. */
         Optional<Hash20> aichMaster(Hash16 file);
 
         /** The AICH recovery data of {@code part} of {@code file}, when we have its tree with {@code master}. */

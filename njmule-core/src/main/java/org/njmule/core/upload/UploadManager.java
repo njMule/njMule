@@ -807,7 +807,12 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public Optional<Hash20> aichMaster(Hash16 file) {
-            return UploadManager.this.aichTrees.apply(file).map(AichTree::masterHash);
+            UploadManager manager = UploadManager.this;
+            return manager.aichTrees
+                    .apply(file)
+                    .map(AichTree::masterHash)
+                    .or(() ->
+                            manager.downloads.apply(file).flatMap(d -> d.file().aichHash()));
         }
 
         @Override
