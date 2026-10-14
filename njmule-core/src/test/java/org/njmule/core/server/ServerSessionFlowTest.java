@@ -216,6 +216,41 @@ class ServerSessionFlowTest {
     }
 
     @Test
+    void aServerThatCanObfuscateIsDialedPlainlyWhenObfuscationIsOnlySupported() throws Exception {
+        this.preferences = this.preferences.toBuilder()
+                .obfuscation(ObfuscationMode.SUPPORTED)
+                .build();
+        try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
+            ServerMet.Server target = new ServerMet.Server(server.ip(), server.port(), List.of())
+                    .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), ServerDatagrams.UDP_TCP_OBFUSCATION))
+                    .with(new Tag.IntTag(TagName.id(ServerTag.TCPPORTOBFUSCATION), 9));
+
+            this.onLoop(() -> {
+                this.session.connect(Optional.of(target));
+                return null;
+            });
+
+            assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
+            long other = Ipv4.toEd2k(Ipv4.parse("5.6.7.8"));
+            server.send(
+                    new ServerMessages.IdChange(other, 0, 0).encode(),
+                    new ServerMessages.ServerIdent(
+                                    Hash16.parseHex("02".repeat(16)),
+                                    server.ip(),
+                                    server.port(),
+                                    Optional.empty(),
+                                    Optional.empty())
+                            .encode(),
+                    new ServerMessages.ServerStatus(3, 4).encode());
+            assertThat(this.next("status")).isEqualTo("status 3/4");
+            assertThat(this.onLoop(() -> this.session.id().orElseThrow().clientId()))
+                    .as("a new id while logged in")
+                    .isEqualTo(other);
+            assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
+        }
+    }
+
+    @Test
     void theCapabilitiesSayHowMuchObfuscationWeWant() {
         int base = ServerMessages.CAP_ZLIB
                 | ServerMessages.CAP_NEWTAGS
