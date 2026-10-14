@@ -36,6 +36,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.image.Image;
 import javafx.stage.PopupWindow;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
@@ -267,12 +268,17 @@ public final class DesktopApp implements AutoCloseable {
             }
         }
         iconEveryWindow(List.copyOf(stage.getIcons()));
-        this.settings.window().ifPresent(b -> {
-            stage.setX(b[0]);
-            stage.setY(b[1]);
-            stage.setWidth(b[2]);
-            stage.setHeight(b[3]);
-        });
+        // A place on a monitor unplugged since would put the window out of sight.
+        this.settings
+                .window()
+                .filter(b ->
+                        !Screen.getScreensForRectangle(b[0], b[1], b[2], b[3]).isEmpty())
+                .ifPresent(b -> {
+                    stage.setX(b[0]);
+                    stage.setY(b[1]);
+                    stage.setWidth(b[2]);
+                    stage.setHeight(b[3]);
+                });
         stage.setMaximized(this.settings.maximized());
         stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         stage.setScene(this.scene);
@@ -554,8 +560,9 @@ public final class DesktopApp implements AutoCloseable {
         return this.trayMenu;
     }
 
+    // A minimised window does not report where it shows (on Windows -32000): its last place is kept.
     private void remember(Stage stage) {
-        if (!stage.isMaximized()) {
+        if (!stage.isMaximized() && !stage.isIconified()) {
             this.settings.setWindow(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight());
         }
         this.settings.setMaximized(stage.isMaximized());

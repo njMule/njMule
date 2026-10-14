@@ -18,11 +18,14 @@ package org.njmule.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import javafx.geometry.Rectangle2D;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.junit.jupiter.api.BeforeAll;
@@ -96,6 +99,64 @@ class DesktopAppTest {
         assertThat(saved.existed()).isTrue();
         assertThat(saved.screen()).isEqualTo("search");
         assertThat(saved.window()).isPresent();
+    }
+
+    @Test
+    void aWindowPlaceOffEveryScreenIsLeftAndAnIconNeverSavesOne() throws Exception {
+        Path gui = Files.createDirectories(this.dir.resolve("gui"));
+        // As left by a monitor since unplugged.
+        Files.writeString(
+                gui.resolve(GuiSettings.FILE_NAME),
+                "window.x=-50000\nwindow.y=-50000\nwindow.width=900\nwindow.height=700\n");
+        DesktopApp app = this.open();
+        AtomicReference<Stage> stage = new AtomicReference<>();
+        try {
+            FxTesting.onFx(() -> {
+                stage.set(new Stage());
+                app.show(stage.get());
+            });
+            Rectangle2D shown = FxTesting.onFx(() -> new Rectangle2D(
+                    stage.get().getX(),
+                    stage.get().getY(),
+                    stage.get().getWidth(),
+                    stage.get().getHeight()));
+            assertThat(FxTesting.onFx(() -> Screen.getScreensForRectangle(shown)))
+                    .as("the window shows on a screen")
+                    .isNotEmpty();
+
+            FxTesting.onFx(() -> {
+                stage.get().setX(10);
+                stage.get().setY(20);
+            });
+            assertThat(FxTesting.onFx(() -> stage.get().getX())).isEqualTo(10);
+            // Minimised, the place a window reports is not where it shows: on Windows -32000.
+            FxTesting.onFx(() -> {
+                stage.get().setIconified(true);
+                stage.get().close();
+            });
+        } finally {
+            app.close();
+        }
+        assertThat(GuiSettings.load(gui).window())
+                .as("the place before the window was minimised")
+                .hasValueSatisfying(b -> assertThat(b[0]).isNotEqualTo(10));
+    }
+
+    // An app in the test's folder, on free ports and without Kad: never on the ports of a running eMule.
+    private DesktopApp open() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
+        }
+        int udp;
+        try (DatagramSocket probe = new DatagramSocket(0)) {
+            udp = probe.getLocalPort();
+        }
+        Files.writeString(
+                config.resolve("njmule.properties"),
+                "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");
+        return DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
     }
 
     private static List<Window> showing() {

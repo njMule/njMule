@@ -128,6 +128,9 @@ public final class GuiSettings {
             } catch (NumberFormatException e) {
                 return Optional.empty();
             }
+            if (!Double.isFinite(bounds[i])) {
+                return Optional.empty();
+            }
         }
         return bounds[2] >= 200 && bounds[3] >= 150 ? Optional.of(bounds) : Optional.empty();
     }

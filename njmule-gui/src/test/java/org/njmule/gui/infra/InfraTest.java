@@ -143,6 +143,17 @@ class InfraTest {
     }
 
     @Test
+    void windowBoundsThatAreNoNumbersAreLeft() throws Exception {
+        for (String broken : List.of(
+                "window.x=NaN\nwindow.y=0\nwindow.width=800\nwindow.height=600\n",
+                "window.x=0\nwindow.y=-Infinity\nwindow.width=800\nwindow.height=600\n",
+                "window.x=0\nwindow.y=0\nwindow.width=Infinity\nwindow.height=600\n")) {
+            Files.writeString(this.dir.resolve(GuiSettings.FILE_NAME), broken);
+            assertThat(GuiSettings.load(this.dir).window()).as(broken).isEmpty();
+        }
+    }
+
+    @Test
     void everyFamilyHasLightAndDarkThemes() {
         for (Themes.Family family : Themes.Family.values()) {
             assertThat(Themes.theme(family, true).isDarkMode()).isTrue();
