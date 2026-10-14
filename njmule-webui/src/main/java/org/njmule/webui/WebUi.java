@@ -39,6 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.SequencedMap;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -110,8 +111,12 @@ public final class WebUi implements AutoCloseable {
     private final int passwordChecks;
     private final Semaphore checking;
 
-    // Results of the latest searches, by search id, oldest first.
+    // Results of the latest searches started here, by search id, oldest first.
     private final LinkedHashMap<Long, Map<Hash16, SearchResult>> results = new LinkedHashMap<>();
+
+    // Results of other searches, such as the desktop window's, which may be ours whose id is not
+    // noted yet; apart, so that they never push ours out. Guarded by the results' lock.
+    private final LinkedHashMap<Long, Map<Hash16, SearchResult>> others = new LinkedHashMap<>();
     private volatile Flow.Subscription subscription;
 
     private WebUi(NjMuleEngine engine, WebUiSettings settings, HttpServer server, int passwordChecks) {
@@ -436,12 +441,27 @@ public final class WebUi implements AutoCloseable {
     }
 
     // Called holding the results' lock.
-    private Map<Hash16, SearchResult> remember(long search) {
-        Map<Hash16, SearchResult> found = this.results.computeIfAbsent(search, k -> new LinkedHashMap<>());
-        while (this.results.size() > SEARCHES_KEPT) {
-            this.results.pollFirstEntry();
+    private void remember(long search) {
+        Map<Hash16, SearchResult> early = this.others.remove(search);
+        this.results.put(search, early == null ? new LinkedHashMap<>() : early);
+        trim(this.results);
+    }
+
+    // The results of search, ours or another one's; called holding the results' lock.
+    private Map<Hash16, SearchResult> resultsOf(long search) {
+        Map<Hash16, SearchResult> ours = this.results.get(search);
+        if (ours != null) {
+            return ours;
         }
+        Map<Hash16, SearchResult> found = this.others.computeIfAbsent(search, k -> new LinkedHashMap<>());
+        trim(this.others);
         return found;
+    }
+
+    private static void trim(SequencedMap<Long, ?> searches) {
+        while (searches.size() > SEARCHES_KEPT) {
+            searches.pollFirstEntry();
+        }
     }
 
     private void server(Map<String, String> form) {
@@ -772,7 +792,8 @@ public final class WebUi implements AutoCloseable {
             }
             // Results may arrive before the request that started the search notes its id.
             synchronized (WebUi.this.results) {
-                Map<Hash16, SearchResult> found = WebUi.this.remember(r.search().value());
+                Map<Hash16, SearchResult> found =
+                        WebUi.this.resultsOf(r.search().value());
                 for (SearchResult result : r.results()) {
                     if (found.size() < RESULTS_KEPT || found.containsKey(result.hash())) {
                         found.put(result.hash(), result);

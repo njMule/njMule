@@ -30,8 +30,11 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -39,6 +42,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchResult;
 
 /** How the web interface answers what the engine does, against an engine a test controls. */
 @Timeout(60)
@@ -169,6 +176,51 @@ class WebUiAnswersTest {
         assertThat(tooMuch.statusCode()).isEqualTo(413);
         assertThat(tooMuch.headers().firstValue("Content-Type")).hasValue("text/html; charset=utf-8");
         assertThat(tooMuch.body()).contains("Too much text");
+    }
+
+    @Test
+    void searchesOfTheWindowLeaveThoseOfThePagesAlone() throws Exception {
+        this.start();
+        this.login();
+        this.fake.answer("search", args -> CompletableFuture.completedFuture(new SearchId(1)));
+        HttpResponse<String> started = this.post("/search", Map.of("query", "linux", "csrf", this.csrf()));
+        assertThat(started.headers().firstValue("Location")).hasValue("/search?id=1");
+        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(1), List.of(result("first.iso"))));
+        for (long other = 100; other < 120; other++) {
+            this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(other), List.of(result("other.iso"))));
+        }
+        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(1), List.of(result("second.iso"))));
+        awaitPage(() -> this.get("/search?id=1").body().contains("second.iso"));
+        assertThat(this.get("/search?id=1").body()).contains("first.iso").doesNotContain("other.iso");
+        assertThat(this.get("/search?id=100").body()).doesNotContain("results;");
+
+        // Results may come before the request that started the search has its id.
+        this.fake.answer("search", args -> {
+            this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(2), List.of(result("early.iso"))));
+            return CompletableFuture.supplyAsync(
+                    () -> new SearchId(2), CompletableFuture.delayedExecutor(500, TimeUnit.MILLISECONDS));
+        });
+        this.post("/search", Map.of("query", "early", "csrf", this.csrf()));
+        assertThat(this.get("/search?id=2").body()).contains("early.iso");
+    }
+
+    private static SearchResult result(String name) {
+        return new SearchResult(
+                Hash16.parseHex(
+                        Integer.toHexString(name.hashCode() | 0x10000000).repeat(4)),
+                name,
+                1000,
+                1,
+                1,
+                Optional.empty());
+    }
+
+    private static void awaitPage(Callable<Boolean> condition) throws Exception {
+        long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (!condition.call()) {
+            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
+            Thread.sleep(20);
+        }
     }
 
     private void start() throws IOException {
