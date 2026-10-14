@@ -18,10 +18,12 @@ package org.njmule.core.search;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.njmule.core.files.FileTypes;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.io.StringEncoding;
+import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.search.SearchExpr.And;
 import org.njmule.core.search.SearchExpr.Comparison;
 import org.njmule.core.search.SearchExpr.Keyword;
@@ -50,11 +52,42 @@ public final class SearchTreeCodec {
 
     /**
      * The tree to send: an expression made only of ANDed keywords becomes one keyword with the words joined by spaces,
-     * which servers handle more efficiently.
+     * which servers handle more efficiently; archives and disc images are asked for as {@link #indexedTypes programs}.
      */
     public static SearchExpr forServer(SearchExpr expr) {
         List<String> words = new ArrayList<>();
-        return onlyAndedKeywords(expr, words) && words.size() > 1 ? new Keyword(String.join(" ", words)) : expr;
+        return onlyAndedKeywords(expr, words) && words.size() > 1
+                ? new Keyword(String.join(" ", words))
+                : indexedTypes(expr);
+    }
+
+    /**
+     * {@code expr} with archives and disc images asked for as programs, the type servers and Kad nodes index them
+     * under; the same tree when it asks for neither.
+     */
+    public static SearchExpr indexedTypes(SearchExpr expr) {
+        return switch (expr) {
+            case And e -> {
+                SearchExpr left = indexedTypes(e.left());
+                SearchExpr right = indexedTypes(e.right());
+                yield left.equals(e.left()) && right.equals(e.right()) ? e : new And(left, right);
+            }
+            case Or e -> {
+                SearchExpr left = indexedTypes(e.left());
+                SearchExpr right = indexedTypes(e.right());
+                yield left.equals(e.left()) && right.equals(e.right()) ? e : new Or(left, right);
+            }
+            case Not e -> {
+                SearchExpr left = indexedTypes(e.left());
+                SearchExpr right = indexedTypes(e.right());
+                yield left.equals(e.left()) && right.equals(e.right()) ? e : new Not(left, right);
+            }
+            case StringAttr a
+            when a.tag() == FileTag.FILETYPE
+                    && (a.value().equals(FileTypes.ARCHIVE) || a.value().equals(FileTypes.DISC_IMAGE)) ->
+                new StringAttr(a.tag(), FileTypes.PROGRAM);
+            default -> expr;
+        };
     }
 
     public static void write(PacketWriter out, SearchExpr expr, boolean supports64Bit) {

@@ -33,6 +33,11 @@ public final class FileTypes {
 
     public static final String DOCUMENT = "Doc";
 
+    /** Searches for archives and disc images: the networks index both as {@link #PROGRAM}. */
+    public static final String ARCHIVE = "Arc";
+
+    public static final String DISC_IMAGE = "Iso";
+
     private static final Map<String, Integer> CODES = Map.of(AUDIO, 1, VIDEO, 2, IMAGE, 3, PROGRAM, 4, DOCUMENT, 5);
 
     private static final Map<String, Set<String>> EXTENSIONS = Map.of(
@@ -55,21 +60,35 @@ public final class FileTypes {
                     "chm", "csv", "doc", "docx", "epub", "htm", "html", "nfo", "odt", "pdf", "ppt", "pptx", "rtf",
                     "txt", "xls", "xlsx"));
 
+    private static final Set<String> ARCHIVES =
+            Set.of("7z", "ace", "bz2", "cab", "gz", "rar", "tar", "tgz", "xz", "zip");
+    private static final Set<String> DISC_IMAGES = Set.of("bin", "cue", "dmg", "img", "iso", "mdf", "mds", "nrg");
+
     private FileTypes() {}
 
     /** The type of a file named {@code name}, if its extension tells. */
     public static Optional<String> of(String name) {
-        int dot = name.lastIndexOf('.');
-        if (dot < 0) {
-            return Optional.empty();
-        }
-        String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        String extension = extension(name);
         for (Map.Entry<String, Set<String>> type : EXTENSIONS.entrySet()) {
             if (type.getValue().contains(extension)) {
                 return Optional.of(type.getKey());
             }
         }
         return Optional.empty();
+    }
+
+    /** Whether a file named {@code name} is an {@link #ARCHIVE} or a {@link #DISC_IMAGE}, as {@code kind} asks. */
+    public static boolean isA(String kind, String name) {
+        return switch (kind) {
+            case ARCHIVE -> ARCHIVES.contains(extension(name));
+            case DISC_IMAGE -> DISC_IMAGES.contains(extension(name));
+            default -> throw new IllegalArgumentException("not an archive or disc image search: " + kind);
+        };
+    }
+
+    private static String extension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     /** Whether {@code type} is one of the eD2K file types. */

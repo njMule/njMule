@@ -637,3 +637,6 @@ All notable changes to this project are documented here. The format follows
   answers that follow keep going to the searches that asked for them.
 - The type of a search result comes from its file name, as for our own files; the type the publisher
   reported counts only for names that do not tell it, and only when it is a real file type.
+- Searches for archives or disc images (`@type=arc`, `@type=iso`) ask servers and Kad for programs,
+  the type both index them under, and keep only the archives or disc images among the answers; they
+  found nothing before.

@@ -46,6 +46,9 @@ import org.njmule.core.search.SearchSyntaxException.Reason;
 
 class SearchParserTest {
 
+    private SearchExpr search;
+    private SearchExpr sent;
+
     @Test
     void adjacentWordsAreAndedFromTheRight() {
         assertThat(SearchParser.parse("linux iso")).isEqualTo(new And(kw("linux"), kw("iso")));
@@ -274,6 +277,31 @@ class SearchParserTest {
                 .isEqualTo(kw("ubuntu 24.04 iso"));
         SearchExpr or = SearchParser.parse("a OR b");
         assertThat(SearchTreeCodec.forServer(or)).isSameAs(or);
+    }
+
+    @Test
+    void shouldAskServersForArchivesAndDiscImagesAsPrograms() throws DecodeException {
+        this.givenTheSearch("linux @type=arc");
+        this.whenItIsSentToAServer();
+        this.thenTheServerIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
+
+        this.givenTheSearch("@type=iso linux");
+        this.whenItIsSentToAServer();
+        this.thenTheServerIsAskedFor(new And(new StringAttr(FileTag.FILETYPE, "Pro"), kw("linux")));
+    }
+
+    private void givenTheSearch(String expression) {
+        this.search = SearchParser.parse(expression);
+    }
+
+    private void whenItIsSentToAServer() throws DecodeException {
+        PacketWriter out = new PacketWriter();
+        SearchTreeCodec.write(out, SearchTreeCodec.forServer(this.search), false);
+        this.sent = SearchTreeCodec.read(PacketReader.of(out.toByteArray()));
+    }
+
+    private void thenTheServerIsAskedFor(SearchExpr expected) {
+        assertThat(this.sent).isEqualTo(expected);
     }
 
     @Property

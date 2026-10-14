@@ -45,6 +45,7 @@ import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
@@ -158,7 +159,7 @@ public final class SearchManager {
         KadSearches searches = this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
         String keyword = kadKeyword(expression);
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
-        Optional<Runnable> started = searches.search(keyword, expression, results -> {
+        Optional<Runnable> started = searches.search(keyword, SearchTreeCodec.indexedTypes(expression), results -> {
             if (!search.ended) {
                 this.mergeResults(search, results, false);
             }
@@ -196,6 +197,19 @@ public final class SearchManager {
             }
         }
         return best;
+    }
+
+    // Archives and disc images every match must be: asked for as programs, the others are left out here.
+    private static Optional<String> requiredKind(SearchExpr expression) {
+        return switch (expression) {
+            case SearchExpr.And and -> requiredKind(and.left()).or(() -> requiredKind(and.right()));
+            case SearchExpr.Not not -> requiredKind(not.left());
+            case SearchExpr.StringAttr attr
+            when attr.tag() == FileTag.FILETYPE
+                    && (attr.value().equals(FileTypes.ARCHIVE) || attr.value().equals(FileTypes.DISC_IMAGE)) ->
+                Optional.of(attr.value());
+            default -> Optional.empty();
+        };
     }
 
     // Adds the words every match has; true when alternatives (OR) were left out.
@@ -378,6 +392,9 @@ public final class SearchManager {
             if (!SearchResult.isDownloadable(reported.name(), reported.size())) {
                 continue;
             }
+            if (search.kind.isPresent() && !FileTypes.isA(search.kind.get(), reported.name())) {
+                continue;
+            }
             SearchResult file = withOwnType(reported);
             if (!search.results.containsKey(file.hash()) && search.results.size() >= MAX_RESULTS) {
                 continue;
@@ -451,6 +468,8 @@ public final class SearchManager {
         final SearchId id;
         final SearchExpr expression;
         final SearchRequest.Scope scope;
+        // An archive or disc image search, which the networks answer with every program.
+        final Optional<String> kind;
         final Map<Hash16, SearchResult> results = new LinkedHashMap<>();
         final Deque<ServerMet.Server> udpQueue = new ArrayDeque<>();
         final Set<Integer> askedOverUdp = new HashSet<>();
@@ -467,6 +486,7 @@ public final class SearchManager {
             this.id = id;
             this.expression = expression;
             this.scope = scope;
+            this.kind = requiredKind(expression);
         }
     }
 }

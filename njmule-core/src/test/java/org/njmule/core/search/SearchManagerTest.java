@@ -77,6 +77,7 @@ class SearchManagerTest {
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
     private final List<SearchResult> reported = new CopyOnWriteArrayList<>();
     private Consumer<List<SearchResult>> kadAnswers;
+    private SearchExpr kadExpression;
     private final List<AutoCloseable> resources = new ArrayList<>();
     private volatile Optional<ServerUdp> udp = Optional.empty();
     private volatile Optional<SearchManager.KadSearches> kad = Optional.empty();
@@ -199,8 +200,22 @@ class SearchManagerTest {
         this.thenTheLastResultHasTheType(Optional.empty());
     }
 
+    @Test
+    void shouldAskKadForArchivesAsProgramsAndKeepOnlyTheArchives() throws Exception {
+        this.givenAKadSearchFor("linux @type=archive");
+
+        this.whenKadAnswers(
+                new SearchResult(hash(14), "linux setup.exe", 1000, 1, 0, Optional.of("Pro")),
+                new SearchResult(hash(15), "linux sources.tar.gz", 1000, 1, 0, Optional.of("Pro")));
+
+        this.thenKadIsAskedFor(new SearchExpr.And(
+                new SearchExpr.Keyword("linux"), new SearchExpr.StringAttr(FileTag.FILETYPE, "Pro")));
+        this.thenTheResultsReportedAre("linux sources.tar.gz");
+    }
+
     private void givenAKadSearchFor(String words) throws Exception {
         this.kad = Optional.of((keyword, expression, results) -> {
+            this.kadExpression = expression;
             this.kadAnswers = results;
             return Optional.of(() -> {});
         });
@@ -211,12 +226,20 @@ class SearchManagerTest {
         this.whenKadAnswers(result);
     }
 
-    private void whenKadAnswers(SearchResult result) throws Exception {
+    private void whenKadAnswers(SearchResult... results) throws Exception {
         this.onLoop(() -> {
-            this.kadAnswers.accept(List.of(result));
+            this.kadAnswers.accept(List.of(results));
             return null;
         });
         this.next();
+    }
+
+    private void thenKadIsAskedFor(SearchExpr expected) {
+        assertThat(this.kadExpression).isEqualTo(expected);
+    }
+
+    private void thenTheResultsReportedAre(String... names) {
+        assertThat(this.reported).extracting(SearchResult::name).containsExactly(names);
     }
 
     private void thenTheLastResultHasTheMedia(SearchResult.Media expected) {
