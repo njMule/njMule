@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -118,6 +119,11 @@ public final class EngineLoop implements AutoCloseable {
             future.completeExceptionally(new RejectedExecutionException("engine loop not accepting"));
         }
         return future;
+    }
+
+    /** Like {@link #submit}, for a task that starts asynchronous work: the future completes as that work does. */
+    public <T> CompletableFuture<T> submitAsync(Callable<? extends CompletionStage<T>> task) {
+        return this.submit(task).thenCompose(work -> work);
     }
 
     /** Runs {@code job} once after {@code delay}, from any thread. */

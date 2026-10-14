@@ -957,9 +957,8 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<List<SearchResult>> browseSharedFiles(ServerAddress client) {
         Objects.requireNonNull(client, "client");
         return resolve(client.host())
-                .thenCompose(ip -> this.loop.submit(
-                        () -> this.network.browse(new InetSocketAddress(Ipv4.format(ip), client.port()))))
-                .thenCompose(files -> files);
+                .thenCompose(ip -> this.loop.submitAsync(
+                        () -> this.network.browse(new InetSocketAddress(Ipv4.format(ip), client.port()))));
     }
 
     @Override
