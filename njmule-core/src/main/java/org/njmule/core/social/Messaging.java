@@ -23,6 +23,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,17 +79,19 @@ public final class Messaging implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(Messaging.class);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration IDLE = Duration.ofMinutes(10);
+    private static final int MAX_FILTER_STATES = 1_000;
 
     private static final class Conversation {
         private Hello peer;
         private Consumer<Packet> sender;
         private BooleanSupplier open = () -> false;
         private TcpConnection own;
+        // Whether the conversation goes over our own connection rather than one the client opened.
+        private boolean overOwn;
         private boolean connecting;
         // A CAPTCHA is asked for in answer to our messages: none is accepted before we write.
         private boolean wrote;
         private final List<String> pending = new ArrayList<>();
-        private final ChatFilter.State filtered = new ChatFilter.State();
 
         boolean isOpen() {
             return this.peer != null && this.open.getAsBoolean();
@@ -102,6 +105,13 @@ public final class Messaging implements AutoCloseable {
     private final Supplier<ChatFilter> filter;
     private final Predicate<Hash16> friends;
     private final Map<InetSocketAddress, Conversation> conversations = new HashMap<>();
+    // What the filter knows of the latest clients, by user hash: a client coming back on another port keeps it.
+    private final Map<Hash16, ChatFilter.State> filterStates = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Hash16, ChatFilter.State> eldest) {
+            return this.size() > MAX_FILTER_STATES;
+        }
+    };
 
     /**
      * @param filter which incoming messages show, as the preferences say now
@@ -128,10 +138,11 @@ public final class Messaging implements AutoCloseable {
         if (text.isBlank()) {
             return;
         }
+        this.prune();
         Conversation c = this.conversations.computeIfAbsent(to, a -> new Conversation());
         c.wrote = true;
-        c.filtered.wrote();
         if (c.isOpen()) {
+            this.filterState(c.peer.userHash()).wrote();
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
             return;
         }
@@ -157,11 +168,13 @@ public final class Messaging implements AutoCloseable {
             return false;
         }
         InetSocketAddress address = new InetSocketAddress(connection.getAddress(), peer.tcpPort());
+        this.prune();
         Conversation c = this.conversations.computeIfAbsent(address, a -> new Conversation());
         if (!c.isOpen() || c.own == null) {
             c.peer = peer;
             c.sender = reply;
             c.open = open;
+            c.overOwn = false;
             this.flush(address, c);
         }
         this.handle(address, peer, proven, packet);
@@ -170,7 +183,17 @@ public final class Messaging implements AutoCloseable {
 
     /** The clients we chat with now. */
     public int conversations() {
+        this.prune();
         return this.conversations.size();
+    }
+
+    // Conversations whose connection closed with nothing left to send go: they hold on to the connection.
+    private void prune() {
+        this.conversations.values().removeIf(c -> !c.connecting && c.own == null && c.pending.isEmpty() && !c.isOpen());
+    }
+
+    private ChatFilter.State filterState(Hash16 userHash) {
+        return this.filterStates.computeIfAbsent(userHash, h -> new ChatFilter.State());
     }
 
     @Override
@@ -226,6 +249,9 @@ public final class Messaging implements AutoCloseable {
     }
 
     private void flush(InetSocketAddress to, Conversation c) {
+        if (!c.pending.isEmpty()) {
+            this.filterState(c.peer.userHash()).wrote();
+        }
         for (String text : c.pending) {
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
         }
@@ -240,9 +266,8 @@ public final class Messaging implements AutoCloseable {
         try {
             if (packet.protocol() == Protocol.EDONKEY) {
                 String text = ChatMessages.text(packet);
-                Conversation c = this.conversations.get(address);
-                if (c != null
-                        && !this.filter.get().shows(c.filtered, proven && this.friends.test(peer.userHash()), text)) {
+                boolean friend = proven && this.friends.test(peer.userHash());
+                if (!this.filter.get().shows(this.filterState(peer.userHash()), friend, text)) {
                     logger.debug("Filtered a message from {}", address);
                     return;
                 }
@@ -304,6 +329,7 @@ public final class Messaging implements AutoCloseable {
                     c.peer = Hello.decode(packet);
                     c.sender = connection::send;
                     c.open = connection::isOpen;
+                    c.overOwn = true;
                     Messaging.this.flush(this.to, c);
                 } else if (c.peer != null && isChat(packet)) {
                     // Whoever answers at the address we chose to write to is who we meant.
@@ -321,7 +347,11 @@ public final class Messaging implements AutoCloseable {
                 Conversation c = this.conversation;
                 if (c.own == connection) {
                     c.own = null;
-                    c.peer = null;
+                    // A conversation a connection of the client took over goes on there.
+                    if (c.overOwn) {
+                        c.peer = null;
+                        c.overOwn = false;
+                    }
                     Messaging.this.unreachable(this.to, c, "the connection closed");
                 }
             });
