@@ -73,7 +73,8 @@ class LanguagesTest {
                 arguments(Locale.of("pt", "PT"), "Português (Portugal)", "Linguagem"),
                 arguments(Locale.of("ru"), "Русский", "Язык"),
                 arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
-                arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"));
+                arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"),
+                arguments(Locale.JAPANESE, "日本語", "言語"));
     }
 
     static Stream<Locale> translations() {
@@ -96,7 +97,8 @@ class LanguagesTest {
                 Locale.of("pt", "PT"),
                 Locale.of("ru"),
                 Locale.SIMPLIFIED_CHINESE,
-                Locale.TRADITIONAL_CHINESE);
+                Locale.TRADITIONAL_CHINESE,
+                Locale.JAPANESE);
     }
 
     @ParameterizedTest
@@ -109,12 +111,18 @@ class LanguagesTest {
         this.thenTheTextOfIs("IDS_PW_LANG", languageWord);
     }
 
-    @Test
-    void chineseTextsLoseTheMnemonicInBrackets() {
-        this.whenTheTextsOfALanguageAreLoaded(Locale.SIMPLIFIED_CHINESE);
+    @ParameterizedTest
+    @CsvSource({
+        "zh-CN, IDS_EM_SEARCH, 搜索",
+        "zh-CN, IDS_DL_PREVIEW, 预览",
+        "ja, IDS_DL_PREVIEW, プレビュー",
+        "ja, IDS_DL_RESUME, 再開",
+        "ja, IDS_EXIT, 終了"
+    })
+    void aMnemonicWrittenInBracketsIsDropped(String language, String key, String text) {
+        this.whenTheTextsOfALanguageAreLoaded(Locale.forLanguageTag(language));
 
-        this.thenTheTextOfIs("IDS_EM_SEARCH", "搜索");
-        this.thenTheTextOfIs("IDS_DL_PREVIEW", "预览");
+        this.thenTheTextOfIs(key, text);
     }
 
     @ParameterizedTest
@@ -144,7 +152,9 @@ class LanguagesTest {
         "zh-Hant, zh-TW",
         "zh-Hant-CN, zh-TW",
         "sv-SE, en",
-        "ja-JP, en"
+        "ja-JP, ja",
+        "ar-EG, en",
+        "hi-IN, en"
     })
     void theSystemLanguagePicksItsTranslationOrEnglish(String systemLanguage, String chosen) {
         this.givenTheSystemLanguage(systemLanguage);
