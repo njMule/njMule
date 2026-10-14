@@ -92,7 +92,7 @@ class WebUiPagesTest {
         this.givenKadConnectedAndFirewalled();
 
         this.whenThePageIsAsked("/kad");
-        this.thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall");
+        this.thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall", "Buddy");
 
         this.whenPosted("/kad", Map.of("action", "bootstrap", "address", "10.0.0.5:4672"));
         this.thenTheEngineWasAsked("bootstrap 10.0.0.5:4672");

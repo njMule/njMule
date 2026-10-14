@@ -571,6 +571,8 @@ public final class WebUi implements AutoCloseable {
         KadInfo k = kad.get();
         body.append("<div class=\"cards\">")
                 .append(card("State", !k.connected() ? "not connected" : k.firewalled() ? "firewalled" : "open"))
+                .append(card("UDP", k.udpFirewalled() ? "firewalled" : k.udpVerified() ? "open" : "not checked yet"))
+                .append(card("Buddy", k.buddy().name().toLowerCase(Locale.ROOT)))
                 .append(card("Contacts", k.contacts() + " (" + k.verifiedContacts() + " verified)"))
                 .append(card("Public address", Html.text(k.publicIp().isEmpty() ? "unknown" : k.publicIp())))
                 .append("</div><p>")

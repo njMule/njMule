@@ -206,6 +206,9 @@ final class ApiJson {
         g.writeStringProperty("id", k.id());
         g.writeStringProperty("publicIp", k.publicIp());
         g.writeNumberProperty("udpPort", k.udpPort());
+        g.writeBooleanProperty("udpFirewalled", k.udpFirewalled());
+        g.writeBooleanProperty("udpVerified", k.udpVerified());
+        g.writeStringProperty("buddy", name(k.buddy()));
         g.writeEndObject();
     }
 
