@@ -74,14 +74,14 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     private final InetSocketAddress remote;
     private final Queue<byte[]> control = new ConcurrentLinkedQueue<>();
     private final Queue<byte[]> data = new ConcurrentLinkedQueue<>();
-    // One permit for each frame queued, taken by the writer.
+    // One permit for each frame queued, taken by the writer, and one more from the close that wakes it.
     private final Semaphore ready = new Semaphore(0);
     private final AtomicInteger frames = new AtomicInteger();
     private final AtomicLong queued = new AtomicLong();
     private final AtomicLong queuedData = new AtomicLong();
     private final AtomicBoolean started = new AtomicBoolean();
-    // Null while open, then the cause of the close: empty after a clean one.
-    private final AtomicReference<Optional<IOException>> closure = new AtomicReference<>();
+    // Null while open.
+    private final AtomicReference<Closure> closure = new AtomicReference<>();
     private final AtomicBoolean reported = new AtomicBoolean();
     private volatile FrameLimit frameLimit;
     private volatile Unpacker unpacker = frame -> frame;
@@ -207,20 +207,18 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private void shutdown(Optional<IOException> cause) {
-        if (!this.closure.compareAndSet(null, cause)) {
+        if (!this.closure.compareAndSet(null, new Closure(cause))) {
             return;
         }
         Thread w = this.writer;
         if (cause.isPresent() || w == null) {
             this.control.clear();
             this.data.clear();
-            if (w != null) {
-                w.interrupt();
-            }
+            this.ready.release();
             this.closeSocket();
         } else {
             // The writer sends what is queued, then closes; a peer that does not read is cut off.
-            w.interrupt();
+            this.ready.release();
             Thread.ofVirtual().name("njmule-tcp-" + this.remote + "-flush").start(() -> {
                 try {
                     w.join(FLUSH_WAIT);
@@ -236,9 +234,9 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     // Tells the handler once, when there is one.
     private void report() {
         Handler h = this.handler;
-        Optional<IOException> cause = this.closure.get();
-        if (h != null && cause != null && this.reported.compareAndSet(false, true)) {
-            h.onClosed(this, cause);
+        Closure closed = this.closure.get();
+        if (h != null && closed != null && this.reported.compareAndSet(false, true)) {
+            h.onClosed(this, closed.cause());
         }
     }
 
@@ -284,20 +282,26 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         this.closeSocket();
     }
 
-    // The next frame to write; null once closed and the queues are empty.
+    // The next frame to write; null once closed and the queues are empty. What is queued when a clean close comes still
+    // goes out.
     private byte[] nextFrame() {
         while (this.isOpen()) {
             try {
                 this.ready.acquire();
-                return this.poll();
             } catch (InterruptedException e) {
-                // close() wakes the writer this way; what is queued still goes out.
+                Thread.currentThread().interrupt();
+                return null;
             }
+            byte[] frame = this.poll();
+            if (frame != null) {
+                return frame;
+            }
+            // The close's permit, which comes with no frame.
         }
         return this.ready.tryAcquire() ? this.poll() : null;
     }
 
-    // Every permit stands for a frame queued before it: none is missing unless a failure emptied the queues.
+    // A frame stands behind every permit but the close's, unless a failure emptied the queues.
     private byte[] poll() {
         byte[] frame = this.control.poll();
         if (frame == null) {
@@ -311,4 +315,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         this.frames.decrementAndGet();
         return frame;
     }
+
+    // How the connection ended: the failure, or none after a clean close.
+    private record Closure(Optional<IOException> cause) {}
 }
