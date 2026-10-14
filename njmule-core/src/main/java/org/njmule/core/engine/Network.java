@@ -768,7 +768,12 @@ final class Network {
     }
 
     boolean cancelDownload(Hash16 hash) {
-        int category = this.downloads.download(hash).map(DownloadInfo::category).orElse(Category.NONE);
+        Optional<DownloadInfo> download = this.downloads.download(hash);
+        int category = download.map(DownloadInfo::category).orElse(Category.NONE);
+        // Only a download that was running leaves a place for another.
+        boolean running = download.map(d ->
+                        d.status() == DownloadInfo.Status.DOWNLOADING || d.status() == DownloadInfo.Status.NO_SPACE)
+                .orElse(false);
         boolean cancelled = this.downloads.cancel(hash);
         if (cancelled && this.preferences.get().rememberCancelledFiles()) {
             try {
@@ -777,7 +782,7 @@ final class Network {
                 logger.warn("Cannot save {}", CancelledFiles.FILE_NAME, e);
             }
         }
-        if (cancelled) {
+        if (cancelled && running) {
             this.startNext(category);
         }
         return cancelled;
