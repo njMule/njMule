@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
@@ -165,6 +167,8 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
+    // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
+    private Preferences loaded;
 
     public SettingsScreen(Gui gui) {
         this.gui = gui;
@@ -514,6 +518,7 @@ public final class SettingsScreen implements Screen {
     }
 
     void load(Preferences p) {
+        this.loaded = p;
         this.nick.setText(p.nick());
         this.tcpPort.setText(String.valueOf(p.tcpPort()));
         this.udpPort.setText(String.valueOf(p.udpPort()));
@@ -629,18 +634,22 @@ public final class SettingsScreen implements Screen {
 
     /** Validates the form, then saves the preferences and the look; errors are shown. */
     void apply() {
-        Preferences changed;
+        Changes changes;
+        Preferences shown;
         WebUiSettings web;
         try {
-            changed = this.read(this.gui.model().preferencesProperty().get());
+            changes = this.read();
+            shown = changes.over(this.loaded);
             web = this.readWebUi(WebUiSettings.load(this.gui.directories().config()));
         } catch (IllegalArgumentException e) {
             this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return;
         }
+        // Only what the user changed: a limit the tray or the scheduler set meanwhile stays.
         this.gui
                 .model()
-                .updatePreferences(p -> changed, p -> this.gui.inform().accept(this.gui.t("nj.settings.saved")));
+                .updatePreferences(changes::over, p -> this.gui.inform().accept(this.gui.t("nj.settings.saved")));
+        this.loaded = shown;
         boolean relaunch =
                 !Objects.equals(this.language.getValue(), this.gui.settings().language());
         this.gui.themes().set(this.theme.getValue(), this.mode.getValue());
@@ -665,58 +674,138 @@ public final class SettingsScreen implements Screen {
         }
     }
 
-    private Preferences read(Preferences current) {
-        return current.toBuilder()
-                .nick(this.nickInput.value())
-                .tcpPort(this.tcpPortInput.value())
-                .udpPort(this.udpPortInput.value())
-                .maxUploadKiBps(this.uploadInput.value())
-                .maxDownloadKiBps(this.downloadInput.value())
-                .downloadCapacityKiBps(this.downloadCapacityInput.value())
-                .uploadCapacityKiBps(this.uploadCapacityInput.value())
-                .maxConnections(this.connectionsInput.value())
-                .newConnectionsPerFiveSeconds(this.newConnectionsInput.value())
-                .uploadQueueSize(this.queueSizeInput.value())
-                .maxSourcesPerFile(this.sourcesInput.value())
-                .obfuscation(this.obfuscation.getValue())
-                .ed2kEnabled(this.ed2k.isSelected())
-                .kadEnabled(this.kad.isSelected())
-                .autoConnect(this.autoConnect.isSelected())
-                .reconnect(this.reconnect.isSelected())
-                .secureIdent(this.secureIdent.isSelected())
-                .creditSystem(this.credits.isSelected())
-                .upnp(this.upnp.isSelected())
-                .proxy(new ProxySettings(
-                        this.proxyType.getValue(),
-                        this.proxyHostInput.value(),
-                        this.proxyPortInput.value(),
-                        this.proxyUserInput.value(),
-                        this.proxyPassword.getText()))
-                .incomingDir(this.incomingInput.value())
-                .tempDir(this.tempInput.value())
-                .minFreeSpaceMiB(this.minFreeSpaceInput.value())
-                .deadServerRetries(this.deadRetriesInput.value())
-                .backupCopies(this.backupsInput.value())
-                .ipFilterLevel(this.filterLevelInput.value())
-                .filterLanAddresses(this.filterLan.isSelected())
-                .messageFilter(this.messageFilter.getText().strip())
-                .messagesFromFriendsOnly(this.friendsOnly.isSelected())
-                .advancedSpamFilter(this.spamFilter.isSelected())
-                .addServersFromServer(this.fromServer.isSelected())
-                .addServersFromClients(this.fromClients.isSelected())
-                .staticServersOnly(this.staticOnly.isSelected())
-                .manualServersHighPriority(this.manualHigh.isSelected())
-                .updateServersAtStart(this.updateAtStart.isSelected())
-                .rememberDownloadedFiles(this.rememberDownloaded.isSelected())
-                .rememberCancelledFiles(this.rememberCancelled.isSelected())
-                .storeSearches(this.storeSearches.isSelected())
-                .previewFirst(this.previewFirst.isSelected())
-                .videoPlayer(this.videoPlayer.getText())
-                .videoPlayerArgs(this.videoPlayerArgs.getText())
-                .sharedFilesVisibility(this.visibility.getValue())
-                .addDownloadsPaused(this.addPaused.isSelected())
-                .nextDownload(this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
-                .build();
+    // Each field of the form, against the preferences it was loaded from.
+    private Changes read() {
+        return new Changes(this.loaded)
+                .set(Preferences::nick, Preferences.Builder::nick, this.nickInput.value())
+                .set(Preferences::tcpPort, Preferences.Builder::tcpPort, this.tcpPortInput.value())
+                .set(Preferences::udpPort, Preferences.Builder::udpPort, this.udpPortInput.value())
+                .set(Preferences::maxUploadKiBps, Preferences.Builder::maxUploadKiBps, this.uploadInput.value())
+                .set(Preferences::maxDownloadKiBps, Preferences.Builder::maxDownloadKiBps, this.downloadInput.value())
+                .set(
+                        Preferences::downloadCapacityKiBps,
+                        Preferences.Builder::downloadCapacityKiBps,
+                        this.downloadCapacityInput.value())
+                .set(
+                        Preferences::uploadCapacityKiBps,
+                        Preferences.Builder::uploadCapacityKiBps,
+                        this.uploadCapacityInput.value())
+                .set(Preferences::maxConnections, Preferences.Builder::maxConnections, this.connectionsInput.value())
+                .set(
+                        Preferences::newConnectionsPerFiveSeconds,
+                        Preferences.Builder::newConnectionsPerFiveSeconds,
+                        this.newConnectionsInput.value())
+                .set(Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize, this.queueSizeInput.value())
+                .set(Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile, this.sourcesInput.value())
+                .set(Preferences::obfuscation, Preferences.Builder::obfuscation, this.obfuscation.getValue())
+                .set(Preferences::ed2kEnabled, Preferences.Builder::ed2kEnabled, this.ed2k.isSelected())
+                .set(Preferences::kadEnabled, Preferences.Builder::kadEnabled, this.kad.isSelected())
+                .set(Preferences::autoConnect, Preferences.Builder::autoConnect, this.autoConnect.isSelected())
+                .set(Preferences::reconnect, Preferences.Builder::reconnect, this.reconnect.isSelected())
+                .set(Preferences::secureIdent, Preferences.Builder::secureIdent, this.secureIdent.isSelected())
+                .set(Preferences::creditSystem, Preferences.Builder::creditSystem, this.credits.isSelected())
+                .set(Preferences::upnp, Preferences.Builder::upnp, this.upnp.isSelected())
+                .set(
+                        Preferences::proxy,
+                        Preferences.Builder::proxy,
+                        new ProxySettings(
+                                this.proxyType.getValue(),
+                                this.proxyHostInput.value(),
+                                this.proxyPortInput.value(),
+                                this.proxyUserInput.value(),
+                                this.proxyPassword.getText()))
+                .set(Preferences::incomingDir, Preferences.Builder::incomingDir, this.incomingInput.value())
+                .set(Preferences::tempDir, Preferences.Builder::tempDir, this.tempInput.value())
+                .set(Preferences::minFreeSpaceMiB, Preferences.Builder::minFreeSpaceMiB, this.minFreeSpaceInput.value())
+                .set(
+                        Preferences::deadServerRetries,
+                        Preferences.Builder::deadServerRetries,
+                        this.deadRetriesInput.value())
+                .set(Preferences::backupCopies, Preferences.Builder::backupCopies, this.backupsInput.value())
+                .set(Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel, this.filterLevelInput.value())
+                .set(
+                        Preferences::filterLanAddresses,
+                        Preferences.Builder::filterLanAddresses,
+                        this.filterLan.isSelected())
+                .set(
+                        Preferences::messageFilter,
+                        Preferences.Builder::messageFilter,
+                        this.messageFilter.getText().strip())
+                .set(
+                        Preferences::messagesFromFriendsOnly,
+                        Preferences.Builder::messagesFromFriendsOnly,
+                        this.friendsOnly.isSelected())
+                .set(
+                        Preferences::advancedSpamFilter,
+                        Preferences.Builder::advancedSpamFilter,
+                        this.spamFilter.isSelected())
+                .set(
+                        Preferences::addServersFromServer,
+                        Preferences.Builder::addServersFromServer,
+                        this.fromServer.isSelected())
+                .set(
+                        Preferences::addServersFromClients,
+                        Preferences.Builder::addServersFromClients,
+                        this.fromClients.isSelected())
+                .set(
+                        Preferences::staticServersOnly,
+                        Preferences.Builder::staticServersOnly,
+                        this.staticOnly.isSelected())
+                .set(
+                        Preferences::manualServersHighPriority,
+                        Preferences.Builder::manualServersHighPriority,
+                        this.manualHigh.isSelected())
+                .set(
+                        Preferences::updateServersAtStart,
+                        Preferences.Builder::updateServersAtStart,
+                        this.updateAtStart.isSelected())
+                .set(
+                        Preferences::rememberDownloadedFiles,
+                        Preferences.Builder::rememberDownloadedFiles,
+                        this.rememberDownloaded.isSelected())
+                .set(
+                        Preferences::rememberCancelledFiles,
+                        Preferences.Builder::rememberCancelledFiles,
+                        this.rememberCancelled.isSelected())
+                .set(Preferences::storeSearches, Preferences.Builder::storeSearches, this.storeSearches.isSelected())
+                .set(Preferences::previewFirst, Preferences.Builder::previewFirst, this.previewFirst.isSelected())
+                .set(Preferences::videoPlayer, Preferences.Builder::videoPlayer, this.videoPlayer.getText())
+                .set(Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs, this.videoPlayerArgs.getText())
+                .set(
+                        Preferences::sharedFilesVisibility,
+                        Preferences.Builder::sharedFilesVisibility,
+                        this.visibility.getValue())
+                .set(
+                        Preferences::addDownloadsPaused,
+                        Preferences.Builder::addDownloadsPaused,
+                        this.addPaused.isSelected())
+                .set(
+                        Preferences::nextDownload,
+                        Preferences.Builder::nextDownload,
+                        this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE);
+    }
+
+    /** What the form changed, set on whichever preferences are current when they are written. */
+    private static final class Changes {
+        private final Preferences loaded;
+        private final List<Consumer<Preferences.Builder>> edits = new ArrayList<>();
+
+        Changes(Preferences loaded) {
+            this.loaded = loaded;
+        }
+
+        <T> Changes set(Function<Preferences, T> field, BiConsumer<Preferences.Builder, T> setter, T value) {
+            if (!Objects.equals(field.apply(this.loaded), value)) {
+                this.edits.add(b -> setter.accept(b, value));
+            }
+            return this;
+        }
+
+        Preferences over(Preferences current) {
+            Preferences.Builder builder = current.toBuilder();
+            this.edits.forEach(e -> e.accept(builder));
+            return builder.build();
+        }
     }
 
     // A new password replaces the stored hash; an empty one keeps it.
