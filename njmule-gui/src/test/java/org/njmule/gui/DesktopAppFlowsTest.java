@@ -338,7 +338,7 @@ class DesktopAppFlowsTest {
         menu.show(600, 500);
         Parent root = Window.getWindows().stream()
                 .filter(w -> w.isShowing() && w.getScene() != null)
-                .filter(w -> w instanceof Stage s && s.getOwner() == this.app.trayOwner())
+                .filter(w -> w instanceof Stage s && this.app.trayOwner().equals(s.getOwner()))
                 .map(w -> w.getScene().getRoot())
                 .filter(r -> r.getStyleClass().contains("tray-menu"))
                 .findFirst()
