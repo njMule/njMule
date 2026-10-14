@@ -547,3 +547,5 @@ All notable changes to this project are documented here. The format follows
 - A firewalled njMule that the server asks to call a client back now serves that client's requests
   over the connection, instead of leaving them unanswered; firewalled sources are no longer passed on
   by source exchange as if they could be connected to.
+- With obfuscation required, sources that cannot take it are no longer connected to plain nor asked
+  to call back; with obfuscation disabled, sources that require it are no longer tried.

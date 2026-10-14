@@ -137,7 +137,7 @@ class DownloadSourcesTest {
         assertThat(asking.nick()).contains("scripted");
         assertThat(this.onLoop(manager::describe)).contains("talk.bin missing 5000:", "REQUESTING");
 
-        // From now on only sources with a known user hash are asked: none of those it tells of.
+        // From now on only sources known to take obfuscation are asked: none of those it tells of, nor this one.
         this.settings = settings(ObfuscationMode.REQUIRED, 100, 0);
         link.send(FileDescription.encode(FileComment.of("a fine copy", 4)));
         link.send(FileDescription.encode(FileComment.of("free SPAM inside", 1)));
@@ -189,7 +189,8 @@ class DownloadSourcesTest {
                     assertThat(s.userHash()).contains(PEER);
                 });
 
-        // Asked again in time: not for more sources, which it was asked for less than 40 minutes ago.
+        // Asked again in time, plain once allowed: not for more sources, asked for less than 40 minutes ago.
+        this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
         this.advance(DownloadManager.REASK_INTERVAL);
         ScriptedSource.Link again = source.accept();
         List<Packet> request = new ArrayList<>(again.until(Opcodes.Client.SETREQFILEID));

@@ -209,6 +209,8 @@ public final class DownloadManager implements AutoCloseable {
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
     private static final int CRYPT_SUPPORTED = 0x01;
+    // Supports, requests and requires: each flag counts only with the ones before it.
+    private static final int CRYPT_REQUIRED = 0x07;
     // A source that told it has no part we need is asked for something else first this long.
     private static final Duration NO_PARTS_WAIT = Duration.ofMinutes(58);
     // A source swapped away from by hand waits this long before it is asked for that download again by itself.
@@ -844,7 +846,8 @@ public final class DownloadManager implements AutoCloseable {
 
     // Queues a callback request; one goes out each tick, and those not answered soon are dropped.
     private void askCallback(Entry entry, long lowId, Optional<Hash16> userHash, int cryptOptions) {
-        if (this.callbacks.size() >= MAX_CALLBACKS
+        if (!this.suitsObfuscation(cryptOptions, userHash)
+                || this.callbacks.size() >= MAX_CALLBACKS
                 || this.callbacks.containsKey(lowId)
                 || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
             return;
@@ -858,6 +861,7 @@ public final class DownloadManager implements AutoCloseable {
         Optional<Hash16> user = source.userHash();
         if (user.isEmpty()
                 || user.get().equals(this.ourHello.get().userHash())
+                || !this.suitsObfuscation(source.cryptOptions(), user)
                 || this.callbacks.size() + this.kadCallbacks.size() >= MAX_CALLBACKS
                 || this.kadCallbacks.containsKey(user.get())
                 || entry.sources.size() >= this.settings.get().maxSourcesPerFile()) {
@@ -871,6 +875,16 @@ public final class DownloadManager implements AutoCloseable {
         this.kadCallbacks.put(
                 user.get(),
                 new Callback(entry.download.hash(), user, source.cryptOptions(), source, this.ticker.read()));
+    }
+
+    // A connection with the source, ours or its callback, needs obfuscation when either side requires it: with
+    // obfuscation required the source must support it and its user hash, the key, be known.
+    private boolean suitsObfuscation(int cryptOptions, Optional<Hash16> userHash) {
+        return switch (this.settings.get().obfuscation()) {
+            case REQUIRED -> userHash.isPresent() && (cryptOptions & CRYPT_SUPPORTED) != 0;
+            case DISABLED -> (cryptOptions & CRYPT_REQUIRED) != CRYPT_REQUIRED;
+            case SUPPORTED, REQUESTED -> true;
+        };
     }
 
     private void sendCallbacks(long now) {
@@ -1173,7 +1187,6 @@ public final class DownloadManager implements AutoCloseable {
     // asked for now.
     private int startSessions(Entry entry, long now, int budget) {
         int started = 0;
-        boolean required = this.settings.get().obfuscation() == ObfuscationMode.REQUIRED;
         boolean disabled = this.settings.get().obfuscation() == ObfuscationMode.DISABLED;
         for (Source due : List.copyOf(entry.sources.values())) {
             if (started >= budget) {
@@ -1183,7 +1196,7 @@ public final class DownloadManager implements AutoCloseable {
             if (client.current != due || client.session != null || now - client.nextAsk < 0) {
                 continue;
             }
-            if (required && client.userHash.isEmpty()) {
+            if (!this.suitsObfuscation(client.cryptOptions, client.userHash)) {
                 continue;
             }
             Source source = this.chooseToAsk(client, now);

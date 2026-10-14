@@ -130,6 +130,16 @@ final class ScriptedSource implements AutoCloseable {
         this.nextSocket().close();
     }
 
+    /** Whether a downloader connects within {@code wait}; its connection is closed without a word. */
+    boolean isConnectedToWithin(Duration wait) throws Exception {
+        Socket socket = this.accepted.poll(wait.toMillis(), TimeUnit.MILLISECONDS);
+        if (socket == null) {
+            return false;
+        }
+        socket.close();
+        return true;
+    }
+
     private Socket nextSocket() throws InterruptedException, SocketException {
         Socket socket = this.accepted.poll(WAIT.toSeconds(), TimeUnit.SECONDS);
         assertThat(socket).as("a downloader connects").isNotNull();
