@@ -69,7 +69,8 @@ class LanguagesTest {
                 arguments(Locale.ITALIAN, "Italiano", "Lingua"),
                 arguments(Locale.of("nl"), "Nederlands", "Taal"),
                 arguments(Locale.of("pl"), "Polski", "Język"),
-                arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"));
+                arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"),
+                arguments(Locale.of("ru"), "Русский", "Язык"));
     }
 
     static Stream<Locale> translations() {
@@ -88,7 +89,8 @@ class LanguagesTest {
                 Locale.ITALIAN,
                 Locale.of("nl"),
                 Locale.of("pl"),
-                Locale.of("pt", "BR"));
+                Locale.of("pt", "BR"),
+                Locale.of("ru"));
     }
 
     @ParameterizedTest
@@ -113,6 +115,7 @@ class LanguagesTest {
         "pl-PL, pl",
         "pt-BR, pt-BR",
         "pt-PT, pt-BR",
+        "ru-RU, ru",
         "sv-SE, en",
         "ja-JP, en"
     })

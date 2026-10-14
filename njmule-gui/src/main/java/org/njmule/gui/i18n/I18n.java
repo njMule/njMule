@@ -39,7 +39,8 @@ public final class I18n {
             Locale.ITALIAN,
             Locale.of("nl"),
             Locale.of("pl"),
-            Locale.of("pt", "BR"));
+            Locale.of("pt", "BR"),
+            Locale.of("ru"));
 
     private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
