@@ -111,7 +111,17 @@ class DownloadManagerTest {
             return added;
         });
 
-        assertThat(info.sources()).isEqualTo(1);
+        assertThat(info.sources()).as("the user chose them, LAN or loopback").isEqualTo(2);
+        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
+                .isTrue();
+        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
+                .as("known already")
+                .isFalse();
+        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(BLOCKED_IP, PORT))))
+                .as("the IP filter still applies")
+                .isFalse();
+        assertThat(this.onLoop(() -> manager.download(link.hash()).orElseThrow().sources()))
+                .isEqualTo(3);
     }
 
     @Test

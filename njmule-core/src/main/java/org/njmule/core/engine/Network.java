@@ -708,6 +708,10 @@ final class Network {
         return this.downloads.stop(hash);
     }
 
+    boolean addSource(Hash16 download, InetSocketAddress source) {
+        return this.downloads.addSourceByHand(download, source);
+    }
+
     boolean setDownloadPreview(Hash16 hash, boolean previewFirst) {
         return this.downloads.setPreviewFirst(hash, previewFirst);
     }

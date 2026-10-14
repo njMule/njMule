@@ -922,9 +922,27 @@ public final class DownloadManager implements AutoCloseable {
 
     private void addLinkSource(Entry entry, InetSocketAddress address) {
         int ip = Ipv4.fromBytes(address.getAddress().getAddress());
-        if (address.getPort() != 0 && !this.blocked.test(ip) && !this.isFilteredLan(ip)) {
+        if (address.getPort() != 0 && !this.blocked.test(ip)) {
             this.addSource(entry, address);
         }
+    }
+
+    /**
+     * Adds a source the user typed, LAN addresses too, as long as the IP filter allows it; {@code false} for an unknown
+     * download or a refused source.
+     */
+    public boolean addSourceByHand(Hash16 hash, InetSocketAddress address) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null || address.getPort() == 0 || !(address.getAddress() instanceof Inet4Address)) {
+            return false;
+        }
+        int before = entry.sources.size();
+        this.addLinkSource(entry, address);
+        if (entry.sources.size() > before) {
+            this.listener.progress(this.info(entry));
+            return true;
+        }
+        return false;
     }
 
     private boolean isFilteredLan(int ip) {

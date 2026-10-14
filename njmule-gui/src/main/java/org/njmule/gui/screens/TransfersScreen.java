@@ -46,6 +46,7 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -170,6 +171,8 @@ public final class TransfersScreen implements Screen {
         html.setOnAction(e -> this.copyHtml());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
+        MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"));
+        addSource.setOnAction(e -> this.addSourceToSelected());
         MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"));
         comments.setOnAction(e -> this.commentSelected());
         MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"));
@@ -187,6 +190,7 @@ public final class TransfersScreen implements Screen {
                 preview,
                 previewFirst,
                 comments,
+                addSource,
                 this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
                 category,
                 new SeparatorMenuItem(),
@@ -234,6 +238,7 @@ public final class TransfersScreen implements Screen {
             List<DownloadInfo> selected = Fx.selected(this.downloads);
             preview.setDisable(selected.size() != 1 || selected.getFirst().completed() == 0);
             comments.setDisable(selected.size() != 1);
+            addSource.setDisable(selected.size() != 1);
             previewFirst.setSelected(!selected.isEmpty() && selected.stream().allMatch(DownloadInfo::previewFirst));
         });
         this.categoryBar.getStyleClass().add("category-bar");
@@ -444,6 +449,39 @@ public final class TransfersScreen implements Screen {
 
     void cancel(List<DownloadInfo> selected) {
         selected.forEach(d -> this.gui.model().cancel(d.hash()));
+    }
+
+    // A source the user knows of, typed as host:port.
+    void addSourceToSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (selected.size() != 1) {
+            return;
+        }
+        DownloadInfo d = selected.getFirst();
+        TextInputDialog ask = new TextInputDialog();
+        ask.setTitle(this.gui.t("IDS_ADDSRCMANUALLY"));
+        ask.setHeaderText(d.name());
+        ask.setContentText(this.gui.t("nj.input.address"));
+        ask.initOwner(this.downloads.getScene().getWindow());
+        ask.showAndWait().map(String::strip).filter(t -> !t.isEmpty()).ifPresent(text -> {
+            ServerAddress address;
+            try {
+                address = ServerAddress.parse(text);
+            } catch (IllegalArgumentException e) {
+                this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
+                return;
+            }
+            this.gui
+                    .model()
+                    .addSource(
+                            d.hash(),
+                            address,
+                            added -> this.gui
+                                    .inform()
+                                    .accept(this.gui.f(
+                                            added ? "nj.transfers.sourceAdded" : "nj.transfers.sourceRefused",
+                                            address.host() + ":" + address.port())));
+        });
     }
 
     void commentSelected() {

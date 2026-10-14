@@ -522,6 +522,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.peerComments(download), then);
     }
 
+    /** Adds a source by hand; {@code added} tells on the FX thread whether it was new. */
+    public void addSource(Hash16 download, ServerAddress source, Consumer<Boolean> added) {
+        this.later(this.engine.addSource(download, source), added);
+    }
+
     /** Fetches the first and last parts of a download first, for a preview, or stops. */
     public void setPreviewFirst(Hash16 file, boolean value) {
         this.later(this.engine.setDownloadPreview(file, value), ok -> this.refreshDownloads());

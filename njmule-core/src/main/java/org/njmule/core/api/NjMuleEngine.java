@@ -176,6 +176,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Puts a download in a category, with its priority; {@link Category#NONE} takes it out of any. */
     CompletableFuture<Boolean> setDownloadCategory(Hash16 hash, int category);
 
+    /**
+     * Adds a source the user knows of to a download, at a LAN address too unless the IP filter blocks it; completes
+     * with {@code false} for an unknown download or a source refused or known already.
+     */
+    CompletableFuture<Boolean> addSource(Hash16 download, ServerAddress source);
+
     /** Fetches the first and last parts of a download first, for a preview, or stops; {@code false} if unknown. */
     CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst);
 

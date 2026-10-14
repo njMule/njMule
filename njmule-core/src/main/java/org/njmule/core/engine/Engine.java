@@ -623,6 +623,15 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> addSource(Hash16 download, ServerAddress source) {
+        Objects.requireNonNull(download, "download");
+        Objects.requireNonNull(source, "source");
+        return resolve(source.host())
+                .thenCompose(ip -> this.loop.submit(
+                        () -> this.network.addSource(download, new InetSocketAddress(Ipv4.format(ip), source.port()))));
+    }
+
+    @Override
     public CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.setDownloadPreview(hash, previewFirst));

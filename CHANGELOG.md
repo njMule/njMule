@@ -250,6 +250,8 @@ All notable changes to this project are documented here. The format follows
   `fileinfo.ini`, imported from eMule); clients downloading it hear the comment after the file name, and
   the comments of a download's sources show beside ours, those holding a filtered word left out.
   The hello now tells that we take comments, and that our files may be viewed when they may.
+- Add Sources lets a download take a source typed as host:port, at a LAN address too; the sources of
+  a link are not held to the LAN filter either, the IP filter still applying to both.
 
 ### Changed
 
