@@ -70,6 +70,24 @@ public final class PacketWriter {
         return this;
     }
 
+    /** A u8 item count; a list too long for the field is the caller's error, never silently cut. */
+    public PacketWriter count8(int count) {
+        return this.u8(checkCount(count, 0xFF));
+    }
+
+    /** A u16 item count; a list too long for the field is the caller's error, never silently cut. */
+    public PacketWriter count16(int count) {
+        return this.u16(checkCount(count, 0xFFFF));
+    }
+
+    /** A 32-bit offset of a narrow message form; a larger one needs the 64-bit form. */
+    public PacketWriter offset32(long offset) {
+        if (offset < 0 || offset > 0xFFFF_FFFFL) {
+            throw new IllegalArgumentException("offset " + offset + " needs the 64-bit form");
+        }
+        return this.u32(offset);
+    }
+
     public PacketWriter f32(float value) {
         return this.u32(Float.floatToRawIntBits(value));
     }
@@ -139,6 +157,13 @@ public final class PacketWriter {
         this.data[at + 1] = (byte) (value >>> 8);
         this.data[at + 2] = (byte) (value >>> 16);
         this.data[at + 3] = (byte) (value >>> 24);
+    }
+
+    private static int checkCount(int count, int max) {
+        if (count < 0 || count > max) {
+            throw new IllegalArgumentException("a count of " + count + " does not fit in 0.." + max);
+        }
+        return count;
     }
 
     private void checkPatch(int position, int length) {

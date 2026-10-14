@@ -109,7 +109,7 @@ public final class ClientMessages {
         }
 
         public Packet encode() {
-            PacketWriter out = new PacketWriter().hash16(this.file).u16(this.partCount);
+            PacketWriter out = new PacketWriter().hash16(this.file).count16(this.partCount);
             for (int i = 0; i < this.partCount; i += 8) {
                 int bits = 0;
                 for (int b = 0; b < 8 && i + b < this.partCount; b++) {
@@ -149,7 +149,7 @@ public final class ClientMessages {
         }
 
         public Packet encode() {
-            PacketWriter out = new PacketWriter().hash16(this.file).u16(this.parts.size());
+            PacketWriter out = new PacketWriter().hash16(this.file).count16(this.parts.size());
             this.parts.forEach(out::hash16);
             return Packet.of(Protocol.EDONKEY, Opcodes.Client.HASHSETANSWER.code(), out);
         }
@@ -197,14 +197,14 @@ public final class ClientMessages {
                 if (wide) {
                     out.u64(r.start());
                 } else {
-                    out.u32(r.start());
+                    out.offset32(r.start());
                 }
             }
             for (Range r : this.ranges) {
                 if (wide) {
                     out.u64(r.end());
                 } else {
-                    out.u32(r.end());
+                    out.offset32(r.end());
                 }
             }
             return wide
@@ -248,7 +248,7 @@ public final class ClientMessages {
             if (wide) {
                 out.u64(this.start).u64(this.end);
             } else {
-                out.u32(this.start).u32(this.end);
+                out.offset32(this.start).offset32(this.end);
             }
             out.bytes(this.data);
             return wide
@@ -341,7 +341,7 @@ public final class ClientMessages {
             if (wide) {
                 out.u64(this.blockStart);
             } else {
-                out.u32(this.blockStart);
+                out.offset32(this.blockStart);
             }
             out.u32(this.compressedSize).bytes(this.chunk);
             return Packet.of(

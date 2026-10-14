@@ -124,6 +124,38 @@ class ClientMessagesTest {
     }
 
     @Test
+    void theNarrowFormsRefuseOffsetsBeyondFourGigabytes() throws DecodeException {
+        long past = 0x1_0000_0000L;
+        ClientMessages.RequestParts request = new ClientMessages.RequestParts(
+                FILE,
+                List.of(
+                        new ClientMessages.Range(past - 10, past + 10),
+                        new ClientMessages.Range(0, 0),
+                        new ClientMessages.Range(0, 0)));
+        ClientMessages.SendingPart data = new ClientMessages.SendingPart(FILE, past, past + 1, new byte[] {1});
+        ClientMessages.CompressedPart chunk = new ClientMessages.CompressedPart(FILE, past, 5, new byte[] {1});
+
+        assertThatThrownBy(() -> request.encode(false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> data.encode(false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> chunk.encode(false)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(ClientMessages.RequestParts.decode(request.encode(true))).isEqualTo(request);
+        assertThat(ClientMessages.SendingPart.decode(data.encode(true))).isEqualTo(data);
+        assertThat(ClientMessages.CompressedPart.decode(chunk.encode(true))).isEqualTo(chunk);
+        ClientMessages.SendingPart last =
+                new ClientMessages.SendingPart(FILE, 0xFFFF_FFFEL, 0xFFFF_FFFFL, new byte[] {1});
+        assertThat(ClientMessages.SendingPart.decode(last.encode(false))).isEqualTo(last);
+    }
+
+    @Test
+    void partCountsMustFitSixteenBits() {
+        assertThatThrownBy(() -> new ClientMessages.FileStatus(FILE, 0x10000, new BitSet()).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () -> new ClientMessages.HashSet(FILE, java.util.Collections.nCopies(0x10000, FILE)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void namesHashSetsAndQueueRanks() throws DecodeException {
         ClientMessages.FileName name = new ClientMessages.FileName(FILE, "ubuntu.iso");
         assertThat(ClientMessages.FileName.decode(name.encode())).isEqualTo(name);

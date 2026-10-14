@@ -107,7 +107,7 @@ public final class KadMessages {
         public Packet encode() {
             PacketWriter out = new PacketWriter();
             this.sender.write(out);
-            out.u16(this.contacts.size());
+            out.count16(this.contacts.size());
             this.contacts.forEach(c -> c.write(out));
             return Packet.of(Protocol.KAD, Opcodes.Kad.BOOTSTRAP_RES.code(), out);
         }
@@ -160,6 +160,11 @@ public final class KadMessages {
     /** KADEMLIA2_REQ: up to {@code count} contacts close to {@code target}. */
     public record Request(int count, UInt128 target, UInt128 receiver) {
         public Request {
+            // The count travels in the low five bits of its byte.
+            if (count < 1 || count > MAX_LOOKUP_CONTACTS) {
+                throw new IllegalArgumentException(
+                        "a lookup asks for 1 to " + MAX_LOOKUP_CONTACTS + " contacts: " + count);
+            }
             Objects.requireNonNull(target, "target");
             Objects.requireNonNull(receiver, "receiver");
         }
@@ -191,7 +196,7 @@ public final class KadMessages {
         public Packet encode() {
             PacketWriter out = new PacketWriter();
             this.target.write(out);
-            out.u8(this.contacts.size());
+            out.count8(this.contacts.size());
             this.contacts.forEach(c -> c.write(out));
             return Packet.of(Protocol.KAD, Opcodes.Kad.RES.code(), out);
         }
@@ -335,7 +340,7 @@ public final class KadMessages {
             PacketWriter out = new PacketWriter();
             this.sender.write(out);
             this.target.write(out);
-            out.u16(this.results.size());
+            out.count16(this.results.size());
             this.results.forEach(r -> r.write(out));
             return Packet.of(Protocol.KAD, Opcodes.Kad.SEARCH_RES.code(), out);
         }
@@ -352,17 +357,24 @@ public final class KadMessages {
             return new SearchAnswer(sender, target, results);
         }
 
-        /** Answers no larger than {@code maxBytes} each that together carry {@code results}. */
+        /**
+         * Answers no larger than {@code maxBytes} each that together carry {@code results}; an entry too large for an
+         * answer of its own is left out.
+         */
         public static List<Packet> split(UInt128 sender, UInt128 target, List<Entry> results, int maxBytes) {
             List<Packet> packets = new ArrayList<>();
             List<Entry> batch = new ArrayList<>();
-            int size = 2 + 16 + 16 + 2;
+            int empty = 2 + 16 + 16 + 2;
+            int size = empty;
             for (Entry entry : results) {
                 int entrySize = entry.size();
-                if (!batch.isEmpty() && size + entrySize > maxBytes) {
+                if (empty + entrySize > maxBytes) {
+                    continue;
+                }
+                if (size + entrySize > maxBytes) {
                     packets.add(new SearchAnswer(sender, target, batch).encode());
                     batch = new ArrayList<>();
-                    size = 2 + 16 + 16 + 2;
+                    size = empty;
                 }
                 batch.add(entry);
                 size += entrySize;
@@ -384,7 +396,7 @@ public final class KadMessages {
         public Packet encode() {
             PacketWriter out = new PacketWriter();
             this.keyword.write(out);
-            out.u16(this.files.size());
+            out.count16(this.files.size());
             this.files.forEach(f -> f.write(out));
             return Packet.of(Protocol.KAD, Opcodes.Kad.PUBLISH_KEY_REQ.code(), out);
         }

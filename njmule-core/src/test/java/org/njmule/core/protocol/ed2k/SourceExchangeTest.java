@@ -94,6 +94,19 @@ class SourceExchangeTest {
     }
 
     @Test
+    void anAnswerCarriesAtMostTheSourcesItsReaderTakes() throws DecodeException {
+        SourceExchange.Source low = new SourceExchange.Source(0, 1234, 4663, 0, 0, Optional.of(USER), 0);
+
+        SourceExchange.Answer most =
+                new SourceExchange.Answer(4, FILE, java.util.Collections.nCopies(SourceExchange.MAX_SOURCES, low));
+        assertThat(SourceExchange.Answer.decode(most.encode()).sources()).hasSize(SourceExchange.MAX_SOURCES);
+        assertThatThrownBy(() -> new SourceExchange.Answer(
+                                4, FILE, java.util.Collections.nCopies(SourceExchange.MAX_SOURCES + 1, low))
+                        .encode())
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void refusesAnswersWhoseSizeDoesNotMatch() {
         byte[] payload = HEX.parseHex("04" + "ab".repeat(16) + "0200" + "00".repeat(29));
         assertThatThrownBy(() -> SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, payload)))

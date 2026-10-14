@@ -136,6 +136,20 @@ class Ed2kMessagesTest {
     }
 
     @Test
+    void encodersRefuseCountsTheirFieldCannotHold() {
+        ServerMessages.Endpoint server = new ServerMessages.Endpoint(Ipv4.parse("1.1.1.1"), 4242);
+        ServerMessages.Source source = new ServerMessages.Source(7, 1, 0, Optional.empty());
+
+        assertThat(ServerMessages.serverList(java.util.Collections.nCopies(255, server)))
+                .isNotNull();
+        assertThatThrownBy(() -> ServerMessages.serverList(java.util.Collections.nCopies(256, server)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new ServerMessages.FoundSources(HASH, java.util.Collections.nCopies(256, source)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void serverMessagesSplitIntoLines() throws DecodeException {
         PacketWriter out =
                 new PacketWriter().string16("server version 17.15\r\n\r\nWelcome!\nERROR: x", StringEncoding.UTF8);

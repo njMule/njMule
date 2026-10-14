@@ -284,7 +284,7 @@ public final class ServerMessages {
 
         /** OP_FOUNDSOURCES_OBFU, as servers answer clients that support obfuscation. */
         public Packet encode() {
-            PacketWriter out = new PacketWriter().hash16(this.file).u8(this.sources.size());
+            PacketWriter out = new PacketWriter().hash16(this.file).count8(this.sources.size());
             for (Source source : this.sources) {
                 out.u32(source.clientId()).u16(source.port()).u8(source.cryptOptions());
                 source.userHash().ifPresent(out::hash16);
@@ -329,7 +329,7 @@ public final class ServerMessages {
     }
 
     public static Packet serverList(List<Endpoint> servers) {
-        PacketWriter out = new PacketWriter().u8(servers.size());
+        PacketWriter out = new PacketWriter().count8(servers.size());
         for (Endpoint server : servers) {
             out.u32(Ipv4.toEd2k(server.ip())).u16(server.port());
         }

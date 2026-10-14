@@ -117,6 +117,58 @@ class KadMessagesTest {
     }
 
     @Test
+    void anAnswerNeverExceedsItsSizeAndLeavesOutAnEntryTooLargeAlone() throws DecodeException {
+        KadMessages.Entry small = new KadMessages.Entry(OTHER, List.of(new Tag.StringTag(TagName.id(0x01), "a.iso")));
+        KadMessages.Entry huge =
+                new KadMessages.Entry(ID, List.of(new Tag.StringTag(TagName.id(0x01), "x".repeat(2000))));
+
+        List<Packet> answers = KadMessages.SearchAnswer.split(OTHER, ID, List.of(small, huge, small), 1420);
+
+        int total = 0;
+        for (Packet p : answers) {
+            assertThat(p.length() + 2).isLessThanOrEqualTo(1420);
+            total += KadMessages.SearchAnswer.decode(p).results().size();
+        }
+        assertThat(total).isEqualTo(2);
+        assertThat(KadMessages.SearchAnswer.split(OTHER, ID, List.of(huge), 1420))
+                .isEmpty();
+    }
+
+    @Test
+    void encodersRefuseCountsTheirFieldCannotHold() {
+        KadMessages.Contact contact = new KadMessages.Contact(OTHER, Ipv4.of(1, 2, 3, 4), 4672, 4662, 10);
+        KadMessages.Entry entry = new KadMessages.Entry(OTHER, List.of());
+        KadMessages.Self self = new KadMessages.Self(ID, 4662, 10);
+
+        assertThat(new KadMessages.Answer(ID, java.util.Collections.nCopies(255, contact)).encode())
+                .isNotNull();
+        assertThatThrownBy(() -> new KadMessages.Answer(ID, java.util.Collections.nCopies(256, contact)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new KadMessages.BootstrapAnswer(self, java.util.Collections.nCopies(0x10000, contact)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new KadMessages.SearchAnswer(OTHER, ID, java.util.Collections.nCopies(0x10000, entry)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                        new KadMessages.KeywordPublish(ID, java.util.Collections.nCopies(0x10000, entry)).encode())
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void aLookupRequestAsksForOneToThirtyOneContacts() throws DecodeException {
+        for (int count : new int[] {1, KadMessages.MAX_LOOKUP_CONTACTS}) {
+            KadMessages.Request request = new KadMessages.Request(count, ID, OTHER);
+            assertThat(KadMessages.Request.decode(request.encode())).isEqualTo(request);
+        }
+        for (int count : new int[] {0, -1, KadMessages.MAX_LOOKUP_CONTACTS + 1, 0x20, 0x100}) {
+            assertThatThrownBy(() -> new KadMessages.Request(count, ID, OTHER))
+                    .as("count %d", count)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
     void refusesAnswersWithMoreContactsThanBytes() {
         byte[] payload = HEX.parseHex("00".repeat(16) + "02" + "00".repeat(25));
         assertThatThrownBy(() -> KadMessages.Answer.decode(Packet.of(Protocol.KAD, 0x29, payload)))

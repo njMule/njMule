@@ -66,6 +66,10 @@ public final class SourceExchange {
         }
 
         public Packet encode() {
+            if (this.sources.size() > MAX_SOURCES) {
+                throw new IllegalArgumentException(
+                        this.sources.size() + " sources exceed the " + MAX_SOURCES + " of an answer");
+            }
             PacketWriter out = new PacketWriter().u8(this.version).hash16(this.file);
             out.u16(this.sources.size());
             for (Source s : this.sources) {
