@@ -76,4 +76,29 @@ class SettingsScreenTest {
                 "saved again", () -> this.test.engine.preferences().nick().equals("Third"));
         assertThat(this.test.engine.preferences().maxUploadKiBps()).isEqualTo(before + 77);
     }
+
+    @Test
+    void aNickTakesNoTextDirectionControls() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        SettingsScreen screen = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(screen::view));
+        FxTesting.onFx(screen::shown);
+        // Embeddings, overrides and isolates would show another name than the one sent, which the engine refuses.
+        StringBuilder nick = new StringBuilder("ann");
+        for (char c = 0x202A; c <= 0x202E; c++) {
+            nick.append(c).append('x');
+        }
+        for (char c = 0x2066; c <= 0x2069; c++) {
+            nick.append(c).append('y');
+        }
+
+        String typed = FxTesting.onFx(() -> {
+            screen.nickField().setText(nick.toString());
+            return screen.nickField().getText();
+        });
+        assertThat(typed).isEqualTo("annxxxxxyyyy");
+        FxTesting.onFx(screen::apply);
+        FxTesting.await("saved", () -> this.test.engine.preferences().nick().equals("annxxxxxyyyy"));
+        assertThat(this.test.told).noneMatch(m -> m.startsWith("Not saved"));
+    }
 }

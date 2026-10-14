@@ -400,7 +400,7 @@ public final class SettingsScreen implements Screen {
     // Each box takes only its kind of value, within the limits the engine accepts.
     private void inputs() {
         Inputs inputs = new Inputs(this.gui);
-        this.nickInput = inputs.text(this.nick, this.gui.t("IDS_PW_NICK"), Preferences.MAX_NICK_LENGTH, true);
+        this.nickInput = inputs.nick(this.nick, this.gui.t("IDS_PW_NICK"), Preferences.MAX_NICK_LENGTH);
         this.tcpPortInput = inputs.number(this.tcpPort, "TCP", 1, Preferences.MAX_PORT);
         this.udpPortInput = inputs.number(this.udpPort, "UDP", 1, Preferences.MAX_PORT);
         this.uploadInput = inputs.number(this.upload, this.gui.t("nj.settings.upload"), 0, Preferences.MAX_RATE_KIBPS);

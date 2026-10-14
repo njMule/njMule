@@ -155,6 +155,16 @@ public final class Inputs {
         });
     }
 
+    /** A user name of 1 to {@code maxLength} printable characters, without text direction controls. */
+    public Input<String> nick(TextField field, String name, int maxLength) {
+        return Input.of(field, name, this.gui.f("nj.input.name", maxLength), Inputs::nickChar, maxLength, t -> {
+            if (t.isEmpty()) {
+                throw new IllegalArgumentException(name);
+            }
+            return t;
+        });
+    }
+
     /** Nothing, for the default folder, or the path of a folder, which need not exist yet. */
     public Input<Optional<Path>> folder(TextField field, String name) {
         return Input.of(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
@@ -238,6 +248,11 @@ public final class Inputs {
 
     private static boolean printable(char c) {
         return !Character.isISOControl(c);
+    }
+
+    // Embeddings, overrides and isolates would make a name read otherwise than it is: the engine refuses them.
+    private static boolean nickChar(char c) {
+        return printable(c) && !(c >= 0x202A && c <= 0x202E) && !(c >= 0x2066 && c <= 0x2069);
     }
 
     // Integer.parseInt fails with a NumberFormatException, itself an IllegalArgumentException.
