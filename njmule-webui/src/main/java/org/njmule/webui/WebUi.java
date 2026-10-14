@@ -54,12 +54,16 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedDirectory;
+import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UploadPriority;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +83,9 @@ public final class WebUi implements AutoCloseable {
     private static final String TRANSFERS = "/transfers";
     private static final String SEARCH = "/search";
     private static final String SERVERS = "/servers";
+    private static final String SHARED = "/shared";
+    private static final String KAD = "/kad";
+    private static final String LOG = "/log";
     private static final String ACTION = "action";
     private static final int MAX_LOGIN_BODY = 16 * 1024;
 
@@ -349,6 +356,9 @@ public final class WebUi implements AutoCloseable {
             case TRANSFERS -> this.transfersPage(session);
             case SEARCH -> this.searchPage(session, query(exchange).get("id"));
             case SERVERS -> this.serversPage(session);
+            case SHARED -> this.sharedPage(session);
+            case KAD -> this.kadPage(session);
+            case LOG -> this.logPage(session);
             default -> null;
         };
         if (page == null) {
@@ -386,6 +396,14 @@ public final class WebUi implements AutoCloseable {
                 case SERVERS -> {
                     this.server(form);
                     yield SERVERS;
+                }
+                case SHARED -> {
+                    this.shared(form);
+                    yield SHARED;
+                }
+                case KAD -> {
+                    this.kad(form);
+                    yield KAD;
                 }
                 default -> null;
             };
@@ -470,6 +488,149 @@ public final class WebUi implements AutoCloseable {
             case "disconnect" -> this.await(this.engine.disconnect());
             default -> throw new IllegalArgumentException("Unknown action.");
         }
+    }
+
+    private void shared(Map<String, String> form) {
+        if (!form.getOrDefault(ACTION, "").equals("priority")) {
+            throw new IllegalArgumentException("Unknown action.");
+        }
+        Hash16 hash = Hash16.parseHex(form.getOrDefault("hash", ""));
+        UploadPriority priority =
+                UploadPriority.valueOf(form.getOrDefault("priority", "").toUpperCase(Locale.ROOT));
+        if (!this.await(this.engine.setUploadPriority(hash, priority))) {
+            throw new IllegalArgumentException("That file is no longer shared: reload the page.");
+        }
+    }
+
+    private void kad(Map<String, String> form) {
+        switch (form.getOrDefault(ACTION, "")) {
+            case "connect" -> this.await(this.engine.connectKad());
+            case "disconnect" -> this.await(this.engine.disconnectKad());
+            case "recheck" -> {
+                if (!this.await(this.engine.recheckKadFirewall())) {
+                    throw new IllegalArgumentException("Kad is not connected.");
+                }
+            }
+            case "bootstrap" ->
+                this.await(this.engine.kadBootstrap(
+                        ServerAddress.parse(form.getOrDefault("address", "").strip())));
+            default -> throw new IllegalArgumentException("Unknown action.");
+        }
+    }
+
+    private String sharedPage(Sessions.Session session) {
+        List<SharedFileInfo> files = this.await(this.engine.sharedFiles());
+        List<SharedDirectory> directories = this.await(this.engine.sharedDirectories());
+        String csrf = session.csrf();
+        StringBuilder body = new StringBuilder(1024 + files.size() * 384);
+        body.append("<p>");
+        if (directories.isEmpty()) {
+            body.append("Only the incoming folder is shared.");
+        } else {
+            body.append("Folders: ");
+            for (int i = 0; i < directories.size(); i++) {
+                SharedDirectory d = directories.get(i);
+                body.append(i == 0 ? "" : ", ")
+                        .append(Html.text(d.path().toString()))
+                        .append(d.subdirectories() ? " (with subfolders)" : "");
+            }
+        }
+        body.append("</p>");
+        if (files.isEmpty()) {
+            return Html.page(
+                    "Shared files", csrf, body.append("<p>No shared files.</p>").toString());
+        }
+        body.append("<table><tr><th>File</th><th>Size</th><th>Priority</th></tr>");
+        for (SharedFileInfo f : files) {
+            body.append("<tr><td>")
+                    .append(Html.text(f.name()))
+                    .append("</td><td>")
+                    .append(Html.size(f.size()))
+                    .append("</td><td>")
+                    .append(Html.form(
+                            SHARED,
+                            csrf,
+                            Html.hidden(ACTION, "priority")
+                                    + Html.hidden("hash", f.hash().toHex())
+                                    + options("priority", UploadPriority.values(), f.priority()),
+                            "Set",
+                            false))
+                    .append("</td></tr>");
+        }
+        return Html.page("Shared files", csrf, body.append("</table>").toString());
+    }
+
+    private String kadPage(Sessions.Session session) {
+        Optional<KadInfo> kad = this.await(this.engine.kad());
+        String csrf = session.csrf();
+        StringBuilder body = new StringBuilder(2048);
+        if (kad.isEmpty()) {
+            body.append("<p>Kad is off in the settings.</p>");
+            return Html.page("Kad", csrf, body.toString());
+        }
+        KadInfo k = kad.get();
+        body.append("<div class=\"cards\">")
+                .append(card("State", !k.connected() ? "not connected" : k.firewalled() ? "firewalled" : "open"))
+                .append(card("Contacts", k.contacts() + " (" + k.verifiedContacts() + " verified)"))
+                .append(card("Public address", Html.text(k.publicIp().isEmpty() ? "unknown" : k.publicIp())))
+                .append("</div><p>")
+                .append(Html.form(
+                        KAD,
+                        csrf,
+                        Html.hidden(ACTION, k.connected() ? "disconnect" : "connect"),
+                        k.connected() ? "Disconnect" : "Connect",
+                        true))
+                .append(' ')
+                .append(Html.form(KAD, csrf, Html.hidden(ACTION, "recheck"), "Recheck firewall", false))
+                .append("</p><p>")
+                .append(Html.form(
+                        KAD,
+                        csrf,
+                        Html.hidden(ACTION, "bootstrap")
+                                + "<input type=\"text\" name=\"address\" required placeholder=\"host:port\""
+                                + " title=\"A Kad node: its address and UDP port\"> ",
+                        "Bootstrap",
+                        false))
+                .append("</p>");
+        return Html.page("Kad", csrf, body.toString());
+    }
+
+    private String logPage(Sessions.Session session) {
+        List<RecentLog.Entry> lines = this.log.after(0);
+        StringBuilder body = new StringBuilder(256 + lines.size() * 128);
+        body.append("<p><a href=\"/log\">Reload</a></p>");
+        if (lines.isEmpty()) {
+            return Html.page(
+                    "Log",
+                    session.csrf(),
+                    body.append("<p>Nothing logged yet.</p>").toString());
+        }
+        body.append("<table><tr><th>Time</th><th>Level</th><th>Message</th></tr>");
+        for (RecentLog.Entry e : lines.reversed()) {
+            body.append("<tr><td>")
+                    .append(Html.text(e.line().time().toString()))
+                    .append("</td><td>")
+                    .append(e.line().level().name().toLowerCase(Locale.ROOT))
+                    .append("</td><td>")
+                    .append(Html.text(e.line().message()))
+                    .append("</td></tr>");
+        }
+        return Html.page("Log", session.csrf(), body.append("</table>").toString());
+    }
+
+    // A choice among the values of an enum, as lower-case names.
+    private static String options(String name, Enum<?>[] values, Enum<?> current) {
+        StringBuilder select =
+                new StringBuilder("<select name=\"").append(Html.text(name)).append("\">");
+        for (Enum<?> value : values) {
+            String text = value.name().toLowerCase(Locale.ROOT);
+            select.append("<option value=\"")
+                    .append(text)
+                    .append(value == current ? "\" selected>" : "\">")
+                    .append(text.replace('_', ' '))
+                    .append("</option>");
+        }
+        return select.append("</select> ").toString();
     }
 
     private String statusPage(Sessions.Session session) {

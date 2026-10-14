@@ -50,6 +50,10 @@ final class Html {
             .card b { display: block; font-size: 1.2em; }
             .error { color: #bf616a; }
             progress { width: 120px; height: 10px; accent-color: #a3be8c; vertical-align: middle; }
+            @media (max-width: 640px) {
+              main { padding: 10px; }
+              table { display: block; overflow-x: auto; white-space: nowrap; }
+              nav a { display: inline-block; margin: 4px 12px 4px 0; } }
             """;
 
     private Html() {}
@@ -84,7 +88,9 @@ final class Html {
                 .append("</strong>");
         if (!csrf.isEmpty()) {
             out.append("<nav><a href=\"/\">Status</a><a href=\"/transfers\">Transfers</a>")
-                    .append("<a href=\"/search\">Search</a><a href=\"/servers\">Servers</a></nav>")
+                    .append("<a href=\"/search\">Search</a><a href=\"/servers\">Servers</a>")
+                    .append("<a href=\"/kad\">Kad</a><a href=\"/shared\">Shared files</a>")
+                    .append("<a href=\"/log\">Log</a></nav>")
                     .append(form("/logout", csrf, "", "Log out", false));
         }
         out.append("</header><main><h1>").append(text(title)).append("</h1>").append(body);
