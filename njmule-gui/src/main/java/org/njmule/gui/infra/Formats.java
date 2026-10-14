@@ -72,10 +72,11 @@ public final class Formats {
             value /= 1024;
             unit++;
         }
-        DecimalFormat format = value < 100 ? this.twoDecimals : this.oneDecimal;
-        if (value >= 1000) {
+        // The form follows the rounded value: 99.995 shows as 100.0, 999.95 as 1,000.
+        if (value >= 999.95) {
             return this.integer.format(Math.round(value)) + " " + UNITS[unit];
         }
+        DecimalFormat format = value < 99.995 ? this.twoDecimals : this.oneDecimal;
         return format.format(value) + " " + UNITS[unit];
     }
 

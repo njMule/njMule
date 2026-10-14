@@ -101,6 +101,17 @@ class InfraTest {
     }
 
     @Test
+    void sizesRoundedUpToTheNextFormKeepItsDigits() {
+        Formats en = new Formats(Locale.ENGLISH);
+
+        assertThat(en.size(102_394)).isEqualTo("99.99 KB");
+        assertThat(en.size(102_395)).as("99.995 KB").isEqualTo("100.0 KB");
+        assertThat(en.size(1_023_938)).isEqualTo("999.9 KB");
+        assertThat(en.size(1_023_949)).as("999.95 KB").isEqualTo("1,000 KB");
+        assertThat(en.size(104_852_358L)).as("99.995 MB").isEqualTo("100.0 MB");
+    }
+
+    @Test
     void settingsHaveDefaultsAndSurviveASave() throws Exception {
         GuiSettings fresh = GuiSettings.load(this.dir);
         assertThat(fresh.theme()).isEqualTo(Themes.Family.NORD);
