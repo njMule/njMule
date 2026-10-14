@@ -107,6 +107,8 @@ public final class EmuleImporter {
     private static final String PROXY = "Proxy";
     // Limits at or above this mean "no limit".
     private static final long UNLIMITED = 65_535;
+    // Far beyond the files of real profiles, and still well within the memory of the engine.
+    private static final long MAX_FILE_SIZE = 256L * 1024 * 1024;
     private static final String KAD_KEY_FILE = "kadudpkey.dat";
     private static final String KEY_FILE = "cryptkey.dat";
     private static final List<String> IDENTITY =
@@ -228,6 +230,14 @@ public final class EmuleImporter {
     }
 
     public ImportReport run() {
+        // njMule writes into its configuration directory, which must never be eMule's.
+        if (canonical(this.target.configDir()).startsWith(canonical(this.emule))) {
+            this.report(
+                    this.emule,
+                    ImportReport.Outcome.FAILED,
+                    "njMule's configuration is in eMule's directory: nothing is taken");
+            return new ImportReport(this.options.dryRun(), this.items);
+        }
         Optional<IniFile> ini = this.preferences();
         this.with(this.emule.resolve("server.met"), this::servers);
         this.with(this.emule.resolve("nodes.dat"), this::nodes);
@@ -269,7 +279,7 @@ public final class EmuleImporter {
         }
         IniFile ini;
         try {
-            ini = IniFile.parse(Files.readAllBytes(file));
+            ini = IniFile.parse(read(file));
         } catch (IOException e) {
             this.report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             return Optional.empty();
@@ -447,11 +457,17 @@ public final class EmuleImporter {
     private ImportReport.Item known(Path file, byte[] data) throws IOException {
         List<KnownMet.KnownFile> files = KnownMet.read(data);
         List<Known2Met.Entry> trees = List.of();
+        String unreadable = "";
         Path aich = this.emule.resolve("known2_64.met");
         if (Files.exists(aich)) {
-            trees = Known2Met.read(Files.readAllBytes(aich));
+            try {
+                trees = Known2Met.read(read(aich));
+            } catch (IOException | RuntimeException e) {
+                // The trees only spare hashing the shared files again.
+                unreadable = "; " + aich.getFileName() + " left out: " + e.getMessage();
+            }
         }
-        String what = files.size() + " known files, " + trees.size() + " AICH trees";
+        String what = files.size() + " known files, " + trees.size() + " AICH trees" + unreadable;
         if (this.options.dryRun()) {
             return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
         }
@@ -469,7 +485,7 @@ public final class EmuleImporter {
                 .ifPresent(dirs::add);
         if (Files.exists(file)) {
             try {
-                for (String entry : TextFiles.entries(Files.readAllBytes(file))) {
+                for (String entry : TextFiles.entries(read(file))) {
                     path(entry).filter(Files::isDirectory).ifPresent(dirs::add);
                 }
             } catch (IOException | RuntimeException e) {
@@ -547,7 +563,6 @@ public final class EmuleImporter {
                 String title = shorten(ini.get(section, "Title").orElse(""), Category.MAX_NAME);
                 Optional<Path> incoming = ini.get(section, "Incoming")
                         .flatMap(EmuleImporter::path)
-                        .filter(Path::isAbsolute)
                         .filter(dir -> !emuleIncoming.equals(Optional.of(dir.normalize())));
                 String comment = shorten(ini.get(section, "Comment").orElse(""), Category.MAX_COMMENT);
                 int color = color(ini.getLong(section, "Color"));
@@ -822,11 +837,40 @@ public final class EmuleImporter {
         return item(met, ImportReport.Outcome.IMPORTED, adopted + ", " + mib + " MiB copied");
     }
 
+    // Absolute only: a relative one would name a folder below njMule's working directory.
     private static Optional<Path> path(String text) {
         try {
-            return text.isBlank() ? Optional.empty() : Optional.of(Path.of(text.strip()));
+            return text.isBlank()
+                    ? Optional.empty()
+                    : Optional.of(Path.of(text.strip())).filter(Path::isAbsolute);
         } catch (InvalidPathException e) {
             return Optional.empty();
+        }
+    }
+
+    // A file far larger than any of a real profile is refused rather than read into memory.
+    private static byte[] read(Path file) throws IOException {
+        long size = Files.size(file);
+        if (size > MAX_FILE_SIZE) {
+            throw new IOException("too large to be eMule's: " + size + " bytes");
+        }
+        return Files.readAllBytes(file);
+    }
+
+    // The nearest existing folder resolved, so that links and other spellings of one folder compare equal.
+    private static Path canonical(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        Path existing = absolute;
+        while (existing != null && !Files.exists(existing)) {
+            existing = existing.getParent();
+        }
+        if (existing == null) {
+            return absolute;
+        }
+        try {
+            return existing.toRealPath().resolve(existing.relativize(absolute));
+        } catch (IOException e) {
+            return absolute;
         }
     }
 
@@ -847,7 +891,7 @@ public final class EmuleImporter {
             item = item(file, ImportReport.Outcome.MISSING, "");
         } else {
             try {
-                item = step.run(file, Files.readAllBytes(file));
+                item = step.run(file, read(file));
             } catch (IOException | RuntimeException e) {
                 item = item(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             }

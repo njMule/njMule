@@ -19,9 +19,12 @@ package org.njmule.core.persist;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +49,7 @@ import org.njmule.core.persist.format.IniFile;
 import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.protocol.io.PacketReader;
 
 class EmuleImporterTest {
@@ -670,6 +674,68 @@ class EmuleImporterTest {
 
         assertThat(outcomes(report)).containsEntry("Temp", Outcome.MISSING);
         assertThat(detail(report, "Temp")).isEqualTo("no downloads in progress");
+    }
+
+    @Test
+    void relativeDirectoriesOfTheProfileAreIgnored() throws IOException {
+        Path ini = this.emule.config.resolve("preferences.ini");
+        Files.writeString(
+                ini,
+                Files.readString(ini, StandardCharsets.ISO_8859_1)
+                        .replace("IncomingDir=" + this.emule.incoming, "IncomingDir=.")
+                        .replace("TempDir=" + this.emule.temp, "TempDir=."),
+                StandardCharsets.ISO_8859_1);
+        Files.write(this.emule.config.resolve("shareddir.dat"), TextFiles.writeLines(List.of(".", "..")));
+
+        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+
+        assertThat(this.target.shared).isEmpty();
+        assertThat(outcomes(report)).containsEntry("shareddir.dat", Outcome.MISSING);
+        // Without a usable temp directory, the one next to the config.
+        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void aHugeFileFailsAloneInsteadOfExhaustingMemory() throws IOException {
+        Path known = this.emule.config.resolve("known.met");
+        Files.delete(known);
+        try (SeekableByteChannel huge = Files.newByteChannel(
+                known, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, StandardOpenOption.SPARSE)) {
+            huge.position(3L << 30).write(ByteBuffer.wrap(new byte[] {1}));
+        }
+
+        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+
+        assertThat(outcomes(report))
+                .containsEntry("known.met", Outcome.FAILED)
+                .containsEntry("server.met", Outcome.IMPORTED);
+    }
+
+    @Test
+    void nothingIsImportedIntoEmulesOwnDirectory() throws IOException {
+        for (Path inside : List.of(this.emule.config, this.emule.config.resolve("njmule"))) {
+            this.ours = inside;
+            SortedMap<String, String> before = this.emule.fingerprint();
+
+            ImportReport report = this.run(new ImportOptions(false, true, true), false);
+
+            assertThat(report.items())
+                    .singleElement()
+                    .satisfies(i -> assertThat(i.outcome()).isEqualTo(Outcome.FAILED));
+            assertThat(this.target.untouched()).isTrue();
+            assertThat(this.emule.fingerprint()).isEqualTo(before);
+        }
+    }
+
+    @Test
+    void aBrokenAichFileLeavesOnlyTheAichTreesOut() throws IOException {
+        Files.write(this.emule.config.resolve("known2_64.met"), new byte[] {2, 1});
+
+        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+
+        assertThat(outcomes(report)).containsEntry("known.met", Outcome.IMPORTED);
+        assertThat(detail(report, "known.met")).contains("known2_64.met");
+        assertThat(this.target.known).isEqualTo(1);
     }
 
     @Test
