@@ -209,6 +209,8 @@ final class Network {
     private final FilePublisher publisher;
     private KadNode kad;
     private KadSocket kadSocket;
+    // Kad disconnected by the user: new ports do not start it again.
+    private boolean kadStoppedByHand;
     private PortForwarding forwarding;
     private final Totals totals;
     private final Messaging messaging;
@@ -1082,11 +1084,18 @@ final class Network {
                 this.session.connect(server);
             }
         }
-        if (!now.kadEnabled()) {
+        // Only turning Kad off stops it: a Kad connected by hand stays while other settings change.
+        if (was.kadEnabled() && !now.kadEnabled()) {
             this.stopKad();
-        } else if (this.kad == null ? !was.kadEnabled() : tcp || udp) {
-            // Kad tells other nodes our TCP port and listens on the UDP one.
-            this.stopKad();
+        } else if (this.kad != null) {
+            if (tcp || udp) {
+                // Kad tells other nodes our TCP port and listens on the UDP one.
+                this.stopKad();
+                this.startKad();
+            }
+        } else if (now.kadEnabled() && (!was.kadEnabled() || ((tcp || udp) && !this.kadStoppedByHand))) {
+            // Turned on, or new ports for a Kad that could not start; never against a stop by hand.
+            this.kadStoppedByHand = false;
             this.startKad();
         }
         if (was.ed2kEnabled() && !now.ed2kEnabled()) {
@@ -1149,6 +1158,7 @@ final class Network {
 
     /** Starts Kad, or looks for contacts at once when it runs: the Kad screen's Connect. */
     void connectKad() {
+        this.kadStoppedByHand = false;
         if (this.kad == null) {
             this.startKad();
         } else {
@@ -1161,6 +1171,7 @@ final class Network {
 
     /** Stops Kad until it is connected again or njMule starts again. */
     void disconnectKad() {
+        this.kadStoppedByHand = true;
         if (this.kad != null) {
             this.stopKad();
             this.userLog.log(LogLine.Level.INFO, "Kad stopped");
