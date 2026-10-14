@@ -56,6 +56,7 @@ public final class I18n {
             Locale.of("sl"),
             Locale.of("fi"),
             Locale.of("sv"),
+            Locale.of("vi"),
             Locale.of("tr"),
             Locale.of("el"),
             Locale.of("bg"),
