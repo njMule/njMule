@@ -64,6 +64,7 @@ class LanguagesTest {
         return Stream.of(
                 arguments(Locale.ENGLISH, "English", "Language"),
                 arguments(Locale.GERMAN, "Deutsch", "Sprache"),
+                arguments(Locale.of("es"), "Español", "Idioma"),
                 arguments(Locale.ITALIAN, "Italiano", "Lingua"));
     }
 
@@ -75,7 +76,7 @@ class LanguagesTest {
     void theInterfaceOffersEnglishFirstThenEveryTranslation() {
         this.whenTheLanguagesOfTheInterfaceAreListed();
 
-        this.thenTheLanguagesAre(Locale.ENGLISH, Locale.GERMAN, Locale.ITALIAN);
+        this.thenTheLanguagesAre(Locale.ENGLISH, Locale.GERMAN, Locale.of("es"), Locale.ITALIAN);
     }
 
     @ParameterizedTest
@@ -89,7 +90,7 @@ class LanguagesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"en-GB, en", "de-AT, de", "it-CH, it", "it, it", "sv-SE, en", "ja-JP, en"})
+    @CsvSource({"en-GB, en", "de-AT, de", "es-MX, es", "it-CH, it", "it, it", "sv-SE, en", "ja-JP, en"})
     void theSystemLanguagePicksItsTranslationOrEnglish(String systemLanguage, String chosen) {
         this.givenTheSystemLanguage(systemLanguage);
 
