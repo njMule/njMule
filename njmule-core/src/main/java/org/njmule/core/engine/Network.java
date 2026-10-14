@@ -1776,7 +1776,11 @@ final class Network {
         @Override
         public void callbackRequested(ServerMessages.CallbackRequested request) {
             int ip = request.endpoint().ip();
-            if (!Ipv4.isUnicastPublicCandidate(ip) || Network.this.ipFilter.blocks(ip)) {
+            // A server must not have us probe our LAN or call a client we banned.
+            if (!Ipv4.isUnicastPublicCandidate(ip)
+                    || Network.this.ipFilter.blocks(ip)
+                    || Network.this.isFilteredLan(ip)
+                    || Network.this.uploads.isBanned(InetAddresses.fromInteger(ip))) {
                 logger.debug("Ignoring a callback request to {}", Ipv4.format(ip));
                 return;
             }
