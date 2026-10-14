@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,6 +42,8 @@ import org.njmule.core.upnp.FakeGateway;
 /** UPnP through the engine, with a fake router on loopback: the real one is never asked. */
 @Timeout(60)
 class UpnpTest {
+
+    private static final Pattern EXTERNAL_PORT = Pattern.compile("<NewExternalPort>(\\d+)<");
 
     private static final String IP = "urn:schemas-upnp-org:service:WANIPConnection:1";
 
@@ -90,7 +94,7 @@ class UpnpTest {
 
             List<FakeGateway.Action> adds = gateway.actions("AddPortMapping");
             for (FakeGateway.Action add : adds) {
-                String port = add.body().replaceAll("(?s).*<NewExternalPort>(\\d+)<.*", "$1");
+                String port = externalPort(add.body());
                 assertThat(gateway.actions("DeletePortMapping"))
                         .as("port %s is unmapped after it was mapped", port)
                         .anyMatch(d -> d.nanos() > add.nanos() && d.body().contains(">" + port + "<"));
@@ -122,5 +126,12 @@ class UpnpTest {
             Thread.sleep(20);
         }
         return false;
+    }
+
+    // The external port an AddPortMapping asked for.
+    private static String externalPort(String body) {
+        Matcher port = EXTERNAL_PORT.matcher(body);
+        assertThat(port.find()).as("an external port in %s", body).isTrue();
+        return port.group(1);
     }
 }

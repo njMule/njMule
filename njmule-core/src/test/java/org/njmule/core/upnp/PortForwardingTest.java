@@ -29,12 +29,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 @Timeout(30)
 class PortForwardingTest {
+
+    private static final Pattern EXTERNAL_PORT = Pattern.compile("<NewExternalPort>(\\d+)<");
 
     private static final String IP = "urn:schemas-upnp-org:service:WANIPConnection:1";
     private static final String PPP = "urn:schemas-upnp-org:service:WANPPPConnection:1";
@@ -140,7 +144,7 @@ class PortForwardingTest {
 
         List<FakeGateway.Action> adds = this.gateway.actions(ADD);
         for (FakeGateway.Action add : adds) {
-            String port = add.body().replaceAll("(?s).*<NewExternalPort>(\\d+)<.*", "$1");
+            String port = externalPort(add.body());
             assertThat(this.gateway.actions(DELETE))
                     .as("the mapping of port %s asked for is removed", port)
                     .anyMatch(d -> d.nanos() > add.nanos() && d.body().contains(">" + port + "<"));
@@ -264,5 +268,12 @@ class PortForwardingTest {
             this.asked.add(duration);
             this.go.acquire();
         }
+    }
+
+    // The external port an AddPortMapping asked for.
+    private static String externalPort(String body) {
+        Matcher port = EXTERNAL_PORT.matcher(body);
+        assertThat(port.find()).as("an external port in %s", body).isTrue();
+        return port.group(1);
     }
 }

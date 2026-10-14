@@ -48,7 +48,7 @@ class LanguagesTest {
     private static final Pattern IDS_KEY = Pattern.compile("\"(IDS_[A-Z0-9_]+)\"");
     // A format specifier: argument index, flags with width and precision, conversion.
     private static final Pattern PLACEHOLDER =
-            Pattern.compile("%(?:(\\d+)\\$)?([-#+ 0,(]*\\d*(?:\\.\\d+)?)([a-zA-Z%])");
+            Pattern.compile("%(?:(\\d+)\\$)?([-#+ 0,(]*+\\d*+(?:\\.\\d++)?)([a-zA-Z%])");
 
     private List<Locale> offered;
     private Locale system;
