@@ -212,6 +212,11 @@ public final class DownloadManager implements AutoCloseable {
     /** The server is asked for the sources of each download this often. */
     public static final Duration SERVER_SOURCES_INTERVAL = Duration.ofMinutes(20);
 
+    /** Source requests a server takes in a row; then it takes one more each {@link #SERVER_REQUEST_CREDIT}. */
+    public static final int SERVER_REQUEST_BURST = 15;
+
+    public static final Duration SERVER_REQUEST_CREDIT = Duration.ofSeconds(20);
+
     private static final Duration TICK = Duration.ofSeconds(1);
     // The download limit is shared out in tenths of a second.
     private static final Duration BUDGET_TICK = Duration.ofMillis(100);
@@ -410,6 +415,8 @@ public final class DownloadManager implements AutoCloseable {
     private ScheduledFuture<?> budgeting;
     // Bytes that may still be asked for under the download limit; below zero once more was asked.
     private long budget;
+    // When the server will have credited back every source request sent.
+    private long serverRequestsDue;
     // Sessions waiting for budget, first come first served.
     private final Set<DownloadSession> throttled = new LinkedHashSet<>();
 
@@ -434,6 +441,7 @@ public final class DownloadManager implements AutoCloseable {
         this.blocked = Objects.requireNonNull(blocked, "blocked");
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
+        this.serverRequestsDue = ticker.read();
         this.links = Objects.requireNonNull(links, "links");
         this.credit = Objects.requireNonNull(credit, "credit");
         this.kad = Objects.requireNonNull(kad, "kad");
@@ -800,6 +808,7 @@ public final class DownloadManager implements AutoCloseable {
     /** A server connection was made: it is asked for the sources of every download. */
     public void serverConnected() {
         long now = this.ticker.read();
+        this.serverRequestsDue = now;
         for (Entry entry : this.entries.values()) {
             entry.nextServerAsk = now;
         }
@@ -1097,8 +1106,6 @@ public final class DownloadManager implements AutoCloseable {
             }
         }
         this.sendCallbacks(now);
-        // One source request per tick, so the server is never flooded.
-        boolean askedServer = false;
         for (Entry entry : this.byPriority()) {
             entry.window[entry.slot] = entry.received;
             entry.slot = (entry.slot + 1) % RATE_WINDOW;
@@ -1107,11 +1114,12 @@ public final class DownloadManager implements AutoCloseable {
             }
             entry.received = 0;
             if (entry.download.isActive()) {
-                if (!askedServer
-                        && now - entry.nextServerAsk >= 0
+                if (now - entry.nextServerAsk >= 0
+                        && this.mayAskServer(now)
                         && this.server.askSources(
                                 entry.download.hash(), entry.download.file().size())) {
-                    askedServer = true;
+                    this.serverRequestsDue =
+                            now + Math.max(this.serverRequestsDue - now, 0) + SERVER_REQUEST_CREDIT.toNanos();
                     entry.nextServerAsk = now + SERVER_SOURCES_INTERVAL.toNanos();
                 }
                 starting += this.startSessions(entry, now, MAX_STARTING - starting);
@@ -1158,6 +1166,12 @@ public final class DownloadManager implements AutoCloseable {
             return 0;
         }
         return (int) Math.min(wanted, (this.budget + Ed2k.EMBLOCKSIZE - 1) / Ed2k.EMBLOCKSIZE);
+    }
+
+    // Servers credit each client with a source request every 20 seconds, up to 15 saved; requests beyond the credit are
+    // ignored or get the client dropped.
+    private boolean mayAskServer(long now) {
+        return this.serverRequestsDue - now <= (SERVER_REQUEST_BURST - 1) * SERVER_REQUEST_CREDIT.toNanos();
     }
 
     // Higher priorities first: they ask the server, start sessions and search Kad before the others.

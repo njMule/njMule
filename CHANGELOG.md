@@ -631,3 +631,5 @@ All notable changes to this project are documented here. The format follows
   of the address no longer escapes the limit, and wrong passwords and API tokens are logged.
 - IP filter lists whose ranges overlap with other levels keep each level: a blocked range inside an
   allowed one stays blocked, and a blocked range no longer grows over an allowed one.
+- Source requests to the server follow the credit servers give: up to 15 at once, then one every 20
+  seconds, instead of one a second without end, which got them ignored or the client dropped.
