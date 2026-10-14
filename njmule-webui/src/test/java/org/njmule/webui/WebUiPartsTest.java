@@ -18,11 +18,13 @@ package org.njmule.webui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -143,6 +145,17 @@ class WebUiPartsTest {
 
         Files.writeString(this.dir.resolve(WebUiSettings.FILE_NAME), "port=99999\n", StandardCharsets.UTF_8);
         assertThat(WebUiSettings.load(this.dir)).isEqualTo(WebUiSettings.DEFAULTS);
+    }
+
+    @Test
+    void onlyTheOwnerReadsThePasswordHash() throws IOException {
+        Path file = this.dir.resolve(WebUiSettings.FILE_NAME);
+        Files.writeString(file, "enabled=false\n", StandardCharsets.UTF_8);
+        new WebUiSettings(true, 8080, false, "pbkdf2-sha512$1$AA$AA").save(this.dir);
+
+        assumeTrue(file.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+                .isEqualTo("rw-------");
     }
 
     @Test

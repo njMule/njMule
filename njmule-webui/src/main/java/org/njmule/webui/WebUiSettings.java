@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -89,6 +90,11 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
                 + "\n";
         Files.createDirectories(configDir);
         Path tmp = configDir.resolve(FILE_NAME + ".tmp");
+        Files.deleteIfExists(tmp);
+        // Only its owner may read the password hash, where the file system can say so.
+        if (tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            Files.createFile(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        }
         Files.writeString(tmp, text, StandardCharsets.UTF_8);
         Files.move(
                 tmp, configDir.resolve(FILE_NAME), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
