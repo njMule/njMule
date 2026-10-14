@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -242,16 +244,33 @@ public abstract sealed class LinkAssociation {
             logger.info("ed2k links given back");
         }
 
-        // xdg-mime cannot unset a default: our line goes from the user's list, the rest stays as it is.
+        // xdg-mime cannot unset a default: our id goes from the user's lists, and a list left empty goes too.
         private void removeOurDefault() throws IOException {
             if (!Files.exists(this.mimeApps)) {
                 return;
             }
             List<String> lines = Files.readAllLines(this.mimeApps, StandardCharsets.UTF_8);
-            List<String> kept = lines.stream()
-                    .filter(line -> !(line.strip().startsWith(SCHEME + "=") && line.contains(DESKTOP_ID)))
-                    .toList();
-            if (kept.size() != lines.size()) {
+            List<String> kept = new ArrayList<>(lines.size());
+            for (String line : lines) {
+                String entry = line.strip();
+                if (!entry.startsWith(SCHEME + "=")) {
+                    kept.add(line);
+                    continue;
+                }
+                List<String> ids = Arrays.stream(
+                                entry.substring(SCHEME.length() + 1).split(";", -1))
+                        .map(String::strip)
+                        .filter(id -> !id.isEmpty())
+                        .toList();
+                List<String> others =
+                        ids.stream().filter(id -> !id.equals(DESKTOP_ID)).toList();
+                if (others.size() == ids.size()) {
+                    kept.add(line);
+                } else if (!others.isEmpty()) {
+                    kept.add(SCHEME + "=" + String.join(";", others) + ";");
+                }
+            }
+            if (!kept.equals(lines)) {
                 Path tmp = this.mimeApps.resolveSibling(this.mimeApps.getFileName() + ".tmp");
                 Files.writeString(tmp, String.join("\n", kept) + "\n", StandardCharsets.UTF_8);
                 Files.move(tmp, this.mimeApps, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);

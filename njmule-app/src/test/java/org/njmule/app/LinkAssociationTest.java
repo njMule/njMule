@@ -119,6 +119,30 @@ class LinkAssociationTest {
     }
 
     @Test
+    void onLinuxOnlyOurEntryLeavesTheUserList() throws IOException {
+        Path mimeApps = this.dir.resolve("mimeapps.list");
+        Files.writeString(
+                mimeApps,
+                "[Default Applications]\ntext/html=firefox.desktop\nx-scheme-handler/ed2k="
+                        + LinkAssociation.DESKTOP_ID
+                        + ";amule.desktop;\n[Added Associations]\nx-scheme-handler/ed2k="
+                        + LinkAssociation.DESKTOP_ID
+                        + ";\n",
+                StandardCharsets.UTF_8);
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir, command -> new LinkAssociation.Result(0, LinkAssociation.DESKTOP_ID + "\n"), mimeApps);
+
+        linux.giveBack();
+
+        assertThat(Files.readString(mimeApps, StandardCharsets.UTF_8)).isEqualTo("""
+                        [Default Applications]
+                        text/html=firefox.desktop
+                        x-scheme-handler/ed2k=amule.desktop;
+                        [Added Associations]
+                        """);
+    }
+
+    @Test
     void onlyTheInstalledDesktopProgramTakesLinks() {
         // Paths of this system: a Windows path is a single odd file name elsewhere.
         assertThat(LinkAssociation.isDesktopProgram(Path.of("njMule", "njmule-gui.exe")))
