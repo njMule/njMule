@@ -430,8 +430,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     // Commands: errors go to the error sink, results come back on the FX thread.
 
     public void connect(Optional<ServerAddress> server) {
+        Connection before = this.connection.get();
         this.connection.set(Connection.CONNECTING);
-        this.run(this.engine.connect(server));
+        this.later(this.engine.connect(server), done -> {}, failure -> {
+            this.errors.accept(failure);
+            // The engine started nothing and kept the connection it had, which the events then still tell.
+            if (this.connection.get() == Connection.CONNECTING) {
+                this.connection.set(before);
+            }
+        });
     }
 
     public void disconnect() {
@@ -853,16 +860,16 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(work, done -> {});
     }
 
-    // The follow-up only hands the outcome to the FX thread, which reports failures itself.
-    @SuppressWarnings("FutureReturnValueIgnored")
     private <T> void later(CompletableFuture<T> work, Consumer<T> then) {
+        this.later(work, then, message -> this.errors.accept(message));
+    }
+
+    // The follow-up only hands the outcome to the FX thread, where failed gets the failure's message.
+    @SuppressWarnings("FutureReturnValueIgnored")
+    private <T> void later(CompletableFuture<T> work, Consumer<T> then, Consumer<String> failed) {
         work.whenComplete((value, failure) -> this.fx.execute(() -> {
             if (failure != null) {
-                this.errors.accept(message(failure));
-                if (this.connection.get() == Connection.CONNECTING
-                        && this.serverName.get().isEmpty()) {
-                    this.connection.set(Connection.DISCONNECTED);
-                }
+                failed.accept(message(failure));
             } else {
                 then.accept(value);
             }

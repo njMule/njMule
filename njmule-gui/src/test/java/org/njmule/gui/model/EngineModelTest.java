@@ -21,6 +21,7 @@ import static org.njmule.core.api.DownloadPriority.AUTO;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -94,6 +95,47 @@ class EngineModelTest {
     }
 
     @Test
+    void aConnectionThatCannotStartKeepsTheServerWeHad() throws Exception {
+        EngineModel m = this.start(real -> Engines.overriding(
+                real,
+                Map.of(
+                        "connect",
+                        args -> CompletableFuture.failedFuture(new UnknownHostException("nowhere.invalid")))));
+        ServerInfo big = new ServerInfo(
+                "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
+        m.handle(new EngineEvent.ServerConnected(big, 0x12345678L, false, true));
+
+        m.connect(Optional.of(new ServerAddress("nowhere.invalid", 4661)));
+
+        until(() -> !this.errors.isEmpty());
+        assertThat(this.errors).containsExactly("nowhere.invalid");
+        assertThat(m.connectionProperty().get())
+                .as("still connected to Big, not connecting for ever")
+                .isEqualTo(EngineModel.Connection.CONNECTED);
+        assertThat(m.serverNameProperty().get()).isEqualTo("Big");
+    }
+
+    @Test
+    void anUnrelatedFailureLeavesAConnectionBeingMade() throws Exception {
+        CompletableFuture<Void> connecting = new CompletableFuture<>();
+        EngineModel m = this.start(real -> Engines.overriding(
+                real,
+                Map.of(
+                        "connect",
+                        args -> connecting,
+                        "kadBootstrap",
+                        args -> CompletableFuture.failedFuture(new IllegalStateException("Kad is not running")))));
+
+        m.connect(Optional.empty());
+        m.kadBootstrap(ServerAddress.parse("127.0.0.1:4672"));
+
+        until(() -> !this.errors.isEmpty());
+        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTING);
+        connecting.completeExceptionally(new IllegalStateException("no known server"));
+        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.DISCONNECTED);
+    }
+
+    @Test
     void aDownloadIsToldAddedOnlyOnceTheEngineTookIt() throws Exception {
         EngineModel m = this.start(real -> Engines.overriding(
                 real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException("disk full")))));
@@ -127,7 +169,7 @@ class EngineModelTest {
 
         List<String> added = new CopyOnWriteArrayList<>();
         m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
-        until(() -> m.downloads().size() == 1);
+        until(() -> m.downloads().size() == 1 && !added.isEmpty());
         assertThat(added).containsExactly("a.bin");
         m.pause(FILE);
         until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.PAUSED);
