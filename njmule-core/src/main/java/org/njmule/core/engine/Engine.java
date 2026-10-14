@@ -576,12 +576,10 @@ public final class Engine implements NjMuleEngine {
         // A name that cannot be resolved names no server of the list: the others are removed all the same.
         List<CompletableFuture<Optional<ServerList.Address>>> addresses = new ArrayList<>();
         for (ServerAddress server : servers) {
-            addresses.add(this.serverAddress(server)
-                    .thenApply(Optional::of)
-                    .exceptionally(failure -> {
-                        logger.debug("Cannot resolve {}: {}", server, failure.toString());
-                        return Optional.empty();
-                    }));
+            addresses.add(this.serverAddress(server).thenApply(Optional::of).exceptionally(failure -> {
+                logger.debug("Cannot resolve {}: {}", server, failure.toString());
+                return Optional.empty();
+            }));
         }
         return CompletableFuture.allOf(addresses.toArray(CompletableFuture<?>[]::new))
                 .thenCompose(done -> this.loop.submit(() -> this.network.removeServers(addresses.stream()
