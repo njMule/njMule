@@ -56,7 +56,7 @@ public final class ChatMessages {
 
     /** A message; {@code unicode} when the peer announced Unicode support. */
     public static Packet message(String text, boolean unicode) {
-        String cut = text.length() > MAX_LENGTH ? text.substring(0, MAX_LENGTH) : text;
+        String cut = cut(text);
         return Packet.of(
                 Protocol.EDONKEY,
                 Opcodes.Client.MESSAGE.code(),
@@ -70,7 +70,16 @@ public final class ChatMessages {
         if (in.remaining() != 0) {
             throw new DecodeException("a message with " + in.remaining() + " bytes after its text");
         }
-        return text.length() > MAX_LENGTH ? text.substring(0, MAX_LENGTH) : text;
+        return cut(text);
+    }
+
+    // Never leaves half of a surrogate pair at the end.
+    private static String cut(String text) {
+        if (text.length() <= MAX_LENGTH) {
+            return text;
+        }
+        int end = Character.isHighSurrogate(text.charAt(MAX_LENGTH - 1)) ? MAX_LENGTH - 1 : MAX_LENGTH;
+        return text.substring(0, end);
     }
 
     /**

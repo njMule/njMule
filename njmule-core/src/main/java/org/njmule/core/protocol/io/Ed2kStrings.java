@@ -44,7 +44,7 @@ public final class Ed2kStrings {
     public static String decode(byte[] raw, int offset, int length) {
         if (length >= 3 && raw[offset] == BOM[0] && raw[offset + 1] == BOM[1] && raw[offset + 2] == BOM[2]) {
             String utf8 = strictUtf8(raw, offset + 3, length - 3);
-            return utf8 != null ? utf8 : latin1(raw, offset + 3, length - 3);
+            return utf8 != null ? utf8 : cp1252(raw, offset + 3, length - 3);
         }
         String utf8 = strictUtf8(raw, offset, length);
         return utf8 != null ? utf8 : cp1252(raw, offset, length);
@@ -85,10 +85,6 @@ public final class Ed2kStrings {
         } catch (CharacterCodingException e) {
             return null;
         }
-    }
-
-    private static String latin1(byte[] raw, int offset, int length) {
-        return new String(raw, offset, length, StandardCharsets.ISO_8859_1);
     }
 
     private static String cp1252(byte[] raw, int offset, int length) {

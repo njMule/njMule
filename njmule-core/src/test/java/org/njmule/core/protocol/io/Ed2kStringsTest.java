@@ -44,6 +44,12 @@ class Ed2kStringsTest {
     }
 
     @Test
+    void invalidUtf8AfterABomFallsBackToWindows1252Too() {
+        assertThat(Ed2kStrings.decode(HEX.parseHex("efbbbf80e9"))).isEqualTo("€é");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("efbbbf"))).isEmpty();
+    }
+
+    @Test
     void asciiIsWrittenWithoutBomAndUnicodeWithIt() {
         assertThat(Ed2kStrings.encode("plain", StringEncoding.UTF8_BOM_IF_NEEDED))
                 .isEqualTo("plain".getBytes(StandardCharsets.US_ASCII));
