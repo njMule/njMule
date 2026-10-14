@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -115,6 +116,7 @@ public final class Engine implements NjMuleEngine {
     private static final String ADDRESSES_FILE = "addresses.dat";
     private static final Duration BACKUP_EVERY = Duration.ofDays(1);
     private static final int EVENT_BUFFER = 1_024;
+    private static final int LOG_REPLAY = 100;
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
     private final AppDirectories directories;
@@ -122,6 +124,9 @@ public final class Engine implements NjMuleEngine {
     private final EngineLoop loop;
     private final ExecutorService eventExecutor;
     private final SubmissionPublisher<EngineEvent> events;
+    // The latest log lines, for subscribers that come later; guarded by itself, as is publishing.
+    private final ArrayDeque<EngineEvent> recentLog = new ArrayDeque<>();
+    private final Flow.Publisher<EngineEvent> replaying = this::subscribe;
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
@@ -302,7 +307,68 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public Flow.Publisher<EngineEvent> events() {
-        return this.events;
+        return this.replaying;
+    }
+
+    // Hands a new subscriber the latest log lines first, such as those of the start that came before it.
+    private void subscribe(Flow.Subscriber<? super EngineEvent> subscriber) {
+        synchronized (this.recentLog) {
+            this.events.subscribe(new Replaying(subscriber, new ArrayDeque<>(this.recentLog)));
+        }
+    }
+
+    /** Passes events on, after those a subscriber missed; one at a time, as asked for. */
+    private static final class Replaying implements Flow.Subscriber<EngineEvent>, Flow.Subscription {
+        private final Flow.Subscriber<? super EngineEvent> downstream;
+        private final ArrayDeque<EngineEvent> missed;
+        private Flow.Subscription upstream;
+
+        Replaying(Flow.Subscriber<? super EngineEvent> downstream, ArrayDeque<EngineEvent> missed) {
+            this.downstream = Objects.requireNonNull(downstream, "subscriber");
+            this.missed = missed;
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            synchronized (this) {
+                this.upstream = subscription;
+            }
+            this.downstream.onSubscribe(this);
+        }
+
+        // The missed events go first; the live ones are asked for only once they are all out.
+        @Override
+        public synchronized void request(long n) {
+            long left = n;
+            while (left > 0 && !this.missed.isEmpty()) {
+                this.downstream.onNext(this.missed.removeFirst());
+                left--;
+            }
+            if (left > 0 || n <= 0) {
+                this.upstream.request(n <= 0 ? n : left);
+            }
+        }
+
+        @Override
+        public synchronized void cancel() {
+            this.missed.clear();
+            this.upstream.cancel();
+        }
+
+        @Override
+        public void onNext(EngineEvent item) {
+            this.downstream.onNext(item);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            this.downstream.onError(throwable);
+        }
+
+        @Override
+        public void onComplete() {
+            this.downstream.onComplete();
+        }
     }
 
     @Override
@@ -1041,11 +1107,19 @@ public final class Engine implements NjMuleEngine {
 
     // Slow subscribers lose events instead of stalling the engine.
     private void publish(EngineEvent event) {
-        if (!this.events.isClosed()) {
-            this.events.offer(event, (subscriber, dropped) -> {
-                logger.debug("Dropped {} for a slow subscriber", dropped);
-                return false;
-            });
+        synchronized (this.recentLog) {
+            if (event instanceof EngineEvent.Log) {
+                if (this.recentLog.size() >= LOG_REPLAY) {
+                    this.recentLog.removeFirst();
+                }
+                this.recentLog.addLast(event);
+            }
+            if (!this.events.isClosed()) {
+                this.events.offer(event, (subscriber, dropped) -> {
+                    logger.debug("Dropped {} for a slow subscriber", dropped);
+                    return false;
+                });
+            }
         }
     }
 }
