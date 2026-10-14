@@ -872,7 +872,31 @@ final class Network {
         AtomicFiles.writeBytes(this.configDir.resolve(IPFILTER_FILE), IpFilterDat.write(ranges));
         this.ipFilter = IpFilter.of(ranges, this.preferences.get().ipFilterLevel());
         this.userLog.log(LogLine.Level.INFO, this.ipFilter.rangeCount() + " IP filter ranges");
+        this.filtersChanged();
         return this.ipFilter.rangeCount();
+    }
+
+    // A filter applies at once to what is open too: the server, sources, clients and Kad contacts it now refuses go.
+    private void filtersChanged() {
+        Optional<ServerMet.Server> server = this.session.server();
+        if (server.isPresent()
+                && (this.ipFilter.blocks(server.get().ip())
+                        || this.isFilteredLan(server.get().ip()))) {
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    "Leaving the server " + ServerList.addressOf(server.get()) + ": it is now filtered");
+            this.session.disconnect();
+        }
+        int sources = this.downloads.dropBlockedSources();
+        // Clients connect to us whatever the LAN filter says, as the connection guard lets them.
+        int clients = this.uploads.dropClients(address -> this.ipFilter.blocks(Ipv4.fromBytes(address.getAddress())));
+        int contacts = this.kad == null ? 0 : this.kad.filtersChanged();
+        if (sources + clients + contacts > 0) {
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    "Now filtered: " + sources + " sources, " + clients + " clients, " + contacts
+                            + " Kad contacts dropped");
+        }
     }
 
     boolean setDownloadCategory(Hash16 hash, int category) {
@@ -1117,6 +1141,9 @@ final class Network {
             this.userLog.log(
                     LogLine.Level.INFO,
                     this.ipFilter.rangeCount() + " IP filter ranges at level " + now.ipFilterLevel());
+        }
+        if (was.ipFilterLevel() != now.ipFilterLevel() || was.filterLanAddresses() != now.filterLanAddresses()) {
+            this.filtersChanged();
         }
         if (was.rememberCancelledFiles() && !now.rememberCancelledFiles()) {
             this.forgetCancelled();

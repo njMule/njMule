@@ -464,6 +464,18 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         };
     }
 
+    /** The IP or LAN filter changed: contacts it now refuses are dropped; returns how many. */
+    public int filtersChanged() {
+        int dropped = 0;
+        for (KadContact c : this.table.all()) {
+            if (!this.isGoodAddress(c.ip())) {
+                this.table.remove(c);
+                dropped++;
+            }
+        }
+        return dropped;
+    }
+
     /** A node we asked to check our TCP port connected and said so. */
     public void reachableConfirmed(int ip) {
         if (this.firewallChecks.containsKey(ip)) {

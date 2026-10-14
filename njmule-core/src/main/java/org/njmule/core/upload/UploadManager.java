@@ -534,6 +534,29 @@ public final class UploadManager implements AutoCloseable {
         return until != null && this.ticker.read() - until < 0;
     }
 
+    /** Ends the uploads to and drops the waiting clients at the addresses {@code refused} takes; returns how many. */
+    public int dropClients(Predicate<InetAddress> refused) {
+        int dropped = 0;
+        for (Slot slot : List.copyOf(this.slots)) {
+            if (refused.test(slot.client.ip)) {
+                this.slots.remove(slot);
+                slot.session.close();
+                dropped++;
+            }
+        }
+        for (var it = this.waiting.values().iterator(); it.hasNext(); ) {
+            Client c = it.next();
+            if (refused.test(c.ip)) {
+                it.remove();
+                if (c.session != null) {
+                    c.session.disconnect();
+                }
+                dropped++;
+            }
+        }
+        return dropped;
+    }
+
     // Clients waiting from a banned address leave the queue; a slot it holds runs to its end, as
     // other clients may share the address.
     private void ban(InetAddress ip, long now, String reason) {

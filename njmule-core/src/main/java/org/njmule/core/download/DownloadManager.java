@@ -945,6 +945,31 @@ public final class DownloadManager implements AutoCloseable {
         return false;
     }
 
+    /**
+     * Drops the sources the IP filter now refuses, ending their sessions; returns how many. LAN sources stay: some were
+     * given by the user.
+     */
+    public int dropBlockedSources() {
+        int dropped = 0;
+        for (Entry entry : this.entries.values()) {
+            for (Source source : List.copyOf(entry.sources.values())) {
+                if (!this.blocked.test(
+                        Ipv4.fromBytes(source.address.getAddress().getAddress()))) {
+                    continue;
+                }
+                entry.sources.remove(source.address);
+                entry.changed = true;
+                dropped++;
+                DownloadSession session = source.session;
+                if (session != null) {
+                    source.session = null;
+                    session.close("the IP filter blocks it");
+                }
+            }
+        }
+        return dropped;
+    }
+
     private boolean isFilteredLan(int ip) {
         return this.settings.get().filterLan() && Ipv4.isLan(ip);
     }

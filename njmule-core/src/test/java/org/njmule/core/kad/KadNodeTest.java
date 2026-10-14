@@ -150,6 +150,18 @@ class KadNodeTest {
     }
 
     @Test
+    void contactsAFilterNowRefusesAreDropped() throws Exception {
+        KadNode node = this.node();
+        node.addContacts(
+                new NodesDat.Contents(2, false, List.of(this.record(PEER), this.record(Ipv4.of(70, 1, 1, 1)))));
+        this.blocked.add(PEER);
+
+        node.filtersChanged();
+
+        assertThat(node.contactInfos()).extracting(KadContactInfo::address).containsExactly("70.1.1.1:" + PORT);
+    }
+
+    @Test
     void anAnswerThatComesAfterTheLastRequestStillReachesTheSearch() throws Exception {
         KadNode node = this.node();
         UInt128 target = Keywords.id("ubuntu");
