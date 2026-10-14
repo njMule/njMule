@@ -1609,14 +1609,18 @@ final class Network {
         return new ChatFilter(p.messagesFromFriendsOnly(), ChatFilter.words(p.messageFilter()), p.advancedSpamFilter());
     }
 
-    // What a client browsing our files may see, as the preferences say; a friend only with its identity proven.
-    private List<SharedFiles.SharedFile> visibleSharedFiles(Hash16 userHash, boolean proven) {
+    // What a client browsing our files may see, as the preferences say: nothing when they do not let it look; a
+    // friend counts with its identity proven.
+    private Optional<List<SharedFiles.SharedFile>> visibleSharedFiles(Hash16 userHash, boolean proven) {
         boolean visible = switch (this.preferences.get().sharedFilesVisibility()) {
             case EVERYBODY -> true;
             case FRIENDS -> proven && this.friends.contains(userHash);
             case NOBODY -> false;
         };
-        return visible && this.shares != null ? this.shares.all() : List.of();
+        if (!visible) {
+            return Optional.empty();
+        }
+        return Optional.of(this.shares == null ? List.of() : this.shares.all());
     }
 
     // Servers and clients at LAN addresses are left out unless the preferences let them in.

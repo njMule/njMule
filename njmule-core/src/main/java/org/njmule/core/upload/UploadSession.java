@@ -18,9 +18,11 @@ package org.njmule.core.upload;
 
 import java.net.InetSocketAddress;
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashSet;
@@ -46,6 +48,7 @@ import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
@@ -95,10 +98,10 @@ final class UploadSession implements PeerLink.Role {
         Optional<byte[]> aichRecovery(Hash16 file, int part, Hash20 master);
 
         /**
-         * The shared files the client with {@code userHash} may see, {@code proven} when its identity is; none when the
-         * preferences say so.
+         * The shared files the client with {@code userHash} may see, {@code proven} when its identity is; empty when
+         * the preferences do not let it look.
          */
-        List<SharedFiles.SharedFile> visibleTo(Hash16 userHash, boolean proven);
+        Optional<List<SharedFiles.SharedFile>> visibleTo(Hash16 userHash, boolean proven);
 
         /** Whether {@code userHash} is one of a friend's. */
         boolean isFriend(Hash16 userHash);
@@ -110,14 +113,14 @@ final class UploadSession implements PeerLink.Role {
     /** The answer to a client browsing our files stays below this size, which every client takes. */
     static final int MAX_SHARED_LIST = 1_000_000;
 
+    /** The pseudo-directory a client browsing by directory sees our files in. */
+    static final String FILES_DIRECTORY = "!Other";
+
     /** One requested block of {@code file}, which the client chose for it. */
     record Block(Uploadable file, long start, long end) {}
 
     /** Blocks a client may have waiting at once. */
     static final int MAX_PENDING_BLOCKS = 32;
-
-    // Larger files need the large file support of the client.
-    private static final long MAX_SMALL_FILE = 0xFFFF_FFFFL;
 
     /** The largest block a client may ask for. */
     static final long MAX_BLOCK = 3L * Ed2k.EMBLOCKSIZE;
@@ -138,6 +141,7 @@ final class UploadSession implements PeerLink.Role {
     private Optional<Uploadable> file = Optional.empty();
     private Optional<Identities.Session> identity = Optional.empty();
     private final List<Packet> held = new ArrayList<>();
+    private boolean listed;
     private boolean slot;
     private boolean closed;
 
@@ -352,25 +356,67 @@ final class UploadSession implements PeerLink.Role {
                 this.pending.clear();
                 this.queue.stopped(this, "the client stopped downloading");
             }
-            case ASKSHAREDFILES -> this.sharedFilesAsked();
-            // Shared directories are not listed: the files are, to those that may see them.
-            case ASKSHAREDDIRS, ASKSHAREDFILESDIR ->
-                this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+            case ASKSHAREDFILES -> this.sharedFilesAsked(Optional.empty());
+            case ASKSHAREDDIRS -> this.sharedDirectoriesAsked();
+            case ASKSHAREDFILESDIR -> {
+                PacketReader in = packet.reader();
+                this.sharedFilesAsked(Optional.of(in.bytes(in.u16())));
+            }
             default -> {
                 // Nothing else needs an answer from an uploader.
             }
         }
     }
 
-    // The files the preferences let this client see, an empty list when they do not; large files only to those that
-    // take them.
-    private void sharedFilesAsked() {
-        boolean large = (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0;
+    // Real paths stay private: every file shows in one pseudo-directory, the one of single shared files.
+    private void sharedDirectoriesAsked() {
+        if (this.queue.visibleTo(this.peer.userHash(), this.trust().credits()).isEmpty()) {
+            this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+            return;
+        }
+        PacketWriter out = new PacketWriter().u32(1).string16(FILES_DIRECTORY, StringEncoding.UTF8);
+        this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRSANS.code(), out));
+    }
+
+    // The files the preferences let this client see, all of them or those of {@code directory}, echoed as asked. A
+    // client not allowed gets an empty list or, for a directory, a refusal. The list can take a megabyte to build and
+    // send: once a connection.
+    private void sharedFilesAsked(Optional<byte[]> directory) {
+        Optional<List<SharedFiles.SharedFile>> visible =
+                this.queue.visibleTo(this.peer.userHash(), this.trust().credits());
+        if (visible.isEmpty() && directory.isPresent()) {
+            this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+            return;
+        }
+        if (this.listed) {
+            logger.debug("{} asked for our files again", this.address());
+            return;
+        }
+        this.listed = true;
+        List<SharedFiles.SharedFile> files = visible.orElse(List.of());
+        if (directory.isPresent()
+                && !Arrays.equals(directory.get(), FILES_DIRECTORY.getBytes(StandardCharsets.US_ASCII))) {
+            files = List.of();
+        }
+        PacketWriter list = listing(files, (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0);
+        logger.debug("Our files listed to {}", this.peer.nick().orElse("?"));
+        if (directory.isEmpty()) {
+            this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list));
+        } else {
+            PacketWriter out = new PacketWriter()
+                    .u16(directory.get().length)
+                    .bytes(directory.get())
+                    .bytes(list.toByteArray());
+            this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESDIRANS.code(), out));
+        }
+    }
+
+    /** {@code <u32 count>} and the entries of {@code files}, large ones only for a client that takes them. */
+    static PacketWriter listing(List<SharedFiles.SharedFile> files, boolean large) {
         PacketWriter entries = new PacketWriter();
         int count = 0;
-        for (SharedFiles.SharedFile f :
-                this.queue.visibleTo(this.peer.userHash(), this.trust().credits())) {
-            if ((f.size() > MAX_SMALL_FILE && !large) || entries.size() > MAX_SHARED_LIST) {
+        for (SharedFiles.SharedFile f : files) {
+            if ((f.size() > Ed2k.OLD_MAX_FILE_SIZE && !large) || entries.size() > MAX_SHARED_LIST) {
                 continue;
             }
             List<Tag> tags = new ArrayList<>();
@@ -380,9 +426,7 @@ final class UploadSession implements PeerLink.Role {
             new FileEntry(f.hash(), 0, 0, tags).write(entries);
             count++;
         }
-        logger.debug("{} of our files shown to {}", count, this.peer.nick().orElse("?"));
-        PacketWriter out = new PacketWriter().u32(count).bytes(entries.toByteArray());
-        this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), out));
+        return new PacketWriter().u32(count).bytes(entries.toByteArray());
     }
 
     // A client that takes comments hears ours on a file it asks for, once a connection.

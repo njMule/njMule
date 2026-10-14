@@ -192,7 +192,7 @@ public final class UploadManager implements AutoCloseable {
     private final EngineLoop loop;
     private final Function<Hash16, Optional<SharedFiles.SharedFile>> shared;
     private final Function<Hash16, Optional<AichTree>> aichTrees;
-    private final BiFunction<Hash16, Boolean, List<SharedFiles.SharedFile>> visibleTo;
+    private final BiFunction<Hash16, Boolean, Optional<List<SharedFiles.SharedFile>>> visibleTo;
     private final Predicate<Hash16> friends;
     private final Function<Hash16, Optional<FileComment>> comments;
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
@@ -241,14 +241,15 @@ public final class UploadManager implements AutoCloseable {
      * @param downloads the download of a hash, whose checked parts are shared too
      * @param downloadSources the sources an active download of a hash knows
      * @param reachable told the address (host order) of a Kad node that could reach us
-     * @param visibleTo the shared files a client may browse, by its user hash and whether its identity is proven
+     * @param visibleTo the shared files a client may browse, by its user hash and whether its identity is proven; empty
+     *     when it may not
      * @param friends whether a user hash is one of a friend's
      */
     public UploadManager(
             EngineLoop loop,
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
             Function<Hash16, Optional<AichTree>> aichTrees,
-            BiFunction<Hash16, Boolean, List<SharedFiles.SharedFile>> visibleTo,
+            BiFunction<Hash16, Boolean, Optional<List<SharedFiles.SharedFile>>> visibleTo,
             Predicate<Hash16> friends,
             Function<Hash16, Optional<FileComment>> comments,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
@@ -795,7 +796,7 @@ public final class UploadManager implements AutoCloseable {
         }
 
         @Override
-        public List<SharedFiles.SharedFile> visibleTo(Hash16 userHash, boolean proven) {
+        public Optional<List<SharedFiles.SharedFile>> visibleTo(Hash16 userHash, boolean proven) {
             return UploadManager.this.visibleTo.apply(userHash, proven);
         }
 

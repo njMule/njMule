@@ -53,9 +53,12 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
+import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -257,6 +260,35 @@ class UploadQueueTest {
     }
 
     @Test
+    void clientsBrowsingByDirectoryGetOurFilesInOnePseudoDirectoryOnceAConnection() throws Exception {
+        NjMuleEngine engine = this.engine("share.visibleTo=" + SharedFilesVisibility.EVERYBODY + "\n");
+        SharedFileInfo file = awaitShared(engine);
+        Client client = this.client(engine.preferences().tcpPort(), 18);
+
+        client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRS.code()));
+        Packet dirs = client.next();
+        assertThat(dirs.opcode()).isEqualTo(Opcodes.Client.ASKSHAREDDIRSANS.code());
+        PacketReader in = dirs.reader();
+        assertThat(in.u32()).isEqualTo(1);
+        assertThat(in.string16()).isEqualTo("!Other");
+
+        client.send(Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Client.ASKSHAREDFILESDIR.code(),
+                new PacketWriter().string16("!Other", StringEncoding.UTF8)));
+        Packet files = client.next();
+        assertThat(files.opcode()).isEqualTo(Opcodes.Client.ASKSHAREDFILESDIRANS.code());
+        PacketReader list = files.reader();
+        assertThat(list.string16()).isEqualTo("!Other");
+        assertThat(list.u32()).isEqualTo(1);
+        assertThat(FileEntry.read(list).hash()).isEqualTo(file.hash());
+
+        // A list can take a megabyte: one a connection.
+        client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code()));
+        assertThat(client.poll(Duration.ofSeconds(1))).isEmpty();
+    }
+
+    @Test
     void aSharedFileKeepsTheUploadPriorityItIsGiven() throws Exception {
         NjMuleEngine engine = this.engine("");
         SharedFileInfo file = awaitShared(engine);
@@ -291,6 +323,11 @@ class UploadQueueTest {
         assertThat(files.opcode()).isEqualTo(Opcodes.Client.ASKSHAREDFILESANSWER.code());
         assertThat(files.payload()).containsExactly(0, 0, 0, 0);
         client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRS.code()));
+        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.ASKSHAREDDENIEDANS.code());
+        client.send(Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Client.ASKSHAREDFILESDIR.code(),
+                new PacketWriter().string16("!Other", StringEncoding.UTF8)));
         assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.ASKSHAREDDENIEDANS.code());
 
         client.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code()));
