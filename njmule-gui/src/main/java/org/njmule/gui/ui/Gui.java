@@ -19,6 +19,9 @@ package org.njmule.gui.ui;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import javafx.geometry.NodeOrientation;
+import javafx.scene.Scene;
+import javafx.scene.control.Dialog;
 import org.njmule.app.Autostart;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.i18n.I18n;
@@ -95,5 +98,26 @@ public record Gui(
 
     public String f(String key, Object... args) {
         return this.i18n.f(key, args);
+    }
+
+    /** The direction the interface runs in: right to left for the languages written so. */
+    public NodeOrientation orientation() {
+        return this.i18n.isRightToLeft() ? NodeOrientation.RIGHT_TO_LEFT : NodeOrientation.LEFT_TO_RIGHT;
+    }
+
+    /** Styles {@code scene} with the theme and lays it out in the direction of the interface. */
+    public Scene attach(Scene scene) {
+        this.themes.attach(scene);
+        scene.setNodeOrientation(this.orientation());
+        return scene;
+    }
+
+    /**
+     * Lays {@code dialog} out in the direction of the interface; it would follow its owner's, but the windows of the
+     * notification area have none to give.
+     */
+    public <D extends Dialog<?>> D orient(D dialog) {
+        dialog.getDialogPane().setNodeOrientation(this.orientation());
+        return dialog;
     }
 }

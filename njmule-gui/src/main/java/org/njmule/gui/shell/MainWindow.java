@@ -122,6 +122,7 @@ public final class MainWindow {
         StackPane.setAlignment(this.messages, Pos.TOP_RIGHT);
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
+        this.root.setNodeOrientation(gui.orientation());
         // Ctrl+1 ... Ctrl+8 (Cmd on macOS) open the screens in rail order.
         this.root.setOnKeyPressed(e -> {
             int index = DIGITS.indexOf(e.getCode());
@@ -254,7 +255,7 @@ public final class MainWindow {
         this.connect.setOnAction(e -> this.toggleConnection());
         this.connect.getStyleClass().add("accent");
         Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Material2AL.BRIGHTNESS_MEDIUM, this::toggleTheme);
-        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), new FontIcon(Material2AL.INPUT));
+        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Material2AL.INPUT));
         importer.setOnAction(
                 e -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
         MenuItem about = new MenuItem(this.gui.t("nj.about.title"), new FontIcon(Material2AL.INFO));
@@ -292,7 +293,8 @@ public final class MainWindow {
     private Node statusStrip() {
         HBox.setHgrow(this.lastLog, Priority.ALWAYS);
         this.lastLog.setMaxWidth(Double.MAX_VALUE);
-        Label version = new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version());
+        Fx.leftToRight(this.lastLog);
+        Label version = Fx.leftToRight(new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version()));
         HBox strip = new HBox(this.lastLog, this.server, this.counts, version);
         strip.getStyleClass().add("status-strip");
         return strip;
@@ -329,7 +331,8 @@ public final class MainWindow {
 
     private void showConnection() {
         EngineModel.Connection state = this.gui.model().connectionProperty().get();
-        String name = this.gui.model().serverNameProperty().get();
+        String name =
+                this.gui.i18n().embed(this.gui.model().serverNameProperty().get());
         this.connect.setText(
                 switch (state) {
                     case DISCONNECTED -> this.gui.t("IDS_MAIN_BTN_CONNECT");
@@ -358,8 +361,12 @@ public final class MainWindow {
             this.state(
                     this.ed2k,
                     "eD2K: "
-                            + this.gui.model().serverNameProperty().get()
-                            + (status.lowId() ? " (LowID)" : status.clientId() != 0 ? " (HighID)" : ""),
+                            + this.gui
+                                    .i18n()
+                                    .embed(this.gui.model().serverNameProperty().get()
+                                            + (status.lowId()
+                                                    ? " (LowID)"
+                                                    : status.clientId() != 0 ? " (HighID)" : "")),
                     true,
                     false);
         }

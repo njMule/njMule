@@ -29,14 +29,19 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputControl;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.EventCommands;
 
-/** The kinds of values the interface asks for, each with its characters, its check and its hint. */
+/**
+ * The kinds of values the interface asks for, each with its characters, its check and its hint. Links, addresses, paths
+ * and command lines are typed left to right in every language.
+ */
 public final class Inputs {
 
     // Links pasted together, apart by spaces or lines; a name may hold spaces of its own.
@@ -92,7 +97,7 @@ public final class Inputs {
 
     /** Nothing, or a file extension of letters and digits, which may start with a dot. */
     public Input<String> extension(TextField field, String name, int maxLength) {
-        return Input.of(field, name, this.gui.t("nj.input.extension"), Inputs::extensionChar, maxLength, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.extension"), Inputs::extensionChar, maxLength, t -> {
             if (!t.isEmpty() && !EXTENSION.matcher(t).matches()) {
                 throw new IllegalArgumentException(t);
             }
@@ -113,7 +118,7 @@ public final class Inputs {
 
     /** {@code host:port}. */
     public Input<ServerAddress> address(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.address"), Inputs::addressChar, MAX_HOST + 8, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.address"), Inputs::addressChar, MAX_HOST + 8, t -> {
             ServerAddress address = ServerAddress.parse(t);
             if (!ServerAddress.isValidHost(address.host())) {
                 throw new IllegalArgumentException(t);
@@ -124,7 +129,7 @@ public final class Inputs {
 
     /** An http or https address with a host. */
     public Input<URI> url(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.url"), Inputs::printable, MAX_TEXT, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.url"), Inputs::printable, MAX_TEXT, t -> {
             URI uri = URI.create(t);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
@@ -136,7 +141,7 @@ public final class Inputs {
 
     /** A host name or an IP address; empty only while {@code required} says no. */
     public Input<String> host(TextField field, String name, BooleanSupplier required) {
-        return Input.of(field, name, this.gui.t("nj.input.host"), Inputs::addressChar, MAX_HOST, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.host"), Inputs::addressChar, MAX_HOST, t -> {
             if (t.isEmpty() ? required.getAsBoolean() : !ServerAddress.isValidHost(t)) {
                 throw new IllegalArgumentException(t);
             }
@@ -168,7 +173,7 @@ public final class Inputs {
 
     /** Nothing, for the default folder, or the path of a folder, which need not exist yet. */
     public Input<Optional<Path>> folder(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
             if (t.isEmpty()) {
                 return Optional.empty();
             }
@@ -182,7 +187,7 @@ public final class Inputs {
 
     /** Nothing, or the full path of a sound file, which need not exist yet. */
     public Input<Optional<Path>> soundFile(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.soundFile"), Inputs::printable, MAX_TEXT, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.soundFile"), Inputs::printable, MAX_TEXT, t -> {
             if (t.isEmpty()) {
                 return Optional.empty();
             }
@@ -196,7 +201,7 @@ public final class Inputs {
 
     /** The path of a folder that exists. */
     public Input<Path> existingFolder(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {
             Path path = Path.of(t);
             if (t.isEmpty() || !Files.isDirectory(path)) {
                 throw new IllegalArgumentException(t);
@@ -207,7 +212,7 @@ public final class Inputs {
 
     /** One or more eD2K file links, apart by spaces or lines. */
     public Input<List<Ed2kLink.FileLink>> fileLinks(TextField field, String name) {
-        return Input.of(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_LINKS_TEXT, t -> {
+        return this.leftToRight(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_LINKS_TEXT, t -> {
                     List<Ed2kLink.FileLink> links = new ArrayList<>();
                     for (String one : LINKS.split(t, -1)) {
                         if (one.isEmpty()) {
@@ -230,7 +235,7 @@ public final class Inputs {
     /** Nothing, or a program and its arguments, which may hold {@code placeholders}; see EventCommands. */
     public Input<String> commandLine(TextField field, String name, List<String> placeholders) {
         String hint = this.gui.f("nj.input.commandLine", String.join(" ", placeholders));
-        return Input.of(field, name, hint, Inputs::printable, EventCommands.MAX_COMMAND_LINE, t -> {
+        return this.leftToRight(field, name, hint, Inputs::printable, EventCommands.MAX_COMMAND_LINE, t -> {
             EventCommands.arguments(t);
             return t;
         });
@@ -251,6 +256,18 @@ public final class Inputs {
                     SearchRequest.checkExpression(t);
                     return t;
                 });
+    }
+
+    // A field for what reads only left to right; its hint, a sentence of the interface's language, keeps its own
+    // direction in the field's tooltip.
+    private <T> Input<T> leftToRight(
+            TextInputControl field,
+            String name,
+            String hint,
+            Predicate<Character> allowed,
+            int maxLength,
+            Input.Parser<T> parser) {
+        return Input.of(Fx.leftToRight(field), name, this.gui.i18n().embed(hint), allowed, maxLength, parser);
     }
 
     private static boolean digit(char c) {

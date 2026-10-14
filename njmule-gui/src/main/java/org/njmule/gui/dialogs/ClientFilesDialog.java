@@ -54,9 +54,12 @@ public final class ClientFilesDialog {
         this.table
                 .getColumns()
                 .addAll(List.of(
-                        Fx.column(gui.t("IDS_DL_FILENAME"), 380, SearchResult::name),
-                        Fx.column(gui.t("IDS_DL_SIZE"), 100, SearchResult::size, formats::size),
-                        Fx.column(gui.t("IDS_TYPE"), 90, r -> r.type().orElse(""))));
+                        Fx.ownDirection(Fx.column(gui.t("IDS_DL_FILENAME"), 380, SearchResult::name)),
+                        Fx.leftToRight(Fx.column(gui.t("IDS_DL_SIZE"), 100, SearchResult::size, formats::size)),
+                        Fx.leftToRight(Fx.column(
+                                gui.t("IDS_TYPE"),
+                                90,
+                                (SearchResult r) -> r.type().orElse("")))));
         Button download = Fx.primary(Fx.button(gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::download));
         download.disableProperty()
                 .bind(this.table.getSelectionModel().selectedItemProperty().isNull());
@@ -69,7 +72,7 @@ public final class ClientFilesDialog {
         VBox.setVgrow(this.table, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 680, 420);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
     }
 

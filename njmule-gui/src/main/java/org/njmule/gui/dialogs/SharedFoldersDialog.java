@@ -54,7 +54,10 @@ public final class SharedFoldersDialog {
                     this.setText(null);
                 } else {
                     String path = item.path().toString();
-                    this.setText(item.subdirectories() ? gui.f("nj.shared.withSubfolders", path) : path);
+                    this.setText(
+                            item.subdirectories()
+                                    ? gui.f("nj.shared.withSubfolders", path)
+                                    : gui.i18n().embed(path));
                 }
             }
         });
@@ -69,7 +72,7 @@ public final class SharedFoldersDialog {
         VBox.setVgrow(this.list, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 620, 360);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
         this.load();
     }

@@ -46,6 +46,7 @@ import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.model.EngineModel;
+import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
@@ -118,7 +119,7 @@ public final class TrayMenu {
         HBox root = new HBox(this.band(), items);
         root.getStyleClass().addAll("njmule", "tray-menu");
         Scene scene = new Scene(root);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
         this.stage.focusedProperty().addListener((o, was, now) -> {
             if (!now) {
@@ -294,7 +295,7 @@ public final class TrayMenu {
     }
 
     private Button item(String text, Ikon icon, Runnable action) {
-        Button button = new Button(text, new FontIcon(icon));
+        Button button = new Button(text, Fx.icon(icon));
         button.getStyleClass().addAll("flat", "tray-item");
         button.setMaxWidth(Double.MAX_VALUE);
         button.setAlignment(Pos.CENTER_LEFT);

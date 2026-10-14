@@ -19,6 +19,7 @@ package org.njmule.gui.ui;
 import java.util.List;
 import java.util.function.ToLongFunction;
 import javafx.collections.ObservableList;
+import javafx.geometry.NodeOrientation;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.Background;
@@ -56,6 +57,8 @@ public final class RateGraph extends Region {
         this.down = down;
         this.up = up;
         this.getStyleClass().add("rate-graph");
+        // Time runs to the right in every language, as in JavaFX's charts.
+        this.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.grid.setManaged(false);
         this.grid.setVisible(false);
         this.getChildren().addAll(this.canvas, this.grid);

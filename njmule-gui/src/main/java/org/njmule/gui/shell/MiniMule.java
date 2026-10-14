@@ -92,7 +92,7 @@ public final class MiniMule {
         VBox root = new VBox(grid, new Separator(), buttons);
         root.getStyleClass().addAll("njmule", "minimule");
         Scene scene = new Scene(root);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
     }
 

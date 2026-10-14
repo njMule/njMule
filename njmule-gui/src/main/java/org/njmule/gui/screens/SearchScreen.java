@@ -441,36 +441,50 @@ public final class SearchScreen implements Screen {
         TableColumn<LiveList.Row<SearchResult>, Known> known =
                 Fx.column(this.gui.t("nj.search.known"), 110, r -> this.known(r));
         known.setCellFactory(c -> new KnownCell());
-        TableColumn<LiveList.Row<SearchResult>, String> fileId =
-                Fx.column(this.gui.t("IDS_FILEID"), 220, r -> r.hash().toHex());
+        TableColumn<LiveList.Row<SearchResult>, String> fileId = Fx.leftToRight(Fx.column(
+                this.gui.t("IDS_FILEID"), 220, (SearchResult r) -> r.hash().toHex()));
         // Offered in the column menu; the media columns show from the start.
         fileId.setVisible(false);
         String kbits = this.gui.t("IDS_KBITSSEC");
         // Columns are remembered by their place: new ones go last.
         table.getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name),
-                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SearchResult::size, formats::size),
-                        Fx.column(this.gui.t("IDS_SEARCHAVAIL"), 90, SearchResult::sources),
-                        Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources),
-                        Fx.column(
-                                this.gui.t("nj.search.type"), 90, r -> r.type().orElse("")),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SearchResult::size, formats::size)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_SEARCHAVAIL"), 90, SearchResult::sources)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("nj.search.type"),
+                                90,
+                                (SearchResult r) -> r.type().orElse(""))),
                         known,
                         fileId,
-                        Fx.column(this.gui.t("IDS_ARTIST"), 100, r -> r.media().artist()),
-                        Fx.column(this.gui.t("IDS_ALBUM"), 100, r -> r.media().album()),
-                        Fx.column(this.gui.t("IDS_TITLE"), 100, r -> r.media().title()),
-                        Fx.column(
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_ARTIST"),
+                                100,
+                                (SearchResult r) -> r.media().artist())),
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_ALBUM"),
+                                100,
+                                (SearchResult r) -> r.media().album())),
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_TITLE"),
+                                100,
+                                (SearchResult r) -> r.media().title())),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_LENGTH"),
                                 60,
-                                r -> r.media().length(),
-                                s -> s == 0 ? "" : formats.playingTime(s)),
-                        Fx.column(
+                                (SearchResult r) -> r.media().length(),
+                                s -> s == 0 ? "" : formats.playingTime(s))),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_BITRATE"),
                                 80,
-                                r -> r.media().bitrate(),
-                                b -> b == 0 ? "" : formats.count(b) + " " + kbits),
-                        Fx.column(this.gui.t("IDS_CODEC"), 60, r -> r.media().codec())));
+                                (SearchResult r) -> r.media().bitrate(),
+                                b -> b == 0 ? "" : formats.count(b) + " " + kbits)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_CODEC"),
+                                60,
+                                (SearchResult r) -> r.media().codec()))));
         TableLayout.remember(table, "search", this.gui.settings());
         table.setRowFactory(t -> {
             TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();

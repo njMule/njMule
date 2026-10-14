@@ -142,20 +142,24 @@ public final class TransfersScreen implements Screen {
         this.downloads
                 .getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name),
-                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size)),
                         progress,
-                        Fx.column(this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size),
-                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate),
-                        Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size)),
+                        Fx.leftToRight(
+                                Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
                         Fx.column(this.gui.t("nj.transfers.status"), 110, DownloadInfo::status, this::status),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
-                        Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName),
-                        Fx.column(
+                        Fx.ownDirection(
+                                Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_DL_REMAINS"),
                                 90,
                                 TransfersScreen::remaining,
-                                s -> s < 0 ? "?" : formats.duration(s))));
+                                s -> s < 0 ? "?" : formats.duration(s)))));
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
         MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"));
         pause.setOnAction(e -> this.pauseSelected());
@@ -221,7 +225,7 @@ public final class TransfersScreen implements Screen {
                 Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected),
                 Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected),
                 Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected),
-                this.priorityMenu(new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY))),
+                this.priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY))),
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
                 Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
@@ -458,11 +462,11 @@ public final class TransfersScreen implements Screen {
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm = new Alert(
+        Alert confirm = this.gui.orient(new Alert(
                 Alert.AlertType.CONFIRMATION,
                 this.gui.f("nj.transfers.cancelConfirm", selected.size()),
                 ButtonType.OK,
-                ButtonType.CANCEL);
+                ButtonType.CANCEL));
         confirm.initOwner(this.view.getScene().getWindow());
         confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> this.cancel(selected));
     }
@@ -478,10 +482,11 @@ public final class TransfersScreen implements Screen {
             return;
         }
         DownloadInfo d = selected.getFirst();
-        TextInputDialog ask = new TextInputDialog();
+        TextInputDialog ask = this.gui.orient(new TextInputDialog());
         ask.setTitle(this.gui.t("IDS_ADDSRCMANUALLY"));
-        ask.setHeaderText(d.name());
+        ask.setHeaderText(this.gui.i18n().embed(d.name()));
         ask.setContentText(this.gui.t("nj.input.address"));
+        Fx.leftToRight(ask.getEditor());
         ask.initOwner(this.downloads.getScene().getWindow());
         ask.showAndWait().map(String::strip).filter(t -> !t.isEmpty()).ifPresent(text -> {
             ServerAddress address;
@@ -624,16 +629,21 @@ public final class TransfersScreen implements Screen {
                 new SimpleObjectProperty<Predicate<UploadInfo>>(u -> u.state() == state));
         table.getColumns()
                 .addAll(List.of(
-                        Fx.column(
+                        Fx.ownDirection(Fx.column(
                                 this.gui.t("IDS_QL_USERNAME"),
                                 180,
-                                u -> u.nick().orElse(u.address())),
-                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software),
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file),
-                        Fx.column(this.gui.t("IDS_DL_SPEED"), 90, UploadInfo::bytesPerSecond, formats::rate),
-                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, UploadInfo::transferred, formats::size),
-                        Fx.column(
-                                this.gui.t("nj.transfers.waited"), 90, UploadInfo::waitingSeconds, formats::duration)));
+                                (UploadInfo u) -> u.nick().orElse(u.address()))),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software)),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file)),
+                        Fx.leftToRight(
+                                Fx.column(this.gui.t("IDS_DL_SPEED"), 90, UploadInfo::bytesPerSecond, formats::rate)),
+                        Fx.leftToRight(
+                                Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, UploadInfo::transferred, formats::size)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("nj.transfers.waited"),
+                                90,
+                                UploadInfo::waitingSeconds,
+                                formats::duration))));
         TableLayout.remember(table, layout, this.gui.settings());
         this.browseMenu(table, UploadInfo::address, u -> u.nick().orElse(u.address()));
         return table;
@@ -664,25 +674,26 @@ public final class TransfersScreen implements Screen {
         state.setCellFactory(c -> new SourceStateCell());
         table.getColumns()
                 .addAll(List.of(
-                        Fx.column(
+                        Fx.ownDirection(Fx.column(
                                 this.gui.t("IDS_QL_USERNAME"),
                                 180,
-                                s -> s.nick().orElse(s.address())),
-                        Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, SourceInfo::software),
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, SourceInfo::fileName),
+                                (SourceInfo s) -> s.nick().orElse(s.address()))),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, SourceInfo::software)),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, SourceInfo::fileName)),
                         state,
-                        Fx.column(this.gui.t("nj.transfers.askedFor"), 200, SourceInfo::askedForName),
-                        Fx.column(
+                        Fx.ownDirection(Fx.column(this.gui.t("nj.transfers.askedFor"), 200, SourceInfo::askedForName)),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.transfers.queueRank"),
                                 90,
                                 SourceInfo::queueRank,
-                                r -> r == 0 ? "" : String.valueOf(r)),
-                        Fx.column(
+                                r -> r == 0 ? "" : String.valueOf(r))),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_AVAILABLEPARTS"),
                                 100,
-                                s -> s.partCount() == 0 ? 0.0 : (double) s.parts() / s.partCount(),
-                                f -> Math.round(f * 100) + " %"),
-                        Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size)));
+                                (SourceInfo s) -> s.partCount() == 0 ? 0.0 : (double) s.parts() / s.partCount(),
+                                f -> Math.round(f * 100) + " %")),
+                        Fx.leftToRight(
+                                Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size))));
         TableLayout.remember(table, "sources", this.gui.settings());
         this.browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
         MenuItem swap = Fx.menuItem(this.gui.t("nj.a4af.swapToThis"), Material2MZ.SWAP_HORIZ, this::swapSelectedSource);
@@ -724,12 +735,12 @@ public final class TransfersScreen implements Screen {
         TableView<LiveList.Row<BanInfo>> table = Fx.table(this.gui.model().bans(), this.gui.t("nj.transfers.noBans"));
         table.getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_IP"), 200, BanInfo::address),
-                        Fx.column(
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_IP"), 200, BanInfo::address)),
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.transfers.banLeft"),
                                 120,
                                 BanInfo::secondsLeft,
-                                this.gui.formats()::duration)));
+                                this.gui.formats()::duration))));
         TableLayout.remember(table, "bans", this.gui.settings());
         MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Material2AL.LOCK_OPEN, this::unbanSelected);
         table.setContextMenu(new ContextMenu(unban));
@@ -771,7 +782,7 @@ public final class TransfersScreen implements Screen {
     /** The part bar of the download, with the percentage next to it. */
     private final class ProgressCell extends TableCell<LiveList.Row<DownloadInfo>, Double> {
         private final PartBar bar = new PartBar();
-        private final Label text = new Label();
+        private final Label text = Fx.leftToRight(new Label());
         private final HBox box = new HBox(6, this.bar, this.text);
 
         ProgressCell() {

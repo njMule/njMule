@@ -117,7 +117,7 @@ public final class CommentDialog {
                         Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 620, 440);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
         // The stored comment may come after the user began to type: what the user changed stays.
         this.text.textProperty().addListener((o, was, now) -> this.textChanged = true);
@@ -183,7 +183,8 @@ public final class CommentDialog {
         String rated = c.comment().rating() == 0
                 ? ""
                 : "[" + this.ratingName(c.comment().rating()) + "] ";
-        return c.who() + ": " + rated + c.comment().text();
+        return this.gui.i18n().embed(c.who()) + ": " + rated
+                + this.gui.i18n().embed(c.comment().text());
     }
 
     // A note from Kad has the Kad icon, as on the Kad screen; the name the commenter gave the file is a hover away.
@@ -202,7 +203,8 @@ public final class CommentDialog {
             this.setTooltip(
                     item.fileName().isEmpty()
                             ? null
-                            : new Tooltip(CommentDialog.this.gui.t("IDS_DL_FILENAME") + ": " + item.fileName()));
+                            : new Tooltip(CommentDialog.this.gui.t("IDS_DL_FILENAME") + ": "
+                                    + CommentDialog.this.gui.i18n().embed(item.fileName())));
         }
     }
 

@@ -42,18 +42,19 @@ public final class AboutDialog {
         this.stage.initOwner(owner);
         this.stage.initModality(Modality.WINDOW_MODAL);
         this.stage.setTitle(gui.t("nj.about.title"));
-        ImageView logo = new ImageView();
+        // The logo is never mirrored; the name, the tagline and the copyright are English.
+        ImageView logo = Fx.leftToRight(new ImageView());
         var icon = AboutDialog.class.getResource("/org/njmule/gui/icons/njmule-128.png");
         if (icon != null) {
             logo.setImage(new Image(icon.toExternalForm()));
             logo.setFitWidth(72);
             logo.setFitHeight(72);
         }
-        Label name = new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version());
+        Label name = Fx.leftToRight(new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version()));
         name.getStyleClass().add(Styles.TITLE_2);
-        Label tagline = new Label(NjMuleInfo.TAGLINE);
+        Label tagline = Fx.leftToRight(new Label(NjMuleInfo.TAGLINE));
         tagline.getStyleClass().add(Styles.TEXT_MUTED);
-        Label copyright = new Label(NjMuleInfo.COPYRIGHT);
+        Label copyright = Fx.leftToRight(new Label(NjMuleInfo.COPYRIGHT));
         Label license = new Label(gui.f("nj.about.license", NjMuleInfo.LICENSE_ID));
         license.setWrapText(true);
         Label emule = new Label(gui.t("nj.about.emule"));
@@ -71,7 +72,7 @@ public final class AboutDialog {
         root.setPadding(new Insets(18));
         root.setPrefWidth(520);
         Scene scene = new Scene(root);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
     }
 

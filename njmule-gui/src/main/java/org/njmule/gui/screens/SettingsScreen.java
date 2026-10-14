@@ -268,6 +268,10 @@ public final class SettingsScreen implements Screen {
         this.previewFirst.setText(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
         this.videoPlayer.setPrefColumnCount(26);
         this.videoPlayerArgs.setPrefColumnCount(14);
+        // A program's path and arguments, and IP addresses, read left to right.
+        Fx.leftToRight(this.videoPlayer);
+        Fx.leftToRight(this.videoPlayerArgs);
+        Fx.leftToRight(this.whitelist);
         this.videoPlayerArgs.setPromptText(this.gui.t("nj.preview.args"));
         this.visibility.getItems().addAll(SharedFilesVisibility.values());
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
@@ -486,7 +490,8 @@ public final class SettingsScreen implements Screen {
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
         this.filterLevelInput =
                 inputs.number(this.filterLevel, this.gui.t("IDS_FILTERLEVEL"), 0, Preferences.MAX_IP_FILTER_LEVEL);
-        String whitelistHint = this.gui.t("nj.settings.whitelistHint");
+        // The area runs left to right: its hint keeps the direction of the interface's language.
+        String whitelistHint = this.gui.i18n().embed(this.gui.t("nj.settings.whitelistHint"));
         this.whitelistInput = Input.of(
                 this.whitelist,
                 this.gui.t("nj.settings.whitelist"),
@@ -505,7 +510,9 @@ public final class SettingsScreen implements Screen {
                 .addListener((o, was, now) -> this.whitelist
                         .getTooltip()
                         .setText(Preferences.invalidWhitelistEntry(now)
-                                .map(entry -> whitelistHint + "\n" + this.gui.f("nj.settings.whitelistInvalid", entry))
+                                .map(entry -> whitelistHint
+                                        + "\n"
+                                        + this.gui.i18n().embed(this.gui.f("nj.settings.whitelistInvalid", entry)))
                                 .orElse(whitelistHint)));
         this.backupsInput =
                 inputs.number(this.backups, this.gui.t("nj.settings.backups"), 0, Preferences.MAX_BACKUP_COPIES);
@@ -1109,12 +1116,12 @@ public final class SettingsScreen implements Screen {
     // eMule's addresses.dat: the server.met addresses the update at start takes, one per line.
     void editServerListAddresses() {
         this.gui.model().serverListAddresses(addresses -> {
-            TextArea text = new TextArea(
-                    String.join("\n", addresses.stream().map(URI::toString).toList()));
+            TextArea text = Fx.leftToRight(new TextArea(
+                    String.join("\n", addresses.stream().map(URI::toString).toList())));
             text.setPrefRowCount(8);
             text.setPrefColumnCount(50);
             text.setPromptText("https://\u2026/server.met");
-            Dialog<ButtonType> dialog = new Dialog<>();
+            Dialog<ButtonType> dialog = this.gui.orient(new Dialog<>());
             dialog.setTitle(this.gui.t("IDS_PW_USS"));
             dialog.setHeaderText(this.gui.t("nj.settings.serverListAddresses"));
             dialog.getDialogPane().setContent(text);

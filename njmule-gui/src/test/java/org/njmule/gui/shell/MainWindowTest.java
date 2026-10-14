@@ -122,14 +122,17 @@ class MainWindowTest {
                     root.applyCss();
                     root.layout();
                     List<String> wrong = new ArrayList<>();
+                    // Laid out right to left, the window is mirrored about the middle of the scene.
+                    Bounds area = root.localToScene(root.getLayoutBounds());
                     for (Node node : root.lookupAll(".button")) {
                         if (!(node instanceof ButtonBase button) || !button.isVisible() || button.getScene() == null) {
                             continue;
                         }
                         Bounds bounds = button.localToScene(button.getBoundsInLocal());
                         // Buttons in a scrolled pane are reached by scrolling down.
-                        boolean inside = bounds.getMaxX() <= minimum.getWidth() + 0.5
-                                && (scrolled(button) || bounds.getMaxY() <= minimum.getHeight() + 0.5);
+                        boolean inside = bounds.getMinX() >= area.getMinX() - 0.5
+                                && bounds.getMaxX() <= area.getMaxX() + 0.5
+                                && (scrolled(button) || bounds.getMaxY() <= area.getMaxY() + 0.5);
                         if (button.getWidth() + 0.5 < button.prefWidth(-1) || !inside) {
                             wrong.add(screen + ": " + button.getText() + " " + bounds);
                         }

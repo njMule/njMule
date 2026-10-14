@@ -39,7 +39,6 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
@@ -95,13 +94,14 @@ public final class SharedScreen implements Screen {
         this.table
                 .getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name),
-                        Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size)),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, SharedFileInfo::priority, this::priorityName),
-                        Fx.column(
+                        Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.shared.folder"),
                                 360,
-                                f -> String.valueOf(f.path().getParent()))));
+                                (SharedFileInfo f) -> String.valueOf(f.path().getParent())))));
         TableLayout.remember(this.table, "shared", this.gui.settings());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
         copy.setOnAction(e -> this.copyLinks());
@@ -120,7 +120,7 @@ public final class SharedScreen implements Screen {
             folder.setDisable(selected != 1);
         });
         this.table.setContextMenu(menu);
-        MenuButton priorities = new MenuButton(null, new FontIcon(Material2AL.LOW_PRIORITY));
+        MenuButton priorities = new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY));
         priorities.getItems().setAll(this.priorityItems());
         priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
         priorities.setAccessibleText(this.gui.t("IDS_PRIORITY"));
@@ -154,7 +154,7 @@ public final class SharedScreen implements Screen {
     void confirmShare(Path directory) {
         CheckBox subfolders = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
         subfolders.setSelected(true);
-        VBox content = new VBox(8, new Label(directory.toString()), subfolders);
+        VBox content = new VBox(8, Fx.leftToRight(new Label(directory.toString())), subfolders);
         boolean sensitive = SharedDirectory.isSensitive(directory);
         if (sensitive) {
             Label warning = new Label(this.gui.f("nj.shared.sensitive", directory));
@@ -162,11 +162,11 @@ public final class SharedScreen implements Screen {
             warning.getStyleClass().add(Styles.DANGER);
             content.getChildren().add(warning);
         }
-        Alert ask = new Alert(
+        Alert ask = this.gui.orient(new Alert(
                 sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION,
                 null,
                 ButtonType.OK,
-                ButtonType.CANCEL);
+                ButtonType.CANCEL));
         ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
         ask.getDialogPane().setContent(content);
         ask.initOwner(this.view.getScene().getWindow());
@@ -216,9 +216,10 @@ public final class SharedScreen implements Screen {
             return;
         }
         SharedFileInfo file = selected.getFirst();
-        TextInputDialog ask = new TextInputDialog(file.name());
+        TextInputDialog ask = this.gui.orient(new TextInputDialog(file.name()));
         ask.setTitle(this.gui.t("IDS_RENAME"));
-        ask.setHeaderText(file.name());
+        ask.setHeaderText(this.gui.i18n().embed(file.name()));
+        Fx.leftToRight(ask.getEditor());
         ask.initOwner(this.table.getScene().getWindow());
         ask.showAndWait()
                 .map(String::strip)

@@ -17,6 +17,7 @@
 package org.njmule.gui.ui;
 
 import java.util.List;
+import javafx.geometry.NodeOrientation;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.Background;
@@ -49,6 +50,8 @@ public final class PartBar extends Region {
 
     public PartBar() {
         this.getStyleClass().add("part-bar");
+        // The start of the file stays on the left in every language.
+        this.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.getChildren().add(this.canvas);
         for (Region r : this.swatches()) {
             this.getChildren().add(r);

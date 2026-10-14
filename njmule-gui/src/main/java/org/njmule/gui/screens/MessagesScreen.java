@@ -49,6 +49,7 @@ import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.model.Chats;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
@@ -120,7 +121,7 @@ public final class MessagesScreen implements Screen {
         left.setPadding(new Insets(0, 8, 0, 0));
         left.setMinWidth(220);
 
-        this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
+        this.address.setPromptText(this.gui.i18n().embed(this.gui.t("nj.servers.addressPrompt")));
         this.address.setPrefColumnCount(18);
         this.address.setOnAction(e -> this.startChat());
         this.addressInput = new Inputs(this.gui)
@@ -148,7 +149,7 @@ public final class MessagesScreen implements Screen {
     private String friendText(Friend f) {
         String name = f.name().isEmpty() ? f.userHash().toString() : f.name();
         String text = f.address()
-                .map(a -> name + "  (" + a.host() + ":" + a.port() + ")")
+                .map(a -> this.gui.i18n().embed(name) + "  (" + this.gui.i18n().embed(a.host() + ":" + a.port()) + ")")
                 .orElse(name);
         boolean slot = this.gui
                 .model()
@@ -282,7 +283,8 @@ public final class MessagesScreen implements Screen {
         private final Chats.Chat chat;
         private final TextField input = new TextField();
         private final TextField solution = new TextField();
-        private final ImageView captcha = new ImageView();
+        // The picture must not be mirrored.
+        private final ImageView captcha = Fx.leftToRight(new ImageView());
         private final VBox captchaBox;
 
         ChatPane(Chats.Chat chat) {
@@ -384,9 +386,11 @@ public final class MessagesScreen implements Screen {
                 return;
             }
             String time = MessagesScreen.this.gui.formats().time(line.time());
+            // What people wrote keeps its own direction, whatever the language of the interface.
+            I18n i18n = MessagesScreen.this.gui.i18n();
             String text = switch (line.author()) {
-                case US -> time + "  " + MessagesScreen.this.gui.t("nj.chat.me") + ": " + line.text();
-                case THEM -> time + "  " + this.who() + ": " + line.text();
+                case US -> time + "  " + i18n.t("nj.chat.me") + ": " + i18n.embed(line.text());
+                case THEM -> time + "  " + i18n.embed(this.who()) + ": " + i18n.embed(line.text());
                 case NOTICE -> time + "  " + MessagesScreen.this.gui.f(line.text(), line.detail());
             };
             this.setText(text);

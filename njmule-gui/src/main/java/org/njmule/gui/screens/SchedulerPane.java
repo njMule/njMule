@@ -92,10 +92,12 @@ final class SchedulerPane extends VBox {
                 .addAll(List.of(
                         column(gui.t("nj.scheduler.name"), 150, Schedule.Rule::name),
                         column(gui.t("nj.scheduler.days"), 170, this::dayNames),
-                        column(gui.t("nj.scheduler.from"), 70, r -> r.start().toString()),
-                        column(gui.t("nj.scheduler.to"), 70, r -> r.end().toString()),
-                        column(gui.t("nj.settings.upload"), 90, r -> text(r.uploadKiBps())),
-                        column(gui.t("nj.settings.download"), 90, r -> text(r.downloadKiBps())),
+                        Fx.leftToRight(column(
+                                gui.t("nj.scheduler.from"), 70, r -> r.start().toString())),
+                        Fx.leftToRight(column(
+                                gui.t("nj.scheduler.to"), 70, r -> r.end().toString())),
+                        Fx.leftToRight(column(gui.t("nj.settings.upload"), 90, r -> text(r.uploadKiBps()))),
+                        Fx.leftToRight(column(gui.t("nj.settings.download"), 90, r -> text(r.downloadKiBps()))),
                         column(gui.t("nj.scheduler.enabled"), 70, r -> r.enabled() ? "✓" : "")));
         this.rules.setPrefHeight(160);
         this.rules.setPlaceholder(new Label(gui.t("nj.scheduler.none")));

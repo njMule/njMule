@@ -88,6 +88,7 @@ public final class CategoriesDialog {
         this.commentInput = inputs.text(this.comment, gui.t("IDS_COMMENT"), Category.MAX_COMMENT, false);
         this.patternsInput = inputs.text(this.patterns, gui.t("IDS_AUTOCAT_LABEL"), Category.MAX_PATTERNS, false);
         this.patterns.setPromptText("*.mkv|*.avi");
+        Fx.leftToRight(this.patterns);
         this.regex.setText(gui.t("IDS_REGEXPRESSION"));
         for (int c = 0; c <= Category.COLORS; c++) {
             this.color.getItems().add(c);
@@ -144,7 +145,7 @@ public final class CategoriesDialog {
         VBox.setVgrow(body, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 760, 380);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
         this.fresh();
     }

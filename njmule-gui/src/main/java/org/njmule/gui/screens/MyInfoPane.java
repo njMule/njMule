@@ -39,6 +39,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.model.EngineModel;
+import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.webui.WebUiSettings;
 
@@ -113,7 +114,8 @@ final class MyInfoPane {
                 row = 0;
                 this.box.getChildren().addAll(title, grid);
             } else if (grid != null) {
-                Label value = new Label(line.value());
+                // Addresses, numbers and names read in their own direction.
+                Label value = Fx.ownDirection(new Label(line.value()));
                 value.setWrapText(true);
                 grid.addRow(row++, new Label(line.label()), value);
             }

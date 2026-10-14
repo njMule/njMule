@@ -16,6 +16,11 @@
  */
 package org.njmule.gui.i18n;
 
+import java.text.Bidi;
+import java.time.temporal.TemporalAccessor;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Locale;
@@ -23,6 +28,7 @@ import java.util.MissingResourceException;
 import java.util.Objects;
 import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The interface texts of one language: eMule's strings ({@code IDS_*} keys, converted from its string tables) and
@@ -74,6 +80,13 @@ public final class I18n {
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
     // Norwegian that names no written standard, and Nynorsk, get the Bokmål translation.
     private static final Set<String> OTHER_NORWEGIAN = Set.of("no", "nn");
+    // The languages written from right to left; Java before 17 named Hebrew "iw".
+    private static final Set<String> RIGHT_TO_LEFT = Set.of("ar", "fa", "he", "iw");
+    // Directional embeddings (LRE, RLE and PDF), which JavaFX draws as nothing.
+    private static final char LEFT_TO_RIGHT_EMBEDDING = (char) 0x202A;
+    private static final char RIGHT_TO_LEFT_EMBEDDING = (char) 0x202B;
+    private static final char POP_DIRECTIONAL_FORMATTING = (char) 0x202C;
+    private static final Pattern LINES = Pattern.compile("\n");
 
     private final Locale locale;
     private final ResourceBundle emule;
@@ -120,6 +133,35 @@ public final class I18n {
         return this.locale;
     }
 
+    /** Whether this language is written from right to left, as Arabic, Hebrew and Persian are. */
+    public boolean isRightToLeft() {
+        return RIGHT_TO_LEFT.contains(this.locale.getLanguage());
+    }
+
+    /**
+     * {@code text} kept in the direction of its first letters, line by line, when the interface runs right to left: a
+     * file name or an address inside a sentence, or a sentence shown where text runs left to right, would otherwise mix
+     * with what is around it. Unchanged in the other languages.
+     */
+    public String embed(String text) {
+        if (!this.isRightToLeft() || text.isEmpty()) {
+            return text;
+        }
+        List<String> lines = new ArrayList<>();
+        // An embedding ends with its line.
+        for (String line : LINES.split(text, -1)) {
+            if (line.isEmpty()) {
+                lines.add(line);
+            } else {
+                boolean leftToRight = new Bidi(line, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT).baseIsLeftToRight();
+                lines.add((leftToRight ? LEFT_TO_RIGHT_EMBEDDING : RIGHT_TO_LEFT_EMBEDDING)
+                        + line
+                        + POP_DIRECTIONAL_FORMATTING);
+            }
+        }
+        return String.join("\n", lines);
+    }
+
     /** The name of this language, written in it: Deutsch, Italiano. */
     public String name() {
         return this.t("nj.language");
@@ -134,14 +176,34 @@ public final class I18n {
         }
     }
 
-    /** The text of {@code key} with its {@code %} placeholders filled in. */
+    /** The text of {@code key} with its {@code %} placeholders filled in; a text filled in is {@link #embed}ded. */
     public String f(String key, Object... args) {
         String pattern = this.t(key);
         try {
-            return String.format(this.locale, pattern, args);
+            return String.format(this.locale, pattern, this.embedded(args));
         } catch (IllegalFormatException e) {
             return pattern;
         }
+    }
+
+    // Numbers, characters, truth values and times are formatted, not embedded.
+    private Object[] embedded(Object[] args) {
+        if (!this.isRightToLeft()) {
+            return args;
+        }
+        Object[] shown = args.clone();
+        for (int i = 0; i < shown.length; i++) {
+            if (shown[i] != null
+                    && !(shown[i] instanceof Number
+                            || shown[i] instanceof Character
+                            || shown[i] instanceof Boolean
+                            || shown[i] instanceof TemporalAccessor
+                            || shown[i] instanceof Date
+                            || shown[i] instanceof Calendar)) {
+                shown[i] = this.embed(shown[i].toString());
+            }
+        }
+        return shown;
     }
 
     /** Whether {@code key} has a text. */

@@ -53,6 +53,8 @@ public final class UrlBox {
         this.seed(gui.directories().config());
         this.box.setEditable(true);
         this.box.setMaxWidth(Double.MAX_VALUE);
+        // The list of addresses too reads left to right.
+        Fx.leftToRight(this.box);
         List<String> used = this.settings.history(history);
         String suggested = SUGGESTED.get(history);
         if (used.isEmpty() && suggested != null) {

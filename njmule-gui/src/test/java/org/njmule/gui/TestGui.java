@@ -134,7 +134,7 @@ public final class TestGui implements AutoCloseable {
             }
             Parent root = node instanceof Parent p ? p : new StackPane(node);
             Scene scene = new Scene(root, 1100, 720);
-            this.gui.themes().attach(scene);
+            this.gui.attach(scene);
             this.stage.setScene(scene);
             this.stage.show();
         });

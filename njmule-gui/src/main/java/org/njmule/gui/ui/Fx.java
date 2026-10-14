@@ -16,8 +16,10 @@
  */
 package org.njmule.gui.ui;
 
+import java.text.Bidi;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
@@ -25,12 +27,14 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
+import javafx.geometry.NodeOrientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
+import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableCell;
@@ -44,15 +48,101 @@ import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
+import org.kordamp.ikonli.material2.Material2AL;
+import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.gui.model.LiveList;
 
 /** Small builders shared by the screens. */
 public final class Fx {
 
+    // Icons that point the way text runs: a right-to-left layout shows them mirrored.
+    private static final Set<Ikon> DIRECTIONAL = Set.of(
+            Material2AL.CLEAR_ALL,
+            Material2AL.EXIT_TO_APP,
+            Material2AL.INPUT,
+            Material2AL.LOGIN,
+            Material2AL.LOW_PRIORITY,
+            Material2MZ.PLAYLIST_ADD,
+            Material2MZ.SEND);
+
     private Fx() {}
 
     public static FontIcon icon(Ikon ikon) {
-        return new FontIcon(ikon);
+        FontIcon icon = new FontIcon(ikon);
+        if (DIRECTIONAL.contains(ikon)) {
+            icon.scaleXProperty()
+                    .bind(icon.effectiveNodeOrientationProperty()
+                            .map(o -> o == NodeOrientation.RIGHT_TO_LEFT ? -1.0 : 1.0));
+        }
+        return icon;
+    }
+
+    /**
+     * Keeps {@code node} left to right in every language, for what reads only so: paths, links, hashes, addresses,
+     * numbers and log lines. A text keeps to the side where the layout around it starts.
+     */
+    public static <T extends Node> T leftToRight(T node) {
+        node.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
+        if (node instanceof Labeled labeled) {
+            startWithTheLayout(labeled);
+        }
+        return node;
+    }
+
+    /** As {@link #leftToRight(Node)}, for the cells of {@code column}; call it after setting their factory. */
+    public static <S, T> TableColumn<S, T> leftToRight(TableColumn<S, T> column) {
+        var cells = column.getCellFactory();
+        column.setCellFactory(c -> leftToRight(cells.call(c)));
+        return column;
+    }
+
+    /**
+     * Lays the cells of {@code column} out in the direction of their text's first letter, for names, which may be in
+     * any language: left to right in every language, unless the name starts with a right-to-left letter. Call it after
+     * setting their factory.
+     */
+    public static <S, T> TableColumn<S, T> ownDirection(TableColumn<S, T> column) {
+        var cells = column.getCellFactory();
+        column.setCellFactory(c -> ownDirection(cells.call(c)));
+        return column;
+    }
+
+    /** As {@link #ownDirection(TableColumn)}, for one label or cell. */
+    public static <T extends Labeled> T ownDirection(T labeled) {
+        labeled.nodeOrientationProperty()
+                .bind(labeled.textProperty().map(Fx::directionOf).orElse(NodeOrientation.INHERIT));
+        startWithTheLayout(labeled);
+        return labeled;
+    }
+
+    // Left to right unless the first letter is written right to left; then as the layout around, which in a
+    // right-to-left interface is right to left.
+    private static NodeOrientation directionOf(String text) {
+        return !text.isEmpty() && new Bidi(text, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT).baseIsLeftToRight()
+                ? NodeOrientation.LEFT_TO_RIGHT
+                : NodeOrientation.INHERIT;
+    }
+
+    // A text in another direction than the layout around it keeps to the side where that layout starts.
+    private static void startWithTheLayout(Labeled labeled) {
+        labeled.alignmentProperty()
+                .bind(labeled.parentProperty()
+                        .flatMap(Node::effectiveNodeOrientationProperty)
+                        .flatMap(around -> labeled.effectiveNodeOrientationProperty()
+                                .map(own -> own == around ? Pos.CENTER_LEFT : Pos.CENTER_RIGHT))
+                        .orElse(Pos.CENTER_LEFT));
+    }
+
+    /** A column of numbers, on the right of their cells and left to right in every language. */
+    public static <S, T> TableColumn<S, T> numeric(TableColumn<S, T> column) {
+        column.getStyleClass().add("numeric");
+        var cells = column.getCellFactory();
+        column.setCellFactory(c -> {
+            TableCell<S, T> cell = cells.call(c);
+            cell.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
+            return cell;
+        });
+        return column;
     }
 
     public static Button button(String text, Ikon ikon, Runnable action) {

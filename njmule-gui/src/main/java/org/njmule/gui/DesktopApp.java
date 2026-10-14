@@ -151,7 +151,7 @@ public final class DesktopApp implements AutoCloseable {
             return true;
         }
         CheckBox again = new CheckBox(this.gui.t("IDS_DONOTASKAGAIN"));
-        Alert ask = new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO);
+        Alert ask = this.gui.orient(new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO));
         ask.setHeaderText(this.gui.t("nj.exit.confirm"));
         ask.getDialogPane().setContent(again);
         ask.initOwner(owner);
@@ -236,10 +236,11 @@ public final class DesktopApp implements AutoCloseable {
 
     // Links copied in another program are taken only when the user says so, as they may be old or unwanted.
     private boolean confirmCopied(List<Ed2kLink.FileLink> links) {
-        List<String> names = links.stream().map(Ed2kLink.FileLink::name).toList();
+        List<String> names =
+                links.stream().map(link -> this.gui.i18n().embed(link.name())).toList();
         String shown = String.join("\n", names.subList(0, Math.min(names.size(), MAX_NAMES_ASKED)))
                 + (names.size() > MAX_NAMES_ASKED ? "\n…" : "");
-        Alert ask = new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO);
+        Alert ask = this.gui.orient(new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO));
         ask.setHeaderText(this.gui.t("IDS_ADDDOWNLOADSFROMCB").strip());
         Window owner = this.stage.isShowing() ? this.stage : this.trayOwner;
         if (owner != null) {
@@ -278,7 +279,8 @@ public final class DesktopApp implements AutoCloseable {
         this.themes = new Themes(this.settings.theme(), this.settings.mode());
         this.model = new EngineModel(this.engine, Platform::runLater);
         this.scene = new Scene(this.build(), 1180, 760);
-        this.themes.attach(this.scene);
+        // Dialogs take the direction of their owner's scene.
+        this.gui.attach(this.scene);
         for (int size : ICON_SIZES) {
             var icon = DesktopApp.class.getResource("icons/njmule-" + size + ".png");
             if (icon != null) {
@@ -575,6 +577,7 @@ public final class DesktopApp implements AutoCloseable {
         String screen = this.window.current();
         Gui old = this.gui;
         this.scene.setRoot(this.build());
+        this.scene.setNodeOrientation(this.gui.orientation());
         old.subscriptions().unsubscribe();
         this.window.show(screen);
         if (this.tray != null) {

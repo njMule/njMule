@@ -59,7 +59,7 @@ public final class KadScreen implements Screen {
     private final Label buddy = value();
     private final Label contacts = value();
     private final Label verified = value();
-    private final Label id = value();
+    private final Label id = Fx.leftToRight(value());
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
@@ -95,7 +95,7 @@ public final class KadScreen implements Screen {
     }
 
     private Node build() {
-        this.node.setPromptText(this.gui.t("nj.kad.nodePrompt"));
+        this.node.setPromptText(this.gui.i18n().embed(this.gui.t("nj.kad.nodePrompt")));
         this.node.setPrefColumnCount(20);
         this.node.setOnAction(e -> this.bootstrap());
         this.nodeInput = new Inputs(this.gui)
@@ -133,19 +133,19 @@ public final class KadScreen implements Screen {
                 Fx.table(this.gui.model().kadContacts(), this.gui.t("nj.kad.off"));
         contacts.getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_ID"), 260, KadContactInfo::id),
-                        Fx.column(this.gui.t("IDS_TYPE"), 60, KadContactInfo::type),
-                        Fx.column(this.gui.t("IDS_KADDISTANCE"), 260, KadContactInfo::distance),
-                        Fx.column(this.gui.t("IDS_IP"), 160, KadContactInfo::address),
-                        Fx.column("Kad", 50, KadContactInfo::version)));
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_ID"), 260, KadContactInfo::id)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_TYPE"), 60, KadContactInfo::type)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_KADDISTANCE"), 260, KadContactInfo::distance)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_IP"), 160, KadContactInfo::address)),
+                        Fx.leftToRight(Fx.column("Kad", 50, KadContactInfo::version))));
         TableLayout.remember(contacts, "kadContacts", this.gui.settings());
         TableView<LiveList.Row<KadSearchInfo>> searches =
                 Fx.table(this.gui.model().kadSearches(), this.gui.t("nj.kad.noSearches"));
         searches.getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_KADID"), 260, KadSearchInfo::target),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_KADID"), 260, KadSearchInfo::target)),
                         Fx.column(this.gui.t("IDS_TYPE"), 140, KadSearchInfo::kind, this::kindName),
-                        Fx.column(this.gui.t("nj.kad.answers"), 80, KadSearchInfo::answers)));
+                        Fx.leftToRight(Fx.column(this.gui.t("nj.kad.answers"), 80, KadSearchInfo::answers))));
         TableLayout.remember(searches, "kadSearches", this.gui.settings());
         Tab contactsTab = new Tab(this.gui.t("IDS_KADCONTACTLAB"), contacts);
         Tab searchesTab = new Tab(this.gui.t("IDS_KADSEARCHLAB"), searches);

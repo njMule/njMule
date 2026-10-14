@@ -151,21 +151,21 @@ public final class ServersScreen implements Screen {
         this.table
                 .getColumns()
                 .addAll(List.of(
-                        Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 170, ServerInfo::name),
-                        Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address),
-                        Fx.column(this.gui.t("IDS_DESCRIPTION"), 170, ServerInfo::description),
-                        numeric(Fx.column(this.gui.t("IDS_PING"), 75, ServerInfo::ping, ms -> this.known(ms))),
-                        numeric(Fx.column(this.gui.t("IDS_UUSERS"), 90, ServerInfo::users, this::known)),
-                        numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 120, ServerInfo::maxUsers, this::known)),
-                        numeric(Fx.column(this.gui.t("IDS_PW_FILES"), 95, ServerInfo::files, this::known)),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 170, ServerInfo::name)),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address)),
+                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DESCRIPTION"), 170, ServerInfo::description)),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_PING"), 75, ServerInfo::ping, ms -> this.known(ms))),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_UUSERS"), 90, ServerInfo::users, this::known)),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 120, ServerInfo::maxUsers, this::known)),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_PW_FILES"), 95, ServerInfo::files, this::known)),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 80, ServerInfo::priority, this::priority),
-                        numeric(Fx.column(this.gui.t("IDS_UFAILED"), 90, ServerInfo::failed)),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_UFAILED"), 90, ServerInfo::failed)),
                         Fx.column(this.gui.t("IDS_STATICSERVER"), 70, ServerInfo::isStatic, this::yesNo),
-                        numeric(Fx.column(this.gui.t("IDS_SOFTFILES"), 175, ServerInfo::softFiles, this::known)),
-                        hidden(numeric(
+                        Fx.numeric(Fx.column(this.gui.t("IDS_SOFTFILES"), 175, ServerInfo::softFiles, this::known)),
+                        hidden(Fx.numeric(
                                 Fx.column(this.gui.t("IDS_HARDFILES"), 210, ServerInfo::hardFiles, this::known))),
-                        hidden(Fx.column(this.gui.t("IDS_VERSION"), 90, ServerInfo::version)),
-                        numeric(Fx.column(this.gui.t("IDS_IDLOW"), 85, ServerInfo::lowIdUsers, this::known)),
+                        hidden(Fx.leftToRight(Fx.column(this.gui.t("IDS_VERSION"), 90, ServerInfo::version))),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_IDLOW"), 85, ServerInfo::lowIdUsers, this::known)),
                         Fx.column(this.gui.t("IDS_OBFUSCATION"), 110, ServerInfo::supportsObfuscation, this::yesNo)));
         TableLayout.remember(this.table, "servers", this.gui.settings());
         // Columns keep their widths and the list scrolls sideways.
@@ -188,7 +188,7 @@ public final class ServersScreen implements Screen {
         });
         this.table.setContextMenu(this.menu());
 
-        this.address.setPromptText(this.gui.t("nj.servers.addressPrompt"));
+        this.address.setPromptText(this.gui.i18n().embed(this.gui.t("nj.servers.addressPrompt")));
         this.address.setPrefColumnCount(18);
         this.address.setOnAction(e -> this.connectToAddress());
         this.addressInput = new Inputs(this.gui)
@@ -225,7 +225,9 @@ public final class ServersScreen implements Screen {
 
     // What the servers said and what happened, in two tabs; Reset empties the one shown.
     private Node logs() {
-        ListView<EngineModel.ServerNote> info = new ListView<>(this.gui.model().serverInfo());
+        // Both logs read left to right, the lines starting on the left, in every language.
+        ListView<EngineModel.ServerNote> info =
+                Fx.leftToRight(new ListView<>(this.gui.model().serverInfo()));
         info.getStyleClass().add("log-list");
         info.setCellFactory(l -> new ServerNoteCell(this.gui));
         this.gui
@@ -233,7 +235,7 @@ public final class ServersScreen implements Screen {
                 .onListChange(
                         this.gui.model().serverInfo(),
                         c -> info.scrollTo(info.getItems().size() - 1));
-        ListView<LogLine> log = new ListView<>(this.gui.model().log());
+        ListView<LogLine> log = Fx.leftToRight(new ListView<>(this.gui.model().log()));
         log.getStyleClass().add("log-list");
         log.setCellFactory(l -> new LogCell(this.gui.formats()));
         this.gui
@@ -534,8 +536,8 @@ public final class ServersScreen implements Screen {
     }
 
     private void askRemoveAll() {
-        Alert confirm = new Alert(
-                Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS"), ButtonType.YES, ButtonType.NO);
+        Alert confirm = this.gui.orient(new Alert(
+                Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS"), ButtonType.YES, ButtonType.NO));
         confirm.initOwner(this.view.getScene().getWindow());
         confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> this.removeAll());
     }
@@ -557,11 +559,6 @@ public final class ServersScreen implements Screen {
 
     private String yesNo(boolean value) {
         return this.gui.t(value ? "IDS_YES" : "IDS_NO");
-    }
-
-    private static <S, T> TableColumn<S, T> numeric(TableColumn<S, T> column) {
-        column.getStyleClass().add("numeric");
-        return column;
     }
 
     private static <S, T> TableColumn<S, T> hidden(TableColumn<S, T> column) {

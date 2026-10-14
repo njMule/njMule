@@ -99,7 +99,7 @@ public final class ImportDialog {
         TableColumn<ImportReport.Item, String> detail = new TableColumn<>(gui.t("nj.import.detail"));
         detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().detail()));
         detail.setPrefWidth(420);
-        this.report.getColumns().addAll(List.of(file, outcome, detail));
+        this.report.getColumns().addAll(List.of(Fx.leftToRight(file), outcome, Fx.leftToRight(detail)));
         this.report.setPlaceholder(new Label(gui.t("nj.import.empty")));
         this.report.getStyleClass().add("import-report");
 
@@ -121,7 +121,7 @@ public final class ImportDialog {
         VBox.setVgrow(this.report, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 820, 520);
-        gui.themes().attach(scene);
+        gui.attach(scene);
         this.stage.setScene(scene);
     }
 
