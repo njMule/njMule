@@ -202,6 +202,11 @@ public final class PeerGreetings implements AutoCloseable {
                     connection.setReadTimeout(IDLE_TIMEOUT);
                     logger.debug("Hello from {}: {}", connection.remoteAddress(), PeerSoftware.describe(peer));
                     this.answer.ifPresent(a -> a.complete(info(connection, peer)));
+                    // Ourselves, or someone posing as us: it hears who we are, which ends a connection to ourselves.
+                    if (this.answer.isEmpty() && peer.userHash().equals(PeerGreetings.this.userHash)) {
+                        connection.close();
+                        return;
+                    }
                     if (this.answer.isEmpty()) {
                         this.next = PeerGreetings.this
                                 .router

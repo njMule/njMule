@@ -438,6 +438,10 @@ final class DownloadSession implements PeerLink.Role {
         this.peer = Optional.of(hello);
         this.peerHash = Optional.of(hello.userHash());
         this.identity = greeting.identity();
+        if (hello.userHash().equals(this.ourHello.get().userHash())) {
+            this.end(Outcome.GONE, "the source is ourselves");
+            return;
+        }
         this.state = State.REQUESTING;
         this.requestFile();
     }

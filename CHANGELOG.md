@@ -560,3 +560,7 @@ All notable changes to this project are documented here. The format follows
 - A source asked for another download, or again before its time, waits at least 11 minutes since
   the last ask instead of exactly the 10 that sources allow, so it no longer takes us for a client
   that asks too often.
+- njMule never takes itself as a source: sources the server, Kad or other clients tell of with our
+  user hash, or at our port on the address Kad found us reachable at, are left out, and a source
+  that answers our hello with our user hash is dropped from every download; a client that greets
+  us with our user hash gets our answer and nothing more.

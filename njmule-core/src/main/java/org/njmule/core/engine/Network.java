@@ -1851,6 +1851,12 @@ final class Network {
             public boolean requestCallback(DownloadManager.KadSource source, Hash16 file) {
                 return Network.this.kad == node && Network.this.requestKadCallback(node, source, file);
             }
+
+            // Firewalled, our address and port may be those of another client behind the same router.
+            @Override
+            public int publicIp() {
+                return node.isFirewalled() ? 0 : node.publicIp();
+            }
         };
     }
 

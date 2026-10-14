@@ -123,6 +123,11 @@ public final class DownloadManager implements AutoCloseable {
         default boolean requestCallback(KadSource source, Hash16 file) {
             return false;
         }
+
+        /** Our address ({@code Ipv4} form) where Kad found us reachable; 0 when unknown or firewalled. */
+        default int publicIp() {
+            return 0;
+        }
     }
 
     /**
@@ -812,6 +817,9 @@ public final class DownloadManager implements AutoCloseable {
         long ourId = this.server.clientId();
         int added = 0;
         for (ServerMessages.Source source : found.sources()) {
+            if (source.userHash().filter(this::isOurs).isPresent()) {
+                continue;
+            }
             if (source.isLowId()) {
                 if (ourId >= ServerMessages.LOW_ID_LIMIT && source.clientId() != 0) {
                     this.askCallback(entry, source.clientId(), source.userHash(), source.cryptOptions());
@@ -1019,6 +1027,9 @@ public final class DownloadManager implements AutoCloseable {
      */
     public boolean adopt(PeerLink link) {
         Hello peer = link.peer().orElseThrow();
+        if (this.isOurs(peer.userHash())) {
+            return false;
+        }
         if (this.adoptCallback(link, peer)) {
             return true;
         }
@@ -1183,7 +1194,8 @@ public final class DownloadManager implements AutoCloseable {
                     continue;
                 }
                 InetSocketAddress address = source.address();
-                if (this.usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
+                if (source.userHash().filter(this::isOurs).isEmpty()
+                        && this.usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
                     Source fresh = this.addSource(current, address);
                     // A client known already keeps the user hash it told us itself.
                     if (fresh != null && source.userHash().isPresent() && fresh.client.userHash.isEmpty()) {
@@ -1539,8 +1551,18 @@ public final class DownloadManager implements AutoCloseable {
                 && Ipv4.isUnicastPublicCandidate(ip)
                 && !this.blocked.test(ip)
                 && !this.isFilteredLan(ip)
-                && !(Ipv4.toEd2k(ip) == this.server.clientId()
-                        && port == this.settings.get().listenPort());
+                && !this.isOurAddress(ip, port);
+    }
+
+    // Our port at our address as the server, with our HighID, or Kad, finding us reachable, sees it.
+    private boolean isOurAddress(int ip, int port) {
+        return port == this.settings.get().listenPort()
+                && (Ipv4.toEd2k(ip) == this.server.clientId()
+                        || ip == this.kad.get().map(KadSources::publicIp).orElse(0));
+    }
+
+    private boolean isOurs(Hash16 userHash) {
+        return userHash.equals(this.ourHello.get().userHash());
     }
 
     // Returns the new source, or null if it was known or the list is full. A client known already as a source of
@@ -1845,7 +1867,9 @@ public final class DownloadManager implements AutoCloseable {
         int added = 0;
         for (SourceExchange.Source s : answer.sources()) {
             // A LowID would need a callback through its server; ours may differ.
-            if (s.isLowId() || !this.usable(s.ip(), s.port())) {
+            if (s.isLowId()
+                    || !this.usable(s.ip(), s.port())
+                    || s.userHash().filter(this::isOurs).isPresent()) {
                 continue;
             }
             Source fresh = this.addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
@@ -2082,6 +2106,12 @@ public final class DownloadManager implements AutoCloseable {
             Source source = client.current;
             Entry entry = source.entry;
             long now = DownloadManager.this.ticker.read();
+            if (session.peerHash().filter(DownloadManager.this::isOurs).isPresent()) {
+                // We reached ourselves: the address is no source of any download.
+                logger.debug("{} is ourselves", client.address);
+                DownloadManager.this.drop(client);
+                return;
+            }
             session.sourceParts().ifPresent(parts -> {
                 source.parts = parts;
                 source.partsAt = now;
