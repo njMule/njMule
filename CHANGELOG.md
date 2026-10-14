@@ -363,6 +363,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The search parameters wrap onto a second line in a narrow window instead of cutting their labels
+  short (French and other longer languages).
 - The complete parts of a download resumed after a crash are checked again.
 - Connections no longer hang on Windows when a socket write misses its wakeup.
 - Compressed blocks are inflated to the end even when zlib holds output back.

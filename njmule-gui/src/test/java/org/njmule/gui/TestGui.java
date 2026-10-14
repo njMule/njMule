@@ -87,7 +87,17 @@ public final class TestGui implements AutoCloseable {
         return start(root, UnaryOperator.identity(), autostart);
     }
 
+    /** As {@link #start(Path)}, with the interface in {@code language}. */
+    public static TestGui start(Path root, Locale language) throws Exception {
+        return start(root, UnaryOperator.identity(), Optional.empty(), I18n.of(language));
+    }
+
     private static TestGui start(Path root, UnaryOperator<NjMuleEngine> wrap, Optional<Autostart> autostart)
+            throws Exception {
+        return start(root, wrap, autostart, I18n.of(Locale.ENGLISH));
+    }
+
+    private static TestGui start(Path root, UnaryOperator<NjMuleEngine> wrap, Optional<Autostart> autostart, I18n i18n)
             throws Exception {
         FxTesting.start();
         NjMuleEngine engine = FxTesting.engine(root);
@@ -96,8 +106,8 @@ public final class TestGui implements AutoCloseable {
         List<Path> played = new CopyOnWriteArrayList<>();
         AtomicInteger relaunches = new AtomicInteger();
         Gui gui = FxTesting.onFx(() -> new Gui(
-                I18n.of(Locale.ENGLISH),
-                new Formats(Locale.ENGLISH),
+                i18n,
+                Formats.of(i18n),
                 model,
                 new Themes(Themes.Family.NORD, GuiSettings.Mode.LIGHT),
                 GuiSettings.load(engine.directories().gui()),

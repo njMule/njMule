@@ -54,8 +54,10 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
@@ -249,24 +251,30 @@ public final class SearchScreen implements Screen {
                 inputs.optionalNumber(this.availability, this.gui.t("IDS_SEARCHAVAIL"), 1, MAX_SOURCES);
         this.completeInput = inputs.optionalNumber(this.complete, this.gui.t("IDS_COMPLSOURCES"), 1, MAX_SOURCES);
         this.extensionInput = inputs.extension(this.extension, this.gui.t("IDS_SEARCHEXTENTION"), MAX_EXTENSION);
-        HBox row = new HBox(
-                8,
-                new Label(this.gui.t("IDS_TYPE")),
-                this.type,
-                new Label(this.gui.t("IDS_SEARCHMINSIZE")),
-                this.minSize,
-                new Label(this.gui.t("IDS_SEARCHMAXSIZE")),
-                this.maxSize,
-                new Label(this.gui.t("IDS_SEARCHAVAIL")),
-                this.availability,
-                new Label(this.gui.t("IDS_COMPLSOURCES")),
-                this.complete,
-                new Label(this.gui.t("IDS_SEARCHEXTENTION")),
-                this.extension,
+        // Wraps instead of squeezing: longer translations never cut a label short.
+        FlowPane row = new FlowPane(
+                14,
+                6,
+                this.labelled("IDS_TYPE", this.type),
+                this.labelled("IDS_SEARCHMINSIZE", this.minSize),
+                this.labelled("IDS_SEARCHMAXSIZE", this.maxSize),
+                this.labelled("IDS_SEARCHAVAIL", this.availability),
+                this.labelled("IDS_COMPLSOURCES", this.complete),
+                this.labelled("IDS_SEARCHEXTENTION", this.extension),
                 Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::resetParameters));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("search-parameters");
         return row;
+    }
+
+    // A label kept beside its field, at its whole width.
+    private HBox labelled(String key, Node field) {
+        Label label = new Label(this.gui.t(key));
+        label.setMinWidth(Region.USE_PREF_SIZE);
+        label.setLabelFor(field);
+        HBox pair = new HBox(6, label, field);
+        pair.setAlignment(Pos.CENTER_LEFT);
+        return pair;
     }
 
     private int lowestMaxSize() {
