@@ -60,12 +60,14 @@ import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.shell.NotificationArea;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.UrlBox;
+import org.njmule.webui.ApiToken;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 
@@ -140,6 +142,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox webUi = new CheckBox();
     private final TextField webUiPort = new TextField();
     private final CheckBox webUiLan = new CheckBox();
+    private final CheckBox webUiApi = new CheckBox();
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
@@ -262,6 +265,7 @@ public final class SettingsScreen implements Screen {
         this.upnp.setText(this.gui.t("nj.settings.upnp"));
         this.webUi.setText(this.gui.t("nj.webui.enabled"));
         this.webUiLan.setText(this.gui.t("nj.webui.lan"));
+        this.webUiApi.setText(this.gui.t("nj.webui.api"));
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
@@ -354,6 +358,14 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
         grid.add(this.webUiLan, 1, row++);
         row = field(grid, row, this.gui.t("nj.webui.password"), new HBox(8, this.webUiPassword, this.webUiAgain));
+        grid.add(this.webUiApi, 1, row++);
+        grid.add(
+                new HBox(
+                        8,
+                        Fx.button(this.gui.t("nj.webui.copyToken"), Material2AL.CONTENT_COPY, this::copyApiToken),
+                        Fx.button(this.gui.t("nj.webui.newToken"), Material2MZ.REFRESH, this::newApiToken)),
+                1,
+                row++);
         Label webNote = new Label(this.gui.t("nj.webui.note"));
         webNote.setWrapText(true);
         webNote.getStyleClass().add("text-muted");
@@ -579,6 +591,7 @@ public final class SettingsScreen implements Screen {
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
         this.webUiLan.setSelected(web.lan());
+        this.webUiApi.setSelected(web.api());
         this.webUiPassword.clear();
         this.webUiAgain.clear();
         this.loadLinks();
@@ -831,7 +844,28 @@ public final class SettingsScreen implements Screen {
         if (this.webUi.isSelected() && hash.isEmpty()) {
             throw new IllegalArgumentException(this.gui.t("nj.webui.needsPassword"));
         }
-        return new WebUiSettings(this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash);
+        return new WebUiSettings(
+                this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash, this.webUiApi.isSelected());
+    }
+
+    // The token callers of the remote-control API need, made on first use.
+    void copyApiToken() {
+        try {
+            ClipboardWatch.copy(ApiToken.loadOrCreate(this.gui.directories().config(), new SecureRandom()));
+            this.gui.inform().accept(this.gui.t("nj.webui.tokenCopied"));
+        } catch (IOException e) {
+            this.gui.inform().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
+        }
+    }
+
+    // Whoever holds the old token is refused from now on.
+    void newApiToken() {
+        try {
+            ClipboardWatch.copy(ApiToken.renew(this.gui.directories().config(), new SecureRandom()));
+            this.gui.inform().accept(this.gui.t("nj.webui.tokenRenewed"));
+        } catch (IOException e) {
+            this.gui.inform().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
+        }
     }
 
     private String obfuscationName(ObfuscationMode m) {
@@ -940,6 +974,10 @@ public final class SettingsScreen implements Screen {
 
     CheckBox webUiBox() {
         return this.webUi;
+    }
+
+    CheckBox webUiApiBox() {
+        return this.webUiApi;
     }
 
     TextField webUiPortField() {
