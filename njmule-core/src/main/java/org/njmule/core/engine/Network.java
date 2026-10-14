@@ -211,7 +211,7 @@ final class Network {
     private volatile KadNode kad;
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
-    private boolean kadStoppedByHand;
+    private volatile boolean kadStoppedByHand;
     // Where UPnP discovery goes; empty: the router is never asked.
     private final Optional<InetSocketAddress> upnp;
     // Changes of the router's mappings run one after the other, off the engine thread, so old mappings are gone before
