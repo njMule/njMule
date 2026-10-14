@@ -93,7 +93,27 @@ final class ScriptedSource implements AutoCloseable {
     }
 
     Hello hello() {
-        return Hello.of(this.userHash, 0, this.port(), "scripted", 0, 0, this.misc1, this.misc2, 0, 0);
+        return this.hello(this.userHash, 0, 0);
+    }
+
+    /** Our hello with another user hash, client id and server, as a firewalled client tells them. */
+    Hello hello(Hash16 hash, long clientId, int serverIp) {
+        return Hello.of(hash, clientId, this.port(), "scripted", 0, 0, this.misc1, this.misc2, serverIp, 4661);
+    }
+
+    /** Connects to the downloader listening at {@code port} with {@code hello}, as a source calling back does. */
+    static Link call(int port, Hello hello) throws IOException {
+        Socket socket = new Socket(InetAddress.getLoopbackAddress(), port);
+        socket.setSoTimeout((int) WAIT.toMillis());
+        Link link = new Link(socket);
+        link.send(hello.encode(false));
+        assertThat(link.next().opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+        return link;
+    }
+
+    /** Waits for the next downloader and leaves its connection unanswered. */
+    Socket acceptSilently() throws Exception {
+        return this.nextSocket();
     }
 
     /** Waits for the next downloader and answers its hello. */
