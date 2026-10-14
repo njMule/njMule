@@ -72,10 +72,11 @@ class EngineImportTest {
             assertThat(NodesDat.read(Files.readAllBytes(dirs.config().resolve(KadNode.NODES_FILE)))
                             .contacts())
                     .hasSize(3);
-            // Both copies are one file: the complete one finishes, the other is then known.
+            // Both copies are one file: the complete one finishes, the other is then known. The name is reserved by
+            // an empty file before the data replaces it.
             Path finished = engine.preferences().effectiveIncomingDir(dirs).resolve("complete.bin");
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-            while (!Files.exists(finished)) {
+            while (!Files.exists(finished) || Files.size(finished) != emule.downloadData.length) {
                 assertThat(System.nanoTime()).isLessThan(deadline);
                 Thread.sleep(50);
             }
