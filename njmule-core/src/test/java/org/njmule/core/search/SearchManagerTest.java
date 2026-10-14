@@ -197,6 +197,11 @@ class SearchManagerTest {
                         List.of(
                                 entry(1, "linux.iso", 1000, 2),
                                 new FileEntry(hash(2), 0, 0, List.of()),
+                                new FileEntry(
+                                        hash(4),
+                                        0,
+                                        0,
+                                        List.of(new Tag.StringTag(TagName.id(FileTag.FILENAME), "nosize.iso"))),
                                 entry(1, "linux.iso", 2000, 7)),
                         true)
                 .encode());
