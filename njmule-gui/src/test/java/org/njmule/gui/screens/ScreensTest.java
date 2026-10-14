@@ -42,6 +42,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
@@ -66,6 +67,7 @@ class ScreensTest {
     private TestGui test;
     private SettingsScreen settings;
     private List<String> languageNames;
+    private KadInfo kad;
 
     @AfterEach
     void close() throws Exception {
@@ -433,6 +435,32 @@ class ScreensTest {
         });
         FxTesting.await("two messages", () -> this.test.told.size() >= 2);
         assertThat(this.test.told).anyMatch(m -> m.contains("Kad is not running"));
+    }
+
+    @Test
+    void kadNamesTheTestedUdpStateAndTheBuddy() throws Exception {
+        this.givenTheGui();
+
+        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, true, KadInfo.Buddy.SERVING));
+
+        this.thenKadReads("Open", "Buddy of a firewalled client");
+
+        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, false, KadInfo.Buddy.CONNECTING));
+
+        this.thenKadReads("Unknown", "Connecting");
+    }
+
+    private void givenTheGui() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+    }
+
+    private void whenKadIs(KadInfo kad) {
+        this.kad = kad;
+    }
+
+    private void thenKadReads(String udp, String buddy) {
+        assertThat(KadScreen.udpState(this.test.gui, this.kad)).isEqualTo(udp);
+        assertThat(KadScreen.buddyState(this.test.gui, this.kad)).isEqualTo(buddy);
     }
 
     @Test

@@ -45,6 +45,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.Engines;
@@ -62,6 +63,7 @@ class MainWindowActionsTest {
     Path dir;
 
     private TestGui test;
+    private MainWindow shown;
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final AtomicReference<EngineStatus> status =
             new AtomicReference<>(Statuses.of(Optional.empty(), 0, false, Optional.empty(), false));
@@ -225,6 +227,31 @@ class MainWindowActionsTest {
         }
         commands.put("status", args -> CompletableFuture.completedFuture(this.status.get()));
         return commands;
+    }
+
+    @Test
+    void theKadChipTellsTheTestedUdpStateBehindAFirewall() throws Exception {
+        this.givenTheMainWindow();
+
+        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, false, true, KadInfo.Buddy.NONE));
+
+        this.thenTheKadChipSays("Kad: Firewalled, UDP open");
+
+        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, true, true, KadInfo.Buddy.CONNECTED));
+
+        this.thenTheKadChipSays("Kad: Firewalled, UDP firewalled");
+    }
+
+    private void givenTheMainWindow() throws Exception {
+        this.shown = this.window();
+    }
+
+    private void whenKadIs(KadInfo kad) throws Exception {
+        this.status(Statuses.of(Optional.empty(), 0, false, Optional.of(kad), false));
+    }
+
+    private void thenTheKadChipSays(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.shown.kadChip().getText())).isEqualTo(text);
     }
 
     private void status(EngineStatus next) throws Exception {

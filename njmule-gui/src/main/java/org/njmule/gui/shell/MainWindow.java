@@ -369,10 +369,15 @@ public final class MainWindow {
         } else if (!kadInfo.get().connected()) {
             this.state(this.kad, "Kad: " + this.gui.t("IDS_NOTCONNECTED"), false, true);
         } else {
-            boolean firewalled = kadInfo.get().firewalled();
+            KadInfo k = kadInfo.get();
+            boolean firewalled = k.firewalled();
+            // Behind a TCP firewall, whether UDP gets through tells if others still reach us, once tested.
+            String udp = firewalled && (k.udpVerified() || k.udpFirewalled())
+                    ? ", " + this.gui.t(k.udpFirewalled() ? "nj.kad.udpFirewalled" : "nj.kad.udpOpen")
+                    : "";
             this.state(
                     this.kad,
-                    "Kad: " + (firewalled ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN")),
+                    "Kad: " + (firewalled ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN")) + udp,
                     !firewalled,
                     firewalled);
         }

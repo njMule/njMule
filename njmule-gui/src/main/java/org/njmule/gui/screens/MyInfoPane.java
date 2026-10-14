@@ -164,8 +164,8 @@ final class MyInfoPane {
         if (kad.isPresent() && kad.get().connected()) {
             KadInfo k = kad.get();
             lines.add(Line.of(state, this.gui.t(k.firewalled() ? "IDS_FIREWALLED" : "IDS_KADOPEN")));
-            // njMule does not test whether UDP gets through.
-            lines.add(Line.of("UDP " + state, this.gui.t("IDS_UNKNOWN")));
+            lines.add(Line.of("UDP " + state, KadScreen.udpState(this.gui, k)));
+            lines.add(Line.of(this.gui.t("IDS_BUDDY") + ":", KadScreen.buddyState(this.gui, k)));
             lines.add(Line.of(
                     ipPort, k.publicIp().isEmpty() ? this.gui.t("IDS_UNKNOWN") : k.publicIp() + ":" + k.udpPort()));
             lines.add(Line.of(this.gui.t("IDS_ID") + ":", k.publicIp().isEmpty() ? "" : number(k.publicIp())));

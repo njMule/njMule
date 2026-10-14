@@ -55,6 +55,8 @@ public final class KadScreen implements Screen {
     private final Gui gui;
     private Node view;
     private final Label state = value();
+    private final Label udp = value();
+    private final Label buddy = value();
     private final Label contacts = value();
     private final Label verified = value();
     private final Label id = value();
@@ -110,6 +112,8 @@ public final class KadScreen implements Screen {
                 12,
                 12,
                 card(this.gui.t("nj.kad.state"), this.state),
+                card(this.gui.t("nj.kad.udpState"), this.udp),
+                card(this.gui.t("IDS_BUDDY"), this.buddy),
                 card(this.gui.t("IDS_KADCONTACTLAB"), this.contacts),
                 card(this.gui.t("nj.kad.verified"), this.verified),
                 card(this.gui.t("IDS_KADID"), this.id));
@@ -227,6 +231,8 @@ public final class KadScreen implements Screen {
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {
             this.state.setText(this.gui.t("nj.kad.off"));
+            this.udp.setText("-");
+            this.buddy.setText("-");
             this.contacts.setText("-");
             this.verified.setText("-");
             this.id.setText("-");
@@ -235,12 +241,35 @@ public final class KadScreen implements Screen {
         KadInfo k = kad.get();
         if (!k.connected()) {
             this.state.setText(this.gui.t("IDS_NOTCONNECTED"));
+            this.udp.setText("-");
+            this.buddy.setText("-");
         } else {
             this.state.setText(k.firewalled() ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN"));
+            this.udp.setText(udpState(this.gui, k));
+            this.buddy.setText(buddyState(this.gui, k));
         }
         this.contacts.setText(this.gui.formats().count(k.contacts()));
         this.verified.setText(this.gui.formats().count(k.verifiedContacts()));
         this.id.setText(k.id());
+    }
+
+    /** Whether other nodes can send to our UDP port: untested until a test came to an outcome. */
+    static String udpState(Gui gui, KadInfo k) {
+        if (!k.udpVerified() && !k.udpFirewalled()) {
+            return gui.t("IDS_UNKNOWN");
+        }
+        return gui.t(k.udpFirewalled() ? "IDS_FIREWALLED" : "IDS_KADOPEN");
+    }
+
+    /** Our Kad buddy, or the firewalled client we are the buddy of. */
+    static String buddyState(Gui gui, KadInfo k) {
+        return gui.t(
+                switch (k.buddy()) {
+                    case NONE -> "IDS_BUDDYNONE";
+                    case CONNECTING -> "IDS_CONNECTING";
+                    case CONNECTED -> "IDS_CONNECTED";
+                    case SERVING -> "nj.kad.buddyServing";
+                });
     }
 
     void bootstrap() {
