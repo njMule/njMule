@@ -303,6 +303,13 @@ All notable changes to this project are documented here. The format follows
   imported.
 - The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
   engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
+- Kad notes: our comment and rating of a shared file go to the Kad nodes closest to it, once a day,
+  at once when they change and no more once taken away. As a Kad node njMule keeps the notes of
+  others (150 per file and 50,000 in all, one per publisher and per address, each for a day) and
+  answers searches for them. The comment dialog of a download or a shared file shows the notes found
+  on Kad beside the comments of the sources, with the Kad icon, and Search Kad looks for more; each
+  running download is searched once a run. Notes holding a filtered word, in the comment or in the
+  file name, are left out.
 
 ### Changed
 
@@ -348,6 +355,7 @@ All notable changes to this project are documented here. The format follows
 - A client's credits, queue place and upload slot stay bound to its identity: another address
   claiming its user hash gets none of them, and a client that changes its user hash is banned.
 - Ports read from Kad tags are taken only within 1..65535.
+- Kad search results and publish answers count only from the nodes the lookup sent its request to.
 - The IP filter applies to servers, to Kad contacts and to every source, from links too.
 - Kad keyword searches look up the longest word of the expression.
 - UPnP finds the router on computers with virtual network adapters (WSL, Hyper-V, VPNs): the
