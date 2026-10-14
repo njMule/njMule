@@ -143,6 +143,38 @@ class RoutingTableTest {
                 .containsExactly(other);
     }
 
+    @Test
+    void shouldLetALookupAskOnlyContactsThatAgreeWithTheTable() {
+        KadContact verified = this.givenAContactOfTheTable(Ipv4.of(1, 1, 1, 1), true);
+        KadContact unverified = this.givenAContactOfTheTable(Ipv4.of(2, 2, 2, 2), false);
+        this.givenAFullSubnet(Ipv4.of(9, 9, 9, 0));
+
+        this.thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT, true);
+        this.thenALookupMayAsk(verified.id(), Ipv4.of(5, 5, 5, 5), PORT, false);
+        this.thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT + 1, false);
+        this.thenALookupMayAsk(unverified.id(), Ipv4.of(5, 5, 5, 5), PORT, true);
+        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(2, 2, 2, 2), PORT, false);
+        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(9, 9, 9, 251), PORT, false);
+        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(5, 5, 5, 5), PORT, true);
+    }
+
+    private KadContact givenAContactOfTheTable(int ip, boolean verified) {
+        KadContact c = this.contact(ip);
+        c.setVerified(verified);
+        assertThat(this.add(c, false)).isEqualTo(RoutingTable.Outcome.ADDED);
+        return c;
+    }
+
+    private void givenAFullSubnet(int subnet) {
+        assertThat(this.fillSubnet(subnet)).hasSize(10);
+    }
+
+    private void thenALookupMayAsk(UInt128 id, int ip, int port, boolean acceptable) {
+        assertThat(this.table.isAcceptable(id, ip, port))
+                .as("%s at %s:%d", id, Ipv4.format(ip), port)
+                .isEqualTo(acceptable);
+    }
+
     @Property(tries = 50)
     void addingUpdatingAndRemovingKeepTheTableInShape(@ForAll long seed) {
         Random random = new Random(seed);

@@ -220,6 +220,19 @@ final class RoutingTable {
         }
     }
 
+    /**
+     * Whether a lookup may ask a contact another node told it of, though the table does not take it: no verified
+     * contact has its id at another address, and it would fit the address limits.
+     */
+    boolean isAcceptable(UInt128 id, int ip, int udpPort) {
+        KadContact known = this.byId.get(id);
+        if (known != null) {
+            return !known.isVerified() || (known.ip() == ip && known.udpPort() == udpPort);
+        }
+        return !this.byIp.containsKey(ip)
+                && (this.lan.test(ip) || this.perSubnet.getOrDefault(ip & 0xFFFF_FF00, 0) < PER_SUBNET);
+    }
+
     /** Up to {@code count} verified contacts of type at most {@code maxType}, closest first. */
     List<KadContact> closest(UInt128 target, int maxType, int count) {
         List<KadContact> candidates = new ArrayList<>();

@@ -571,3 +571,6 @@ All notable changes to this project are documented here. The format follows
   kept, and they are asked one at a time (every 2 seconds while no contact is known, every 15
   otherwise) only while Kad is not connected, obfuscated for the nodes that take it; the nodes that
   answer are no longer taken as contacts.
+- Kad: plain datagrams from the DNS port are dropped; lookups no longer ask contacts without a UDP
+  port, at the address of another of our contacts or under the id of a verified contact elsewhere;
+  a result claiming more than 65,500 sources counts as unknown.

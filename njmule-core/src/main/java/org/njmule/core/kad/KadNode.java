@@ -249,6 +249,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final int SOURCE_DIRECT_LARGE = 4;
     private static final int SOURCE_BUDDY_LARGE = 5;
     private static final int SOURCE_DIRECT_CALLBACK = 6;
+    // More sources than any file has: a result saying so tells nothing.
+    private static final long MAX_AVAILABILITY = 65_500;
+    private static final int DNS_PORT = 53;
     private static final long LARGE_SOURCE = 4_290_048_000L;
     // Connect option bits.
     private static final int OBFUSCATION_REQUIRED = 0x04;
@@ -513,7 +516,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (this.isGoodAddress(c.ip())
                     && c.udpPort() != 0
                     && c.version() > 1
-                    && !(c.udpPort() == 53 && c.version() <= 5)
+                    && !(c.udpPort() == DNS_PORT && c.version() <= 5)
                     && known.add(c.id())) {
                 this.bootstrapList.add(new KadMessages.Contact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version()));
             }
@@ -1065,6 +1068,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     /** A Kad packet from {@code ip:port}; the keys come from its obfuscation (0 when plain). */
     public void received(int ip, int port, Packet packet, boolean obfuscated, int receiverKey, int senderKey) {
+        // A datagram from the DNS port without a sender key may be a DNS answer made to look like Kad.
+        if (port == DNS_PORT && senderKey == 0) {
+            return;
+        }
         long nowMs = this.nowMs();
         if (this.tracking.isBanned(ip, nowMs)) {
             return;
@@ -1229,13 +1236,18 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         boolean helpers = lookup.kind() == Lookup.Kind.UDP_HELPERS;
         List<KadMessages.Contact> usable = new ArrayList<>();
         for (KadMessages.Contact c : answer.contacts()) {
-            if (c.version() >= 2 && this.isGoodAddress(c.ip()) && !(c.udpPort() == 53 && c.version() <= 5)) {
-                // Helpers must never hear from us over UDP: they are neither added nor asked further.
-                if (helpers) {
-                    this.udpTest.candidate(c);
-                } else {
-                    this.addUnverified(c, false, now);
-                }
+            if (c.version() < 2
+                    || c.udpPort() == 0
+                    || !this.isGoodAddress(c.ip())
+                    || (c.udpPort() == DNS_PORT && c.version() <= 5)) {
+                continue;
+            }
+            // Helpers must never hear from us over UDP: they are neither added nor asked further.
+            if (helpers) {
+                this.udpTest.candidate(c);
+                usable.add(c);
+            } else if (this.addUnverified(c, false, now) == RoutingTable.Outcome.ADDED
+                    || this.table.isAcceptable(c.id(), c.ip(), c.udpPort())) {
                 usable.add(c);
             }
         }
@@ -1733,13 +1745,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return new KadMessages.Self(this.identity.id(), this.settings.tcpPort(), KadMessages.VERSION);
     }
 
-    private void addUnverified(KadMessages.Contact c, boolean verified, long now) {
+    private RoutingTable.Outcome addUnverified(KadMessages.Contact c, boolean verified, long now) {
         if (!this.isGoodAddress(c.ip()) || c.version() < 2) {
-            return;
+            return RoutingTable.Outcome.REFUSED;
         }
         KadContact contact = KadContact.of(c, now);
         contact.setVerified(verified);
-        this.table.add(contact, false, NodesDat.UdpKey.NONE, this.publicIp, now);
+        return this.table.add(contact, false, NodesDat.UdpKey.NONE, this.publicIp, now);
     }
 
     private boolean inTolerance(UInt128 target) {
@@ -1769,11 +1781,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (name.isEmpty() || size <= 0 || !Keywords.of(name.get()).containsAll(keywords)) {
                 continue;
             }
+            long sources = Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0);
             results.add(new FileResult(
                     e.id().toHash16(),
                     name.get(),
                     size,
-                    (int) Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0),
+                    sources > MAX_AVAILABILITY ? 0 : (int) sources,
                     Tags.stringValue(e.tags(), FileTag.FILETYPE),
                     MediaTags.read(e.tags())));
         }
