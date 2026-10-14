@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.IntPredicate;
@@ -186,6 +187,16 @@ final class Lookup {
             }
         }
         return false;
+    }
+
+    /** The id of the node we asked at {@code ip:port}, as the contact that told us of it gave it. */
+    Optional<UInt128> askedId(int ip, int port) {
+        for (KadMessages.Contact c : this.tried.values()) {
+            if (c.ip() == ip && c.udpPort() == port) {
+                return Optional.of(c.id());
+            }
+        }
+        return Optional.empty();
     }
 
     /** How many contacts the node we asked at {@code ip:port} may send. */

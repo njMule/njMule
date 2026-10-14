@@ -585,3 +585,6 @@ All notable changes to this project are documented here. The format follows
   answers it wants still takes those arriving in the next 15 seconds instead of dropping them.
 - Kad keyword search results must match the whole expression (other words, NOT terms, size, type
   and other attributes), not only the word looked up, whatever the answering node filtered.
+- Kad remembers the id each node proved at its address: a node proving another id there within an
+  hour is ignored for four hours, an id merely claimed there is not taken, and lookup and search
+  answers under another id than the proven one are dropped.

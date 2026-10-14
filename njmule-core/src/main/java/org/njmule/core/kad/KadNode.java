@@ -274,6 +274,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // Lookups for UDP test helpers in one test at most, and how far apart.
     private static final int UDP_HELPER_LOOKUPS = 3;
     private static final Duration UDP_HELPER_LOOKUP_GAP = Duration.ofMinutes(1);
+    // A node that proves another id too soon after the last is kept out this long.
+    private static final Duration ID_CHANGE_BAN = Duration.ofHours(4);
     // A node is helped with its UDP test once in this time at most, and so many are remembered.
     private static final Duration UDP_HELP_GAP = Duration.ofMinutes(5);
     private static final int MAX_UDP_HELPED = 256;
@@ -281,6 +283,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private final KadIdentity identity;
     private final RoutingTable table;
     private final PacketTracking tracking = new PacketTracking();
+    private final ProvenIds provenIds = new ProvenIds();
     private final KadIndex index = new KadIndex();
     private final Transport transport;
     private final Host host;
@@ -946,6 +949,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (now - this.nextClean >= 0) {
             this.nextClean = now + 12 * MINUTE;
             this.tracking.clean(this.nowMs());
+            this.provenIds.clean(now);
             this.index.clean(now);
             this.firewallChecks.values().removeIf(at -> now - at > 3 * MINUTE);
             this.udpHelped.values().removeIf(at -> now - at >= UDP_HELP_GAP.toNanos());
@@ -1173,12 +1177,19 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         KadMessages.Hello hello = KadMessages.Hello.decode(packet);
+        // Our key for its address proves where the node is: the id it gives there counts as proven.
+        if (peer.validKey() && !this.proved(peer, hello.sender().id())) {
+            return;
+        }
+        boolean claimedOnly = !peer.validKey()
+                && this.provenIds.contradicts(
+                        peer.ip(), peer.port(), hello.sender().id());
         int udpPort = Tags.portValue(hello.tags(), FileTag.SOURCEUPORT).orElse(peer.port());
         int misc = (int) Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS).orElse(0);
         int version = hello.sender().version();
         long now = this.ticker.read();
         RoutingTable.Outcome outcome = RoutingTable.Outcome.REFUSED;
-        if (this.isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
+        if (!claimedOnly && this.isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
             KadContact contact = new KadContact(
                     hello.sender().id(), peer.ip(), udpPort, hello.sender().tcpPort(), version, now);
             contact.setVerified(peer.validKey());
@@ -1235,15 +1246,28 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.tracking.challenged(peer.ip(), Opcodes.Kad.REQ, target, id, nowMs);
     }
 
-    private void verified(int ip, UInt128 id) {
-        this.table.get(id).filter(c -> c.ip() == ip).ifPresent(c -> c.setVerified(true));
+    private void verified(Peer peer, UInt128 id) {
+        if (this.proved(peer, id)) {
+            this.table.get(id).filter(c -> c.ip() == peer.ip()).ifPresent(c -> c.setVerified(true));
+        }
+    }
+
+    // False when the node changed its id too soon, which bans it.
+    private boolean proved(Peer peer, UInt128 id) {
+        if (!this.provenIds.proved(peer.ip(), peer.port(), id, this.ticker.read())) {
+            return true;
+        }
+        logger.debug("Kad: {} changed its id too soon, ignored for a while", Ipv4.format(peer.ip()));
+        this.tracking.ban(peer.ip(), ID_CHANGE_BAN, this.nowMs());
+        this.table.byAddress(peer.ip()).ifPresent(this.table::remove);
+        return false;
     }
 
     private void helloAcknowledged(Peer peer, Packet packet) throws DecodeException {
         if (!peer.validKey() || !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
             return;
         }
-        this.verified(peer.ip(), KadMessages.decodeHelloAck(packet));
+        this.verified(peer, KadMessages.decodeHelloAck(packet));
     }
 
     private void lookupRequested(Peer peer, Packet packet) throws DecodeException {
@@ -1270,14 +1294,18 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         Optional<UInt128> proven =
                 this.tracking.challengeAnswered(peer.ip(), Opcodes.Kad.REQ, answer.target(), this.nowMs());
         if (proven.isPresent()) {
-            this.verified(peer.ip(), proven.get());
+            this.verified(peer, proven.get());
             return;
         }
-        // Contacts are learnt only from the answer to a lookup that asked this node for that many.
+        // Contacts are learnt only from the answer to a lookup that asked this node for that many, under the id
+        // the node proved there if it did.
         Lookup lookup = this.lookups.get(answer.target());
         if (lookup == null
                 || !lookup.asked(peer.ip(), peer.port())
-                || answer.contacts().size() > lookup.expectedContacts(peer.ip(), peer.port())) {
+                || answer.contacts().size() > lookup.expectedContacts(peer.ip(), peer.port())
+                || lookup.askedId(peer.ip(), peer.port())
+                        .filter(id -> this.provenIds.contradicts(peer.ip(), peer.port(), id))
+                        .isPresent()) {
             logger.debug("Ignoring {} contacts from {}", answer.contacts().size(), Ipv4.format(peer.ip()));
             return;
         }
@@ -1343,6 +1371,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(packet);
+        if (this.provenIds.contradicts(peer.ip(), peer.port(), answer.sender())) {
+            return;
+        }
         Lookup lookup = this.lookups.get(answer.target());
         ToIntFunction<List<KadMessages.Entry>> sink = lookup == null ? null : this.resultSinks.get(lookup);
         // Only a node this very search was sent to answers it.
@@ -1441,7 +1472,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         this.tracking
                 .challengeAnswered(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, this.nowMs())
-                .ifPresent(id -> this.verified(peer.ip(), id));
+                .ifPresent(id -> this.verified(peer, id));
         int port = KadMessages.decodePong(packet);
         if (port != 0 && this.udpTest.isRunning() && this.udpTest.findsExternalPort()) {
             this.udpTest.portSeen(port, peer.ip());

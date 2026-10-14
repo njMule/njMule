@@ -96,6 +96,11 @@ final class PacketTracking {
         return tokens >= 0;
     }
 
+    /** Drops every packet of {@code ip} for {@code time}. */
+    void ban(int ip, Duration time, long nowMs) {
+        this.bans.merge(ip, nowMs + time.toMillis(), Math::max);
+    }
+
     boolean isBanned(int ip, long nowMs) {
         Long until = this.bans.get(ip);
         if (until == null) {
