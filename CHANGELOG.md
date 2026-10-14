@@ -645,3 +645,5 @@ All notable changes to this project are documented here. The format follows
   and the web interface never show terminal escapes or a disguised file extension.
 - A compressed packet from the server that does not inflate is dropped on its own instead of closing
   the server connection.
+- A server whose last ping time lies in the future (a clock set back, a server list from another
+  computer) is pinged again instead of never.

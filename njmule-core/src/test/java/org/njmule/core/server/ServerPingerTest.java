@@ -23,6 +23,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -154,6 +155,30 @@ class ServerPingerTest {
         this.pinger.pingNext();
 
         assertThat(this.dead).as("not even checked").isEmpty();
+    }
+
+    @Test
+    void aServerLastPingedInTheFutureIsCheckedAgain() {
+        this.givenAServerThatFailedOftenAndWasLastPingedIn(Duration.ofDays(30));
+
+        this.whenTheNextServerIsPinged();
+
+        this.thenThatServerIsReportedDead();
+    }
+
+    private void givenAServerThatFailedOftenAndWasLastPingedIn(Duration fromNow) {
+        long then = Clock.systemUTC().instant().plus(fromNow).getEpochSecond();
+        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of())
+                .with(new Tag.IntTag(TagName.id(ServerTag.LASTPING), then))
+                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 9)));
+    }
+
+    private void whenTheNextServerIsPinged() {
+        this.pinger.pingNext();
+    }
+
+    private void thenThatServerIsReportedDead() {
+        assertThat(this.dead).extracting(ServerMet.Server::ip).containsExactly(Ipv4.parse("192.0.2.1"));
     }
 
     @Test

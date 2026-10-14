@@ -160,11 +160,12 @@ public final class ServerPinger {
             int index = (this.cursor + i) % candidates.size();
             ServerMet.Server server = candidates.get(index);
             ServerList.Address address = ServerList.addressOf(server);
-            long last = server.lastPing().orElse(0);
+            // A last ping in the future (a clock set back, a list from elsewhere) is no recent ping.
+            long since = now - server.lastPing().orElse(0);
             // No address yet, or no UDP port above the TCP one: nothing to ask.
             if (server.ip() == 0
                     || server.port() + ServerUdp.PORT_OFFSET > 0xFFFF
-                    || now - last < REPING_AFTER.toSeconds()
+                    || (since >= 0 && since < REPING_AFTER.toSeconds())
                     || this.pending.containsKey(address)) {
                 continue;
             }
