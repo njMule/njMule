@@ -51,7 +51,9 @@ public final class FakeGateway implements AutoCloseable {
         // Headers, then a few bytes, then nothing.
         STALLED,
         // A megabyte, more than any description has.
-        OVERSIZED
+        OVERSIZED,
+        // Not found at the address announced.
+        MISSING
     }
 
     private static final InetAddress LOOPBACK = InetAddress.getLoopbackAddress();
@@ -287,6 +289,7 @@ public final class FakeGateway implements AutoCloseable {
                 Arrays.fill(spaces, (byte) ' ');
                 reply(out, 200, this.description + new String(spaces, StandardCharsets.US_ASCII));
             }
+            case MISSING -> reply(out, 404, "");
         }
     }
 
