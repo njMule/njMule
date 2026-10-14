@@ -107,6 +107,18 @@ class AtomicFilesTest {
     }
 
     @Test
+    void aBackupRejectedWithARuntimeExceptionFailsAsIo() throws IOException {
+        Path file = this.dir.resolve("njmule.properties");
+        Files.writeString(AtomicFiles.bakPath(file), "\\u12");
+
+        assertThatThrownBy(() -> AtomicFiles.read(file, in -> {
+                    throw new IllegalStateException("malformed");
+                }))
+                .isInstanceOf(IOException.class)
+                .hasCauseInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void readOfMissingFileFails() {
         assertThatThrownBy(() -> readUtf8(this.dir.resolve("none"))).isInstanceOf(NoSuchFileException.class);
     }

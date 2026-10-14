@@ -135,7 +135,7 @@ public final class AtomicFiles {
                 return value;
             } catch (IOException | RuntimeException e) {
                 if (primaryFailure == null) {
-                    throw e;
+                    throw e instanceof IOException io ? io : new IOException("Invalid file " + bak, e);
                 }
                 primaryFailure.addSuppressed(e);
             }
