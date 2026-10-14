@@ -427,6 +427,10 @@ All notable changes to this project are documented here. The format follows
 - A client counts as asking too often only when it asks again for the same file within ten
   minutes, with a few seconds of tolerance: asks for its other files and the end of its upload
   slot no longer count against it, while asking again from a slot does.
+- What a client did with our upload queue is remembered for a few hours by address and user hash:
+  leaving the queue and coming back no longer clears its quick re-asks, and a client that takes
+  eight slots within four hours without asking for any data is banned; a slot that sends data
+  forgives the idle ones.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

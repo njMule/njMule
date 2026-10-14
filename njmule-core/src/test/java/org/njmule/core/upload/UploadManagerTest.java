@@ -114,6 +114,7 @@ class UploadManagerTest {
     private ScriptedDownloader client;
     private SharedFiles.SharedFile file;
     private SharedFiles.SharedFile other;
+    private Hello eager;
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
@@ -895,6 +896,110 @@ class UploadManagerTest {
     private void thenItIsStillTold(Opcodes.Extended opcode) {
         assertThat(this.answer.protocol()).isEqualTo(Protocol.EMULE);
         assertThat(this.answer.opcode()).isEqualTo(opcode.code());
+    }
+
+    @Test
+    void askingTooOftenStillCountsAfterTheClientLeftTheQueue() throws Exception {
+        this.givenTwoSlotsBusyUnderALimit();
+        this.givenAClientThatAskedTooOftenAlmostToABanAndCannotBeCalled();
+        this.givenItLeftTheQueueWhenItCouldNotBeCalled();
+
+        this.whenItComesBackAndAsksRightAway();
+
+        this.thenItIsBanned();
+    }
+
+    @Test
+    void aClientThatKeepsTakingSlotsWithoutAskingForDataIsBanned() throws Exception {
+        this.givenASlotForAClientWhileAnotherWaits();
+
+        this.whenItLeavesItsSlotIdle(UploadManager.IDLE_SLOTS_LIMIT);
+
+        this.thenItIsBanned();
+    }
+
+    @Test
+    void aSlotThatSentDataForgivesTheIdleOnes() throws Exception {
+        this.givenASlotForAClientWhileAnotherWaits();
+        this.givenItLeftItsSlotIdle(UploadManager.IDLE_SLOTS_LIMIT - 1);
+        this.givenItThenDownloadedFromItsSlot();
+
+        this.whenItLeavesItsSlotIdle(1);
+
+        this.thenItGetsItsSlotBack();
+    }
+
+    private void givenAClientThatAskedTooOftenAlmostToABanAndCannotBeCalled() throws Exception {
+        int closed;
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closed = probe.getLocalPort();
+        }
+        this.eager = this.hello(8, 0, closed);
+        this.client = this.client(this.eager);
+        assertThat(rank(this.ask(this.client, this.file.hash()))).isEqualTo(1);
+        this.givenItAskedAgainRightAway(UploadManager.BAD_LIMIT - 1);
+        this.client.close();
+    }
+
+    private void givenItLeftTheQueueWhenItCouldNotBeCalled() throws Exception {
+        this.slotHolders.getFirst().close();
+        this.await("the client left the queue", () -> this.manager.waitingCount() == 0);
+    }
+
+    private void givenASlotForAClientWhileAnotherWaits() throws Exception {
+        // Two slots still, with budget enough for a small block while the other slot is busy.
+        this.settings = new UploadManager.Settings(5, ObfuscationMode.SUPPORTED, 100, Optional.empty());
+        SharedFiles.SharedFile big = this.share("busy.bin", random((int) UploadSession.MAX_BLOCK, 21));
+        this.file = this.share("small.bin", random(3000, 22));
+        this.start();
+        ScriptedDownloader busy = this.client(1, 0, 0);
+        assertThat(this.ask(busy, big.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        busy.send(blocks(big.hash(), 0, UploadSession.MAX_BLOCK));
+        this.client = this.client(2, 0, 0);
+        assertThat(this.ask(this.client, this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        // A firewalled client keeps waiting, so the slot goes back to the queue when idle, and to the same client.
+        ScriptedDownloader firewalled = this.client(this.hello(3, LOW_ID, 0));
+        assertThat(rank(this.ask(firewalled, this.file.hash()))).isEqualTo(1);
+        firewalled.close();
+    }
+
+    private void givenItLeftItsSlotIdle(int times) throws Exception {
+        this.whenItLeavesItsSlotIdle(times);
+        this.thenItGetsItsSlotBack();
+    }
+
+    private void givenItThenDownloadedFromItsSlot() throws Exception {
+        this.client.send(blocks(this.file.hash(), 0, 3000));
+        this.client.until(Opcodes.Client.SENDINGPART);
+        this.advance(UploadManager.IDLE_SLOT.plusSeconds(1));
+        this.client.until(Opcodes.Client.OUTOFPARTREQS);
+        this.thenItGetsItsSlotBack();
+    }
+
+    private void whenItComesBackAndAsksRightAway() throws Exception {
+        this.client = this.client(this.eager);
+        this.client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, this.file.hash()));
+        this.client.until(Opcodes.Client.FILESTATUS);
+        this.client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
+    }
+
+    private void whenItLeavesItsSlotIdle(int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            if (i > 0) {
+                this.thenItGetsItsSlotBack();
+            }
+            this.advance(UploadManager.FIRST_REQUEST_WAIT.plusSeconds(1));
+            this.client.until(Opcodes.Client.OUTOFPARTREQS);
+        }
+    }
+
+    private void thenItIsBanned() throws Exception {
+        assertThat(this.client.closedWithin(WAIT)).isTrue();
+        assertThat(this.onLoop(this.manager::bans)).isNotEmpty();
+    }
+
+    private void thenItGetsItsSlotBack() throws IOException {
+        this.client.until(Opcodes.Client.ACCEPTUPLOADREQ);
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

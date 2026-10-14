@@ -104,11 +104,12 @@ public final class UploadManager implements AutoCloseable {
     /** Clients asking again for a file sooner than this are counted; at {@code BAD_LIMIT} they are banned. */
     public static final Duration MIN_REQUEST_TIME = Duration.ofMinutes(10);
 
-    // Clients re-asking on a timer of exactly MIN_REQUEST_TIME come a little early now and then.
-    private static final long FAST_ASK = MIN_REQUEST_TIME.minusSeconds(10).toNanos();
-    private static final int MAX_ASKED_FILES = 32;
-
     public static final Duration BAN_TIME = Duration.ofHours(2);
+
+    /** Slots a client leaves without asking for data within {@code IDLE_SLOTS_WINDOW}, at which it is banned. */
+    static final int IDLE_SLOTS_LIMIT = 8;
+
+    static final Duration IDLE_SLOTS_WINDOW = Duration.ofHours(4);
 
     /** A waiting client that does not ask again for this long is forgotten. */
     public static final Duration PURGE_AFTER = Duration.ofHours(1);
@@ -162,7 +163,6 @@ public final class UploadManager implements AutoCloseable {
         private long waitStart;
         // When it was last heard of, to forget it when it stops asking.
         private long lastAsk;
-        private final Map<Hash16, Ask> asks = new LinkedHashMap<>();
         private boolean connecting;
         // A LowID we cannot call whose turn came while it was away: it gets a slot when it asks again.
         private boolean nextConnect;
@@ -180,40 +180,11 @@ public final class UploadManager implements AutoCloseable {
             this.session = session;
             this.waitStart = now;
             this.lastAsk = now;
-            this.asks.put(file.hash(), new Ask(now));
-        }
-
-        // Counts an ask for the file: one too soon after the last counts against the client, a later one forgives one.
-        int asked(Hash16 file, long now) {
-            this.lastAsk = now;
-            Ask ask = this.asks.get(file);
-            if (ask == null) {
-                this.asks.put(file, new Ask(now));
-                if (this.asks.size() > MAX_ASKED_FILES) {
-                    this.asks.remove(this.asks.keySet().iterator().next());
-                }
-                return 0;
-            }
-            ask.bad = now - ask.last < FAST_ASK ? ask.bad + 1 : Math.max(0, ask.bad - 1);
-            ask.last = now;
-            return ask.bad;
-        }
-    }
-
-    /** The last ask for a file and how many came too soon. */
-    private static final class Ask {
-        private long last;
-        private int bad;
-
-        Ask(long last) {
-            this.last = last;
         }
     }
 
     /** A packet to send and the file bytes it completes. */
     private record Item(Packet packet, long payload) {}
-
-    private record Asker(InetAddress ip, Hash16 userHash) {}
 
     private static final class Slot {
         private final Client client;
@@ -258,7 +229,8 @@ public final class UploadManager implements AutoCloseable {
     // Banned addresses until when; read by the listener thread too.
     private final Map<InetAddress, Long> bans = new ConcurrentHashMap<>();
     // When each client, by address and user hash, was last told sources.
-    private final Map<Asker, Long> sourcesAnswered = new HashMap<>();
+    private final Map<RequestTracker.Key, Long> sourcesAnswered = new HashMap<>();
+    private final RequestTracker requests = new RequestTracker(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW);
     private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
     private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
@@ -490,6 +462,9 @@ public final class UploadManager implements AutoCloseable {
                 // A client that holds a slot without asking for data we have keeps others waiting.
                 logger.debug("{} left its upload slot idle", slot.session.address());
                 this.requeue(slot, now);
+                if (!slot.requested) {
+                    this.idleSlot(slot, now);
+                }
             }
         }
         this.send();
@@ -502,6 +477,25 @@ public final class UploadManager implements AutoCloseable {
         if (now - this.nextSourcesPurge >= 0) {
             this.nextSourcesPurge = now + SX_PURGE.toNanos();
             this.sourcesAnswered.values().removeIf(at -> now - at >= SX_INTERVAL.toNanos());
+            this.requests.purge(now);
+        }
+    }
+
+    // Taking slots and asking for nothing, over and over, keeps others from them: the client is banned.
+    private void idleSlot(Slot slot, long now) {
+        InetAddress ip = slot.session.address().getAddress();
+        if (this.requests.idleSlot(new RequestTracker.Key(ip, slot.client.userHash), now) >= IDLE_SLOTS_LIMIT
+                && !this.hasFriendSlot(
+                        slot.client.userHash, slot.session.trust().credits())) {
+            this.ban(ip, now, "took slots and asked for nothing");
+        }
+    }
+
+    // A slot that sent data forgives the idle slots of its client.
+    private void slotEnded(Slot slot) {
+        if (slot.sent > 0) {
+            this.requests.productive(
+                    new RequestTracker.Key(slot.session.address().getAddress(), slot.client.userHash));
         }
     }
 
@@ -594,6 +588,7 @@ public final class UploadManager implements AutoCloseable {
     // About one part sent while others wait: the client waits again, from now.
     private void requeue(Slot slot, long now) {
         this.slots.remove(slot);
+        this.slotEnded(slot);
         Client client = slot.client;
         client.session = slot.session;
         client.waitStart = now;
@@ -739,14 +734,19 @@ public final class UploadManager implements AutoCloseable {
     }
 
     // A client asking for the same file again too soon BAD_LIMIT times, with no slower ask between, is banned unless it
-    // holds the friend slot. Asks for its other files and the end of its slot, which is ours, do not count.
-    private boolean askedTooOften(Client client, UploadSession session, Uploadable file, long now) {
-        int bad = client.asked(file.hash(), now);
+    // holds the friend slot, also when it left the queue meanwhile. Asks for its other files and the end of its slot,
+    // which is ours, do not count. A slot it holds runs on.
+    private boolean askedTooOften(UploadSession session, Uploadable file, long now) {
+        InetAddress ip = session.address().getAddress();
+        int bad = this.requests.asked(new RequestTracker.Key(ip, session.userHash()), file.hash(), now);
         if (bad < BAD_LIMIT
-                || this.hasFriendSlot(client.userHash, session.trust().credits())) {
+                || this.hasFriendSlot(session.userHash(), session.trust().credits())) {
             return false;
         }
-        this.ban(session.address().getAddress(), now, "asked again too often");
+        this.ban(ip, now, "asked again too often");
+        if (this.slotOf(session).isEmpty()) {
+            session.disconnect();
+        }
         return true;
     }
 
@@ -891,7 +891,7 @@ public final class UploadManager implements AutoCloseable {
             sources.addAll(this.downloadSources.apply(request.file()));
         }
         boolean rare = download.isPresent() && sources.size() <= SX_RARE_SOURCES;
-        Asker asker = new Asker(ip, session.userHash());
+        RequestTracker.Key asker = new RequestTracker.Key(ip, session.userHash());
         Long last = this.sourcesAnswered.get(asker);
         long wait = (rare ? SX_RARE_INTERVAL : SX_INTERVAL).toNanos();
         if (last != null && now - last < wait) {
@@ -998,7 +998,7 @@ public final class UploadManager implements AutoCloseable {
             }
             for (Slot slot : manager.slots) {
                 if (slot.client.userHash.equals(session.userHash())) {
-                    if (!sameClient(slot.client, session) || manager.askedTooOften(slot.client, session, file, now)) {
+                    if (!sameClient(slot.client, session) || manager.askedTooOften(session, file, now)) {
                         return;
                     }
                     // Already uploading to it, maybe over a new connection or for another file.
@@ -1011,9 +1011,10 @@ public final class UploadManager implements AutoCloseable {
             }
             Client client = manager.waiting.get(session.userHash());
             if (client != null) {
-                if (!sameClient(client, session) || manager.askedTooOften(client, session, file, now)) {
+                if (!sameClient(client, session) || manager.askedTooOften(session, file, now)) {
                     return;
                 }
+                client.lastAsk = now;
                 client.session = session;
                 client.file = file;
                 if (client.nextConnect && manager.canOpenSlot(true)) {
@@ -1022,6 +1023,9 @@ public final class UploadManager implements AutoCloseable {
                 } else {
                     session.sendRank(manager.rank(client, now));
                 }
+                return;
+            }
+            if (manager.askedTooOften(session, file, now)) {
                 return;
             }
             int sameIp = 0;
@@ -1088,13 +1092,21 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void stopped(UploadSession session, String reason) {
-            UploadManager.this.slotOf(session).ifPresent(UploadManager.this.slots::remove);
+            this.slotGone(session);
+        }
+
+        private void slotGone(UploadSession session) {
+            UploadManager manager = UploadManager.this;
+            manager.slotOf(session).ifPresent(slot -> {
+                manager.slots.remove(slot);
+                manager.slotEnded(slot);
+            });
         }
 
         @Override
         public void closed(UploadSession session) {
             UploadManager manager = UploadManager.this;
-            manager.slotOf(session).ifPresent(manager.slots::remove);
+            this.slotGone(session);
             for (Client c : manager.waiting.values()) {
                 if (c.session == session) {
                     c.trusted = session.trust().credits();
