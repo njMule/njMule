@@ -890,10 +890,10 @@ final class Network {
 
     // A filter applies at once to what is open too: the server, sources, clients and Kad contacts it now refuses go.
     private void filtersChanged() {
+        // A server known by its name has no address while the name resolves; it is checked once it has one.
         Optional<ServerMet.Server> server = this.session.server();
-        if (server.isPresent()
-                && (this.ipFilter.blocks(server.get().ip())
-                        || this.isFilteredLan(server.get().ip()))) {
+        int serverAt = server.map(ServerMet.Server::ip).orElse(0);
+        if (serverAt != 0 && (this.ipFilter.blocks(serverAt) || this.isFilteredLan(serverAt))) {
             this.userLog.log(
                     LogLine.Level.INFO,
                     "Leaving the server " + ServerList.addressOf(server.get()) + ": it is now filtered");
