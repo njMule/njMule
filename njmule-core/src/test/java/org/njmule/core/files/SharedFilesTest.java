@@ -24,6 +24,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -331,6 +332,68 @@ class SharedFilesTest {
                         order.stream().filter(n -> !n.equals(order.get(1))).toList());
         this.onLoop(() -> {
             again.close();
+            return null;
+        });
+    }
+
+    @Test
+    void anotherCopyOfTheContentKeepsItSharedWhenOneGoes() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(4000, 30);
+        Files.write(incoming.resolve("one.bin"), a);
+        Files.write(incoming.resolve("two.bin"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        String shared = this.events.poll(30, TimeUnit.SECONDS);
+        assertThat(shared).startsWith("shared ");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> shares.get(hash).orElseThrow().name()).equals(shared.substring(7))
+                && System.nanoTime() < deadline) {
+            // Until the second copy is hashed and tracked.
+            Thread.sleep(50);
+        }
+        Path tracked = this.onLoop(() -> shares.get(hash).orElseThrow().path());
+
+        Files.delete(tracked);
+        this.events.clear();
+        this.onLoop(() -> {
+            shares.scan();
+            return null;
+        });
+
+        assertThat(this.onLoop(() -> shares.get(hash)))
+                .as("the other copy")
+                .hasValueSatisfying(f -> assertThat(f.path()).isNotEqualTo(tracked));
+        assertThat(this.events.poll(1, TimeUnit.SECONDS)).isNull();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void aFileWhoseContentChangesIsUnsharedUnderItsOldHash() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        Path file = incoming.resolve("changing.bin");
+        Files.write(file, bytes(4000, 31));
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared changing.bin");
+        Hash16 before = this.onLoop(() -> shares.all().getFirst().hash());
+
+        Files.write(file, bytes(5000, 32));
+        Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
+        this.onLoop(() -> {
+            shares.scan();
+            return null;
+        });
+
+        assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
+                .containsExactly("unshared changing.bin", "shared changing.bin");
+        assertThat(this.onLoop(() -> shares.get(before))).isEmpty();
+        this.onLoop(() -> {
+            shares.close();
             return null;
         });
     }

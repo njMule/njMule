@@ -666,7 +666,7 @@ public final class SharedFiles implements AutoCloseable {
     private void share(SharedFile file, Optional<Known2Met.Entry> tree) {
         SharedFile old = this.byPath.put(file.path(), file);
         if (old != null && !old.hash().equals(file.hash())) {
-            this.byHash.remove(old.hash());
+            this.forget(old);
         }
         boolean fresh = !this.byHash.containsKey(file.hash());
         this.byHash.put(file.hash(), file);
@@ -693,10 +693,22 @@ public final class SharedFiles implements AutoCloseable {
 
     private void unshare(SharedFile file) {
         this.byPath.remove(file.path());
-        if (file.equals(this.byHash.get(file.hash()))) {
-            this.byHash.remove(file.hash());
-            this.listener.unshared(file);
+        this.forget(file);
+    }
+
+    // A path that went or changed: its content stays shared from another copy, if there is one.
+    private void forget(SharedFile old) {
+        if (!old.equals(this.byHash.get(old.hash()))) {
+            return;
         }
+        for (SharedFile other : this.byPath.values()) {
+            if (other.hash().equals(old.hash()) && !other.path().equals(old.path())) {
+                this.byHash.put(old.hash(), other);
+                return;
+            }
+        }
+        this.byHash.remove(old.hash());
+        this.listener.unshared(old);
     }
 
     private static Key key(SharedFile file) {
