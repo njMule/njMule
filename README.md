@@ -54,8 +54,9 @@ file-sharing networks, written in Java 25.
 - **File management** — shared directories with recursive sharing and change monitoring; download
   and upload priorities, categories, preview in an external video player, comments and ratings.
 - **Desktop application** — JavaFX with AtlantaFX themes (Nord light and dark by default,
-  following the system), English and Italian localisation, system tray integration and optional
-  registration as the `ed2k://` link handler.
+  following the system), in English, German, Spanish, French, Italian, Dutch, Polish, Brazilian
+  Portuguese, Russian and Simplified Chinese, system tray integration and optional registration as
+  the `ed2k://` link handler.
 - **Web interface** — status, transfers, searches and servers, protected by a password.
 - **Networking** — SOCKS 4/5 and HTTP CONNECT proxies, UPnP port forwarding, IP filtering
   (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth
