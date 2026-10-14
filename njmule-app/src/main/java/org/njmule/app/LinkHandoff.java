@@ -26,6 +26,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -41,6 +42,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +62,9 @@ public final class LinkHandoff implements AutoCloseable {
 
     static final int MAX_LINKS = 256;
     static final int MAX_LINE = 64 * 1024;
+
+    /** How long a later start may take to hand over its links. */
+    static final Duration DEADLINE = Duration.ofSeconds(10);
 
     private static final Logger logger = LoggerFactory.getLogger(LinkHandoff.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
@@ -139,7 +144,7 @@ public final class LinkHandoff implements AutoCloseable {
 
     /**
      * Listens for later starts; {@code receiver} gets the links of each, maybe none, or {@link #EXIT}, on a handoff
-     * thread.
+     * thread of each, maybe at the same time.
      */
     public static LinkHandoff listen(Path configDir, Consumer<List<String>> receiver) throws IOException {
         Objects.requireNonNull(receiver, "receiver");
@@ -176,11 +181,12 @@ public final class LinkHandoff implements AutoCloseable {
         }
     }
 
+    // Each later start on a thread of its own, so that a slow local program holds up nobody else.
     private void acceptLoop() {
         while (!this.socket.isClosed()) {
-            try (Socket client = this.socket.accept()) {
-                client.setSoTimeout(Math.toIntExact(TIMEOUT.toMillis()));
-                this.serve(client);
+            try {
+                Socket client = this.socket.accept();
+                Thread.ofVirtual().name("njmule-handoff-client").start(() -> this.serveOne(client));
             } catch (IOException | RuntimeException e) {
                 if (!this.socket.isClosed()) {
                     logger.debug("Handoff connection failed: {}", e.toString());
@@ -189,9 +195,19 @@ public final class LinkHandoff implements AutoCloseable {
         }
     }
 
-    private void serve(Socket client) throws IOException {
+    private void serveOne(Socket client) {
+        try (client) {
+            this.serve(client, System.nanoTime() + DEADLINE.toNanos());
+        } catch (IOException | RuntimeException e) {
+            if (!this.socket.isClosed()) {
+                logger.debug("Handoff connection failed: {}", e.toString());
+            }
+        }
+    }
+
+    private void serve(Socket client, long deadline) throws IOException {
         BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
-        String token = readLine(in);
+        String token = readLine(in, client, deadline);
         byte[] presented;
         try {
             presented = token == null ? new byte[0] : HEX.parseHex(token);
@@ -204,7 +220,9 @@ public final class LinkHandoff implements AutoCloseable {
         }
         List<String> links = new ArrayList<>();
         int lines = 0;
-        for (String line = readLine(in); line != null && !line.isEmpty(); line = readLine(in)) {
+        for (String line = readLine(in, client, deadline);
+                line != null && !line.isEmpty();
+                line = readLine(in, client, deadline)) {
             lines++;
             if (links.size() < MAX_LINKS
                     && (line.equals(EXIT) || line.toLowerCase(Locale.ROOT).startsWith("ed2k://"))) {
@@ -226,10 +244,19 @@ public final class LinkHandoff implements AutoCloseable {
         out.flush();
     }
 
-    // A line of at most MAX_LINE characters; longer ones end the exchange.
-    private static String readLine(BufferedReader in) throws IOException {
+    // A line of at most MAX_LINE characters before the deadline; longer or later ones end the exchange.
+    private static String readLine(BufferedReader in, Socket client, long deadline) throws IOException {
         StringBuilder line = new StringBuilder();
-        for (int c = in.read(); c != -1; c = in.read()) {
+        while (true) {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) {
+                throw new SocketTimeoutException("handoff too slow");
+            }
+            client.setSoTimeout(Math.toIntExact(Math.max(1, TimeUnit.NANOSECONDS.toMillis(left))));
+            int c = in.read();
+            if (c == -1) {
+                return line.isEmpty() ? null : line.toString().strip();
+            }
             if (c == '\n') {
                 return line.toString().strip();
             }
@@ -238,7 +265,6 @@ public final class LinkHandoff implements AutoCloseable {
             }
             line.append((char) c);
         }
-        return line.isEmpty() ? null : line.toString().strip();
     }
 
     // Only its owner may read the secret: owner-only permissions where the file system has them.

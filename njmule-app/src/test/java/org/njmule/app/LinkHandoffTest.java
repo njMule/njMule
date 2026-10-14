@@ -18,6 +18,7 @@ package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -114,6 +116,36 @@ class LinkHandoffTest {
             assertThat(this.received.poll(5, TimeUnit.SECONDS))
                     .as("the exit request counts only alone")
                     .containsExactly(LINK);
+        }
+    }
+
+    @Test
+    void aSlowLocalProgramHoldsNobodyUp() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
+            String port = Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
+                    .split(" ", -1)[0];
+            try (Socket slow = new Socket(InetAddress.getLoopbackAddress(), Integer.parseInt(port))) {
+                // A byte now and then, never a whole line.
+                Thread trickle = Thread.ofVirtual().start(() -> {
+                    try {
+                        while (true) {
+                            slow.getOutputStream().write('a');
+                            Thread.sleep(200);
+                        }
+                    } catch (IOException | InterruptedException e) {
+                        // Closed.
+                    }
+                });
+                long start = System.nanoTime();
+                assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isTrue();
+                assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
+
+                slow.setSoTimeout(
+                        Math.toIntExact(LinkHandoff.DEADLINE.plusSeconds(5).toMillis()));
+                assertThat(slow.getInputStream().read()).as("dropped").isEqualTo(-1);
+                assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(LinkHandoff.DEADLINE.plusSeconds(5));
+                trickle.interrupt();
+            }
         }
     }
 
