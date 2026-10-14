@@ -499,6 +499,24 @@ class EmuleImporterTest {
     }
 
     @Test
+    void everyStartNextFileValueHasItsMeaning() {
+        Map<Integer, NextDownload> expected = Map.of(
+                -1, NextDownload.ANY,
+                0, NextDownload.NONE,
+                1, NextDownload.ANY,
+                2, NextDownload.SAME_CATEGORY_FIRST,
+                3, NextDownload.SAME_CATEGORY,
+                4, NextDownload.SAME_CATEGORY_FIRST,
+                9, NextDownload.SAME_CATEGORY_FIRST);
+        expected.forEach((value, next) -> assertThat(EmuleImporter.mapPreferences(
+                                IniFile.parse(("[eMule]\nStartNextFile=" + value).getBytes(StandardCharsets.US_ASCII)),
+                                Preferences.defaults())
+                        .nextDownload())
+                .as("StartNextFile=%d", value)
+                .isEqualTo(next));
+    }
+
+    @Test
     void theProxyIsTakenWhenEmuleUsesOne() {
         String socks = """
                 [eMule]

@@ -360,14 +360,15 @@ public final class EmuleImporter {
                 : value == 1 ? SharedFilesVisibility.FRIENDS : SharedFilesVisibility.NOBODY;
     }
 
-    // StartNextFile: 0 none, 1 any, 2 the same category first, 3 the same category only.
+    // StartNextFile: 0 none, 3 the same category only; any other value starts one, 2 and up of the same category first.
     private static NextDownload nextDownload(long value) {
-        return switch ((int) Math.clamp(value, 0L, 3L)) {
-            case 1 -> NextDownload.ANY;
-            case 2 -> NextDownload.SAME_CATEGORY_FIRST;
-            case 3 -> NextDownload.SAME_CATEGORY;
-            default -> NextDownload.NONE;
-        };
+        if (value == 0) {
+            return NextDownload.NONE;
+        }
+        if (value == 3) {
+            return NextDownload.SAME_CATEGORY;
+        }
+        return value >= 2 ? NextDownload.SAME_CATEGORY_FIRST : NextDownload.ANY;
     }
 
     private static Optional<ProxySettings> proxy(IniFile ini) {
