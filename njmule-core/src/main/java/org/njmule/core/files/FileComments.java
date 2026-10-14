@@ -67,7 +67,7 @@ public final class FileComments {
                 continue;
             }
             String text = ini.get(section, "Comment").orElse("");
-            int rating = (int) Math.clamp(ini.getLong(section, "Rate").orElse(0), 0, FileComment.MAX_RATING);
+            int rating = Math.clamp(ini.getLong(section, "Rate").orElse(0), 0, FileComment.MAX_RATING);
             FileComment comment = FileComment.of(text, rating);
             if (!comment.isEmpty()) {
                 store.comments.put(hash, comment);

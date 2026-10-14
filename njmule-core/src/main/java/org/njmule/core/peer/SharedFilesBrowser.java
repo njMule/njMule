@@ -120,7 +120,7 @@ public final class SharedFilesBrowser {
     }
 
     // The hello answer, then the list or the refusal; the connection closes once one comes.
-    private final class Handler implements TcpConnection.Handler {
+    private static final class Handler implements TcpConnection.Handler {
         private final CompletableFuture<List<SearchResult>> files;
 
         Handler(CompletableFuture<List<SearchResult>> files) {
