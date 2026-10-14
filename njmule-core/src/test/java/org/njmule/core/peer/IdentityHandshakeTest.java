@@ -30,7 +30,12 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.crypto.Rsa;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.security.SecureIdent;
 
 class IdentityHandshakeTest {
 
@@ -83,22 +88,166 @@ class IdentityHandshakeTest {
     void peersThatDoNotTakePartAreLeftAlone() throws DecodeException {
         Deque<Packet> sent = new ArrayDeque<>();
         IdentityHandshake handshake = new IdentityHandshake(
-                this.a, hello(HASH_B, 0), IP_B, Optional.empty(), Optional.empty(), sent::add, this.listener("A"));
+                this.a,
+                hello(HASH_B, 0),
+                IP_B,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(IP_A),
+                sent::add,
+                this.listener("A"));
         handshake.start(RANDOM);
 
         assertThat(handshake.isSupported()).isFalse();
         assertThat(sent).isEmpty();
     }
 
+    @Test
+    void peersTakingBothVersionsGetASignatureBoundToOurAddressWhenWeKnowIt() throws DecodeException {
+        List<Packet> fromA = new ArrayList<>();
+        List<Packet> fromB = new ArrayList<>();
+
+        this.run(3, 3, Optional.of(IP_A), Optional.of(IP_B), fromA, fromB);
+
+        assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
+        assertThat(signatureKind(fromA)).contains(SecureIdent.IpKind.LOCAL_CLIENT.code());
+        assertThat(signatureKind(fromB)).contains(SecureIdent.IpKind.LOCAL_CLIENT.code());
+    }
+
+    @Test
+    void withoutOurPublicAddressPeersTakingVersionOneGetIt() throws DecodeException {
+        List<Packet> fromA = new ArrayList<>();
+        List<Packet> fromB = new ArrayList<>();
+
+        // A verifier without a HighID may not know the address a signature would be bound to.
+        this.run(3, 3, Optional.empty(), Optional.empty(), fromA, fromB);
+
+        assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
+        assertThat(signatureKind(fromA)).isEmpty();
+        assertThat(signatureKind(fromB)).isEmpty();
+    }
+
+    @Test
+    void aSignatureBoundToOurAddressIsCheckedWithTheLocalOneWithoutAPublicOne() throws DecodeException {
+        List<Packet> fromA = new ArrayList<>();
+        List<Packet> fromB = new ArrayList<>();
+
+        // A takes version 2 only, and neither knows its public address: B binds to A's address as it sees it.
+        this.run(2, 3, Optional.empty(), Optional.empty(), fromA, fromB);
+
+        assertThat(signatureKind(fromB)).contains(SecureIdent.IpKind.REMOTE_CLIENT.code());
+        assertThat(this.results).contains("A identified " + HASH_B);
+    }
+
+    @Test
+    void aSignatureBoundToNoAddressIsCheckedAsSuch() throws DecodeException {
+        List<Packet> toB = new ArrayList<>();
+        IdentityHandshake atA = new IdentityHandshake(
+                this.a,
+                hello(HASH_B, 3),
+                IP_B,
+                Optional.empty(),
+                Optional.of(IP_A),
+                Optional.of(IP_A),
+                toB::add,
+                this.listener("A"));
+        atA.start(RANDOM);
+        PacketReader state = toB.getFirst().reader();
+        state.u8();
+        int challenge = (int) state.u32();
+        byte[] key = this.b.publicKey();
+        byte[] signature = SecureIdent.sign(
+                this.b.key(),
+                this.a.publicKey(),
+                challenge,
+                Optional.of(new SecureIdent.IpBinding(Inet4Address.ofLiteral("0.0.0.0"), SecureIdent.IpKind.NONE)));
+
+        atA.received(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.PUBLICKEY.code(),
+                new PacketWriter().u8(key.length).bytes(key)));
+        atA.received(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.SIGNATURE.code(),
+                new PacketWriter().u8(signature.length).bytes(signature).u8(SecureIdent.IpKind.NONE.code())));
+
+        assertThat(this.results).containsExactly("A identified " + HASH_B);
+    }
+
+    // The address kind of the signature among {@code sent}, empty for a version 1 one.
+    private static Optional<Integer> signatureKind(List<Packet> sent) throws DecodeException {
+        for (Packet p : sent) {
+            if (p.opcode() == Opcodes.Extended.SIGNATURE.code()) {
+                PacketReader in = p.reader();
+                in.skip(in.u8());
+                return in.hasRemaining() ? Optional.of(in.u8()) : Optional.empty();
+            }
+        }
+        throw new AssertionError("no signature");
+    }
+
     // A and B on 10.0.0.1 and 10.0.0.2, both with HighIDs, delivering each other's packets.
     private void run(int versionsA, int versionsB, Optional<byte[]> aPinsB, Optional<byte[]> bPinsA)
+            throws DecodeException {
+        this.run(
+                versionsA,
+                versionsB,
+                aPinsB,
+                bPinsA,
+                Optional.of(IP_A),
+                Optional.of(IP_B),
+                new ArrayList<>(),
+                new ArrayList<>());
+    }
+
+    // A and B on local addresses 10.0.0.1 and 10.0.0.2, public as given, delivering each other's packets.
+    private void run(
+            int versionsA,
+            int versionsB,
+            Optional<Inet4Address> publicA,
+            Optional<Inet4Address> publicB,
+            List<Packet> fromA,
+            List<Packet> fromB)
+            throws DecodeException {
+        this.run(versionsA, versionsB, Optional.empty(), Optional.empty(), publicA, publicB, fromA, fromB);
+    }
+
+    private void run(
+            int versionsA,
+            int versionsB,
+            Optional<byte[]> aPinsB,
+            Optional<byte[]> bPinsA,
+            Optional<Inet4Address> publicA,
+            Optional<Inet4Address> publicB,
+            List<Packet> fromA,
+            List<Packet> fromB)
             throws DecodeException {
         Deque<Packet> toA = new ArrayDeque<>();
         Deque<Packet> toB = new ArrayDeque<>();
         IdentityHandshake atA = new IdentityHandshake(
-                this.a, hello(HASH_B, versionsB), IP_B, aPinsB, Optional.of(IP_A), toB::add, this.listener("A"));
+                this.a,
+                hello(HASH_B, versionsB),
+                IP_B,
+                aPinsB,
+                publicA,
+                Optional.of(IP_A),
+                p -> {
+                    fromA.add(p);
+                    toB.add(p);
+                },
+                this.listener("A"));
         IdentityHandshake atB = new IdentityHandshake(
-                this.b, hello(HASH_A, versionsA), IP_A, bPinsA, Optional.of(IP_B), toA::add, this.listener("B"));
+                this.b,
+                hello(HASH_A, versionsA),
+                IP_A,
+                bPinsA,
+                publicB,
+                Optional.of(IP_B),
+                p -> {
+                    fromB.add(p);
+                    toA.add(p);
+                },
+                this.listener("B"));
         atA.start(RANDOM);
         atB.start(RANDOM);
         for (int round = 0; round < 10 && !(toA.isEmpty() && toB.isEmpty()); round++) {

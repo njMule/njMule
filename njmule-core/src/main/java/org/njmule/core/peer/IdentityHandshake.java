@@ -19,9 +19,11 @@ package org.njmule.core.peer;
 import java.net.Inet4Address;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.crypto.Rsa;
 import org.njmule.core.crypto.RsaKeys;
@@ -93,11 +95,14 @@ public final class IdentityHandshake {
     private static final int MIN_PACKET = 10;
     private static final int MAX_PACKET = 250;
     private static final int V1 = 1;
+    private static final int V2 = 2;
+    private static final Inet4Address NO_ADDRESS = Inet4Address.ofLiteral("0.0.0.0");
 
     private final Identity own;
     private final Hello peer;
     private final Inet4Address peerAddress;
     private final Optional<Inet4Address> ourPublicAddress;
+    private final Optional<Inet4Address> ourLocalAddress;
     private final Consumer<Packet> send;
     private final Listener listener;
     private byte[] peerKey;
@@ -110,6 +115,7 @@ public final class IdentityHandshake {
     /**
      * @param pinnedKey the key this user hash proved to own before, if any
      * @param ourPublicAddress our public address when a server gave us a HighID
+     * @param ourLocalAddress our address on the connection
      */
     public IdentityHandshake(
             Identity own,
@@ -117,12 +123,14 @@ public final class IdentityHandshake {
             Inet4Address peerAddress,
             Optional<byte[]> pinnedKey,
             Optional<Inet4Address> ourPublicAddress,
+            Optional<Inet4Address> ourLocalAddress,
             Consumer<Packet> send,
             Listener listener) {
         this.own = Objects.requireNonNull(own, "own");
         this.peer = Objects.requireNonNull(peer, "peer");
         this.peerAddress = Objects.requireNonNull(peerAddress, "peerAddress");
         this.ourPublicAddress = Objects.requireNonNull(ourPublicAddress, "ourPublicAddress");
+        this.ourLocalAddress = Objects.requireNonNull(ourLocalAddress, "ourLocalAddress");
         this.send = Objects.requireNonNull(send, "send");
         this.listener = Objects.requireNonNull(listener, "listener");
         this.peerKey = pinnedKey.map(byte[]::clone).orElse(null);
@@ -220,40 +228,50 @@ public final class IdentityHandshake {
         PacketReader in = packet.reader();
         int length = in.u8();
         byte[] signature;
-        Optional<SecureIdent.IpBinding> binding;
+        List<Optional<SecureIdent.IpBinding>> bindings;
         if (length == size - 1) {
             signature = in.bytes(length);
-            binding = Optional.empty();
-        } else if (length == size - 2 && (versions(this.peer) & 2) != 0) {
+            bindings = List.of(Optional.empty());
+        } else if (length == size - 2 && (versions(this.peer) & V2) != 0) {
             signature = in.bytes(length);
             Optional<SecureIdent.IpKind> kind = SecureIdent.IpKind.of(in.u8());
             if (kind.isEmpty()) {
                 return;
             }
-            binding = this.bindingOf(kind.get());
-            if (binding.isEmpty()) {
+            bindings = this.bindingsOf(kind.get()).stream().map(Optional::of).toList();
+            if (bindings.isEmpty()) {
                 this.finish(false);
                 return;
             }
         } else {
             return;
         }
-        boolean valid;
+        boolean valid = false;
         try {
-            valid = SecureIdent.verify(
-                    RsaKeys.decodePublic(this.peerKey), signature, this.own.publicKey(), this.challengeFor, binding);
+            Rsa.PublicKey key = RsaKeys.decodePublic(this.peerKey);
+            for (int i = 0; i < bindings.size() && !valid; i++) {
+                valid = SecureIdent.verify(key, signature, this.own.publicKey(), this.challengeFor, bindings.get(i));
+            }
         } catch (DecodeException | IllegalArgumentException e) {
             valid = false;
         }
         this.finish(valid);
     }
 
-    // The address the peer bound its signature to, as we can check it.
-    private Optional<SecureIdent.IpBinding> bindingOf(SecureIdent.IpKind kind) {
+    // The addresses the peer may have bound its signature to, as we can check them. Our challenge ties any signature
+    // to this connection; the address keeps it from being relayed by a client in the middle.
+    private List<SecureIdent.IpBinding> bindingsOf(SecureIdent.IpKind kind) {
         return switch (kind) {
-            case LOCAL_CLIENT -> Optional.of(new SecureIdent.IpBinding(this.peerAddress, kind));
-            case REMOTE_CLIENT -> this.ourPublicAddress.map(ip -> new SecureIdent.IpBinding(ip, kind));
-            case NONE -> Optional.empty();
+            case LOCAL_CLIENT -> List.of(new SecureIdent.IpBinding(this.peerAddress, kind));
+            // Ours as the peer sees it: the public one, or that of the connection when nothing translates it.
+            case REMOTE_CLIENT ->
+                Stream.of(this.ourPublicAddress, this.ourLocalAddress)
+                        .flatMap(Optional::stream)
+                        .distinct()
+                        .map(ip -> new SecureIdent.IpBinding(ip, kind))
+                        .toList();
+            // Bound to no address (0): no weaker than a version 1 signature, which is taken too.
+            case NONE -> List.of(new SecureIdent.IpBinding(NO_ADDRESS, kind));
         };
     }
 
@@ -271,8 +289,11 @@ public final class IdentityHandshake {
             return;
         }
         this.signatureWanted = false;
-        // Version 2 only for peers that do not take version 1.
-        Optional<SecureIdent.IpBinding> binding = (versions(this.peer) & V1) != 0
+        // Version 2 binds the signature to our address when we know it, else to the peer's as we see it, which a peer
+        // without a HighID cannot check: version 1 then, when the peer takes it.
+        int versions = versions(this.peer);
+        boolean bound = (versions & V2) != 0 && (this.ourPublicAddress.isPresent() || (versions & V1) == 0);
+        Optional<SecureIdent.IpBinding> binding = !bound
                 ? Optional.empty()
                 : Optional.of(this.ourPublicAddress
                         .map(ip -> new SecureIdent.IpBinding(ip, SecureIdent.IpKind.LOCAL_CLIENT))

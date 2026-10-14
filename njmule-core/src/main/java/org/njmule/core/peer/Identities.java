@@ -132,13 +132,25 @@ public final class Identities {
 
     /** Starts the identification with a peer whose hello we have, asking it to sign our challenge. */
     public Session start(Hello peer, InetAddress address, Consumer<Packet> send) {
+        return this.start(peer, address, Optional.empty(), send);
+    }
+
+    /** As {@link #start(Hello, InetAddress, Consumer)}, over a connection from {@code local}, our address on it. */
+    public Session start(Hello peer, InetAddress address, Optional<InetAddress> local, Consumer<Packet> send) {
         Optional<byte[]> pinned = this.pinnedKeys.apply(peer.userHash());
         if (!(address instanceof Inet4Address ip)) {
             return new Session(Optional.empty(), Trust.FAILED);
         }
         Listener listener = new Listener(peer.userHash());
-        IdentityHandshake handshake =
-                new IdentityHandshake(this.own, peer, ip, pinned, this.ourPublicAddress.get(), send, listener);
+        IdentityHandshake handshake = new IdentityHandshake(
+                this.own,
+                peer,
+                ip,
+                pinned,
+                this.ourPublicAddress.get(),
+                local.filter(Inet4Address.class::isInstance).map(Inet4Address.class::cast),
+                send,
+                listener);
         Trust initial = handshake.isSupported() || pinned.isPresent() ? Trust.NEEDED : Trust.UNSECURED;
         Session session = new Session(Optional.of(handshake), initial);
         listener.session = session;

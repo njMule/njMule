@@ -20,6 +20,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
@@ -143,6 +144,11 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     @Override
     public InetSocketAddress remoteAddress() {
         return this.remote;
+    }
+
+    /** Our address on the connection, while the socket is open. */
+    public Optional<InetAddress> localAddress() {
+        return Optional.ofNullable(this.socket.getLocalAddress()).filter(a -> !a.isAnyLocalAddress());
     }
 
     public boolean isObfuscated() {

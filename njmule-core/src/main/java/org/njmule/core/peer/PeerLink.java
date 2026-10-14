@@ -157,7 +157,8 @@ public final class PeerLink implements TcpConnection.Handler {
     // The hellos are over: the identification starts and the other side may join.
     void greet(Hello hello, Identities identities) {
         this.peer = hello;
-        this.identity = identities.start(hello, this.remoteAddress().getAddress(), this.connection::send);
+        this.identity = identities.start(
+                hello, this.remoteAddress().getAddress(), this.connection.localAddress(), this.connection::send);
         this.links.register(this);
     }
 

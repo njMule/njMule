@@ -69,6 +69,7 @@ final class IdentityProof {
                 Inet4Address.ofLiteral("127.0.0.1"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.of(Inet4Address.ofLiteral("127.0.0.1")),
                 outgoing::add,
                 new IdentityHandshake.Listener() {
                     @Override
