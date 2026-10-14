@@ -531,6 +531,8 @@ All notable changes to this project are documented here. The format follows
 - A write that fails because the temp disk filled up no longer stops the download for good: the
   downloads wait for room and go on by themselves, also with no minimum free space set. The data a
   part.met tells as written is flushed to the disk before the part.met is saved.
+- A finished download that a virus scanner or another program holds is moved to the incoming folder
+  again after 2, 4, … 64 seconds instead of stopping with an error at once.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

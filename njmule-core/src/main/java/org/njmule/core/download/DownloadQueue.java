@@ -17,9 +17,13 @@
 package org.njmule.core.download;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -35,6 +39,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -91,6 +96,9 @@ public final class DownloadQueue implements AutoCloseable {
 
     // A write that fails while the temp disk has less room than this found it full: the downloads wait for room.
     private static final long FULL_DISK_RESERVE = 64L * 1024 * 1024;
+    // A finished file held by another program is moved again after 2, 4, ... 64 seconds, two minutes in all.
+    private static final int FINISH_RETRIES = 6;
+    private static final Duration FINISH_RETRY_DELAY = Duration.ofSeconds(2);
     // How long closing waits for the last saves and writes.
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(30);
 
@@ -108,6 +116,8 @@ public final class DownloadQueue implements AutoCloseable {
         private boolean finishing;
         // The generation of its last part.met save: a save is skipped once a newer one follows, and so after a cancel.
         private final AtomicLong saves = new AtomicLong();
+        // Moves of its finished file tried again because another program held it.
+        private int finishRetries;
 
         Download(PartFile file, PartFileStorage storage) {
             this.file = file;
@@ -599,6 +609,16 @@ public final class DownloadQueue implements AutoCloseable {
             return;
         }
         if (failure != null) {
+            if (isHeld(download, failure) && download.finishRetries < FINISH_RETRIES) {
+                Duration delay = FINISH_RETRY_DELAY.multipliedBy(1L << download.finishRetries++);
+                logger.info(
+                        "{} is held by another program; it is moved again in {} s",
+                        download.file.name(),
+                        delay.toSeconds());
+                this.loop.schedule("move a finished file again", delay, () -> this.finishAgain(download));
+                return;
+            }
+            download.finishRetries = 0;
             download.finishing = false;
             download.file.setStatus(PartFile.Status.ERROR);
             this.listener.failed(download, "cannot move the finished file: " + failure.getMessage());
@@ -613,6 +633,42 @@ public final class DownloadQueue implements AutoCloseable {
             logger.warn("Cannot delete the metadata of {}", download.file.name(), e);
         }
         this.listener.completed(download, moved);
+    }
+
+    // A virus scanner or an indexer opens a finished file at once and may keep it for a while: the move is tried again.
+    private static boolean isHeld(Download download, Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof CompletionException || cause instanceof UncheckedIOException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (!(cause instanceof FileSystemException held)
+                || cause instanceof NoSuchFileException
+                || held.getFile() == null) {
+            return false;
+        }
+        Path data = download.file.dataFile().toAbsolutePath().normalize();
+        try {
+            return Path.of(held.getFile()).toAbsolutePath().normalize().equals(data);
+        } catch (InvalidPathException e) {
+            return false;
+        }
+    }
+
+    private void finishAgain(Download download) {
+        if (!this.isQueued(download)) {
+            return;
+        }
+        try {
+            download.storage = PartFileStorage.open(download.file.dataFile());
+        } catch (IOException e) {
+            download.finishRetries = 0;
+            download.finishing = false;
+            download.file.setStatus(PartFile.Status.ERROR);
+            this.listener.failed(download, "cannot open the data: " + e.getMessage());
+            return;
+        }
+        this.finish(download);
     }
 
     // Downloads wait while the temp disk is short of space and go on by themselves once there is room again.
