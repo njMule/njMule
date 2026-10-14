@@ -23,8 +23,10 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Arrays;
@@ -213,6 +215,17 @@ public final class Main {
         }
     }
 
+    // A temporary directory only this user may enter. Elsewhere the temporary folder is shared, so the directory gets
+    // owner-only permissions; on Windows it lies in the user's own temporary folder, which others cannot enter.
+    @SuppressWarnings("java:S5443")
+    private static Path privateTempDirectory(String prefix) throws IOException {
+        if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            return Files.createTempDirectory(
+                    prefix, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        }
+        return Files.createTempDirectory(prefix);
+    }
+
     /**
      * Gives the ed2k links back when the desktop app still has them. Without a configuration directory there is no
      * saved handler: ours only goes, from a scratch directory that goes too.
@@ -223,7 +236,7 @@ public final class Main {
         try {
             Path dir = config;
             if (!Files.isDirectory(config)) {
-                scratch = Files.createTempDirectory("njmule-links-");
+                scratch = privateTempDirectory("njmule-links-");
                 dir = scratch;
             }
             Optional<LinkAssociation> association = associations.apply(dir);
