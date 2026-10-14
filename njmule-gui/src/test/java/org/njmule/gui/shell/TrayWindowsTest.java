@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
@@ -32,7 +34,9 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -212,6 +216,88 @@ class TrayWindowsTest {
             }
         });
         assertThat(this.actions).containsExactly("incoming", "options", "restore");
+    }
+
+    @Test
+    void theMenuConnectsTakesTheLimitsLetGoAndCloses() throws Exception {
+        List<String> commands = new CopyOnWriteArrayList<>();
+        AtomicInteger writes = new AtomicInteger();
+        this.start(real -> Engines.overriding(
+                real,
+                Map.of(
+                        "connect",
+                        args -> {
+                            commands.add("connect");
+                            return CompletableFuture.completedFuture(null);
+                        },
+                        "disconnect",
+                        args -> {
+                            commands.add("disconnect");
+                            return CompletableFuture.completedFuture(null);
+                        },
+                        "updatePreferences",
+                        args -> {
+                            writes.incrementAndGet();
+                            return real.updatePreferences(change(args[0]));
+                        })));
+        this.limits(1000, 800);
+        TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
+            @Override
+            public void restore() {}
+
+            @Override
+            public void options() {}
+
+            @Override
+            public void exit() {}
+        }));
+        String connect = this.gui.t("IDS_MAIN_BTN_CONNECT");
+        String disconnect = this.gui.t("IDS_MAIN_BTN_DISCONNECT");
+
+        FxTesting.onFx(() -> menu.show(600, 500));
+        assertThat(FxTesting.onFx(() -> this.item(menu.scene(), disconnect).isDisabled()))
+                .isTrue();
+        this.press(menu.scene(), connect);
+        FxTesting.onFx(() -> menu.show(600, 500));
+        assertThat(FxTesting.onFx(() -> this.item(menu.scene(), connect).isDisabled()))
+                .as("trying the servers")
+                .isTrue();
+        this.press(menu.scene(), disconnect);
+        assertThat(commands).containsExactly("connect", "disconnect");
+
+        // A slider dragged sets its limit once it is let go, and only when it moved.
+        FxTesting.onFx(() -> menu.show(600, 500));
+        Slider up = FxTesting.onFx(
+                () -> (Slider) menu.scene().getRoot().lookupAll(".slider").toArray()[1]);
+        FxTesting.onFx(() -> {
+            up.setValueChanging(true);
+            up.setValue(300);
+        });
+        assertThat(writes).as("while dragged").hasValue(0);
+        FxTesting.onFx(() -> up.setValueChanging(false));
+        FxTesting.await("the upload limit", () -> this.preferences().maxUploadKiBps() == 300);
+        FxTesting.await(
+                "the new preferences",
+                () -> this.model.preferencesProperty().get().maxUploadKiBps() == 300);
+        FxTesting.onFx(() -> {
+            up.setValueChanging(true);
+            up.setValueChanging(false);
+        });
+        assertThat(writes).hasValue(1);
+
+        // Escape closes the menu; other keys do not.
+        FxTesting.onFx(() -> menu.scene().getRoot().fireEvent(FxTesting.key(KeyCode.A, false)));
+        assertThat(FxTesting.onFx(menu::isShowing)).isTrue();
+        FxTesting.onFx(() -> menu.scene().getRoot().fireEvent(FxTesting.key(KeyCode.ESCAPE, false)));
+        assertThat(FxTesting.onFx(menu::isShowing)).isFalse();
+    }
+
+    private Button item(Scene scene, String text) {
+        return scene.getRoot().lookupAll(".tray-item").stream()
+                .filter(n -> n instanceof Button b && text.equals(b.getText()))
+                .map(Button.class::cast)
+                .findFirst()
+                .orElseThrow();
     }
 
     private Preferences preferences() {
