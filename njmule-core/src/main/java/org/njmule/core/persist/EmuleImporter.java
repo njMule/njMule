@@ -561,12 +561,15 @@ public final class EmuleImporter {
         });
     }
 
+    // Only the name eMule writes: Cat#01 or Cat# 1 next to Cat#1 would give two categories one id.
     private static OptionalInt categoryId(String section) {
         if (!section.startsWith("Cat#")) {
             return OptionalInt.empty();
         }
+        String number = section.substring(4);
         try {
-            return OptionalInt.of(Integer.parseInt(section.substring(4).strip()));
+            int id = Integer.parseInt(number);
+            return Integer.toString(id).equals(number) ? OptionalInt.of(id) : OptionalInt.empty();
         } catch (NumberFormatException e) {
             return OptionalInt.empty();
         }

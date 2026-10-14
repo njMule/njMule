@@ -254,6 +254,19 @@ class EmuleImporterTest {
     }
 
     @Test
+    void onlyTheCanonicalSectionOfACategoryCounts() throws IOException {
+        Files.writeString(
+                this.emule.config.resolve("Category.ini"),
+                String.join(
+                        "\r\n", "[Cat#1]", "Title=Films", "[Cat#01]", "Title=Copy", "[Cat# 2]", "Title=Spaced", ""));
+
+        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+
+        assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
+        assertThat(this.target.categories).extracting(Category::name).containsExactly("Films");
+    }
+
+    @Test
     void ourOwnFilesAreKept() throws IOException {
         Files.writeString(this.ours.resolve("ipfilter.dat"), "");
         Files.writeString(this.ours.resolve("cancelled.met"), "");
