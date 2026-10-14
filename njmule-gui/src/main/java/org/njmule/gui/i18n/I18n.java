@@ -46,6 +46,7 @@ public final class I18n {
             Locale.of("pt", "PT"),
             Locale.of("sv"),
             Locale.of("tr"),
+            Locale.of("el"),
             Locale.of("ru"),
             Locale.SIMPLIFIED_CHINESE,
             Locale.TRADITIONAL_CHINESE,
