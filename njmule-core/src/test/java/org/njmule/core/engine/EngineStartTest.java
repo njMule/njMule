@@ -22,7 +22,12 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -30,13 +35,22 @@ import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.Schedule;
 
 @Timeout(30)
 class EngineStartTest {
+
+    private static final Ed2kLink.FileLink FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
 
     @TempDir
     Path dir;
@@ -47,6 +61,69 @@ class EngineStartTest {
             Lines lines = new Lines(engine);
 
             assertThat(lines.await(line -> line.contains("started"))).isTrue();
+        }
+    }
+
+    @Test
+    void aRuleThatHoldsAtTheStartActsOnce() throws Exception {
+        try (NjMuleEngine engine = this.start()) {
+            engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
+            engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
+            engine.updateSchedule(new Schedule(List.of(always("night", 1)))).get(5, TimeUnit.SECONDS);
+        }
+        try (NjMuleEngine engine = this.start()) {
+            Lines lines = new Lines(engine);
+            assertThat(lines.await(line -> line.contains("started"))).isTrue();
+
+            assertThat(lines.lines)
+                    .filteredOn(line -> line.contains("category 1 stopped"))
+                    .hasSize(1);
+        }
+    }
+
+    @Test
+    void editingTheRuleInForceDoesNotRunItsActionsAgain() throws Exception {
+        try (NjMuleEngine engine = this.start()) {
+            engine.setCategories(List.of(category(1))).get(5, TimeUnit.SECONDS);
+            engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
+            engine.updateSchedule(new Schedule(List.of(always("night", 1)))).get(5, TimeUnit.SECONDS);
+            assertThat(status(engine)).isEqualTo(DownloadInfo.Status.STOPPED);
+            engine.resumeDownload(FILM.hash()).get(5, TimeUnit.SECONDS);
+
+            engine.updateSchedule(new Schedule(List.of(always("late night", 1))))
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(status(engine)).as("resumed by hand").isNotEqualTo(DownloadInfo.Status.STOPPED);
+        }
+    }
+
+    @Test
+    void aDeletedCategoryLeavesTheRules() throws Exception {
+        try (NjMuleEngine engine = this.start()) {
+            engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
+            Schedule.Rule rule = new Schedule.Rule(
+                    "later",
+                    false,
+                    EnumSet.allOf(DayOfWeek.class),
+                    LocalTime.MIDNIGHT,
+                    LocalTime.MIDNIGHT,
+                    OptionalInt.empty(),
+                    OptionalInt.empty(),
+                    OptionalInt.empty(),
+                    OptionalInt.empty(),
+                    OptionalInt.of(2),
+                    OptionalInt.of(1));
+            engine.updateSchedule(new Schedule(List.of(rule))).get(5, TimeUnit.SECONDS);
+
+            engine.setCategories(List.of(category(1))).get(5, TimeUnit.SECONDS);
+
+            Schedule.Rule kept = engine.schedule().rules().getFirst();
+            assertThat(kept.stopCategory())
+                    .as("a new category 2 is not stopped")
+                    .isEmpty();
+            assertThat(kept.resumeCategory()).hasValue(1);
         }
     }
 
@@ -62,6 +139,34 @@ class EngineStartTest {
             Files.writeString(prefs, "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         }
         return NjMuleEngine.start(new EngineConfig(dirs));
+    }
+
+    private static DownloadInfo.Status status(NjMuleEngine engine) throws Exception {
+        return engine.downloads().get(5, TimeUnit.SECONDS).stream()
+                .filter(d -> d.hash().equals(FILM.hash()))
+                .findFirst()
+                .orElseThrow()
+                .status();
+    }
+
+    private static Category category(int id) {
+        return new Category(id, "c" + id, Optional.empty(), "", id, DownloadPriority.AUTO, "", false);
+    }
+
+    // A rule that holds all week and stops the downloads of one category when it begins.
+    private static Schedule.Rule always(String name, int stop) {
+        return new Schedule.Rule(
+                name,
+                true,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.of(stop),
+                OptionalInt.empty());
     }
 
     /** The log lines an engine publishes. */

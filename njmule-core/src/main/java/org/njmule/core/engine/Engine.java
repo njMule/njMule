@@ -35,10 +35,14 @@ import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -202,20 +206,31 @@ public final class Engine implements NjMuleEngine {
             lock.close();
             throw e;
         }
-        engine.loop
-                .submit(() -> {
-                    engine.refreshSchedule();
-                    engine.network.start();
-                    // A rule that holds at start acts on the downloads once they are there.
-                    Schedule.Rule active = engine.activeRule;
-                    if (active != null) {
-                        engine.network.scheduleCategories(active.stopCategory(), active.resumeCategory());
-                    }
-                    engine.loop.scheduleRepeating("scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
-                    engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
-                    return null;
-                })
-                .join();
+        try {
+            engine.loop
+                    .submit(() -> {
+                        // The network starts with the limits of the rule in force, which then acts once.
+                        engine.effective = engine.scheduled(engine.currentRule());
+                        engine.network.start();
+                        engine.refreshSchedule();
+                        engine.loop.scheduleRepeating(
+                                "scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
+                        engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
+                        return null;
+                    })
+                    .join();
+        } catch (CompletionException | CancellationException e) {
+            // A start that failed half-way lets go of the engine thread, the event thread and the lock.
+            engine.close();
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            if (cause instanceof IOException io) {
+                throw io;
+            }
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new IOException("Cannot start the engine", cause);
+        }
         engine.publish(new EngineEvent.Started(NjMuleInfo.version()));
         engine.userLog(LogLine.Level.INFO, NjMuleInfo.NAME + " " + NjMuleInfo.version() + " started");
         if (engine.preferences().updateServersAtStart()) {
@@ -269,7 +284,17 @@ public final class Engine implements NjMuleEngine {
             } catch (IOException e) {
                 throw new UncheckedIOException("Cannot save " + this.scheduleFile, e);
             }
+            Schedule before = this.schedule;
             this.schedule = changed;
+            // A rule edited while it holds goes on, its actions done when it began: the same rule, or one in its place.
+            Schedule.Rule was = this.activeRule;
+            Schedule.Rule rule = this.currentRule();
+            if (was != null
+                    && rule != null
+                    && (rule.equals(was)
+                            || changed.rules().indexOf(rule) == before.rules().indexOf(was))) {
+                this.activeRule = rule;
+            }
             this.refreshSchedule();
             return changed;
         });
@@ -285,13 +310,19 @@ public final class Engine implements NjMuleEngine {
         return Optional.ofNullable(this.activeRule);
     }
 
-    // Engine thread: which rule holds now, and the preferences it gives.
+    // Engine thread: the rule that holds now, in the user's local time.
+    private Schedule.Rule currentRule() {
+        return this.schedule.active(LocalDateTime.now(ZoneId.systemDefault())).orElse(null);
+    }
+
+    private Preferences scheduled(Schedule.Rule rule) {
+        return rule == null ? this.preferences : rule.applyTo(this.preferences);
+    }
+
+    // Engine thread: which rule holds now, and the preferences it gives; a rule acts when it begins.
     private void refreshSchedule() {
-        // The rules are in the user's local time.
-        Schedule.Rule rule =
-                this.schedule.active(LocalDateTime.now(ZoneId.systemDefault())).orElse(null);
-        Preferences base = this.preferences;
-        this.effective = rule == null ? base : rule.applyTo(base);
+        Schedule.Rule rule = this.currentRule();
+        this.effective = this.scheduled(rule);
         if (!Objects.equals(rule, this.activeRule)) {
             this.activeRule = rule;
             if (rule != null) {
@@ -747,9 +778,54 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Void> setCategories(List<Category> categories) {
         List<Category> copy = List.copyOf(categories);
         return this.loop.submit(() -> {
+            Set<Integer> deleted = new HashSet<>();
+            this.network.categories().forEach(c -> deleted.add(c.id()));
             this.network.setCategories(copy);
+            copy.forEach(c -> deleted.remove(c.id()));
+            this.forgetCategories(deleted);
             return null;
         });
+    }
+
+    // Rules let go of deleted categories: a new category may take the same id.
+    private void forgetCategories(Set<Integer> deleted) throws IOException {
+        deleted.remove(Category.NONE);
+        List<Schedule.Rule> rules = new ArrayList<>();
+        boolean changed = false;
+        for (Schedule.Rule r : this.schedule.rules()) {
+            OptionalInt stop = r.stopCategory().stream()
+                    .filter(id -> !deleted.contains(id))
+                    .findFirst();
+            OptionalInt resume = r.resumeCategory().stream()
+                    .filter(id -> !deleted.contains(id))
+                    .findFirst();
+            if (stop.equals(r.stopCategory()) && resume.equals(r.resumeCategory())) {
+                rules.add(r);
+                continue;
+            }
+            Schedule.Rule kept = new Schedule.Rule(
+                    r.name(),
+                    r.enabled(),
+                    r.days(),
+                    r.start(),
+                    r.end(),
+                    r.uploadKiBps(),
+                    r.downloadKiBps(),
+                    r.maxConnections(),
+                    r.maxSourcesPerFile(),
+                    stop,
+                    resume);
+            if (r.equals(this.activeRule)) {
+                this.activeRule = kept;
+            }
+            rules.add(kept);
+            changed = true;
+        }
+        if (changed) {
+            Schedule cleaned = new Schedule(rules);
+            ScheduleCodec.save(this.scheduleFile, cleaned);
+            this.schedule = cleaned;
+        }
     }
 
     @Override
