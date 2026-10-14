@@ -271,9 +271,11 @@ public abstract sealed class LinkAssociation {
                 }
             }
             if (!kept.equals(lines)) {
-                Path tmp = this.mimeApps.resolveSibling(this.mimeApps.getFileName() + ".tmp");
+                // A list linked from elsewhere, such as a dotfiles repository, stays a link: its target changes.
+                Path target = this.mimeApps.toRealPath();
+                Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
                 Files.writeString(tmp, String.join("\n", kept) + "\n", StandardCharsets.UTF_8);
-                Files.move(tmp, this.mimeApps, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             }
         }
 

@@ -17,6 +17,7 @@
 package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -140,6 +141,28 @@ class LinkAssociationTest {
                         x-scheme-handler/ed2k=amule.desktop;
                         [Added Associations]
                         """);
+    }
+
+    @Test
+    void onLinuxAListKeptElsewhereStaysALink() throws IOException {
+        Path real = Files.createDirectories(this.dir.resolve("dotfiles")).resolve("mimeapps.list");
+        Files.writeString(
+                real,
+                "[Default Applications]\nx-scheme-handler/ed2k=" + LinkAssociation.DESKTOP_ID + "\n",
+                StandardCharsets.UTF_8);
+        Path mimeApps = this.dir.resolve("mimeapps.list");
+        try {
+            Files.createSymbolicLink(mimeApps, real);
+        } catch (IOException | UnsupportedOperationException e) {
+            assumeTrue(false, "symbolic links need a privilege here: " + e);
+        }
+        LinkAssociation.Linux linux = new LinkAssociation.Linux(
+                this.dir, command -> new LinkAssociation.Result(0, LinkAssociation.DESKTOP_ID + "\n"), mimeApps);
+
+        linux.giveBack();
+
+        assertThat(mimeApps).isSymbolicLink();
+        assertThat(Files.readString(real, StandardCharsets.UTF_8)).isEqualTo("[Default Applications]\n");
     }
 
     @Test
