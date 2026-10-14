@@ -30,8 +30,8 @@ import java.util.ResourceBundle;
  */
 public final class I18n {
 
-    /** The languages of the interface; English first. */
-    public static final List<Locale> LANGUAGES = List.of(Locale.ENGLISH, Locale.ITALIAN);
+    /** The languages of the interface; English first, then by their own names. */
+    public static final List<Locale> LANGUAGES = List.of(Locale.ENGLISH, Locale.GERMAN, Locale.ITALIAN);
 
     private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
