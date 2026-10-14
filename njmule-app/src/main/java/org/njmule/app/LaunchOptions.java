@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
@@ -149,12 +150,21 @@ public record LaunchOptions(
     private static final String WEBUI_PORT_OPTION = "--webui-port";
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
 
+    // What --exit may come with: where and how to run, nothing to do.
+    private static final Set<String> WITH_EXIT =
+            Set.of(EXIT_OPTION, CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION);
+
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
         try {
             result = parser().parseArgs(args);
         } catch (ParameterException e) {
             throw new UsageException(e.getMessage());
+        }
+        if (result.hasMatchedOption(EXIT_OPTION)
+                && !result.isUsageHelpRequested()
+                && !result.isVersionHelpRequested()) {
+            exitAlone(result);
         }
         Optional<Path> configDir = Optional.empty();
         if (result.hasMatchedOption(CONFIG_DIR_OPTION)) {
@@ -344,6 +354,18 @@ public record LaunchOptions(
                 .type(boolean.class)
                 .description(description)
                 .build();
+    }
+
+    // Another action, a task or links beside --exit would be dropped without a word.
+    private static void exitAlone(ParseResult result) throws UsageException {
+        for (OptionSpec option : result.matchedOptions()) {
+            if (!WITH_EXIT.contains(option.longestName())) {
+                throw new UsageException(EXIT_OPTION + " cannot be combined with " + option.longestName());
+            }
+        }
+        if (!result.matchedPositionalValue(0, List.<String>of()).isEmpty()) {
+            throw new UsageException(EXIT_OPTION + " cannot be combined with links");
+        }
     }
 
     private static Optional<ServerAddress> address(ParseResult result, String option) throws UsageException {

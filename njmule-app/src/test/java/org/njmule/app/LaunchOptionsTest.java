@@ -168,6 +168,31 @@ class LaunchOptionsTest {
     @Test
     void parsesExit() throws Exception {
         assertThat(LaunchOptions.parse("--exit").action()).isEqualTo(Action.EXIT);
+        assertThat(LaunchOptions.parse(
+                                "--exit", "--config-dir", this.dir.toString(), "--log-level", "info", "--headless")
+                        .action())
+                .isEqualTo(Action.EXIT);
+        assertThat(LaunchOptions.parse("--exit", "--help").action()).isEqualTo(Action.HELP);
+    }
+
+    @Test
+    void exitTakesNothingElseToDo() {
+        String link = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/";
+        String[][] mixed = {
+            {"--exit", link},
+            {"--webui-password", "--exit"},
+            {"--exit", "--hash", "a.iso"},
+            {"--exit", "--license"},
+            {"--exit", "--search", "linux"},
+            {"--exit", "--connect-server", "1.2.3.4:4661"},
+            {"--exit", "--import-emule", "x"}
+        };
+        for (String[] args : mixed) {
+            assertThatThrownBy(() -> LaunchOptions.parse(args))
+                    .as(String.join(" ", args))
+                    .isInstanceOf(LaunchOptions.UsageException.class)
+                    .hasMessageContaining("--exit");
+        }
     }
 
     @Test
