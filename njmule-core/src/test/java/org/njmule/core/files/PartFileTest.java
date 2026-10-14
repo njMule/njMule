@@ -63,6 +63,18 @@ class PartFileTest {
     }
 
     @Test
+    void aReleasedRangeIsHandedOutAgain() {
+        PartFile file = this.small(500_000);
+        BitSet all = all(file);
+        assertThat(file.nextBlocks(all, 3)).hasSize(3);
+
+        file.release(B + 1000, B + 2000);
+
+        assertThat(file.nextBlocks(all, 3)).containsExactly(new Block(B + 1000, B + 2000));
+        assertThat(file.nextBlocks(all, 3)).isEmpty();
+    }
+
+    @Test
     void picksTheRarestPartTheSourceHasAndTakesBackCorruptParts() {
         List<Hash16> parts = List.of(hash(1), hash(2), hash(3));
         PartFile file =

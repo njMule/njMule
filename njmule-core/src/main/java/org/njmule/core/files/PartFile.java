@@ -427,7 +427,12 @@ public final class PartFile {
 
     /** A requested block that will not arrive (the source is gone). */
     public void release(Block block) {
-        this.requested.remove(Range.closedOpen(block.start(), block.end()));
+        this.release(block.start(), block.end());
+    }
+
+    /** Requested data in {@code [start, end)} that will not reach the disk, so it is handed out again. */
+    public void release(long start, long end) {
+        this.requested.remove(Range.closedOpen(start, end));
     }
 
     /** Data in {@code [start, end)} reached the disk. */

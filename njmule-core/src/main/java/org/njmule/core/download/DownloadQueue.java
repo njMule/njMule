@@ -360,6 +360,8 @@ public final class DownloadQueue implements AutoCloseable {
             return;
         }
         if (failure != null) {
+            // The session has let the block go: the range is asked for again once the download goes on.
+            download.file.release(start, end);
             download.file.setStatus(PartFile.Status.ERROR);
             download.dirty = true;
             this.listener.failed(download, "cannot write the data: " + failure.getMessage());

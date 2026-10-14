@@ -18,10 +18,14 @@ package org.njmule.core.download;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -33,6 +37,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
@@ -122,6 +128,37 @@ class DownloadQueueTest {
 
         assertThat(this.events.take()).isEqualTo("added");
         assertThat(download.file().hasHashSet()).as("asked from the sources").isFalse();
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void aRangeThatCouldNotBeWrittenIsAskedForAgain() throws Exception {
+        byte[] data = random(400_000, 5);
+        DownloadQueue queue = this.queue();
+        DownloadQueue.Download download = this.onLoop(
+                () -> queue.add(Ed2kLink.FileLink.of("locked.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        assertThat(this.events.take()).isEqualTo("added");
+        BitSet all = new BitSet();
+        all.set(0);
+        this.onLoop(() -> download.file().nextBlocks(all, 3));
+
+        // Another process holds a lock on the data: the write fails.
+        try (FileChannel other =
+                        FileChannel.open(this.dir.resolve("temp").resolve("001.part"), StandardOpenOption.WRITE);
+                FileLock lock = other.lock()) {
+            this.onLoop(() -> {
+                queue.received(download, 0, Arrays.copyOf(data, Ed2k.EMBLOCKSIZE));
+                return null;
+            });
+            assertThat(this.awaitPrefix("failed")).contains("cannot write");
+        }
+
+        List<PartFile.Block> again = this.onLoop(() -> {
+            queue.pause(download);
+            queue.resume(download);
+            return download.file().nextBlocks(all, 3);
+        });
+        assertThat(again).containsExactly(new PartFile.Block(0, Ed2k.EMBLOCKSIZE));
     }
 
     @Test
@@ -298,7 +335,7 @@ class DownloadQueueTest {
             if (event != null && event.startsWith(prefix)) {
                 return event;
             }
-            if (event != null) {
+            if (event != null && !prefix.startsWith("failed")) {
                 assertThat(event).as("unexpected failure").doesNotStartWith("failed");
             }
         }
