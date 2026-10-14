@@ -17,11 +17,19 @@
 package org.njmule.core.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class SharedDirectoryTest {
+
+    @TempDir
+    Path dir;
 
     @Test
     void rootsSystemDirectoriesAndPersonalFoldersAreSensitive() {
@@ -39,5 +47,50 @@ class SharedDirectoryTest {
         } else {
             assertThat(SharedDirectory.isSensitive(Path.of("/etc"))).isTrue();
         }
+    }
+
+    @Test
+    void theHomeTheDirectoryOfAllHomesAndKeyFoldersAreSensitive() {
+        Path home = Path.of(System.getProperty("user.home"));
+
+        assertThat(SharedDirectory.isSensitive(home)).isTrue();
+        assertThat(SharedDirectory.isSensitive(home.getParent())).isTrue();
+        assertThat(SharedDirectory.isSensitive(home.resolve(".ssh"))).isTrue();
+        assertThat(SharedDirectory.isSensitive(home.resolve(".gnupg").resolve("private-keys-v1.d")))
+                .isTrue();
+    }
+
+    @Test
+    void aDirectoryContainingASensitiveOneIsSensitive() throws IOException {
+        Path home = Files.createDirectories(this.dir.resolve("home"));
+        Path documents = Files.createDirectories(home.resolve("Documents"));
+        Path music = Files.createDirectories(home.resolve("Music"));
+        List<Path> sensitive = List.of(documents);
+
+        assertThat(SharedDirectory.isSensitive(home, sensitive)).isTrue();
+        assertThat(SharedDirectory.isSensitive(this.dir, sensitive)).isTrue();
+        assertThat(SharedDirectory.isSensitive(documents.resolve("taxes"), sensitive))
+                .isTrue();
+        assertThat(SharedDirectory.isSensitive(music, sensitive)).isFalse();
+        assertThat(SharedDirectory.isSensitive(this.dir.resolve("home2"), sensitive))
+                .as("a sibling with the same prefix")
+                .isFalse();
+    }
+
+    @Test
+    void aLinkIsJudgedByWhereItLeads() throws IOException {
+        Path documents = Files.createDirectories(this.dir.resolve("home").resolve("Documents"));
+        Path share = Files.createDirectories(this.dir.resolve("share"));
+        Path link = share.resolve("docs");
+        try {
+            Files.createSymbolicLink(link, documents);
+        } catch (IOException | UnsupportedOperationException e) {
+            assumeTrue(false, "symbolic links are not available: " + e);
+        }
+
+        assertThat(SharedDirectory.isSensitive(link, List.of(documents))).isTrue();
+        assertThat(SharedDirectory.isSensitive(share.resolve("other"), List.of(link)))
+                .isFalse();
+        assertThat(SharedDirectory.isSensitive(documents, List.of(link))).isTrue();
     }
 }

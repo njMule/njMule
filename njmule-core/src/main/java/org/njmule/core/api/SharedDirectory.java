@@ -16,6 +16,7 @@
  */
 package org.njmule.core.api;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,27 +44,49 @@ public record SharedDirectory(Path path, boolean subdirectories) {
             "/private");
     private static final List<String> WINDOWS =
             List.of("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "APPDATA", "LOCALAPPDATA");
-    private static final List<String> PERSONAL = List.of("Documents", "Desktop", "Pictures");
+    private static final List<String> PERSONAL = List.of("Documents", "Desktop", "Pictures", ".ssh", ".gnupg");
+    // Where Windows keeps the OneDrive folders, which can hold the redirected personal folders.
+    private static final List<String> ONEDRIVE = List.of("OneDrive", "OneDriveConsumer", "OneDriveCommercial");
 
     public SharedDirectory {
         Objects.requireNonNull(path, "path");
     }
 
     /**
-     * Whether sharing {@code dir} deserves a second thought: a disk's root, a system directory, or the user's
-     * documents, desktop or pictures, where personal files are.
+     * Whether sharing {@code dir} deserves a second thought: a disk's root, a system directory, the user's documents,
+     * desktop, pictures or keys, where personal files are, or a directory holding one of them, such as the home. Links
+     * and junctions are judged by where they lead.
      */
     public static boolean isSensitive(Path dir) {
-        Path d = dir.toAbsolutePath().normalize();
-        if (d.getParent() == null) {
+        return isSensitive(dir, sensitive());
+    }
+
+    static boolean isSensitive(Path dir, List<Path> sensitive) {
+        List<Path> forms = forms(dir);
+        if (forms.stream().anyMatch(d -> d.getParent() == null)) {
             return true;
         }
-        for (Path s : sensitive()) {
-            if (d.startsWith(s)) {
-                return true;
+        for (Path s : sensitive) {
+            for (Path sensitiveForm : forms(s)) {
+                for (Path d : forms) {
+                    if (d.startsWith(sensitiveForm) || sensitiveForm.startsWith(d)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
+    }
+
+    // The path as given and, when it exists, where it really is.
+    private static List<Path> forms(Path path) {
+        Path absolute = path.toAbsolutePath().normalize();
+        try {
+            Path real = absolute.toRealPath();
+            return real.equals(absolute) ? List.of(absolute) : List.of(absolute, real);
+        } catch (IOException | SecurityException e) {
+            return List.of(absolute);
+        }
     }
 
     private static List<Path> sensitive() {
@@ -75,6 +98,13 @@ public record SharedDirectory(Path path, boolean subdirectories) {
                 String value = System.getenv(variable);
                 if (value != null && !value.isBlank()) {
                     dirs.add(Path.of(value).toAbsolutePath().normalize());
+                }
+            }
+            for (String variable : ONEDRIVE) {
+                String value = System.getenv(variable);
+                if (value != null && !value.isBlank()) {
+                    PERSONAL.forEach(
+                            p -> dirs.add(Path.of(value, p).toAbsolutePath().normalize()));
                 }
             }
         } else {
