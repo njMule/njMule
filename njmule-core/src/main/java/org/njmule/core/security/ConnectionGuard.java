@@ -50,6 +50,9 @@ public final class ConnectionGuard {
 
     /** Limits; the accept rate counts connections admitted within {@code rateWindow}. */
     public record Limits(int maxTotal, int maxPerAddress, int maxAccepts, Duration rateWindow) {
+        /** The longest rate window; a longer one would no longer limit a rate. */
+        public static final Duration MAX_RATE_WINDOW = Duration.ofHours(1);
+
         public static final Limits DEFAULT = new Limits(500, 5, 20, Duration.ofSeconds(5));
 
         public Limits {
@@ -57,6 +60,11 @@ public final class ConnectionGuard {
                 throw new IllegalArgumentException("limits must be positive");
             }
             Objects.requireNonNull(rateWindow, "rateWindow");
+            // A zero or negative window would turn the rate limit off.
+            if (!rateWindow.isPositive() || rateWindow.compareTo(MAX_RATE_WINDOW) > 0) {
+                throw new IllegalArgumentException(
+                        "the rate window must be within 0-" + MAX_RATE_WINDOW + ": " + rateWindow);
+            }
         }
     }
 

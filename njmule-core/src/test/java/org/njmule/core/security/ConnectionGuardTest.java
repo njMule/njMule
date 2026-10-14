@@ -17,6 +17,7 @@
 package org.njmule.core.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.common.base.Ticker;
 import java.time.Duration;
@@ -116,6 +117,17 @@ class ConnectionGuardTest {
 
         this.ticker.advance(Duration.ofSeconds(2));
         assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+    }
+
+    @Test
+    void theRateWindowMustBeAPositiveSpanOfTime() {
+        for (Duration window : new Duration[] {Duration.ZERO, Duration.ofSeconds(-5), Duration.ofDays(365 * 300)}) {
+            assertThatThrownBy(() -> new Limits(100, 100, 2, window))
+                    .as("%s", window)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(new Limits(100, 100, 2, Limits.MAX_RATE_WINDOW).rateWindow()).isEqualTo(Limits.MAX_RATE_WINDOW);
+        assertThat(new Limits(100, 100, 2, Duration.ofNanos(1)).rateWindow()).isEqualTo(Duration.ofNanos(1));
     }
 
     private static ConnectionGuard.Permit permit(Admission admission) {
