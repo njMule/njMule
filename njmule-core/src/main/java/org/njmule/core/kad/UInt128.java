@@ -16,6 +16,8 @@
  */
 package org.njmule.core.kad;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.security.SecureRandom;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
@@ -50,9 +52,13 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
 
     /** The wire layout as 16 bytes (as used for obfuscation keys). */
     public byte[] toWireBytes() {
-        PacketWriter out = new PacketWriter(16);
-        this.write(out);
-        return out.toByteArray();
+        return ByteBuffer.allocate(16)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .putInt((int) (this.high >>> 32))
+                .putInt((int) this.high)
+                .putInt((int) (this.low >>> 32))
+                .putInt((int) this.low)
+                .array();
     }
 
     public static UInt128 fromWireBytes(byte[] bytes) throws DecodeException {
