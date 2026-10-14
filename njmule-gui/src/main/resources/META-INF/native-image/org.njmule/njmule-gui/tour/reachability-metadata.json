@@ -1443,6 +1443,42 @@
       ]
     },
     {
+      "type": "com.sun.javafx.font.freetype.PangoGlyphString",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "font"
+        },
+        {
+          "name": "glyphs"
+        },
+        {
+          "name": "length"
+        },
+        {
+          "name": "log_clusters"
+        },
+        {
+          "name": "num_chars"
+        },
+        {
+          "name": "num_glyphs"
+        },
+        {
+          "name": "offset"
+        },
+        {
+          "name": "widths"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "com.sun.javafx.geom.Path2D",
       "jniAccessible": true,
       "methods": [
@@ -5937,6 +5973,12 @@
     },
     {
       "type": "sun.text.resources.BreakIteratorResources"
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorResources_en"
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorResources_en_US"
     },
     {
       "type": "sun.text.resources.FormatData"
@@ -16206,11 +16248,19 @@
     },
     {
       "module": "javafx.graphics",
+      "glob": "com/sun/prism/es2/glsl/DrawCircle_Color.frag"
+    },
+    {
+      "module": "javafx.graphics",
       "glob": "com/sun/prism/es2/glsl/DrawPgram_Color.frag"
     },
     {
       "module": "javafx.graphics",
       "glob": "com/sun/prism/es2/glsl/DrawRoundRect_Color.frag"
+    },
+    {
+      "module": "javafx.graphics",
+      "glob": "com/sun/prism/es2/glsl/FillCircle_Color.frag"
     },
     {
       "module": "javafx.graphics",
