@@ -241,6 +241,8 @@ All notable changes to this project are documented here. The format follows
 - View Shared Files asks a client of the transfer lists for the files it shares, shown in a window
   to download from; our own list is shown to everybody, friends or nobody (the default; eMule's
   SeeShare setting is imported).
+- A friend can be given the friend slot for the run: it goes before the queue, also when it is
+  full, and keeps its upload slot.
 
 ### Changed
 

@@ -44,6 +44,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SharedFileInfo;
@@ -145,6 +146,37 @@ class UploadQueueTest {
                 .isTrue();
         assertThat(engine.bans().get(5, TimeUnit.SECONDS)).isEmpty();
         assertThat(engine.unban("192.0.2.1").get(5, TimeUnit.SECONDS)).isFalse();
+    }
+
+    @Test
+    void theFriendWithTheFriendSlotGoesBeforeTheQueue() throws Exception {
+        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+        Hash16 pal = hello(4, 5004).userHash();
+        engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
+        assertThat(engine.setFriendSlot(Optional.of(hello(9, 5009).userHash())).get(5, TimeUnit.SECONDS))
+                .as("not a friend")
+                .isFalse();
+        assertThat(engine.setFriendSlot(Optional.of(pal)).get(5, TimeUnit.SECONDS))
+                .isTrue();
+        assertThat(engine.friendSlot().get(5, TimeUnit.SECONDS)).contains(pal);
+
+        List<Client> clients = new ArrayList<>();
+        for (int seed = 1; seed <= 4; seed++) {
+            Client c = this.client(port, seed);
+            c.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
+            assertThat(c.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
+            clients.add(c);
+        }
+        assertThat(clients.get(0).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(clients.get(1).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(ClientMessages.decodeQueueRank(clients.get(2).ask(file.hash())))
+                .isEqualTo(1);
+
+        assertThat(ClientMessages.decodeQueueRank(clients.get(3).ask(file.hash())))
+                .as("the friend comes first")
+                .isEqualTo(1);
     }
 
     @Test

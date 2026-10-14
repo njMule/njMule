@@ -77,8 +77,21 @@ import org.slf4j.LoggerFactory;
  */
 public final class UploadManager implements AutoCloseable {
 
-    /** What the uploads need from the preferences; {@code queueSize} is how many clients may wait. */
-    public record Settings(int maxUploadKiBps, ObfuscationMode obfuscation, int queueSize) {}
+    /**
+     * What the uploads need from the preferences; {@code queueSize} is how many clients may wait, {@code friendSlot}
+     * the friend served before anyone else.
+     */
+    public record Settings(
+            int maxUploadKiBps, ObfuscationMode obfuscation, int queueSize, Optional<Hash16> friendSlot) {
+        public Settings {
+            Objects.requireNonNull(obfuscation, "obfuscation");
+            Objects.requireNonNull(friendSlot, "friendSlot");
+        }
+
+        public Settings(int maxUploadKiBps, ObfuscationMode obfuscation, int queueSize) {
+            this(maxUploadKiBps, obfuscation, queueSize, Optional.empty());
+        }
+    }
 
     /** Payload a slot gets before the client waits again, while others wait. */
     public static final long SESSION_LIMIT = Ed2k.PARTSIZE + 20_480;
@@ -360,7 +373,11 @@ public final class UploadManager implements AutoCloseable {
                         || this.find(c.file.hash()).isEmpty());
         for (Slot slot : List.copyOf(this.slots)) {
             this.read(slot);
-            if (slot.sent >= SESSION_LIMIT && !this.waiting.isEmpty() && slot.out.isEmpty() && !slot.reading) {
+            if (slot.sent >= SESSION_LIMIT
+                    && !this.waiting.isEmpty()
+                    && slot.out.isEmpty()
+                    && !slot.reading
+                    && !this.hasFriendSlot(slot.client.userHash)) {
                 this.requeue(slot, now);
             } else if (slot.isBusy()) {
                 slot.idleSince = now;
@@ -560,7 +577,15 @@ public final class UploadManager implements AutoCloseable {
         return open < Math.max(MIN_SLOTS, limit * 1_024L / perSlot) + (extra ? 1 : 0);
     }
 
+    // The friend with the friend slot, unless it has a LowID, comes before anyone and keeps its slot.
+    private boolean hasFriendSlot(Hash16 userHash) {
+        return this.settings.get().friendSlot().filter(userHash::equals).isPresent();
+    }
+
     private double score(Client client, long now) {
+        if (!client.lowId && this.hasFriendSlot(client.userHash)) {
+            return Double.MAX_VALUE;
+        }
         double waited = Math.max(0, now - client.waitStart) / 1e9;
         boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
         double ratio = this.credits.ratio(client.userHash, trusted);
@@ -812,7 +837,9 @@ public final class UploadManager implements AutoCloseable {
                     sameIp++;
                 }
             }
-            if (manager.waiting.size() >= manager.settings.get().queueSize() || sameIp >= MAX_WAITING_PER_IP) {
+            if ((manager.waiting.size() >= manager.settings.get().queueSize()
+                            && !manager.hasFriendSlot(session.userHash()))
+                    || sameIp >= MAX_WAITING_PER_IP) {
                 return;
             }
             client = new Client(session, file, now);

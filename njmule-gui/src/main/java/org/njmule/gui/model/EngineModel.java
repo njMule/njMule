@@ -136,6 +136,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ObjectProperty<EngineStatus> status = new SimpleObjectProperty<>(NO_STATUS);
     private final ObjectProperty<SpamMarks> spamMarks = new SimpleObjectProperty<>(SpamMarks.NONE);
     private final ObjectProperty<FileHistory> history = new SimpleObjectProperty<>(FileHistory.NONE);
+    private final ObjectProperty<Optional<Hash16>> friendSlot = new SimpleObjectProperty<>(Optional.empty());
     private final ObjectProperty<Connection> connection = new SimpleObjectProperty<>(Connection.DISCONNECTED);
     private final StringProperty serverName = new SimpleStringProperty("");
     private final StringProperty lastLog = new SimpleStringProperty("");
@@ -407,8 +408,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.removeFriend(userHash), done -> this.refreshFriends());
     }
 
+    /** The friend with the friend slot, as last read. */
+    public ReadOnlyObjectProperty<Optional<Hash16>> friendSlotProperty() {
+        return this.friendSlot;
+    }
+
+    /** Gives the friend slot to {@code friend}, or to nobody. */
+    public void setFriendSlot(Optional<Hash16> friend) {
+        this.later(this.engine.setFriendSlot(friend), done -> this.refreshFriends());
+    }
+
     private void refreshFriends() {
         this.later(this.engine.friends(), this.friends::update);
+        this.later(this.engine.friendSlot(), this.friendSlot::set);
     }
 
     // Commands: errors go to the error sink, results come back on the FX thread.

@@ -224,6 +224,15 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addKadContacts(URI url);
 
+    /** The friend that has the friend slot, served before anyone else, if any. */
+    CompletableFuture<Optional<Hash16>> friendSlot();
+
+    /**
+     * Gives the friend slot to {@code friend}, or takes it away with empty, for this run; completes with {@code false}
+     * for one who is not a friend.
+     */
+    CompletableFuture<Boolean> setFriendSlot(Optional<Hash16> friend);
+
     /**
      * The files the client listening at {@code client} shares, as it lists them when asked; fails when it does not show
      * them or cannot be reached.

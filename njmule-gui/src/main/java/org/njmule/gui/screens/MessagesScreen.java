@@ -50,6 +50,7 @@ import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Friend;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.model.Chats;
 import org.njmule.gui.model.LiveList;
@@ -107,9 +108,10 @@ public final class MessagesScreen implements Screen {
             @Override
             protected void updateItem(LiveList.Row<Friend> row, boolean empty) {
                 super.updateItem(row, empty);
-                this.setText(empty || row == null ? null : friendText(row.get()));
+                this.setText(empty || row == null ? null : MessagesScreen.this.friendText(row.get()));
             }
         });
+        this.gui.model().friendSlotProperty().addListener((o, was, now) -> this.friends.refresh());
         Label friendsTitle = new Label(this.gui.t("IDS_PW_FRIENDS"));
         friendsTitle.getStyleClass().add("settings-section");
         VBox left = new VBox(
@@ -118,7 +120,8 @@ public final class MessagesScreen implements Screen {
                 this.friends,
                 Fx.toolRow(
                         Fx.button(this.gui.t("nj.chat.open"), Material2MZ.MESSAGE, this::chatWithFriend),
-                        Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeFriend)));
+                        Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeFriend)),
+                Fx.toolRow(Fx.button(this.gui.t("IDS_FRIENDSLOT"), Material2MZ.STAR, this::toggleFriendSlot)));
         VBox.setVgrow(this.friends, Priority.ALWAYS);
         left.setPadding(new Insets(0, 8, 0, 0));
         left.setMinWidth(220);
@@ -148,11 +151,34 @@ public final class MessagesScreen implements Screen {
         return Fx.screen(this.title(), tools, split);
     }
 
-    private static String friendText(Friend f) {
+    private String friendText(Friend f) {
         String name = f.name().isEmpty() ? f.userHash().toString() : f.name();
-        return f.address()
+        String text = f.address()
                 .map(a -> name + "  (" + a.host() + ":" + a.port() + ")")
                 .orElse(name);
+        boolean slot = this.gui
+                .model()
+                .friendSlotProperty()
+                .get()
+                .filter(f.userHash()::equals)
+                .isPresent();
+        return slot ? text + "  " + this.gui.t("IDS_FRIENDDETAIL") : text;
+    }
+
+    // The selected friend gets the friend slot, or loses it when it has it.
+    void toggleFriendSlot() {
+        LiveList.Row<Friend> row = this.friends.getSelectionModel().getSelectedItem();
+        if (row == null) {
+            return;
+        }
+        Hash16 friend = row.get().userHash();
+        boolean has = this.gui
+                .model()
+                .friendSlotProperty()
+                .get()
+                .filter(friend::equals)
+                .isPresent();
+        this.gui.model().setFriendSlot(has ? Optional.empty() : Optional.of(friend));
     }
 
     void startChat() {

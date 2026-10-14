@@ -183,6 +183,8 @@ final class Network {
     private final SpamFilter spam;
     private final CancelledFiles cancelled;
     private final SharedFilesBrowser browser;
+    // The friend served first, for this run only; only friends get it.
+    private Optional<Hash16> friendSlot = Optional.empty();
     private final ServerList servers;
     private final ServerSession session;
     private final SearchManager searches;
@@ -341,7 +343,8 @@ final class Network {
                 () -> new UploadManager.Settings(
                         preferences.get().maxUploadKiBps(),
                         preferences.get().obfuscation(),
-                        preferences.get().uploadQueueSize()),
+                        preferences.get().uploadQueueSize(),
+                        this.friendSlot),
                 this.links,
                 this.credits,
                 ip -> {
@@ -589,6 +592,9 @@ final class Network {
     }
 
     boolean removeFriend(Hash16 userHash) throws IOException {
+        if (this.friendSlot.filter(userHash::equals).isPresent()) {
+            this.friendSlot = Optional.empty();
+        }
         return this.friends.remove(userHash);
     }
 
@@ -1258,6 +1264,19 @@ final class Network {
     }
 
     /** The state of Kad, empty when it does not run. */
+    Optional<Hash16> friendSlot() {
+        return this.friendSlot;
+    }
+
+    /** Gives the friend slot to {@code friend}, or to nobody; {@code false} for one who is not a friend. */
+    boolean setFriendSlot(Optional<Hash16> friend) {
+        if (friend.isPresent() && !this.friends.contains(friend.get())) {
+            return false;
+        }
+        this.friendSlot = friend;
+        return true;
+    }
+
     /** The files the client listening at {@code to} shares, when it shows them. */
     CompletableFuture<List<SearchResult>> browse(InetSocketAddress to) {
         return this.browser.browse(to);

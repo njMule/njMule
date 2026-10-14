@@ -721,6 +721,17 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Optional<Hash16>> friendSlot() {
+        return this.loop.submit(this.network::friendSlot);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setFriendSlot(Optional<Hash16> friend) {
+        Objects.requireNonNull(friend, "friend");
+        return this.loop.submit(() -> this.network.setFriendSlot(friend));
+    }
+
+    @Override
     public CompletableFuture<List<SearchResult>> browseSharedFiles(ServerAddress client) {
         Objects.requireNonNull(client, "client");
         return resolve(client.host())
