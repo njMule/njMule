@@ -119,6 +119,8 @@ public final class SharedFiles implements AutoCloseable {
     public static final Duration RESCAN_INTERVAL = Duration.ofMinutes(10);
 
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
+    // Seconds a file date may be off from the one recorded, besides an hour.
+    private static final long DATE_SLACK = 2;
     private static final int HASH_ATTEMPTS = 10;
     private static final Duration HASH_RETRY_DELAY = Duration.ofMillis(500);
     // A shared tree is walked this deep, and up to so many directories.
@@ -674,7 +676,7 @@ public final class SharedFiles implements AutoCloseable {
         if (shared != null && shared.size() == attrs.size() && shared.mtime() == mtime) {
             return;
         }
-        KnownMet.KnownFile record = this.known.get(new Key(name, attrs.size(), mtime));
+        KnownMet.KnownFile record = this.knownRecord(name, attrs.size(), mtime);
         if (record != null && record.isConsistent()) {
             this.share(
                     new SharedFile(
@@ -716,6 +718,38 @@ public final class SharedFiles implements AutoCloseable {
                     }
                 },
                 this.hasher);
+    }
+
+    // The record of a file by name, size and date. FAT keeps dates to 2 s and in local time, so a copy there or a
+    // change
+    // of daylight saving time moves them by up to 2 s or by an hour: such a record is taken too, under the date now.
+    private KnownMet.KnownFile knownRecord(String name, long size, long mtime) {
+        Key key = new Key(name, size, mtime);
+        KnownMet.KnownFile exact = this.known.get(key);
+        if (exact != null) {
+            return exact;
+        }
+        for (long hour : new long[] {0, 3600, -3600}) {
+            for (long slack = -DATE_SLACK; slack <= DATE_SLACK; slack++) {
+                Key near = new Key(name, size, mtime + hour + slack);
+                KnownMet.KnownFile record = near.equals(key) ? null : this.known.get(near);
+                if (record != null && record.isConsistent() && !this.isInUse(near, record)) {
+                    this.known.remove(near);
+                    KnownMet.KnownFile moved =
+                            new KnownMet.KnownFile(mtime, record.fileHash(), record.partHashes(), record.tags());
+                    this.known.put(key, moved);
+                    this.saveSoon();
+                    return moved;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Whether a file shared now, elsewhere, is the one recorded under the key.
+    private boolean isInUse(Key key, KnownMet.KnownFile record) {
+        SharedFile shared = this.byHash.get(record.fileHash());
+        return shared != null && key(shared).equals(key);
     }
 
     private void hashed(Path file, long mtime, FileHasher.Result result, Throwable failure) {

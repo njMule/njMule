@@ -515,6 +515,8 @@ All notable changes to this project are documented here. The format follows
   written, is read again for a few seconds instead of being left out until the next scan.
 - A shared file written to while it is hashed is hashed again once it rests, instead of being
   shared under hashes of a mix of old and new content recorded with its old date.
+- A shared file whose date moved by up to 2 seconds or by an hour, as after a copy to a FAT drive or
+  a change of daylight saving time, is no longer hashed again; any other change of date still is.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

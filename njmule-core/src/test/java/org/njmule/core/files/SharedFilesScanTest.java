@@ -39,12 +39,21 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.KnownMet;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 
 /** How the scan of the shared directories picks the files it shares. */
 @Timeout(60)
 class SharedFilesScanTest {
+
+    private static final Hash16 REMEMBERED = Hash16.parseHex("5e".repeat(16));
 
     @TempDir
     Path dir;
@@ -120,6 +129,71 @@ class SharedFilesScanTest {
         this.whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(bytes(5000, 8));
 
         this.thenTheFileIsSharedWithItsContentAndDateNow("changing.bin");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {2, -2, 3600, -3600, 3602, -3598})
+    void aKnownFileWhoseDateMovedAsOnFatOrAcrossDaylightSavingIsNotHashedAgain(long seconds) throws Exception {
+        this.givenTheIncomingDirectoryHolds("dated.bin");
+        this.givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
+
+        this.whenTheDirectoriesAreScanned("dated.bin");
+
+        this.thenItIsSharedWithTheRememberedHash("dated.bin");
+        this.thenKnownMetHoldsOneRecordOfItAtTheDateItHasNow("dated.bin");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {3, -3, 60, 3597, 3603, 7200})
+    void aKnownFileWhoseDateMovedOtherwiseIsHashedAgain(long seconds) throws Exception {
+        this.givenTheIncomingDirectoryHolds("dated.bin");
+        this.givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
+
+        this.whenTheDirectoriesAreScanned("dated.bin");
+
+        this.thenItIsSharedWithTheHashOfItsContent("dated.bin");
+    }
+
+    private void givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy(String name, long seconds) throws Exception {
+        Path file = this.incoming.resolve(name);
+        long remembered = 1_700_000_000L;
+        Files.setLastModifiedTime(file, FileTime.fromMillis((remembered + seconds) * 1000));
+        KnownMet.KnownFile record = new KnownMet.KnownFile(
+                remembered,
+                REMEMBERED,
+                List.of(),
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), Files.size(file))));
+        Files.write(this.config.resolve(SharedFiles.KNOWN_MET), KnownMet.write(List.of(record)));
+    }
+
+    private void thenItIsSharedWithTheRememberedHash(String name) throws Exception {
+        assertThat(this.sharedFile(name).hash()).isEqualTo(REMEMBERED);
+    }
+
+    private void thenItIsSharedWithTheHashOfItsContent(String name) throws Exception {
+        byte[] content = Files.readAllBytes(this.incoming.resolve(name));
+        assertThat(this.sharedFile(name).hash()).isEqualTo(Ed2k.md4(content, 0, content.length));
+    }
+
+    private void thenKnownMetHoldsOneRecordOfItAtTheDateItHasNow(String name) throws Exception {
+        this.onLoop(() -> {
+            this.shares.close();
+            return null;
+        });
+        this.shares = null;
+        long date = Files.getLastModifiedTime(this.incoming.resolve(name)).toMillis() / 1000;
+        assertThat(KnownMet.read(Files.readAllBytes(this.config.resolve(SharedFiles.KNOWN_MET))))
+                .singleElement()
+                .satisfies(record -> assertThat(record.mtime()).isEqualTo(date));
+    }
+
+    private SharedFiles.SharedFile sharedFile(String name) throws Exception {
+        return this.onLoop(() -> this.shares.all().stream()
+                .filter(f -> f.name().equals(name))
+                .findFirst()
+                .orElseThrow());
     }
 
     private void givenALargeFileKeepsTheHashingBusy() throws Exception {
