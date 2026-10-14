@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -30,9 +31,11 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
 import java.security.Signature;
+import java.util.List;
 import java.util.Optional;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -140,6 +143,37 @@ class RsaTest {
     void rejectsKeysThatAreNotRsa() {
         assertThatThrownBy(() -> RsaKeys.decodePublic(new byte[] {0x30, 0x03, 0x02, 0x01, 0x00}))
                 .isInstanceOf(DecodeException.class);
+    }
+
+    @Test
+    void rejectsPublicKeysTheSignatureCheckCannotUse() throws IOException {
+        BigInteger modulus = KEY.modulus();
+        BigInteger prime = BigInteger.probablePrime(384, RANDOM);
+
+        for (byte[] der : List.of(
+                pkcs1(modulus, BigInteger.valueOf(65_536)),
+                pkcs1(BigInteger.valueOf(15), BigInteger.valueOf(65_537)),
+                pkcs1(prime, BigInteger.valueOf(65_537)),
+                pkcs1(BigInteger.ONE, BigInteger.valueOf(3)))) {
+            assertThatThrownBy(() -> RsaKeys.decodePublic(der)).isInstanceOf(DecodeException.class);
+        }
+    }
+
+    private static byte[] pkcs1(BigInteger modulus, BigInteger exponent) throws IOException {
+        return new org.bouncycastle.asn1.pkcs.RSAPublicKey(modulus, exponent).getEncoded();
+    }
+
+    @Property(tries = 300)
+    void decodedKeysAlwaysVerifyWithoutThrowing(
+            @ForAll @Size(min = 1, max = 48) byte[] modulus, @ForAll @IntRange(min = 1) int exponent)
+            throws IOException {
+        byte[] der = pkcs1(new BigInteger(1, modulus), BigInteger.valueOf(exponent));
+        try {
+            PublicKey key = RsaKeys.decodePublic(der);
+            assertThat(Rsa.verify(key, der, new byte[key.sizeBytes()])).isFalse();
+        } catch (DecodeException expected) {
+            // not a usable key
+        }
     }
 
     @Property

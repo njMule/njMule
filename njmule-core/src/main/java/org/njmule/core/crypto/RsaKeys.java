@@ -31,6 +31,7 @@ import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
 import org.bouncycastle.asn1.pkcs.RSAPublicKey;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.crypto.params.RSAKeyParameters;
 import org.bouncycastle.crypto.util.PrivateKeyInfoFactory;
 import org.bouncycastle.crypto.util.SubjectPublicKeyInfoFactory;
 import org.njmule.core.crypto.Rsa.PrivateKey;
@@ -150,7 +151,9 @@ public final class RsaKeys {
         if (n.bitLength() > MAX_KEY_BITS || e.bitLength() > 64) {
             throw new DecodeException("implausible RSA public key");
         }
-        return new PublicKey(n, e);
+        // The signature engine refuses even exponents and moduli that are prime or have small factors.
+        RSAKeyParameters checked = new RSAKeyParameters(false, n, e);
+        return new PublicKey(checked.getModulus(), checked.getExponent());
     }
 
     private static void checkAlgorithm(AlgorithmIdentifier algorithm) throws DecodeException {
