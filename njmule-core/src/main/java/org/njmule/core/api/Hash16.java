@@ -18,6 +18,7 @@ package org.njmule.core.api;
 
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.Objects;
 
 /** An immutable 16-byte identifier: eD2K file hash (MD4), user hash or Kad key bytes. */
 public final class Hash16 implements Comparable<Hash16> {
@@ -41,7 +42,8 @@ public final class Hash16 implements Comparable<Hash16> {
     }
 
     public static Hash16 of(byte[] source, int offset) {
-        return new Hash16(Arrays.copyOfRange(source, offset, Math.addExact(offset, LENGTH)));
+        Objects.checkFromIndexSize(offset, LENGTH, source.length);
+        return new Hash16(Arrays.copyOfRange(source, offset, offset + LENGTH));
     }
 
     /** Parses 32 hexadecimal digits, in either case. */

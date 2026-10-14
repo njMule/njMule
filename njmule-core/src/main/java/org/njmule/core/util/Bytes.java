@@ -18,6 +18,7 @@ package org.njmule.core.util;
 
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.Objects;
 
 /** An immutable byte sequence with value semantics (for records and maps). */
 public final class Bytes {
@@ -37,7 +38,8 @@ public final class Bytes {
     }
 
     public static Bytes of(byte[] data, int offset, int length) {
-        return length == 0 ? EMPTY : new Bytes(Arrays.copyOfRange(data, offset, Math.addExact(offset, length)));
+        Objects.checkFromIndexSize(offset, length, data.length);
+        return length == 0 ? EMPTY : new Bytes(Arrays.copyOfRange(data, offset, offset + length));
     }
 
     public int length() {

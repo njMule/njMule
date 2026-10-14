@@ -20,8 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Locale;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 
@@ -37,11 +40,52 @@ class Hash20Test {
         assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31))).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void paddedBase32IsRefused() {
+        for (String padded : new String[] {
+            "A".repeat(29) + "===",
+            "A".repeat(28) + "====",
+            "A".repeat(31) + "=",
+            "=".repeat(32),
+            "A".repeat(26) + "======"
+        }) {
+            assertThatThrownBy(() -> Hash20.parseBase32(padded))
+                    .as(padded)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void readsOnlyFromInsideTheSource() {
+        byte[] source = new byte[24];
+
+        assertThat(Hash20.of(source, 4)).isEqualTo(Hash20.of(new byte[20]));
+        assertThatThrownBy(() -> Hash20.of(source, 5)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> Hash20.of(new byte[10], 0)).isInstanceOf(IndexOutOfBoundsException.class);
+    }
+
     @Property
     void base32RoundTripsInEitherCase(@ForAll @Size(20) byte[] data) {
         Hash20 hash = Hash20.of(data);
 
         assertThat(Hash20.parseBase32(hash.toBase32())).isEqualTo(hash);
         assertThat(Hash20.parseBase32(hash.toBase32().toLowerCase(Locale.ROOT))).isEqualTo(hash);
+    }
+
+    @Property
+    void anythingParsedFormatsBackToTheSameText(@ForAll("base32ish") String text) {
+        try {
+            assertThat(Hash20.parseBase32(text).toBase32()).isEqualTo(text.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException expected) {
+            // not an AICH hash
+        }
+    }
+
+    @Provide
+    Arbitrary<String> base32ish() {
+        return Arbitraries.strings()
+                .withChars("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567=01")
+                .ofMinLength(28)
+                .ofMaxLength(34);
     }
 }

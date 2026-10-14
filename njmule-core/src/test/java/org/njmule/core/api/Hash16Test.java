@@ -52,5 +52,17 @@ class Hash16Test {
     void rejectsWrongLengths() {
         assertThatThrownBy(() -> Hash16.of(new byte[15])).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Hash16.parseHex("00")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Hash16.parseHex("G".repeat(32))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void readsOnlyFromInsideTheSource() {
+        byte[] source = new byte[20];
+        source[4] = 7;
+
+        assertThat(Hash16.of(source, 4).get(0)).isEqualTo((byte) 7);
+        assertThatThrownBy(() -> Hash16.of(source, 5)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> Hash16.of(new byte[10], 0)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> Hash16.of(source, -1)).isInstanceOf(IndexOutOfBoundsException.class);
     }
 }
