@@ -201,12 +201,16 @@ class DesktopAppFlowsTest {
         assertThat(this.app.engine().isRunning()).isTrue();
         assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
 
+        Stage trayBefore = FxTesting.onFx(this.app::trayOwner);
         FxTesting.onFx(this.app::relaunch);
         assertThat(FxTesting.onFx(this.app::trayMenu)).isNotSameAs(menu);
+        Stage trayAfter = FxTesting.onFx(this.app::trayOwner);
         FxTesting.onFx(this.stage::close);
+        // Only this app's windows: those an earlier test left open in the same JVM are not its own.
+        List<Window> owners = List.of(this.stage, trayBefore, trayAfter);
         assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
                         .filter(Window::isShowing)
-                        .filter(w -> w instanceof Stage s && s.getOwner() != null)
+                        .filter(w -> w instanceof Stage s && owners.contains(s.getOwner()))
                         .toList()))
                 .as("the tray's windows went with the main one")
                 .isEmpty();
