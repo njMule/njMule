@@ -333,11 +333,12 @@ class DesktopAppFlowsTest {
         FxTesting.onFx(() -> this.pressNow(menu, item));
     }
 
-    // Opens the menu and presses one of its items; FX thread.
+    // Opens the menu and presses one of its items; FX thread. The menu of an app of an earlier test may still show.
     private void pressNow(TrayMenu menu, String item) {
         menu.show(600, 500);
         Parent root = Window.getWindows().stream()
                 .filter(w -> w.isShowing() && w.getScene() != null)
+                .filter(w -> w instanceof Stage s && s.getOwner() == this.app.trayOwner())
                 .map(w -> w.getScene().getRoot())
                 .filter(r -> r.getStyleClass().contains("tray-menu"))
                 .findFirst()

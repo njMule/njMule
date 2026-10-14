@@ -587,6 +587,10 @@ public final class DesktopApp implements AutoCloseable {
         return this.trayMenu;
     }
 
+    Stage trayOwner() {
+        return this.trayOwner;
+    }
+
     EngineModel model() {
         return this.model;
     }
