@@ -160,7 +160,8 @@ class DownloadSourcesTest {
         link.until(Opcodes.Client.STARTUPLOADREQ);
         link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(3)));
 
-        SourceInfo queued = this.awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED);
+        // Queued from the upload request on; the rank comes after.
+        SourceInfo queued = this.awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() != 0);
         assertThat(queued.queueRank()).isEqualTo(3);
         assertThat(queued.parts()).isEqualTo(1);
         assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().sources()))
