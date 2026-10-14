@@ -77,8 +77,8 @@ class DownloadSlotTest {
         }
     };
     private final List<AutoCloseable> resources = new ArrayList<>();
-    // Three blocks of one part.
-    private final byte[] data = random(2 * Ed2k.EMBLOCKSIZE + 30_000);
+    // Five blocks of one part, three asked for at a time.
+    private final byte[] data = random(4 * Ed2k.EMBLOCKSIZE + 30_000);
     private final Hash16 hash = Ed2k.md4(this.data, 0, this.data.length);
     private DownloadManager manager;
     private ScriptedSource source;
@@ -121,6 +121,26 @@ class DownloadSlotTest {
         this.thenTheSlotIsKept();
     }
 
+    @Test
+    void shouldCancelATransferThatBringsBlocksWeDidNotAskFor() throws Exception {
+        this.givenASourceThatGaveUsASlot();
+
+        this.whenTheSourceSendsDataWeDidNotAskFor(DownloadSession.MAX_UNEXPECTED);
+
+        this.thenWeCancelTheTransfer();
+        this.thenTheConnectionCloses();
+    }
+
+    @Test
+    void shouldBearDataWeDidNotAskForThatComesNowAndThen() throws Exception {
+        this.givenASourceThatGaveUsASlot();
+
+        this.whenTheSourceSendsDataWeDidNotAskForEvery(
+                DownloadSession.UNEXPECTED_GAP.plusSeconds(1), DownloadSession.MAX_UNEXPECTED);
+
+        this.thenTheSlotIsKept();
+    }
+
     private void givenASourceThatGaveUsASlot() throws Exception {
         this.source = new ScriptedSource(PEER, 0, 0);
         this.resources.add(this.source);
@@ -133,7 +153,7 @@ class DownloadSlotTest {
         this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
         List<Packet> read = this.link.until(Opcodes.Client.REQUESTPARTS);
         this.requested = ClientMessages.RequestParts.decode(read.getLast()).ranges();
-        assertThat(this.requested).allMatch(r -> !r.isEmpty());
+        assertThat(this.requested).allMatch(r -> !r.isEmpty() && r.end() <= 3L * Ed2k.EMBLOCKSIZE);
     }
 
     private void whenTheSourceTalksWithoutSendingDataFor(Duration silence) throws Exception {
@@ -157,6 +177,25 @@ class DownloadSlotTest {
                 .encode(false));
         this.sent += CHUNK;
         this.await("the data received", () -> this.theSource().received() == this.sent);
+    }
+
+    // A chunk of the last block, which is not asked for while the first three are.
+    private void whenTheSourceSendsDataWeDidNotAskFor(int times) throws Exception {
+        int start = 4 * Ed2k.EMBLOCKSIZE;
+        for (int i = 0; i < times; i++) {
+            this.link.send(new ClientMessages.SendingPart(
+                            this.hash, start, start + CHUNK, Arrays.copyOfRange(this.data, start, start + CHUNK))
+                    .encode(false));
+        }
+    }
+
+    private void whenTheSourceSendsDataWeDidNotAskForEvery(Duration gap, int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            this.whenTheSourceSendsDataWeDidNotAskFor(1);
+            // Data asked for, behind it, tells when it was read.
+            this.whenTheSourceSendsSomeDataAfter(Duration.ZERO);
+            this.now.addAndGet(gap.toNanos());
+        }
     }
 
     private void thenWeCancelTheTransfer() throws Exception {

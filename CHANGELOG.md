@@ -553,3 +553,5 @@ All notable changes to this project are documented here. The format follows
   so for the block that ends there are served it.
 - A source that gave us a slot but sends no data of the blocks we asked for is left after 100
   seconds with a cancel, even while it keeps sending other packets.
+- A source that sends data of blocks we did not ask for, three times within ten seconds of each
+  other, is told to stop with a cancel and its slot is left.

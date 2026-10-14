@@ -160,6 +160,11 @@ final class DownloadSession implements PeerLink.Role {
      */
     static final Duration IDLE_SLOT = Duration.ofSeconds(30);
 
+    /** Data of no block we asked for, this many times each within {@link #UNEXPECTED_GAP}, ends a slot. */
+    static final int MAX_UNEXPECTED = 3;
+
+    static final Duration UNEXPECTED_GAP = Duration.ofSeconds(10);
+
     private static final Logger logger = LoggerFactory.getLogger(DownloadSession.class);
 
     /** One requested block and the bytes of it still to come. */
@@ -214,6 +219,9 @@ final class DownloadSession implements PeerLink.Role {
     private int aichAsked = -1;
     // When the slot last made progress: blocks asked for, or data of them received.
     private long progressAt;
+    // Data of no block asked for, in a row, and when the last came.
+    private int unexpected;
+    private long unexpectedAt;
 
     DownloadSession(
             EngineLoop loop,
@@ -666,15 +674,21 @@ final class DownloadSession implements PeerLink.Role {
     }
 
     private void data(ClientMessages.SendingPart part) {
-        if (part.file().equals(this.download.hash())) {
-            byte[] data = part.data();
-            this.accept(part.start(), data, data.length);
+        if (!part.file().equals(this.download.hash())) {
+            this.unexpected(part.start());
+            return;
         }
+        byte[] data = part.data();
+        this.accept(part.start(), data, data.length);
     }
 
     private void compressed(ClientMessages.CompressedPart part) throws DecodeException {
         Pending block = this.pending.get(part.blockStart());
-        if (this.state != State.DOWNLOADING || block == null || !part.file().equals(this.download.hash())) {
+        if (this.state != State.DOWNLOADING) {
+            return;
+        }
+        if (block == null || !part.file().equals(this.download.hash())) {
+            this.unexpected(part.blockStart());
             return;
         }
         if (block.inflater == null) {
@@ -712,7 +726,7 @@ final class DownloadSession implements PeerLink.Role {
             }
         }
         if (target == null) {
-            logger.debug("Data {}-{} from {} was not requested", start, end, this.address);
+            this.unexpected(start);
             return;
         }
         this.progressAt = this.ticker.read();
@@ -723,6 +737,22 @@ final class DownloadSession implements PeerLink.Role {
             target.dispose();
             this.pending.remove(target.block.start());
             this.requestBlocks();
+        }
+    }
+
+    // A few packets of data not asked for may still be on the way; more, close together, mean the source is off track.
+    private void unexpected(long start) {
+        if (this.state != State.DOWNLOADING) {
+            return;
+        }
+        logger.debug("Data at {} from {} was not requested", start, this.address);
+        long now = this.ticker.read();
+        if (now - this.unexpectedAt > UNEXPECTED_GAP.toNanos()) {
+            this.unexpected = 0;
+        }
+        this.unexpectedAt = now;
+        if (++this.unexpected >= MAX_UNEXPECTED) {
+            this.close("the source sends data we did not ask for");
         }
     }
 
