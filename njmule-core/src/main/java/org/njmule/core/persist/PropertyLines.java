@@ -103,7 +103,7 @@ final class PropertyLines {
         for (int i = line.length() - 1; i >= 0 && line.charAt(i) == '\\'; i--) {
             backslashes++;
         }
-        return backslashes % 2 == 1;
+        return backslashes % 2 != 0;
     }
 
     /** The numbers N of the {@code prefix.N.*} keys, in order; other keys are left out. */

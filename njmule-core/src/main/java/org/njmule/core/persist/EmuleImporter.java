@@ -656,7 +656,8 @@ public final class EmuleImporter {
         this.with(this.emule.resolve(name), (file, data) -> {
             String what = reader.read(data);
             Path ours = this.target.configDir().resolve(name);
-            Path staged = this.target.configDir().resolve(PENDING_FILES).resolve(name);
+            Path pending = this.target.configDir().resolve(PENDING_FILES);
+            Path staged = pending.resolve(name);
             boolean live = LIVE.contains(name);
             // With a copy waiting from an earlier import, ours is only what the engine saved since.
             if (Files.exists(ours) && !(live && Files.exists(staged))) {
@@ -666,7 +667,7 @@ public final class EmuleImporter {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
             }
             if (live) {
-                Files.createDirectories(staged.getParent());
+                Files.createDirectories(pending);
                 AtomicFiles.write(staged, out -> out.write(data), false);
                 return item(file, ImportReport.Outcome.IMPORTED, what + ", from the next start");
             }
