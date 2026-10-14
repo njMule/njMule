@@ -57,7 +57,7 @@ public final class Formats {
 
     /** Formats with the units as the translations of {@code i18n}'s language write them, such as Ko and Ko/s. */
     public static Formats of(I18n i18n) {
-        return new Formats(i18n.locale(), i18n::t);
+        return new Formats(i18n.numberLocale(), i18n::t);
     }
 
     // A unit the language does not name stays English; "B/s" names bytes too.

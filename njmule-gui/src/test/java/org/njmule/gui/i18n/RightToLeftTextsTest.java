@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.gui.infra.Formats;
 
 class RightToLeftTextsTest {
 
@@ -85,6 +86,24 @@ class RightToLeftTextsTest {
         this.thenTheTextIs("Download finished: 01 - Track.mp3");
     }
 
+    @Test
+    void persianWritesNumbersWithLatinDigits() {
+        this.givenTheTextsOf(Locale.of("fa"));
+
+        this.whenTheTextIsFilledIn("nj.input.number", 1, 65535);
+
+        this.thenTheTextShows("65535");
+    }
+
+    @Test
+    void persianSizesHaveLatinDigits() {
+        this.givenTheTextsOf(Locale.of("fa"));
+
+        this.whenASizeIsShown(1_234_567);
+
+        this.thenTheTextIs("1.18 MB");
+    }
+
     private void givenTheTextsOf(Locale language) {
         this.texts = I18n.of(language);
     }
@@ -99,6 +118,10 @@ class RightToLeftTextsTest {
 
     private void whenTheTextIsEmbedded(String text) {
         this.shown = this.texts.embed(text);
+    }
+
+    private void whenASizeIsShown(long bytes) {
+        this.shown = Formats.of(this.texts).size(bytes);
     }
 
     private void thenTheyAreWrittenRightToLeft(boolean rightToLeft) {

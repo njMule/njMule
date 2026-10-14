@@ -274,7 +274,7 @@ All notable changes to this project are documented here. The format follows
 - The desktop interface in Catalan, Estonian, Lithuanian, Romanian and Bulgarian.
 - The desktop interface in Galician, Latvian, Slovenian, Albanian and Vietnamese; the many texts
   that eMule's Latvian translation leaves in English are translated.
-- The desktop interface in Arabic.
+- The desktop interface in Arabic and Persian (with Latin digits).
 - A right-to-left layout for the languages written so: the window, its dialogs, menus and the
   windows of the notification area are mirrored, while paths, links, hashes, addresses, numbers in
   lists, logs and the fields for links and addresses stay left to right, file and user names read

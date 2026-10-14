@@ -69,6 +69,7 @@ public final class I18n {
             Locale.of("ru"),
             Locale.of("uk"),
             Locale.of("ar"),
+            Locale.of("fa"),
             Locale.SIMPLIFIED_CHINESE,
             Locale.TRADITIONAL_CHINESE,
             Locale.JAPANESE,
@@ -89,11 +90,17 @@ public final class I18n {
     private static final Pattern LINES = Pattern.compile("\n");
 
     private final Locale locale;
+    private final Locale numbers;
     private final ResourceBundle emule;
     private final ResourceBundle njmule;
 
     private I18n(Locale locale) {
         this.locale = locale;
+        // Latin digits in every language, as eMule's texts have them and the number fields take them.
+        this.numbers = new Locale.Builder()
+                .setLocale(locale)
+                .setUnicodeLocaleKeyword("nu", "latn")
+                .build();
         // English is the base bundle: asking for the root locale never falls back to the
         // system's language.
         Locale lookup = locale.getLanguage().equals("en") ? Locale.ROOT : locale;
@@ -131,6 +138,11 @@ public final class I18n {
 
     public Locale locale() {
         return this.locale;
+    }
+
+    /** The locale numbers are written in: this language's, with Latin digits. */
+    public Locale numberLocale() {
+        return this.numbers;
     }
 
     /** Whether this language is written from right to left, as Arabic, Hebrew and Persian are. */
@@ -180,7 +192,7 @@ public final class I18n {
     public String f(String key, Object... args) {
         String pattern = this.t(key);
         try {
-            return String.format(this.locale, pattern, this.embedded(args));
+            return String.format(this.numbers, pattern, this.embedded(args));
         } catch (IllegalFormatException e) {
             return pattern;
         }
