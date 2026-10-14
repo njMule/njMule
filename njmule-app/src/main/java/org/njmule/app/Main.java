@@ -23,6 +23,7 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -32,6 +33,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.function.Function;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
@@ -131,6 +133,10 @@ public final class Main {
                 out.println(NjMuleInfo.NAME + " on " + config + " has exited.");
                 return EXIT_OK;
             }
+            case RESTORE_LINKS -> {
+                return restoreLinks(
+                        AppDirectories.resolve(cli.configDir()).config(), LinkAssociation::forThisSystem, out, err);
+            }
             case RUN -> {
                 return runEngine(cli, out, err, stop);
             }
@@ -204,6 +210,45 @@ public final class Main {
         } catch (IOException e) {
             err.println("Cannot keep the API token: " + e.getMessage());
             return EXIT_FAILURE;
+        }
+    }
+
+    /**
+     * Gives the ed2k links back when the desktop app still has them. Without a configuration directory there is no
+     * saved handler: ours only goes, from a scratch directory that goes too.
+     */
+    static int restoreLinks(
+            Path config, Function<Path, Optional<LinkAssociation>> associations, PrintStream out, PrintStream err) {
+        Path scratch = null;
+        try {
+            Path dir = config;
+            if (!Files.isDirectory(config)) {
+                scratch = Files.createTempDirectory("njmule-links-");
+                dir = scratch;
+            }
+            Optional<LinkAssociation> association = associations.apply(dir);
+            if (association.isEmpty()) {
+                out.println("This program does not open ed2k links here: nothing to give back.");
+                return EXIT_OK;
+            }
+            if (!association.get().isOurs()) {
+                out.println("ed2k links open in another program: left as they are.");
+                return EXIT_OK;
+            }
+            association.get().giveBack();
+            out.println("ed2k links given back.");
+            return EXIT_OK;
+        } catch (IOException e) {
+            err.println("Cannot give the ed2k links back: " + e.getMessage());
+            return EXIT_FAILURE;
+        } finally {
+            if (scratch != null) {
+                try {
+                    Files.deleteIfExists(scratch);
+                } catch (IOException e) {
+                    logger.debug("Cannot delete {}: {}", scratch, e.toString());
+                }
+            }
         }
     }
 

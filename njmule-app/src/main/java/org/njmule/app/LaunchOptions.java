@@ -134,7 +134,8 @@ public record LaunchOptions(
         EXIT,
         REMOTE,
         API_TOKEN,
-        NEW_API_TOKEN
+        NEW_API_TOKEN,
+        RESTORE_LINKS
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -165,6 +166,7 @@ public record LaunchOptions(
     private static final String IMPORT_DOWNLOADS_OPTION = "--import-downloads";
     private static final String WEBUI_PASSWORD_OPTION = "--webui-password";
     private static final String EXIT_OPTION = "--exit";
+    private static final String RESTORE_LINKS_OPTION = "--restore-links";
     private static final String WEBUI_PORT_OPTION = "--webui-port";
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
     private static final String WEBUI_API_OPTION = "--webui-api";
@@ -173,9 +175,8 @@ public record LaunchOptions(
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
 
-    // What --exit may come with: where and how to run, nothing to do.
-    private static final Set<String> WITH_EXIT =
-            Set.of(EXIT_OPTION, CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION);
+    // What --exit and --restore-links may come with: where and how to run, nothing to do.
+    private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION);
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -184,10 +185,10 @@ public record LaunchOptions(
         } catch (ParameterException e) {
             throw new UsageException(e.getMessage());
         }
-        if (result.hasMatchedOption(EXIT_OPTION)
-                && !result.isUsageHelpRequested()
-                && !result.isVersionHelpRequested()) {
-            exitAlone(result);
+        for (String alone : List.of(EXIT_OPTION, RESTORE_LINKS_OPTION)) {
+            if (result.hasMatchedOption(alone) && !result.isUsageHelpRequested() && !result.isVersionHelpRequested()) {
+                alone(result, alone);
+            }
         }
         Optional<Path> configDir = Optional.empty();
         if (result.hasMatchedOption(CONFIG_DIR_OPTION)) {
@@ -282,6 +283,9 @@ public record LaunchOptions(
         if (result.hasMatchedOption(API_TOKEN_OPTION)) {
             return Action.API_TOKEN;
         }
+        if (result.hasMatchedOption(RESTORE_LINKS_OPTION)) {
+            return Action.RESTORE_LINKS;
+        }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
 
@@ -343,6 +347,10 @@ public record LaunchOptions(
         spec.addOption(flag(
                 EXIT_OPTION,
                 "ask the njMule running on this configuration to save and exit, and wait for it (30 s at most)"));
+        spec.addOption(flag(
+                RESTORE_LINKS_OPTION,
+                "give ed2k links back to what opened them before the desktop app took them, if it still has them,"
+                        + " and exit (the uninstaller runs it)"));
         spec.addOption(flag(
                 WEBUI_LAN_OPTION,
                 "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));
@@ -413,15 +421,15 @@ public record LaunchOptions(
                 .build();
     }
 
-    // Another action, a task or links beside --exit would be dropped without a word.
-    private static void exitAlone(ParseResult result) throws UsageException {
+    // Another action, a task or links beside the option would be dropped without a word.
+    private static void alone(ParseResult result, String name) throws UsageException {
         for (OptionSpec option : result.matchedOptions()) {
-            if (!WITH_EXIT.contains(option.longestName())) {
-                throw new UsageException(EXIT_OPTION + " cannot be combined with " + option.longestName());
+            if (!option.longestName().equals(name) && !ALONG.contains(option.longestName())) {
+                throw new UsageException(name + " cannot be combined with " + option.longestName());
             }
         }
         if (!result.matchedPositionalValue(0, List.<String>of()).isEmpty()) {
-            throw new UsageException(EXIT_OPTION + " cannot be combined with links");
+            throw new UsageException(name + " cannot be combined with links");
         }
     }
 

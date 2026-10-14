@@ -271,6 +271,8 @@ All notable changes to this project are documented here. The format follows
   sorted by value, and offers the file hash in a File ID column of the column menu.
 - An IP filter whitelist (`security.ipFilterWhitelist`): addresses, CIDR blocks and ipfilter.dat
   ranges, one per line, that the IP filter never blocks; a change applies at once.
+- `njmule-gui --restore-links` gives the ed2k links back to what opened them before the desktop app
+  took them, when it still has them.
 
 ### Changed
 
