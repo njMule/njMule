@@ -37,6 +37,7 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
@@ -200,6 +201,11 @@ public final class DownloadQueue implements AutoCloseable {
 
     /** Adds a download; an existing one for the same file gets the link's sources. */
     public Download add(Ed2kLink.FileLink link) throws IOException {
+        return this.add(link, Category.NONE, DownloadPriority.AUTO);
+    }
+
+    /** Adds a download in {@code category} with {@code priority}; an existing one only gets the link's sources. */
+    public Download add(Ed2kLink.FileLink link, int category, DownloadPriority priority) throws IOException {
         Download existing = this.downloads.get(link.hash());
         if (existing != null) {
             existing.sources.addAll(link.sources());
@@ -213,6 +219,8 @@ public final class DownloadQueue implements AutoCloseable {
                 link.hash(),
                 link.aichHash(),
                 link.partHashes());
+        file.setCategory(category);
+        file.setPriority(priority);
         file.save();
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.sources.addAll(link.sources());

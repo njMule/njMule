@@ -64,6 +64,7 @@ import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
+import org.njmule.core.security.PathSanitizer;
 import org.njmule.core.util.Ipv4;
 import org.njmule.core.util.RateMeter;
 import org.slf4j.Logger;
@@ -348,16 +349,20 @@ public final class DownloadManager implements AutoCloseable {
      * it matches, with that category's priority.
      */
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
-        boolean fresh = this.queue.get(link.hash()).isEmpty();
-        DownloadQueue.Download download = this.queue.add(link);
-        if (fresh) {
-            for (Category category : this.categories.get()) {
-                if (category.matches(download.file().name())) {
-                    this.putIn(download, category);
+        int category = Category.NONE;
+        DownloadPriority priority = DownloadPriority.AUTO;
+        if (this.queue.get(link.hash()).isEmpty()) {
+            // Set before the download is announced, so the news of it tells them.
+            String name = PathSanitizer.fileName(link.name());
+            for (Category c : this.categories.get()) {
+                if (c.matches(name)) {
+                    category = c.id();
+                    priority = c.priority();
                     break;
                 }
             }
         }
+        DownloadQueue.Download download = this.queue.add(link, category, priority);
         Entry entry = this.entries.computeIfAbsent(download.hash(), hash -> new Entry(download, this.ticker.read()));
         this.addLinkSources(entry, link.sources());
         return this.info(entry);

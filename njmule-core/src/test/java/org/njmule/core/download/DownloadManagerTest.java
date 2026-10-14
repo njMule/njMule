@@ -293,6 +293,31 @@ class DownloadManagerTest {
                 .isTrue();
     }
 
+    @Test
+    void theAddedEventTellsTheCategoryAndPriority() throws Exception {
+        this.categories =
+                List.of(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "*.mkv", false));
+        List<DownloadInfo> added = new CopyOnWriteArrayList<>();
+        this.listener = new Quiet() {
+            @Override
+            public void added(DownloadInfo download) {
+                added.add(download);
+            }
+        };
+        DownloadManager manager = this.manager();
+        Hash16 hash = Hash16.parseHex("4b".repeat(16));
+
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, hash));
+            return manager.pause(hash);
+        });
+
+        assertThat(added).singleElement().satisfies(info -> {
+            assertThat(info.category()).isEqualTo(1);
+            assertThat(info.priority()).isEqualTo(DownloadPriority.HIGH);
+        });
+    }
+
     private DownloadManager manager() throws Exception {
         return this.manager(new HighIdServer(false));
     }
