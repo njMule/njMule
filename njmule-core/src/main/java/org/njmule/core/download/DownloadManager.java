@@ -30,7 +30,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -235,6 +234,12 @@ public final class DownloadManager implements AutoCloseable {
         private int kadSearches;
         // What the sources said of the file, the latest of each.
         private final Map<InetSocketAddress, PeerComment> comments = new LinkedHashMap<>();
+        // Corrupt parts waiting for a source able to send their AICH recovery data.
+        private final BitSet recoveryWanted = new BitSet();
+        // The parts whose recovery was tried, once each.
+        private final BitSet recoveryTried = new BitSet();
+        // The AICH hashes announced while the download has no trusted one.
+        private AichVotes aichVotes = new AichVotes();
 
         Entry(DownloadQueue.Download download, long now) {
             this.download = download;
@@ -258,12 +263,6 @@ public final class DownloadManager implements AutoCloseable {
     private final SecureRandom random;
     private final Ticker ticker;
     private final PeerLinks links;
-    // Corrupt parts waiting for a source able to send their AICH recovery data.
-    private final Map<Hash16, BitSet> recoveryWanted = new HashMap<>();
-    // The parts whose recovery was tried, once each.
-    private final Map<Hash16, BitSet> recoveryTried = new HashMap<>();
-    // The AICH hashes announced for downloads that have no trusted one yet.
-    private final Map<Hash16, AichVotes> aichVotes = new HashMap<>();
     private final BiConsumer<Hash16, Long> credit;
     private final Supplier<Optional<KadSources>> kad;
     private final Listener listener;
@@ -1068,15 +1067,15 @@ public final class DownloadManager implements AutoCloseable {
     private void recover(DownloadQueue.Download download, int part) {
         PartFile file = download.file();
         Entry entry = this.entries.get(download.hash());
-        BitSet tried = this.recoveryTried.computeIfAbsent(download.hash(), h -> new BitSet());
         // Once only: a part that fails again after its recovery is downloaded again whole.
         if (entry == null
+                || entry.download != download
                 || file.aichHash().isEmpty()
                 || !AichRecovery.hasRecovery(file.size(), part)
-                || tried.get(part)) {
+                || entry.recoveryTried.get(part)) {
             return;
         }
-        tried.set(part);
+        entry.recoveryTried.set(part);
         // The part waits a little for the recovery data rather than come again whole.
         file.hold(part);
         this.loop.schedule("AICH recovery wait", RECOVERY_WAIT, () -> file.unhold(part));
@@ -1088,21 +1087,20 @@ public final class DownloadManager implements AutoCloseable {
             }
         }
         // The next source able to is asked when it says which parts it has.
-        this.recoveryWanted.computeIfAbsent(download.hash(), h -> new BitSet()).set(part);
+        entry.recoveryWanted.set(part);
     }
 
     private void aichAnnounced(DownloadSession session, Hash20 master) {
         DownloadQueue.Download download = session.download();
         PartFile file = download.file();
-        if (file.aichHash().isPresent()) {
+        Entry entry = this.entries.get(download.hash());
+        if (entry == null || file.aichHash().isPresent()) {
             return;
         }
         int ip = Ipv4.fromBytes(session.address().getAddress().getAddress());
-        Optional<Hash20> trusted = this.aichVotes
-                .computeIfAbsent(download.hash(), h -> new AichVotes())
-                .announced(ip, master);
+        Optional<Hash20> trusted = entry.aichVotes.announced(ip, master);
         if (trusted.isPresent()) {
-            this.aichVotes.remove(download.hash());
+            entry.aichVotes = new AichVotes();
             file.trustAich(trusted.get());
             logger.info("The sources agree on the AICH hash of {}", file.name());
         }
@@ -1110,11 +1108,12 @@ public final class DownloadManager implements AutoCloseable {
 
     private void mayRecoverFrom(DownloadSession session) {
         DownloadQueue.Download download = session.download();
-        BitSet wanted = this.recoveryWanted.get(download.hash());
+        Entry entry = this.entries.get(download.hash());
         Optional<Hash20> master = download.file().aichHash();
-        if (wanted == null || master.isEmpty()) {
+        if (entry == null || master.isEmpty()) {
             return;
         }
+        BitSet wanted = entry.recoveryWanted;
         wanted.andNot(download.verifiedParts());
         for (int part = wanted.nextSetBit(0); part >= 0; part = wanted.nextSetBit(part + 1)) {
             if (download.file().isComplete(part)) {
@@ -1129,9 +1128,6 @@ public final class DownloadManager implements AutoCloseable {
                 session.requestAich(part, master.get());
                 break;
             }
-        }
-        if (wanted.isEmpty()) {
-            this.recoveryWanted.remove(download.hash());
         }
     }
 
