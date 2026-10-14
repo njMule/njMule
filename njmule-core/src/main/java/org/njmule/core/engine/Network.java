@@ -1059,9 +1059,10 @@ final class Network {
                 if (this.peer == null) {
                     if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                         this.peer = Hello.decode(packet);
-                        this.connection.setReadTimeout(PeerGreetings.IDLE_TIMEOUT);
+                        // Before anything that fails on a closed connection: settling needs both.
                         this.identity = Network.this.identities.start(
                                 this.peer, this.connection.remoteAddress().getAddress(), this.connection::send);
+                        this.connection.setReadTimeout(PeerGreetings.IDLE_TIMEOUT);
                     }
                 } else if (!this.identity.received(packet)
                         && packet.protocol() == Protocol.EDONKEY
