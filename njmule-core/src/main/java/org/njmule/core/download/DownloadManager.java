@@ -449,6 +449,27 @@ public final class DownloadManager implements AutoCloseable {
         return sources;
     }
 
+    /**
+     * Whether a source at {@code ip} ({@code Ipv4} form) may be passed on to the client at {@code asker}: a public
+     * address to anyone, a LAN address within the LAN or this machine, a loopback address within this machine.
+     */
+    public static boolean passesOn(int ip, InetAddress asker) {
+        int first = ip >>> 24;
+        if (first == 0 || first >= 224) {
+            return false;
+        }
+        boolean loopback = first == 127;
+        if (!loopback && !Ipv4.isLan(ip)) {
+            return true;
+        }
+        if (!(asker instanceof Inet4Address four)) {
+            return false;
+        }
+        int at = Ipv4.fromBytes(four.getAddress());
+        boolean askerLoopback = at >>> 24 == 127;
+        return loopback ? askerLoopback : askerLoopback || Ipv4.isLan(at);
+    }
+
     /** Downloads, sources and sessions, for diagnostics. */
     public String describe() {
         StringBuilder text = new StringBuilder();

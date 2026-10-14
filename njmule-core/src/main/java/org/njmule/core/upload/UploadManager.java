@@ -50,6 +50,7 @@ import org.njmule.core.api.Hash20;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ObfuscationMode;
+import org.njmule.core.download.DownloadManager;
 import org.njmule.core.download.DownloadQueue;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.SharedFiles;
@@ -779,6 +780,9 @@ public final class UploadManager implements AutoCloseable {
             }
         }
         sources.removeIf(s -> s.userHash().map(session.userHash()::equals).orElse(false));
+        // Addresses outside the public network stay within their own: LAN and loopback ones go to no one outside.
+        sources.removeIf(
+                s -> !DownloadManager.passesOn(s.ip(), session.address().getAddress()));
         if (sources.isEmpty()) {
             return;
         }
