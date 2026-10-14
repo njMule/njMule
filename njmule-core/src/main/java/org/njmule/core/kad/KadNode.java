@@ -680,7 +680,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         Lookup lookup = this.lookups.get(answer.target());
         if (lookup == null
                 || !lookup.asked(peer.ip(), peer.port())
-                || answer.contacts().size() > lookup.expectedContacts()) {
+                || answer.contacts().size() > lookup.expectedContacts(peer.ip(), peer.port())) {
             logger.debug("Ignoring {} contacts from {}", answer.contacts().size(), Ipv4.format(peer.ip()));
             return;
         }
@@ -862,7 +862,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         if (this.lookups.containsKey(target)) {
             return null;
         }
-        Lookup lookup = new Lookup(target, kind, new Requests(), this.ticker.read());
+        Lookup lookup = new Lookup(target, kind, new Requests(), this.settings.trusted(), this.ticker.read());
         this.lookups.put(target, lookup);
         lookup.start(this.table);
         if (lookup.isStopped()) {

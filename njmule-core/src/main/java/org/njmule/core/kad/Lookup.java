@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.IntPredicate;
 import org.njmule.core.protocol.kad.KadMessages;
 
 /**
@@ -80,26 +81,32 @@ final class Lookup {
     // Once no node is left to ask, a search or publish waits this long for its last answers.
     private static final long LATE_ANSWER_NANOS = 15_000_000_000L;
     private static final int RE_ASK_COUNT = 11;
+    // Contacts a search asks each node for; publishes ask for more.
+    private static final int FIND_VALUE = 2;
+    private static final int PER_SUBNET = 2;
 
     private final UInt128 target;
     private final Kind kind;
     private final Requests requests;
+    private final IntPredicate lan;
     private final long started;
+    // Both by distance to the target.
     private final TreeMap<UInt128, KadMessages.Contact> possible = new TreeMap<>();
-    private final Map<UInt128, KadMessages.Contact> tried = new HashMap<>();
+    private final TreeMap<UInt128, KadMessages.Contact> tried = new TreeMap<>();
     private final Set<UInt128> responded = new HashSet<>();
     private final Set<UInt128> requested = new HashSet<>();
     private long lastAnswer;
     private int answers;
-    private boolean reAsked;
+    private KadMessages.Contact reAsked;
     private boolean stopped;
     private boolean stopping;
     private long stopAt;
 
-    Lookup(UInt128 target, Kind kind, Requests requests, long now) {
+    Lookup(UInt128 target, Kind kind, Requests requests, IntPredicate lan, long now) {
         this.target = Objects.requireNonNull(target, "target");
         this.kind = Objects.requireNonNull(kind, "kind");
         this.requests = Objects.requireNonNull(requests, "requests");
+        this.lan = Objects.requireNonNull(lan, "lan");
         this.started = now;
         this.lastAnswer = now;
     }
@@ -148,9 +155,10 @@ final class Lookup {
         return false;
     }
 
-    /** How many contacts a node we asked may send. */
-    int expectedContacts() {
-        return this.reAsked ? RE_ASK_COUNT : this.kind.count();
+    /** How many contacts the node we asked at {@code ip:port} may send. */
+    int expectedContacts(int ip, int port) {
+        KadMessages.Contact again = this.reAsked;
+        return again != null && again.ip() == ip && again.udpPort() == port ? RE_ASK_COUNT : this.kind.count();
     }
 
     /** Contacts sent by a node we asked. */
@@ -165,7 +173,7 @@ final class Lookup {
         if (responder == null || this.stopped) {
             return;
         }
-        if (contacts.size() > this.expectedContacts()) {
+        if (contacts.size() > this.expectedContacts(ip, port)) {
             return;
         }
         this.lastAnswer = now;
@@ -175,15 +183,17 @@ final class Lookup {
             return;
         }
         UInt128 responderDistance = responder.id().xor(this.target);
+        // The responder may not send itself, and its own /24 counts against the limit.
         Set<Integer> ips = new HashSet<>();
+        ips.add(responder.ip());
         Map<Integer, Integer> subnets = new HashMap<>();
+        subnets.put(responder.ip() & 0xFFFF_FF00, 1);
         for (KadMessages.Contact c : contacts) {
             UInt128 distance = c.id().xor(this.target);
-            if (this.tried.containsKey(c.id())
+            if (this.tried.containsKey(distance)
                     || this.possible.containsKey(distance)
-                    || c.ip() == responder.ip()
                     || !ips.add(c.ip())
-                    || subnets.merge(c.ip() & 0xFFFF_FF00, 1, Integer::sum) > 2) {
+                    || (!this.lan.test(c.ip()) && subnets.merge(c.ip() & 0xFFFF_FF00, 1, Integer::sum) > PER_SUBNET)) {
                 continue;
             }
             this.possible.put(distance, c);
@@ -217,7 +227,7 @@ final class Lookup {
         if (now - this.lastAnswer < STALL_NANOS) {
             return;
         }
-        if (this.possible.isEmpty()) {
+        if (this.nothingLeftToAsk()) {
             if (this.kind.value) {
                 this.stopping = true;
                 this.stopAt = now + LATE_ANSWER_NANOS;
@@ -226,12 +236,12 @@ final class Lookup {
             }
             return;
         }
-        if (this.kind.value && !this.reAsked && this.tried.size() >= 6) {
+        if (this.kind.count() == FIND_VALUE && this.reAsked == null && this.tried.size() >= 3 * FIND_VALUE) {
             this.reAskIfClosestSilent();
         }
         for (Map.Entry<UInt128, KadMessages.Contact> e : List.copyOf(this.possible.entrySet())) {
             KadMessages.Contact c = e.getValue();
-            if (!this.tried.containsKey(c.id())) {
+            if (!this.tried.containsKey(e.getKey())) {
                 this.ask(c, this.kind.count());
                 return;
             }
@@ -243,22 +253,30 @@ final class Lookup {
             }
         }
         if (!this.kind.value) {
-            this.stopped = this.possible.isEmpty();
+            this.stopped = this.nothingLeftToAsk();
         }
     }
 
-    // When neither of the two closest asked nodes answered, the closest that did is asked again.
+    // Asked nodes that stay silent are kept for a late answer, but bring the lookup no further.
+    private boolean nothingLeftToAsk() {
+        for (Map.Entry<UInt128, KadMessages.Contact> e : this.possible.entrySet()) {
+            if (!this.tried.containsKey(e.getKey())
+                    || this.responded.contains(e.getValue().id())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // A search whose two closest asked nodes are silent asks the closest one that answered for more contacts.
     private void reAskIfClosestSilent() {
         int seen = 0;
-        for (KadMessages.Contact c : this.possible.values()) {
-            if (!this.tried.containsKey(c.id())) {
-                continue;
-            }
+        for (KadMessages.Contact c : this.tried.values()) {
             if (this.responded.contains(c.id())) {
-                if (seen < 2) {
+                if (seen < FIND_VALUE) {
                     return;
                 }
-                this.reAsked = true;
+                this.reAsked = c;
                 this.requests.ask(this, c, RE_ASK_COUNT);
                 return;
             }
@@ -271,7 +289,7 @@ final class Lookup {
     }
 
     private void ask(KadMessages.Contact contact, int count) {
-        this.tried.put(contact.id(), contact);
+        this.tried.put(contact.id().xor(this.target), contact);
         this.requests.ask(this, contact, count);
     }
 }
