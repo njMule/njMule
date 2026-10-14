@@ -85,6 +85,14 @@ class EngineModelTest {
         return this.start(UnaryOperator.identity());
     }
 
+    // A model that hears no event of the engine: on this executor they would run beside the test's own.
+    private EngineModel notListening() throws Exception {
+        this.engine = FxTesting.engine(this.dir.resolve("njmule"));
+        this.model = new EngineModel(this.engine, Runnable::run);
+        this.model.onError(this.errors::add);
+        return this.model;
+    }
+
     // The model sees the engine through wrap.
     private EngineModel start(UnaryOperator<NjMuleEngine> wrap) throws Exception {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
@@ -204,7 +212,7 @@ class EngineModelTest {
 
     @Test
     void eventsUpdateTheState() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = this.notListening();
         ServerInfo server = new ServerInfo(
                 "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
 
