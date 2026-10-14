@@ -269,6 +269,8 @@ All notable changes to this project are documented here. The format follows
   Japanese and Korean; a system language in the traditional Chinese script (zh-Hant, or Taiwan,
   Hong Kong and Macao) gets Traditional Chinese, and Portuguese outside Brazil gets European
   Portuguese.
+- The desktop interface in Czech, Danish, Greek, Finnish, Hungarian, Norwegian Bokmål (also for a
+  system set to Norwegian or Nynorsk) and Ukrainian.
 - Search results keep the media details that servers and Kad give (artist, album, title, length,
   bitrate, codec), by tag id or by the names servers use, and so do the search tabs kept at exit.
 - The search results list shows them in Artist, Album, Title, Length, Bitrate and Codec columns,
