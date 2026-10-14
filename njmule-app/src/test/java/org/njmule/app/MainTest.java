@@ -19,6 +19,10 @@ package org.njmule.app;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.ServerSocket;
@@ -40,6 +44,7 @@ import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
+import org.slf4j.LoggerFactory;
 
 @Timeout(30)
 class MainTest {
@@ -222,6 +227,24 @@ class MainTest {
         assertThat(exit.get(20, TimeUnit.SECONDS)).isZero();
         assertThat(login.statusCode()).isEqualTo(200);
         assertThat(login.body()).contains("type=\"password\"");
+    }
+
+    @Test
+    void anUnreadableWebInterfaceFileIsReported() throws Exception {
+        Files.writeString(this.dir.resolve(WebUiSettings.FILE_NAME), "enabled=true\nport=99999\n", UTF_8);
+        Logger logger = (Logger) LoggerFactory.getLogger(WebUiSettings.class);
+        ListAppender<ILoggingEvent> logged = new ListAppender<>();
+        logged.start();
+        logger.addAppender(logged);
+        try {
+            assertThat(WebUiSettings.load(this.dir)).isEqualTo(WebUiSettings.DEFAULTS);
+        } finally {
+            logger.detachAppender(logged);
+        }
+        assertThat(logged.list)
+                .singleElement()
+                .satisfies(e -> assertThat(e.getLevel()).isEqualTo(Level.WARN))
+                .satisfies(e -> assertThat(e.getFormattedMessage()).contains(WebUiSettings.FILE_NAME));
     }
 
     private int runWith(List<String> typed, String... args) {

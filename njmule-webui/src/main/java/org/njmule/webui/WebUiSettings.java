@@ -25,6 +25,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Objects;
 import java.util.Properties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Whether the web interface runs, on which port, whether other computers may reach it, and the hash of its password;
@@ -41,6 +43,8 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
     public static final int DEFAULT_PORT = 4711;
 
     public static final WebUiSettings DEFAULTS = new WebUiSettings(false, DEFAULT_PORT, false, "");
+
+    private static final Logger logger = LoggerFactory.getLogger(WebUiSettings.class);
 
     public WebUiSettings {
         if (port < 1 || port > 65_535) {
@@ -69,6 +73,7 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
                     Boolean.parseBoolean(p.getProperty("lan", "false").strip()),
                     p.getProperty("password", "").strip());
         } catch (IOException | IllegalArgumentException e) {
+            logger.warn("The web interface stays off: cannot read {}: {}", file, e.toString());
             return DEFAULTS;
         }
     }
