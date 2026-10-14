@@ -297,6 +297,10 @@ All notable changes to this project are documented here. The format follows
   four run at once.
 - The desktop app can play a WAV file of the user's with the notifications of completed downloads
   and new chat messages, chosen and tried in the settings; eMule's notifier sound is imported.
+- Start njMule when I log in (off by default): the installed desktop app adds itself to the
+  user's Run key on Windows, an XDG autostart entry on Linux or a launch agent on macOS, and reads
+  the setting back from there; an eMule that started at login has njMule do the same once it is
+  imported.
 
 ### Changed
 

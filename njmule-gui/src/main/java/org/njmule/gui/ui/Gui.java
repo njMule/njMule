@@ -17,7 +17,9 @@
 package org.njmule.gui.ui;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
+import org.njmule.app.Autostart;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
@@ -34,6 +36,7 @@ import org.njmule.gui.model.EngineModel;
  * @param relaunch rebuilds the window, after a language change
  * @param subscriptions what the window follows of the model, ended when it is rebuilt
  * @param sound plays the sound of the notifications
+ * @param autostart starts njMule when the user logs in; empty where it cannot
  */
 public record Gui(
         I18n i18n,
@@ -45,7 +48,8 @@ public record Gui(
         Consumer<String> inform,
         Runnable relaunch,
         Subscriptions subscriptions,
-        SoundPlayer sound) {
+        SoundPlayer sound,
+        Optional<Autostart> autostart) {
 
     public Gui {
         Objects.requireNonNull(i18n, "i18n");
@@ -58,9 +62,10 @@ public record Gui(
         Objects.requireNonNull(relaunch, "relaunch");
         Objects.requireNonNull(subscriptions, "subscriptions");
         Objects.requireNonNull(sound, "sound");
+        Objects.requireNonNull(autostart, "autostart");
     }
 
-    /** A context with subscriptions of its own, which plays no sound. */
+    /** A context with subscriptions of its own, which plays no sound and never starts at login. */
     public Gui(
             I18n i18n,
             Formats formats,
@@ -80,7 +85,8 @@ public record Gui(
                 inform,
                 relaunch,
                 new Subscriptions(),
-                SoundPlayer.SILENT);
+                SoundPlayer.SILENT,
+                Optional.empty());
     }
 
     public String t(String key) {

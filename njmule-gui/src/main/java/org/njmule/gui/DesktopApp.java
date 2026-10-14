@@ -42,6 +42,7 @@ import javafx.stage.StageStyle;
 import javafx.stage.Window;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
+import org.njmule.app.Autostart;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
 import org.njmule.app.logging.LoggingSetup;
@@ -88,6 +89,7 @@ public final class DesktopApp implements AutoCloseable {
     private final GuiSettings settings;
     private final Optional<WebUi> webUi;
     private final SoundPlayer sound = new WavPlayer();
+    private Optional<Autostart> autostart = Optional.empty();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
     // The links of the command line, followed once the window shows.
@@ -121,6 +123,12 @@ public final class DesktopApp implements AutoCloseable {
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
         DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
+        // A start at login keeps the configuration of this one; starting minimised follows the settings.
+        app.autostart = Autostart.forThisSystem(
+                dirs.config(),
+                cli.configDir()
+                        .map(dir -> List.of("--config-dir", dir.toAbsolutePath().toString()))
+                        .orElse(List.of()));
         cli.links().forEach(link -> app.startLinks.add(link.toUri()));
         try {
             app.handoff = LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
@@ -554,7 +562,8 @@ public final class DesktopApp implements AutoCloseable {
                 text -> this.window.message(text),
                 this::relaunch,
                 new Subscriptions(),
-                this.sound);
+                this.sound,
+                this.autostart);
         this.window = new MainWindow(this.gui);
         this.model.onError(this.window::message);
         return this.window.root();

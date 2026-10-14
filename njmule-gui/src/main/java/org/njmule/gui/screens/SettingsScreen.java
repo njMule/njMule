@@ -50,6 +50,7 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputControl;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
@@ -57,6 +58,7 @@ import javafx.stage.FileChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.app.Autostart;
 import org.njmule.app.LinkAssociation;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
@@ -104,6 +106,11 @@ public final class SettingsScreen implements Screen {
     private final CheckBox tray = new CheckBox();
     private final CheckBox confirmExit = new CheckBox();
     private final CheckBox startMinimized = new CheckBox();
+    private final CheckBox autostart = new CheckBox();
+    // Whether njMule started at login when the form was loaded; empty while unknown.
+    private Optional<Boolean> autostartWasOn = Optional.empty();
+    // The questions to the system asked so far; FX thread.
+    private int autostartLoads;
     private final CheckBox watchClipboard = new CheckBox();
     private final CheckBox sound = new CheckBox();
     private final TextField soundFile = new TextField();
@@ -239,6 +246,7 @@ public final class SettingsScreen implements Screen {
         this.tray.setText(this.gui.t("nj.settings.tray"));
         this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
         this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
+        this.autostart.setText(this.gui.t("nj.settings.autostart"));
         this.watchClipboard.setText(this.gui.t("IDS_PF_WATCHCB"));
         this.sound.setText(this.gui.t("nj.settings.sound"));
         this.filterLan.setText(this.gui.t("IDS_PW_FILTER"));
@@ -299,6 +307,7 @@ public final class SettingsScreen implements Screen {
             grid.add(this.tray, 1, row++);
         }
         grid.add(this.startMinimized, 1, row++);
+        grid.add(this.autostartRow(), 1, row++);
         grid.add(this.confirmExit, 1, row++);
         grid.add(this.watchClipboard, 1, row++);
         if (this.links.isPresent()) {
@@ -578,6 +587,72 @@ public final class SettingsScreen implements Screen {
         return this.scheduler();
     }
 
+    // Only the installed program can start at login; elsewhere the box says why it is off. A disabled control shows
+    // no tooltip, so its row carries it.
+    private Node autostartRow() {
+        HBox row = new HBox(this.autostart);
+        if (this.gui.autostart().isEmpty()) {
+            this.autostart.setDisable(true);
+            Tooltip why = new Tooltip(this.gui.t("nj.settings.autostartUnavailable"));
+            this.autostart.setTooltip(why);
+            Tooltip.install(row, why);
+        }
+        return row;
+    }
+
+    // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile. Only the latest
+    // answer counts, so that an older one never undoes what the user ticked since.
+    private void loadAutostart() {
+        this.gui.autostart().ifPresent(system -> {
+            this.autostart.setDisable(true);
+            int load = ++this.autostartLoads;
+            Thread.ofVirtual().name("njmule-autostart").start(() -> {
+                boolean on;
+                try {
+                    on = system.isOn();
+                } catch (IOException e) {
+                    on = false;
+                }
+                boolean now = on;
+                Platform.runLater(() -> {
+                    if (load != this.autostartLoads) {
+                        return;
+                    }
+                    this.autostartWasOn = Optional.of(now);
+                    this.autostart.setSelected(now);
+                    this.autostart.setDisable(false);
+                });
+            });
+        });
+    }
+
+    // Starting at login is a change to the system, made only when the box changed.
+    private void applyAutostart() {
+        if (this.gui.autostart().isEmpty() || this.autostartWasOn.isEmpty()) {
+            return;
+        }
+        boolean wanted = this.autostart.isSelected();
+        if (wanted == this.autostartWasOn.get()) {
+            return;
+        }
+        Autostart system = this.gui.autostart().get();
+        this.autostartWasOn = Optional.of(wanted);
+        Thread.ofVirtual().name("njmule-autostart").start(() -> {
+            try {
+                if (wanted) {
+                    system.turnOn();
+                } else {
+                    system.turnOff();
+                }
+            } catch (IOException e) {
+                Platform.runLater(() -> {
+                    this.gui.inform().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage()));
+                    this.loadAutostart();
+                });
+            }
+        });
+    }
+
     // A WAV file, chosen or typed, and a button to hear it as the notifications would play it.
     private Node soundRow() {
         this.soundFile.setPrefColumnCount(32);
@@ -704,6 +779,7 @@ public final class SettingsScreen implements Screen {
             this.eventInputs.get(event).field().setText(command.commandLine());
         }
         this.loadLinks();
+        this.loadAutostart();
     }
 
     // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile.
@@ -791,6 +867,7 @@ public final class SettingsScreen implements Screen {
             this.gui.inform().accept(e.getMessage());
         }
         this.applyLinks();
+        this.applyAutostart();
         if (relaunch) {
             this.gui.relaunch().run();
         }
@@ -1130,6 +1207,10 @@ public final class SettingsScreen implements Screen {
 
     Input<String> whitelistInput() {
         return this.whitelistInput;
+    }
+
+    CheckBox autostartBox() {
+        return this.autostart;
     }
 
     CheckBox soundBox() {

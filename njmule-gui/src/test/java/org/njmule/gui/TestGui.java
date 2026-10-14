@@ -19,6 +19,7 @@ package org.njmule.gui;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
@@ -28,6 +29,7 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
+import org.njmule.app.Autostart;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
@@ -77,6 +79,16 @@ public final class TestGui implements AutoCloseable {
      * As {@link #start(Path)}, with the model seeing the engine through {@code wrap}; {@link #engine} is the real one.
      */
     public static TestGui start(Path root, UnaryOperator<NjMuleEngine> wrap) throws Exception {
+        return start(root, wrap, Optional.empty());
+    }
+
+    /** As {@link #start(Path)}, with {@code autostart} as the start at login: a pretend one, never the system's. */
+    public static TestGui start(Path root, Optional<Autostart> autostart) throws Exception {
+        return start(root, UnaryOperator.identity(), autostart);
+    }
+
+    private static TestGui start(Path root, UnaryOperator<NjMuleEngine> wrap, Optional<Autostart> autostart)
+            throws Exception {
         FxTesting.start();
         NjMuleEngine engine = FxTesting.engine(root);
         EngineModel model = new EngineModel(wrap.apply(engine), Platform::runLater);
@@ -93,7 +105,8 @@ public final class TestGui implements AutoCloseable {
                 told::add,
                 relaunches::incrementAndGet,
                 new Subscriptions(),
-                played::add));
+                played::add,
+                autostart));
         model.onError(told::add);
         model.start();
         return new TestGui(engine, model, gui, told, played, relaunches);

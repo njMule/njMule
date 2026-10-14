@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.dialogs;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -190,6 +192,9 @@ public final class ImportDialog {
                                     failed));
                             this.working.set(false);
                             this.take.setDisable(!dryRun);
+                            if (!dryRun && result.startAtLogin()) {
+                                this.startAtLogin();
+                            }
                         },
                         error -> {
                             // A check may be tried again; an import too, once it was checked.
@@ -197,6 +202,23 @@ public final class ImportDialog {
                             this.working.set(false);
                             this.take.setDisable(dryRun);
                         });
+    }
+
+    // eMule started at login: njMule does now, where it can; asking the system takes a moment.
+    private void startAtLogin() {
+        this.gui
+                .autostart()
+                .ifPresent(system -> Thread.ofVirtual().name("njmule-autostart").start(() -> {
+                    try {
+                        if (!system.isOn()) {
+                            system.turnOn();
+                        }
+                        Platform.runLater(() -> this.gui.inform().accept(this.gui.t("nj.import.autostart")));
+                    } catch (IOException e) {
+                        Platform.runLater(() ->
+                                this.gui.inform().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage())));
+                    }
+                }));
     }
 
     private String outcome(ImportReport.Outcome outcome) {

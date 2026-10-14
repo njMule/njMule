@@ -21,10 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.app.Autostart;
 import org.njmule.core.config.EventCommands;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -37,6 +39,7 @@ class SettingsScreenTest {
 
     private TestGui test;
     private SettingsScreen screen;
+    private final PretendAutostart system = new PretendAutostart();
 
     @AfterEach
     void close() {
@@ -149,11 +152,112 @@ class SettingsScreenTest {
         this.thenTheEnginePlays(this.ding());
     }
 
+    @Test
+    void shouldOfferNoStartAtLoginOutsideTheInstalledProgram() throws Exception {
+        this.givenTheSettingsShow();
+
+        this.thenTheStartAtLoginBoxIsOff();
+        this.thenTheStartAtLoginBoxSaysWhy();
+    }
+
+    @Test
+    void shouldShowTheStartAtLoginAsTheSystemHasIt() throws Exception {
+        this.givenTheSystemStartsNjMuleAtLogin(true);
+        this.givenTheSettingsShowWithTheStartAtLogin();
+
+        this.thenTheStartAtLoginBoxShows(true);
+    }
+
+    @Test
+    void shouldTurnTheStartAtLoginOnWhenApplied() throws Exception {
+        this.givenTheSystemStartsNjMuleAtLogin(false);
+        this.givenTheSettingsShowWithTheStartAtLogin();
+
+        this.whenTheUserTicksTheStartAtLogin(true);
+        this.whenTheUserApplies();
+
+        this.thenTheSystemStartsNjMuleAtLogin(true);
+    }
+
+    @Test
+    void shouldLeaveTheSystemAloneWhenTheStartAtLoginDidNotChange() throws Exception {
+        this.givenTheSystemStartsNjMuleAtLogin(true);
+        this.givenTheSettingsShowWithTheStartAtLogin();
+
+        this.whenTheUserApplies();
+
+        this.thenTheSystemWasNotChanged();
+    }
+
     private void givenTheSettingsShow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.showTheSettings();
+    }
+
+    private void givenTheSystemStartsNjMuleAtLogin(boolean on) {
+        this.system.on = on;
+    }
+
+    private void givenTheSettingsShowWithTheStartAtLogin() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"), Optional.of(this.system));
+        this.showTheSettings();
+        FxTesting.await(
+                "the system was asked", () -> !this.screen.autostartBox().isDisabled());
+    }
+
+    private void showTheSettings() throws Exception {
         this.screen = new SettingsScreen(this.test.gui);
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.onFx(this.screen::shown);
+    }
+
+    private void whenTheUserTicksTheStartAtLogin(boolean on) throws Exception {
+        FxTesting.onFx(() -> this.screen.autostartBox().setSelected(on));
+    }
+
+    private void thenTheStartAtLoginBoxIsOff() {
+        assertThat(this.screen.autostartBox().isDisabled()).isTrue();
+        assertThat(this.screen.autostartBox().isSelected()).isFalse();
+    }
+
+    private void thenTheStartAtLoginBoxSaysWhy() {
+        assertThat(this.screen.autostartBox().getTooltip().getText()).contains("installed njMule");
+    }
+
+    private void thenTheStartAtLoginBoxShows(boolean on) {
+        assertThat(this.screen.autostartBox().isSelected()).isEqualTo(on);
+    }
+
+    private void thenTheSystemStartsNjMuleAtLogin(boolean on) throws Exception {
+        FxTesting.await("the system was changed", () -> this.system.on == on && this.system.changes.get() == 1);
+    }
+
+    private void thenTheSystemWasNotChanged() throws Exception {
+        FxTesting.onFx(() -> {});
+        assertThat(this.system.changes.get()).isZero();
+    }
+
+    /** A pretend start at login: the real one is never touched. */
+    private static final class PretendAutostart implements Autostart {
+        private volatile boolean on;
+        private final AtomicInteger changes = new AtomicInteger();
+
+        @Override
+        public boolean isOn() {
+            return this.on;
+        }
+
+        @Override
+        public void turnOn() {
+            this.on = true;
+            this.changes.incrementAndGet();
+        }
+
+        @Override
+        public void turnOff() {
+            this.on = false;
+            this.changes.incrementAndGet();
+        }
     }
 
     private void whenTheUserTurnsOnTheCommand(EventCommands.Event event, String commandLine) throws Exception {
