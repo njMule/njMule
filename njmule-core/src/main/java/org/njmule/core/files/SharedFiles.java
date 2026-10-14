@@ -651,6 +651,23 @@ public final class SharedFiles implements AutoCloseable {
             return;
         }
         Optional<Known2Met.Entry> tree = result.aich().map(t -> new Known2Met.Entry(t.masterHash(), t.blockHashes()));
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
+            // Renamed or gone while hashed: the copy shared now, if any, gets the AICH tree.
+            SharedFile current = this.byHash.get(result.ed2k().fileHash());
+            if (current != null && current.size() == result.ed2k().size()) {
+                this.share(
+                        new SharedFile(
+                                current.path(),
+                                current.name(),
+                                current.size(),
+                                current.hash(),
+                                current.partHashes(),
+                                result.aich().map(AichTree::masterHash),
+                                current.mtime()),
+                        tree);
+            }
+            return;
+        }
         this.share(
                 new SharedFile(
                         file,

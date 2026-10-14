@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -392,6 +393,41 @@ class SharedFilesTest {
         assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
                 .containsExactly("unshared changing.bin", "shared changing.bin");
         assertThat(this.onLoop(() -> shares.get(before))).isEmpty();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void aFileRenamedWhileHashedAgainStaysSharedUnderItsNewName() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        SharedFiles shares = this.open(config, incoming);
+        byte[] data = bytes(600_000, 33);
+        Hash16 hash = Ed2k.md4(data, 0, data.length);
+        Path done = incoming.resolve("done.bin");
+        Files.write(done, data);
+        PartFile download = PartFile.create(1, this.dir, "done.bin", data.length, hash, Optional.empty(), List.of());
+
+        this.onLoop(() -> {
+            // Hashed again for its AICH tree, and renamed meanwhile.
+            shares.finished(done, download);
+            return shares.rename(hash, "renamed.bin");
+        });
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+            assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        this.onLoop(() -> {
+            shares.scan();
+            return null;
+        });
+
+        assertThat(this.onLoop(() -> shares.get(hash)))
+                .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(incoming.resolve("renamed.bin")));
+        assertThat(this.onLoop(() -> shares.aichTree(hash))).isPresent();
         this.onLoop(() -> {
             shares.close();
             return null;
