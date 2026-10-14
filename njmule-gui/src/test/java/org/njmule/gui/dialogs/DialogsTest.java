@@ -18,8 +18,11 @@ package org.njmule.gui.dialogs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.stage.Stage;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.SharedDirectory;
+import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -140,6 +144,29 @@ class DialogsTest {
         });
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Not a folder"));
         assertThat(ImportDialog.guessEmuleDirectory()).isNotNull();
+    }
+
+    @Test
+    void aFailedImportLetsTheDialogBeUsedAgain() throws Exception {
+        this.test = TestGui.start(
+                this.dir.resolve("njmule"),
+                real -> Engines.overriding(
+                        real,
+                        Map.of(
+                                "importFromEmule",
+                                args -> CompletableFuture.failedFuture(new IOException("preferences.ini is locked")))));
+        Path emule = Files.createDirectories(this.dir.resolve("emule-config"));
+        AtomicReference<ImportDialog> dialog = new AtomicReference<>();
+        FxTesting.onFx(() -> {
+            dialog.set(new ImportDialog(this.test.gui, new Stage()));
+            dialog.get().show();
+            dialog.get().directoryField().setText(emule.toString());
+            dialog.get().run(true);
+        });
+
+        FxTesting.await("the failure", () -> !dialog.get().checkButton().isDisabled());
+        assertThat(FxTesting.onFx(() -> dialog.get().summaryLabel().getText())).contains("preferences.ini is locked");
+        FxTesting.onFx(() -> dialog.get().stage().close());
     }
 
     @Test

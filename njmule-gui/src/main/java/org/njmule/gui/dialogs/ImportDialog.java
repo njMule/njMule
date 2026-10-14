@@ -190,6 +190,12 @@ public final class ImportDialog {
                                     failed));
                             this.working.set(false);
                             this.take.setDisable(!dryRun);
+                        },
+                        error -> {
+                            // A check may be tried again; an import too, once it was checked.
+                            this.summary.setText(this.gui.f("nj.import.failed", error));
+                            this.working.set(false);
+                            this.take.setDisable(dryRun);
                         });
     }
 
@@ -203,6 +209,14 @@ public final class ImportDialog {
 
     TableView<ImportReport.Item> reportTable() {
         return this.report;
+    }
+
+    Button checkButton() {
+        return this.check;
+    }
+
+    Label summaryLabel() {
+        return this.summary;
     }
 
     Stage stage() {

@@ -309,7 +309,7 @@ class EngineModelTest {
         m.shareDirectory(folder);
         m.updatePreferences(p -> p.toBuilder().nick("Changed").build(), p -> nick.set(p.nick()));
         until(() -> "Changed".equals(nick.get()));
-        m.importFromEmule(emule, new ImportOptions(false, false, false), report::set);
+        m.importFromEmule(emule, new ImportOptions(false, false, false), report::set, this.errors::add);
         until(() -> report.get() != null);
 
         assertThat(m.preferencesProperty().get().nick()).isEqualTo("Imported");

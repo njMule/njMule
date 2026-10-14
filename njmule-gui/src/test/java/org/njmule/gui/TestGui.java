@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -58,9 +59,16 @@ public final class TestGui implements AutoCloseable {
 
     /** Starts the toolkit, an engine under {@code root} and the model, in English. */
     public static TestGui start(Path root) throws Exception {
+        return start(root, UnaryOperator.identity());
+    }
+
+    /**
+     * As {@link #start(Path)}, with the model seeing the engine through {@code wrap}; {@link #engine} is the real one.
+     */
+    public static TestGui start(Path root, UnaryOperator<NjMuleEngine> wrap) throws Exception {
         FxTesting.start();
         NjMuleEngine engine = FxTesting.engine(root);
-        EngineModel model = new EngineModel(engine, Platform::runLater);
+        EngineModel model = new EngineModel(wrap.apply(engine), Platform::runLater);
         List<String> told = new CopyOnWriteArrayList<>();
         AtomicInteger relaunches = new AtomicInteger();
         Gui gui = FxTesting.onFx(() -> new Gui(

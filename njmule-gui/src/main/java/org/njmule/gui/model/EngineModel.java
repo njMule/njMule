@@ -691,13 +691,17 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.later(this.engine.updateSchedule(schedule), done);
     }
 
-    public void importFromEmule(Path dir, ImportOptions options, Consumer<ImportReport> done) {
-        this.later(this.engine.importFromEmule(dir, options), report -> {
-            done.accept(report);
-            this.preferences.set(this.engine.preferences());
-            this.refreshServers();
-            this.refreshShared();
-        });
+    /** Imports an eMule profile; {@code done} gets the report, or {@code failed} the error, on the FX thread. */
+    public void importFromEmule(Path dir, ImportOptions options, Consumer<ImportReport> done, Consumer<String> failed) {
+        this.later(
+                this.engine.importFromEmule(dir, options),
+                report -> {
+                    done.accept(report);
+                    this.preferences.set(this.engine.preferences());
+                    this.refreshServers();
+                    this.refreshShared();
+                },
+                failed);
     }
 
     @Override
