@@ -148,6 +148,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             new ServerNote(Instant.now(), ServerNote.Kind.TITLE, NjMuleInfo.NAME + " " + NjMuleInfo.version()));
     private final StringProperty serverAddress = new SimpleStringProperty("");
     private final ObservableList<Category> categories = FXCollections.observableArrayList();
+    // One view for all: the list holds its views only weakly, so a view made per call loses its listeners in a GC.
+    private final ObservableList<Category> categoriesView = FXCollections.unmodifiableObservableList(this.categories);
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
     private final LiveList<String, KadContactInfo> kadContacts = new LiveList<>(KadContactInfo::id);
@@ -195,7 +197,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** The download categories, in the order of their ids. */
     public ObservableList<Category> categories() {
-        return FXCollections.unmodifiableObservableList(this.categories);
+        return this.categoriesView;
     }
 
     /** Replaces the categories, then runs {@code done}; a refusal shows as an error. */

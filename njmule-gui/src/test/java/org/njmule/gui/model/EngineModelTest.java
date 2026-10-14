@@ -19,6 +19,7 @@ package org.njmule.gui.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.njmule.core.api.DownloadPriority.AUTO;
 
+import java.lang.ref.WeakReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -26,12 +27,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import javafx.collections.ListChangeListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
@@ -248,6 +252,37 @@ class EngineModelTest {
             }
         }
         assertThat(m.sharedFiles().size()).isEqualTo(1);
+    }
+
+    @Test
+    void theCategoriesStillTellTheirChangesAfterAGarbageCollection() throws Exception {
+        EngineModel m = this.start();
+        List<String> added = new CopyOnWriteArrayList<>();
+        m.categories().addListener((ListChangeListener<Category>) c -> {
+            while (c.next()) {
+                c.getAddedSubList().forEach(category -> added.add(category.name()));
+            }
+        });
+        collectGarbage();
+
+        AtomicBoolean done = new AtomicBoolean();
+        m.setCategories(
+                List.of(new Category(1, "Films", Optional.empty(), "", 1, AUTO, "*.mkv", false)), () -> done.set(true));
+        until(done::get);
+
+        assertThat(added).contains("Films");
+        assertThat(m.categories()).isSameAs(m.categories());
+    }
+
+    // Returns once a weak reference was cleared a few times: collections ran.
+    private static void collectGarbage() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            WeakReference<Object> probe = new WeakReference<>(new Object());
+            for (int tries = 0; tries < 100 && probe.get() != null; tries++) {
+                System.gc();
+                Thread.sleep(10);
+            }
+        }
     }
 
     private static void until(BooleanSupplier condition) throws Exception {
