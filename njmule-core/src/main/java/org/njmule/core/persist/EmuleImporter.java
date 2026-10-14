@@ -530,41 +530,60 @@ public final class EmuleImporter {
         this.with(this.emule.resolve("Category.ini"), (file, data) -> {
             IniFile ini = IniFile.parse(data);
             List<Category> found = new ArrayList<>();
+            StringBuilder notes = new StringBuilder();
             for (String section : ini.sections()) {
                 OptionalInt id = categoryId(section);
                 // Cat#0 is the list of all downloads, not a category.
                 if (id.isEmpty() || id.getAsInt() < 1) {
                     continue;
                 }
+                // eMule allows longer texts than ours: they are cut rather than the category lost.
+                String title = shorten(ini.get(section, "Title").orElse(""), Category.MAX_NAME);
+                Optional<Path> incoming = ini.get(section, "Incoming")
+                        .flatMap(EmuleImporter::path)
+                        .filter(Path::isAbsolute)
+                        .filter(dir -> !emuleIncoming.equals(Optional.of(dir.normalize())));
+                String comment = shorten(ini.get(section, "Comment").orElse(""), Category.MAX_COMMENT);
+                int color = color(ini.getLong(section, "Color"));
+                String patterns = shorten(ini.get(section, "AutoCat").orElse(""), Category.MAX_PATTERNS);
+                boolean regex =
+                        ini.getBoolean(section, "AutoCatAsRegularExpression").orElse(false);
                 try {
                     found.add(new Category(
-                            id.getAsInt(),
-                            ini.get(section, "Title").orElse(""),
-                            ini.get(section, "Incoming")
-                                    .flatMap(EmuleImporter::path)
-                                    .filter(Path::isAbsolute)
-                                    .filter(dir -> !emuleIncoming.equals(Optional.of(dir.normalize()))),
-                            ini.get(section, "Comment").orElse(""),
-                            color(ini.getLong(section, "Color")),
-                            DownloadPriority.AUTO,
-                            ini.get(section, "AutoCat").orElse(""),
-                            ini.getBoolean(section, "AutoCatAsRegularExpression")
-                                    .orElse(false)));
+                            id.getAsInt(), title, incoming, comment, color, DownloadPriority.AUTO, patterns, regex));
                 } catch (IllegalArgumentException e) {
-                    logger.info("Leaving out the category {} of {}: {}", section, file, e.getMessage());
+                    try {
+                        // Patterns we cannot compile: the category comes without them.
+                        found.add(new Category(
+                                id.getAsInt(), title, incoming, comment, color, DownloadPriority.AUTO, "", false));
+                        notes.append("; ")
+                                .append(title)
+                                .append(" without its file name patterns, which are not valid here");
+                    } catch (IllegalArgumentException again) {
+                        logger.info("Leaving out the category {} of {}: {}", section, file, e.getMessage());
+                    }
                 }
             }
             if (found.isEmpty()) {
                 return item(file, ImportReport.Outcome.SKIPPED, "no category besides all downloads");
             }
             if (this.options.dryRun()) {
-                return item(file, ImportReport.Outcome.WOULD_IMPORT, found.size() + " categories");
+                return item(file, ImportReport.Outcome.WOULD_IMPORT, found.size() + " categories" + notes);
             }
             int added = this.target.addCategories(found);
             return added == 0
                     ? item(file, ImportReport.Outcome.SKIPPED, found.size() + " categories; we have our own")
-                    : item(file, ImportReport.Outcome.IMPORTED, added + " categories");
+                    : item(file, ImportReport.Outcome.IMPORTED, added + " categories" + notes);
         });
+    }
+
+    // Stripped first, as categories keep their texts, and never between the two halves of a surrogate pair.
+    private static String shorten(String text, int max) {
+        String s = text.strip();
+        if (s.length() <= max) {
+            return s;
+        }
+        return s.substring(0, Character.isHighSurrogate(s.charAt(max - 1)) ? max - 1 : max);
     }
 
     // Only the name eMule writes: Cat#01 or Cat# 1 next to Cat#1 would give two categories one id.

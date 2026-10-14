@@ -258,6 +258,33 @@ class EmuleImporterTest {
     }
 
     @Test
+    void aCategoryWeCannotFullyRepresentIsShortenedNotLeftOut() throws IOException {
+        Files.writeString(
+                this.emule.config.resolve("Category.ini"),
+                String.join(
+                        "\r\n",
+                        "[Cat#1]",
+                        "Title=" + "t".repeat(Category.MAX_NAME + 10),
+                        "Comment=" + "c".repeat(Category.MAX_COMMENT + 10),
+                        "AutoCat=" + "p".repeat(Category.MAX_PATTERNS + 10),
+                        "[Cat#2]",
+                        "Title=Broken",
+                        "AutoCat=(unclosed",
+                        "AutoCatAsRegularExpression=1",
+                        ""));
+
+        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+
+        assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 2);
+        Category shortened = this.target.categories.getFirst();
+        assertThat(shortened.name()).hasSize(Category.MAX_NAME);
+        assertThat(shortened.comment()).hasSize(Category.MAX_COMMENT);
+        assertThat(shortened.patterns()).hasSize(Category.MAX_PATTERNS);
+        assertThat(this.target.categories.get(1).patterns()).isEmpty();
+        assertThat(detail(report, "Category.ini")).contains("2 categories", "Broken");
+    }
+
+    @Test
     void onlyTheCanonicalSectionOfACategoryCounts() throws IOException {
         Files.writeString(
                 this.emule.config.resolve("Category.ini"),
