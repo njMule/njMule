@@ -471,7 +471,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void addDownload(Ed2kLink.FileLink link) {
-        this.later(this.engine.addDownload(link), this.downloads::put);
+        this.addDownload(link, added -> {});
+    }
+
+    /** Adds a download; {@code added} learns of it on the FX thread once the engine took it. */
+    public void addDownload(Ed2kLink.FileLink link, Consumer<DownloadInfo> added) {
+        this.later(this.engine.addDownload(link), download -> {
+            this.downloads.put(download);
+            added.accept(download);
+        });
     }
 
     public void pause(Hash16 file) {

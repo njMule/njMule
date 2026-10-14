@@ -19,17 +19,21 @@ package org.njmule.gui.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.njmule.core.api.DownloadPriority.AUTO;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.UnaryOperator;
 import javafx.collections.ListChangeListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +54,7 @@ import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 
 @Timeout(60)
@@ -76,11 +81,30 @@ class EngineModelTest {
 
     // A direct executor: the model's state changes on the engine's threads, which tests poll.
     private EngineModel start() throws Exception {
+        return this.start(UnaryOperator.identity());
+    }
+
+    // The model sees the engine through wrap.
+    private EngineModel start(UnaryOperator<NjMuleEngine> wrap) throws Exception {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
-        this.model = new EngineModel(this.engine, Runnable::run);
+        this.model = new EngineModel(wrap.apply(this.engine), Runnable::run);
         this.model.onError(this.errors::add);
         this.model.start();
         return this.model;
+    }
+
+    @Test
+    void aDownloadIsToldAddedOnlyOnceTheEngineTookIt() throws Exception {
+        EngineModel m = this.start(real -> Engines.overriding(
+                real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException("disk full")))));
+        List<String> added = new CopyOnWriteArrayList<>();
+
+        m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
+
+        until(() -> !this.errors.isEmpty());
+        assertThat(this.errors).containsExactly("disk full");
+        assertThat(added).isEmpty();
+        assertThat(m.downloads().size()).isZero();
     }
 
     @Test
@@ -101,8 +125,10 @@ class EngineModelTest {
     void downloadsAreAddedPausedAndCancelled() throws Exception {
         EngineModel m = this.start();
 
-        m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE));
+        List<String> added = new CopyOnWriteArrayList<>();
+        m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
         until(() -> m.downloads().size() == 1);
+        assertThat(added).containsExactly("a.bin");
         m.pause(FILE);
         until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.PAUSED);
         m.resume(FILE);

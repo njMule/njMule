@@ -77,6 +77,7 @@ public final class DesktopApp implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(DesktopApp.class);
     private static final int[] ICON_SIZES = {16, 24, 32, 48, 64, 128, 256, 512};
+    private static final int MAX_NAMES_ASKED = 10;
 
     private final NjMuleEngine engine;
     private final AppDirectories directories;
@@ -215,10 +216,23 @@ public final class DesktopApp implements AutoCloseable {
             return;
         }
         for (Ed2kLink.FileLink link : this.pending) {
-            this.model.addDownload(link);
-            this.window.message(this.gui.f("nj.transfers.added", link.name()));
+            this.model.addDownload(link, added -> this.window.message(this.gui.f("nj.transfers.added", added.name())));
         }
         this.pending.clear();
+    }
+
+    // Links copied in another program are taken only when the user says so, as they may be old or unwanted.
+    private boolean confirmCopied(List<Ed2kLink.FileLink> links) {
+        List<String> names = links.stream().map(Ed2kLink.FileLink::name).toList();
+        String shown = String.join("\n", names.subList(0, Math.min(names.size(), MAX_NAMES_ASKED)))
+                + (names.size() > MAX_NAMES_ASKED ? "\n…" : "");
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO);
+        ask.setHeaderText(this.gui.t("IDS_ADDDOWNLOADSFROMCB").strip());
+        Window owner = this.stage.isShowing() ? this.stage : this.trayOwner;
+        if (owner != null) {
+            ask.initOwner(owner);
+        }
+        return ask.showAndWait().filter(b -> b == ButtonType.YES).isPresent();
     }
 
     // The web interface runs beside the window when its settings ask for it.
@@ -277,7 +291,7 @@ public final class DesktopApp implements AutoCloseable {
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
         // eD2K file links copied anywhere become downloads when the settings ask for it.
-        this.clipboard = ClipboardWatch.start(this.settings::watchClipboard, links -> {
+        this.clipboard = ClipboardWatch.start(this.settings::watchClipboard, this::confirmCopied, links -> {
             this.pending.addAll(links);
             this.addPending();
         });
