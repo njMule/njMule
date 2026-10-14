@@ -46,9 +46,12 @@ public final class AichRecovery {
 
     private AichRecovery() {}
 
-    /** Whether part {@code part} of a file of {@code size} bytes has recovery data: files of several parts. */
+    /**
+     * Whether part {@code part} of a file of {@code size} bytes has recovery data: a part of more than one block, also
+     * the only part of a small file.
+     */
     public static boolean hasRecovery(long size, int part) {
-        return size > Ed2k.PARTSIZE && part >= 0 && (long) part * Ed2k.PARTSIZE + Ed2k.EMBLOCKSIZE < size;
+        return part >= 0 && (long) part * Ed2k.PARTSIZE + Ed2k.EMBLOCKSIZE < size;
     }
 
     /** The recovery data of part {@code part} of {@code tree}. */

@@ -136,6 +136,22 @@ class DownloadRecoveryFlowTest {
     }
 
     @Test
+    void aFileOfOnePartRecoversItsCorruptBlock() throws Exception {
+        byte[] data = content(PART - 1000, 27);
+        FakePeer peer =
+                this.peer(this.share(data), new FakePeer.Config(hash(27), false, FakePeer.Slot.NOW, 0, Set.of(0)));
+        NjMuleEngine engine = this.engine();
+        Events events = new Events(engine);
+
+        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
+
+        Path file = events.completed(added.hash(), WAIT).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(peer.received()).contains("AICHREQUEST");
+        assertThat(peer.bytesSent()).as("only the bad block comes again").isLessThan(data.length + PART / 10);
+    }
+
+    @Test
     void aFileDownloadedAgainRecoversItsCorruptPartsAgain() throws Exception {
         byte[] data = content(3 * PART + 1000, 24);
         Path shared = this.share(data);

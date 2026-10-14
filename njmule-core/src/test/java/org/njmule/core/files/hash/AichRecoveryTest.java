@@ -80,9 +80,31 @@ class AichRecoveryTest {
                 .isEmpty();
         assertThat(AichRecovery.verify(size, 1, tree.masterHash(), new byte[] {1}))
                 .isEmpty();
-        assertThat(AichRecovery.hasRecovery(Ed2k.PARTSIZE, 0))
-                .as("one part has nothing to recover from")
+    }
+
+    @Test
+    void aFileOfOnePartAboveOneBlockHasRecoveryData() {
+        for (long size : new long[] {Ed2k.EMBLOCKSIZE + 1, 1_000_000, Ed2k.PARTSIZE}) {
+            AichTree tree = tree(size, 6);
+
+            byte[] data = AichRecovery.create(tree, 0);
+
+            assertThat(AichRecovery.verify(size, 0, tree.masterHash(), data))
+                    .as("%d bytes", size)
+                    .contains(tree.blockHashes());
+        }
+        assertThat(AichRecovery.hasRecovery(Ed2k.EMBLOCKSIZE, 0))
+                .as("one block is the master hash itself")
                 .isFalse();
+        assertThat(AichRecovery.hasRecovery(2 * Ed2k.PARTSIZE + Ed2k.EMBLOCKSIZE, 2))
+                .as("a last part of one block")
+                .isFalse();
+        assertThat(AichRecovery.hasRecovery(2 * Ed2k.PARTSIZE + Ed2k.EMBLOCKSIZE + 1, 2))
+                .isTrue();
+        assertThat(AichRecovery.hasRecovery(2 * Ed2k.PARTSIZE, 2))
+                .as("no such part")
+                .isFalse();
+        assertThat(AichRecovery.hasRecovery(Ed2k.PARTSIZE, -1)).isFalse();
     }
 
     @Test
