@@ -48,6 +48,7 @@ import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
+import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
@@ -290,7 +291,7 @@ public final class ServerSession {
                                 current, cause.map(ServerSession::describe).orElse("closed by the server")));
                     }
                 },
-                Packing::unpackFromServer);
+                ServerSession::unpack);
         Preferences prefs = this.preferences.get();
         opened.send(new ServerMessages.Login(
                         this.userHash,
@@ -307,6 +308,13 @@ public final class ServerSession {
             return;
         }
         ServerMet.Server target = this.server.get();
+        if (packet.protocol() != Protocol.EDONKEY) {
+            logger.debug(
+                    "Dropping a packet of protocol 0x{} from {}",
+                    Integer.toHexString(packet.protocol()),
+                    ServerList.addressOf(target));
+            return;
+        }
         Optional<Opcodes.Server> opcode = Opcodes.Server.of(packet.opcode());
         if (opcode.isEmpty()) {
             logger.debug("Ignoring server opcode 0x{}", Integer.toHexString(packet.opcode()));
@@ -358,6 +366,16 @@ public final class ServerSession {
                     Integer.toHexString(packet.opcode()),
                     ServerList.addressOf(target),
                     e);
+        }
+    }
+
+    // A packet that does not inflate is one bad packet, not a broken connection: it stays packed and is dropped.
+    private static Packet unpack(Packet frame) {
+        try {
+            return Packing.unpackFromServer(frame);
+        } catch (DecodeException e) {
+            logger.debug("Cannot inflate a server packet: {}", e.getMessage());
+            return frame;
         }
     }
 

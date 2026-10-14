@@ -87,6 +87,18 @@ class ServerAnswersTest {
         this.thenTheSearchIsAnsweredWith(0);
     }
 
+    @Test
+    void aPacketThatDoesNotInflateIsDroppedAndTheSessionGoesOn() throws Exception {
+        this.givenALoggedInSession();
+
+        this.whenTheServerSends(
+                Packet.of(Protocol.PACKED, Opcodes.Server.SERVERMESSAGE.code(), new byte[] {1, 2, 3, 4}),
+                ServerMessages.message("still here"));
+
+        this.thenTheServerSays("still here");
+        this.thenTheSessionIsOpen();
+    }
+
     private void givenALoggedInSession() throws Exception {
         this.server = ScriptedServer.start(HIGH_ID, 0);
         // A server known to be plain: no obfuscation is tried first.
@@ -105,6 +117,15 @@ class ServerAnswersTest {
 
     private void thenTheSearchIsAnsweredWith(int results) throws InterruptedException {
         assertThat(this.next("results")).isEqualTo("results " + results);
+    }
+
+    private void thenTheServerSays(String line) throws InterruptedException {
+        assertThat(this.next("message")).isEqualTo("message " + line);
+    }
+
+    private void thenTheSessionIsOpen() throws Exception {
+        assertThat(this.onLoop(this.session::isConnected)).isTrue();
+        assertThat(this.seen).noneMatch(e -> e.startsWith("disconnected"));
     }
 
     private String next(String kind) throws InterruptedException {

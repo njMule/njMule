@@ -643,3 +643,5 @@ All notable changes to this project are documented here. The format follows
 - Search result names lose their control characters and text direction overrides, and server names
   and descriptions from server lists their control characters, so the command line, the desktop app
   and the web interface never show terminal escapes or a disguised file extension.
+- A compressed packet from the server that does not inflate is dropped on its own instead of closing
+  the server connection.
