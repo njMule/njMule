@@ -259,9 +259,10 @@ public final class FakeServer implements AutoCloseable {
     }
 
     private void serve(Socket client) {
+        OutputStream out = null;
         try (client) {
             InputStream in = new BufferedInputStream(client.getInputStream());
-            OutputStream out = new BufferedOutputStream(client.getOutputStream());
+            out = new BufferedOutputStream(client.getOutputStream());
             this.clients.add(out);
             while (true) {
                 Packet request = Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
@@ -274,6 +275,11 @@ public final class FakeServer implements AutoCloseable {
             }
         } catch (IOException e) {
             logger.debug("Fake server client gone: {}", e.getMessage());
+        } finally {
+            // A client gone, or a connection closed at once as an obfuscated one is, gets no broadcast.
+            if (out != null) {
+                this.clients.remove(out);
+            }
         }
     }
 

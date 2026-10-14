@@ -103,7 +103,9 @@ class ServerSessionTest {
     @Test
     void controlCharactersFromTheServerAreDropped() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of());
+            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
+                    // Pinged before and known to be plain: no obfuscation is tried first.
+                    .with(intTag(ServerTag.UDPFLAGS, 0));
             this.onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
@@ -134,7 +136,9 @@ class ServerSessionTest {
     @Test
     void anIdOfZeroIsNoLoginAndALaterIdIs() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of());
+            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
+                    // Pinged before and known to be plain: no obfuscation is tried first.
+                    .with(intTag(ServerTag.UDPFLAGS, 0));
             this.onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
@@ -159,7 +163,9 @@ class ServerSessionTest {
     @Test
     void aServerHangingUpBeforeTheIdEndsTheAttempt() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of());
+            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
+                    // Pinged before and known to be plain: no obfuscation is tried first.
+                    .with(intTag(ServerTag.UDPFLAGS, 0));
             this.onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;

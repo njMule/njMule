@@ -653,3 +653,7 @@ All notable changes to this project are documented here. The format follows
   start, and moves when Kad is turned on or set to the port it holds, instead of leaving Kad unable
   to start.
 - No more shared files are offered to a server than its soft limit, when it told one.
+- With obfuscation requested, servers never pinged are tried obfuscated once on their main port and
+  remembered as taking obfuscation when they do; when no server takes an obfuscated connection,
+  every server is tried again plainly (unless obfuscation is required), instead of never obfuscating
+  with them or never falling back.

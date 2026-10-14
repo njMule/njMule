@@ -370,7 +370,9 @@ class SearchManagerTest {
         ServerSocket listening = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
         this.resources.add(listening);
         this.onLoop(() -> {
-            this.session.connect(Optional.of(new ServerMet.Server(LOOPBACK, listening.getLocalPort(), List.of())));
+            // Pinged before and known to be plain: no obfuscation is tried first.
+            this.session.connect(Optional.of(new ServerMet.Server(LOOPBACK, listening.getLocalPort(), List.of())
+                    .with(intTag(ServerTag.UDPFLAGS, 0))));
             return null;
         });
         listening.setSoTimeout(10_000);

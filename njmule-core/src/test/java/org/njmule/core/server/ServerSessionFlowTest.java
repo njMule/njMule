@@ -91,7 +91,7 @@ class ServerSessionFlowTest {
             return null;
         });
 
-        assertThat(this.next("disconnected")).contains("no IPv4 address");
+        assertThat(this.next("disconnected")).isEqualTo("disconnected no server accepted the connection");
         assertThat(this.servers.all())
                 .as("each failure counted")
                 .allSatisfy(s -> assertThat(s.failedCount()).hasValue(1));

@@ -25,10 +25,13 @@ import java.net.UnknownHostException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -42,6 +45,7 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.ServerMessages.IdChange;
 import org.njmule.core.protocol.io.DecodeException;
@@ -57,9 +61,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The connection to one eD2K server at a time: connect (obfuscated when both sides support it), log in, then serve the
- * session. Used on the engine thread only; network callbacks are posted to it, and those of an abandoned attempt are
- * ignored.
+ * The connection to one eD2K server at a time: connect, log in, then serve the session. When the preferences ask for
+ * obfuscation, the servers that take it, and once those never pinged, are tried obfuscated first, then every server
+ * plainly unless obfuscation is required. Used on the engine thread only; network callbacks are posted to it, and those
+ * of an abandoned attempt are ignored.
  */
 public final class ServerSession {
 
@@ -99,11 +104,22 @@ public final class ServerSession {
     private static final Pattern VERSION_NUMBER = Pattern.compile("(\\d{1,5})\\.(\\d{1,5})");
     private static final CharMatcher CONTROL = CharMatcher.javaIsoControl();
 
-    private enum State {
-        IDLE,
-        CONNECTING,
-        LOGGING_IN,
-        CONNECTED
+    // One connection attempt, from the address lookup to the id; the session once logged in.
+    private static final class Attempt {
+        ServerMet.Server server;
+        final boolean obfuscated;
+        // Obfuscation tried on a server not known to take it: its failure is no failure of the server.
+        final boolean probe;
+        TcpConnection connection;
+        ScheduledFuture<?> timeout;
+        Optional<IdChange> id = Optional.empty();
+        boolean over;
+
+        Attempt(ServerMet.Server server, boolean obfuscated, boolean probe) {
+            this.server = server;
+            this.obfuscated = obfuscated;
+            this.probe = probe;
+        }
     }
 
     private final EngineLoop loop;
@@ -113,14 +129,21 @@ public final class ServerSession {
     private final IntSupplier listenPort;
     private final Listener listener;
     private final SecureRandom random;
+    // The servers left to try in this pass.
     private final Deque<ServerMet.Server> pending = new ArrayDeque<>();
+    private final List<Attempt> attempts = new ArrayList<>();
+    // Servers not known to take obfuscation that were tried obfuscated once; not again until they say they take it.
+    private final Set<ServerList.Address> probed = new HashSet<>();
 
-    private State state = State.IDLE;
-    private long attempt;
-    private Optional<ServerMet.Server> server = Optional.empty();
-    private TcpConnection connection;
-    private ScheduledFuture<?> timeout;
-    private Optional<IdChange> id = Optional.empty();
+    private Attempt session;
+    // The server asked for, or empty for any.
+    private Optional<ServerMet.Server> target = Optional.empty();
+    private boolean looking;
+    // A first pass asks for obfuscation where it may be taken; a second pass, unless it is required, goes plain.
+    private boolean obfuscatedPass;
+    private boolean attempted;
+    private Optional<ServerMet.Server> last = Optional.empty();
+    private String lastFailure = "";
     private long lastClientId;
 
     public ServerSession(
@@ -145,79 +168,109 @@ public final class ServerSession {
      * attempt is dropped first.
      */
     public void connect(Optional<ServerMet.Server> target) {
-        this.disconnect("reconnecting");
-        this.pending.clear();
-        if (target.isPresent()) {
-            this.pending.add(target.get());
-        } else {
-            this.pending.addAll(this.candidates());
-        }
-        this.tryNext();
+        this.stop("reconnecting");
+        this.target = Objects.requireNonNull(target, "target");
+        this.looking = true;
+        this.attempted = false;
+        this.lastFailure = "";
+        this.obfuscatedPass = this.preferences.get().obfuscation().compareTo(ObfuscationMode.REQUESTED) >= 0;
+        this.fillPass();
+        this.next();
     }
 
     /** Ends the session or the attempt; no further server is tried. */
     public void disconnect() {
-        this.pending.clear();
-        this.disconnect("disconnected");
+        this.stop("disconnected");
     }
 
     /** Whether the current session is obfuscated. */
     public boolean isObfuscated() {
-        return this.isConnected() && this.connection.isObfuscated();
+        return this.session != null && this.session.connection.isObfuscated();
     }
 
     public boolean isConnected() {
-        return this.state == State.CONNECTED;
+        return this.session != null;
     }
 
     /** The id of the current session. */
     public Optional<IdChange> id() {
-        return this.isConnected() ? this.id : Optional.empty();
+        return this.session == null ? Optional.empty() : this.session.id;
     }
 
     /** The server connected to or being tried. */
     public Optional<ServerMet.Server> server() {
-        return this.server;
+        if (this.session != null) {
+            return Optional.of(this.session.server);
+        }
+        return this.attempts.isEmpty() ? Optional.empty() : Optional.of(this.attempts.getFirst().server);
     }
 
     /** Sends a packet to the connected server; {@code false} when there is no session. */
     public boolean send(Packet packet) {
-        return this.isConnected() && this.connection.send(packet);
+        return this.session != null && this.session.connection.send(packet);
     }
 
-    private void tryNext() {
-        while (!this.pending.isEmpty()) {
+    private void fillPass() {
+        this.pending.clear();
+        if (this.target.isPresent()) {
+            this.pending.add(this.target.get());
+        } else {
+            this.pending.addAll(this.candidates());
+        }
+    }
+
+    // Starts the next attempt; once the pass is over, the plain pass or the end.
+    private void next() {
+        while (this.attempts.isEmpty() && !this.pending.isEmpty()) {
             ServerMet.Server next = this.pending.poll();
             if (next.port() < 1 || next.port() > 0xFFFF) {
                 logger.debug("Skipping {}: no such port", ServerList.addressOf(next));
-            } else if (this.obfuscationFor(next).isEmpty()) {
-                logger.debug("Skipping {}: it cannot obfuscate as required", ServerList.addressOf(next));
-            } else {
-                this.start(next);
-                return;
+                continue;
             }
+            Optional<Boolean> obfuscated = this.obfuscationFor(next);
+            if (obfuscated.isEmpty()) {
+                logger.debug("Skipping {} in this pass: obfuscation", ServerList.addressOf(next));
+                continue;
+            }
+            boolean probe = obfuscated.get() && !ServerList.supportsObfuscation(next);
+            if (probe) {
+                this.probed.add(ServerList.addressOf(next));
+            }
+            this.start(new Attempt(next, obfuscated.get(), probe));
         }
-        Optional<ServerMet.Server> last = this.server;
-        this.state = State.IDLE;
-        this.server = Optional.empty();
-        this.listener.disconnected(last, "no server accepted the connection");
+        if (!this.attempts.isEmpty() || !this.pending.isEmpty()) {
+            return;
+        }
+        if (this.obfuscatedPass && this.preferences.get().obfuscation() != ObfuscationMode.REQUIRED) {
+            this.obfuscatedPass = false;
+            this.fillPass();
+            this.next();
+            return;
+        }
+        Optional<ServerMet.Server> tried = this.last;
+        this.looking = false;
+        this.last = Optional.empty();
+        // A server asked for by name tells why it failed; for any, each failure was logged.
+        this.listener.disconnected(
+                tried,
+                this.target.isPresent() && this.attempted ? this.lastFailure : "no server accepted the connection");
     }
 
-    private void start(ServerMet.Server target) {
-        long current = ++this.attempt;
-        this.state = State.CONNECTING;
-        this.server = Optional.of(target);
-        this.id = Optional.empty();
-        this.timeout = this.loop.schedule(
+    private void start(Attempt attempt) {
+        ServerMet.Server server = attempt.server;
+        this.attempts.add(attempt);
+        this.attempted = true;
+        this.last = Optional.of(server);
+        attempt.timeout = this.loop.schedule(
                 "server login timeout",
                 LOGIN_TIMEOUT,
-                () -> this.fail(current, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
-        Optional<String> host = target.dynamicIp();
+                () -> this.fail(attempt, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
+        Optional<String> host = server.dynamicIp();
         if (host.isEmpty()) {
-            if (target.ip() >>> 24 == 0) {
-                this.fail(current, "no address to connect to");
+            if (server.ip() >>> 24 == 0) {
+                this.fail(attempt, "no address to connect to");
             } else {
-                this.dial(current, target);
+                this.dial(attempt);
             }
             return;
         }
@@ -225,9 +278,9 @@ public final class ServerSession {
         Thread.ofVirtual().name("njmule-server-resolve").start(() -> {
             try {
                 int ip = resolve(host.get());
-                this.loop.postOutcome(() -> this.resolved(current, ip));
+                this.loop.postOutcome(() -> this.resolved(attempt, ip));
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.fail(current, describe(e)));
+                this.loop.postOutcome(() -> this.fail(attempt, describe(e)));
             }
         });
     }
@@ -241,49 +294,55 @@ public final class ServerSession {
         throw new UnknownHostException("no IPv4 address for " + host);
     }
 
-    private void resolved(long current, int ip) {
-        if (current != this.attempt || this.state != State.CONNECTING || this.server.isEmpty()) {
+    private void resolved(Attempt attempt, int ip) {
+        if (attempt.over) {
             return;
         }
         if (!this.servers.accepts(ip)) {
-            this.fail(current, Ipv4.format(ip) + " is not an address to connect to");
+            this.fail(attempt, Ipv4.format(ip) + " is not an address to connect to");
             return;
         }
-        ServerMet.Server target = this.server.get();
-        this.servers.update(ServerList.addressOf(target), s -> new ServerMet.Server(ip, s.port(), s.tags()));
-        ServerMet.Server at = new ServerMet.Server(ip, target.port(), target.tags());
-        this.server = Optional.of(at);
-        this.dial(current, at);
+        ServerMet.Server named = attempt.server;
+        this.servers.update(ServerList.addressOf(named), s -> new ServerMet.Server(ip, s.port(), s.tags()));
+        attempt.server = new ServerMet.Server(ip, named.port(), named.tags());
+        this.dial(attempt);
     }
 
-    private void dial(long current, ServerMet.Server target) {
-        boolean obfuscate = this.obfuscationFor(target).orElse(false);
-        int port = obfuscate ? (int) target.obfuscatedTcpPort().getAsLong() : target.port();
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(target.ip()), port);
-        this.listener.connecting(target);
+    private void dial(Attempt attempt) {
+        ServerMet.Server server = attempt.server;
+        InetSocketAddress address = new InetSocketAddress(Ipv4.format(server.ip()), portFor(attempt));
+        this.listener.connecting(server);
         Thread.ofVirtual().name("njmule-server-connect").start(() -> {
             try {
-                TcpConnection opened = TcpConnector.connectToServer(address, obfuscate, LOGIN_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.opened(current, opened))) {
+                TcpConnection opened =
+                        TcpConnector.connectToServer(address, attempt.obfuscated, LOGIN_TIMEOUT, this.random);
+                if (!this.loop.postOutcome(() -> this.opened(attempt, opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.fail(current, describe(e)));
+                this.loop.postOutcome(() -> this.fail(attempt, describe(e)));
             }
         });
     }
 
-    private void opened(long current, TcpConnection opened) {
-        if (current != this.attempt || this.state != State.CONNECTING) {
+    // A server not known to take obfuscation is tried on its main port, where servers take it too.
+    private static int portFor(Attempt attempt) {
+        return attempt.obfuscated && !attempt.probe
+                ? (int) attempt.server.obfuscatedTcpPort().getAsLong()
+                : attempt.server.port();
+    }
+
+    private void opened(Attempt attempt, TcpConnection opened) {
+        if (attempt.over) {
             opened.close();
             return;
         }
-        this.connection = opened;
+        attempt.connection = opened;
         opened.start(
                 new TcpConnection.Handler() {
                     @Override
                     public void onPacket(TcpConnection c, Packet packet) {
-                        if (!ServerSession.this.loop.post(() -> ServerSession.this.received(current, packet))) {
+                        if (!ServerSession.this.loop.post(() -> ServerSession.this.received(attempt, packet))) {
                             c.close();
                         }
                     }
@@ -291,7 +350,7 @@ public final class ServerSession {
                     @Override
                     public void onClosed(TcpConnection c, Optional<IOException> cause) {
                         ServerSession.this.loop.postOutcome(() -> ServerSession.this.closed(
-                                current, cause.map(ServerSession::describe).orElse("closed by the server")));
+                                attempt, cause.map(ServerSession::describe).orElse("closed by the server")));
                     }
                 },
                 ServerSession::unpack);
@@ -303,14 +362,13 @@ public final class ServerSession {
                         prefs.nick(),
                         capabilities(prefs.obfuscation()))
                 .encode());
-        this.state = State.LOGGING_IN;
     }
 
-    private void received(long current, Packet packet) {
-        if (current != this.attempt || this.server.isEmpty()) {
+    private void received(Attempt attempt, Packet packet) {
+        if (attempt.over) {
             return;
         }
-        ServerMet.Server target = this.server.get();
+        ServerMet.Server target = attempt.server;
         if (packet.protocol() != Protocol.EDONKEY) {
             logger.debug(
                     "Dropping a packet of protocol 0x{} from {}",
@@ -325,7 +383,7 @@ public final class ServerSession {
         }
         try {
             switch (opcode.get()) {
-                case IDCHANGE -> this.idChanged(target, IdChange.decode(packet));
+                case IDCHANGE -> this.idChanged(attempt, IdChange.decode(packet));
                 case SERVERMESSAGE -> {
                     // Shown and logged: no terminal escapes, bells or other control characters.
                     for (String raw : ServerMessages.decodeMessage(packet)) {
@@ -333,20 +391,20 @@ public final class ServerSession {
                         if (line.isEmpty()) {
                             continue;
                         }
-                        version(line).ifPresent(v -> this.update(target, stringTag(ServerTag.VERSION, v)));
+                        version(line).ifPresent(v -> this.update(attempt, stringTag(ServerTag.VERSION, v)));
                         this.listener.message(target, line);
                     }
                 }
                 case SERVERSTATUS ->
                     ServerMessages.ServerStatus.decode(packet)
                             .ifPresent(status -> this.update(
-                                    target,
+                                    attempt,
                                     intTag(ServerTag.USERS, status.users()),
                                     intTag(ServerTag.FILES, status.files())));
                 case SERVERIDENT -> {
                     ServerMessages.ServerIdent ident = ServerMessages.ServerIdent.decode(packet);
                     this.update(
-                            target,
+                            attempt,
                             ident.name()
                                     .map(n -> stringTag(ServerTag.SERVERNAME, CONTROL.removeFrom(n)))
                                     .orElse(null),
@@ -354,12 +412,27 @@ public final class ServerSession {
                                     .map(d -> stringTag(ServerTag.DESCRIPTION, CONTROL.removeFrom(d)))
                                     .orElse(null));
                 }
-                case CALLBACKREQUESTED ->
-                    this.listener.callbackRequested(ServerMessages.CallbackRequested.decode(packet));
-                case SEARCHRESULT -> this.listener.searchResults(target, searchResults(packet, target));
-                case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
-                    this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
-                case SERVERLIST -> this.listener.serverList(target, ServerMessages.decodeServerList(packet));
+                // What only the server we are logged in to may ask or answer.
+                case CALLBACKREQUESTED -> {
+                    if (attempt == this.session) {
+                        this.listener.callbackRequested(ServerMessages.CallbackRequested.decode(packet));
+                    }
+                }
+                case SEARCHRESULT -> {
+                    if (attempt == this.session) {
+                        this.listener.searchResults(target, searchResults(packet, target));
+                    }
+                }
+                case FOUNDSOURCES, FOUNDSOURCES_OBFU -> {
+                    if (attempt == this.session) {
+                        this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
+                    }
+                }
+                case SERVERLIST -> {
+                    if (attempt == this.session) {
+                        this.listener.serverList(target, ServerMessages.decodeServerList(packet));
+                    }
+                }
                 case REJECT -> logger.info("{} rejected our last request", ServerList.addressOf(target));
                 default -> logger.debug("Ignoring server message {}", opcode.get());
             }
@@ -392,24 +465,52 @@ public final class ServerSession {
         }
     }
 
-    private void idChanged(ServerMet.Server target, IdChange change) {
+    private void idChanged(Attempt attempt, IdChange change) {
         if (change.clientId() == 0) {
             // The server refuses us without saying so; the login timeout moves on.
-            logger.debug("Id 0 from {}", ServerList.addressOf(target));
+            logger.debug("Id 0 from {}", ServerList.addressOf(attempt.server));
             return;
         }
-        boolean changed = this.id.map(IdChange::clientId).orElse(0L) != change.clientId();
-        this.id = Optional.of(change);
+        boolean changed = attempt.id.map(IdChange::clientId).orElse(0L) != change.clientId();
+        attempt.id = Optional.of(change);
         this.lastClientId = change.clientId();
-        if (this.state == State.LOGGING_IN) {
-            this.state = State.CONNECTED;
-            this.timeout.cancel(false);
-            this.pending.clear();
-            this.servers.update(ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
-            this.listener.connected(target, change);
-        } else if (this.state == State.CONNECTED && changed) {
-            this.listener.idChanged(target, change);
+        if (attempt != this.session) {
+            this.loggedIn(attempt, change);
+        } else if (changed) {
+            this.listener.idChanged(attempt.server, change);
         }
+    }
+
+    private void loggedIn(Attempt attempt, IdChange id) {
+        attempt.timeout.cancel(false);
+        this.attempts.remove(attempt);
+        for (Attempt other : this.attempts) {
+            drop(other);
+        }
+        this.attempts.clear();
+        this.pending.clear();
+        this.looking = false;
+        this.last = Optional.empty();
+        this.session = attempt;
+        ServerList.Address address = ServerList.addressOf(attempt.server);
+        boolean learnt = attempt.obfuscated && !ServerList.supportsObfuscation(attempt.server);
+        int port = portFor(attempt);
+        UnaryOperator<ServerMet.Server> change = s -> {
+            ServerMet.Server logged = s.with(intTag(ServerTag.FAIL, 0));
+            // It took the obfuscation it was not known to take: from now on it is tried so, on that port.
+            return learnt
+                    ? logged.with(intTag(
+                                    ServerTag.UDPFLAGS, s.udpFlags().orElse(0) | ServerDatagrams.UDP_TCP_OBFUSCATION))
+                            .with(intTag(ServerTag.TCPPORTOBFUSCATION, port))
+                    : logged;
+        };
+        if (learnt) {
+            this.probed.remove(address);
+        }
+        this.servers.update(address, change);
+        ServerMet.Server server = attempt.server;
+        attempt.server = this.servers.get(address).orElseGet(() -> change.apply(server));
+        this.listener.connected(attempt.server, id);
     }
 
     // Only the static servers when the preferences say so.
@@ -437,7 +538,7 @@ public final class ServerSession {
     }
 
     // A server not in the list (one given by hand that the list refuses) still shows what it said.
-    private void update(ServerMet.Server target, Tag... tags) {
+    private void update(Attempt attempt, Tag... tags) {
         UnaryOperator<ServerMet.Server> change = s -> {
             ServerMet.Server updated = s;
             for (Tag tag : tags) {
@@ -447,81 +548,86 @@ public final class ServerSession {
             }
             return updated;
         };
-        ServerList.Address address = ServerList.addressOf(target);
+        ServerMet.Server server = attempt.server;
+        ServerList.Address address = ServerList.addressOf(server);
         this.servers.update(address, change);
-        ServerMet.Server current = this.servers.get(address).orElseGet(() -> change.apply(target));
-        this.server = Optional.of(current);
+        ServerMet.Server current = this.servers.get(address).orElseGet(() -> change.apply(server));
+        attempt.server = current;
         this.listener.updated(current);
     }
 
-    private void fail(long current, String reason) {
-        if (current != this.attempt || this.state == State.IDLE || this.state == State.CONNECTED) {
+    private void fail(Attempt attempt, String reason) {
+        if (attempt.over || attempt == this.session) {
             return;
         }
-        ServerMet.Server target = this.server.orElseThrow();
-        logger.info("Cannot connect to {}: {}", ServerList.addressOf(target), reason);
-        this.servers.update(
-                ServerList.addressOf(target),
-                s -> s.with(intTag(ServerTag.FAIL, s.failedCount().orElse(0) + 1)));
-        this.drop();
-        if (this.pending.isEmpty()) {
-            this.state = State.IDLE;
-            this.server = Optional.empty();
-            this.listener.disconnected(Optional.of(target), reason);
-        } else {
-            this.tryNext();
+        ServerList.Address address = ServerList.addressOf(attempt.server);
+        logger.info("Cannot connect to {}{}: {}", address, attempt.obfuscated ? " obfuscated" : "", reason);
+        if (!attempt.probe) {
+            this.servers.update(
+                    address, s -> s.with(intTag(ServerTag.FAIL, s.failedCount().orElse(0) + 1)));
+        }
+        drop(attempt);
+        this.attempts.remove(attempt);
+        this.lastFailure = reason;
+        this.next();
+    }
+
+    private void closed(Attempt attempt, String reason) {
+        if (attempt.over) {
+            return;
+        }
+        if (attempt != this.session) {
+            this.fail(attempt, reason);
+            return;
+        }
+        drop(attempt);
+        this.session = null;
+        this.listener.disconnected(Optional.of(attempt.server), reason);
+    }
+
+    // Drops the session and the attempts; tells it when there was one.
+    private void stop(String reason) {
+        Optional<ServerMet.Server> was = this.server().or(() -> this.last);
+        boolean active = this.session != null || this.looking;
+        for (Attempt attempt : this.attempts) {
+            drop(attempt);
+        }
+        this.attempts.clear();
+        this.pending.clear();
+        if (this.session != null) {
+            drop(this.session);
+            this.session = null;
+        }
+        this.looking = false;
+        this.last = Optional.empty();
+        if (active) {
+            this.listener.disconnected(was, reason);
         }
     }
 
-    private void closed(long current, String reason) {
-        if (current != this.attempt || this.state == State.IDLE) {
-            return;
+    private static void drop(Attempt attempt) {
+        attempt.over = true;
+        if (attempt.timeout != null) {
+            attempt.timeout.cancel(false);
         }
-        if (this.state == State.CONNECTED) {
-            ServerMet.Server target = this.server.orElseThrow();
-            this.drop();
-            this.state = State.IDLE;
-            this.server = Optional.empty();
-            this.listener.disconnected(Optional.of(target), reason);
-        } else {
-            this.fail(current, reason);
+        if (attempt.connection != null) {
+            attempt.connection.close();
         }
-    }
-
-    private void disconnect(String reason) {
-        if (this.state == State.IDLE) {
-            return;
-        }
-        Optional<ServerMet.Server> last = this.server;
-        this.attempt++;
-        this.drop();
-        this.state = State.IDLE;
-        this.server = Optional.empty();
-        this.listener.disconnected(last, reason);
-    }
-
-    private void drop() {
-        if (this.timeout != null) {
-            this.timeout.cancel(false);
-        }
-        if (this.connection != null) {
-            this.connection.close();
-            this.connection = null;
-        }
-        this.id = Optional.empty();
     }
 
     /**
-     * Whether to obfuscate with {@code target}: empty when the preferences require obfuscation and the server cannot do
-     * it.
+     * Whether to obfuscate with {@code server} in this pass; empty when it is left out of it. The obfuscated pass takes
+     * the servers known to take obfuscation, and once those never pinged, whose support is unknown; the plain pass
+     * takes every server, unless obfuscation is required.
      */
-    private Optional<Boolean> obfuscationFor(ServerMet.Server target) {
-        ObfuscationMode mode = this.preferences.get().obfuscation();
-        boolean serverCan = ServerList.supportsObfuscation(target);
-        if (mode == ObfuscationMode.REQUIRED) {
-            return serverCan ? Optional.of(true) : Optional.empty();
+    private Optional<Boolean> obfuscationFor(ServerMet.Server server) {
+        if (!this.obfuscatedPass) {
+            return this.preferences.get().obfuscation() == ObfuscationMode.REQUIRED
+                    ? Optional.empty()
+                    : Optional.of(false);
         }
-        return Optional.of(serverCan && mode == ObfuscationMode.REQUESTED);
+        boolean unknown = server.udpFlags().isEmpty() && !this.probed.contains(ServerList.addressOf(server));
+        return ServerList.supportsObfuscation(server) || unknown ? Optional.of(true) : Optional.empty();
     }
 
     static int capabilities(ObfuscationMode mode) {
