@@ -54,6 +54,9 @@ class WebUiPartsTest {
                 .isFalse();
         assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$10$%%$AA"))
                 .isFalse();
+        assertThat(Passwords.matches("x".toCharArray(), "pbkdf2-sha512$10000001$AA$AA"))
+                .as("too many rounds to check")
+                .isFalse();
 
         char[] used = "wipe me".toCharArray();
         Passwords.wipe(used);
@@ -128,6 +131,9 @@ class WebUiPartsTest {
         assertThat(WebUi.trustedHost("rebound.example:4711", true)).isFalse();
         assertThat(WebUi.trustedHost("192.168.1.10.nip.io:4711", true)).isFalse();
         assertThat(WebUi.trustedHost("[rebound.example]:4711", true)).isFalse();
+        assertThat(WebUi.trustedHost("[fe80::1", true))
+                .as("an unclosed bracket")
+                .isFalse();
         assertThat(WebUi.trustedHost(null, true)).isFalse();
     }
 
@@ -165,6 +171,7 @@ class WebUiPartsTest {
         assertThat(Html.size(512)).isEqualTo("512 B");
         assertThat(Html.size(1536)).isEqualTo("1.50 KB");
         assertThat(Html.size(5L << 40)).isEqualTo("5.00 TB");
+        assertThat(Html.size(2048L << 40)).as("no unit past TB").isEqualTo("2048.00 TB");
         assertThat(Html.rate(2048)).isEqualTo("2.0 KB/s");
         assertThat(Html.hidden("a\"", "<b>")).isEqualTo("<input type=\"hidden\" name=\"a&quot;\" value=\"&lt;b&gt;\">");
         assertThat(Html.page("T<", "", "body")).contains("<h1>T&lt;</h1>").doesNotContain("nav");
