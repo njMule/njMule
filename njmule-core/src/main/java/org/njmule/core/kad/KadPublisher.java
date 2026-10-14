@@ -106,12 +106,18 @@ public final class KadPublisher {
     private final Function<Hash16, Optional<FileComment>> comments;
     private final Ticker ticker;
     private final Map<String, Long> keywordDone = new HashMap<>();
+    // Where the files of a keyword with more than its share start at its next publish.
+    private final Map<String, Integer> keywordStart = new HashMap<>();
     private final Map<Hash16, Long> sourceDone = new HashMap<>();
     private final Map<Hash16, PublishedNote> noteDone = new HashMap<>();
     private long nextKeyword;
     private long nextSource;
     private long nextNote;
     private int lastBuddy;
+    // What each kind tried last: the next try starts after it.
+    private String lastKeyword;
+    private Hash16 lastSource;
+    private Hash16 lastNote;
 
     /** Our comment on a file as last published, and when. */
     private record PublishedNote(FileComment comment, long at) {}
@@ -161,37 +167,44 @@ public final class KadPublisher {
         }
     }
 
+    // A keyword with more files than its share publishes the next ones each time, round the list.
     private void publishOneKeyword(List<Shared> files, long now) {
-        Map<String, List<KadMessages.Entry>> byKeyword = new LinkedHashMap<>();
+        Map<String, List<Shared>> byKeyword = new LinkedHashMap<>();
         for (Shared file : files) {
-            if (!file.complete()) {
-                continue;
-            }
-            for (String word : Keywords.of(file.name())) {
-                List<KadMessages.Entry> entries = byKeyword.computeIfAbsent(word, w -> new ArrayList<>());
-                if (entries.size() < FILES_PER_KEYWORD) {
-                    entries.add(new KadMessages.Entry(UInt128.of(file.hash()), tags(file)));
+            if (file.complete()) {
+                for (String word : Keywords.of(file.name())) {
+                    byKeyword.computeIfAbsent(word, w -> new ArrayList<>()).add(file);
                 }
             }
         }
-        for (Map.Entry<String, List<KadMessages.Entry>> e : byKeyword.entrySet()) {
-            Long done = this.keywordDone.get(e.getKey());
+        for (String word : inTurn(List.copyOf(byKeyword.keySet()), this.lastKeyword)) {
+            Long done = this.keywordDone.get(word);
             if (done != null && now - done < KEYWORD_EVERY.toNanos()) {
                 continue;
             }
-            if (this.node.publishKeyword(e.getKey(), e.getValue())) {
-                this.keywordDone.put(e.getKey(), now);
+            this.lastKeyword = word;
+            List<Shared> all = byKeyword.get(word);
+            int start = this.keywordStart.getOrDefault(word, 0) % all.size();
+            List<KadMessages.Entry> entries = new ArrayList<>();
+            for (int i = 0; i < Math.min(all.size(), FILES_PER_KEYWORD); i++) {
+                Shared file = all.get((start + i) % all.size());
+                entries.add(new KadMessages.Entry(UInt128.of(file.hash()), tags(file)));
+            }
+            if (this.node.publishKeyword(word, entries)) {
+                this.keywordDone.put(word, now);
+                this.keywordStart.put(word, (start + entries.size()) % all.size());
             }
             return;
         }
     }
 
     private void publishOneSource(List<Shared> files, long now) {
-        for (Shared file : files) {
+        for (Shared file : inTurn(files, this.lastSource)) {
             Long done = this.sourceDone.get(file.hash());
             if (done != null && now - done < SOURCE_EVERY.toNanos()) {
                 continue;
             }
+            this.lastSource = file.hash();
             if (this.node.publishSource(file.hash(), file.size())) {
                 this.sourceDone.put(file.hash(), now);
             }
@@ -204,7 +217,7 @@ public final class KadPublisher {
         Set<Hash16> commented = new HashSet<>();
         Shared due = null;
         FileComment dueComment = null;
-        for (Shared file : files) {
+        for (Shared file : inTurn(files, this.lastNote)) {
             Optional<FileComment> comment = this.comment(file.hash());
             if (comment.isEmpty()) {
                 continue;
@@ -224,9 +237,38 @@ public final class KadPublisher {
             return;
         }
         Hash16 hash = due.hash();
+        this.lastNote = hash;
         if (this.node.publishNote(hash, due.name(), due.size(), () -> this.comment(hash))) {
             this.noteDone.put(hash, new PublishedNote(dueComment, now));
         }
+    }
+
+    // The words of keywords, or the shared files, starting after the one tried last: one that cannot be published now
+    // does not hold back the others, and is tried again at its next turn.
+    private static List<String> inTurn(List<String> words, String last) {
+        int at = last == null ? -1 : words.indexOf(last);
+        return turned(words, at);
+    }
+
+    private static List<Shared> inTurn(List<Shared> files, Hash16 last) {
+        int at = -1;
+        for (int i = 0; last != null && i < files.size(); i++) {
+            if (files.get(i).hash().equals(last)) {
+                at = i;
+                break;
+            }
+        }
+        return turned(files, at);
+    }
+
+    private static <T> List<T> turned(List<T> items, int last) {
+        if (last < 0) {
+            return items;
+        }
+        List<T> turned = new ArrayList<>(items.size());
+        turned.addAll(items.subList(last + 1, items.size()));
+        turned.addAll(items.subList(0, last + 1));
+        return turned;
     }
 
     private Optional<FileComment> comment(Hash16 file) {

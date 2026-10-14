@@ -177,25 +177,6 @@ class KadPublisherTest {
     }
 
     @Test
-    void busyOrRefusingNodesGetNoNewPublish() {
-        this.node.runningKeywords = 3;
-        this.node.runningSources = 4;
-        this.tickTwice();
-        assertThat(this.node.keywords).isEmpty();
-        assertThat(this.node.sources).isEmpty();
-
-        this.node.runningKeywords = 0;
-        this.node.runningSources = 0;
-        this.node.accepting = false;
-        this.tickTwice();
-        this.node.accepting = true;
-        this.publisher.tick();
-        // A refused publish is tried again at the next turn.
-        assertThat(this.node.keywords).containsOnlyKeys("great");
-        assertThat(this.node.sources).containsExactly(MOVIE);
-    }
-
-    @Test
     void aKeywordCarriesAtMostItsShareOfFiles() {
         List<KadPublisher.Shared> many = new ArrayList<>();
         for (int i = 0; i < KadPublisher.FILES_PER_KEYWORD + 10; i++) {

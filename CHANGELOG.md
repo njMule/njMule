@@ -578,3 +578,6 @@ All notable changes to this project are documented here. The format follows
   lookup for a random target, and only verified contacts are used to answer and search.
 - Kad: a keyword whose storing nodes report a load above 20% is not published again for up to a
   week, in proportion to the load, sparing the busiest nodes.
+- Kad publishing takes turns: a keyword, source or note publish that cannot start now no longer
+  holds back the others every two seconds, and a keyword with more than 150 files publishes the
+  next ones each time instead of always the same.
