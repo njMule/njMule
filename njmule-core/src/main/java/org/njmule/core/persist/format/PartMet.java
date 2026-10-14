@@ -109,7 +109,9 @@ public final class PartMet {
             for (Tag tag : this.tags) {
                 String raw = tag.name().raw();
                 if (tag instanceof IntTag t && raw.length() > 1 && isGapName(raw)) {
-                    long[] pair = pairs.computeIfAbsent(raw.substring(1), k -> new long[] {-1, -1});
+                    // The names are numbers: "01" and "1" name one pair.
+                    String number = raw.substring(1).replaceFirst("^0+(?=.)", "");
+                    long[] pair = pairs.computeIfAbsent(number, k -> new long[] {-1, -1});
                     pair[raw.charAt(0) == FileTag.GAPSTART ? 0 : 1] = t.value();
                 }
             }
