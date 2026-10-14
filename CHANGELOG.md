@@ -112,7 +112,7 @@ All notable changes to this project are documented here. The format follows
   also taken from an eMule profile.
 - Scheduler: rules by weekday and time that change the transfer limits and connections; edited
   in the options and kept in `scheduler.properties`.
-- Port forwarding with UPnP (off by default): the router is found on the local network, ports are
+- Port forwarding with UPnP (on by default): the router is found on the local network, ports are
   mapped and renewed while njMule runs and removed on exit.
 - Totals over all sessions (bytes, sessions, time) in `statistics.properties`.
 - Messages with other clients and their CAPTCHA check, both ways, and friends kept in
@@ -255,7 +255,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- UPnP port forwarding is on by default; tests never use it.
 - The log names each port the router refuses to forward over UPnP, with the router's reason.
 - The server list has eMule's columns (ping, soft and hard file limits, version, LowID users,
   obfuscation, static) and server menu: connect, priority, static list, copy and paste of ed2k
