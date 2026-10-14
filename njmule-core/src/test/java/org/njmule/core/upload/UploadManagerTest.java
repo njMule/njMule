@@ -83,6 +83,7 @@ class UploadManagerTest {
     private static final Duration WAIT = ScriptedDownloader.WAIT;
     private static final Duration SILENCE = Duration.ofMillis(500);
     private static final long LOW_ID = 1234;
+    private static final Hash16 FAULTY = Hash16.parseHex("fa".repeat(16));
 
     @TempDir
     Path dir;
@@ -253,8 +254,9 @@ class UploadManagerTest {
         SharedFiles.SharedFile file = this.share("kept.txt", random(3000, 9));
         this.start();
         ScriptedDownloader first = this.client(1, 0, 0);
+        ScriptedDownloader second = this.client(2, 0, 0);
         this.ask(first, file.hash());
-        this.ask(this.client(2, 0, 0), file.hash());
+        this.ask(second, file.hash());
         this.ask(this.client(3, 0, 0), file.hash());
         assertThat(this.onLoop(this.manager::waitingCount)).isEqualTo(1);
 
@@ -271,6 +273,10 @@ class UploadManagerTest {
         assertThat(ScriptedDownloader.connect(this.port, this.hello(10, 0, 0)).closedWithin(WAIT))
                 .as("a banned address is turned away")
                 .isTrue();
+        second.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
+        assertThat(second.poll(SILENCE))
+                .as("its slot runs to its end, but it asks in vain")
+                .isEmpty();
 
         this.advance(UploadManager.BAN_TIME);
         this.await(
@@ -298,6 +304,10 @@ class UploadManagerTest {
             waiting.close();
             first.close();
 
+            // Another client answers at its address first, and slowly: the call is tried again.
+            Thread.sleep(300);
+            ScriptedDownloader impostor = ScriptedDownloader.acceptCall(listening, this.hello(7, 0, 0));
+            assertThat(impostor.closedWithin(WAIT)).isTrue();
             ScriptedDownloader called = ScriptedDownloader.acceptCall(listening, hello);
             this.resources.add(called);
             assertThat(called.until(Opcodes.Client.ACCEPTUPLOADREQ)).isNotNull();
@@ -356,8 +366,16 @@ class UploadManagerTest {
         assertThat(status.partCount()).isEqualTo(2);
         assertThat(status.has(0)).isFalse();
         assertThat(status.has(1)).isTrue();
+        client.send(blocks(download.hash(), Ed2k.PARTSIZE, Ed2k.PARTSIZE + 10));
         client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, download.hash()));
-        client.until(Opcodes.Client.ACCEPTUPLOADREQ);
+        assertThat(names(client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
+                .as("no blocks before the slot")
+                .doesNotContain("SENDINGPART");
+        client.send(blocks(hashOf(78), 0, 10));
+        client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, download.hash()));
+        assertThat(names(client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
+                .as("asked again, the slot is given again; nothing of another file")
+                .doesNotContain("SENDINGPART");
         client.send(new ClientMessages.RequestParts(
                         download.hash(),
                         List.of(
@@ -425,6 +443,41 @@ class UploadManagerTest {
         client.send(blocks(file.hash(), 1000, 2000));
         assertThat(client.closedWithin(WAIT)).isTrue();
         this.await("the slot gone", () -> this.manager.slotCount() == 0);
+    }
+
+    @Test
+    void aFaultLookingAFileUpEndsOnlyThatClientsSession() throws Exception {
+        SharedFiles.SharedFile file = this.share("fine.txt", random(3000, 14));
+        this.start();
+        ScriptedDownloader unlucky = this.client(1, 0, 0);
+        ScriptedDownloader other = this.client(2, 0, 0);
+
+        unlucky.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, FAULTY));
+
+        assertThat(unlucky.closedWithin(WAIT)).isTrue();
+        assertThat(this.ask(other, file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+    }
+
+    @Test
+    void aDownloadOfWholePartsTellsItsEmptyLastPartToo() throws Exception {
+        byte[] second = random((int) Ed2k.PARTSIZE, 15);
+        List<Hash16> parts =
+                List.of(Hash16.parseHex("c2".repeat(16)), Ed2k.md4(second, 0, second.length), Ed2k.EMPTY_PART_HASH);
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                "whole.bin", 2 * Ed2k.PARTSIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of());
+        DownloadQueue.Download download = this.downloadLastPart(link, second);
+        this.start();
+        ScriptedDownloader client = this.client(1, 0, 0);
+
+        client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, download.hash()));
+
+        ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(client.until(Opcodes.Client.FILESTATUS));
+        assertThat(status.partCount()).isEqualTo(3);
+        assertThat(status.has(0)).isFalse();
+        assertThat(status.has(1)).isTrue();
+        assertThat(status.has(2))
+                .as("the empty part a whole number of parts ends with")
+                .isTrue();
     }
 
     @Test
@@ -562,7 +615,12 @@ class UploadManagerTest {
         DownloadQueue queue = this.downloads;
         this.manager = new UploadManager(
                 this.loop,
-                hash -> Optional.ofNullable(this.shared.get(hash)),
+                hash -> {
+                    if (hash.equals(FAULTY)) {
+                        throw new IllegalStateException("cannot look " + hash + " up");
+                    }
+                    return Optional.ofNullable(this.shared.get(hash));
+                },
                 hash -> Optional.empty(),
                 (hash, proven) -> Optional.of(List.copyOf(this.shared.values())),
                 hash -> false,
