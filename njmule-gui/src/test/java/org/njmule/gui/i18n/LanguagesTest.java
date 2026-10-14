@@ -71,6 +71,7 @@ class LanguagesTest {
                 arguments(Locale.ITALIAN, "Italiano", "Lingua"),
                 arguments(Locale.of("hu"), "Magyar", "Nyelv"),
                 arguments(Locale.of("nl"), "Nederlands", "Taal"),
+                arguments(Locale.of("nb"), "Norsk bokmål", "Språk"),
                 arguments(Locale.of("pl"), "Polski", "Język"),
                 arguments(Locale.of("pt", "BR"), "Português (Brasil)", "Idioma"),
                 arguments(Locale.of("pt", "PT"), "Português (Portugal)", "Linguagem"),
@@ -103,6 +104,7 @@ class LanguagesTest {
                 Locale.ITALIAN,
                 Locale.of("hu"),
                 Locale.of("nl"),
+                Locale.of("nb"),
                 Locale.of("pl"),
                 Locale.of("pt", "BR"),
                 Locale.of("pt", "PT"),
@@ -155,6 +157,10 @@ class LanguagesTest {
         "it, it",
         "hu-HU, hu",
         "nl-BE, nl",
+        "nb-NO, nb",
+        "no, nb",
+        "no-NO, nb",
+        "nn-NO, nb",
         "pl-PL, pl",
         "pt-BR, pt-BR",
         "pt-PT, pt-PT",
@@ -190,6 +196,16 @@ class LanguagesTest {
         this.thenTheTextsAreIn(Locale.forLanguageTag(chosen));
     }
 
+    @Test
+    void nynorskInTheOldJavaFormOfNorwegianGetsBokmal() {
+        this.givenTheSystemLocale(Locale.of("no", "NO", "NY"));
+
+        this.whenTheTextsOfTheSystemLanguageAreLoaded();
+
+        this.thenTheTextsAreIn(Locale.of("nb"));
+        this.thenTheLanguageIsNamed("Norsk bokmål");
+    }
+
     @ParameterizedTest
     @MethodSource("translations")
     void aTranslationHasEveryNjmuleTextWithTheSamePlaceholders(Locale language) throws IOException {
@@ -215,6 +231,10 @@ class LanguagesTest {
 
     private void givenTheSystemLanguage(String tag) {
         this.system = Locale.forLanguageTag(tag);
+    }
+
+    private void givenTheSystemLocale(Locale locale) {
+        this.system = locale;
     }
 
     private void givenTheEnglishTexts() throws IOException {

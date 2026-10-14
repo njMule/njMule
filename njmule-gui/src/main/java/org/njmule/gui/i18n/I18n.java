@@ -42,6 +42,7 @@ public final class I18n {
             Locale.ITALIAN,
             Locale.of("hu"),
             Locale.of("nl"),
+            Locale.of("nb"),
             Locale.of("pl"),
             Locale.of("pt", "BR"),
             Locale.of("pt", "PT"),
@@ -59,6 +60,8 @@ public final class I18n {
     private static final Set<String> TRADITIONAL_REGIONS = Set.of("TW", "HK", "MO");
     private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
+    // Norwegian that names no written standard, and Nynorsk, get the Bokmål translation.
+    private static final Set<String> OTHER_NORWEGIAN = Set.of("no", "nn");
 
     private final Locale locale;
     private final ResourceBundle emule;
@@ -76,6 +79,9 @@ public final class I18n {
     /** The texts of {@code locale}'s language, or English when there is no translation. */
     public static I18n of(Locale locale) {
         Objects.requireNonNull(locale, "locale");
+        if (OTHER_NORWEGIAN.contains(locale.getLanguage())) {
+            return new I18n(Locale.of("nb"));
+        }
         for (Locale language : LANGUAGES) {
             if (language.getLanguage().equals(locale.getLanguage()) && sameWriting(language, locale)) {
                 return new I18n(language);
