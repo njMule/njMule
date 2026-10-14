@@ -101,6 +101,8 @@ public final class FakeServer implements AutoCloseable {
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
     private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
     private volatile Function<SearchExpr, List<FileEntry>> answers;
+    private volatile boolean hasMore;
+    private final List<SearchExpr> moreRequests = new CopyOnWriteArrayList<>();
 
     // The UDP socket listens on the TCP port + 4 of the same address.
     private FakeServer(Config config, ServerSocket tcp) throws SocketException {
@@ -176,6 +178,16 @@ public final class FakeServer implements AutoCloseable {
     /** Answers TCP searches with what {@code answers} finds for each, instead of the fixed results. */
     public void answerSearches(Function<SearchExpr, List<FileEntry>> answers) {
         this.answers = Objects.requireNonNull(answers, "answers");
+    }
+
+    /** Whether TCP search answers say that more results can be asked for. */
+    public void announceMoreResults(boolean more) {
+        this.hasMore = more;
+    }
+
+    /** The searches whose more results clients asked for: always the last one asked, as a server keeps no other. */
+    public List<SearchExpr> moreRequests() {
+        return List.copyOf(this.moreRequests);
     }
 
     public List<SearchExpr> udpSearches() {
@@ -308,7 +320,12 @@ public final class FakeServer implements AutoCloseable {
         if (request.opcode() == Opcodes.Server.SEARCHREQUEST.code()) {
             SearchExpr expression = SearchTreeCodec.read(request.reader());
             this.searches.add(expression);
-            return List.of(new ServerMessages.SearchResults(this.answers.apply(expression), false).encode());
+            return List.of(new ServerMessages.SearchResults(this.answers.apply(expression), this.hasMore).encode());
+        }
+        if (request.opcode() == Opcodes.Server.QUERY_MORE_RESULT.code() && !this.searches.isEmpty()) {
+            SearchExpr last = this.searches.getLast();
+            this.moreRequests.add(last);
+            return List.of(new ServerMessages.SearchResults(this.answers.apply(last), false).encode());
         }
         return List.of();
     }

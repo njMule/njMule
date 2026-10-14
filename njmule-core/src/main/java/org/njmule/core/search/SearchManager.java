@@ -108,7 +108,7 @@ public final class SearchManager {
     // Searches the connected server has yet to answer, in the order we asked: its answers carry no
     // search id, so a late answer must not land in the search asked after it.
     private final Deque<Search> serverQueue = new ArrayDeque<>();
-    // The search that a new one replaces on the server.
+    // The last search sent to the server, the only one whose results it can continue.
     private Search serverSearch;
 
     public SearchManager(
@@ -127,7 +127,8 @@ public final class SearchManager {
     }
 
     /**
-     * Starts a search on the connected server; a search still waiting for it ends.
+     * Starts a search on the connected server; the server and global searches still open end, as server answers carry
+     * no search id to tell them apart.
      *
      * @throws SearchSyntaxException for an invalid expression
      * @throws IllegalStateException when no server is connected
@@ -139,8 +140,10 @@ public final class SearchManager {
         }
         ServerMessages.IdChange id =
                 this.session.id().orElseThrow(() -> new IllegalStateException("not connected to a server"));
-        if (this.serverSearch != null && this.serverQueue.contains(this.serverSearch)) {
-            this.end(this.serverSearch);
+        for (Search open : List.copyOf(this.searches.values())) {
+            if (open.scope != SearchRequest.Scope.KAD) {
+                this.end(open);
+            }
         }
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         this.searches.put(search.id, search);
@@ -187,10 +190,14 @@ public final class SearchManager {
         return best;
     }
 
-    /** Asks the server for more results; {@code false} if it has none or the limit is reached. */
+    /**
+     * Asks the server for more results; {@code false} if it has none, the limit is reached or the server has taken a
+     * newer search since, whose results it would continue.
+     */
     public boolean more(SearchId id) {
         Search search = this.searches.get(id);
         if (search == null
+                || search != this.serverSearch
                 || search.ended
                 || !search.moreAvailable
                 || search.moreRequests >= MAX_MORE_REQUESTS
@@ -274,7 +281,9 @@ public final class SearchManager {
         search.globalStarted = true;
         Optional<ServerList.Address> connected = this.session.server().map(ServerList::addressOf);
         for (ServerMet.Server server : this.servers.candidates()) {
-            if (connected.isEmpty() || !connected.get().equals(ServerList.addressOf(server))) {
+            // A server listens for UDP on its TCP port + 4, which does not exist above 65531.
+            boolean hasUdpPort = server.port() + ServerUdp.PORT_OFFSET <= 0xFFFF;
+            if (hasUdpPort && (connected.isEmpty() || !connected.get().equals(ServerList.addressOf(server)))) {
                 search.udpQueue.add(server);
             }
         }
