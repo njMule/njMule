@@ -255,11 +255,23 @@ public final class SharedFiles implements AutoCloseable {
             return Optional.empty();
         }
         String name = PathSanitizer.fileName(newName);
-        Path target = file.path().resolveSibling(name);
-        if (name.isEmpty() || target.equals(file.path())) {
+        if (name.isEmpty() || name.equals(file.name())) {
             return Optional.of(file);
         }
-        Files.move(file.path(), target);
+        Path target = file.path().resolveSibling(name);
+        if (target.equals(file.path())) {
+            // Only the case changes, which a system that ignores it does not see as a move: through another name.
+            Path step = AtomicFiles.tmpPath(target);
+            Files.move(file.path(), step);
+            try {
+                Files.move(step, target);
+            } catch (IOException e) {
+                Files.move(step, file.path());
+                throw e;
+            }
+        } else {
+            Files.move(file.path(), target);
+        }
         SharedFile renamed = new SharedFile(
                 target, name, file.size(), file.hash(), file.partHashes(), file.aichHash(), mtime(target));
         KnownMet.KnownFile known = this.known.remove(key(file));

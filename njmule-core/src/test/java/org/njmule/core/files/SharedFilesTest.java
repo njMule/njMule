@@ -34,6 +34,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -428,6 +429,30 @@ class SharedFilesTest {
         assertThat(this.onLoop(() -> shares.get(hash)))
                 .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(incoming.resolve("renamed.bin")));
         assertThat(this.onLoop(() -> shares.aichTree(hash))).isPresent();
+        this.onLoop(() -> {
+            shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void renamingChangesTheCaseOfANameToo() throws Exception {
+        Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        byte[] a = bytes(3000, 34);
+        Files.write(incoming.resolve("movie.avi"), a);
+        Hash16 hash = Ed2k.md4(a, 0, a.length);
+        SharedFiles shares = this.open(config, incoming);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared movie.avi");
+
+        assertThat(this.onLoop(() -> shares.rename(hash, "Movie.avi")))
+                .map(SharedFiles.SharedFile::name)
+                .contains("Movie.avi");
+
+        try (Stream<Path> names = Files.list(incoming)) {
+            assertThat(names.map(p -> p.getFileName().toString())).containsExactly("Movie.avi");
+        }
+        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("Movie.avi");
         this.onLoop(() -> {
             shares.close();
             return null;
