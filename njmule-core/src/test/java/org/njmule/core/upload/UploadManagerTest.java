@@ -107,7 +107,10 @@ class UploadManagerTest {
     private UploadManager manager;
     private int port;
     private final List<String> udpChecks = new CopyOnWriteArrayList<>();
+    private final List<ScriptedDownloader> slotHolders = new ArrayList<>();
     private ScriptedDownloader client;
+    private SharedFiles.SharedFile file;
+    private Packet answer;
 
     @AfterEach
     void stop() throws Exception {
@@ -617,6 +620,51 @@ class UploadManagerTest {
     private void thenKadHearsOfTheUdpTest(String request) throws Exception {
         this.await("the UDP test request", () -> !this.udpChecks.isEmpty());
         assertThat(this.udpChecks).containsExactly(request);
+    }
+
+    @Test
+    void aFirewalledClientWhoseTurnCameWhileItWasAwayGetsASlotWhenItAsksAgain() throws Exception {
+        this.givenTwoSlotsBusyUnderALimit();
+        this.givenAFirewalledClientThatWaitedAndLeft();
+        this.givenASlotFreedWhileItWasAway();
+
+        this.whenTheFirewalledClientAsksAgain();
+
+        this.thenItGetsASlot();
+    }
+
+    private void givenTwoSlotsBusyUnderALimit() throws Exception {
+        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
+        this.file = this.share("for-all.bin", random((int) UploadSession.MAX_BLOCK, 16));
+        this.start();
+        for (int seed = 1; seed <= 2; seed++) {
+            ScriptedDownloader slot = this.client(seed, 0, 0);
+            assertThat(this.ask(slot, this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+            slot.send(blocks(this.file.hash(), 0, UploadSession.MAX_BLOCK));
+            this.slotHolders.add(slot);
+        }
+    }
+
+    private void givenAFirewalledClientThatWaitedAndLeft() throws Exception {
+        ScriptedDownloader firewalled = this.client(this.hello(3, LOW_ID, 0));
+        assertThat(rank(this.ask(firewalled, this.file.hash()))).isEqualTo(1);
+        firewalled.close();
+        this.advance(UploadManager.MIN_REQUEST_TIME.plusMinutes(1));
+    }
+
+    private void givenASlotFreedWhileItWasAway() throws Exception {
+        this.slotHolders.getFirst().close();
+        this.await(
+                "the firewalled client called on its next request",
+                () -> this.manager.describe().startsWith("waiting 1, 1 called when they ask"));
+    }
+
+    private void whenTheFirewalledClientAsksAgain() throws Exception {
+        this.answer = this.ask(this.client(this.hello(3, LOW_ID, 0)), this.file.hash());
+    }
+
+    private void thenItGetsASlot() {
+        assertThat(this.answer.opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

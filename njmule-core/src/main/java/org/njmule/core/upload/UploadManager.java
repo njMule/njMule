@@ -148,6 +148,7 @@ public final class UploadManager implements AutoCloseable {
         private long lastAsk;
         private int bad;
         private boolean connecting;
+        // A LowID we cannot call whose turn came while it was away: it gets a slot when it asks again.
         private boolean nextConnect;
         // Whether credits applied when it was last connected, from its address above.
         private boolean trusted;
@@ -316,7 +317,9 @@ public final class UploadManager implements AutoCloseable {
 
     /** Slots and waiting clients, for diagnostics. */
     public String describe() {
-        StringBuilder text = new StringBuilder("waiting " + this.waiting.size());
+        long called = this.waiting.values().stream().filter(c -> c.nextConnect).count();
+        StringBuilder text =
+                new StringBuilder("waiting " + this.waiting.size() + ", " + called + " called when they ask");
         for (Slot slot : this.slots) {
             text.append("\nslot ")
                     .append(slot.session.describe())
@@ -603,20 +606,30 @@ public final class UploadManager implements AutoCloseable {
         });
     }
 
+    // The best client we can reach gets the slot; a LowID that is not connected cannot be called, so when it would have
+    // been the best it gets a slot of its own on its next request.
     private void fillSlots(long now) {
         while (!this.waiting.isEmpty() && this.canOpenSlot(false)) {
             Client best = null;
             double bestScore = -1;
+            Client away = null;
+            double awayScore = -1;
             for (Client c : this.waiting.values()) {
-                boolean reachable = c.session != null && c.session.isOpen();
-                if (c.connecting || (!reachable && c.lowId)) {
+                if (c.connecting) {
                     continue;
                 }
                 double score = this.score(c, now);
-                if (score > bestScore) {
+                boolean reachable = !c.lowId || (c.session != null && c.session.isOpen());
+                if (reachable && score > bestScore) {
                     best = c;
                     bestScore = score;
+                } else if (!reachable && !c.nextConnect && score > awayScore) {
+                    away = c;
+                    awayScore = score;
                 }
+            }
+            if (away != null && awayScore > bestScore) {
+                away.nextConnect = true;
             }
             if (best == null) {
                 return;
@@ -635,6 +648,7 @@ public final class UploadManager implements AutoCloseable {
         Slot slot = new Slot(client, session, this.ticker.read());
         this.slots.add(slot);
         client.session = session;
+        client.nextConnect = false;
         session.setReadTimeout(SLOT_TIMEOUT);
         session.accept();
         logger.debug("Upload slot for {} ({})", session.address(), client.file.name());

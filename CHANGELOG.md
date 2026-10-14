@@ -410,6 +410,8 @@ All notable changes to this project are documented here. The format follows
 - Writes and part checks that end after a download was cancelled are ignored.
 - Upload slots that their clients leave idle go back to the queue, a slot sends the file its
   client switched to, and banned clients are refused everywhere while the ban lasts.
+- A firewalled client whose turn for an upload slot came while it was not connected gets a slot
+  when it asks again, instead of waiting behind every client we can reach.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.
