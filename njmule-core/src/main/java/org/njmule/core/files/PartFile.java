@@ -54,8 +54,10 @@ public final class PartFile {
 
     private static final Logger logger = LoggerFactory.getLogger(PartFile.class);
 
-    // njMule's own tag, which other clients skip: the parts that passed their check.
+    // njMule's own tags, which other clients skip: the parts that passed their check, and the place of the download in
+    // the order downloads were added.
     private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
+    private static final TagName ADDED_TAG = TagName.of("njm_added");
 
     /** Where a download stands. */
     public enum Status {
@@ -104,6 +106,7 @@ public final class PartFile {
     private Status status = Status.DOWNLOADING;
     private DownloadPriority priority = DownloadPriority.AUTO;
     private int category = Category.NONE;
+    private long added;
 
     private PartFile(
             int number,
@@ -170,6 +173,7 @@ public final class PartFile {
         }
         contents.downloadPriority().ifPresent(code -> file.priority = priority(code));
         contents.category().ifPresent(id -> file.category = Math.clamp(id, 0, Integer.MAX_VALUE));
+        file.added = Math.max(0, Tags.intValue(contents.tags(), ADDED_TAG).orElse(0));
         // Bit 0: first and last parts first, for a preview.
         file.previewFirst = (Tags.intValue(contents.tags(), FileTag.DL_PREVIEW).orElse(0) & 1) != 0;
         // Parts checked before are trusted only while the data file is as it was saved.
@@ -208,6 +212,9 @@ public final class PartFile {
         }
         if (this.category != Category.NONE) {
             tags.add(new Tag.IntTag(TagName.id(FileTag.CATEGORY), this.category));
+        }
+        if (this.added > 0) {
+            tags.add(new Tag.IntTag(ADDED_TAG, this.added));
         }
         this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
@@ -288,6 +295,15 @@ public final class PartFile {
             throw new IllegalArgumentException("no category has the id " + category);
         }
         this.category = category;
+    }
+
+    /** The place of the download in the order downloads were added, from 1; 0 when not known. */
+    public long added() {
+        return this.added;
+    }
+
+    public void setAdded(long added) {
+        this.added = added;
     }
 
     public Path dataFile() {

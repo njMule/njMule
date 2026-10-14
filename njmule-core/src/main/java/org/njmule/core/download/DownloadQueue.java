@@ -22,7 +22,9 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -182,6 +184,7 @@ public final class DownloadQueue implements AutoCloseable {
                 }
             }
         }
+        List<Download> loaded = new ArrayList<>();
         for (int number : numbers) {
             try {
                 PartFile file = PartFile.load(tempDir, number);
@@ -195,11 +198,20 @@ public final class DownloadQueue implements AutoCloseable {
                 }
                 Download download = queue.new Download(file, PartFileStorage.open(file.dataFile()));
                 queue.downloads.put(file.hash(), download);
-                // A crash may have come between writing a part and checking it.
-                queue.hashSetKnown(download);
+                loaded.add(download);
             } catch (IOException | RuntimeException e) {
                 logger.warn("Cannot load the download {}", PartFile.fileName(number), e);
             }
+        }
+        // In the order they were added, which their numbers, taken again once free, do not keep.
+        loaded.sort(Comparator.comparingLong(d -> d.file.added()));
+        queue.downloads.clear();
+        for (Download download : loaded) {
+            queue.downloads.put(download.hash(), download);
+        }
+        for (Download download : loaded) {
+            // A crash may have come between writing a part and checking it.
+            queue.hashSetKnown(download);
         }
         queue.saver = loop.scheduleRepeating("save downloads", SAVE_INTERVAL, SAVE_INTERVAL, queue::saveChanged);
         queue.checkSpace();
@@ -238,6 +250,7 @@ public final class DownloadQueue implements AutoCloseable {
                 link.partHashes());
         file.setCategory(category);
         file.setPriority(priority);
+        file.setAdded(this.nextAdded());
         file.save();
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.sources.addAll(link.sources());
@@ -270,6 +283,7 @@ public final class DownloadQueue implements AutoCloseable {
             throw e;
         }
         file.rename(PathSanitizer.fileName(file.name()));
+        file.setAdded(this.nextAdded());
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.dirty = true;
         this.downloads.put(file.hash(), download);
@@ -589,6 +603,14 @@ public final class DownloadQueue implements AutoCloseable {
                 }
             }
         }
+    }
+
+    private long nextAdded() {
+        long last = 0;
+        for (Download download : this.downloads.values()) {
+            last = Math.max(last, download.file.added());
+        }
+        return last + 1;
     }
 
     private int nextNumber() {

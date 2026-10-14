@@ -271,6 +271,32 @@ class DownloadManagerTest {
     }
 
     @Test
+    void theFirstAddedStaysFirstAfterARestart() throws Exception {
+        DownloadManager manager = this.manager();
+        Hash16 gone = Hash16.parseHex("e1".repeat(16));
+        Hash16 first = Hash16.parseHex("e2".repeat(16));
+        Hash16 second = Hash16.parseHex("e3".repeat(16));
+        this.onLoop(() -> {
+            manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
+            manager.add(Ed2kLink.FileLink.of("first.bin", 5000, first));
+            manager.cancel(gone);
+            // Takes the part file number the cancelled download left.
+            manager.add(Ed2kLink.FileLink.of("second.bin", 5000, second));
+            manager.pause(first);
+            manager.pause(second);
+            manager.close();
+            return null;
+        });
+
+        DownloadManager again = this.manager();
+
+        assertThat(this.onLoop(() -> again.resumeNext(Category.NONE, NextDownload.ANY)))
+                .map(DownloadInfo::hash)
+                .contains(first);
+        this.onLoop(() -> again.pause(first));
+    }
+
+    @Test
     void refusesSourcesNoClientCanHave() throws Exception {
         DownloadManager manager = this.manager();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|odd.bin|5000|" + "4a".repeat(16)
