@@ -747,7 +747,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(packet);
         Lookup lookup = this.lookups.get(answer.target());
         ToIntFunction<List<KadMessages.Entry>> sink = lookup == null ? null : this.resultSinks.get(lookup);
-        if (sink == null || lookup.isStopped()) {
+        // Only a node this very search was sent to answers it.
+        if (sink == null || lookup.isStopped() || !lookup.requestedFrom(peer.ip())) {
             return;
         }
         // Only usable results bring the lookup closer to its end: junk from one node must not stop it.
@@ -785,7 +786,7 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
         }
         KadMessages.PublishAnswer answer = KadMessages.PublishAnswer.decode(packet);
         Lookup lookup = this.lookups.get(answer.target());
-        if (lookup != null) {
+        if (lookup != null && lookup.requestedFrom(peer.ip())) {
             lookup.valueReceived(1);
         }
     }

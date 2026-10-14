@@ -95,6 +95,8 @@ final class Lookup {
     private final TreeMap<UInt128, KadMessages.Contact> tried = new TreeMap<>();
     private final Set<UInt128> responded = new HashSet<>();
     private final Set<UInt128> requested = new HashSet<>();
+    // Addresses sent the search or publish: only they may answer it.
+    private final Set<Integer> requestedIps = new HashSet<>();
     private long lastAnswer;
     private int answers;
     private KadMessages.Contact reAsked;
@@ -121,6 +123,11 @@ final class Lookup {
 
     boolean isStopped() {
         return this.stopped;
+    }
+
+    /** Whether the node at {@code ip} was sent the search or publish. */
+    boolean requestedFrom(int ip) {
+        return this.requestedIps.contains(ip);
     }
 
     /** Values (search results or publish answers) received so far. */
@@ -247,6 +254,7 @@ final class Lookup {
             }
             if (this.responded.contains(c.id())) {
                 if (this.kind.value && e.getKey().top32() <= TOLERANCE && this.requested.add(c.id())) {
+                    this.requestedIps.add(c.ip());
                     this.requests.request(this, c);
                 }
                 this.possible.remove(e.getKey());
