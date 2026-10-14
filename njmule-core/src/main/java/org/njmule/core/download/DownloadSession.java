@@ -16,6 +16,7 @@
  */
 package org.njmule.core.download;
 
+import com.google.common.base.Ticker;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
 import com.google.common.collect.TreeRangeSet;
@@ -147,7 +148,10 @@ final class DownloadSession implements PeerLink.Role {
     /** A queued connection that stays silent this long is closed; our place in the queue stays. */
     static final Duration QUEUED_TIMEOUT = Duration.ofSeconds(60);
 
-    /** A source that gave us a slot but sends nothing for this long is dropped. */
+    /**
+     * A slot whose blocks bring no data for this long is left, whatever else the source sends; a silent connection
+     * closes after it too.
+     */
     static final Duration DATA_TIMEOUT = Duration.ofSeconds(100);
 
     /**
@@ -182,6 +186,7 @@ final class DownloadSession implements PeerLink.Role {
     }
 
     private final EngineLoop loop;
+    private final Ticker ticker;
     private final DownloadQueue queue;
     private DownloadQueue.Download download;
     // The downloads asked for on this connection, whose answers may still come after a swap to another.
@@ -207,9 +212,12 @@ final class DownloadSession implements PeerLink.Role {
     private final Set<Hash16> sourcesAsked = new HashSet<>();
     // The part whose AICH recovery data we asked for, or -1.
     private int aichAsked = -1;
+    // When the slot last made progress: blocks asked for, or data of them received.
+    private long progressAt;
 
     DownloadSession(
             EngineLoop loop,
+            Ticker ticker,
             DownloadQueue queue,
             DownloadQueue.Download download,
             InetSocketAddress address,
@@ -217,6 +225,7 @@ final class DownloadSession implements PeerLink.Role {
             PeerLinks links,
             Listener listener) {
         this.loop = Objects.requireNonNull(loop, "loop");
+        this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.queue = Objects.requireNonNull(queue, "queue");
         this.download = Objects.requireNonNull(download, "download");
         this.address = Objects.requireNonNull(address, "address");
@@ -359,6 +368,15 @@ final class DownloadSession implements PeerLink.Role {
             this.connection.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
         }
         this.end(Outcome.LATER, reason);
+    }
+
+    /** Leaves a slot whose blocks brought no data for {@link #DATA_TIMEOUT}, telling the source. */
+    void checkProgress(long now) {
+        if (this.state == State.DOWNLOADING
+                && !this.pending.isEmpty()
+                && now - this.progressAt >= DATA_TIMEOUT.toNanos()) {
+            this.close("no data for " + DATA_TIMEOUT.toSeconds() + " s");
+        }
     }
 
     /** The download changed (data written, a part found corrupt): ask for blocks if idle. */
@@ -640,6 +658,7 @@ final class DownloadSession implements PeerLink.Role {
             bytes += block.length();
         }
         this.listener.requested(this, bytes);
+        this.progressAt = this.ticker.read();
         while (ranges.size() < ClientMessages.BLOCKS_PER_REQUEST) {
             ranges.add(new ClientMessages.Range(0, 0));
         }
@@ -661,6 +680,8 @@ final class DownloadSession implements PeerLink.Role {
         if (block.inflater == null) {
             block.inflater = new BlockInflater(block.block.start(), Math.toIntExact(block.block.length()));
         }
+        // zlib may hold the output of a chunk back: the chunk alone is progress.
+        this.progressAt = this.ticker.read();
         long position = block.inflater.position();
         byte[] chunk = part.chunk();
         byte[] data = block.inflater.inflate(chunk);
@@ -694,6 +715,7 @@ final class DownloadSession implements PeerLink.Role {
             logger.debug("Data {}-{} from {} was not requested", start, end, this.address);
             return;
         }
+        this.progressAt = this.ticker.read();
         this.queue.received(this.download, start, data);
         this.listener.received(this, data.length, transferred);
         target.missing.remove(Range.closedOpen(start, end));

@@ -979,7 +979,14 @@ public final class DownloadManager implements AutoCloseable {
         client.nextAsk = now + REASK_INTERVAL.toNanos();
         this.startAsking(client, source);
         DownloadSession session = new DownloadSession(
-                this.loop, this.queue, entry.download, address, this.ourHello, this.links, this.sessionEvents);
+                this.loop,
+                this.ticker,
+                this.queue,
+                entry.download,
+                address,
+                this.ourHello,
+                this.links,
+                this.sessionEvents);
         client.session = session;
         logger.debug("{} called us back for {}", address, entry.download.file().name());
         session.adopt(link, Optional.empty(), false);
@@ -1036,6 +1043,7 @@ public final class DownloadManager implements AutoCloseable {
             this.startAsking(client, source);
             DownloadSession session = new DownloadSession(
                     this.loop,
+                    this.ticker,
                     this.queue,
                     source.entry.download,
                     client.address,
@@ -1058,6 +1066,11 @@ public final class DownloadManager implements AutoCloseable {
         long now = this.ticker.read();
         int starting = 0;
         boolean preview = this.settings.get().previewFirst();
+        for (Client client : List.copyOf(this.clients.values())) {
+            if (client.session != null) {
+                client.session.checkProgress(now);
+            }
+        }
         for (Entry entry : this.entries.values()) {
             entry.download.file().previewAlways(preview);
         }
@@ -1224,6 +1237,7 @@ public final class DownloadManager implements AutoCloseable {
             this.startAsking(client, source);
             DownloadSession session = new DownloadSession(
                     this.loop,
+                    this.ticker,
                     this.queue,
                     source.entry.download,
                     client.address,

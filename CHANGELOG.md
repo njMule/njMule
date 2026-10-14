@@ -551,3 +551,5 @@ All notable changes to this project are documented here. The format follows
   to call back; with obfuscation disabled, sources that require it are no longer tried.
 - A block request in 32 bits whose end wrapped to 0 is read as ending at 4 GiB, so clients asking
   so for the block that ends there are served it.
+- A source that gave us a slot but sends no data of the blocks we asked for is left after 100
+  seconds with a cancel, even while it keeps sending other packets.

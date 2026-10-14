@@ -18,6 +18,7 @@ package org.njmule.core.download;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.base.Ticker;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -233,6 +234,7 @@ class DownloadSessionTest {
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), 0, 4662, "test", 0, 0, 0, 0, 0, 0);
         return new DownloadSession(
                 this.loop,
+                Ticker.systemTicker(),
                 this.queue,
                 this.download,
                 address,
