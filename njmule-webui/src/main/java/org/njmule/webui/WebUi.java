@@ -77,6 +77,7 @@ public final class WebUi implements AutoCloseable {
     private static final String TEXT = "text/plain; charset=utf-8";
     private static final String GET = "GET";
     private static final String POST = "POST";
+    private static final String HEAD = "HEAD";
     private static final String TRANSFERS = "/transfers";
     private static final String SEARCH = "/search";
     private static final String SERVERS = "/servers";
@@ -183,7 +184,8 @@ public final class WebUi implements AutoCloseable {
 
     private void route(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        String method = exchange.getRequestMethod();
+        // A HEAD gets the headers of the GET; send() leaves the body out.
+        String method = exchange.getRequestMethod().equals(HEAD) ? GET : exchange.getRequestMethod();
         if (!trustedHost(exchange.getRequestHeaders().getFirst("Host"), this.settings.lan())) {
             this.send(exchange, 421, TEXT, "Unknown host name.");
             return;
@@ -709,6 +711,12 @@ public final class WebUi implements AutoCloseable {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", type);
         securityHeaders(exchange.getResponseHeaders());
+        if (exchange.getRequestMethod().equals(HEAD)) {
+            // The length the GET would have, without the body the server refuses to send.
+            exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
+            exchange.sendResponseHeaders(status, -1);
+            return;
+        }
         exchange.sendResponseHeaders(status, bytes.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(bytes);

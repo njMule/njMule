@@ -88,6 +88,21 @@ class WebUiAnswersTest {
         assertThat(first.get().statusCode()).isEqualTo(401);
     }
 
+    @Test
+    void answersHeadWithTheHeadersOnly() throws Exception {
+        this.start();
+        HttpResponse<String> login = this.head("/login");
+        assertThat(login.statusCode()).isEqualTo(200);
+        assertThat(login.headers().firstValue("Content-Type")).hasValue("text/html; charset=utf-8");
+        assertThat(login.headers().firstValueAsLong("Content-Length").orElse(0)).isPositive();
+        assertThat(login.body()).isEmpty();
+
+        assertThat(this.head("/search").statusCode()).isEqualTo(303);
+        this.login();
+        assertThat(this.head("/search").statusCode()).isEqualTo(200);
+        assertThat(this.head("/nowhere").statusCode()).isEqualTo(404);
+    }
+
     private void start() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
@@ -109,6 +124,14 @@ class WebUiAnswersTest {
 
     private HttpResponse<String> get(String path) throws Exception {
         return this.http.send(this.request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> head(String path) throws Exception {
+        return this.http.send(
+                this.request(path)
+                        .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
