@@ -540,6 +540,10 @@ All notable changes to this project are documented here. The format follows
   downloaded again and is hashed after each block written into it, so it is whole again as soon as
   the bad block came again, without AICH; data for a range already whole is no longer written over
   it.
+- A source that sends corrupt data is found and banned for two hours, so it can no longer make a
+  part be downloaded again and again: njMule notes who sent each range, and a source is banned when
+  more than 32% of its data that AICH recovery or part checks proved was corrupt (a source that
+  alone sent failed parts only after three of them).
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

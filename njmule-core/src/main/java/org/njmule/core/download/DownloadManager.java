@@ -97,6 +97,11 @@ public final class DownloadManager implements AutoCloseable {
 
         /** The temp disk has dropped below, or come back above, the free space downloads need. */
         default void diskSpace(boolean enough) {}
+
+        /**
+         * The source at {@code ip} sent corrupt data: its sources were dropped, and it is not taken again for a while.
+         */
+        default void corruptSender(InetAddress ip) {}
     }
 
     /** The server connection, as far as the downloads use it. */
@@ -248,6 +253,9 @@ public final class DownloadManager implements AutoCloseable {
 
     // A player needs the header at the start of the file.
     private static final int PREVIEW_START = 16 * 1024;
+
+    /** A source found sending corrupt data is not taken again for so long. */
+    static final Duration CORRUPT_BAN = Duration.ofHours(2);
 
     /** How long a corrupt part waits for its AICH recovery data before it is downloaded again whole. */
     static final Duration RECOVERY_WAIT = Duration.ofSeconds(30);
@@ -419,6 +427,8 @@ public final class DownloadManager implements AutoCloseable {
     private long serverRequestsDue;
     // Sessions waiting for budget, first come first served.
     private final Set<DownloadSession> throttled = new LinkedHashSet<>();
+    // Sources found sending corrupt data (IPv4, host order), until when they are not taken.
+    private final Map<Integer, Long> corruptSenders = new HashMap<>();
 
     private DownloadManager(
             EngineLoop loop,
@@ -1538,9 +1548,32 @@ public final class DownloadManager implements AutoCloseable {
      * given by the user.
      */
     public int dropBlockedSources() {
+        return this.dropSources(this.blocked, "the IP filter blocks it");
+    }
+
+    /**
+     * Drops the sources at {@code ip}, which sent corrupt data, and keeps them out while {@link #CORRUPT_BAN} lasts.
+     */
+    void banCorruptSender(int ip) {
+        logger.info("{} sent corrupt data: its sources are dropped", Ipv4.format(ip));
+        this.corruptSenders.put(ip, this.ticker.read() + CORRUPT_BAN.toNanos());
+        this.dropSources(i -> i == ip, "it sent corrupt data");
+        this.listener.corruptSender(InetAddresses.fromInteger(ip));
+    }
+
+    private boolean isCorruptSender(int ip) {
+        Long until = this.corruptSenders.get(ip);
+        if (until != null && this.ticker.read() - until >= 0) {
+            this.corruptSenders.remove(ip);
+            return false;
+        }
+        return until != null;
+    }
+
+    private int dropSources(IntPredicate refused, String reason) {
         int dropped = 0;
         for (Client client : List.copyOf(this.clients.values())) {
-            if (!this.blocked.test(Ipv4.fromBytes(client.address.getAddress().getAddress()))) {
+            if (!refused.test(Ipv4.fromBytes(client.address.getAddress().getAddress()))) {
                 continue;
             }
             dropped += client.sources.size();
@@ -1548,7 +1581,7 @@ public final class DownloadManager implements AutoCloseable {
             Entry released = session == null ? null : client.current.entry;
             if (session != null) {
                 client.session = null;
-                session.close("the IP filter blocks it");
+                session.close(reason);
             }
             this.drop(client);
             // The blocks the dropped session held may come from the sources left.
@@ -1568,6 +1601,7 @@ public final class DownloadManager implements AutoCloseable {
         return port != 0
                 && Ipv4.isUnicastPublicCandidate(ip)
                 && !this.blocked.test(ip)
+                && !this.isCorruptSender(ip)
                 && !this.isFilteredLan(ip)
                 && !this.isOurAddress(ip, port);
     }
@@ -2178,6 +2212,13 @@ public final class DownloadManager implements AutoCloseable {
         @Override
         public void corrupt(DownloadQueue.Download download, int part) {
             DownloadManager.this.recover(download, part);
+        }
+
+        @Override
+        public void corruptSenders(DownloadQueue.Download download, Set<Integer> ips) {
+            for (int ip : ips) {
+                DownloadManager.this.banCorruptSender(ip);
+            }
         }
 
         @Override

@@ -21,6 +21,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
 import com.google.common.collect.TreeRangeSet;
 import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.SecureRandom;
@@ -59,6 +60,7 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -769,6 +771,11 @@ final class DownloadSession implements PeerLink.Role {
         return true;
     }
 
+    // Where the data comes from, for the corruption black box.
+    private int sourceIp() {
+        return this.address.getAddress() instanceof Inet4Address ip ? Ipv4.fromBytes(ip.getAddress()) : 0;
+    }
+
     // Data counts only inside a block we asked for and still wait for.
     private void accept(long start, byte[] data, int transferred) {
         if (this.state != State.DOWNLOADING || data.length == 0) {
@@ -787,7 +794,7 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         this.progressAt = this.ticker.read();
-        this.queue.received(this.download, start, data);
+        this.queue.received(this.download, start, data, this.sourceIp());
         this.listener.received(this, data.length, transferred);
         target.missing.remove(Range.closedOpen(start, end));
         if (target.missing.isEmpty()) {

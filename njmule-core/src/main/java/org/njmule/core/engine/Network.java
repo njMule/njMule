@@ -2377,6 +2377,13 @@ final class Network {
 
     private final class DownloadEvents implements DownloadManager.Listener {
         @Override
+        public void corruptSender(InetAddress ip) {
+            Network.this.uploads.ban(ip, "it sent corrupt data");
+            Network.this.userLog.log(
+                    LogLine.Level.WARNING, "Banned " + ip.getHostAddress() + " for two hours: it sent corrupt data");
+        }
+
+        @Override
         public void diskSpace(boolean enough) {
             if (enough) {
                 Network.this.userLog.log(

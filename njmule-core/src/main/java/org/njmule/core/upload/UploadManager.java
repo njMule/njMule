@@ -685,6 +685,11 @@ public final class UploadManager implements AutoCloseable {
         return dropped;
     }
 
+    /** Bans {@code ip} for {@link #BAN_TIME}, as when it sent corrupt data. */
+    public void ban(InetAddress ip, String reason) {
+        this.ban(ip, this.ticker.read(), reason);
+    }
+
     // Clients waiting from a banned address leave the queue; a slot it holds runs to its end, as
     // other clients may share the address.
     private void ban(InetAddress ip, long now, String reason) {

@@ -19,9 +19,11 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -40,6 +42,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.SourceInfo;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
@@ -56,6 +59,9 @@ class DownloadManagerTest {
     private static final int PORT = 4662;
     private static final int OUR_IP = Ipv4.of(198, 51, 100, 7);
     private static final int BLOCKED_IP = Ipv4.of(203, 0, 113, 9);
+    private static final int CORRUPT = Ipv4.of(192, 0, 2, 66);
+    private static final int HONEST = Ipv4.of(192, 0, 2, 67);
+    private static final Hash16 CORRUPT_FILE = Hash16.parseHex("c0".repeat(16));
 
     @TempDir
     Path dir;
@@ -65,6 +71,8 @@ class DownloadManagerTest {
     private DownloadManager manager;
     private List<Category> categories = List.of();
     private DownloadManager.Listener listener = new Quiet();
+    private final List<String> banned = new CopyOnWriteArrayList<>();
+    private Consumer<List<DownloadManager.KadSource>> kadFound;
 
     @AfterEach
     void stop() throws Exception {
@@ -75,6 +83,83 @@ class DownloadManagerTest {
             });
         }
         this.loop.close();
+    }
+
+    @Test
+    void aSourceFoundSendingCorruptDataIsDroppedAndReportedForABan() throws Exception {
+        this.givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
+
+        this.whenTheSourceIsFoundSendingCorruptData(CORRUPT);
+
+        this.thenItsSourcesAre(HONEST);
+        this.thenTheBannedAre(CORRUPT);
+    }
+
+    @Test
+    void aSourceFoundSendingCorruptDataIsNotTakenAgain() throws Exception {
+        this.givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
+        this.givenTheSourceWasFoundSendingCorruptData(CORRUPT);
+
+        this.whenKadFindsTheSourcesAgain(CORRUPT, HONEST);
+
+        this.thenItsSourcesAre(HONEST);
+    }
+
+    private void givenAPausedDownloadWithTheKadSources(int... ips) throws Exception {
+        List<String> banned = this.banned;
+        this.listener = new Quiet() {
+            @Override
+            public void corruptSender(InetAddress ip) {
+                banned.add(ip.getHostAddress());
+            }
+        };
+        DownloadManager manager = this.manager();
+        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("corrupt.bin", 5000, CORRUPT_FILE)));
+        this.kadFound = this.kadSearch.get(30, TimeUnit.SECONDS);
+        this.onLoop(() -> manager.pause(CORRUPT_FILE));
+        this.whenKadFindsTheSourcesAgain(ips);
+    }
+
+    private void givenTheSourceWasFoundSendingCorruptData(int ip) throws Exception {
+        this.whenTheSourceIsFoundSendingCorruptData(ip);
+    }
+
+    private void whenTheSourceIsFoundSendingCorruptData(int ip) throws Exception {
+        this.onLoop(() -> {
+            this.manager.banCorruptSender(ip);
+            return null;
+        });
+    }
+
+    private void whenKadFindsTheSourcesAgain(int... ips) throws Exception {
+        List<InetSocketAddress> addresses = new ArrayList<>();
+        for (int ip : ips) {
+            addresses.add(address(ip, PORT));
+        }
+        this.onLoop(() -> {
+            this.kadFound.accept(direct(addresses.toArray(InetSocketAddress[]::new)));
+            return null;
+        });
+    }
+
+    private void thenItsSourcesAre(int... ips) throws Exception {
+        List<String> expected = new ArrayList<>();
+        for (int ip : ips) {
+            expected.add(Ipv4.format(ip) + ":" + PORT);
+        }
+        assertThat(this.onLoop(() -> this.manager.sources().stream()
+                        .filter(s -> s.file().equals(CORRUPT_FILE))
+                        .map(SourceInfo::address)
+                        .toList()))
+                .containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    private void thenTheBannedAre(int... ips) {
+        List<String> expected = new ArrayList<>();
+        for (int ip : ips) {
+            expected.add(Ipv4.format(ip));
+        }
+        assertThat(this.banned).containsExactlyInAnyOrderElementsOf(expected);
     }
 
     @Test

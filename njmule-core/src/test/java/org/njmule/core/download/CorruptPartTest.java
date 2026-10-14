@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -36,6 +37,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.util.Ipv4;
 
 /** What becomes of a part that fails its check. */
 @Timeout(60)
@@ -44,6 +46,7 @@ class CorruptPartTest {
     private static final int SIZE = (int) Ed2k.PARTSIZE + 1000;
     // The fourth block of the first part.
     private static final int BAD_BLOCK = 3 * Ed2k.EMBLOCKSIZE;
+    private static final int SENDER = Ipv4.of(192, 0, 2, 33);
 
     @TempDir
     Path dir;
@@ -87,6 +90,17 @@ class CorruptPartTest {
         this.thenTheFinishedFileHoldsTheGoodData();
     }
 
+    @Test
+    void theSourceThatAloneSentACorruptPartThreeTimesIsReported() throws Exception {
+        this.givenADownloadOfTwoParts();
+        this.givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+        this.givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+
+        this.whenItsFirstPartArrivesFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+
+        this.thenTheSourceIsReportedForCorruptData(SENDER);
+    }
+
     private void givenADownloadOfTwoParts() throws Exception {
         new Random(11).nextBytes(this.data);
         List<Hash16> parts =
@@ -117,6 +131,11 @@ class CorruptPartTest {
                     public void corrupt(DownloadQueue.Download d, int part) {
                         CorruptPartTest.this.events.add("corrupt " + part);
                     }
+
+                    @Override
+                    public void corruptSenders(DownloadQueue.Download d, Set<Integer> ips) {
+                        CorruptPartTest.this.events.add("guilty " + ips);
+                    }
                 }));
         this.download = this.onLoop(() -> this.queue.add(new Ed2kLink.FileLink(
                 "two.bin", SIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of())));
@@ -130,6 +149,30 @@ class CorruptPartTest {
             return null;
         });
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("corrupt 0");
+    }
+
+    private void givenItsFirstPartArrivedFromWithABadByteIn(int ip, int offset) throws Exception {
+        this.whenItsFirstPartArrivesFromWithABadByteIn(ip, offset);
+        assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("corrupt 0");
+    }
+
+    private void whenItsFirstPartArrivesFromWithABadByteIn(int ip, int offset) throws Exception {
+        byte[] bad = Arrays.copyOf(this.data, (int) Ed2k.PARTSIZE);
+        bad[offset] ^= 1;
+        this.onLoop(() -> {
+            this.queue.received(this.download, 0, bad, ip);
+            return null;
+        });
+    }
+
+    private void thenTheSourceIsReportedForCorruptData(int ip) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        String event;
+        do {
+            event = this.events.poll(100, TimeUnit.MILLISECONDS);
+            assertThat(System.nanoTime()).as("reported").isLessThan(deadline);
+        } while (event == null || !event.startsWith("guilty"));
+        assertThat(event).isEqualTo("guilty " + Set.of(ip));
     }
 
     private void givenTheBlockArrivedAgainAt(int start) throws Exception {
