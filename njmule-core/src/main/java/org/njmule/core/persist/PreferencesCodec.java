@@ -103,6 +103,7 @@ public final class PreferencesCodec {
         boolKey("download.previewFirst", Preferences::previewFirst, Preferences.Builder::previewFirst);
         key("preview.player", Preferences::videoPlayer, Preferences.Builder::videoPlayer);
         key("preview.args", Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs);
+        key("comments.filter", Preferences::commentFilter, Preferences.Builder::commentFilter);
         key(
                 "share.visibleTo",
                 p -> p.sharedFilesVisibility().name(),

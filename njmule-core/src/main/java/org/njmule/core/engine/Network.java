@@ -53,6 +53,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
@@ -60,6 +61,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
@@ -77,6 +79,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.CancelledFiles;
+import org.njmule.core.files.FileComments;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.SharedFiles;
 import org.njmule.core.kad.KadIdentity;
@@ -184,6 +187,7 @@ final class Network {
     private final SpamFilter spam;
     private final CancelledFiles cancelled;
     private final SharedFilesBrowser browser;
+    private final FileComments comments;
     // The friend served first, for this run only; only friends get it.
     private Optional<Hash16> friendSlot = Optional.empty();
     private final ServerList servers;
@@ -277,6 +281,7 @@ final class Network {
         AtomicFiles.cleanupInterruptedWrite(this.spamFile);
         this.spam = loadSpam(this.spamFile);
         this.cancelled = loadCancelled(configDir.resolve(CancelledFiles.FILE_NAME), random);
+        this.comments = loadComments(configDir.resolve(FileComments.FILE_NAME));
         if (!preferences.get().rememberCancelledFiles()) {
             this.forgetCancelled();
         }
@@ -323,7 +328,8 @@ final class Network {
                             this.listenPort(),
                             prefs.minFreeSpaceMiB() * 1024L * 1024L,
                             prefs.filterLanAddresses(),
-                            prefs.previewFirst());
+                            prefs.previewFirst(),
+                            prefs.commentFilter());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
@@ -339,6 +345,7 @@ final class Network {
                 hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
                 hash -> this.shares == null ? Optional.empty() : this.shares.aichTree(hash),
                 this::visibleSharedFiles,
+                hash -> this.comments.get(hash),
                 this.downloads::find,
                 this.downloads::exchangeable,
                 this::ourHello,
@@ -1243,6 +1250,8 @@ final class Network {
                 kadPort,
                 1 << Hello.MISC1_AICH_SHIFT
                         | Hello.MISC1_UNICODE
+                        // Comments, version 1.
+                        | 1 << 4
                         | Hello.MISC1_DATA_COMPRESSION
                         | IdentityHandshake.SUPPORTED << 16
                         // Clients do not ask for files that nobody may see.
@@ -1277,6 +1286,18 @@ final class Network {
     }
 
     /** The state of Kad, empty when it does not run. */
+    Optional<FileComment> fileComment(Hash16 file) {
+        return this.comments.get(file);
+    }
+
+    void setFileComment(Hash16 file, FileComment comment) throws IOException {
+        this.comments.set(file, comment);
+    }
+
+    List<PeerComment> peerComments(Hash16 download) {
+        return this.downloads.comments(download);
+    }
+
     Optional<Hash16> friendSlot() {
         return this.friendSlot;
     }
@@ -1557,6 +1578,15 @@ final class Network {
             this.servers.save(this.serverMet);
         } catch (IOException e) {
             logger.warn("Cannot save {}", this.serverMet, e);
+        }
+    }
+
+    private static FileComments loadComments(Path file) {
+        try {
+            return FileComments.load(file);
+        } catch (IOException e) {
+            logger.warn("Cannot read {}, no file comments", file, e);
+            return FileComments.empty(file);
         }
     }
 

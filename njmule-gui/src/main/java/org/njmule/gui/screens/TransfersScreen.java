@@ -67,6 +67,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ClientFilesDialog;
+import org.njmule.gui.dialogs.CommentDialog;
 import org.njmule.gui.infra.Preview;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
@@ -169,6 +170,8 @@ public final class TransfersScreen implements Screen {
         html.setOnAction(e -> this.copyHtml());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
+        MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"));
+        comments.setOnAction(e -> this.commentSelected());
         MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"));
         preview.setOnAction(e -> this.previewSelected());
         CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
@@ -183,6 +186,7 @@ public final class TransfersScreen implements Screen {
                 new SeparatorMenuItem(),
                 preview,
                 previewFirst,
+                comments,
                 this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
                 category,
                 new SeparatorMenuItem(),
@@ -229,6 +233,7 @@ public final class TransfersScreen implements Screen {
             category.getItems().setAll(this.categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
             preview.setDisable(selected.size() != 1 || selected.getFirst().completed() == 0);
+            comments.setDisable(selected.size() != 1);
             previewFirst.setSelected(!selected.isEmpty() && selected.stream().allMatch(DownloadInfo::previewFirst));
         });
         this.categoryBar.getStyleClass().add("category-bar");
@@ -439,6 +444,14 @@ public final class TransfersScreen implements Screen {
 
     void cancel(List<DownloadInfo> selected) {
         selected.forEach(d -> this.gui.model().cancel(d.hash()));
+    }
+
+    void commentSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (selected.size() == 1) {
+            DownloadInfo d = selected.getFirst();
+            new CommentDialog(this.gui, this.downloads.getScene().getWindow(), d.hash(), d.name(), true).show();
+        }
     }
 
     // The player of the settings shows the data downloaded so far.

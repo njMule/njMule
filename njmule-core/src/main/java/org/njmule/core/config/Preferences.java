@@ -80,7 +80,8 @@ public record Preferences(
         SharedFilesVisibility sharedFilesVisibility,
         boolean previewFirst,
         String videoPlayer,
-        String videoPlayerArgs) {
+        String videoPlayerArgs,
+        String commentFilter) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -111,6 +112,8 @@ public record Preferences(
     public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
 
     public static final int MAX_MESSAGE_FILTER = 4096;
+    /** File comments holding one of these words, apart by {@code |}, are left out. */
+    public static final String DEFAULT_COMMENT_FILTER = "http://|https://|ftp://|www.|ftp.";
     /** Incoming connections taken in five seconds at most. */
     public static final int DEFAULT_NEW_CONNECTIONS = 20;
 
@@ -154,6 +157,10 @@ public record Preferences(
         videoPlayer = Objects.requireNonNull(videoPlayer, "videoPlayer").strip();
         videoPlayerArgs =
                 Objects.requireNonNull(videoPlayerArgs, "videoPlayerArgs").strip();
+        Objects.requireNonNull(commentFilter, "commentFilter");
+        if (commentFilter.length() > MAX_MESSAGE_FILTER) {
+            throw new IllegalArgumentException("commentFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
+        }
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
@@ -207,7 +214,8 @@ public record Preferences(
                 SharedFilesVisibility.NOBODY,
                 false,
                 "",
-                "");
+                "",
+                DEFAULT_COMMENT_FILTER);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -286,6 +294,7 @@ public record Preferences(
         private boolean previewFirst;
         private String videoPlayer;
         private String videoPlayerArgs;
+        private String commentFilter;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -334,6 +343,7 @@ public record Preferences(
             this.previewFirst = p.previewFirst;
             this.videoPlayer = p.videoPlayer;
             this.videoPlayerArgs = p.videoPlayerArgs;
+            this.commentFilter = p.commentFilter;
         }
 
         public Builder nick(String value) {
@@ -595,6 +605,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder commentFilter(String value) {
+            this.commentFilter = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -643,7 +658,8 @@ public record Preferences(
                     this.sharedFilesVisibility,
                     this.previewFirst,
                     this.videoPlayer,
-                    this.videoPlayerArgs);
+                    this.videoPlayerArgs,
+                    this.commentFilter);
         }
     }
 }

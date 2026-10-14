@@ -40,7 +40,9 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
@@ -129,6 +131,33 @@ class PeerTransferTest {
                 });
     }
 
+    @Test
+    void aDownloaderHearsWhatTheUploaderSaysOfTheFile() throws Exception {
+        Path uploaderRoot = this.dir.resolve("commenting");
+        Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
+        Files.write(incoming.resolve("song.mp3"), new byte[3_000_000]);
+        NjMuleEngine uploader = this.engine(uploaderRoot, "limits.uploadKiBps=1" + System.lineSeparator());
+        SharedFileInfo shared = awaitShared(uploader);
+        FileComment comment = FileComment.of("A fine song", 4);
+        uploader.setFileComment(shared.hash(), comment).get(10, TimeUnit.SECONDS);
+        assertThat(uploader.fileComment(shared.hash()).get(10, TimeUnit.SECONDS))
+                .contains(comment);
+
+        NjMuleEngine downloader = this.engine(this.dir.resolve("listening"));
+        Ed2kLink.FileLink link =
+                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri() + "|sources,127.0.0.1:"
+                        + uploader.preferences().tcpPort() + "|/");
+        downloader.addDownload(link).get(10, TimeUnit.SECONDS);
+
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        List<PeerComment> heard = List.of();
+        while (heard.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+            heard = downloader.peerComments(shared.hash()).get(10, TimeUnit.SECONDS);
+        }
+        assertThat(heard).singleElement().satisfies(c -> assertThat(c.comment()).isEqualTo(comment));
+    }
+
     private static ClientsMet.Credit onlyCredit(Path root) throws IOException {
         List<ClientsMet.Credit> credits =
                 ClientsMet.read(Files.readAllBytes(root.resolve("config").resolve("clients.met")));
@@ -206,13 +235,17 @@ class PeerTransferTest {
     }
 
     private NjMuleEngine engine(Path root) throws IOException {
+        return this.engine(root, "");
+    }
+
+    private NjMuleEngine engine(Path root, String extra) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
         int port;
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n");
+        Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
         return engine;

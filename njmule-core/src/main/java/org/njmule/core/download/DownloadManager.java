@@ -16,6 +16,7 @@
  */
 package org.njmule.core.download;
 
+import com.google.common.base.Splitter;
 import com.google.common.base.Ticker;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
@@ -32,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,8 +47,10 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
@@ -117,6 +121,7 @@ public final class DownloadManager implements AutoCloseable {
      * @param minFreeSpace in bytes, 0 for none
      * @param filterLan whether sources at LAN addresses are left out
      * @param previewFirst whether every playable download fetches its first and last parts first
+     * @param commentFilter words, apart by {@code |}, that leave the sources' comments holding them out
      */
     public record Settings(
             ObfuscationMode obfuscation,
@@ -124,7 +129,8 @@ public final class DownloadManager implements AutoCloseable {
             int listenPort,
             long minFreeSpace,
             boolean filterLan,
-            boolean previewFirst) {
+            boolean previewFirst,
+            String commentFilter) {
 
         public Settings(
                 ObfuscationMode obfuscation,
@@ -132,7 +138,7 @@ public final class DownloadManager implements AutoCloseable {
                 int listenPort,
                 long minFreeSpace,
                 boolean filterLan) {
-            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false);
+            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "");
         }
     }
 
@@ -146,6 +152,7 @@ public final class DownloadManager implements AutoCloseable {
     public static final Duration SERVER_SOURCES_INTERVAL = Duration.ofMinutes(20);
 
     private static final Duration TICK = Duration.ofSeconds(1);
+    private static final int MAX_COMMENTS = 100;
     private static final int MAX_STARTING = 8;
     private static final int MAX_FAILURES = 3;
     private static final int RATE_WINDOW = 5;
@@ -222,6 +229,8 @@ public final class DownloadManager implements AutoCloseable {
         private boolean sourcesEverAnswered;
         private long nextKadSearch;
         private int kadSearches;
+        // What the sources said of the file, the latest of each.
+        private final Map<InetSocketAddress, PeerComment> comments = new LinkedHashMap<>();
 
         Entry(DownloadQueue.Download download, long now) {
             this.download = download;
@@ -1114,6 +1123,36 @@ public final class DownloadManager implements AutoCloseable {
         return true;
     }
 
+    /** What the sources of the download said of the file. */
+    public List<PeerComment> comments(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        return entry == null ? List.of() : List.copyOf(entry.comments.values());
+    }
+
+    // A comment holding a word of the filter is left out, as spam; a source keeps its latest one.
+    private void commented(DownloadSession session, FileComment comment) {
+        Entry entry = this.entries.get(session.download().hash());
+        if (entry == null || comment.isEmpty()) {
+            return;
+        }
+        String text = comment.text().toLowerCase(Locale.ROOT);
+        for (String word : Splitter.on('|').split(this.settings.get().commentFilter())) {
+            String w = word.strip().toLowerCase(Locale.ROOT);
+            if (!w.isEmpty() && text.contains(w)) {
+                return;
+            }
+        }
+        String user = session.peer()
+                .flatMap(Hello::nick)
+                .orElse(session.address().getAddress().getHostAddress());
+        entry.comments.remove(session.address());
+        entry.comments.put(
+                session.address(), new PeerComment(user, entry.download.file().name(), comment));
+        while (entry.comments.size() > MAX_COMMENTS) {
+            entry.comments.remove(entry.comments.keySet().iterator().next());
+        }
+    }
+
     /** The data file of the download, which a player can show while it grows. */
     public Optional<Path> dataFile(Hash16 hash) {
         return Optional.ofNullable(this.entries.get(hash))
@@ -1208,6 +1247,11 @@ public final class DownloadManager implements AutoCloseable {
         @Override
         public void aichAnnounced(DownloadSession session, Hash20 master) {
             DownloadManager.this.aichAnnounced(session, master);
+        }
+
+        @Override
+        public void commented(DownloadSession session, FileComment comment) {
+            DownloadManager.this.commented(session, comment);
         }
 
         @Override

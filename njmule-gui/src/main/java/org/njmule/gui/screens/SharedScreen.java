@@ -41,10 +41,12 @@ import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
+import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.gui.dialogs.CommentDialog;
 import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.model.LiveList;
@@ -108,11 +110,13 @@ public final class SharedScreen implements Screen {
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));
         priority.getItems().setAll(this.priorityItems());
         MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
+        MenuItem comment = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Material2MZ.RATE_REVIEW, this::commentSelected);
         MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Material2AL.FOLDER_OPEN, this::openFolder);
-        ContextMenu menu = new ContextMenu(folder, rename, new SeparatorMenuItem(), priority, copy, html);
+        ContextMenu menu = new ContextMenu(folder, rename, comment, new SeparatorMenuItem(), priority, copy, html);
         menu.setOnShowing(e -> {
             int selected = Fx.selected(this.table).size();
             rename.setDisable(selected != 1);
+            comment.setDisable(selected != 1);
             folder.setDisable(selected != 1);
         });
         this.table.setContextMenu(menu);
@@ -220,6 +224,14 @@ public final class SharedScreen implements Screen {
                 .map(String::strip)
                 .filter(name -> !name.isEmpty() && !name.equals(file.name()))
                 .ifPresent(name -> this.gui.model().renameShared(file.hash(), name));
+    }
+
+    void commentSelected() {
+        List<SharedFileInfo> selected = Fx.selected(this.table);
+        if (selected.size() == 1) {
+            SharedFileInfo f = selected.getFirst();
+            new CommentDialog(this.gui, this.table.getScene().getWindow(), f.hash(), f.name(), false).show();
+        }
     }
 
     void openFolder() {

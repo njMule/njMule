@@ -169,6 +169,7 @@ public final class EmuleImporter {
         this.kept("emfriends.met", data -> FriendsMet.read(data).size() + " friends");
         this.kept("StoredSearches.met", data -> SearchFiles.readStored(data).size() + " searches");
         this.kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
+        this.kept("fileinfo.ini", data -> IniFile.parse(data).sections().size() + " file comments");
         this.kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
         this.kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
         // The addresses typed in eMule's boxes, which the interface offers again.
@@ -264,6 +265,9 @@ public final class EmuleImporter {
                         : v)
                 .ifPresent(b::messageFilter);
         ini.getBoolean(SECTION, "AdvancedSpamFilter").ifPresent(b::advancedSpamFilter);
+        ini.get(SECTION, "CommentFilter")
+                .filter(v -> v.length() <= Preferences.MAX_MESSAGE_FILTER)
+                .ifPresent(b::commentFilter);
         ini.getLong(SECTION, "MaxConnectionsPerFiveSeconds")
                 .ifPresent(v -> b.newConnectionsPerFiveSeconds(Math.clamp(v, 1, Preferences.MAX_NEW_CONNECTIONS)));
         ini.getBoolean(SECTION, "PreviewPrio").ifPresent(b::previewFirst);

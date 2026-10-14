@@ -52,6 +52,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
@@ -62,6 +63,7 @@ import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -504,6 +506,20 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Renames a shared file; a name taken already is told through the errors. */
     public void renameShared(Hash16 file, String name) {
         this.later(this.engine.renameSharedFile(file, name), ok -> this.refreshShared());
+    }
+
+    /** Our comment on a file; {@code then} gets it on the FX thread when there is one. */
+    public void fileComment(Hash16 file, Consumer<FileComment> then) {
+        this.later(this.engine.fileComment(file), c -> c.ifPresent(then));
+    }
+
+    public void setFileComment(Hash16 file, FileComment comment, Runnable done) {
+        this.later(this.engine.setFileComment(file, comment), ok -> done.run());
+    }
+
+    /** What the sources of a download said of the file; {@code then} gets it on the FX thread. */
+    public void peerComments(Hash16 download, Consumer<List<PeerComment>> then) {
+        this.later(this.engine.peerComments(download), then);
     }
 
     /** Fetches the first and last parts of a download first, for a preview, or stops. */

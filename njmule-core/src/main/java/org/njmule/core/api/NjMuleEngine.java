@@ -230,6 +230,15 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addKadContacts(URI url);
 
+    /** Our comment on a file, which the clients downloading it hear. */
+    CompletableFuture<Optional<FileComment>> fileComment(Hash16 file);
+
+    /** Keeps our comment on a file; an empty one takes it away. */
+    CompletableFuture<Void> setFileComment(Hash16 file, FileComment comment);
+
+    /** What the sources of a download said of the file. */
+    CompletableFuture<List<PeerComment>> peerComments(Hash16 download);
+
     /** The friend that has the friend slot, served before anyone else, if any. */
     CompletableFuture<Optional<Hash16>> friendSlot();
 

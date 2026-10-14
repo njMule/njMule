@@ -88,6 +88,7 @@ public final class PeerLink implements TcpConnection.Handler {
             Opcodes.Extended.PUBLICIP_ANSWER,
             Opcodes.Extended.AICHANSWER,
             Opcodes.Extended.AICHFILEHASHANS,
+            Opcodes.Extended.FILEDESC,
             Opcodes.Extended.HASHSETANSWER2);
 
     private final EngineLoop loop;

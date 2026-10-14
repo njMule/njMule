@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.files.FileTypes;
@@ -38,6 +39,7 @@ import org.njmule.core.net.PeerChannel;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.FileDescription;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -94,6 +96,9 @@ final class UploadSession implements PeerLink.Role {
 
         /** The shared files the client with {@code userHash} may see; none when the preferences say so. */
         List<SharedFiles.SharedFile> visibleTo(Hash16 userHash);
+
+        /** Our comment on {@code file}, if we made one. */
+        Optional<FileComment> comment(Hash16 file);
     }
 
     /** The answer to a client browsing our files stays below this size, which every client takes. */
@@ -120,6 +125,7 @@ final class UploadSession implements PeerLink.Role {
     // Blocks sent in this slot are not sent again.
     private final Set<Block> sent = new HashSet<>();
     private Hello peer;
+    private final Set<Hash16> commented = new HashSet<>();
     private Optional<Uploadable> file = Optional.empty();
     private Optional<Identities.Session> identity = Optional.empty();
     private boolean slot;
@@ -275,7 +281,10 @@ final class UploadSession implements PeerLink.Role {
             }
             case REQUESTFILENAME -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.lookup(hash).ifPresent(f -> this.send(new ClientMessages.FileName(hash, f.name()).encode()));
+                this.lookup(hash).ifPresent(f -> {
+                    this.send(new ClientMessages.FileName(hash, f.name()).encode());
+                    this.tellComment(hash);
+                });
             }
             case SETREQFILEID -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
@@ -335,6 +344,13 @@ final class UploadSession implements PeerLink.Role {
         logger.debug("{} of our files shown to {}", count, this.peer.nick().orElse("?"));
         PacketWriter out = new PacketWriter().u32(count).bytes(entries.toByteArray());
         this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), out));
+    }
+
+    // A client that takes comments hears ours on a file it asks for, once a connection.
+    private void tellComment(Hash16 file) {
+        if (FileDescription.accepted(this.peer) && this.commented.add(file)) {
+            this.queue.comment(file).ifPresent(c -> this.send(FileDescription.encode(c)));
+        }
     }
 
     private void extended(Packet packet) throws DecodeException {

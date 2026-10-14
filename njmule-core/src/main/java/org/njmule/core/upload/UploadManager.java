@@ -42,6 +42,7 @@ import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.njmule.core.api.BanInfo;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.api.UploadInfo;
@@ -190,6 +191,7 @@ public final class UploadManager implements AutoCloseable {
     private final Function<Hash16, Optional<SharedFiles.SharedFile>> shared;
     private final Function<Hash16, Optional<AichTree>> aichTrees;
     private final Function<Hash16, List<SharedFiles.SharedFile>> visibleTo;
+    private final Function<Hash16, Optional<FileComment>> comments;
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
     private final Supplier<Hello> ourHello;
     private final Supplier<Settings> settings;
@@ -237,6 +239,7 @@ public final class UploadManager implements AutoCloseable {
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
             Function<Hash16, Optional<AichTree>> aichTrees,
             Function<Hash16, List<SharedFiles.SharedFile>> visibleTo,
+            Function<Hash16, Optional<FileComment>> comments,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
             Function<Hash16, List<SourceExchange.Source>> downloadSources,
             Supplier<Hello> ourHello,
@@ -250,6 +253,7 @@ public final class UploadManager implements AutoCloseable {
         this.shared = Objects.requireNonNull(shared, "shared");
         this.aichTrees = Objects.requireNonNull(aichTrees, "aichTrees");
         this.visibleTo = Objects.requireNonNull(visibleTo, "visibleTo");
+        this.comments = Objects.requireNonNull(comments, "comments");
         this.downloads = Objects.requireNonNull(downloads, "downloads");
         this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
@@ -766,6 +770,11 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public Optional<Uploadable> find(Hash16 file) {
             return UploadManager.this.find(file);
+        }
+
+        @Override
+        public Optional<FileComment> comment(Hash16 file) {
+            return UploadManager.this.comments.apply(file);
         }
 
         @Override

@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Supplier;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.engine.EngineLoop;
@@ -44,6 +45,7 @@ import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.FileDescription;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.protocol.io.DecodeException;
@@ -87,6 +89,9 @@ final class DownloadSession implements PeerLink.Role {
 
         /** The source announced the AICH master hash of the file. */
         default void aichAnnounced(DownloadSession session, Hash20 master) {}
+
+        /** The source told its comment on the file. */
+        default void commented(DownloadSession session, FileComment comment) {}
     }
 
     /** How a session ended, which decides when the source is asked again. */
@@ -432,6 +437,7 @@ final class DownloadSession implements PeerLink.Role {
             case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
             case COMPRESSEDPART, COMPRESSEDPART_I64 -> this.compressed(ClientMessages.CompressedPart.decode(packet));
             case AICHANSWER -> this.aichAnswer(packet);
+            case FILEDESC -> this.listener.commented(this, FileDescription.decode(packet));
             case AICHFILEHASHANS -> {
                 PacketReader in = packet.reader();
                 if (in.hash16().equals(this.download.hash())) {

@@ -59,6 +59,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
@@ -70,6 +71,7 @@ import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
@@ -730,6 +732,28 @@ public final class Engine implements NjMuleEngine {
                     this.network.kadBootstrap(ip, node.port());
                     return null;
                 }));
+    }
+
+    @Override
+    public CompletableFuture<Optional<FileComment>> fileComment(Hash16 file) {
+        Objects.requireNonNull(file, "file");
+        return this.loop.submit(() -> this.network.fileComment(file));
+    }
+
+    @Override
+    public CompletableFuture<Void> setFileComment(Hash16 file, FileComment comment) {
+        Objects.requireNonNull(file, "file");
+        Objects.requireNonNull(comment, "comment");
+        return this.loop.submit(() -> {
+            this.network.setFileComment(file, comment);
+            return null;
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<PeerComment>> peerComments(Hash16 download) {
+        Objects.requireNonNull(download, "download");
+        return this.loop.submit(() -> this.network.peerComments(download));
     }
 
     @Override
