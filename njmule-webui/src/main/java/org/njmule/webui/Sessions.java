@@ -16,6 +16,8 @@
  */
 package org.njmule.webui;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -115,6 +117,23 @@ final class Sessions {
             this.failures.pollFirstEntry();
         }
         return true;
+    }
+
+    /**
+     * The key a client's login attempts are counted under: its IPv4 address, or the /64 network of an IPv6 one, whose
+     * host part a client chooses at will.
+     */
+    static String clientKey(InetAddress address) {
+        if (!(address instanceof Inet6Address)) {
+            return address.getHostAddress();
+        }
+        byte[] bytes = address.getAddress();
+        StringBuilder key = new StringBuilder();
+        for (int i = 0; i < 8; i += 2) {
+            key.append(Integer.toHexString((bytes[i] & 0xFF) << 8 | (bytes[i + 1] & 0xFF)))
+                    .append(':');
+        }
+        return key.append(":/64").toString();
     }
 
     synchronized void succeeded(String address) {

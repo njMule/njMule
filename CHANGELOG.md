@@ -601,3 +601,5 @@ All notable changes to this project are documented here. The format follows
   nodes are loaded) is saved when Kad stops and loaded at its start, written crash-safe and read
   back only as far as it is still alive, near our id and within the limits of live publishes; it
   is left out of the configuration backups.
+- Web interface: login attempts from IPv6 are counted per /64 network, so changing the host part
+  of the address no longer escapes the limit, and wrong passwords and API tokens are logged.

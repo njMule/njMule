@@ -307,7 +307,7 @@ public final class WebUi implements AutoCloseable {
             this.send(exchange, 405, TEXT, "Method not allowed.");
             return;
         }
-        String address = exchange.getRemoteAddress().getAddress().getHostAddress();
+        String address = Sessions.clientKey(exchange.getRemoteAddress().getAddress());
         if (!this.sessions.mayTry(address)) {
             this.send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;
@@ -329,6 +329,7 @@ public final class WebUi implements AutoCloseable {
             Passwords.wipe(password);
         }
         if (!right) {
+            logger.warn("Wrong web interface password from {}", address);
             this.send(exchange, 401, HTML, loginPage("Wrong password."));
             return;
         }

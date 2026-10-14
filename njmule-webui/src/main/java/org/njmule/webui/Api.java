@@ -183,11 +183,14 @@ final class Api {
         if (token.isPresent() && ApiToken.matches(token.get(), given)) {
             return;
         }
-        String address = exchange.getRemoteAddress().getAddress().getHostAddress();
+        String address = Sessions.clientKey(exchange.getRemoteAddress().getAddress());
         exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
         // A wrong token counts as a failed login of its address.
         if (!this.sessions.mayTry(address)) {
             throw new Failure(429, "Too many attempts: wait a minute.");
+        }
+        if (given != null) {
+            logger.warn("Wrong API token from {}", address);
         }
         throw new Failure(401, given == null ? "Send the API token as a bearer token." : "Wrong token.");
     }
