@@ -272,6 +272,17 @@ All notable changes to this project are documented here. The format follows
 - MD4, RSA keys and signatures, RC4, Diffie-Hellman, Base32, IP ranges, the engine scheduler and
   command-line parsing now come from the JDK, Bouncy Castle, Guava and picocli instead of our own
   code.
+- Kad searches made only of OR alternatives are refused with an explanation: Kad looks up one word
+  that every result must contain.
+- `njmule --exit` waits, up to 30 s, until the running njMule has saved and stopped, and together
+  with links or other actions it is a usage error.
+- The web interface's session cookie carries the port, so two njMule on one computer keep their own
+  web sessions.
+- Settings unknown to this version (from a newer one, or added by hand) are kept when the
+  preferences are saved.
+- Shared files cannot be renamed to names that are never shared (backup, temporary or hidden ones).
+- Links copied to the clipboard are added after a confirmation.
+- UPnP mappings are leased for an hour and renewed every half hour.
 
 ### Fixed
 
@@ -329,3 +340,112 @@ All notable changes to this project are documented here. The format follows
 - Italian texts that carry a translator's note are no longer lost.
 - The desktop app honours the portable mode too: with a `portable.flag` file beside the programs
   it keeps its data in the `data` folder next to them, as the command line already did.
+- Uploads no longer stop for good when an upload limit is set while it was unlimited, and the
+  download speed limit is applied.
+- The web interface works from a browser again: logging in and every form were refused because
+  the pages made browsers send `Origin: null`. It answers 503 with the reason when the engine fails,
+  HEAD with headers only, and reports actions on a download that is gone; the link field takes
+  magnet links and full-length input.
+- Web interface security: the login lockout can no longer be bypassed with parallel attempts and
+  password checks are limited to two at a time; in LAN mode only IP addresses and loopback names are
+  accepted as host (no DNS rebinding); `webui.properties` is readable by its owner only on Linux and
+  macOS, and a broken one is logged. Desktop searches no longer push out the web's results.
+- njMule starts again after eMule's identity was imported twice before a restart; an identity is
+  never applied in part or mixed with an earlier import, and a dry run changes nothing.
+- Friends, spam markers, cancelled files, comments, static servers and stored searches imported from
+  eMule take effect at the next start instead of being overwritten by the running engine.
+- eMule import: a free-space reserve of 2 GiB or more, every "start next paused file" value,
+  Category.ini with a section spelt twice or fields too long for njMule, categories pointing at
+  eMule's incoming folder, downloads in a category that was not taken, relative folders, files over
+  256 MiB, a corrupt known2_64.met, a folder written two ways, and a configuration inside eMule's
+  directory are all handled.
+- The configuration copy just written is never deleted (copies are named in UTC); a settings file
+  briefly held by another program is read once free instead of being replaced by its backup, and
+  the user hash is never regenerated because of it; the secure identification key, the user hash
+  and the backups are readable by their owner only on Linux and macOS.
+- A byte order mark or a malformed `\u` escape in njmule.properties, categories.properties or
+  scheduler.properties no longer loses a setting or prevents the start; INI sections with a trailing
+  comment, part.met gap tags numbered "01", four-digit IP filter levels and a damaged
+  cancelled.met, fileinfo.ini, StoredSearches.met or SearchSpam.met (set aside as `.corrupt-<time>`)
+  are read correctly.
+- Downloads: a link with mismatching part hashes can be downloaded; a part.met whose part hashes do
+  not give the file hash no longer fails every part; data that could not be written is asked for
+  again; a finished file that could not be moved is moved again on resume instead of staying at
+  100%; cancelling while the finished file is moved is refused, so adding the link again no longer
+  loses the new download; a completed download stops its disk thread; two part files of one file
+  load as one download.
+- A download no longer stalls with a free slot when a source leaves, ends its session or is
+  dropped by an IP filter change, or when a corrupt part waits for its AICH recovery data; the
+  rest of a compressed block whose stream ends early is asked for at once; resuming a running
+  download no longer asks its sources again too early.
+- Sources at 0.x.x.x, multicast or broadcast addresses are refused; LAN and loopback sources are
+  passed on in source exchange only within their network; adding the link of a file being
+  downloaded again takes its sources only when size and AICH hash match.
+- "Start the next download" keeps the order downloads were added across restarts, starts only when
+  a running download leaves, and leaves alone downloads a scheduler rule stopped; a new download is
+  announced with its category and priority; preview starts once the first 16 KiB have arrived,
+  and says so before.
+- AICH: padded hashes in links are refused instead of breaking recovery; corrupt blocks of files
+  smaller than one part are recovered and served; recovery state is reset for a file downloaded
+  again; the AICH tree is no longer rebuilt for every request, and the AICH hash of a download in
+  progress is told to those who ask.
+- Shared files: a file that cannot be read no longer stops the scan of its folder; removing one of
+  two copies keeps the content shared; a file renamed while being hashed stays shared; case-only
+  renames work; NTFS junctions no longer lead a shared tree outside itself or round in a loop;
+  renaming or completing a file during its upload keeps the client's slot.
+- eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
+  list is built once per connection); browsing a client that sends a file comment first works.
+- The friend slot, friends-only shared files and the friends-only chat filter need the friend's
+  proven identity, not just its user hash.
+- Secure identification accepts the address-bound signatures it used to refuse and binds ours to our
+  address when we know it; a malformed peer RSA key fails cleanly.
+- Packets queued just before a connection closes are sent; a peer that stops reading is dropped once
+  16 MiB wait; a block request with a backwards range is skipped instead of disconnecting; files
+  just under 4 GiB are not listed to clients that cannot take them.
+- Servers: those known by host name are kept apart, resolved when connecting, filtered and never
+  dialled at 0.0.0.0; static servers that are not taken stay in staticservers.dat; an out-of-range
+  (obfuscated) port no longer blocks connecting, leaves the session "connecting" or logs errors;
+  control characters in server names and messages are removed, so a server cannot add lines to
+  staticservers.dat; IPv6 server addresses are written so that they can be read back.
+- A server can no longer make njMule connect to LAN addresses (while they are filtered) or to banned
+  clients; connecting by hand to a filtered server is refused; IPv6 datagrams no longer log errors;
+  changing the IP filter, its level or the LAN filter drops the server, sources, clients and Kad
+  contacts it blocks; removing several servers works when one name does not resolve.
+- Searches: two overlapping global searches no longer mix their results, "more results" stays on
+  its own tab, a truncated server answer keeps the results before the cut, results that cannot be
+  downloaded are left out of saved searches and of a client's file list, sources counts are never
+  negative, `@length` with a huge value is a syntax error, and marking a short common name such as
+  `setup.exe` as spam no longer marks every file with that name.
+- Kad: lookups end as soon as every node left was asked and stayed silent (publishing no longer
+  crawls); searches use a word Kad indexes ("ubuntu 22.04.3", "linux -distribution") and an old
+  search no longer ends a newer one; the index counts republished files and sources once and each
+  publisher once per name, and answers nothing to a term of separators only; a contact can move
+  within its own full /24; firewall checks get through the connection limit and a re-check keeps the
+  last result meanwhile; Kad connected by hand stays connected when preferences change and starts
+  after a port change if it could not bind.
+- UPnP: mappings are renewed (and recreated after a router lost them), routers that keep only
+  permanent mappings get one, nothing is left mapped after exit, a stalling or oversized router
+  answer or an unreadable device no longer blocks discovery, and the WAN connection in use is
+  chosen. On exit every file is saved before the mappings are removed.
+- Fetching lists from the web has a deadline, takes the right file from a zip, refuses https-to-http
+  redirects and cut-short IP filters, and uses the HTTP proxy of the preferences.
+- Log lines written while njMule starts show in the desktop app and the web interface; the all-time
+  statistics no longer wrap around; scheduler rules act once when they begin and forget a deleted
+  category.
+- Links and files from the network: reserved device names hidden by the name length cut are escaped
+  (also COM0, LPT0, CONIN$, CONOUT$ and superscript digits), trailing dots and spaces are removed,
+  long names get distinct numbered copies, `s=` web sources are only http/https, regular-expression
+  categories such as `.*\.(avi|mkv)$` work, and sharing a folder that holds personal folders warns.
+- Command line and links: an unusable server-list URL no longer breaks the start or the handoff;
+  server links are added headless too; a link with a line break cannot make njMule exit; a damaged
+  handoff file or a slow local program no longer blocks later starts; on Linux giving the ed2k links
+  back keeps other handlers and a linked `mimeapps.list`; on Windows the handler is recognised in
+  paths with non-ASCII letters.
+- Desktop app: the category bar keeps following changes; opening the tray menu no longer changes
+  the speed limits; the clipboard is read only when watching is on; a preview player no longer
+  stalls on its own output; a connection that cannot start no longer stays "connecting"; the import
+  dialog recovers from an error; the window no longer opens off screen; "Apply" writes only the
+  settings changed; sizes, percentages and chat times follow the locale; chats from strangers are
+  capped; text direction controls are kept out of the nick (refused by the engine too).
+- Strings with a byte order mark followed by invalid UTF-8 are read as Windows-1252, long chat
+  messages are no longer cut inside an emoji, and on Linux the last `XDG_DOWNLOAD_DIR` is used.
