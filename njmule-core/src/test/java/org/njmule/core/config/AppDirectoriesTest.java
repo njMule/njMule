@@ -125,6 +125,20 @@ class AppDirectoriesTest {
     }
 
     @Test
+    void theLastDownloadDirectoryLineWinsAsInTheShell() throws IOException {
+        Path file = this.home.resolve("user-dirs.dirs");
+        Files.writeString(file, """
+                XDG_DOWNLOAD_DIR="$HOME/Old"
+                # moved
+                XDG_DOWNLOAD_DIR="$HOME/New"
+                """);
+        assertThat(AppDirectories.userDirsDownload(file, this.home)).contains(this.home.resolve("New"));
+
+        Files.writeString(file, "XDG_DOWNLOAD_DIR=\"$HOME/Old\"\nXDG_DOWNLOAD_DIR=relative\n");
+        assertThat(AppDirectories.userDirsDownload(file, this.home)).isEmpty();
+    }
+
+    @Test
     void overrideRootPutsEverythingBelowIt() {
         Path root = this.home.resolve("custom");
         AppDirectories d =

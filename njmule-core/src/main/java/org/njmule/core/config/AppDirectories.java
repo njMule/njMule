@@ -173,30 +173,36 @@ public record AppDirectories(
                 false);
     }
 
-    /** Reads {@code XDG_DOWNLOAD_DIR} from xdg-user-dirs' {@code user-dirs.dirs}. */
+    /**
+     * Reads {@code XDG_DOWNLOAD_DIR} from xdg-user-dirs' {@code user-dirs.dirs}, a shell file: the last assignment
+     * wins.
+     */
     static Optional<Path> userDirsDownload(Path file, Path home) {
         if (!Files.isRegularFile(file)) {
             return Optional.empty();
         }
         try {
+            String value = null;
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 String trimmed = line.strip();
-                if (!trimmed.startsWith("XDG_DOWNLOAD_DIR=")) {
-                    continue;
+                if (trimmed.startsWith("XDG_DOWNLOAD_DIR=")) {
+                    value = trimmed.substring("XDG_DOWNLOAD_DIR=".length()).strip();
                 }
-                String value = trimmed.substring("XDG_DOWNLOAD_DIR=".length()).strip();
-                if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                    value = value.substring(1, value.length() - 1);
-                }
-                if (value.equals("$HOME")) {
-                    return Optional.of(home);
-                }
-                if (value.startsWith("$HOME/")) {
-                    return Optional.of(home.resolve(value.substring("$HOME/".length())));
-                }
-                Path path = Path.of(value);
-                return path.isAbsolute() ? Optional.of(path) : Optional.empty();
             }
+            if (value == null) {
+                return Optional.empty();
+            }
+            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+            if (value.equals("$HOME")) {
+                return Optional.of(home);
+            }
+            if (value.startsWith("$HOME/")) {
+                return Optional.of(home.resolve(value.substring("$HOME/".length())));
+            }
+            Path path = Path.of(value);
+            return path.isAbsolute() ? Optional.of(path) : Optional.empty();
         } catch (IOException | RuntimeException e) {
             logger.debug("Cannot read {}", file, e);
         }
