@@ -235,6 +235,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final long HOUR = 60 * MINUTE;
     private static final Duration SELF_LOOKUP_FIRST = Duration.ofMinutes(3);
     private static final Duration SELF_LOOKUP_EVERY = Duration.ofHours(4);
+    // Above this load the nodes of a keyword are spared: for up to a week, in proportion to the load.
+    private static final int HIGH_LOAD = 20;
+    private static final Duration LOADED_FOR = Duration.ofDays(7);
     private static final Duration FIREWALL_CHECK_EVERY = Duration.ofHours(1);
     private static final int FIREWALL_CHECKS = 4;
     private static final int FIREWALL_ACKS = 2;
@@ -665,11 +668,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return true;
     }
 
-    /** Publishes {@code files} under the keyword {@code word}. */
+    /** Publishes {@code files} under the keyword {@code word}; not while its nodes are loaded. */
     @Override
     public boolean publishKeyword(String word, List<KadMessages.Entry> files) {
         UInt128 target = Keywords.id(word);
-        if (files.isEmpty() || this.lookups.containsKey(target)) {
+        if (files.isEmpty() || this.lookups.containsKey(target) || !this.index.mayStore(target, this.ticker.read())) {
             return false;
         }
         Lookup lookup = this.startLookup(target, Lookup.Kind.STORE_KEYWORD);
@@ -1396,6 +1399,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         KadMessages.PublishAnswer answer = KadMessages.PublishAnswer.decode(packet);
         Lookup lookup = this.lookups.get(answer.target());
         if (lookup != null && lookup.requestedFrom(peer.ip())) {
+            if (lookup.kind() == Lookup.Kind.STORE_KEYWORD) {
+                lookup.loadReported(answer.load());
+            }
             lookup.valueReceived(1);
         }
     }
@@ -1602,6 +1608,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.lookupData.remove(lookup);
         if (lookup.kind() == Lookup.Kind.NODE_COMPLETE) {
             this.selfLookupDone = true;
+        }
+        int load = lookup.load();
+        if (lookup.kind() == Lookup.Kind.STORE_KEYWORD && load > HIGH_LOAD) {
+            this.index.loaded(lookup.target(), this.ticker.read() + LOADED_FOR.toNanos() / 100 * load);
         }
         Runnable ended = this.endActions.remove(lookup);
         if (ended != null) {

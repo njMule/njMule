@@ -576,3 +576,5 @@ All notable changes to this project are documented here. The format follows
   a result claiming more than 65,500 sources counts as unknown.
 - Kad nodes older than version 8 can now be verified: one with keys answers a ping, an older one a
   lookup for a random target, and only verified contacts are used to answer and search.
+- Kad: a keyword whose storing nodes report a load above 20% is not published again for up to a
+  week, in proportion to the load, sparing the busiest nodes.

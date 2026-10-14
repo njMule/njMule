@@ -77,6 +77,9 @@ final class KadIndex {
 
     private static final int MAX_PUBLISHERS = 100;
 
+    // Our keywords whose nodes said they are loaded, kept at most.
+    private static final int MAX_LOADS = 100_000;
+
     // The largest information an answer carries about the publishers of a file.
     private static final long MAX_PUBLISH_INFO = 0xFFFF_FFFFL;
 
@@ -152,6 +155,8 @@ final class KadIndex {
     private final Map<UInt128, Map<UInt128, SourceEntry>> sources = new LinkedHashMap<>();
     // By file, then by the publisher's id, oldest first.
     private final Map<UInt128, Map<UInt128, NoteEntry>> notes = new LinkedHashMap<>();
+    // Our keywords not to publish until the time given, because their nodes are loaded.
+    private final Map<UInt128, Long> loaded = new LinkedHashMap<>();
     private int keywordEntries;
     private int sourceEntries;
     private int noteEntries;
@@ -363,8 +368,30 @@ final class KadIndex {
         return results;
     }
 
+    /** The nodes that store our keyword {@code key} are loaded: it is not published before {@code until}. */
+    void loaded(UInt128 key, long until) {
+        if (this.loaded.size() >= MAX_LOADS && !this.loaded.containsKey(key)) {
+            this.loaded.remove(this.loaded.keySet().iterator().next());
+        }
+        this.loaded.put(key, until);
+    }
+
+    /** Whether our keyword {@code key} may be published now. */
+    boolean mayStore(UInt128 key, long now) {
+        Long until = this.loaded.get(key);
+        if (until == null) {
+            return true;
+        }
+        if (now - until < 0) {
+            return false;
+        }
+        this.loaded.remove(key);
+        return true;
+    }
+
     /** Drops what expired, and the publishers silent for as long. */
     void clean(long now) {
+        this.loaded.values().removeIf(until -> now - until >= 0);
         for (Iterator<Map<UInt128, KeywordEntry>> it = this.keywords.values().iterator(); it.hasNext(); ) {
             Map<UInt128, KeywordEntry> files = it.next();
             int before = files.size();

@@ -105,6 +105,8 @@ final class Lookup {
     private final Set<Integer> requestedIps = new HashSet<>();
     private long lastAnswer;
     private int answers;
+    private long loadSum;
+    private int loads;
     private KadMessages.Contact reAsked;
     private boolean stopped;
     private boolean stopping;
@@ -144,6 +146,17 @@ final class Lookup {
     /** Values (search results or publish answers) received so far. */
     int answers() {
         return this.answers;
+    }
+
+    /** A node that stores what this lookup publishes reported its load, 0 to 100. */
+    void loadReported(int load) {
+        this.loadSum += load;
+        this.loads++;
+    }
+
+    /** The mean of the loads reported, 0 when none was. */
+    int load() {
+        return this.loads == 0 ? 0 : (int) (this.loadSum / this.loads);
     }
 
     /** Starts with the contacts of the routing table closest to the target. */
