@@ -53,6 +53,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
@@ -68,6 +69,7 @@ import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.security.PathSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +121,8 @@ public final class SharedFiles implements AutoCloseable {
     public static final Duration RESCAN_INTERVAL = Duration.ofMinutes(10);
 
     private static final Duration SAVE_DELAY = Duration.ofSeconds(10);
+    // The AICH tree of a file not shared for so long is dropped; the file is hashed again when it is shared again.
+    private static final Duration TREE_KEPT_UNSHARED = Duration.ofDays(31);
     // Seconds a file date may be off from the one recorded, besides an hour.
     private static final long DATE_SLACK = 2;
     private static final int HASH_ATTEMPTS = 10;
@@ -170,6 +174,10 @@ public final class SharedFiles implements AutoCloseable {
     private final Set<Path> hashing = new LinkedHashSet<>();
     private final ExecutorService hasher = Executors.newSingleThreadExecutor(
             Thread.ofPlatform().name("njmule-hasher").daemon(true).factory());
+    // Whether the trees changed since known2_64.met was written; it is not written again otherwise.
+    private boolean treesChanged;
+    // Whether a scan said which files are shared.
+    private boolean scanned;
     private ScheduledFuture<?> rescan;
     private ScheduledFuture<?> pendingSave;
     private ScheduledFuture<?> pendingScan;
@@ -426,8 +434,8 @@ public final class SharedFiles implements AutoCloseable {
             }
         }
         for (Known2Met.Entry tree : trees) {
-            if (wanted.contains(tree.masterHash())) {
-                this.aich.putIfAbsent(tree.masterHash(), tree);
+            if (wanted.contains(tree.masterHash()) && this.aich.putIfAbsent(tree.masterHash(), tree) == null) {
+                this.treesChanged = true;
             }
         }
         if (added > 0) {
@@ -537,6 +545,7 @@ public final class SharedFiles implements AutoCloseable {
                 this.unshare(file);
             }
         }
+        this.scanned = true;
     }
 
     // The directories of a tree, without hidden or private ones and without following links. A junction is walked as a
@@ -682,7 +691,11 @@ public final class SharedFiles implements AutoCloseable {
                     new SharedFile(
                             file, name, attrs.size(), record.fileHash(), record.partHashes(), record.aichHash(), mtime),
                     Optional.empty());
-            return;
+            // Its AICH tree may have been lost, or dropped while the file was not shared: it is hashed again for it.
+            if (record.aichHash().isEmpty()
+                    || this.aich.containsKey(record.aichHash().get())) {
+                return;
+            }
         }
         if (this.hashing.add(file)) {
             this.loop.whenDone(this.hash(file), (result, failure) -> this.hashed(file, mtime, result, failure));
@@ -809,7 +822,8 @@ public final class SharedFiles implements AutoCloseable {
         Key key = new Key(file.name(), file.size(), file.mtime());
         KnownMet.KnownFile known = this.known.get(key);
         if (known == null) {
-            this.known.put(key, record(file));
+            KnownMet.KnownFile older = this.takeOlderDate(file);
+            this.known.put(key, older == null ? record(file) : redated(older, file));
             this.saveSoon();
         } else if (file.aichHash().isPresent() && !known.aichHash().equals(file.aichHash())) {
             // A finished download comes back with its AICH hash once hashed again; its other tags stay.
@@ -819,12 +833,32 @@ public final class SharedFiles implements AutoCloseable {
         tree.ifPresent(t -> {
             this.aich.put(t.masterHash(), t);
             this.built.remove(t.masterHash());
+            this.treesChanged = true;
             this.saveSoon();
         });
         if (fresh) {
             logger.debug("Sharing {}", file.path());
             this.listener.shared(file);
         }
+    }
+
+    // The record of the same name, size and content under another date: the file before it was touched, whose record
+    // would otherwise stay for good. One that a copy shared now uses stays.
+    private KnownMet.KnownFile takeOlderDate(SharedFile file) {
+        for (Iterator<Map.Entry<Key, KnownMet.KnownFile>> it =
+                        this.known.entrySet().iterator();
+                it.hasNext(); ) {
+            Map.Entry<Key, KnownMet.KnownFile> entry = it.next();
+            Key key = entry.getKey();
+            if (key.name().equals(file.name())
+                    && key.size() == file.size()
+                    && entry.getValue().fileHash().equals(file.hash())
+                    && this.byPath.values().stream().noneMatch(f -> key(f).equals(key))) {
+                it.remove();
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private void unshare(SharedFile file) {
@@ -885,6 +919,12 @@ public final class SharedFiles implements AutoCloseable {
         return new KnownMet.KnownFile(known.mtime(), known.fileHash(), known.partHashes(), tags);
     }
 
+    // The record of a file whose date changed: its other tags, such as its priority, stay.
+    private static KnownMet.KnownFile redated(KnownMet.KnownFile older, SharedFile file) {
+        KnownMet.KnownFile moved = new KnownMet.KnownFile(file.mtime(), file.hash(), file.partHashes(), older.tags());
+        return file.aichHash().map(h -> withAich(moved, h)).orElse(moved);
+    }
+
     // The record of a renamed file: its name and date change, its other tags stay.
     private static KnownMet.KnownFile renamed(KnownMet.KnownFile known, SharedFile file) {
         List<Tag> tags = new ArrayList<>();
@@ -907,29 +947,50 @@ public final class SharedFiles implements AutoCloseable {
     }
 
     private void loadKnown() {
-        Path met = this.configDir.resolve(KNOWN_MET);
-        if (Files.exists(met) || Files.exists(AtomicFiles.bakPath(met.toAbsolutePath()))) {
-            try {
-                for (KnownMet.KnownFile file : AtomicFiles.read(met, in -> KnownMet.read(in.readAllBytes()))) {
-                    Optional<String> name = file.name();
-                    if (name.isPresent() && file.size().isPresent()) {
-                        this.known.put(new Key(name.get(), file.size().getAsLong(), file.mtime()), file);
-                    }
-                }
-            } catch (IOException e) {
-                logger.warn("Cannot read {}; files will be hashed again", met, e);
+        Loaded<KnownMet.KnownFile> records = load(this.configDir.resolve(KNOWN_MET), KnownMet::read, KnownMet::salvage);
+        for (KnownMet.KnownFile file : records.items()) {
+            Optional<String> name = file.name();
+            if (name.isPresent() && file.size().isPresent()) {
+                this.known.put(new Key(name.get(), file.size().getAsLong(), file.mtime()), file);
             }
         }
-        Path met2 = this.configDir.resolve(KNOWN2_MET);
-        if (Files.exists(met2)) {
+        Loaded<Known2Met.Entry> trees = load(this.configDir.resolve(KNOWN2_MET), Known2Met::read, Known2Met::salvage);
+        for (Known2Met.Entry entry : trees.items()) {
+            this.aich.put(entry.masterHash(), entry);
+        }
+        // Read from the backup or saved from damage: the next save writes it whole again.
+        this.treesChanged = trees.damaged();
+    }
+
+    @FunctionalInterface
+    private interface Parser<T> {
+        List<T> parse(byte[] data) throws IOException;
+    }
+
+    private record Loaded<T>(List<T> items, boolean damaged) {}
+
+    // The file, else its backup; when both are damaged, what comes before the damage, from the one that keeps more.
+    private static <T> Loaded<T> load(Path file, Parser<T> strict, Function<byte[], List<T>> salvage) {
+        Path bak = AtomicFiles.bakPath(file.toAbsolutePath());
+        if (!Files.exists(file) && !Files.exists(bak)) {
+            return new Loaded<>(List.of(), false);
+        }
+        try {
+            AtomicFiles.Read<List<T>> read = AtomicFiles.readTelling(file, in -> strict.parse(in.readAllBytes()));
+            return new Loaded<>(read.value(), read.fromBackup());
+        } catch (IOException e) {
+            logger.warn("Cannot read {}; what can be read of it is kept", file, e);
+        }
+        List<T> best = List.of();
+        for (Path candidate : List.of(file, bak)) {
             try {
-                for (Known2Met.Entry entry : Known2Met.read(Files.readAllBytes(met2))) {
-                    this.aich.put(entry.masterHash(), entry);
-                }
+                List<T> some = salvage.apply(Files.readAllBytes(candidate));
+                best = some.size() > best.size() ? some : best;
             } catch (IOException e) {
-                logger.warn("Cannot read {}", met2, e);
+                logger.debug("Cannot read {}: {}", candidate, e.toString());
             }
         }
+        return new Loaded<>(best, true);
     }
 
     private void saveSoon() {
@@ -938,20 +999,53 @@ public final class SharedFiles implements AutoCloseable {
         }
     }
 
+    // Records go only once a scan said which files are shared. A tree no record needs goes, and so does that of a file
+    // not shared for a month: a record keeps the file known as downloaded before, a tree is needed only to share it.
     private void save() {
-        try {
-            List<KnownMet.KnownFile> kept = new ArrayList<>();
-            for (KnownMet.KnownFile file : this.known.values()) {
-                if (this.rememberDownloaded || this.byHash.containsKey(file.fileHash())) {
-                    kept.add(file);
-                }
+        long now = System.currentTimeMillis() / 1000;
+        List<KnownMet.KnownFile> kept = new ArrayList<>();
+        Set<Hash20> needed = new HashSet<>();
+        for (Map.Entry<Key, KnownMet.KnownFile> entry : this.known.entrySet()) {
+            KnownMet.KnownFile file = entry.getValue();
+            boolean shared = this.byHash.containsKey(file.fileHash());
+            if (!this.rememberDownloaded && !shared && this.scanned) {
+                continue;
             }
+            if (shared) {
+                file = lastShared(file, now);
+                entry.setValue(file);
+            }
+            kept.add(file);
+            long seen = Tags.intValue(file.tags(), FileTag.LASTSHARED).orElse(now);
+            if (shared || !this.scanned || now - seen < TREE_KEPT_UNSHARED.toSeconds()) {
+                file.aichHash().ifPresent(needed::add);
+            }
+        }
+        if (this.aich.keySet().retainAll(needed)) {
+            this.built.keySet().retainAll(needed);
+            this.treesChanged = true;
+        }
+        try {
             AtomicFiles.writeBytes(this.configDir.resolve(KNOWN_MET), KnownMet.write(kept));
-            AtomicFiles.writeBytes(
-                    this.configDir.resolve(KNOWN2_MET), Known2Met.write(List.copyOf(this.aich.values())));
+            if (this.treesChanged) {
+                AtomicFiles.writeBytes(
+                        this.configDir.resolve(KNOWN2_MET), Known2Met.write(List.copyOf(this.aich.values())));
+                this.treesChanged = false;
+            }
         } catch (IOException e) {
             logger.warn("Cannot save the known files", e);
         }
+    }
+
+    private static KnownMet.KnownFile lastShared(KnownMet.KnownFile known, long now) {
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : known.tags()) {
+            if (!tag.name().isId() || tag.name().id() != FileTag.LASTSHARED) {
+                tags.add(tag);
+            }
+        }
+        tags.add(new Tag.IntTag(TagName.id(FileTag.LASTSHARED), now));
+        return new KnownMet.KnownFile(known.mtime(), known.fileHash(), known.partHashes(), tags);
     }
 
     /**

@@ -153,13 +153,25 @@ public final class AtomicFiles {
      * instead of yielding the older backup, which the caller would then save over it.
      */
     public static <T> T read(Path target, Reader<T> reader, boolean backupIfHeld) throws IOException {
+        return readTelling(target, reader, backupIfHeld).value();
+    }
+
+    /** What a read returned, and whether it came from the backup because the file was missing or rejected. */
+    public record Read<T>(T value, boolean fromBackup) {}
+
+    /** As {@link #read(Path, Reader)}, telling whether the backup was read: the file is then worth saving again. */
+    public static <T> Read<T> readTelling(Path target, Reader<T> reader) throws IOException {
+        return readTelling(target, reader, true);
+    }
+
+    private static <T> Read<T> readTelling(Path target, Reader<T> reader, boolean backupIfHeld) throws IOException {
         Objects.requireNonNull(reader, "reader");
         Path absolute = target.toAbsolutePath();
         Path bak = bakPath(absolute);
         Exception primaryFailure = null;
         if (Files.exists(absolute)) {
             try {
-                return readOne(absolute, reader);
+                return new Read<>(readOne(absolute, reader), false);
             } catch (FileSystemException e) {
                 if (!backupIfHeld && !(e instanceof NoSuchFileException)) {
                     throw e;
@@ -175,7 +187,7 @@ public final class AtomicFiles {
             try {
                 T value = readOne(bak, reader);
                 logger.warn("Recovered {} from its backup", absolute);
-                return value;
+                return new Read<>(value, true);
             } catch (IOException | RuntimeException e) {
                 if (primaryFailure == null) {
                     throw e instanceof IOException io ? io : new IOException("Invalid file " + bak, e);

@@ -96,12 +96,29 @@ public final class KnownMet {
         MetCodecs.header(in, "known.met", HEADER, HEADER_64BIT);
         int count = in.count(in.u32(), 4 + 16 + 2 + 4, MAX_FILES);
         List<KnownFile> files = new ArrayList<>(count);
+        records(in, count, files);
+        return List.copyOf(files);
+    }
+
+    /** The records of a damaged file that come before the damage; none when its header cannot be read. */
+    public static List<KnownFile> salvage(byte[] data) {
+        List<KnownFile> files = new ArrayList<>();
+        try {
+            PacketReader in = PacketReader.of(data);
+            MetCodecs.header(in, "known.met", HEADER, HEADER_64BIT);
+            records(in, (int) Math.min(in.u32(), MAX_FILES), files);
+        } catch (DecodeException | IllegalArgumentException e) {
+            // What follows the damage is lost.
+        }
+        return List.copyOf(files);
+    }
+
+    private static void records(PacketReader in, int count, List<KnownFile> files) throws DecodeException {
         for (int i = 0; i < count; i++) {
             long mtime = in.u32();
             MetCodecs.HashSet set = MetCodecs.readHashSet(in);
             files.add(new KnownFile(mtime, set.fileHash(), set.partHashes(), MetCodecs.readTags(in)));
         }
-        return List.copyOf(files);
     }
 
     public static byte[] write(List<KnownFile> files) {

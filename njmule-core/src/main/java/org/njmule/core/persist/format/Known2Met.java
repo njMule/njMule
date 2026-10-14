@@ -45,12 +45,29 @@ public final class Known2Met {
     public static List<Entry> read(byte[] data) throws DecodeException {
         PacketReader in = PacketReader.of(data);
         MetCodecs.header(in, "known2_64.met", VERSION);
-        return entries(in, true);
+        List<Entry> entries = new ArrayList<>();
+        entries(in, true, entries);
+        return List.copyOf(entries);
+    }
+
+    /** The entries of a damaged {@code known2_64.met} that come before the damage; none without its header. */
+    public static List<Entry> salvage(byte[] data) {
+        List<Entry> entries = new ArrayList<>();
+        try {
+            PacketReader in = PacketReader.of(data);
+            MetCodecs.header(in, "known2_64.met", VERSION);
+            entries(in, true, entries);
+        } catch (DecodeException e) {
+            // What follows the damage is lost.
+        }
+        return List.copyOf(entries);
     }
 
     /** Reads the pre-64-bit {@code known2.met}. */
     public static List<Entry> readOld(byte[] data) throws DecodeException {
-        return entries(PacketReader.of(data), false);
+        List<Entry> entries = new ArrayList<>();
+        entries(PacketReader.of(data), false, entries);
+        return List.copyOf(entries);
     }
 
     public static byte[] write(List<Entry> entries) {
@@ -65,8 +82,7 @@ public final class Known2Met {
         return out.toByteArray();
     }
 
-    private static List<Entry> entries(PacketReader in, boolean wideCounts) throws DecodeException {
-        List<Entry> entries = new ArrayList<>();
+    private static void entries(PacketReader in, boolean wideCounts, List<Entry> entries) throws DecodeException {
         while (in.hasRemaining()) {
             Hash20 master = in.hash20();
             long count = wideCounts ? in.u32() : in.u16();
@@ -77,6 +93,5 @@ public final class Known2Met {
             }
             entries.add(new Entry(master, leaves));
         }
-        return List.copyOf(entries);
     }
 }
