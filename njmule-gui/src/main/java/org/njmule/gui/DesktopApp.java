@@ -343,7 +343,7 @@ public final class DesktopApp implements AutoCloseable {
         // Links opened on macOS, those that started the app first.
         MacLinks.SYSTEM.attach(links -> Platform.runLater(() -> this.handedOver(links)));
         if (GuiTour.requested()) {
-            GuiTour.start(this.gui, this.window, stage, this.trayTour(stage), Platform::exit);
+            GuiTour.start(this.gui, this.window, stage, this.appTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
             // At the first start an eMule on this computer is offered for import.
             ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
@@ -476,20 +476,25 @@ public final class DesktopApp implements AutoCloseable {
         };
     }
 
-    // The tray's own windows in the tour, for the native metadata: the icon cannot be clicked there.
-    private List<Runnable> trayTour(Stage stage) {
-        if (this.tray == null) {
-            return List.of();
+    // What the tour needs the app for, for the native metadata: a sound, the web interface and the tray's own windows
+    // (the icon cannot be clicked there).
+    private List<Runnable> appTour(Stage stage) {
+        Path config = this.directories.config();
+        List<Runnable> steps = new ArrayList<>();
+        steps.add(() -> GuiTour.sound(this.sound, config));
+        steps.add(() -> GuiTour.webInterface(config));
+        if (this.tray != null) {
+            steps.addAll(List.of(
+                    () -> stage.setIconified(true),
+                    () -> this.tray.notify("Tour"),
+                    () -> this.miniMule.show(),
+                    () -> this.miniMule.refresh(),
+                    () -> this.miniMule.hide(),
+                    () -> this.trayMenu.show(400, 400),
+                    () -> this.trayMenu.hide(),
+                    () -> this.tray.restore()));
         }
-        return List.of(
-                () -> stage.setIconified(true),
-                () -> this.tray.notify("Tour"),
-                () -> this.miniMule.show(),
-                () -> this.miniMule.refresh(),
-                () -> this.miniMule.hide(),
-                () -> this.trayMenu.show(400, 400),
-                () -> this.trayMenu.hide(),
-                () -> this.tray.restore());
+        return steps;
     }
 
     // The window never gets so small that buttons are cut or hidden; the frame adds its own borders.

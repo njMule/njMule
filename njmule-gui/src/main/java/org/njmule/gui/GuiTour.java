@@ -21,11 +21,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.geometry.NodeOrientation;
 import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -40,15 +43,21 @@ import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import javax.imageio.ImageIO;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.ui.Gui;
+import org.njmule.webui.ApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,15 +75,15 @@ final class GuiTour {
     private final Gui gui;
     private final MainWindow window;
     private final Stage stage;
-    private final List<Runnable> trayTour;
+    private final List<Runnable> appTour;
     private final Runnable done;
     private final List<Runnable> steps = new ArrayList<>();
 
-    private GuiTour(Gui gui, MainWindow window, Stage stage, List<Runnable> trayTour, Runnable done) {
+    private GuiTour(Gui gui, MainWindow window, Stage stage, List<Runnable> appTour, Runnable done) {
         this.gui = gui;
         this.window = window;
         this.stage = stage;
-        this.trayTour = List.copyOf(trayTour);
+        this.appTour = List.copyOf(appTour);
         this.done = done;
     }
 
@@ -83,14 +92,16 @@ final class GuiTour {
     }
 
     /**
-     * Plays the tour on the FX thread, then runs {@code done} (the app exits); {@code trayTour} visits the notification
-     * area and its windows, where there are some.
+     * Plays the tour on the FX thread, then runs {@code done} (the app exits); {@code appTour} comes first, with what
+     * only the app has: its sounds, its web interface and the windows of the notification area.
      */
-    static void start(Gui gui, MainWindow window, Stage stage, List<Runnable> trayTour, Runnable done) {
-        new GuiTour(gui, window, stage, trayTour, done).play();
+    static void start(Gui gui, MainWindow window, Stage stage, List<Runnable> appTour, Runnable done) {
+        new GuiTour(gui, window, stage, appTour, done).play();
     }
 
     private void play() {
+        // First, so that the sound and the requests of the web interface end long before the app does.
+        this.steps.addAll(this.appTour);
         for (String id : this.window.screenIds()) {
             this.steps.add(() -> this.window.show(id));
             this.steps.add(() -> this.popups(this.stage.getScene().getRoot()));
@@ -110,12 +121,12 @@ final class GuiTour {
         this.steps.add(() -> new CategoriesDialog(this.gui, this.stage).show());
         this.steps.add(() -> new SharedFoldersDialog(this.gui, this.stage).show());
         this.steps.add(this::alert);
+        this.steps.add(this::scripts);
         this.steps.add(this::closeWindows);
         this.steps.add(() -> this.window.message("Tour"));
         this.steps.add(GuiTour::languages);
         this.steps.add(GuiTour::picture);
         this.steps.add(GuiTour::clipboard);
-        this.steps.addAll(this.trayTour);
         this.steps.add(() -> {
             logger.info("Tour finished");
             this.done.run();
@@ -170,6 +181,51 @@ final class GuiTour {
         alert.initOwner(this.stage);
         this.gui.themes().attach(alert.getDialogPane().getScene());
         alert.show();
+    }
+
+    // Text in the writings of the languages, right to left: shaping and the fallback fonts.
+    private void scripts() {
+        Alert alert = new Alert(
+                Alert.AlertType.INFORMATION,
+                "العربية فارسی עברית 中文 日本語 한국어 Ελληνικά Русский Tiếng Việt",
+                ButtonType.OK);
+        alert.initOwner(this.stage);
+        alert.getDialogPane().setNodeOrientation(NodeOrientation.RIGHT_TO_LEFT);
+        this.gui.themes().attach(alert.getDialogPane().getScene());
+        alert.show();
+    }
+
+    /** A tenth of a second of silence, written and played as a notification sound is. */
+    static void sound(SoundPlayer player, Path dir) {
+        Path file = dir.resolve("tour.wav");
+        AudioFormat format = new AudioFormat(8000, 16, 1, true, false);
+        byte[] silence = new byte[1600];
+        try (AudioInputStream in = new AudioInputStream(
+                new ByteArrayInputStream(silence), format, silence.length / format.getFrameSize())) {
+            AudioSystem.write(in, AudioFileFormat.Type.WAVE, file.toFile());
+        } catch (IOException e) {
+            logger.warn("Cannot write the sound of the tour: {}", e.toString());
+            return;
+        }
+        player.play(file);
+    }
+
+    /** A few requests to the API of the web interface the settings in {@code configDir} start. */
+    static void webInterface(Path configDir) {
+        try {
+            Optional<ApiClient> api = ApiClient.local(configDir);
+            if (api.isEmpty()) {
+                logger.warn("The web interface of the tour is off");
+                return;
+            }
+            api.get().get("/status");
+            api.get().get("/downloads");
+            api.get().get("/servers");
+        } catch (IOException e) {
+            logger.warn("The web interface of the tour did not answer: {}", e.toString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static void languages() {
