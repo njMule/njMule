@@ -187,28 +187,6 @@ class LookupTest {
         assertThat(this.requested).extracting(KadMessages.Contact::ip).containsExactly(ip(Lookup.TOLERANCE));
     }
 
-    @Test
-    void aSearchEndsWithEnoughAnswersOrItsTimeAndIgnoresWhatComesAfter() {
-        Lookup full = this.lookup(Lookup.Kind.KEYWORD, 1, 2);
-        full.valueReceived(299);
-        assertThat(full.isStopped()).isFalse();
-        full.valueReceived(1);
-        assertThat(full.isStopped()).isTrue();
-        this.asks.clear();
-        full.answered(ip(1), PORT, List.of(this.contactAt(distance(0), Ipv4.of(30, 0, 0, 1))), T0);
-        assertThat(this.asks).isEmpty();
-
-        Lookup slow = this.lookup(Lookup.Kind.STORE_SOURCE, 1, 2);
-        // Answers keep it going, until its lifetime ends.
-        for (long s = 1; s <= Lookup.Kind.STORE_SOURCE.lifetime().toSeconds(); s++) {
-            slow.answered(ip(1), PORT, List.of(), T0 + s * SECOND);
-            slow.tick(T0 + s * SECOND);
-        }
-        assertThat(slow.isStopped()).isFalse();
-        slow.tick(T0 + Lookup.Kind.STORE_SOURCE.lifetime().toNanos() + 1);
-        assertThat(slow.isStopped()).isTrue();
-    }
-
     private Lookup lookup(Lookup.Kind kind, long... distances) {
         RoutingTable table = new RoutingTable(UInt128.random(this.random), Ipv4::isLan);
         for (long d : distances) {

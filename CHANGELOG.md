@@ -581,3 +581,5 @@ All notable changes to this project are documented here. The format follows
 - Kad publishing takes turns: a keyword, source or note publish that cannot start now no longer
   holds back the others every two seconds, and a keyword with more than 150 files publishes the
   next ones each time instead of always the same.
+- Kad searches and publishes send nothing new in their last 20 seconds, and one that has all the
+  answers it wants still takes those arriving in the next 15 seconds instead of dropping them.

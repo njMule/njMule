@@ -84,8 +84,10 @@ final class Lookup {
     private static final int ALPHA = 3;
     private static final int START_CONTACTS = 50;
     private static final long STALL_NANOS = 3_000_000_000L;
-    // Once no node is left to ask, a search or publish waits this long for its last answers.
+    // Once no node is left to ask, or it has all it wants, a search or publish waits this long for its last answers.
     private static final long LATE_ANSWER_NANOS = 15_000_000_000L;
+    // A search or publish sends nothing new in the last seconds of its life, which its last answers need.
+    private static final long LAST_SENDING_NANOS = 20_000_000_000L;
     private static final int RE_ASK_COUNT = 11;
     // Contacts a search asks each node for; publishes ask for more.
     private static final int FIND_VALUE = 2;
@@ -213,6 +215,9 @@ final class Lookup {
             this.stopped = true;
             return;
         }
+        if (this.stopping) {
+            return;
+        }
         UInt128 responderDistance = responder.id().xor(this.target);
         // The responder may not send itself, and its own /24 counts against the limit.
         Set<Integer> ips = new HashSet<>();
@@ -234,11 +239,18 @@ final class Lookup {
         }
     }
 
-    /** A value (result or publish answer) for this lookup arrived. */
-    void valueReceived(int count) {
+    /** A value (result or publish answer) for this lookup arrived; with enough of them it stops sending. */
+    void valueReceived(int count, long now) {
         this.answers += count;
         if (this.kind.maxAnswers > 0 && this.answers >= this.kind.maxAnswers) {
-            this.stopped = true;
+            this.prepareToStop(now);
+        }
+    }
+
+    private void prepareToStop(long now) {
+        if (!this.stopping) {
+            this.stopping = true;
+            this.stopAt = now + LATE_ANSWER_NANOS;
         }
     }
 
@@ -251,6 +263,9 @@ final class Lookup {
             this.stopped = true;
             return;
         }
+        if (this.kind.value && now - this.started >= this.kind.lifetime.toNanos() - LAST_SENDING_NANOS) {
+            this.prepareToStop(now);
+        }
         if (this.stopping) {
             this.stopped = now - this.stopAt >= 0;
             return;
@@ -260,8 +275,7 @@ final class Lookup {
         }
         if (this.nothingLeftToAsk()) {
             if (this.kind.value) {
-                this.stopping = true;
-                this.stopAt = now + LATE_ANSWER_NANOS;
+                this.prepareToStop(now);
             } else {
                 this.stopped = true;
             }

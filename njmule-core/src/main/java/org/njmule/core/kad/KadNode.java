@@ -1350,7 +1350,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         // Only usable results bring the lookup closer to its end: junk from one node must not stop it.
-        lookup.valueReceived(sink.applyAsInt(answer.results()));
+        lookup.valueReceived(sink.applyAsInt(answer.results()), this.ticker.read());
     }
 
     // A node others cannot send to would store what nobody can ask for: it takes no publishes.
@@ -1402,7 +1402,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (lookup.kind() == Lookup.Kind.STORE_KEYWORD) {
                 lookup.loadReported(answer.load());
             }
-            lookup.valueReceived(1);
+            lookup.valueReceived(1, this.ticker.read());
         }
     }
 
@@ -1676,7 +1676,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                                             node.settings.tcpPort())
                                     .encode(),
                             Opcodes.Kad.FINDBUDDY_REQ);
-                    lookup.valueReceived(1);
+                    lookup.valueReceived(1, node.ticker.read());
                 }
                 case STORE_NOTES -> {
                     OwnNote note = (OwnNote) data;
