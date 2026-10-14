@@ -31,19 +31,14 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import javafx.event.Event;
-import javafx.scene.Node;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
-import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyEvent;
-import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -109,9 +104,9 @@ class SearchResultsTest {
         FxTesting.onFx(() -> filter.setText("  DVD   film "));
         assertThat(FxTesting.onFx(() -> table.getItems().size())).isEqualTo(1);
         assertThat(FxTesting.onFx(count::getText)).isEqualTo("Results (1/3)");
-        FxTesting.onFx(() -> filter.fireEvent(key(KeyCode.A)));
+        FxTesting.onFx(() -> filter.fireEvent(FxTesting.key(KeyCode.A, false)));
         assertThat(FxTesting.onFx(() -> filter.getText())).as("another key").isNotEmpty();
-        FxTesting.onFx(() -> filter.fireEvent(key(KeyCode.ESCAPE)));
+        FxTesting.onFx(() -> filter.fireEvent(FxTesting.key(KeyCode.ESCAPE, false)));
         assertThat(FxTesting.onFx(() -> filter.getText())).isEmpty();
         assertThat(FxTesting.onFx(count::getText)).isEqualTo("Results (3)");
 
@@ -152,7 +147,8 @@ class SearchResultsTest {
                 .containsExactly("Film DVD rip.avi");
 
         // A double click downloads the file of its row.
-        FxTesting.onFx(() -> this.doubleClick(table, SONG));
+        FxTesting.onFx(() ->
+                FxTesting.doubleClick(table, r -> ((LiveList.Row<?>) r).get().equals(SONG)));
         FxTesting.await(
                 "two downloads", () -> table.lookupAll(".known-downloading").size() == 2);
 
@@ -378,46 +374,12 @@ class SearchResultsTest {
         }
     }
 
-    private void doubleClick(TableView<LiveList.Row<SearchResult>> table, SearchResult result) {
-        for (Node node : table.lookupAll(".table-row-cell")) {
-            if (node instanceof TableRow<?> row
-                    && row.getItem() instanceof LiveList.Row<?> item
-                    && item.get().equals(result)) {
-                row.fireEvent(new MouseEvent(
-                        MouseEvent.MOUSE_CLICKED,
-                        0,
-                        0,
-                        0,
-                        0,
-                        MouseButton.PRIMARY,
-                        2,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        false,
-                        true,
-                        false,
-                        false,
-                        null));
-                return;
-            }
-        }
-        throw new AssertionError("no row of " + result.name());
-    }
-
     private MenuItem item(ContextMenu menu, String key) {
         String text = this.test.gui.t(key);
         return menu.getItems().stream()
                 .filter(i -> text.equals(i.getText()))
                 .findFirst()
                 .orElseThrow();
-    }
-
-    private static KeyEvent key(KeyCode code) {
-        return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, false, false, false, false);
     }
 
     private static SearchResult result(String hash, String name) {

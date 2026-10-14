@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -32,14 +33,21 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.DialogPane;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.TableRow;
+import javafx.scene.control.TableView;
 import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.stage.Window;
 import javax.imageio.ImageIO;
 import org.njmule.core.api.EngineConfig;
@@ -137,6 +145,41 @@ public final class FxTesting {
                 .map(n -> ((Labeled) n).getText())
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    /** Double-clicks the shown row of {@code table} whose item {@code which} accepts; FX thread. */
+    public static void doubleClick(TableView<?> table, Predicate<Object> which) {
+        for (Node node : table.lookupAll(".table-row-cell")) {
+            if (node instanceof TableRow<?> row && row.getItem() != null && which.test(row.getItem())) {
+                row.fireEvent(new MouseEvent(
+                        MouseEvent.MOUSE_CLICKED,
+                        0,
+                        0,
+                        0,
+                        0,
+                        MouseButton.PRIMARY,
+                        2,
+                        false,
+                        false,
+                        false,
+                        false,
+                        true,
+                        false,
+                        false,
+                        true,
+                        false,
+                        false,
+                        null));
+                return;
+            }
+        }
+        throw new AssertionError("no such row shown");
+    }
+
+    /** A key pressed, with the shortcut key of the platform (Ctrl, or Cmd on macOS) when {@code shortcut}. */
+    public static KeyEvent key(KeyCode code, boolean shortcut) {
+        boolean mac = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("mac");
+        return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, false, shortcut && !mac, false, shortcut && mac);
     }
 
     /** Waits until {@code condition}, checked on the FX thread, holds. */
