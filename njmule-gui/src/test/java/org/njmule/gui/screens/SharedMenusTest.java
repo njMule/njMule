@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -178,7 +177,7 @@ class SharedMenusTest {
                 700_000_000,
                 this.dir.resolve("film.mkv"),
                 UploadPriority.AUTO);
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+        Map<String, Engines.Command> commands = new HashMap<>();
         commands.put("sharedFiles", args -> CompletableFuture.completedFuture(List.of(this.notes, this.film)));
         commands.put("renameSharedFile", args -> {
             this.calls.add("rename " + this.name(args[0]) + " " + args[1]);

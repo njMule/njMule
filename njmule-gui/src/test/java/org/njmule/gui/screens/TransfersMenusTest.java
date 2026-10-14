@@ -30,7 +30,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -385,7 +384,7 @@ class TransfersMenusTest {
     }
 
     private TransfersScreen screen() throws Exception {
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+        Map<String, Engines.Command> commands = new HashMap<>();
         commands.put(
                 "uploads",
                 args -> CompletableFuture.completedFuture(List.of(
@@ -451,8 +450,7 @@ class TransfersMenusTest {
     }
 
     // The downloads are the engine's, unless the test gives its own.
-    private Map<String, Function<Object[], Object>> with(
-            NjMuleEngine real, Map<String, Function<Object[], Object>> commands) {
+    private Map<String, Engines.Command> with(NjMuleEngine real, Map<String, Engines.Command> commands) {
         commands.put("downloads", args -> {
             List<DownloadInfo> own = this.downloads.get();
             return own == null ? real.downloads() : CompletableFuture.completedFuture(own);

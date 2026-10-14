@@ -19,21 +19,28 @@ package org.njmule.gui;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.concurrent.CompletableFuture;
 import org.njmule.core.api.NjMuleEngine;
 
 /** A real engine with some commands replaced, for failures and delays the real one cannot be made to show. */
 public final class Engines {
 
+    /** A replaced command, answering with a future like every command of the engine. */
+    @FunctionalInterface
+    public interface Command {
+        CompletableFuture<?> answer(Object[] args);
+    }
+
     private Engines() {}
 
-    /** {@code real}, except that the commands named in {@code commands} answer with what their function returns. */
-    public static NjMuleEngine overriding(NjMuleEngine real, Map<String, Function<Object[], Object>> commands) {
+    /** {@code real}, except that the commands named in {@code commands} answer as those do. */
+    @SuppressWarnings("FutureReturnValueIgnored") // a proxy returns each answer as Object; the caller checks it
+    public static NjMuleEngine overriding(NjMuleEngine real, Map<String, Command> commands) {
         return (NjMuleEngine) Proxy.newProxyInstance(
                 NjMuleEngine.class.getClassLoader(), new Class<?>[] {NjMuleEngine.class}, (proxy, method, args) -> {
-                    Function<Object[], Object> replaced = commands.get(method.getName());
+                    Command replaced = commands.get(method.getName());
                     if (replaced != null) {
-                        return replaced.apply(args == null ? new Object[0] : args);
+                        return replaced.answer(args == null ? new Object[0] : args);
                     }
                     try {
                         return method.invoke(real, args);

@@ -28,7 +28,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -46,7 +45,6 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
-import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.Engines;
@@ -132,7 +130,7 @@ class MainWindowActionsTest {
 
     @Test
     void keysTheRailAndTheToolsOpenWhatTheyName() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands(real)));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands()));
         this.test.gui.settings().setScreen("no such screen");
         MainWindow window = this.show();
         assertThat(FxTesting.onFx(window::current)).as("an unknown screen").isEqualTo("transfers");
@@ -207,7 +205,7 @@ class MainWindowActionsTest {
     }
 
     private MainWindow window() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands(real)));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands()));
         return this.show();
     }
 
@@ -217,8 +215,8 @@ class MainWindowActionsTest {
         return window;
     }
 
-    private Map<String, Function<Object[], Object>> commands(NjMuleEngine real) {
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+    private Map<String, Engines.Command> commands() {
+        Map<String, Engines.Command> commands = new HashMap<>();
         for (String command : List.of("connect", "disconnect", "connectKad", "disconnectKad")) {
             commands.put(command, args -> {
                 this.calls.add(command);
@@ -232,7 +230,9 @@ class MainWindowActionsTest {
     private void status(EngineStatus next) throws Exception {
         this.status.set(next);
         FxTesting.onFx(this.test.model::tick);
-        FxTesting.await("the state", () -> this.test.model.statusProperty().get() == next);
+        FxTesting.await(
+                "the state",
+                () -> Objects.equals(this.test.model.statusProperty().get(), next));
     }
 
     private ToggleButton rail(MainWindow window, String title) {

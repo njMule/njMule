@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -299,7 +300,8 @@ class TrayWindowsTest {
         EngineStatus onKad = Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
         this.start(
                 real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
-        FxTesting.await("on Kad", () -> this.model.statusProperty().get() == onKad);
+        FxTesting.await(
+                "on Kad", () -> Objects.equals(this.model.statusProperty().get(), onKad));
         MiniMule mini = FxTesting.onFx(() -> new MiniMule(
                 this.gui,
                 this.owner,

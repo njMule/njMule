@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Function;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
@@ -214,7 +213,7 @@ class ServersMenusTest {
     }
 
     private ServersScreen screen() throws Exception {
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+        Map<String, Engines.Command> commands = new HashMap<>();
         commands.put("servers", args -> CompletableFuture.completedFuture(List.of(BIG, SMALL)));
         commands.put("connect", args -> {
             Optional<?> server = (Optional<?>) args[0];
@@ -279,7 +278,7 @@ class ServersMenusTest {
         String text = this.test.gui.t(key);
         return menu.getItems().stream()
                 .filter(i -> text.equals(i.getText())
-                        || key.equals("IDS_CONNECTTHIS") && i.getStyleClass().contains("default-item"))
+                        || (key.equals("IDS_CONNECTTHIS") && i.getStyleClass().contains("default-item")))
                 .findFirst()
                 .orElseThrow();
     }

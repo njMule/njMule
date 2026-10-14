@@ -22,10 +22,10 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import javafx.scene.control.TreeItem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -174,7 +174,7 @@ class StatsAndInfoTest {
     }
 
     private void start() throws Exception {
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+        Map<String, Engines.Command> commands = new HashMap<>();
         commands.put("status", args -> CompletableFuture.completedFuture(this.status.get()));
         commands.put("sources", args -> CompletableFuture.completedFuture(this.sources.get()));
         commands.put(
@@ -200,7 +200,9 @@ class StatsAndInfoTest {
                                 this.dir.resolve("small.txt"),
                                 UploadPriority.NORMAL))));
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
-        FxTesting.await("the state", () -> this.test.model.statusProperty().get() == this.status.get());
+        FxTesting.await(
+                "the state",
+                () -> Objects.equals(this.test.model.statusProperty().get(), this.status.get()));
         FxTesting.await("the servers", () -> this.test.model.servers().size() == 4);
         FxTesting.await("the files", () -> this.test.model.sharedFiles().size() == 2);
     }
@@ -208,7 +210,9 @@ class StatsAndInfoTest {
     private void status(EngineStatus next) throws Exception {
         this.status.set(next);
         FxTesting.onFx(this.test.model::tick);
-        FxTesting.await("the state", () -> this.test.model.statusProperty().get() == next);
+        FxTesting.await(
+                "the state",
+                () -> Objects.equals(this.test.model.statusProperty().get(), next));
     }
 
     private List<String> lines(MyInfoPane pane) throws Exception {

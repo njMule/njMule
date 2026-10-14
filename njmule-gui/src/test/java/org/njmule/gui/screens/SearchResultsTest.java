@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -30,7 +31,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import javafx.event.Event;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -82,7 +82,7 @@ class SearchResultsTest {
     private final AtomicLong ids = new AtomicLong();
     private final AtomicReference<EngineStatus> status = new AtomicReference<>();
     // Commands a test replaces beside those of every test.
-    private final Map<String, Function<Object[], Object>> extra = new HashMap<>();
+    private final Map<String, Engines.Command> extra = new HashMap<>();
 
     @AfterEach
     void close() {
@@ -351,7 +351,7 @@ class SearchResultsTest {
     }
 
     private SearchScreen screen() throws Exception {
-        Map<String, Function<Object[], Object>> commands = new HashMap<>();
+        Map<String, Engines.Command> commands = new HashMap<>();
         commands.put("search", args -> {
             SearchRequest request = (SearchRequest) args[0];
             this.calls.add("search " + request.expression() + " " + request.scope());
@@ -383,13 +383,15 @@ class SearchResultsTest {
         this.test.show(FxTesting.onFx(screen::view));
         if (this.status.get() != null) {
             FxTesting.onFx(this.test.model::tick);
-            FxTesting.await("the state", () -> this.test.model.statusProperty().get() == this.status.get());
+            FxTesting.await(
+                    "the state",
+                    () -> Objects.equals(this.test.model.statusProperty().get(), this.status.get()));
         }
         return screen;
     }
 
-    private NjMuleEngine wrap(NjMuleEngine real, Map<String, Function<Object[], Object>> commands) {
-        Map<String, Function<Object[], Object>> all = new HashMap<>(commands);
+    private NjMuleEngine wrap(NjMuleEngine real, Map<String, Engines.Command> commands) {
+        Map<String, Engines.Command> all = new HashMap<>(commands);
         all.put("status", args -> {
             EngineStatus fixed = this.status.get();
             return fixed == null ? real.status() : CompletableFuture.completedFuture(fixed);
@@ -401,7 +403,9 @@ class SearchResultsTest {
         EngineStatus next = Statuses.of(server, 5, false, kad, false);
         this.status.set(next);
         FxTesting.onFx(this.test.model::tick);
-        FxTesting.await("the state", () -> this.test.model.statusProperty().get() == next);
+        FxTesting.await(
+                "the state",
+                () -> Objects.equals(this.test.model.statusProperty().get(), next));
     }
 
     // Starts a search for words and returns its tab.
