@@ -19,8 +19,12 @@ package org.njmule.core.api;
 import java.util.List;
 import java.util.Objects;
 
-/** What an import of an eMule profile did, file by file. */
-public record ImportReport(boolean dryRun, List<Item> items) {
+/**
+ * What an import of an eMule profile did, file by file.
+ *
+ * @param startAtLogin eMule starts when the user logs in: the desktop app does the same after the import
+ */
+public record ImportReport(boolean dryRun, List<Item> items, boolean startAtLogin) {
 
     /** The outcome for one file. */
     public enum Outcome {
@@ -47,5 +51,10 @@ public record ImportReport(boolean dryRun, List<Item> items) {
 
     public ImportReport {
         items = List.copyOf(items);
+    }
+
+    /** A report of a profile that does not start at login. */
+    public ImportReport(boolean dryRun, List<Item> items) {
+        this(dryRun, items, false);
     }
 }

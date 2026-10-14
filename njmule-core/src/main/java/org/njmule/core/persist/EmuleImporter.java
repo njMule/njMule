@@ -270,7 +270,15 @@ public final class EmuleImporter {
         }
         this.identity(ini);
         this.downloads(ini);
-        return new ImportReport(this.options.dryRun(), this.items);
+        return new ImportReport(
+                this.options.dryRun(),
+                this.items,
+                ini.map(EmuleImporter::startsAtLogin).orElse(false));
+    }
+
+    // Starting with the system is not a preference of ours but a setting of the system, which the desktop app makes.
+    private static boolean startsAtLogin(IniFile ini) {
+        return ini.getBoolean(SECTION, "AutoStart").orElse(false);
     }
 
     // Nick, limits, networks, obfuscation and credits; ports and directories stay njMule's own.
@@ -291,7 +299,9 @@ public final class EmuleImporter {
             this.report(file, ImportReport.Outcome.FAILED, "no [" + SECTION + "] section");
             return Optional.empty();
         }
-        String detail = "nick, limits, networks, obfuscation; ports and directories stay ours";
+        String detail = "nick, limits, networks, obfuscation"
+                + (startsAtLogin(ini) ? ", start at login" : "")
+                + "; ports and directories stay ours";
         if (this.options.dryRun()) {
             this.report(file, ImportReport.Outcome.WOULD_IMPORT, detail);
             return Optional.of(ini);
