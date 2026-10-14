@@ -14283,6 +14283,10 @@
     },
     {
       "module": "org.njmule.gui",
+      "glob": "org/njmule/gui/i18n/emule_sv.properties"
+    },
+    {
+      "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule_tr.properties"
     },
     {
@@ -14340,6 +14344,10 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/nj_ru.properties"
+    },
+    {
+      "module": "org.njmule.gui",
+      "glob": "org/njmule/gui/i18n/nj_sv.properties"
     },
     {
       "module": "org.njmule.gui",
