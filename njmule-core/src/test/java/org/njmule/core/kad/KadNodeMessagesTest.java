@@ -34,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -660,6 +661,82 @@ class KadNodeMessagesTest {
         Files.delete(file);
         this.node.close();
         assertThat(file).as("no contacts, no file").doesNotExist();
+    }
+
+    @Test
+    void contactsThatCannotBeSavedStayInTheTable() throws Exception {
+        this.node.addContacts(contents(this.record(PEER)));
+        Path tmp = this.dir.resolve(KadNode.NODES_FILE + ".tmp");
+        Files.createDirectories(tmp);
+        Files.writeString(tmp.resolve("keep"), "x");
+
+        this.node.saveNodes();
+
+        assertThat(this.dir.resolve(KadNode.NODES_FILE)).doesNotExist();
+        assertThat(this.node.contacts()).isEqualTo(1);
+    }
+
+    @Test
+    void answersNobodyAskedForAreDropped() throws Exception {
+        int stranger = Ipv4.of(40, 1, 1, 1);
+        UInt128 target = Keywords.id("ubuntu");
+
+        this.receive(stranger, new KadMessages.Answer(target, List.of(this.contact(Ipv4.of(41, 1, 1, 1)))).encode());
+        this.receive(
+                stranger,
+                new KadMessages.SearchAnswer(target, target, List.of(entry(target, "ubuntu.iso", 10))).encode());
+
+        assertThat(this.node.contacts()).isZero();
+        assertThat(this.sent).isEmpty();
+    }
+
+    @Test
+    void contactsAnAnswerCannotVouchForAreLeftOut() {
+        UInt128 target = Keywords.id("ubuntu");
+        this.contactAt(target);
+        assertThat(this.node.publishKeyword("ubuntu", List.of(entry(UInt128.random(this.random), "ubuntu.iso", 10))))
+                .isTrue();
+
+        this.receive(
+                PEER,
+                new KadMessages.Answer(
+                                target,
+                                List.of(
+                                        new KadMessages.Contact(
+                                                UInt128.random(this.random), Ipv4.of(41, 1, 1, 1), PORT, 0, 1),
+                                        this.contact(Ipv4.of(192, 168, 7, 7)),
+                                        new KadMessages.Contact(
+                                                UInt128.random(this.random), Ipv4.of(42, 1, 1, 1), 53, 0, 5),
+                                        this.contact(Ipv4.of(43, 1, 1, 1))))
+                        .encode());
+
+        assertThat(this.node.contactInfos())
+                .extracting(KadContactInfo::address)
+                .containsExactlyInAnyOrder(Ipv4.format(PEER) + ":" + PORT, "43.1.1.1:" + PORT);
+    }
+
+    @Test
+    void aNodeOnThisMachineIsAnsweredButNotTaken() throws Exception {
+        this.hello(Ipv4.of(127, 0, 0, 1), 8);
+
+        assertThat(this.sentWith(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.HELLO_RES)).isNotNull();
+        assertThat(this.node.contacts()).isZero();
+        assertThat(this.last(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.FIREWALLED2_REQ))
+                .as("it could not check our port")
+                .isNull();
+    }
+
+    @Test
+    void ourOwnIdIsNotLookedUpTwiceAtOnce() throws Exception {
+        this.aliveContact(PEER);
+        assertThat(this.node.findSources(this.node.id().toHash16(), 10, s -> {}))
+                .isTrue();
+
+        this.node.lookForContacts();
+        this.node.tick();
+
+        assertThat(this.requestedTargets()).filteredOn(this.node.id()::equals).hasSize(1);
+        assertThat(this.node.isReady()).isFalse();
     }
 
     // Lets the lookup towards target ask the contact at that very id, which then gets the request.
