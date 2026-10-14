@@ -574,3 +574,5 @@ All notable changes to this project are documented here. The format follows
 - Kad: plain datagrams from the DNS port are dropped; lookups no longer ask contacts without a UDP
   port, at the address of another of our contacts or under the id of a verified contact elsewhere;
   a result claiming more than 65,500 sources counts as unknown.
+- Kad nodes older than version 8 can now be verified: one with keys answers a ping, an older one a
+  lookup for a random target, and only verified contacts are used to answer and search.

@@ -59,9 +59,16 @@ final class PacketTracking {
 
     private record Sent(int ip, Kad request, long at) {}
 
+    /** A request whose answer proves the address of the contact {@code id}: a ping, or a lookup for a random target. */
+    private record Challenge(int ip, Kad request, UInt128 target, UInt128 id, long at) {}
+
+    // Challenges waiting for their answer at most: hellos from forged addresses must not fill memory.
+    private static final int MAX_CHALLENGES = 1_000;
+
     private final Map<Key, long[]> buckets = new HashMap<>();
     private final Map<Integer, Long> bans = new HashMap<>();
     private final Deque<Sent> sent = new ArrayDeque<>();
+    private final Deque<Challenge> challenges = new ArrayDeque<>();
 
     /** Whether a request may be served; may ban the address. Times in milliseconds. */
     boolean allow(int ip, Kad request, long nowMs) {
@@ -155,6 +162,39 @@ final class PacketTracking {
         return false;
     }
 
+    /** We sent {@code ip} a request whose answer proves the contact {@code id} is there; ZERO target for a ping. */
+    void challenged(int ip, Kad request, UInt128 target, UInt128 id, long nowMs) {
+        this.expire(nowMs);
+        if (this.challenges.size() >= MAX_CHALLENGES) {
+            this.challenges.removeFirst();
+        }
+        this.challenges.addLast(new Challenge(ip, request, target, id, nowMs));
+    }
+
+    /** Whether a challenge to {@code ip} waits for its answer: one at a time. */
+    boolean isChallenged(int ip, long nowMs) {
+        this.expire(nowMs);
+        for (Challenge c : this.challenges) {
+            if (c.ip() == ip) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The contact proven by this answer of {@code ip} to {@code request} for {@code target}; consumed. */
+    Optional<UInt128> challengeAnswered(int ip, Kad request, UInt128 target, long nowMs) {
+        this.expire(nowMs);
+        for (Iterator<Challenge> it = this.challenges.iterator(); it.hasNext(); ) {
+            Challenge c = it.next();
+            if (c.ip() == ip && c.request() == request && c.target().equals(target)) {
+                it.remove();
+                return Optional.of(c.id());
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Drops what is old; call every few minutes. */
     void clean(long nowMs) {
         this.expire(nowMs);
@@ -165,6 +205,9 @@ final class PacketTracking {
     private void expire(long nowMs) {
         while (!this.sent.isEmpty() && nowMs - this.sent.peekFirst().at() > ANSWER_WINDOW.toMillis()) {
             this.sent.removeFirst();
+        }
+        while (!this.challenges.isEmpty() && nowMs - this.challenges.peekFirst().at() > ANSWER_WINDOW.toMillis()) {
+            this.challenges.removeFirst();
         }
     }
 

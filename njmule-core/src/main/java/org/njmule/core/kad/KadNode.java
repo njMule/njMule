@@ -239,6 +239,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final int FIREWALL_CHECKS = 4;
     private static final int FIREWALL_ACKS = 2;
     private static final int HELLO_ACK_VERSION = 8;
+    // Nodes from this version on obfuscate with keys, which a ping proves; older ones only answer lookups.
+    private static final int KEYS_VERSION = 7;
+    // The contacts a lookup that challenges an old node asks for.
+    private static final int CHALLENGE_CONTACTS = 2;
     private static final int OBFUSCATION_VERSION = 6;
     private static final int FIREWALL2_VERSION = 7;
     private static final int MISC_UDP_FIREWALLED = 0x01;
@@ -1180,6 +1184,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         boolean verified =
                 this.table.get(hello.sender().id()).map(KadContact::isVerified).orElse(peer.validKey());
+        if (outcome != RoutingTable.Outcome.REFUSED && !verified && !peer.validKey()) {
+            this.challenge(peer, hello.sender().id(), version, answer);
+        }
         if (!answer) {
             boolean askAck = outcome != RoutingTable.Outcome.REFUSED && !verified && version >= HELLO_ACK_VERSION;
             Packet reply = this.hello(version, askAck).encode(true);
@@ -1197,12 +1204,43 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.maybeCheckFirewall(peer, version);
     }
 
+    // Nodes older than the hello acknowledgement prove their address by answering a request only they were sent: a
+    // ping for a node with keys, else a lookup for a random target. One at a time per address.
+    private void challenge(Peer peer, UInt128 id, int version, boolean answer) {
+        long nowMs = this.nowMs();
+        if (version >= HELLO_ACK_VERSION
+                || (answer && version >= KEYS_VERSION)
+                || this.tracking.isChallenged(peer.ip(), nowMs)) {
+            return;
+        }
+        if (version >= KEYS_VERSION) {
+            this.answer(peer, KadMessages.ping());
+            this.tracking.sent(peer.ip(), Opcodes.Kad.PING, nowMs);
+            this.tracking.challenged(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, id, nowMs);
+            return;
+        }
+        UInt128 target = UInt128.random(this.random);
+        // Such nodes cannot open obfuscated packets.
+        this.transport.send(
+                peer.ip(),
+                peer.port(),
+                new KadMessages.Request(CHALLENGE_CONTACTS, target, id).encode(),
+                Optional.empty(),
+                0,
+                0);
+        this.tracking.sent(peer.ip(), Opcodes.Kad.REQ, nowMs);
+        this.tracking.challenged(peer.ip(), Opcodes.Kad.REQ, target, id, nowMs);
+    }
+
+    private void verified(int ip, UInt128 id) {
+        this.table.get(id).filter(c -> c.ip() == ip).ifPresent(c -> c.setVerified(true));
+    }
+
     private void helloAcknowledged(Peer peer, Packet packet) throws DecodeException {
         if (!peer.validKey() || !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
             return;
         }
-        UInt128 id = KadMessages.decodeHelloAck(packet);
-        this.table.get(id).filter(c -> c.ip() == peer.ip()).ifPresent(c -> c.setVerified(true));
+        this.verified(peer.ip(), KadMessages.decodeHelloAck(packet));
     }
 
     private void lookupRequested(Peer peer, Packet packet) throws DecodeException {
@@ -1225,6 +1263,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         KadMessages.Answer answer = KadMessages.Answer.decode(packet);
         long now = this.ticker.read();
         this.table.byAddress(peer.ip()).ifPresent(c -> this.table.alive(c, now));
+        // The answer to a challenge proves the contact; the contacts it carries are not wanted.
+        Optional<UInt128> proven =
+                this.tracking.challengeAnswered(peer.ip(), Opcodes.Kad.REQ, answer.target(), this.nowMs());
+        if (proven.isPresent()) {
+            this.verified(peer.ip(), proven.get());
+            return;
+        }
         // Contacts are learnt only from the answer to a lookup that asked this node for that many.
         Lookup lookup = this.lookups.get(answer.target());
         if (lookup == null
@@ -1388,6 +1433,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PONG, this.nowMs())) {
             return;
         }
+        this.tracking
+                .challengeAnswered(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, this.nowMs())
+                .ifPresent(id -> this.verified(peer.ip(), id));
         int port = KadMessages.decodePong(packet);
         if (port != 0 && this.udpTest.isRunning() && this.udpTest.findsExternalPort()) {
             this.udpTest.portSeen(port, peer.ip());
