@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -89,6 +90,26 @@ class PreferencesCodecTest {
         assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.SUPPORTED);
         assertThat(p.logLevel()).isEqualTo(d.logLevel());
         assertThat(p.tempDir()).isEmpty();
+    }
+
+    @Test
+    void aByteOrderMarkDoesNotHideTheFirstKey() throws IOException {
+        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+        Files.write(file, ("﻿net.tcpPort=12345\nnet.udpPort=5000\n").getBytes(StandardCharsets.UTF_8));
+
+        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
+    }
+
+    @Test
+    void aMalformedEscapeCostsOnlyItsLine() throws IOException {
+        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+        Files.writeString(file, "user.nick=bad\\u12\nnet.tcpPort=12345\nchat.filter=a\\\n  b\\u00e9\n");
+
+        Preferences p = PreferencesCodec.load(file);
+
+        assertThat(p.nick()).isEqualTo(Preferences.defaults().nick());
+        assertThat(p.tcpPort()).isEqualTo(12_345);
+        assertThat(p.messageFilter()).isEqualTo("abé");
     }
 
     @Test

@@ -166,8 +166,7 @@ public final class PreferencesCodec {
     }
 
     static Preferences parse(Reader reader) throws IOException {
-        Properties props = new Properties();
-        props.load(reader);
+        Properties props = PropertyLines.parse(reader);
         for (String name : props.stringPropertyNames()) {
             if (!KEYS.containsKey(name)) {
                 logger.debug("Ignoring unknown preference {}", name);

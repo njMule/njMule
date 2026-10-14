@@ -16,6 +16,7 @@
  */
 package org.njmule.core.persist;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
@@ -53,5 +54,14 @@ class CategoriesCodecTest {
 
         Files.writeString(file, Files.readString(file) + "category.7.name=\ncategory.8.color=99\n");
         assertThat(CategoriesCodec.load(file)).isEqualTo(categories);
+    }
+
+    @Test
+    void aMalformedEscapeCostsOnlyItsLine() throws Exception {
+        Path file = this.dir.resolve(CategoriesCodec.FILE_NAME);
+        Files.writeString(
+                file, "\uFEFFcategory.1.name=Films\ncategory.1.comment=\\u12x\ncategory.2.name=Music\n", UTF_8);
+
+        assertThat(CategoriesCodec.load(file)).extracting(Category::name).containsExactly("Films", "Music");
     }
 }

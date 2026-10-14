@@ -19,27 +19,91 @@ package org.njmule.core.persist;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Properties files of numbered entries ({@code prefix.N.key}), read and written in UTF-8. */
 final class PropertyLines {
+
+    private static final Logger logger = LoggerFactory.getLogger(PropertyLines.class);
+    private static final char BYTE_ORDER_MARK = '﻿';
 
     private PropertyLines() {}
 
     /** Reads {@code file}, or its backup. */
     static Properties read(Path file) throws IOException {
         return AtomicFiles.read(file, in -> {
-            Properties props = new Properties();
             try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                props.load(r);
+                return parse(r);
             }
-            return props;
         });
+    }
+
+    /**
+     * Loads properties as {@link Properties#load(Reader)} does, but a leading byte order mark (editors write one) is
+     * skipped, and a line with a malformed {@code \}{@code u} escape is left out instead of the whole file.
+     */
+    static Properties parse(Reader reader) throws IOException {
+        StringWriter all = new StringWriter();
+        reader.transferTo(all);
+        String text = all.toString();
+        if (!text.isEmpty() && text.charAt(0) == BYTE_ORDER_MARK) {
+            text = text.substring(1);
+        }
+        Properties props = new Properties();
+        try {
+            props.load(new StringReader(text));
+            return props;
+        } catch (IllegalArgumentException e) {
+            logger.warn("Leaving out lines with a malformed escape: {}", e.getMessage());
+        }
+        props = new Properties();
+        for (String entry : entries(text)) {
+            try {
+                props.load(new StringReader(entry));
+            } catch (IllegalArgumentException e) {
+                // That line only.
+            }
+        }
+        return props;
+    }
+
+    // The text split into entries: lines ending with an odd number of backslashes go on in the next one, except
+    // comments.
+    private static List<String> entries(String text) {
+        List<String> entries = new ArrayList<>();
+        StringBuilder entry = new StringBuilder();
+        for (String line : text.split("\r\n|\r|\n", -1)) {
+            boolean first = entry.isEmpty();
+            entry.append(line).append('\n');
+            String start = line.stripLeading();
+            boolean comment = first && (start.startsWith("#") || start.startsWith("!"));
+            if (comment || !continues(line)) {
+                entries.add(entry.toString());
+                entry.setLength(0);
+            }
+        }
+        if (!entry.isEmpty()) {
+            entries.add(entry.toString());
+        }
+        return entries;
+    }
+
+    private static boolean continues(String line) {
+        int backslashes = 0;
+        for (int i = line.length() - 1; i >= 0 && line.charAt(i) == '\\'; i--) {
+            backslashes++;
+        }
+        return backslashes % 2 == 1;
     }
 
     /** The numbers N of the {@code prefix.N.*} keys, in order; other keys are left out. */
