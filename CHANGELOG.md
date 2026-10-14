@@ -647,3 +647,5 @@ All notable changes to this project are documented here. The format follows
   the server connection.
 - A server whose last ping time lies in the future (a clock set back, a server list from another
   computer) is pinged again instead of never.
+- A new id the server gives while we are logged in is the one our hello, the downloads and Kad use
+  from then on, and the log tells it.

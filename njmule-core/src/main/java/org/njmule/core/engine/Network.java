@@ -2199,6 +2199,15 @@ final class Network {
             }
         }
 
+        // Our hello, the sources and Kad tell the id the server gave us last.
+        @Override
+        public void idChanged(ServerMet.Server server, ServerMessages.IdChange id) {
+            Network.this.context = new ServerContext(id.clientId(), server.ip(), server.port());
+            Network.this.userLog.log(
+                    LogLine.Level.INFO,
+                    "The server gave us a new id: " + (id.isLowId() ? "LowID " : "HighID ") + id.clientId());
+        }
+
         @Override
         public void serverList(ServerMet.Server server, List<ServerMessages.Endpoint> servers) {
             if (Network.this.preferences.get().addServersFromServer()) {

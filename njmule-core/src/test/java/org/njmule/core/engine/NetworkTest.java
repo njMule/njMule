@@ -91,6 +91,7 @@ class NetworkTest {
 
     private static final Hash16 USER = Hash16.parseHex("0a".repeat(16));
     private static final long HIGH_ID = Ipv4.toEd2k(Ipv4.parse("1.2.3.4"));
+    private static final long OTHER_HIGH_ID = Ipv4.toEd2k(Ipv4.parse("5.6.7.8"));
 
     /** A line of the front ends' log. */
     private record Logged(LogLine.Level level, String text) {}
@@ -104,6 +105,7 @@ class NetworkTest {
     private AppDirectories dirs;
     private EngineLoop loop;
     private Network network;
+    private ScriptedServer scripted;
 
     @BeforeEach
     void open() throws IOException {
@@ -126,6 +128,9 @@ class NetworkTest {
             });
         }
         this.loop.close();
+        if (this.scripted != null) {
+            this.scripted.close();
+        }
     }
 
     @Test
@@ -786,6 +791,41 @@ class NetworkTest {
             assertThat(this.next(EngineEvent.ServersChanged.class).count()).isEqualTo(1);
         }
         assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "1 new server from a client"));
+    }
+
+    @Test
+    void aNewIdFromTheServerIsTheIdOurHelloTells() throws Exception {
+        this.givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+
+        this.whenTheServerGivesUsTheId(OTHER_HIGH_ID);
+
+        this.thenOurHelloTellsTheId(OTHER_HIGH_ID);
+    }
+
+    private void givenALoginTo(ScriptedServer server) throws Exception {
+        this.scripted = server;
+        Network network = this.started();
+        this.connect(network, server);
+        this.next(EngineEvent.ServerConnected.class);
+    }
+
+    private void whenTheServerGivesUsTheId(long id) throws Exception {
+        this.scripted.send(new ServerMessages.IdChange(id, 0, 0).encode());
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (this.onLoop(this.network::status).clientId() != id) {
+            assertThat(System.nanoTime()).as("the new id taken").isLessThan(deadline);
+            Thread.sleep(20);
+        }
+    }
+
+    private void thenOurHelloTellsTheId(long id) throws Exception {
+        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            CompletableFuture<PeerInfo> answer = this.network.hello(local(peer.getLocalPort()));
+            try (Socket socket = peer.accept()) {
+                assertThat(Hello.decode(read(socket)).clientId()).isEqualTo(id);
+            }
+            assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
+        }
     }
 
     private Network create() throws Exception {

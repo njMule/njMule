@@ -69,6 +69,9 @@ public final class ServerSession {
 
         void connected(ServerMet.Server server, IdChange id);
 
+        /** The server we are logged in to gave us another id. */
+        default void idChanged(ServerMet.Server server, IdChange id) {}
+
         /** {@code server} is the last server tried, if any. */
         void disconnected(Optional<ServerMet.Server> server, String reason);
 
@@ -395,6 +398,7 @@ public final class ServerSession {
             logger.debug("Id 0 from {}", ServerList.addressOf(target));
             return;
         }
+        boolean changed = this.id.map(IdChange::clientId).orElse(0L) != change.clientId();
         this.id = Optional.of(change);
         this.lastClientId = change.clientId();
         if (this.state == State.LOGGING_IN) {
@@ -403,6 +407,8 @@ public final class ServerSession {
             this.pending.clear();
             this.servers.update(ServerList.addressOf(target), s -> s.with(intTag(ServerTag.FAIL, 0)));
             this.listener.connected(target, change);
+        } else if (this.state == State.CONNECTED && changed) {
+            this.listener.idChanged(target, change);
         }
     }
 
