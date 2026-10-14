@@ -23,15 +23,24 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import javafx.application.Platform;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.DialogPane;
+import javafx.scene.control.Labeled;
 import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
+import javafx.stage.Window;
 import javax.imageio.ImageIO;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
@@ -86,6 +95,48 @@ public final class FxTesting {
             task.run();
             return null;
         });
+    }
+
+    /**
+     * Answers the next dialog that shows with {@code button}, after {@code fill} saw its pane; FX thread, called just
+     * before the code that waits for the dialog.
+     */
+    public static void answer(ButtonType button, Consumer<DialogPane> fill) {
+        Platform.runLater(new Runnable() {
+            private int tries;
+
+            @Override
+            public void run() {
+                Optional<DialogPane> pane = Window.getWindows().stream()
+                        .filter(Window::isShowing)
+                        .map(Window::getScene)
+                        .filter(Objects::nonNull)
+                        .map(scene -> scene.getRoot().lookup(".dialog-pane"))
+                        .filter(DialogPane.class::isInstance)
+                        .map(DialogPane.class::cast)
+                        .findFirst();
+                if (pane.isEmpty()) {
+                    if (this.tries++ < 200) {
+                        Platform.runLater(this);
+                    }
+                    return;
+                }
+                fill.accept(pane.get());
+                ((Button) pane.get().lookupButton(button)).fire();
+            }
+        });
+    }
+
+    public static void answer(ButtonType button) {
+        answer(button, pane -> {});
+    }
+
+    /** The texts the cells of the tables or lists under {@code node} show now; FX thread. */
+    public static List<String> cellTexts(Node node) {
+        return node.lookupAll(".indexed-cell").stream()
+                .map(n -> ((Labeled) n).getText())
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     /** Waits until {@code condition}, checked on the FX thread, holds. */
