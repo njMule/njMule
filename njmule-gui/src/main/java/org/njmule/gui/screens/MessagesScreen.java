@@ -19,8 +19,6 @@ package org.njmule.gui.screens;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -62,9 +60,6 @@ import org.njmule.gui.ui.Screen;
 
 /** Friends on the left, a tab for each conversation on the right. */
 public final class MessagesScreen implements Screen {
-
-    private static final DateTimeFormatter TIME =
-            DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT).withZone(ZoneId.systemDefault());
 
     private final Gui gui;
     private Node view;
@@ -384,7 +379,7 @@ public final class MessagesScreen implements Screen {
                 this.setText(null);
                 return;
             }
-            String time = TIME.format(line.time());
+            String time = MessagesScreen.this.gui.formats().time(line.time());
             String text = switch (line.author()) {
                 case US -> time + "  " + MessagesScreen.this.gui.t("nj.chat.me") + ": " + line.text();
                 case THEM -> time + "  " + this.who() + ": " + line.text();

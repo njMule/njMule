@@ -43,6 +43,17 @@ class InfraTest {
     }
 
     @Test
+    void timesOfTheDayFollowTheSystem() {
+        Instant time = Instant.parse("2026-10-13T19:07:43Z");
+
+        assertThat(Formats.time(Locale.ITALY, ZoneOffset.ofHours(2)).format(time))
+                .isEqualTo("21:07");
+        assertThat(Formats.time(Locale.US, ZoneOffset.ofHours(2)).format(time))
+                .startsWith("9:07")
+                .endsWith("PM");
+    }
+
+    @Test
     void exitPromptAndStartMinimisedAreRemembered() throws Exception {
         GuiSettings settings = GuiSettings.load(this.dir);
         assertThat(settings.confirmExit()).as("on by default").isTrue();

@@ -39,9 +39,11 @@ public final class Formats {
     private final DecimalFormat twoDecimals;
     private final NumberFormat integer;
     private final DateTimeFormatter dateTime;
+    private final DateTimeFormatter time;
 
     public Formats(Locale locale) {
         this.dateTime = dateTime(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
+        this.time = time(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(locale);
         this.oneDecimal = new DecimalFormat("0.0", symbols);
         this.twoDecimals = new DecimalFormat("0.00", symbols);
@@ -51,6 +53,17 @@ public final class Formats {
     /** {@code time} as the system shows a date and a time, whatever the language of the interface. */
     public String dateTime(Instant time) {
         return this.dateTime.format(time);
+    }
+
+    /** The time of the day of {@code time}, without seconds, as the system shows it. */
+    public String time(Instant time) {
+        return this.time.format(time);
+    }
+
+    static DateTimeFormatter time(Locale locale, ZoneId zone) {
+        return DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+                .withLocale(locale)
+                .withZone(zone);
     }
 
     // The short date and the time with seconds of {@code locale}; short dates often have a two-digit year.

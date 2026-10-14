@@ -19,7 +19,9 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,9 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PartMap;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
+import org.njmule.gui.i18n.I18n;
+import org.njmule.gui.infra.Formats;
+import org.njmule.gui.ui.Gui;
 
 @Timeout(120)
 class TransfersScreenTest {
@@ -84,6 +89,41 @@ class TransfersScreenTest {
                     .as("comments")
                     .isFalse();
         });
+    }
+
+    @Test
+    void theProgressShowsInTheLanguageOfTheInterface() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        Gui italian = FxTesting.onFx(() -> new Gui(
+                I18n.of(Locale.ITALIAN),
+                new Formats(Locale.ITALIAN),
+                this.test.model,
+                this.test.gui.themes(),
+                this.test.gui.settings(),
+                this.test.gui.directories(),
+                this.test.told::add,
+                () -> {}));
+        TransfersScreen screen = new TransfersScreen(italian);
+        this.test.show(FxTesting.onFx(screen::view));
+        DownloadInfo done = new DownloadInfo(
+                FILE,
+                "film.mkv",
+                1000,
+                1000,
+                DownloadInfo.Status.COMPLETE,
+                DownloadPriority.AUTO,
+                0,
+                0,
+                0,
+                0,
+                PartMap.EMPTY);
+
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("f"))));
+
+        FxTesting.await(
+                "the percentage",
+                () -> screen.downloads().lookupAll(".label").stream()
+                        .anyMatch(n -> n instanceof Label l && "100,0 %".equals(l.getText())));
     }
 
     private MenuItem item(ContextMenu menu, String key) {

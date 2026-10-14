@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
@@ -670,7 +669,7 @@ public final class TransfersScreen implements Screen {
     }
 
     /** The part bar of the download, with the percentage next to it. */
-    private static final class ProgressCell extends TableCell<LiveList.Row<DownloadInfo>, Double> {
+    private final class ProgressCell extends TableCell<LiveList.Row<DownloadInfo>, Double> {
         private final PartBar bar = new PartBar();
         private final Label text = new Label();
         private final HBox box = new HBox(6, this.bar, this.text);
@@ -693,7 +692,7 @@ public final class TransfersScreen implements Screen {
             }
             DownloadInfo d = row.get();
             this.bar.set(d.parts(), d.completed());
-            this.text.setText(String.format(Locale.ROOT, "%.1f %%", value * 100));
+            this.text.setText(TransfersScreen.this.gui.formats().percent(d.completed(), d.size()));
             this.setGraphic(this.box);
         }
     }
