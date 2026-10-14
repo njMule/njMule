@@ -70,14 +70,23 @@ public record AppDirectories(
                 portable);
     }
 
-    /** Resolves the layout for the running system. */
-    public static AppDirectories resolve(Optional<Path> overrideRoot, Optional<Path> executableDir) {
+    /** Resolves the layout for the running program, the command line and the desktop app alike. */
+    public static AppDirectories resolve(Optional<Path> overrideRoot) {
         return resolve(
                 OsFamily.current(),
                 System.getenv(),
                 Path.of(System.getProperty("user.home")),
                 overrideRoot,
-                executableDir);
+                nativeExecutableDir());
+    }
+
+    // Only a native executable has a meaningful directory for the portable-mode marker; on the
+    // JVM the command is the java launcher.
+    private static Optional<Path> nativeExecutableDir() {
+        if (!"runtime".equals(System.getProperty("org.graalvm.nativeimage.imagecode"))) {
+            return Optional.empty();
+        }
+        return ProcessHandle.current().info().command().map(Path::of).map(Path::getParent);
     }
 
     /** Resolves the layout from explicit inputs, without reading the real environment. */

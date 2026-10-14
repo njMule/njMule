@@ -109,7 +109,7 @@ public final class DesktopApp implements AutoCloseable {
 
     /** Starts the engine as the command line says; any thread. */
     public static DesktopApp open(LaunchOptions cli) throws IOException {
-        AppDirectories dirs = AppDirectories.resolve(cli.configDir(), Optional.empty());
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         dirs.createAll();
         LoggingSetup.enableFileLog(dirs.logs());
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
@@ -128,7 +128,7 @@ public final class DesktopApp implements AutoCloseable {
      * The configuration directory a start with {@code cli} uses, where a running instance waits for links; any thread.
      */
     public static Path configDir(LaunchOptions cli) {
-        return AppDirectories.resolve(cli.configDir(), Optional.empty()).config();
+        return AppDirectories.resolve(cli.configDir()).config();
     }
 
     /** Whether to exit: asked first, unless the question was turned off. */

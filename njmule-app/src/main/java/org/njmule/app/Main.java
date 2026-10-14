@@ -105,8 +105,7 @@ public final class Main {
                 return webUiPassword(cli, out, err, passwords);
             }
             case EXIT -> {
-                Path config =
-                        AppDirectories.resolve(cli.configDir(), executableDir()).config();
+                Path config = AppDirectories.resolve(cli.configDir()).config();
                 if (LinkHandoff.deliver(config, List.of(LinkHandoff.EXIT))) {
                     return EXIT_OK;
                 }
@@ -147,7 +146,7 @@ public final class Main {
 
     private static int webUiPassword(LaunchOptions cli, PrintStream out, PrintStream err, PasswordSource passwords) {
         LaunchOptions.WebUiSetup setup = cli.webUi().orElseThrow();
-        AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         char[] first = null;
         char[] second = null;
         try {
@@ -217,7 +216,7 @@ public final class Main {
     }
 
     private static int runEngine(LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
-        AppDirectories dirs = AppDirectories.resolve(cli.configDir(), executableDir());
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         // Links for the njMule already running go to it, instead of failing on its lock.
         if (!cli.links().isEmpty()
                 && !cli.network().isOneShot()
@@ -365,14 +364,5 @@ public final class Main {
                 logger.info("Download added: {}", info.name());
             }
         });
-    }
-
-    // Only a native executable has a meaningful directory for the portable-mode marker; on the
-    // JVM the command is the java launcher.
-    private static Optional<Path> executableDir() {
-        if (!"runtime".equals(System.getProperty("org.graalvm.nativeimage.imagecode"))) {
-            return Optional.empty();
-        }
-        return ProcessHandle.current().info().command().map(Path::of).map(Path::getParent);
     }
 }

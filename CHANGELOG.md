@@ -127,8 +127,8 @@ All notable changes to this project are documented here. The format follows
   smoke test of the native app.
 - Installers: a per-user Windows MSI (no administrator rights, Start menu entry, launcher on the
   PATH), deb and rpm packages with the desktop entry, AppStream metadata and icons, a macOS disk
-  image, and portable archives; the release workflow builds them all and opens a draft release
-  for a tag.
+  image, and archives that run from any folder, portable once a `portable.flag` file is put beside
+  the programs; the release workflow builds them all and opens a draft release for a tag.
 - ed2k links given on the command line are added as downloads; a second start hands its links to
   the njMule already running with the same configuration, as when a link is clicked in a browser,
   and a second start without links brings the running window to the front.
@@ -328,3 +328,5 @@ All notable changes to this project are documented here. The format follows
 - Dialogs and alerts show the njMule icon.
 - A proxy keeps its type when the preferences are read again.
 - Italian texts that carry a translator's note are no longer lost.
+- The desktop app honours the portable mode too: with a `portable.flag` file beside the programs
+  it keeps its data in the `data` folder next to them, as the command line already did.
