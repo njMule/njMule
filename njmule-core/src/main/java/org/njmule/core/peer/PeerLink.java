@@ -45,10 +45,11 @@ import org.slf4j.LoggerFactory;
  */
 public final class PeerLink implements TcpConnection.Handler {
 
-    /** Our download from the client, or our upload to it. */
+    /** Our download from the client, our upload to it, or the Kad buddy link with it. */
     public enum Side {
         DOWNLOAD,
-        UPLOAD
+        UPLOAD,
+        BUDDY
     }
 
     /** One side of the link, on the engine thread. */
@@ -93,6 +94,12 @@ public final class PeerLink implements TcpConnection.Handler {
             Opcodes.Extended.AICHFILEHASHANS,
             Opcodes.Extended.FILEDESC,
             Opcodes.Extended.HASHSETANSWER2);
+    // What buddies send each other; taken only on a link that is a buddy link.
+    private static final Set<Opcodes.Extended> BETWEEN_BUDDIES = Set.of(
+            Opcodes.Extended.BUDDYPING,
+            Opcodes.Extended.BUDDYPONG,
+            Opcodes.Extended.CALLBACK,
+            Opcodes.Extended.REASKCALLBACKTCP);
 
     private final EngineLoop loop;
     private final TcpConnection connection;
@@ -271,6 +278,12 @@ public final class PeerLink implements TcpConnection.Handler {
     }
 
     static Side sideOf(Packet packet) {
+        if (packet.protocol() == Protocol.EMULE
+                && Opcodes.Extended.of(packet.opcode())
+                        .filter(BETWEEN_BUDDIES::contains)
+                        .isPresent()) {
+            return Side.BUDDY;
+        }
         boolean fromUploader = switch (packet.protocol()) {
             case Protocol.EDONKEY ->
                 Opcodes.Client.of(packet.opcode())
