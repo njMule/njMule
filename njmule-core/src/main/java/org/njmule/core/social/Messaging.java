@@ -147,7 +147,12 @@ public final class Messaging implements AutoCloseable {
      * Returns whether the packet was a chat packet.
      */
     public boolean incoming(
-            InetSocketAddress connection, Hello peer, Consumer<Packet> reply, BooleanSupplier open, Packet packet) {
+            InetSocketAddress connection,
+            Hello peer,
+            boolean proven,
+            Consumer<Packet> reply,
+            BooleanSupplier open,
+            Packet packet) {
         if (!isChat(packet)) {
             return false;
         }
@@ -159,7 +164,7 @@ public final class Messaging implements AutoCloseable {
             c.open = open;
             this.flush(address, c);
         }
-        this.handle(address, peer, packet);
+        this.handle(address, peer, proven, packet);
         return true;
     }
 
@@ -229,13 +234,15 @@ public final class Messaging implements AutoCloseable {
         logger.debug("Chatting with {}", to);
     }
 
-    private void handle(InetSocketAddress address, Hello peer, Packet packet) {
+    // A friend counts as one with its identity proven: anyone can send its user hash.
+    private void handle(InetSocketAddress address, Hello peer, boolean proven, Packet packet) {
         Correspondent from = new Correspondent(address, peer.userHash(), peer.nick());
         try {
             if (packet.protocol() == Protocol.EDONKEY) {
                 String text = ChatMessages.text(packet);
                 Conversation c = this.conversations.get(address);
-                if (c != null && !this.filter.get().shows(c.filtered, this.friends.test(peer.userHash()), text)) {
+                if (c != null
+                        && !this.filter.get().shows(c.filtered, proven && this.friends.test(peer.userHash()), text)) {
                     logger.debug("Filtered a message from {}", address);
                     return;
                 }
@@ -299,7 +306,8 @@ public final class Messaging implements AutoCloseable {
                     c.open = connection::isOpen;
                     Messaging.this.flush(this.to, c);
                 } else if (c.peer != null && isChat(packet)) {
-                    Messaging.this.handle(this.to, c.peer, packet);
+                    // Whoever answers at the address we chose to write to is who we meant.
+                    Messaging.this.handle(this.to, c.peer, true, packet);
                 }
             } catch (DecodeException e) {
                 logger.debug("Bad hello from {}: {}", this.to, e.getMessage());

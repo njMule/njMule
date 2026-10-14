@@ -51,6 +51,7 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -199,6 +200,60 @@ class UploadQueueTest {
         assertThat(ClientMessages.decodeQueueRank(clients.get(3).ask(file.hash())))
                 .as("the friend comes first")
                 .isEqualTo(1);
+    }
+
+    @Test
+    void theFriendSlotWaitsForTheFriendToProveItsKey() throws Exception {
+        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        SharedFileInfo file = awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+        Hash16 pal = hello(16, 5016).userHash();
+        engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
+        assertThat(engine.setFriendSlot(Optional.of(pal)).get(5, TimeUnit.SECONDS))
+                .isTrue();
+        assertThat(this.client(port, 1).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(this.client(port, 2).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(ClientMessages.decodeQueueRank(this.client(port, 3).ask(file.hash())))
+                .isEqualTo(1);
+
+        // Anyone can send the friend's user hash: it counts once the key behind it is proven.
+        Client claimed = this.identifying(port, 16);
+        assertThat(ClientMessages.decodeQueueRank(claimed.ask(file.hash())))
+                .as("not proven yet")
+                .isEqualTo(2);
+        Client proven = this.identifying(port, 16);
+        proven.prove();
+        assertThat(ClientMessages.decodeQueueRank(proven.ask(file.hash())))
+                .as("proven")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void filesSharedWithFriendsOnlyNeedTheFriendProven() throws Exception {
+        NjMuleEngine engine = this.engine("share.visibleTo=" + SharedFilesVisibility.FRIENDS + "\n");
+        awaitShared(engine);
+        int port = engine.preferences().tcpPort();
+        Hash16 pal = hello(17, 5017).userHash();
+        engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
+        Packet ask = Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code());
+
+        // A client claiming the friend's hash waits for the proof, and failing it sees nothing.
+        Client impostor = this.identifying(port, 17);
+        impostor.send(ask);
+        assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
+        IdentityProof.fake(impostor.out);
+        assertThat(impostor.next().payload()).containsExactly(0, 0, 0, 0);
+
+        // The friend not taking part in the identification, or proving its key, sees the file.
+        Client unsecured = this.client(port, 17);
+        unsecured.send(ask);
+        assertThat(unsecured.next().payload()).startsWith(1, 0, 0, 0);
+        Client proven = this.identifying(port, 17);
+        proven.send(ask);
+        proven.prove();
+        Packet files = proven.next();
+        assertThat(files.opcode()).isEqualTo(Opcodes.Client.ASKSHAREDFILESANSWER.code());
+        assertThat(files.payload()).startsWith(1, 0, 0, 0);
     }
 
     @Test
@@ -397,19 +452,34 @@ class UploadQueueTest {
     }
 
     private Client client(int port, int seed, int listenPort) throws IOException {
+        return this.client(port, seed, listenPort, 0);
+    }
+
+    // A client taking part in the secure identification, which it leaves to the test.
+    private Client identifying(int port, int seed) throws IOException {
+        return this.client(port, seed, 5000 + seed, IdentityProof.MISC1);
+    }
+
+    private Client client(int port, int seed, int listenPort, int miscOptions1) throws IOException {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), port);
         socket.setSoTimeout((int) WAIT.toMillis());
         Client client = new Client(socket);
         this.resources.add(socket);
-        client.send(hello(seed, listenPort).encode(false));
-        assertThat(client.next().opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+        client.send(hello(seed, listenPort, miscOptions1).encode(false));
+        Packet answer = client.next();
+        assertThat(answer.opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+        client.engine = Hello.decode(answer);
         return client;
     }
 
     private static Hello hello(int seed, int listenPort) {
+        return hello(seed, listenPort, 0);
+    }
+
+    private static Hello hello(int seed, int listenPort, int miscOptions1) {
         byte[] hash = new byte[16];
         new Random(seed).nextBytes(hash);
-        return Hello.of(Hash16.of(hash), 0, listenPort, "client " + seed, 0, 0, 0, 0, 0, 0);
+        return Hello.of(Hash16.of(hash), 0, listenPort, "client " + seed, 0, 0, miscOptions1, 0, 0, 0);
     }
 
     private static SharedFileInfo awaitShared(NjMuleEngine engine) throws Exception {
@@ -457,6 +527,7 @@ class UploadQueueTest {
         private final Socket socket;
         private final InputStream in;
         private final OutputStream out;
+        private Hello engine;
 
         Client(Socket socket) throws IOException {
             this.socket = socket;
@@ -474,8 +545,18 @@ class UploadQueueTest {
             return this.next();
         }
 
+        // The engine's side of the identification is left unanswered unless the test proves a key.
         Packet next() throws IOException {
-            return TcpFraming.read(this.in, FrameLimit.fixed(1 << 20));
+            while (true) {
+                Packet packet = TcpFraming.read(this.in, FrameLimit.fixed(1 << 20));
+                if (!IdentityProof.isIdentification(packet)) {
+                    return packet;
+                }
+            }
+        }
+
+        void prove() throws IOException {
+            IdentityProof.prove(this.engine, this.in, this.out);
         }
 
         Optional<Packet> poll(Duration wait) throws IOException {

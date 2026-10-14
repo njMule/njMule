@@ -94,8 +94,14 @@ final class UploadSession implements PeerLink.Role {
         /** The AICH recovery data of {@code part} of {@code file}, when we have its tree with {@code master}. */
         Optional<byte[]> aichRecovery(Hash16 file, int part, Hash20 master);
 
-        /** The shared files the client with {@code userHash} may see; none when the preferences say so. */
-        List<SharedFiles.SharedFile> visibleTo(Hash16 userHash);
+        /**
+         * The shared files the client with {@code userHash} may see, {@code proven} when its identity is; none when the
+         * preferences say so.
+         */
+        List<SharedFiles.SharedFile> visibleTo(Hash16 userHash, boolean proven);
+
+        /** Whether {@code userHash} is one of a friend's. */
+        boolean isFriend(Hash16 userHash);
 
         /** Our comment on {@code file}, if we made one. */
         Optional<FileComment> comment(Hash16 file);
@@ -116,6 +122,9 @@ final class UploadSession implements PeerLink.Role {
     /** The largest block a client may ask for. */
     static final long MAX_BLOCK = 3L * Ed2k.EMBLOCKSIZE;
 
+    // Requests held while a friend's identity is being proven, at most.
+    private static final int MAX_HELD = 16;
+
     private static final Logger logger = LoggerFactory.getLogger(UploadSession.class);
 
     private PeerChannel connection;
@@ -128,6 +137,7 @@ final class UploadSession implements PeerLink.Role {
     private final Set<Hash16> commented = new HashSet<>();
     private Optional<Uploadable> file = Optional.empty();
     private Optional<Identities.Session> identity = Optional.empty();
+    private final List<Packet> held = new ArrayList<>();
     private boolean slot;
     private boolean closed;
 
@@ -246,6 +256,12 @@ final class UploadSession implements PeerLink.Role {
         if (this.closed) {
             return;
         }
+        if (this.waitsForProof(packet)) {
+            if (this.held.size() < MAX_HELD) {
+                this.held.add(packet);
+            }
+            return;
+        }
         try {
             if (packet.protocol() == Protocol.EDONKEY) {
                 this.basic(packet);
@@ -259,6 +275,28 @@ final class UploadSession implements PeerLink.Role {
             logger.warn("Failed handling a packet from {}", this.address(), e);
             this.close();
         }
+    }
+
+    @Override
+    public void identitySettled() {
+        List<Packet> waiting = List.copyOf(this.held);
+        this.held.clear();
+        waiting.forEach(this::received);
+    }
+
+    // What a friend may do that others may not waits until its key is proven, as user hashes travel in clear; clients
+    // ask for our files or write before their signature comes.
+    private boolean waitsForProof(Packet packet) {
+        int opcode = packet.opcode();
+        boolean forFriends = packet.protocol() == Protocol.EDONKEY
+                ? opcode == Opcodes.Client.ASKSHAREDFILES.code()
+                        || opcode == Opcodes.Client.ASKSHAREDDIRS.code()
+                        || opcode == Opcodes.Client.ASKSHAREDFILESDIR.code()
+                        || opcode == Opcodes.Client.MESSAGE.code()
+                : packet.protocol() == Protocol.EMULE
+                        && (opcode == Opcodes.Extended.CHATCAPTCHAREQ.code()
+                                || opcode == Opcodes.Extended.CHATCAPTCHARES.code());
+        return forFriends && this.trust() == Identities.Trust.NEEDED && this.queue.isFriend(this.userHash());
     }
 
     private void basic(Packet packet) throws DecodeException {
@@ -330,7 +368,8 @@ final class UploadSession implements PeerLink.Role {
         boolean large = (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0;
         PacketWriter entries = new PacketWriter();
         int count = 0;
-        for (SharedFiles.SharedFile f : this.queue.visibleTo(this.peer.userHash())) {
+        for (SharedFiles.SharedFile f :
+                this.queue.visibleTo(this.peer.userHash(), this.trust().credits())) {
             if ((f.size() > MAX_SMALL_FILE && !large) || entries.size() > MAX_SHARED_LIST) {
                 continue;
             }

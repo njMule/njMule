@@ -36,10 +36,12 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.FileComment;
@@ -190,7 +192,8 @@ public final class UploadManager implements AutoCloseable {
     private final EngineLoop loop;
     private final Function<Hash16, Optional<SharedFiles.SharedFile>> shared;
     private final Function<Hash16, Optional<AichTree>> aichTrees;
-    private final Function<Hash16, List<SharedFiles.SharedFile>> visibleTo;
+    private final BiFunction<Hash16, Boolean, List<SharedFiles.SharedFile>> visibleTo;
+    private final Predicate<Hash16> friends;
     private final Function<Hash16, Optional<FileComment>> comments;
     private final Function<Hash16, Optional<DownloadQueue.Download>> downloads;
     private final Supplier<Hello> ourHello;
@@ -208,13 +211,18 @@ public final class UploadManager implements AutoCloseable {
     private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
     private final RateMeter rate = new RateMeter(RATE_SECONDS);
-    private ChatSink chat = (address, peer, reply, open, packet) -> false;
+    private ChatSink chat = (address, peer, proven, reply, open, packet) -> false;
 
-    /** Where chat packets from clients go; engine thread. */
+    /** Where chat packets from clients go, {@code proven} when the client's identity is; engine thread. */
     @FunctionalInterface
     public interface ChatSink {
         boolean incoming(
-                InetSocketAddress connection, Hello peer, Consumer<Packet> reply, BooleanSupplier open, Packet packet);
+                InetSocketAddress connection,
+                Hello peer,
+                boolean proven,
+                Consumer<Packet> reply,
+                BooleanSupplier open,
+                Packet packet);
     }
 
     /** Chat packets arriving on upload connections go to {@code sink}. */
@@ -233,12 +241,15 @@ public final class UploadManager implements AutoCloseable {
      * @param downloads the download of a hash, whose checked parts are shared too
      * @param downloadSources the sources an active download of a hash knows
      * @param reachable told the address (host order) of a Kad node that could reach us
+     * @param visibleTo the shared files a client may browse, by its user hash and whether its identity is proven
+     * @param friends whether a user hash is one of a friend's
      */
     public UploadManager(
             EngineLoop loop,
             Function<Hash16, Optional<SharedFiles.SharedFile>> shared,
             Function<Hash16, Optional<AichTree>> aichTrees,
-            Function<Hash16, List<SharedFiles.SharedFile>> visibleTo,
+            BiFunction<Hash16, Boolean, List<SharedFiles.SharedFile>> visibleTo,
+            Predicate<Hash16> friends,
             Function<Hash16, Optional<FileComment>> comments,
             Function<Hash16, Optional<DownloadQueue.Download>> downloads,
             Function<Hash16, List<SourceExchange.Source>> downloadSources,
@@ -253,6 +264,7 @@ public final class UploadManager implements AutoCloseable {
         this.shared = Objects.requireNonNull(shared, "shared");
         this.aichTrees = Objects.requireNonNull(aichTrees, "aichTrees");
         this.visibleTo = Objects.requireNonNull(visibleTo, "visibleTo");
+        this.friends = Objects.requireNonNull(friends, "friends");
         this.comments = Objects.requireNonNull(comments, "comments");
         this.downloads = Objects.requireNonNull(downloads, "downloads");
         this.downloadSources = Objects.requireNonNull(downloadSources, "downloadSources");
@@ -383,7 +395,8 @@ public final class UploadManager implements AutoCloseable {
                     && !this.waiting.isEmpty()
                     && slot.out.isEmpty()
                     && !slot.reading
-                    && !this.hasFriendSlot(slot.client.userHash)) {
+                    && !this.hasFriendSlot(
+                            slot.client.userHash, slot.session.trust().credits())) {
                 this.requeue(slot, now);
             } else if (slot.isBusy()) {
                 slot.idleSince = now;
@@ -583,17 +596,19 @@ public final class UploadManager implements AutoCloseable {
         return open < Math.max(MIN_SLOTS, limit * 1_024L / perSlot) + (extra ? 1 : 0);
     }
 
-    // The friend with the friend slot, unless it has a LowID, comes before anyone and keeps its slot.
-    private boolean hasFriendSlot(Hash16 userHash) {
-        return this.settings.get().friendSlot().filter(userHash::equals).isPresent();
+    // The friend with the friend slot, unless it has a LowID, comes before anyone and keeps its slot; only with its
+    // identity trusted, as anyone can send a user hash.
+    private boolean hasFriendSlot(Hash16 userHash, boolean trusted) {
+        return trusted
+                && this.settings.get().friendSlot().filter(userHash::equals).isPresent();
     }
 
     private double score(Client client, long now) {
-        if (!client.lowId && this.hasFriendSlot(client.userHash)) {
+        boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
+        if (!client.lowId && this.hasFriendSlot(client.userHash, trusted)) {
             return Double.MAX_VALUE;
         }
         double waited = Math.max(0, now - client.waitStart) / 1e9;
-        boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
         double ratio = this.credits.ratio(client.userHash, trusted);
         return waited * ratio * this.priority(client.file.hash()) / 10;
     }
@@ -780,8 +795,13 @@ public final class UploadManager implements AutoCloseable {
         }
 
         @Override
-        public List<SharedFiles.SharedFile> visibleTo(Hash16 userHash) {
-            return UploadManager.this.visibleTo.apply(userHash);
+        public List<SharedFiles.SharedFile> visibleTo(Hash16 userHash, boolean proven) {
+            return UploadManager.this.visibleTo.apply(userHash, proven);
+        }
+
+        @Override
+        public boolean isFriend(Hash16 userHash) {
+            return UploadManager.this.friends.test(userHash);
         }
 
         @Override
@@ -849,7 +869,8 @@ public final class UploadManager implements AutoCloseable {
                 }
             }
             if ((manager.waiting.size() >= manager.settings.get().queueSize()
-                            && !manager.hasFriendSlot(session.userHash()))
+                            && !manager.hasFriendSlot(
+                                    session.userHash(), session.trust().credits()))
                     || sameIp >= MAX_WAITING_PER_IP) {
                 return;
             }
@@ -876,7 +897,13 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void chat(UploadSession session, Packet packet) {
-            UploadManager.this.chat.incoming(session.address(), session.peer(), session::send, session::isOpen, packet);
+            UploadManager.this.chat.incoming(
+                    session.address(),
+                    session.peer(),
+                    session.trust().credits(),
+                    session::send,
+                    session::isOpen,
+                    packet);
         }
 
         @Override

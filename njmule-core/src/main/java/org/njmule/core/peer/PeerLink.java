@@ -57,6 +57,9 @@ public final class PeerLink implements TcpConnection.Handler {
 
         /** The connection closed; {@code cause} is empty after a clean close. */
         void closed(Optional<String> cause);
+
+        /** The client's identity is settled: proven or failed. */
+        default void identitySettled() {}
     }
 
     private static final Logger logger = LoggerFactory.getLogger(PeerLink.class);
@@ -183,7 +186,13 @@ public final class PeerLink implements TcpConnection.Handler {
                 this.greeting(packet);
                 return;
             }
+            boolean settled = this.identity.isSettled();
             if (this.identity.received(packet)) {
+                if (!settled && this.identity.isSettled()) {
+                    for (Channel channel : List.copyOf(this.sides.values())) {
+                        channel.role.identitySettled();
+                    }
+                }
                 return;
             }
         } catch (DecodeException e) {

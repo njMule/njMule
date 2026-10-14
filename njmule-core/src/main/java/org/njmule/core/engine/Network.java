@@ -345,6 +345,7 @@ final class Network {
                 hash -> this.shares == null ? Optional.empty() : this.shares.get(hash),
                 hash -> this.shares == null ? Optional.empty() : this.shares.aichTree(hash),
                 this::visibleSharedFiles,
+                h -> this.friends.contains(h),
                 hash -> this.comments.get(hash),
                 this.downloads::find,
                 this.downloads::exchangeable,
@@ -1608,11 +1609,11 @@ final class Network {
         return new ChatFilter(p.messagesFromFriendsOnly(), ChatFilter.words(p.messageFilter()), p.advancedSpamFilter());
     }
 
-    // What a client browsing our files may see, as the preferences say.
-    private List<SharedFiles.SharedFile> visibleSharedFiles(Hash16 userHash) {
+    // What a client browsing our files may see, as the preferences say; a friend only with its identity proven.
+    private List<SharedFiles.SharedFile> visibleSharedFiles(Hash16 userHash, boolean proven) {
         boolean visible = switch (this.preferences.get().sharedFilesVisibility()) {
             case EVERYBODY -> true;
-            case FRIENDS -> this.friends.contains(userHash);
+            case FRIENDS -> proven && this.friends.contains(userHash);
             case NOBODY -> false;
         };
         return visible && this.shares != null ? this.shares.all() : List.of();

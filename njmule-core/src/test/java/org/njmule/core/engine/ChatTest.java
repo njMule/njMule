@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -52,6 +53,8 @@ import org.njmule.core.protocol.ed2k.ChatMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
+import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.TcpFraming;
 
 @Timeout(60)
@@ -171,6 +174,53 @@ class ChatTest {
     }
 
     @Test
+    void onlyAFriendThatProvesItsKeyGetsPastFriendsOnly() throws Exception {
+        NjMuleEngine engine = this.engine("me", "chat.friendsOnly=true\n");
+        Events seen = new Events(engine);
+        Hash16 pal = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
+        engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
+        Hello claimed = Hello.of(pal, 0, 4999, "pal", 0, 0, IdentityProof.MISC1, 0, 0, 0);
+
+        // Anyone can send the friend's user hash: a failed proof shows nothing.
+        try (Socket impostor = this.connect(engine, claimed)) {
+            InputStream in = new BufferedInputStream(impostor.getInputStream());
+            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+            OutputStream out = impostor.getOutputStream();
+            out.write(TcpFraming.encode(ChatMessages.message("from an impostor", true)));
+            IdentityProof.fake(out);
+            out.write(TcpFraming.encode(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code())));
+            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
+        }
+        try (Socket friend = this.connect(engine, claimed)) {
+            InputStream in = new BufferedInputStream(friend.getInputStream());
+            Hello us = Hello.decode(nextOf(in));
+            friend.getOutputStream().write(TcpFraming.encode(ChatMessages.message("from the friend", true)));
+            IdentityProof.prove(us, in, friend.getOutputStream());
+
+            assertThat(seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo("from the friend");
+        }
+    }
+
+    // A connection to the engine, greeted with {@code hello}; the hello answer is left to read.
+    private Socket connect(NjMuleEngine engine, Hello hello) throws IOException {
+        Socket socket = new Socket(
+                InetAddress.getLoopbackAddress(), engine.preferences().tcpPort());
+        socket.setSoTimeout((int) WAIT.toMillis());
+        socket.getOutputStream().write(TcpFraming.encode(hello.encode(false)));
+        return socket;
+    }
+
+    // The next packet that is not part of the identification.
+    private static Packet nextOf(InputStream in) throws IOException {
+        while (true) {
+            Packet packet = TcpFraming.read(in, FrameLimit.fixed(1 << 20));
+            if (!IdentityProof.isIdentification(packet)) {
+                return packet;
+            }
+        }
+    }
+
+    @Test
     void friendsAreKept() throws Exception {
         Hash16 hash = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
         NjMuleEngine engine = this.engine("me");
@@ -193,6 +243,10 @@ class ChatTest {
     }
 
     private NjMuleEngine engine(String nick) throws IOException {
+        return this.engine(nick, "");
+    }
+
+    private NjMuleEngine engine(String nick, String extra) throws IOException {
         Path root = this.dir.resolve(nick);
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
@@ -202,7 +256,8 @@ class ChatTest {
             try (ServerSocket probe = new ServerSocket(0)) {
                 port = probe.getLocalPort();
             }
-            Files.writeString(props, "net.tcpPort=" + port + "\nnet.kad.enabled=false\nuser.nick=" + nick + "\n");
+            Files.writeString(
+                    props, "net.tcpPort=" + port + "\nnet.kad.enabled=false\nuser.nick=" + nick + "\n" + extra);
         }
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);
