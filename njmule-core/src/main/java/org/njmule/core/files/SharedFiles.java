@@ -445,7 +445,10 @@ public final class SharedFiles implements AutoCloseable {
         return added;
     }
 
-    /** A finished download: its hashes are known, so it is shared without hashing it again. */
+    /**
+     * A finished download: its part hashes are known, so it is shared at once. Its AICH hash comes with the tree that
+     * hashing it once more gives: the one of the link or of the sources is not proven to be the file's.
+     */
     public void finished(Path file, PartFile download) {
         long mtime;
         try {
@@ -457,7 +460,7 @@ public final class SharedFiles implements AutoCloseable {
                             download.size(),
                             download.hash(),
                             download.partHashes(),
-                            download.aichHash(),
+                            Optional.empty(),
                             mtime),
                     Optional.empty());
         } catch (IOException e) {
@@ -691,9 +694,8 @@ public final class SharedFiles implements AutoCloseable {
                     new SharedFile(
                             file, name, attrs.size(), record.fileHash(), record.partHashes(), record.aichHash(), mtime),
                     Optional.empty());
-            // Its AICH tree may have been lost, or dropped while the file was not shared: it is hashed again for it.
-            if (record.aichHash().isEmpty()
-                    || this.aich.containsKey(record.aichHash().get())) {
+            // Without its AICH tree, lost, dropped while the file was not shared or never built, it is hashed again.
+            if (record.aichHash().filter(this.aich::containsKey).isPresent()) {
                 return;
             }
         }

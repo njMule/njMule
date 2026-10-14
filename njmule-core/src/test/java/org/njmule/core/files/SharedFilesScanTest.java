@@ -42,8 +42,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
+import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -158,14 +160,19 @@ class SharedFilesScanTest {
         Path file = this.incoming.resolve(name);
         long remembered = 1_700_000_000L;
         Files.setLastModifiedTime(file, FileTime.fromMillis((remembered + seconds) * 1000));
+        Hash20 tree = Hash20.parseBase32("T".repeat(32));
         KnownMet.KnownFile record = new KnownMet.KnownFile(
                 remembered,
                 REMEMBERED,
                 List.of(),
                 List.of(
                         new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
-                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), Files.size(file))));
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), Files.size(file)),
+                        new Tag.StringTag(TagName.id(FileTag.AICH_HASH), tree.toBase32())));
         Files.write(this.config.resolve(SharedFiles.KNOWN_MET), KnownMet.write(List.of(record)));
+        Files.write(
+                this.config.resolve(SharedFiles.KNOWN2_MET),
+                Known2Met.write(List.of(new Known2Met.Entry(tree, List.of(tree)))));
     }
 
     private void thenItIsSharedWithTheRememberedHash(String name) throws Exception {

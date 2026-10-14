@@ -533,6 +533,9 @@ All notable changes to this project are documented here. The format follows
   part.met tells as written is flushed to the disk before the part.met is saved.
 - A finished download that a virus scanner or another program holds is moved to the incoming folder
   again after 2, 4, … 64 seconds instead of stopping with an error at once.
+- A finished download is shared and recorded in known.met without the AICH hash its link or its
+  sources gave until hashing it once more proves its own; a shared file whose record has no AICH
+  tree is hashed again for one.
 - eMule and aMule clients can browse our shared files (one "!Other" folder, never real paths; the
   list is built once per connection); browsing a client that sends a file comment first works.
 - The friend slot, friends-only shared files and the friends-only chat filter need the friend's

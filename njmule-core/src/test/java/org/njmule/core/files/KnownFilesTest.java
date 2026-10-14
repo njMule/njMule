@@ -64,6 +64,7 @@ class KnownFilesTest {
     private Path incoming;
     private SharedFiles shares;
     private FileTime treesDate;
+    private PartFile finished;
 
     @AfterEach
     void stop() throws Exception {
@@ -159,6 +160,16 @@ class KnownFilesTest {
         this.thenKnown2WasNotWrittenAgain();
     }
 
+    @Test
+    void aFinishedDownloadIsNotRecordedWithTheAichHashOfItsLinkBeforeItsOwnTreeIsBuilt() throws Exception {
+        this.givenTheIncomingDirectoryHolds("done.bin");
+        this.givenADownloadOfWhoseLinkGaveAnotherAichHash("done.bin");
+
+        this.whenItFinishesAndTheSharesCloseAtOnce("done.bin");
+
+        this.thenKnownMetRecordsWithoutAnAichHash("done.bin");
+    }
+
     private void givenTheIncomingDirectoryHolds(String... names) throws Exception {
         this.config = Files.createDirectories(this.dir.resolve("config"));
         this.incoming = Files.createDirectories(this.dir.resolve("incoming"));
@@ -194,6 +205,18 @@ class KnownFilesTest {
         this.trees.add(entry(result));
         Files.write(this.config.resolve(SharedFiles.KNOWN_MET), KnownMet.write(this.records));
         Files.write(this.config.resolve(SharedFiles.KNOWN2_MET), Known2Met.write(this.trees));
+    }
+
+    private void givenADownloadOfWhoseLinkGaveAnotherAichHash(String name) throws Exception {
+        FileHasher.Result result = this.hashes.get(name);
+        this.finished = PartFile.create(
+                1,
+                this.dir,
+                name,
+                result.ed2k().size(),
+                result.ed2k().fileHash(),
+                Optional.of(Hash20.parseBase32("L".repeat(32))),
+                result.ed2k().partHashes());
     }
 
     private void givenTheBackupOfKnown2HoldsTheTreeOf(String name) throws Exception {
@@ -259,6 +282,18 @@ class KnownFilesTest {
         });
     }
 
+    // The hashing of its own tree cannot report before the close.
+    private void whenItFinishesAndTheSharesCloseAtOnce(String name) throws Exception {
+        this.shares = this.open();
+        Path file = this.incoming.resolve(name);
+        this.onLoop(() -> {
+            this.shares.finished(file, this.finished);
+            this.shares.close();
+            return null;
+        });
+        this.shares = null;
+    }
+
     private void whenTheFilesAreShared() throws Exception {
         this.shares = this.open();
     }
@@ -306,6 +341,13 @@ class KnownFilesTest {
                 .filteredOn(r -> r.name().equals(Optional.of(name)))
                 .singleElement()
                 .satisfies(r -> assertThat(r.mtime()).isEqualTo(date));
+    }
+
+    private void thenKnownMetRecordsWithoutAnAichHash(String name) throws Exception {
+        assertThat(this.knownMet())
+                .filteredOn(r -> r.name().equals(Optional.of(name)))
+                .singleElement()
+                .satisfies(r -> assertThat(r.aichHash()).isEmpty());
     }
 
     private void thenKnownMetRecords(String... names) throws Exception {
