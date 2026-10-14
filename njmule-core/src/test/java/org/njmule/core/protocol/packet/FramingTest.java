@@ -127,6 +127,22 @@ class FramingTest {
                 .isInstanceOf(DecodeException.class);
     }
 
+    @Test
+    void inflatingAcceptsExactlyTheCapAndRefusesWhatCannotBeRead() throws DecodeException {
+        byte[] thousand = Packing.deflate(new byte[1000], 9);
+
+        assertThat(Packing.inflate(thousand, 1000)).hasSize(1000);
+        assertThatThrownBy(() -> Packing.inflate(thousand, 999)).isInstanceOf(DecodeException.class);
+        assertThat(Packing.inflate(Packing.deflate(new byte[0], 9), 0)).isEmpty();
+        assertThatThrownBy(() -> Packing.inflate(new byte[0], 100)).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> Packing.inflate(java.util.Arrays.copyOf(thousand, thousand.length - 4), 1000))
+                .as("cut before its checksum")
+                .isInstanceOf(DecodeException.class);
+        // A preset dictionary (FDICT) cannot be supplied.
+        assertThatThrownBy(() -> Packing.inflate(HEX.parseHex("78bb00000001"), 100))
+                .isInstanceOf(DecodeException.class);
+    }
+
     @Property
     void tcpRoundTrips(
             @ForAll @IntRange(min = 0, max = 2) int which,

@@ -24,10 +24,12 @@ import java.util.List;
 import java.util.Optional;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.util.Ipv4;
@@ -114,6 +116,39 @@ class SourceExchangeTest {
         byte[] version = HEX.parseHex("07" + "ab".repeat(16) + "0000");
         assertThatThrownBy(() -> SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, version)))
                 .isInstanceOf(DecodeException.class);
+    }
+
+    @Property
+    void everySourceIsAnAddressOrALowId(@ForAll int id, @ForAll @IntRange(min = 1, max = 4) int version)
+            throws DecodeException {
+        byte[] entry = new byte[] {(byte) id, (byte) (id >>> 8), (byte) (id >>> 16), (byte) (id >>> 24)};
+        PacketWriter out = new PacketWriter()
+                .u8(version)
+                .hash16(FILE)
+                .u16(1)
+                .bytes(entry)
+                .u16(4662)
+                .u32(0)
+                .u16(0);
+        if (version >= 2) {
+            out.hash16(USER);
+        }
+        if (version >= 4) {
+            out.u8(0);
+        }
+
+        SourceExchange.Source source = SourceExchange.Answer.decode(Packet.of(Protocol.EMULE, 0x84, out))
+                .sources()
+                .getFirst();
+
+        if (source.isLowId()) {
+            assertThat(source.lowId()).isLessThan(ServerMessages.LOW_ID_LIMIT);
+        } else {
+            assertThat(source.ip()).isNotZero();
+            if (version >= 3) {
+                assertThat(source.ip() & 0xFF).as("no address ends in .0").isNotZero();
+            }
+        }
     }
 
     @Property

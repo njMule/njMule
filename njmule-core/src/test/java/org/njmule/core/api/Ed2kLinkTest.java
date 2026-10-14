@@ -26,6 +26,7 @@ import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
+import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.LongRange;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Ed2kLink.FileLink;
@@ -199,6 +200,114 @@ class Ed2kLinkTest {
         FileLink link = FileLink.of(name, size, Hash16.parseHex(HASH));
 
         assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);
+    }
+
+    @Test
+    void sizesHashesAndPortsAreCheckedAtTheirBounds() {
+        assertThat(((FileLink) Ed2kLink.parse("ed2k://|file|a|" + (1L << 38) + "|" + HASH + "|/")).size())
+                .isEqualTo(1L << 38);
+        assertThat(((FileLink) Ed2kLink.parse("ed2k://|file|a|1|" + HASH.toLowerCase(java.util.Locale.ROOT) + "|/"))
+                        .hash())
+                .isEqualTo(Hash16.parseHex(HASH));
+        for (String bad : new String[] {
+            "ed2k://|file|a|-1|" + HASH + "|/",
+            "ed2k://|file|a|+1|" + HASH + "|/",
+            "ed2k://|file|a| 1|" + HASH + "|/",
+            "ed2k://|file|a|1234567890123456|" + HASH + "|/",
+            "ed2k://|file|a|1|" + HASH.substring(1) + "|/",
+            "ed2k://|file|a|1|" + HASH + "0|/",
+            "ed2k://|file|a|1|" + "G".repeat(32) + "|/",
+            "ed2k://|file||1|" + HASH + "|/",
+            "ed2k://|file| |1|" + HASH + "|/",
+            "ed2k://|server|1.2.3.4|0|/",
+            "ed2k://|server|1.2.3.4|65536|/",
+            "ed2k://|server|1.2.3.4|123456|/",
+            "ed2k://|server|1.2.3.4|4661",
+            "ed2k://|search| |/",
+            "magnet:?xt=urn:ed2k:" + HASH + "&dn=a",
+            "magnet:?xt=urn:ed2k:" + HASH + "&xl=1&dn=%20"
+        }) {
+            assertThatThrownBy(() -> Ed2kLink.parse(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(Ed2kLink.parse("ed2k://|server|1.2.3.4|65535|/"))
+                .isEqualTo(new Ed2kLink.ServerLink("1.2.3.4", 65535));
+    }
+
+    @Test
+    void dropsBadSourcesAndPartHashesButKeepsTheLink() {
+        String base = "ed2k://|file|a.bin|100|" + HASH + "|";
+
+        assertThat(((FileLink) Ed2kLink.parse(base + "p=" + HASH + "::" + HASH + "|/")).partHashes())
+                .isEmpty();
+        assertThat(((FileLink) Ed2kLink.parse(
+                                base + "/|sources,1.2.3.4:0,1.2.3.4:65536,:4662,1.2.3.4:x,1.2.3.4:4662|/"))
+                        .sources())
+                .containsExactly(new Source("1.2.3.4", 4662));
+        assertThat(((FileLink) Ed2kLink.parse(base + "/|sources@991399,1.2.3.4:4662|/")).sources())
+                .as("an impossible date")
+                .isEmpty();
+        assertThat(((FileLink) Ed2kLink.parse(base + "/|sources@99,1.2.3.4:4662|/")).sources())
+                .as("a short date")
+                .isEmpty();
+        StringBuilder many = new StringBuilder(base + "/|sources");
+        for (int i = 0; i < Ed2kLink.MAX_SOURCES + 10; i++) {
+            many.append(",1.2.").append(i / 250).append('.').append(i % 250 + 1).append(":4662");
+        }
+        assertThat(((FileLink) Ed2kLink.parse(many + "|/")).sources()).hasSize(Ed2kLink.MAX_SOURCES);
+    }
+
+    @Property
+    void namesOfAnyScriptRoundTrip(@ForAll("anyNames") String name) {
+        FileLink link = FileLink.of(name, 1, Hash16.parseHex(HASH));
+
+        assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);
+    }
+
+    @Property
+    void serverLinksRoundTrip(@ForAll("hosts") String host, @ForAll @IntRange(min = 1, max = 65535) int port) {
+        Ed2kLink.ServerLink link = new Ed2kLink.ServerLink(host, port);
+
+        assertThat(Ed2kLink.parse(link.toUri())).isEqualTo(link);
+    }
+
+    @Property
+    void anythingInsideAFileLinkOnlyFailsWithIllegalArgument(@ForAll String text) {
+        try {
+            Ed2kLink.parse("ed2k://|file|a.bin|100|" + HASH + "|" + text + "|/");
+            Ed2kLink.parse("ed2k://|file|" + text + "|100|" + HASH + "|/");
+            Ed2kLink.parse("ed2k://|file|a.bin|100|" + HASH + "|/|" + text + "|/");
+        } catch (IllegalArgumentException expected) {
+            // invalid link
+        }
+    }
+
+    @Provide
+    Arbitrary<String> anyNames() {
+        return Arbitraries.oneOf(
+                        Arbitraries.strings().withCharRange(' ', 'ÿ'),
+                        Arbitraries.strings().withCharRange(' ', '\uD7FF'),
+                        Arbitraries.strings().ofMinLength(1).ofMaxLength(4).map(s -> s + "\uD83C\uDFB5"))
+                .map(s -> s.codePoints()
+                        .filter(c -> !Character.isISOControl(c) && !Character.isSurrogate((char) c))
+                        .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                        .toString()
+                        .strip())
+                .filter(s -> !s.isEmpty());
+    }
+
+    @Provide
+    Arbitrary<String> hosts() {
+        return Arbitraries.oneOf(
+                Arbitraries.integers()
+                        .between(0, 255)
+                        .list()
+                        .ofSize(4)
+                        .map(l -> l.get(0) + "." + l.get(1) + "." + l.get(2) + "." + l.get(3)),
+                Arbitraries.strings()
+                        .withCharRange('a', 'z')
+                        .ofMinLength(1)
+                        .ofMaxLength(20)
+                        .map(s -> s + ".example"));
     }
 
     @Property

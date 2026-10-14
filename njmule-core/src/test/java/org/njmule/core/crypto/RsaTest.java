@@ -163,6 +163,20 @@ class RsaTest {
         return new org.bouncycastle.asn1.pkcs.RSAPublicKey(modulus, exponent).getEncoded();
     }
 
+    @Test
+    void forgedSignaturesOfAnyShapeAreRefusedWithoutAnError() {
+        byte[] message = {1, 2, 3};
+        PublicKey key = KEY.publicKey();
+        byte[] ones = new byte[key.sizeBytes()];
+        java.util.Arrays.fill(ones, (byte) 0xFF);
+
+        assertThat(Rsa.verify(key, message, ones)).isFalse();
+        assertThat(Rsa.verify(key, message, new byte[key.sizeBytes()])).isFalse();
+        assertThat(Rsa.verify(key, message, new byte[key.sizeBytes() + 1])).isFalse();
+        assertThat(Rsa.verify(key, message, new byte[0])).isFalse();
+        assertThat(Rsa.verify(key, message, key.modulus().toByteArray())).isFalse();
+    }
+
     @Property(tries = 300)
     void decodedKeysAlwaysVerifyWithoutThrowing(
             @ForAll @Size(min = 1, max = 48) byte[] modulus, @ForAll @IntRange(min = 1) int exponent)

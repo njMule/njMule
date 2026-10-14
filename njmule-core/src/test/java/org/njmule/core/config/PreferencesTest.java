@@ -84,11 +84,9 @@ class PreferencesTest {
                     .as("U+%04X", c)
                     .isInstanceOf(IllegalArgumentException.class);
         }
-        assertThat(Preferences.defaults().toBuilder()
-                        .nick("Nicolò 名前 ‍")
-                        .build()
-                        .nick())
-                .isEqualTo("Nicolò 名前 ‍".strip());
+        String joined = "Nicolò 名前 a" + Character.toString(0x200D) + "b";
+        assertThat(Preferences.defaults().toBuilder().nick(joined).build().nick())
+                .isEqualTo(joined);
     }
 
     @Test

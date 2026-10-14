@@ -20,6 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
+import net.jqwik.api.Assume;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
 
 class Ed2kStringsTest {
@@ -47,6 +50,32 @@ class Ed2kStringsTest {
     void invalidUtf8AfterABomFallsBackToWindows1252Too() {
         assertThat(Ed2kStrings.decode(HEX.parseHex("efbbbf80e9"))).isEqualTo("€é");
         assertThat(Ed2kStrings.decode(HEX.parseHex("efbbbf"))).isEmpty();
+    }
+
+    @Test
+    void malformedUtf8IsWindows1252() {
+        assertThat(Ed2kStrings.decode(HEX.parseHex("c0af"))).as("overlong /").isEqualTo("À¯");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("eda080")))
+                .as("an encoded surrogate")
+                .isEqualTo("í" + Character.toString(0xA0) + "€");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("efbb"))).as("a cut BOM").isEqualTo("ï»");
+        assertThat(Ed2kStrings.decode(HEX.parseHex("ef"))).isEqualTo("ï");
+        assertThat(Ed2kStrings.decode(new byte[0])).isEmpty();
+    }
+
+    @Property
+    void textWithoutLoneSurrogatesRoundTripsInBothEncodings(@ForAll String text) {
+        Assume.that(text.codePoints().noneMatch(c -> c >= 0xD800 && c <= 0xDFFF));
+        Assume.that(!text.startsWith("﻿"));
+
+        for (StringEncoding encoding : StringEncoding.values()) {
+            assertThat(Ed2kStrings.decode(Ed2kStrings.encode(text, encoding))).isEqualTo(text);
+        }
+    }
+
+    @Property
+    void anyBytesDecodeToSomeText(@ForAll byte[] raw) {
+        assertThat(Ed2kStrings.decode(raw)).isNotNull();
     }
 
     @Test

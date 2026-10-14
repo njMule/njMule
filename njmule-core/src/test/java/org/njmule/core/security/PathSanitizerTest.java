@@ -82,8 +82,9 @@ class PathSanitizerTest {
         assertThat(PathSanitizer.fileName("a" + " ".repeat(300) + "b".repeat(20)))
                 .isEqualTo("a");
         assertThat(PathSanitizer.fileName(".".repeat(300) + "b".repeat(20))).isEqualTo("_");
-        assertThat(PathSanitizer.fileName("a　.")).isEqualTo("a");
-        assertThat(PathSanitizer.fileName("a.　")).isEqualTo("a");
+        assertThat(PathSanitizer.fileName("a" + Character.toString(0x3000) + "."))
+                .isEqualTo("a");
+        assertThat(PathSanitizer.fileName("a." + Character.toString(0x3000))).isEqualTo("a");
     }
 
     @Test

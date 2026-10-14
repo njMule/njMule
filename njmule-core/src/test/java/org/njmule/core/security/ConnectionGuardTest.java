@@ -120,6 +120,53 @@ class ConnectionGuardTest {
     }
 
     @Test
+    void refusalsDoNotUseTheRateAndPermitsCloseOnce() {
+        ConnectionGuard guard =
+                new ConnectionGuard(IpFilter::empty, new Limits(100, 1, 2, Duration.ofSeconds(5)), this.ticker);
+
+        ConnectionGuard.Permit held = permit(guard.admit(PEER));
+        for (int i = 0; i < 5; i++) {
+            assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
+        }
+        ConnectionGuard.Permit other = permit(guard.admit(OTHER));
+        held.close();
+        held.close();
+        assertThat(guard.openConnections()).isEqualTo(1);
+        assertThat(guard.admit(PEER))
+                .as("closing a permit gives no accept back")
+                .isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
+        other.close();
+        assertThat(guard.openConnections()).isZero();
+    }
+
+    @Test
+    void anAcceptLeavesTheWindowExactlyWhenItEnds() {
+        ConnectionGuard guard =
+                new ConnectionGuard(IpFilter::empty, new Limits(100, 100, 1, Duration.ofSeconds(5)), this.ticker);
+
+        permit(guard.admit(PEER)).close();
+        this.ticker.advance(Duration.ofSeconds(5).minusNanos(1));
+        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
+        this.ticker.advance(Duration.ofNanos(1));
+        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+    }
+
+    @Test
+    void exemptAddressesStillHaveTheirPerAddressCap() {
+        ConnectionGuard guard = new ConnectionGuard(
+                IpFilter::empty,
+                ip -> ip == PEER,
+                ip -> false,
+                new Limits(1, 2, 1, Duration.ofSeconds(5)),
+                this.ticker);
+
+        permit(guard.admit(OTHER));
+        permit(guard.admit(PEER));
+        permit(guard.admit(PEER));
+        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
+    }
+
+    @Test
     void theRateWindowMustBeAPositiveSpanOfTime() {
         for (Duration window : new Duration[] {Duration.ZERO, Duration.ofSeconds(-5), Duration.ofDays(365 * 300)}) {
             assertThatThrownBy(() -> new Limits(100, 100, 2, window))

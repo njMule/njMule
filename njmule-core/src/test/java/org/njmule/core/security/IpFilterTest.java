@@ -73,6 +73,33 @@ class IpFilterTest {
     }
 
     @Test
+    void rangesHoldTheirEndsAcrossTheSignBitAndUpToTheLastAddress() {
+        IpFilter filter = IpFilter.of(
+                List.of(
+                        range("9.9.9.9", "9.9.9.9", 0, "one"),
+                        range("127.255.255.250", "128.0.0.5", 0, "across"),
+                        range("255.255.255.0", "255.255.255.255", 0, "top"),
+                        range("50.0.0.0", "50.0.0.9", 127, "at the level"),
+                        range("60.0.0.0", "60.0.0.9", 0, "left"),
+                        range("60.0.0.10", "60.0.0.19", 0, "right")),
+                127);
+
+        assertThat(filter.match(Ipv4.parse("9.9.9.9"))).contains("one");
+        assertThat(filter.blocks(Ipv4.parse("9.9.9.8"))).isFalse();
+        assertThat(filter.blocks(Ipv4.parse("9.9.9.10"))).isFalse();
+        assertThat(filter.match(Ipv4.parse("127.255.255.255"))).contains("across");
+        assertThat(filter.match(Ipv4.parse("128.0.0.0"))).contains("across");
+        assertThat(filter.blocks(Ipv4.parse("128.0.0.6"))).isFalse();
+        assertThat(filter.match(Ipv4.parse("255.255.255.255"))).contains("top");
+        assertThat(filter.blocks(Ipv4.parse("50.0.0.5")))
+                .as("a level equal to the filter's lets through")
+                .isFalse();
+        assertThat(filter.match(Ipv4.parse("60.0.0.9"))).contains("left");
+        assertThat(filter.match(Ipv4.parse("60.0.0.10"))).contains("right");
+        assertThat(filter.rangeCount()).isEqualTo(5);
+    }
+
+    @Test
     void readsAnIpFilterDatFile() {
         byte[] dat = """
                 # comment

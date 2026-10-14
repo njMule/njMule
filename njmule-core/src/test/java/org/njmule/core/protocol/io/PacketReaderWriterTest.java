@@ -92,6 +92,68 @@ class PacketReaderWriterTest {
     }
 
     @Test
+    void lengthsAndCountsAreCheckedBeforeAnyAllocation() throws DecodeException {
+        PacketReader in = PacketReader.of(new byte[8]);
+
+        assertThatThrownBy(() -> in.bytes(Integer.MAX_VALUE)).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> in.skip(Integer.MAX_VALUE)).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> in.slice(Integer.MAX_VALUE)).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> in.count(-1, 1, 10)).isInstanceOf(DecodeException.class);
+        assertThatThrownBy(() -> in.count(0xFFFF_FFFFL, 0, Integer.MAX_VALUE)).isInstanceOf(DecodeException.class);
+        assertThat(in.count(8, 1, 10)).isEqualTo(8);
+        assertThat(in.count(1000, 0, 1000)).as("no item size, no fit check").isEqualTo(1000);
+        assertThat(in.position()).isZero();
+        assertThat(in.slice(8).remaining()).isEqualTo(8);
+        assertThat(in.slice(0).hasRemaining()).isFalse();
+        in.expectEnd();
+    }
+
+    @Test
+    void stringsAreLimitedToTheirSixteenBitLength() throws DecodeException {
+        String longest = "a".repeat(0xFFFF);
+        PacketReader in = PacketReader.of(
+                new PacketWriter().string16(longest, StringEncoding.UTF8).toByteArray());
+
+        assertThat(in.string16()).isEqualTo(longest);
+        assertThatThrownBy(() -> new PacketWriter().string16("a".repeat(0x10000), StringEncoding.UTF8))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PacketWriter().string16("é".repeat(0x8000), StringEncoding.UTF8))
+                .as("counted in bytes, not characters")
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PacketReader.of(HEX.parseHex("ffff61")).string16())
+                .isInstanceOf(DecodeException.class);
+    }
+
+    @Test
+    void patchesStayInsideWhatWasWritten() {
+        PacketWriter out = new PacketWriter().u16(0).u32(0);
+
+        out.setU16(4, 0xBEEF);
+        out.setU32(2, 0xCAFEBABEL);
+        out.setU8(5, 1);
+        assertThatThrownBy(() -> out.setU16(5, 1)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> out.setU32(-1, 1)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> out.setU8(6, 1)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThat(out.size()).isEqualTo(6);
+    }
+
+    @Test
+    void countsAndOffsetsMustFitTheirFields() {
+        assertThat(new PacketWriter()
+                        .count8(255)
+                        .count16(0xFFFF)
+                        .offset32(0xFFFF_FFFFL)
+                        .toByteArray())
+                .hasSize(7);
+        assertThatThrownBy(() -> new PacketWriter().count8(256)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PacketWriter().count8(-1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PacketWriter().count16(0x10000)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PacketWriter().offset32(0x1_0000_0000L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PacketWriter().offset32(-1)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void patchesCountsWrittenEarlier() {
         PacketWriter out = new PacketWriter();
         out.u32(0);

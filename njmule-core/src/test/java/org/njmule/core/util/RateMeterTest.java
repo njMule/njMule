@@ -52,6 +52,30 @@ class RateMeterTest {
     }
 
     @Test
+    void aClockGoingBackwardsCountsInTheLatestSecond() {
+        RateMeter meter = new RateMeter(2);
+        meter.add(1_000, 10 * SECOND);
+
+        meter.add(1_000, 5 * SECOND);
+
+        assertThat(meter.rate(10 * SECOND)).isEqualTo(1_000);
+        assertThat(meter.rate(12 * SECOND)).isZero();
+        assertThat(meter.total()).isEqualTo(2_000);
+    }
+
+    @Test
+    void negativeTimesAndTheirCrossingOfZeroWork() {
+        RateMeter meter = new RateMeter(2);
+        meter.add(400, -SECOND / 2);
+        meter.add(600, SECOND / 2);
+
+        assertThat(meter.rate(SECOND / 2)).isEqualTo(500);
+        assertThat(meter.rate(Long.MAX_VALUE)).isZero();
+        meter.add(10, Long.MIN_VALUE + 1);
+        assertThat(meter.total()).isEqualTo(1_010);
+    }
+
+    @Test
     void needsAWindow() {
         assertThatThrownBy(() -> new RateMeter(0)).isInstanceOf(IllegalArgumentException.class);
     }
