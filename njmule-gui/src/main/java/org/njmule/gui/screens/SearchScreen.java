@@ -433,6 +433,12 @@ public final class SearchScreen implements Screen {
         TableColumn<LiveList.Row<SearchResult>, Known> known =
                 Fx.column(this.gui.t("nj.search.known"), 110, r -> this.known(r));
         known.setCellFactory(c -> new KnownCell());
+        TableColumn<LiveList.Row<SearchResult>, String> fileId =
+                Fx.column(this.gui.t("IDS_FILEID"), 220, r -> r.hash().toHex());
+        // Offered in the column menu; the media columns show from the start.
+        fileId.setVisible(false);
+        String kbits = this.gui.t("IDS_KBITSSEC");
+        // Columns are remembered by their place: new ones go last.
         table.getColumns()
                 .addAll(List.of(
                         Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name),
@@ -441,7 +447,22 @@ public final class SearchScreen implements Screen {
                         Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources),
                         Fx.column(
                                 this.gui.t("nj.search.type"), 90, r -> r.type().orElse("")),
-                        known));
+                        known,
+                        fileId,
+                        Fx.column(this.gui.t("IDS_ARTIST"), 100, r -> r.media().artist()),
+                        Fx.column(this.gui.t("IDS_ALBUM"), 100, r -> r.media().album()),
+                        Fx.column(this.gui.t("IDS_TITLE"), 100, r -> r.media().title()),
+                        Fx.column(
+                                this.gui.t("IDS_LENGTH"),
+                                60,
+                                r -> r.media().length(),
+                                s -> s == 0 ? "" : formats.playingTime(s)),
+                        Fx.column(
+                                this.gui.t("IDS_BITRATE"),
+                                80,
+                                r -> r.media().bitrate(),
+                                b -> b == 0 ? "" : formats.count(b) + " " + kbits),
+                        Fx.column(this.gui.t("IDS_CODEC"), 60, r -> r.media().codec())));
         TableLayout.remember(table, "search", this.gui.settings());
         table.setRowFactory(t -> {
             TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();

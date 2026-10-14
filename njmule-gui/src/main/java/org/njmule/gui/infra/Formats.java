@@ -128,6 +128,13 @@ public final class Formats {
         return s + "s";
     }
 
+    /** A playing time as {@code 1:02:03} or {@code 3:25}. */
+    public String playingTime(long seconds) {
+        long s = Math.max(0, seconds);
+        String minutesAndSeconds = twoDigits(s % HOUR / MINUTE) + ":" + twoDigits(s % MINUTE);
+        return s >= HOUR ? s / HOUR + ":" + minutesAndSeconds : s / MINUTE + ":" + twoDigits(s % MINUTE);
+    }
+
     private static String twoDigits(long value) {
         return value < 10 ? "0" + value : String.valueOf(value);
     }
