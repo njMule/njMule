@@ -22,16 +22,25 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.Schedule;
 
 /** Which paused download starts when another one leaves. */
 @Timeout(30)
@@ -61,6 +70,47 @@ class StartNextDownloadTest {
             assertThat(engine.cancelDownload(running.hash()).get(5, TimeUnit.SECONDS))
                     .isTrue();
             assertThat(status(engine, paused.hash())).isEqualTo(DownloadInfo.Status.DOWNLOADING);
+        }
+    }
+
+    @Test
+    void aDownloadTheSchedulerStoppedIsNotStartedInstead() throws Exception {
+        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("c1".repeat(16)));
+        Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("c2".repeat(16)));
+        Ed2kLink.FileLink other = Ed2kLink.FileLink.of("other.mp3", 5000, Hash16.parseHex("c3".repeat(16)));
+        Schedule.Rule night = new Schedule.Rule(
+                "night",
+                true,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.of(1),
+                OptionalInt.empty());
+        try (NjMuleEngine engine = this.start()) {
+            engine.setCategories(List.of(
+                            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "", false),
+                            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.LOW, "", false)))
+                    .get(5, TimeUnit.SECONDS);
+            for (Ed2kLink.FileLink link : List.of(film, song, other)) {
+                engine.addDownload(link).get(5, TimeUnit.SECONDS);
+            }
+            engine.setDownloadCategory(film.hash(), 1).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(song.hash(), 2).get(5, TimeUnit.SECONDS);
+            engine.setDownloadCategory(other.hash(), 2).get(5, TimeUnit.SECONDS);
+            engine.pauseDownload(song.hash()).get(5, TimeUnit.SECONDS);
+            engine.updateSchedule(new Schedule(List.of(night))).get(5, TimeUnit.SECONDS);
+            assertThat(status(engine, film.hash())).isEqualTo(DownloadInfo.Status.STOPPED);
+
+            engine.cancelDownload(other.hash()).get(5, TimeUnit.SECONDS);
+
+            assertThat(status(engine, film.hash()))
+                    .as("the rule keeps it stopped, though of higher priority")
+                    .isEqualTo(DownloadInfo.Status.STOPPED);
+            assertThat(status(engine, song.hash())).isEqualTo(DownloadInfo.Status.DOWNLOADING);
         }
     }
 

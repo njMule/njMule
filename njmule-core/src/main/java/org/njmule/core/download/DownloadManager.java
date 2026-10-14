@@ -239,6 +239,8 @@ public final class DownloadManager implements AutoCloseable {
         private boolean sourcesEverAnswered;
         private long nextKadSearch;
         private int kadSearches;
+        // Stopped by a scheduler rule: starting the next download leaves it alone until it is resumed.
+        private boolean stoppedBySchedule;
         // What the sources said of the file, the latest of each.
         private final Map<InetSocketAddress, PeerComment> comments = new LinkedHashMap<>();
         // Corrupt parts waiting for a source able to send their AICH recovery data.
@@ -497,6 +499,16 @@ public final class DownloadManager implements AutoCloseable {
         return true;
     }
 
+    /** Stops the download as a scheduler rule asks, also one stopped already: no other leaving starts it again. */
+    public boolean stopBySchedule(Hash16 hash) {
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        entry.stoppedBySchedule = true;
+        return entry.download.file().status() == PartFile.Status.STOPPED || this.stop(hash);
+    }
+
     /** Puts the download in a category, with its priority; {@link Category#NONE} takes it out of any. */
     public boolean setCategory(Hash16 hash, int id) {
         Entry entry = this.entries.get(hash);
@@ -552,6 +564,7 @@ public final class DownloadManager implements AutoCloseable {
         if (entry == null || !this.queue.resume(entry.download)) {
             return false;
         }
+        entry.stoppedBySchedule = false;
         long now = this.ticker.read();
         entry.nextKadSearch = now;
         entry.kadSearches = 0;
@@ -565,7 +578,7 @@ public final class DownloadManager implements AutoCloseable {
 
     /**
      * Resumes the paused or stopped download of highest priority, the first added among equals: one of {@code category}
-     * first, unless {@code mode} takes any; returns it, if there was one.
+     * first, unless {@code mode} takes any; returns it, if there was one. Downloads a scheduler rule stopped wait.
      */
     public Optional<DownloadInfo> resumeNext(int category, NextDownload mode) {
         Optional<Entry> next = Optional.empty();
@@ -584,6 +597,7 @@ public final class DownloadManager implements AutoCloseable {
         for (Entry entry : this.entries.values()) {
             PartFile.Status status = entry.download.file().status();
             if ((status == PartFile.Status.PAUSED || status == PartFile.Status.STOPPED)
+                    && !entry.stoppedBySchedule
                     && wanted.test(entry)
                     && (best == null || priority(entry).compareTo(priority(best)) > 0)) {
                 best = entry;

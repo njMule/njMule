@@ -754,8 +754,8 @@ final class Network {
     /** Stops the downloads of one category and resumes those of another, as a scheduler rule asks when it begins. */
     void scheduleCategories(OptionalInt stop, OptionalInt resume) {
         for (DownloadInfo d : this.downloads.downloads()) {
-            if (stop.isPresent() && d.category() == stop.getAsInt() && d.status() != DownloadInfo.Status.STOPPED) {
-                this.downloads.stop(d.hash());
+            if (stop.isPresent() && d.category() == stop.getAsInt()) {
+                this.downloads.stopBySchedule(d.hash());
             } else if (resume.isPresent()
                     && d.category() == resume.getAsInt()
                     && (d.status() == DownloadInfo.Status.PAUSED || d.status() == DownloadInfo.Status.STOPPED)) {
