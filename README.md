@@ -28,9 +28,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 file-sharing networks, written in Java 25.
 
 > **Status: pre-alpha (`0.0.1-alpha.1`).** No release has been published yet: the packages
-> described below are built by the release workflow and will be attached to the first
-> [GitHub release](https://github.com/njMule/njMule/releases). Until 1.0.0, features and settings
-> may still change. See [CHANGELOG.md](CHANGELOG.md) for everything done so far.
+> described below are produced by the release workflow and will be attached to the first
+> [GitHub release](https://github.com/njMule/njMule/releases). Features and settings may still
+> change before 1.0.0. See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 
 ## Contents
 
@@ -44,39 +44,41 @@ file-sharing networks, written in Java 25.
 
 ## Features
 
-- **eD2K** — servers, plain or obfuscated (static servers, lists from a URL); searches on the
-  server, on all known servers over UDP or on Kad, with file type, size, availability and
-  extension filters; downloads checked part by part, with corrupt parts repaired through AICH
-  recovery data; uploads with a credit-scored queue, secure identification and source exchange.
-- **Kad 2** — routing table, keyword and source searches, publishing of the shared files,
-  firewall check, `nodes.dat` from a URL.
-- **Files** — shared folders with their subfolders, watched for changes; download and upload
-  priorities, categories, preview in a video player, comments and ratings.
-- **Desktop app** — JavaFX with AtlantaFX themes (Nord light and dark by default, following the
-  system), English and Italian, an icon in the notification area, optional handling of the ed2k
-  links clicked in a browser.
-- **Web interface** — status, transfers, searches and servers, behind a password.
-- **Network** — SOCKS 4/5 and HTTP proxy, UPnP port forwarding, IP filter (`ipfilter.dat`,
-  PeerGuardian, P2B) updated from a URL, a weekly scheduler of limits and categories, chat with
-  friends and spam filters.
-- **Native** — GraalVM native executables and installers for Windows, macOS and Linux: no Java
-  runtime is needed to run njMule.
+- **eD2K** — server connections with optional protocol obfuscation, static servers and
+  `server.met` updates from a URL; searches on the connected server, on all known servers over UDP
+  or on Kad, filtered by file type, size, availability and extension; downloads verified part by
+  part, with corrupt parts repaired from AICH recovery data; uploads through a credit-scored
+  queue, with secure identification and source exchange.
+- **Kad 2** — routing table, keyword and source lookups, publishing of shared files, firewall
+  check, `nodes.dat` bootstrap from a URL.
+- **File management** — shared directories with recursive sharing and change monitoring; download
+  and upload priorities, categories, preview in an external video player, comments and ratings.
+- **Desktop application** — JavaFX with AtlantaFX themes (Nord light and dark by default,
+  following the system), English and Italian localisation, system tray integration and optional
+  registration as the `ed2k://` link handler.
+- **Web interface** — status, transfers, searches and servers, protected by a password.
+- **Networking** — SOCKS 4/5 and HTTP CONNECT proxies, UPnP port forwarding, IP filtering
+  (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth
+  limits and categories.
+- **Messaging** — chat with CAPTCHA verification, a friends list and spam filters.
+- **Native builds** — GraalVM native executables and installers for Windows, macOS and Linux; no
+  Java runtime is required.
 
-Under the hood: a GUI-independent core on virtual threads, crash-safe persistence and hardened,
-size-limited parsers for everything that comes from the network or from disk.
+**Architecture** — a GUI-independent core built on virtual threads, crash-safe persistence and
+hardened, size-limited parsers for all input from the network and from disk.
 
 ## Download and install
 
-| System | Architecture | Packages |
+| Operating system | Architecture | Formats |
 |---|---|---|
 | Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
 | Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive |
 | macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
 
-Every package carries two programs: **`njmule-gui`**, the desktop app, and **`njmule`**, the
-command line, which also runs the engine without a window. Each release also lists a
-`SHA256SUMS` file and a CycloneDX software bill of materials (`njmule-<version>-sbom.cdx.json`);
-check the downloads with:
+Every package contains two executables: **`njmule-gui`**, the desktop application, and
+**`njmule`**, the command-line interface, which also runs the engine headless. Each release also
+provides a `SHA256SUMS` file and a CycloneDX software bill of materials
+(`njmule-<version>-sbom.cdx.json`). Verify the downloaded files with:
 
 ```bash
 sha256sum --check --ignore-missing SHA256SUMS
@@ -84,18 +86,19 @@ sha256sum --check --ignore-missing SHA256SUMS
 
 ### Windows
 
-The MSI installs for the current user, without administrator rights: the programs go to
-`%LOCALAPPDATA%\Programs\njMule`, with shortcuts in the Start menu and on the desktop and `njmule`
-on the user's `PATH`. A newer MSI upgrades the installed one; uninstall from *Settings → Apps*.
-An administrator can install for every user instead:
+The MSI performs a per-user installation and requires no administrator rights. It installs the
+executables in `%LOCALAPPDATA%\Programs\njMule`, creates Start menu and desktop shortcuts and adds
+the installation directory to the user's `PATH`. Installing a newer MSI upgrades the existing
+installation; uninstall from *Settings → Apps*. A per-machine installation, for all users, requires
+administrator rights:
 
 ```powershell
 msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
 ```
 
-The `.zip` holds the same programs, to run from any folder. The executables are not code-signed
-yet, so SmartScreen may ask for confirmation (*More info → Run anyway*). GraalVM and JavaFX have no
-Windows arm64 build yet: on Windows on Arm the x64 package runs under emulation.
+The `.zip` archive contains the same executables and runs from any directory. The executables are
+not code-signed yet, so SmartScreen may require confirmation (*More info → Run anyway*). GraalVM
+and JavaFX do not support Windows on Arm yet; on those systems the x64 package runs under emulation.
 
 ### Linux
 
@@ -104,107 +107,132 @@ sudo apt install ./njmule_*_amd64.deb   # Debian, Ubuntu (arm64: *_arm64.deb)
 sudo dnf install ./njmule-*.x86_64.rpm  # Fedora, RHEL (arm64: *.aarch64.rpm)
 ```
 
-The packages put `njmule` and `njmule-gui` in `/usr/bin` (the desktop app with its libraries in
-`/usr/lib/njmule`), a menu entry, AppStream metadata and icons, and depend on GTK 3, libXtst and
-OpenGL. The `.tar.gz` holds the same programs to run from any folder; its `share/` directory has
-the desktop entry, metadata and icon for a manual integration.
+The packages install `njmule` and `njmule-gui` in `/usr/bin` (the desktop application and its
+shared libraries reside in `/usr/lib/njmule`), together with a desktop entry, AppStream metadata
+and icons. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive contains the same
+executables and runs from any directory; its `share/` directory provides the desktop entry,
+metadata and icon for manual desktop integration.
 
 ### macOS
 
-Open the disk image and drag njMule into Applications. The app is signed ad hoc but not notarized:
-macOS refuses it at the first start until it is allowed in *System Settings → Privacy & Security
-→ Open Anyway*, or the quarantine flag is removed:
+Open the disk image and drag njMule into Applications. The application is ad-hoc signed but not
+notarized, so Gatekeeper blocks its first launch: allow it in *System Settings → Privacy &
+Security → Open Anyway*, or remove the quarantine attribute:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/njMule.app
 ```
 
-The command-line program is `/Applications/njMule.app/Contents/MacOS/njmule`.
+The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`.
 
-### Where njMule keeps its data
+### Data and configuration directories
 
-| | Windows | macOS | Linux |
+njMule follows the conventions of each operating system (Known Folders on Windows, the Library
+on macOS, the XDG Base Directory specification on Linux). Default locations:
+
+| Purpose | Windows | macOS | Linux |
 |---|---|---|---|
-| Settings | `%APPDATA%\njMule\config` | `~/Library/Application Support/njMule/config` | `~/.config/njmule` |
-| Data and temp files | `%LOCALAPPDATA%\njMule` | `~/Library/Application Support/njMule` | `~/.local/share/njmule` |
+| Configuration | `%APPDATA%\njMule\config` | `~/Library/Application Support/njMule/config` | `~/.config/njmule` |
+| Desktop app state | `%APPDATA%\njMule\gui` | `~/Library/Application Support/njMule/gui` | `~/.config/njmule/gui` |
+| Application data | `%LOCALAPPDATA%\njMule\data` | `~/Library/Application Support/njMule/data` | `~/.local/share/njmule` |
+| Incomplete downloads | `%LOCALAPPDATA%\njMule\temp` | `~/Library/Application Support/njMule/temp` | `~/.local/share/njmule/temp` |
+| Cache | `%LOCALAPPDATA%\njMule\cache` | `~/Library/Caches/org.njmule.njMule` | `~/.cache/njmule` |
 | Logs | `%LOCALAPPDATA%\njMule\logs` | `~/Library/Logs/njMule` | `~/.local/state/njmule/logs` |
-| Finished downloads | `%USERPROFILE%\Downloads\njMule` | `~/Downloads/njMule` | `~/Downloads/njMule` |
+| Completed downloads | `%USERPROFILE%\Downloads\njMule` | `~/Downloads/njMule` | `~/Downloads/njMule` |
 
-On Linux the `XDG_*` variables and `XDG_DOWNLOAD_DIR` of `user-dirs.dirs` are honoured. The
-option `--config-dir <dir>` keeps everything below one folder instead, for a second profile or
-an installation on a removable drive. Uninstalling leaves these folders in place.
+On Linux, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and `XDG_STATE_HOME` take
+precedence when set, and the download directory follows `XDG_DOWNLOAD_DIR` (`user-dirs.dirs`).
+The directories for incomplete and completed downloads can be changed in the options.
+Uninstalling njMule does not remove any of these directories.
+
+**Portable mode.** An empty `portable.flag` file next to the executables extracted from the `.zip`
+or `.tar.gz` archive keeps all data in a `data` directory beside them, for example on a removable
+drive. The option `--config-dir <dir>` places all data below `<dir>` instead, for example to run a
+separate profile. In both cases the root contains `config`, `data`, `temp`, `cache`, `logs`, `gui`
+and `incoming`.
 
 ## Usage
 
-### Desktop app
+### Desktop application
 
-Start njMule from the Start menu, the applications menu or Applications. ed2k links given on the
-command line (`njmule-gui "ed2k://|file|…|/"`) become downloads, handed to the njMule already
-running with the same configuration; the options can make njMule open the ed2k links clicked in a
-browser (Windows and Linux, off by default).
+Launch njMule from the Start menu, the applications menu or the Applications folder. ed2k links
+passed on the command line (`njmule-gui "ed2k://|file|…|/"`) are added as downloads; if an
+instance is already running with the same configuration, the links are forwarded to it. The
+options can register njMule as the handler of `ed2k://` links opened in a browser (Windows and
+Linux; disabled by default).
 
-### Command line
+### Command-line interface
 
-`njmule` runs the engine without a window until it is stopped, or does one job and exits;
-`njmule --help` lists every option.
+`njmule` either runs the engine headless until it is stopped (Ctrl+C or `njmule --exit`), or
+performs a single task and exits. `njmule --help` lists all options.
 
-| Command | Effect |
+| Command | Description |
 |---|---|
-| `njmule` | run the engine without a window |
-| `njmule --exit` | ask the running njMule (window or headless) to save and exit |
+| `njmule` | run the engine headless |
+| `njmule --exit` | ask the running instance (desktop or headless) to save its state and exit |
 | `njmule --search "<expression>" [--global \| --kad]` | search, print the results and exit |
-| `njmule --download <ed2k link>...` | download these files, then exit |
-| `njmule --share <dir>...` | share these folders too (remembered) |
-| `njmule --hash <file>...` | print the ed2k link of each file, with its AICH hash |
-| `njmule --kad-bootstrap <host:port>` | join Kad through this node |
+| `njmule --download <ed2k link>...` | download the given files, then exit |
+| `njmule --share <dir>...` | share additional directories (persisted) |
+| `njmule --hash <file>...` | print the ed2k link of each file, including its AICH hash |
+| `njmule --kad-bootstrap <host:port>` | join Kad through the given node |
 | `njmule --config-dir <dir>` | keep all data below `<dir>` |
-| `njmule --log-level DEBUG` | override the log level of the preferences |
+| `njmule --log-level DEBUG` | override the configured log level |
 
 ### Web interface
 
-Turn the web interface on with a password (asked twice; at least 8 characters). It starts with
-the engine, headless or with the desktop app, at `http://localhost:4711/` and for this computer
-only, unless `--webui-lan` is given; the desktop options set it too. It is served over plain
-HTTP: let other computers in only on a trusted network.
+The web interface is enabled by setting a password (prompted twice, minimum 8 characters), from
+the command line or from the options of the desktop application:
 
 ```bash
 njmule --webui-password [--webui-port <port>] [--webui-lan]
 ```
 
+It starts together with the engine, headless or with the desktop application, on
+`http://localhost:4711/`. It listens on the loopback interface only, unless `--webui-lan` makes it
+listen on all interfaces. The interface is served over plain HTTP: enable LAN access only on a
+trusted network.
+
 ## Building from source
 
-| Tool | Needed for |
+| Tool | Required for |
 |---|---|
-| JDK 25 (e.g. Eclipse Temurin) | everything; the Maven Wrapper downloads Maven |
-| GraalVM Community `25.0.4.1.1` with `GRAALVM_HOME` set | native executables |
+| JDK 25 (e.g. Eclipse Temurin) | all builds; the Maven Wrapper provides Maven |
+| GraalVM Community `25.0.4.1.1`, with `GRAALVM_HOME` set | native executables |
 | Visual Studio 2022 Build Tools, C++ workload | native executables on Windows |
 | Docker | Linux x64 native executables without a local GraalVM |
-| [WiX](https://wixtoolset.org/) 5 (`dotnet tool install --global wix --version 5.0.2`), [nfpm](https://nfpm.goreleaser.com/) | Windows MSI, deb and rpm packages |
+| [WiX](https://wixtoolset.org/) 5.0.2, [nfpm](https://nfpm.goreleaser.com/) | the Windows MSI, the deb and rpm packages |
 
-The Visual Studio Build Tools install with:
-`winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`.
+On Windows, the Build Tools and WiX can be installed with:
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+dotnet tool install --global wix --version 5.0.2
+```
 
 ### Build and test
 
-On Windows use `.\mvnw.cmd` in place of `./mvnw`.
+On Windows, use `.\mvnw.cmd` instead of `./mvnw`.
 
 ```bash
-./mvnw verify                          # build; formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs
-./mvnw spotless:apply                  # format the code (palantir-java-format)
+./mvnw verify                          # full build with all quality gates (see below)
+./mvnw spotless:apply                  # format the sources (palantir-java-format)
 ./mvnw -Plicenses package -DskipTests  # THIRD-PARTY.txt and the CycloneDX SBOM
-./mvnw -Psecurity verify               # OWASP dependency check (needs NVD_API_KEY)
+./mvnw -Psecurity verify               # OWASP dependency check (requires NVD_API_KEY)
 ```
 
-### Run from the build
+`verify` checks formatting (Spotless) and license headers, runs Checkstyle, Error Prone, the
+tests, JaCoCo coverage (at least 70% of the lines of `njmule-core`) and SpotBugs with FindSecBugs.
 
-The command line and headless engine (on Windows separate the module path with `;`):
+### Running from the build
+
+Command-line interface and headless engine (on Windows, separate the module path with `;`):
 
 ```bash
 ./mvnw -pl njmule-app -am package
 java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main --help
 ```
 
-The desktop app:
+Desktop application:
 
 ```bash
 ./mvnw -pl njmule-gui -am install -DskipTests && ./mvnw -pl njmule-gui javafx:run
@@ -212,35 +240,36 @@ The desktop app:
 
 ### Native executables
 
-With a local GraalVM, for the current system:
+With a local GraalVM, for the host system:
 
 ```bash
 ./mvnw -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
 ```
 
-The command line is `njmule-app/target/njmule(.exe)`; the desktop app is in
-`njmule-gui/target/native/`, its executable next to the JDK libraries it loads. `-pl njmule-app`
-alone builds only the command line.
+The command-line executable is `njmule-app/target/njmule(.exe)`; the desktop application is in
+`njmule-gui/target/native/`, next to the JDK shared libraries it loads. `-pl njmule-app` builds
+the command-line executable only.
 
-Without a local GraalVM, Docker builds the Linux x64 command line in the same image as CI. The
-script compiles a copy of the sources inside the container, because on Docker Desktop (Windows,
-macOS) Maven on the bind-mounted checkout is several times slower (about 1.5 minutes instead of 6).
-In PowerShell write `"${PWD}:/work"`; in Git Bash prefix the command with `MSYS_NO_PATHCONV=1`:
+Without a local GraalVM, Docker builds the Linux x64 command-line executable in the same image as
+CI. The script compiles a copy of the sources inside the container, because on Docker Desktop
+(Windows, macOS) Maven is several times slower on a bind-mounted checkout (about 6 minutes instead
+of 1.5). In PowerShell use `"${PWD}:/work"`; in Git Bash prefix the command with
+`MSYS_NO_PATHCONV=1`:
 
 ```bash
 docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 /work/tools/native-docker.sh
 ```
 
-The desktop app needs reachability metadata, recorded by a tour of the whole interface under
-GraalVM's tracing agent (`-Pnative-tour`) and kept in
-`njmule-gui/src/main/resources/META-INF/native-image`; record it again after changing the GUI.
-For Linux, `tools/native-gui-docker.sh` records it and builds both executables in an Ubuntu
-container (usage in the script).
+The native desktop application requires reachability metadata, recorded by an automated tour of
+the whole interface under GraalVM's tracing agent (`-Pnative-tour`) and stored in
+`njmule-gui/src/main/resources/META-INF/native-image`; record it again after changing the GUI. For
+Linux, `tools/native-gui-docker.sh` records the metadata and builds both executables in an Ubuntu
+container (usage in the script header).
 
 ### Packages
 
-The [release workflow](.github/workflows/release.yml) builds every package on its own system and
-is the reference for the exact steps. Locally, after the native build, the Windows MSI:
+The [release workflow](.github/workflows/release.yml) builds every package on its target system
+and is the reference for the exact steps. Locally, after the native build, the Windows MSI:
 
 ```powershell
 New-Item -ItemType Directory -Force stage\njmule | Out-Null
@@ -248,7 +277,7 @@ Copy-Item njmule-app\target\njmule.exe, njmule-gui\target\native\* stage\njmule
 wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
 ```
 
-and the Linux deb and rpm packages (`ARCH` is `amd64` or `arm64`):
+The Linux deb and rpm packages (`ARCH` is `amd64` or `arm64`):
 
 ```bash
 mkdir -p stage/gui stage/doc dist
@@ -259,19 +288,21 @@ VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dis
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/
 ```
 
-The macOS bundle is assembled from `packaging/macos/Info.plist` and packed with `hdiutil`.
+The macOS application bundle is assembled from `packaging/macos/Info.plist`, ad-hoc signed with
+`codesign` and packed into a disk image with `hdiutil`.
 
 ### Releases
 
-Pushing an annotated tag `vX.Y.Z` equal to `<revision>` in the root `pom.xml` runs the release
-workflow: native builds on every system, the GUI tour as a smoke test, the packages, then a draft
-GitHub release with the packages, the SBOM, `SHA256SUMS` and the notes of that version from
-`CHANGELOG.md`. Publishing the draft stays a manual step; a manual run of the workflow only
-builds the packages, as workflow artifacts.
+Pushing an annotated tag `vX.Y.Z` that matches `<revision>` in the root `pom.xml` triggers the
+release workflow: native builds on every target system, the GUI tour as a smoke test, packaging,
+and finally a draft GitHub release with the packages, the SBOM, `SHA256SUMS` and the release notes
+of that version from `CHANGELOG.md`. Publishing the draft is a manual step. A manual run of the
+workflow only builds the packages, available as workflow artifacts.
 
 ### Benchmarks
 
-JMH benchmarks of the hashing and cipher hot paths (one operation = 1 MiB, so ops/s = MiB/s):
+JMH benchmarks of the hashing and cipher hot paths (one operation processes 1 MiB, so ops/s
+equals MiB/s):
 
 ```bash
 ./mvnw -pl njmule-bench -am package -DskipTests
@@ -282,16 +313,16 @@ java -jar njmule-bench/target/benchmarks.jar
 
 | Path | Content |
 |---|---|
-| `njmule-core` | engine, protocol, persistence — no GUI dependency |
-| `njmule-app` | headless launcher, command line, logging |
+| `njmule-core` | engine, protocols, persistence; no GUI dependency |
+| `njmule-app` | headless launcher, command-line interface, logging |
 | `njmule-gui` | JavaFX desktop application |
 | `njmule-webui` | web interface served by the JDK HTTP server |
 | `njmule-testkit` | test doubles shared by the modules |
 | `njmule-bench` | JMH benchmarks of the hot paths (not distributed) |
-| `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle |
-| `branding` | original artwork: master SVG and the generated icons |
+| `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata |
+| `branding` | original artwork: master SVG and generated icons |
 | `config` | license header, Checkstyle and SpotBugs configuration |
-| `tools` | helper programs and the Docker build scripts |
+| `tools` | helper programs and Docker build scripts |
 
 ## Contributing
 
