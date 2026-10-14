@@ -82,6 +82,15 @@ class FramingTest {
     }
 
     @Test
+    void udpReadsOnlyInsideTheBuffer() throws DecodeException {
+        byte[] buffer = HEX.parseHex("00e39601");
+
+        assertThat(UdpFraming.decode(buffer, 1, 3)).isEqualTo(Packet.of(Protocol.EDONKEY, 0x96, new byte[] {1}));
+        assertThatThrownBy(() -> UdpFraming.decode(buffer, 2, 4)).isInstanceOf(IndexOutOfBoundsException.class);
+        assertThatThrownBy(() -> UdpFraming.decode(buffer, -1, 3)).isInstanceOf(IndexOutOfBoundsException.class);
+    }
+
+    @Test
     void packsOnlyWhenSmallerAndUnpacksToTheEmuleProtocol() throws DecodeException {
         Packet big = Packet.of(Protocol.EMULE, 0x40, new byte[4000]);
         Packet packed = Packing.pack(big);

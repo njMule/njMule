@@ -17,6 +17,7 @@
 package org.njmule.core.crypto;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Arrays;
 import java.util.HexFormat;
@@ -38,6 +39,17 @@ class Rc4Test {
 
         assertThat(HEX.formatHex(stream))
                 .isEqualTo("b2396305f03dc027ccc3524a0a1118a8" + "6982944f18fc82d589c403a47a0d0919");
+    }
+
+    @Test
+    void skippingBackwardsIsRefused() {
+        Rc4 rc4 = new Rc4(HEX.parseHex("0102030405"));
+        rc4.skip(0);
+
+        assertThatThrownBy(() -> rc4.skip(-1)).isInstanceOf(IllegalArgumentException.class);
+        byte[] stream = new byte[1];
+        rc4.apply(stream, 0, 1);
+        assertThat(stream[0]).as("nothing was consumed").isEqualTo((byte) 0xB2);
     }
 
     @Property

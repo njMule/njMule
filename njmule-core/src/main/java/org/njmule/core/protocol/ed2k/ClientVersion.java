@@ -32,9 +32,9 @@ public final class ClientVersion {
     /** The version tag value: {@code compat<<24 | major<<17 | minor<<10 | patch<<7}. */
     public static int encode(int compat, int major, int minor, int patch) {
         return (compat & 0xFF) << 24
-                | Math.min(major, 0x7F) << 17
-                | Math.min(minor, 0x7F) << 10
-                | Math.min(patch, 0x7) << 7;
+                | Math.clamp(major, 0, 0x7F) << 17
+                | Math.clamp(minor, 0, 0x7F) << 10
+                | Math.clamp(patch, 0, 0x7) << 7;
     }
 
     /** njMule's own version tag, from its semantic version. */

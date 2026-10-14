@@ -17,6 +17,7 @@
 package org.njmule.core.protocol.packet;
 
 import java.util.Arrays;
+import java.util.Objects;
 import org.njmule.core.protocol.io.DecodeException;
 
 /** UDP framing: {@code <protocol u8><opcode u8><payload>}, one packet per datagram. */
@@ -36,6 +37,7 @@ public final class UdpFraming {
 
     /** Decodes a received datagram; shorter than a header is malformed, not an underflow. */
     public static Packet decode(byte[] datagram, int offset, int length) throws DecodeException {
+        Objects.checkFromIndexSize(offset, length, datagram.length);
         if (length < HEADER_SIZE) {
             throw new DecodeException("datagram of " + length + " bytes has no header");
         }

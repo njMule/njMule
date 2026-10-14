@@ -64,6 +64,9 @@ public final class Rc4 {
 
     /** Advances the key stream by {@code length} bytes. */
     public void skip(int length) {
+        if (length < 0) {
+            throw new IllegalArgumentException("negative skip " + length);
+        }
         byte[] scratch = new byte[Math.min(length, SKIP_CHUNK)];
         for (int left = length; left > 0; left -= scratch.length) {
             this.apply(scratch, 0, Math.min(left, scratch.length));

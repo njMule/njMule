@@ -178,6 +178,14 @@ class Ed2kMessagesTest {
     }
 
     @Test
+    void versionPartsStayInTheirBits() {
+        assertThat(ClientVersion.encode(ClientVersion.NJMULE_COMPAT, -1, -1, -1))
+                .isEqualTo(ClientVersion.NJMULE_COMPAT << 24);
+        assertThat(ClientVersion.encode(ClientVersion.NJMULE_COMPAT, 1000, 1000, 1000) >>> 24)
+                .isEqualTo(ClientVersion.NJMULE_COMPAT);
+    }
+
+    @Test
     void serverMessagesSplitIntoLines() throws DecodeException {
         PacketWriter out =
                 new PacketWriter().string16("server version 17.15\r\n\r\nWelcome!\nERROR: x", StringEncoding.UTF8);
