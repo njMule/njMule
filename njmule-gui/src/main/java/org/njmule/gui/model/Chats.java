@@ -17,6 +17,8 @@
 package org.njmule.gui.model;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -50,6 +52,9 @@ public final class Chats {
         private final ObjectProperty<Hash16> userHash = new SimpleObjectProperty<>();
         private final ObservableList<Line> lines = FXCollections.observableArrayList();
         private final ObjectProperty<byte[]> captcha = new SimpleObjectProperty<>();
+        // Opened or answered by the user; the others are a stranger's, of which only the latest are kept.
+        private boolean ours;
+        private long lastActive;
 
         Chat(String address) {
             this.address = address;
@@ -85,8 +90,12 @@ public final class Chats {
     /** Lines a conversation keeps at most. */
     static final int MAX_LINES = 1_000;
 
+    /** Conversations started by other clients and never answered, kept at most. */
+    static final int MAX_STRANGERS = 50;
+
     private final ObservableList<Chat> chats = FXCollections.observableArrayList();
     private Consumer<Chat> arrived = chat -> {};
+    private long clock;
 
     public ObservableList<Chat> all() {
         return this.chats;
@@ -97,15 +106,10 @@ public final class Chats {
         this.arrived = Objects.requireNonNull(sink, "sink");
     }
 
-    /** The conversation with {@code address}, started if new. */
+    /** The conversation with {@code address}, which the user opens; started if new. */
     public Chat with(String address) {
-        for (Chat chat : this.chats) {
-            if (chat.address.equals(address)) {
-                return chat;
-            }
-        }
-        Chat chat = new Chat(address);
-        this.chats.add(chat);
+        Chat chat = this.open(address);
+        chat.ours = true;
         return chat;
     }
 
@@ -114,7 +118,7 @@ public final class Chats {
     }
 
     void received(String address, Hash16 userHash, Optional<String> nick, String text) {
-        Chat chat = this.with(address);
+        Chat chat = this.open(address);
         chat.userHash.set(userHash);
         nick.filter(n -> !n.isBlank()).ifPresent(chat.nick::set);
         chat.add(Author.THEM, text, "");
@@ -130,13 +134,45 @@ public final class Chats {
     }
 
     void notice(String address, String key, String detail) {
-        this.with(address).add(Author.NOTICE, key, detail);
+        Chat chat = this.open(address);
+        chat.add(Author.NOTICE, key, detail);
+        trim(chat);
     }
 
     void captcha(String address, Hash16 userHash, byte[] image) {
-        Chat chat = this.with(address);
+        Chat chat = this.open(address);
         chat.userHash.set(userHash);
         chat.captcha.set(image);
+    }
+
+    // The conversation with address, as the latest active; a new one is a stranger's until the user writes in it.
+    private Chat open(String address) {
+        Chat found = null;
+        for (Chat chat : this.chats) {
+            if (chat.address.equals(address)) {
+                found = chat;
+                break;
+            }
+        }
+        boolean started = found == null;
+        Chat chat = started ? new Chat(address) : found;
+        chat.lastActive = ++this.clock;
+        if (started) {
+            this.chats.add(chat);
+            this.forgetStrangers();
+        }
+        return chat;
+    }
+
+    // Clients that write to anybody, changing ports, would open conversations without end.
+    private void forgetStrangers() {
+        List<Chat> strangers = this.chats.stream()
+                .filter(c -> !c.ours)
+                .sorted(Comparator.comparingLong(c -> c.lastActive))
+                .toList();
+        if (strangers.size() > MAX_STRANGERS) {
+            this.chats.removeAll(strangers.subList(0, strangers.size() - MAX_STRANGERS));
+        }
     }
 
     private static void trim(Chat chat) {
