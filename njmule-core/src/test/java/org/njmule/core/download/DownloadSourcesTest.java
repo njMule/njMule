@@ -104,6 +104,7 @@ class DownloadSourcesTest {
     private volatile DownloadManager.Settings settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
     private volatile Path incoming;
     private volatile Optional<DownloadManager.KadSources> kad = Optional.empty();
+    private DownloadManager.Listener listener = new Events();
     private DownloadManager manager;
 
     @AfterEach
@@ -303,6 +304,7 @@ class DownloadSourcesTest {
         second.send(new ClientMessages.FileStatus(recovery.link.hash(), 0, new BitSet()).encode());
         Packet request = second.until(Opcodes.Extended.AICHREQUEST).getLast();
         assertThat(request.reader().hash16()).isEqualTo(recovery.link.hash());
+        second.send(aichHash(recovery.link.hash(), Hash20.parseBase32("F".repeat(32))));
 
         second.send(
                 aichAnswer(recovery.link.hash(), recovery.tree.masterHash(), AichRecovery.create(recovery.tree, 0)));
@@ -313,6 +315,7 @@ class DownloadSourcesTest {
         sendBlocks(recovery.first, recovery.link.hash(), recovery.data, 2L * Ed2k.EMBLOCKSIZE, recovery.data.length);
         Path done = Path.of(this.await("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(done)).isEqualTo(recovery.data);
+        assertThat(this.onLoop(() -> this.manager.find(recovery.link.hash()))).isEmpty();
     }
 
     @Test
@@ -325,11 +328,17 @@ class DownloadSourcesTest {
 
         second.send(aichAnswer(recovery.link.hash(), recovery.tree.masterHash(), random(200, 7)));
 
-        assertThat(requested(recovery.first))
-                .containsExactly(
-                        new ClientMessages.Range(0, Ed2k.EMBLOCKSIZE),
-                        new ClientMessages.Range(Ed2k.EMBLOCKSIZE, 2L * Ed2k.EMBLOCKSIZE),
-                        new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, recovery.data.length));
+        List<ClientMessages.Range> whole = List.of(
+                new ClientMessages.Range(0, Ed2k.EMBLOCKSIZE),
+                new ClientMessages.Range(Ed2k.EMBLOCKSIZE, 2L * Ed2k.EMBLOCKSIZE),
+                new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, recovery.data.length));
+        assertThat(requested(recovery.first)).containsExactlyElementsOf(whole);
+
+        // Corrupt once more: its recovery was tried, so it comes again whole at once.
+        byte[] corrupt = recovery.data.clone();
+        corrupt[0] ^= 0x55;
+        sendBlocks(recovery.first, recovery.link.hash(), corrupt, 0, recovery.data.length);
+        assertThat(requested(recovery.first)).containsExactlyElementsOf(whole);
         this.onLoop(() -> this.manager.pause(recovery.link.hash()));
     }
 
@@ -521,11 +530,15 @@ class DownloadSourcesTest {
     @Test
     void aFullSourceListTakesNoMoreFirewalledSources() throws Exception {
         this.settings = settings(ObfuscationMode.SUPPORTED, 1, 0);
-        ScriptedSource source = this.source(0, 0);
+        ScriptedSource source = this.source(0, Hello.MISC2_SOURCE_EXCHANGE2);
         DownloadManager manager = this.manager();
         Hash16 hash = Hash16.parseHex("38".repeat(16));
         this.onLoop(() -> manager.add(source.link("full.bin", 5000, hash)));
         ScriptedSource.Link link = source.accept();
+        List<Packet> asked = new ArrayList<>(link.until(Opcodes.Client.SETREQFILEID));
+        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
+        asked.addAll(link.until(Opcodes.Client.STARTUPLOADREQ));
+        assertThat(names(asked)).as("a full list wants no more sources").doesNotContain("REQUESTSOURCES2");
 
         this.onLoop(() -> {
             manager.foundSources(new ServerMessages.FoundSources(
@@ -539,6 +552,58 @@ class DownloadSourcesTest {
                         hash, new InetSocketAddress(InetAddresses.forString("127.0.0.2"), PORT))))
                 .isFalse();
         link.close();
+    }
+
+    @Test
+    void aSourceNamedByItsHostIsLookedUp() throws Exception {
+        ScriptedSource source = this.source(0, 0);
+        DownloadManager manager = this.manager();
+        Hash16 hash = Hash16.parseHex("3d".repeat(16));
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                "named.bin",
+                5000,
+                hash,
+                Optional.empty(),
+                List.of(),
+                List.of(new Ed2kLink.Source("localhost", source.port())),
+                List.of());
+
+        this.onLoop(() -> manager.add(link));
+
+        assertThat(source.accept()).isNotNull();
+        assertThat(this.onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + source.port());
+        this.onLoop(() -> manager.pause(hash));
+    }
+
+    @Test
+    void aDiskShortOfSpaceFromTheStartHoldsEveryDownload() throws Exception {
+        this.settings = settings(ObfuscationMode.SUPPORTED, 100, Long.MAX_VALUE);
+        // A listener that does not care about the disk.
+        this.listener = new DownloadManager.Listener() {
+            @Override
+            public void added(DownloadInfo download) {}
+
+            @Override
+            public void progress(DownloadInfo download) {}
+
+            @Override
+            public void completed(DownloadInfo download, Path file, PartFile part) {}
+
+            @Override
+            public void failed(DownloadInfo download, String reason) {}
+
+            @Override
+            public void removed(Hash16 hash) {}
+        };
+        DownloadManager manager = this.manager();
+        Hash16 hash = Hash16.parseHex("3e".repeat(16));
+
+        DownloadInfo info = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("held.bin", 5000, hash)));
+
+        assertThat(info.status()).isEqualTo(DownloadInfo.Status.NO_SPACE);
+        assertThat(DownloadManager.passesOn(Ipv4.of(10, 0, 0, 1), InetAddresses.forString("::1")))
+                .as("a LAN source goes to no client without an IPv4 address")
+                .isFalse();
     }
 
     @Test
@@ -691,7 +756,7 @@ class DownloadSourcesTest {
                 (hash, bytes) -> {},
                 () -> this.kad,
                 List::of,
-                new Events()));
+                this.listener));
         return this.manager;
     }
 
