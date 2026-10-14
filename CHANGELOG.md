@@ -433,6 +433,9 @@ All notable changes to this project are documented here. The format follows
   forgives the idle ones.
 - A connection that asks for six files we neither share nor download is closed, and an address
   closed this way twice within two hours is banned.
+- A full upload queue no longer stalls the engine: with 5,000 clients waiting, a queue step, the
+  place told to a client and the list the front ends show each took a fifth of a second or more,
+  now about a millisecond at most; file data is compressed off the engine thread.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

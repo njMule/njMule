@@ -16,7 +16,7 @@
 
     <artifactId>njmule-bench</artifactId>
     <name>njMule Benchmarks</name>
-    <description>JMH benchmarks of the njMule hot paths (hashing, ciphers). Not distributed.</description>
+    <description>JMH benchmarks of the njMule hot paths (hashing, ciphers, the upload queue). Not distributed.</description>
 
     <properties>
         <!-- A classpath (non-modular) build, so the benchmarks can reach the internal core packages. -->

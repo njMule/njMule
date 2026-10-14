@@ -67,6 +67,15 @@ final class Blocks {
     }
 
     /**
+     * Reads {@code [start, start + length)} of {@code data} and cuts it into the packets of {@code file}, off the
+     * caller.
+     */
+    static CompletableFuture<List<Packet>> readPackets(
+            Path data, Hash16 file, long start, int length, boolean compress) {
+        return read(data, start, length).thenApplyAsync(bytes -> packets(file, start, bytes, compress), DISK);
+    }
+
+    /**
      * The packets carrying {@code data} of {@code file} from {@code start}: zlib-compressed when asked and smaller,
      * 64-bit offsets when the block ends above 4 GB.
      */

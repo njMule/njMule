@@ -173,14 +173,18 @@ public final class UploadManager implements AutoCloseable {
         private boolean trusted;
 
         Client(UploadSession session, Uploadable file, long now) {
-            this.userHash = session.userHash();
-            this.ip = session.address().getAddress();
-            this.port = session.peer().tcpPort();
-            this.lowId = session.peer().clientId() != 0 && session.peer().clientId() < 0x0100_0000L;
-            this.crypt = (session.peer().miscOptions2() & Hello.MISC2_SUPPORTS_CRYPT) != 0;
-            this.hello = session.peer();
-            this.file = file;
+            this(session.peer(), session.address().getAddress(), file, now);
             this.session = session;
+        }
+
+        Client(Hello hello, InetAddress ip, Uploadable file, long now) {
+            this.userHash = hello.userHash();
+            this.ip = ip;
+            this.port = hello.tcpPort();
+            this.lowId = hello.clientId() != 0 && hello.clientId() < 0x0100_0000L;
+            this.crypt = (hello.miscOptions2() & Hello.MISC2_SUPPORTS_CRYPT) != 0;
+            this.hello = hello;
+            this.file = file;
             this.waitStart = now;
             this.lastAsk = now;
         }
@@ -365,13 +369,19 @@ public final class UploadManager implements AutoCloseable {
         for (Slot slot : this.slots) {
             all.add(info(slot.client, UploadInfo.State.UPLOADING, slot.sent, slot.rate.rate(now), now));
         }
-        List<Client> queue = new ArrayList<>(this.waiting.values());
-        queue.sort(Comparator.comparingDouble((Client c) -> this.score(c, now)).reversed());
-        for (Client client : queue) {
-            all.add(info(client, UploadInfo.State.QUEUED, 0, 0, now));
+        Scoring scoring = new Scoring(now);
+        List<Scored> queue = new ArrayList<>(this.waiting.size());
+        for (Client client : this.waiting.values()) {
+            queue.add(new Scored(client, scoring.of(client)));
+        }
+        queue.sort(Comparator.comparingDouble(Scored::score).reversed());
+        for (Scored scored : queue) {
+            all.add(info(scored.client(), UploadInfo.State.QUEUED, 0, 0, now));
         }
         return all;
     }
+
+    private record Scored(Client client, double score) {}
 
     /** Payload bytes per second sent to all slots. */
     public long rate() {
@@ -427,6 +437,15 @@ public final class UploadManager implements AutoCloseable {
         this.credits.save();
     }
 
+    // As find, without building what a slot needs.
+    private boolean isAvailable(Hash16 hash) {
+        return this.shared.apply(hash).isPresent()
+                || this.downloads
+                        .apply(hash)
+                        .filter(d -> !d.verifiedParts().isEmpty())
+                        .isPresent();
+    }
+
     private Optional<Uploadable> find(Hash16 hash) {
         Optional<Uploadable> complete = this.shared.apply(hash).map(Uploadable::of);
         if (complete.isPresent()) {
@@ -438,17 +457,32 @@ public final class UploadManager implements AutoCloseable {
                 .map(Uploadable::of);
     }
 
-    private void tick() {
+    /** Puts a client that asked for {@code file} and is not connected now in the queue, as the benchmark needs. */
+    void enqueue(Hello hello, InetAddress ip, Uploadable file, long waitStart) {
+        Client client = new Client(hello, ip, file, waitStart);
+        client.lastAsk = this.ticker.read();
+        this.waiting.put(client.userHash, client);
+    }
+
+    /** The place in the queue of the client waiting with {@code userHash}. */
+    int rankOf(Hash16 userHash) {
+        return this.rank(this.waiting.get(userHash), this.ticker.read());
+    }
+
+    // One step of the queue: slots fed, ended and filled.
+    void tick() {
         long now = this.ticker.read();
         int limit = this.settings.get().maxUploadKiBps();
         // Nothing carries over from unlimited: the sum would overflow and stop the uploads.
         long carried = this.budget == Long.MAX_VALUE ? 0 : this.budget;
         this.budget = limit == 0 ? Long.MAX_VALUE : Math.min(carried + limit * 1024L / 10, limit * 1024L);
         this.bans.values().removeIf(until -> now - until >= 0);
+        // Many clients wait for the same few files: each is looked up once.
+        Map<Hash16, Boolean> available = new HashMap<>();
         this.waiting
                 .values()
                 .removeIf(c -> now - c.lastAsk > PURGE_AFTER.toNanos()
-                        || this.find(c.file.hash()).isEmpty());
+                        || !available.computeIfAbsent(c.file.hash(), this::isAvailable));
         for (Slot slot : List.copyOf(this.slots)) {
             this.read(slot);
             if (slot.sent >= SESSION_LIMIT
@@ -551,15 +585,21 @@ public final class UploadManager implements AutoCloseable {
         this.read(slot, next.get().file(), next.get());
     }
 
+    // The block is read, and compressed, off the engine thread.
     private void read(Slot slot, Uploadable file, UploadSession.Block block) {
         slot.client.file = file;
         slot.reading = true;
+        int length = Math.toIntExact(block.end() - block.start());
+        boolean compress = file.compressible()
+                && length >= MIN_COMPRESSIBLE
+                && (slot.session.peer().miscOptions1() >>> 20 & 0x0F) != 0;
         this.loop.whenDone(
-                Blocks.read(file.data(), block.start(), Math.toIntExact(block.end() - block.start())),
-                (data, failure) -> this.blockRead(slot, file, block, data, failure));
+                Blocks.readPackets(file.data(), file.hash(), block.start(), length, compress),
+                (packets, failure) -> this.blockRead(slot, file, block, packets, failure));
     }
 
-    private void blockRead(Slot slot, Uploadable file, UploadSession.Block block, byte[] data, Throwable failure) {
+    private void blockRead(
+            Slot slot, Uploadable file, UploadSession.Block block, List<Packet> packets, Throwable failure) {
         slot.reading = false;
         if (!this.slots.contains(slot)) {
             return;
@@ -579,12 +619,9 @@ public final class UploadManager implements AutoCloseable {
             slot.session.close();
             return;
         }
-        boolean compress = file.compressible()
-                && data.length >= MIN_COMPRESSIBLE
-                && (slot.session.peer().miscOptions1() >>> 20 & 0x0F) != 0;
-        List<Packet> packets = Blocks.packets(file.hash(), block.start(), data, compress);
+        long length = block.end() - block.start();
         for (int i = 0; i < packets.size(); i++) {
-            slot.out.add(new Item(packets.get(i), i == packets.size() - 1 ? data.length : 0));
+            slot.out.add(new Item(packets.get(i), i == packets.size() - 1 ? length : 0));
         }
     }
 
@@ -667,6 +704,8 @@ public final class UploadManager implements AutoCloseable {
     // The best client we can reach gets the slot; a LowID that is not connected cannot be called, so when it would have
     // been the best it gets a slot of its own on its next request.
     private void fillSlots(long now) {
+        // Moving a client from the queue to a slot changes no score.
+        Scoring scoring = new Scoring(now);
         while (!this.waiting.isEmpty() && this.canOpenSlot(false)) {
             Client best = null;
             double bestScore = -1;
@@ -676,7 +715,7 @@ public final class UploadManager implements AutoCloseable {
                 if (c.connecting) {
                     continue;
                 }
-                double score = this.score(c, now);
+                double score = scoring.of(c);
                 boolean reachable = !c.lowId || (c.session != null && c.session.isOpen());
                 if (reachable && score > bestScore) {
                     best = c;
@@ -760,58 +799,78 @@ public final class UploadManager implements AutoCloseable {
                 && this.settings.get().friendSlot().filter(userHash::equals).isPresent();
     }
 
-    private double score(Client client, long now) {
-        boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
-        if (!client.lowId && this.hasFriendSlot(client.userHash, trusted)) {
-            return Double.MAX_VALUE;
-        }
-        double waited = Math.max(0, now - client.waitStart) / 1e9;
-        double ratio = this.credits.ratio(client.userHash, trusted);
-        return waited * ratio * this.priority(client.file.hash()) / 10;
-    }
-
     /** Where the upload priority of a shared file comes from; without it every file is AUTO. */
     public void priorities(Function<Hash16, UploadPriority> priorities) {
         this.priorities = Objects.requireNonNull(priorities, "priorities");
     }
 
-    // The factor of a file's level, in tenths.
-    private int priority(Hash16 file) {
-        return switch (this.priorities.apply(file)) {
-            case VERY_LOW -> 2;
-            case LOW -> 6;
-            case NORMAL -> 7;
-            case HIGH -> 9;
-            case RELEASE -> 18;
-            case AUTO -> this.automatic(file);
-        };
-    }
-
-    // Files many clients want get a lower priority, so rare files spread first.
-    private int automatic(Hash16 file) {
-        int requesters = 0;
-        for (Client c : this.waiting.values()) {
-            if (c.file.hash().equals(file)) {
-                requesters++;
-            }
-        }
-        for (Slot s : this.slots) {
-            if (s.client.file.hash().equals(file)) {
-                requesters++;
-            }
-        }
-        return requesters > 20 ? 6 : requesters > 1 ? 7 : 9;
-    }
-
     private int rank(Client client, long now) {
-        double score = this.score(client, now);
+        Scoring scoring = new Scoring(now);
+        double score = scoring.of(client);
         int rank = 1;
         for (Client c : this.waiting.values()) {
-            if (c != client && this.score(c, now) > score) {
+            if (c != client && scoring.of(c) > score) {
                 rank++;
             }
         }
         return rank;
+    }
+
+    /**
+     * Scores at one moment: waiting time times credits times the factor of the file's priority. The factors, which
+     * count the clients of each file, are worked out once, so a pass over the queue costs a score per client.
+     */
+    private final class Scoring {
+        private final long now;
+        private final Optional<Hash16> friend;
+        private final Map<Hash16, Integer> factors = new HashMap<>();
+        private Map<Hash16, Integer> requesters;
+
+        Scoring(long now) {
+            this.now = now;
+            this.friend = UploadManager.this.settings.get().friendSlot();
+        }
+
+        double of(Client client) {
+            boolean trusted = client.session != null ? client.session.trust().credits() : client.trusted;
+            // The friend with the friend slot, unless it has a LowID, comes before anyone; only with its identity
+            // trusted.
+            if (!client.lowId
+                    && trusted
+                    && this.friend.filter(client.userHash::equals).isPresent()) {
+                return Double.MAX_VALUE;
+            }
+            double waited = Math.max(0, this.now - client.waitStart) / 1e9;
+            double ratio = UploadManager.this.credits.ratio(client.userHash, trusted);
+            return waited * ratio * this.factor(client.file.hash()) / 10;
+        }
+
+        // The factor of a file's level, in tenths.
+        private int factor(Hash16 file) {
+            return this.factors.computeIfAbsent(file, f -> switch (UploadManager.this.priorities.apply(f)) {
+                case VERY_LOW -> 2;
+                case LOW -> 6;
+                case NORMAL -> 7;
+                case HIGH -> 9;
+                case RELEASE -> 18;
+                case AUTO -> this.automatic(f);
+            });
+        }
+
+        // Files many clients want get a lower priority, so rare files spread first.
+        private int automatic(Hash16 file) {
+            if (this.requesters == null) {
+                this.requesters = new HashMap<>();
+                for (Client c : UploadManager.this.waiting.values()) {
+                    this.requesters.merge(c.file.hash(), 1, Integer::sum);
+                }
+                for (Slot s : UploadManager.this.slots) {
+                    this.requesters.merge(s.client.file.hash(), 1, Integer::sum);
+                }
+            }
+            int count = this.requesters.getOrDefault(file, 0);
+            return count > 20 ? 6 : count > 1 ? 7 : 9;
+        }
     }
 
     // A client with a slot but no connection: we connect to it and give the slot after the hello.
