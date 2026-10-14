@@ -18,6 +18,8 @@ package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.InetAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -86,6 +88,32 @@ class LinkHandoffTest {
                     .as("the later start must not try to run beside it")
                     .isTrue();
             assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
+        }
+    }
+
+    @Test
+    void aLinkCannotSmuggleInAnotherLine() throws Exception {
+        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
+            assertThat(LinkHandoff.deliver(
+                            this.dir, List.of("ed2k://|server|x|1|/\n" + LinkHandoff.EXIT, "", "a\rb", LINK)))
+                    .isTrue();
+            assertThat(this.received.poll(5, TimeUnit.SECONDS))
+                    .as("no exit request, and an empty link does not end the list")
+                    .containsExactly(LINK);
+
+            String[] fields = Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
+                    .strip()
+                    .split(" ", -1);
+            try (Socket client = new Socket(InetAddress.getLoopbackAddress(), Integer.parseInt(fields[0]))) {
+                client.getOutputStream()
+                        .write((fields[1] + "\n" + LINK + "\n" + LinkHandoff.EXIT + "\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                assertThat(new String(client.getInputStream().readAllBytes(), StandardCharsets.UTF_8))
+                        .startsWith("OK");
+            }
+            assertThat(this.received.poll(5, TimeUnit.SECONDS))
+                    .as("the exit request counts only alone")
+                    .containsExactly(LINK);
         }
     }
 

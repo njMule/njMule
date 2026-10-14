@@ -114,7 +114,13 @@ public final class LinkHandoff implements AutoCloseable {
             Writer out = new OutputStreamWriter(client.getOutputStream(), StandardCharsets.UTF_8);
             out.write(fields[1] + "\n");
             for (String link : links) {
-                out.write(link.strip() + "\n");
+                String line = link.strip();
+                // One link per line: an empty one would end the list, a line break would add a line of its own.
+                if (line.isEmpty() || line.indexOf('\n') >= 0 || line.indexOf('\r') >= 0) {
+                    logger.warn("Not handing over an empty link or one with a line break");
+                    continue;
+                }
+                out.write(line + "\n");
             }
             out.write("\n");
             out.flush();
@@ -194,11 +200,17 @@ public final class LinkHandoff implements AutoCloseable {
             return;
         }
         List<String> links = new ArrayList<>();
+        int lines = 0;
         for (String line = readLine(in); line != null && !line.isEmpty(); line = readLine(in)) {
+            lines++;
             if (links.size() < MAX_LINKS
                     && (line.equals(EXIT) || line.toLowerCase(Locale.ROOT).startsWith("ed2k://"))) {
                 links.add(line);
             }
+        }
+        // Only a start that hands over nothing else asks this instance to exit.
+        if (lines > 1) {
+            links.removeIf(EXIT::equals);
         }
         try {
             this.receiver.accept(links);
