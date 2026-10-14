@@ -82,17 +82,19 @@ public final class Friends {
         return all;
     }
 
-    /** Adds {@code friend}, or updates its name and address. */
+    /** Adds {@code friend}, or updates its name and address; an empty name or no address keeps the known one. */
     public void add(Friend friend) throws IOException {
         FriendsMet.Friend known = this.friends.get(friend.userHash());
-        int ip = 0;
-        int port = 0;
+        int ip = known == null ? 0 : known.lastIp();
+        int port = known == null ? 0 : known.lastPort();
         if (friend.address().isPresent()) {
             try {
                 ip = Ipv4.parse(friend.address().get().host());
                 port = friend.address().get().port();
             } catch (IllegalArgumentException e) {
                 // The file holds IPv4 addresses only: names are not kept.
+                ip = 0;
+                port = 0;
             }
         }
         List<Tag> tags = new ArrayList<>();
@@ -101,7 +103,7 @@ public final class Friends {
         }
         if (known != null) {
             known.tags().stream()
-                    .filter(t -> !t.name().equals(TagName.id(FriendsMet.NAME)))
+                    .filter(t -> friend.name().isEmpty() || !t.name().equals(TagName.id(FriendsMet.NAME)))
                     .forEach(tags::add);
         }
         this.friends.put(
