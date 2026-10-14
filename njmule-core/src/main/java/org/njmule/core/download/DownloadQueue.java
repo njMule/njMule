@@ -181,6 +181,8 @@ public final class DownloadQueue implements AutoCloseable {
     private ScheduledFuture<?> saver;
     private ScheduledFuture<?> spaceChecker;
     private boolean spaceShort;
+    // The files of cancelled downloads, deleted once their disk threads are done.
+    private final List<CompletableFuture<Void>> cancelled = new ArrayList<>();
     // Whether a write found the disk full: then downloads wait for the reserve at least, whatever the minimum is.
     private boolean diskFull;
 
@@ -473,19 +475,11 @@ public final class DownloadQueue implements AutoCloseable {
         this.downloads.remove(download.hash());
         // Saves still queued are skipped, and the files go once its disk thread is done with them.
         download.saves.incrementAndGet();
-        download.storage.close();
-        download.storage.whenClosed().whenComplete((ok, failure) -> deleteFiles(download.file));
+        Path met = download.file.metFile();
+        download.storage.closeAndDelete(met, AtomicFiles.bakPath(met.toAbsolutePath()));
+        this.cancelled.removeIf(CompletableFuture::isDone);
+        this.cancelled.add(download.storage.whenClosed());
         return true;
-    }
-
-    private static void deleteFiles(PartFile file) {
-        try {
-            Files.deleteIfExists(file.metFile());
-            Files.deleteIfExists(AtomicFiles.bakPath(file.metFile().toAbsolutePath()));
-            Files.deleteIfExists(file.dataFile());
-        } catch (IOException e) {
-            logger.warn("Cannot delete the files of {}", file.name(), e);
-        }
     }
 
     /** Saves every part file and closes the storages. */
@@ -501,7 +495,7 @@ public final class DownloadQueue implements AutoCloseable {
             download.dirty = true;
         }
         this.saveChanged();
-        List<CompletableFuture<Void>> closing = new ArrayList<>();
+        List<CompletableFuture<Void>> closing = new ArrayList<>(this.cancelled);
         for (Download download : this.downloads.values()) {
             download.storage.close();
             closing.add(download.storage.whenClosed());

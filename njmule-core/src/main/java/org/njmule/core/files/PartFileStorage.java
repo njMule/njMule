@@ -245,19 +245,46 @@ public final class PartFileStorage implements AutoCloseable {
     /** Closes the file after the queued operations; closing it again does nothing. */
     @Override
     public void close() {
+        this.closeThen(true, () -> {});
+    }
+
+    /** Closes the file after the queued operations, then deletes it and {@code others}, as for a cancelled download. */
+    public void closeAndDelete(Path... others) {
+        List<Path> files = new ArrayList<>();
+        files.add(this.path);
+        files.addAll(List.of(others));
+        this.closeThen(false, () -> {
+            for (Path file : files) {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException e) {
+                    logger.warn("Cannot delete {}", file, e);
+                }
+            }
+        });
+    }
+
+    private void closeThen(boolean flush, Runnable then) {
         if (this.io.isShutdown()) {
+            then.run();
             return;
         }
         this.io.execute(() -> {
             try {
                 if (this.channel.isOpen()) {
-                    this.channel.force(true);
+                    if (flush) {
+                        this.channel.force(true);
+                    }
                     this.channel.close();
                 }
             } catch (IOException e) {
                 // The data written so far stays on disk; the next start re-checks parts.
             } finally {
-                this.closed.complete(null);
+                try {
+                    then.run();
+                } finally {
+                    this.closed.complete(null);
+                }
             }
         });
         this.io.shutdown();
