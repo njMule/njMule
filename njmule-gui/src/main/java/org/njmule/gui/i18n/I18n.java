@@ -34,6 +34,7 @@ public final class I18n {
     /** The languages of the interface; English first, then by their own names. */
     public static final List<Locale> LANGUAGES = List.of(
             Locale.ENGLISH,
+            Locale.of("cs"),
             Locale.GERMAN,
             Locale.of("es"),
             Locale.FRENCH,
