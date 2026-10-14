@@ -62,6 +62,10 @@ class SharedFilesTest {
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
+    // The state the steps of a given/when/then test share.
+    private SharedFiles stepShares;
+    private Path stepIncoming;
+    private Hash16 stepFinished;
 
     @AfterEach
     void stop() {
@@ -482,6 +486,65 @@ class SharedFilesTest {
                 .hasValueSatisfying(f -> assertThat(f.aichHash()).isEmpty());
         this.onLoop(() -> {
             shares.close();
+            return null;
+        });
+    }
+
+    @Test
+    void aDownloadFinishedWhileAScanWaitsToReadItsFileGetsItsAichTreeOnceRenamed() throws Exception {
+        this.givenSharesOfAnIncomingDirectory();
+        this.givenTheHashingThreadBusyWithALargeFile();
+        this.whenADownloadFinishesAfterAScanQueuedItsFileAndIsRenamed("renamed.bin");
+        this.thenTheFinishedFileGetsItsAichTreeUnder("renamed.bin");
+    }
+
+    private void givenSharesOfAnIncomingDirectory() throws Exception {
+        this.stepIncoming = Files.createDirectories(this.dir.resolve("incoming"));
+        this.stepShares = this.open(Files.createDirectories(this.dir.resolve("config")), this.stepIncoming);
+    }
+
+    private void givenTheHashingThreadBusyWithALargeFile() throws Exception {
+        Path large = Files.write(
+                Files.createDirectories(this.dir.resolve("other")).resolve("large.bin"), bytes(32_000_000, 40));
+        PartFile busy = PartFile.create(
+                2,
+                this.dir,
+                "large.bin",
+                Files.size(large),
+                Hash16.parseHex("66".repeat(16)),
+                Optional.empty(),
+                List.of());
+        this.onLoop(() -> {
+            this.stepShares.finished(large, busy);
+            return null;
+        });
+    }
+
+    private void whenADownloadFinishesAfterAScanQueuedItsFileAndIsRenamed(String newName) throws Exception {
+        byte[] data = bytes(600_000, 41);
+        this.stepFinished = Ed2k.md4(data, 0, data.length);
+        Path completed = Files.write(
+                Files.createDirectories(this.dir.resolve("completed")).resolve("done.bin"), data);
+        PartFile download =
+                PartFile.create(1, this.dir, "done.bin", data.length, this.stepFinished, Optional.empty(), List.of());
+        this.onLoop(() -> {
+            Path done = Files.move(completed, this.stepIncoming.resolve("done.bin"));
+            this.stepShares.scan();
+            this.stepShares.finished(done, download);
+            return this.stepShares.rename(this.stepFinished, newName);
+        });
+    }
+
+    private void thenTheFinishedFileGetsItsAichTreeUnder(String name) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (this.onLoop(() -> this.stepShares.aichTree(this.stepFinished)).isEmpty()) {
+            assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        assertThat(this.onLoop(() -> this.stepShares.get(this.stepFinished)))
+                .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(this.stepIncoming.resolve(name)));
+        this.onLoop(() -> {
+            this.stepShares.close();
             return null;
         });
     }

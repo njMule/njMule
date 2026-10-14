@@ -172,6 +172,8 @@ public final class SharedFiles implements AutoCloseable {
     private final Map<Hash16, SharedFile> byHash = new LinkedHashMap<>();
     private final Map<Path, SharedFile> byPath = new HashMap<>();
     private final Set<Path> hashing = new LinkedHashSet<>();
+    // Downloads that finished while a scan was reading their file, maybe before it was whole.
+    private final Map<Path, PartFile> finishing = new HashMap<>();
     private final ExecutorService hasher = Executors.newSingleThreadExecutor(
             Thread.ofPlatform().name("njmule-hasher").daemon(true).factory());
     // Whether the trees changed since known2_64.met was written; it is not written again otherwise.
@@ -476,6 +478,8 @@ public final class SharedFiles implements AutoCloseable {
         if (this.hashing.add(file)) {
             this.loop.whenDone(
                     this.hash(file), (result, failure) -> this.treeOfFinished(file, mtime, download, result, failure));
+        } else {
+            this.finishing.put(file, download);
         }
     }
 
@@ -770,6 +774,15 @@ public final class SharedFiles implements AutoCloseable {
     private void hashed(Path file, long mtime, FileHasher.Result result, Throwable failure) {
         this.hashing.remove(file);
         if (this.closed) {
+            return;
+        }
+        PartFile finished = this.finishing.remove(file);
+        if (finished != null) {
+            // What the scan read may not be the whole download, nor still under this name: the file is read once more.
+            SharedFile current = this.byHash.get(finished.hash());
+            if (current != null) {
+                this.hashFinished(current.path(), current.mtime(), finished);
+            }
             return;
         }
         if (failure != null) {
