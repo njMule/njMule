@@ -28,8 +28,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Properties;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.config.ObfuscationMode;
@@ -155,6 +158,36 @@ class PreferencesCodecTest {
 
         assertThat(a.toString()).isEqualTo(b.toString());
         assertThat(a.toString().lines().skip(1).toList()).isSorted();
+    }
+
+    @Test
+    void windowsLineEndsAndPaddedValuesAreRead() throws IOException {
+        Preferences p = PreferencesCodec.parse(new StringReader("net.tcpPort = 12345 \r\nnet.kad.enabled=false"));
+
+        assertThat(p.tcpPort()).isEqualTo(12_345);
+        assertThat(p.kadEnabled()).isFalse();
+    }
+
+    @Property
+    void proxyCredentialsSurviveTheFile(@ForAll("text") String user, @ForAll("text") String password)
+            throws IOException {
+        Preferences p = Preferences.defaults().toBuilder()
+                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 1080, user, password))
+                .build();
+        StringWriter file = new StringWriter();
+        PreferencesCodec.format(p, file);
+
+        assertThat(PreferencesCodec.parse(new StringReader(file.toString())).proxy())
+                .isEqualTo(p.proxy());
+    }
+
+    // No lone surrogate: UTF-8 cannot keep one.
+    @Provide
+    Arbitrary<String> text() {
+        return Arbitraries.strings()
+                .withCharRange('\u0000', '퟿')
+                .withCharRange('', '�')
+                .ofMaxLength(40);
     }
 
     @Property

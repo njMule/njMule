@@ -172,6 +172,60 @@ class AtomicFilesTest {
     }
 
     @Test
+    void aDirectoryInThePlaceOfTheFileIsLeftAlone() throws IOException {
+        Path target = Files.createDirectories(this.dir.resolve("server.met"));
+        Files.writeString(target.resolve("inside"), "x");
+
+        assertThatThrownBy(() -> AtomicFiles.writeBytes(target, "v".getBytes(UTF_8)))
+                .isInstanceOf(IOException.class);
+
+        assertThat(target.resolve("inside")).hasContent("x");
+        assertThat(AtomicFiles.tmpPath(target)).doesNotExist();
+    }
+
+    @Test
+    void aFileInThePlaceOfTheFolderFails() throws IOException {
+        Path parent = Files.writeString(this.dir.resolve("config"), "not a folder");
+
+        assertThatThrownBy(() -> AtomicFiles.writeBytes(parent.resolve("x.met"), new byte[1]))
+                .isInstanceOf(IOException.class);
+        assertThat(parent).hasContent("not a folder");
+    }
+
+    @Test
+    void aLongerLeftoverOfAnInterruptedWriteIsNotKept() throws IOException {
+        Path file = this.dir.resolve("known.met");
+        Files.writeString(AtomicFiles.tmpPath(file), "a much longer leftover of a crash");
+
+        AtomicFiles.writeBytes(file, "v1".getBytes(UTF_8));
+
+        assertThat(file).hasContent("v1");
+    }
+
+    @Test
+    void theBackupIsTheVersionBeforeTheLast() throws IOException {
+        Path file = this.dir.resolve("clients.met");
+        for (String version : List.of("valid:1", "valid:2", "valid:3")) {
+            AtomicFiles.writeBytes(file, version.getBytes(UTF_8));
+        }
+
+        assertThat(AtomicFiles.bakPath(file)).hasContent("valid:2");
+        Files.write(file, new byte[0]);
+        assertThat(readValid(file)).as("an empty file is rejected too").isEqualTo("valid:2");
+    }
+
+    @Test
+    void aPrimaryRejectedWithARuntimeExceptionAndNoBackupFailsAsIo() throws IOException {
+        Path file = Files.writeString(this.dir.resolve("scheduler.properties"), "x");
+
+        assertThatThrownBy(() -> AtomicFiles.read(file, in -> {
+                    throw new IllegalArgumentException("Malformed \\uxxxx encoding.");
+                }))
+                .isInstanceOf(IOException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void readOfMissingFileFails() {
         assertThatThrownBy(() -> readUtf8(this.dir.resolve("none"))).isInstanceOf(NoSuchFileException.class);
     }

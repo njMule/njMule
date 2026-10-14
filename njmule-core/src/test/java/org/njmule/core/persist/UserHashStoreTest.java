@@ -68,6 +68,32 @@ class UserHashStoreTest {
     }
 
     @Test
+    void aCorruptFileGivesWayToItsBackup() throws Exception {
+        Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
+        Path file = this.dir.resolve(UserHashStore.FILE_NAME);
+        Files.copy(file, AtomicFiles.bakPath(file));
+        Files.write(file, new byte[3]);
+
+        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(first);
+    }
+
+    @Test
+    void eMulesFileWithItsWindowPlacementKeepsItsHash() throws Exception {
+        Hash16 hash = UserHashStore.generate(RANDOM);
+        byte[] file = new byte[61];
+        file[0] = PreferencesDat.VERSION;
+        hash.copyTo(file, 1);
+        file[60] = 7;
+        Files.write(this.dir.resolve(UserHashStore.FILE_NAME), file);
+        Files.writeString(AtomicFiles.tmpPath(this.dir.resolve(UserHashStore.FILE_NAME)), "interrupted");
+
+        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(hash);
+        assertThat(this.dir.resolve(UserHashStore.FILE_NAME)).hasBinaryContent(file);
+        assertThat(AtomicFiles.tmpPath(this.dir.resolve(UserHashStore.FILE_NAME)))
+                .doesNotExist();
+    }
+
+    @Test
     void aUserHashHeldByAnotherProgramIsNotReplaced() throws Exception {
         Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
         Path file = this.dir.resolve(UserHashStore.FILE_NAME);

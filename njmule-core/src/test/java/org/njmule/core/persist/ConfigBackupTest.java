@@ -18,9 +18,11 @@ package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -87,6 +89,17 @@ class ConfigBackupTest {
         Path copy = ConfigBackup.write(config, this.dir.resolve(ConfigBackup.FOLDER), 3, rome);
 
         assertThat(copy.getFileName().toString()).isEqualTo("njmule-config-20261025-003000.zip");
+    }
+
+    @Test
+    void copiesAreForTheirOwnerOnly() throws Exception {
+        Path config = Files.createDirectories(this.dir.resolve("config"));
+        assumeTrue(config.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+
+        Path copy = ConfigBackup.write(config, this.dir.resolve(ConfigBackup.FOLDER), 1, at("2026-10-15T20:00:00Z"));
+
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(copy)))
+                .isEqualTo("rw-------");
     }
 
     @Test

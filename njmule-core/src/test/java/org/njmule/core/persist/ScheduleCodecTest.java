@@ -18,8 +18,19 @@ package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.OptionalInt;
+import java.util.Set;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.config.Schedule;
@@ -37,5 +48,48 @@ class ScheduleCodecTest {
         assertThat(ScheduleCodec.load(file).rules())
                 .extracting(Schedule.Rule::name)
                 .containsExactly("", "Day");
+    }
+
+    @Property(tries = 200)
+    void ruleNamesSurviveTheFile(@ForAll("names") List<String> names) throws IOException {
+        Path dir = Files.createTempDirectory("schedule");
+        try {
+            Path file = dir.resolve(ScheduleCodec.FILE_NAME);
+            Schedule schedule = new Schedule(names.stream()
+                    .map(name -> new Schedule.Rule(
+                            name,
+                            true,
+                            Set.of(DayOfWeek.MONDAY),
+                            LocalTime.of(1, 0),
+                            LocalTime.of(2, 0),
+                            OptionalInt.of(10),
+                            OptionalInt.empty(),
+                            OptionalInt.empty(),
+                            OptionalInt.empty(),
+                            OptionalInt.empty(),
+                            OptionalInt.empty()))
+                    .toList());
+
+            ScheduleCodec.save(file, schedule);
+
+            assertThat(ScheduleCodec.load(file)).isEqualTo(schedule);
+        } finally {
+            for (String name : List.of(ScheduleCodec.FILE_NAME, ScheduleCodec.FILE_NAME + AtomicFiles.BAK_SUFFIX)) {
+                Files.deleteIfExists(dir.resolve(name));
+            }
+            Files.delete(dir);
+        }
+    }
+
+    // No lone surrogate: UTF-8 cannot keep one.
+    @Provide
+    Arbitrary<List<String>> names() {
+        return Arbitraries.strings()
+                .withCharRange('\u0000', '퟿')
+                .withCharRange('', '�')
+                .ofMaxLength(30)
+                .map(String::strip)
+                .list()
+                .ofMaxSize(4);
     }
 }
