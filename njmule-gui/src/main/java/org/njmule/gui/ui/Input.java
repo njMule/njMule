@@ -25,14 +25,14 @@ import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.value.ObservableValue;
-import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
+import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Tooltip;
 
 /**
- * A text field that holds one kind of value. Typing and pasting keep only the characters the value can have; while the
- * text is not a valid value the field shows the danger state, and its tooltip always says what is expected. Built on
- * JavaFX's {@link TextFormatter}. FX thread only.
+ * A text field or area that holds one kind of value. Typing and pasting keep only the characters the value can have;
+ * while the text is not a valid value the field shows the danger state, and its tooltip always says what is expected.
+ * Built on JavaFX's {@link TextFormatter}. FX thread only.
  *
  * @param <T> the value
  */
@@ -47,7 +47,7 @@ public final class Input<T> {
         T parse(String text);
     }
 
-    private final TextField field;
+    private final TextInputControl field;
     private final String name;
     private final String hint;
     private final Parser<T> parser;
@@ -57,7 +57,12 @@ public final class Input<T> {
     private Runnable tooLong = () -> {};
 
     private Input(
-            TextField field, String name, String hint, Predicate<Character> allowed, int maxLength, Parser<T> parser) {
+            TextInputControl field,
+            String name,
+            String hint,
+            Predicate<Character> allowed,
+            int maxLength,
+            Parser<T> parser) {
         this.field = field;
         this.name = name;
         this.hint = hint;
@@ -79,7 +84,12 @@ public final class Input<T> {
      * picks the characters it keeps and {@code maxLength} caps its text.
      */
     public static <T> Input<T> of(
-            TextField field, String name, String hint, Predicate<Character> allowed, int maxLength, Parser<T> parser) {
+            TextInputControl field,
+            String name,
+            String hint,
+            Predicate<Character> allowed,
+            int maxLength,
+            Parser<T> parser) {
         return new Input<>(field, name, hint, allowed, maxLength, parser);
     }
 
@@ -127,7 +137,7 @@ public final class Input<T> {
         return this.valid.getReadOnlyProperty();
     }
 
-    public TextField field() {
+    public TextInputControl field() {
         return this.field;
     }
 

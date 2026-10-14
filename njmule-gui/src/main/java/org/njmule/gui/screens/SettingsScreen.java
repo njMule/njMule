@@ -98,6 +98,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox startMinimized = new CheckBox();
     private final CheckBox watchClipboard = new CheckBox();
     private final CheckBox filterLan = new CheckBox();
+    private final TextArea whitelist = new TextArea();
     private final TextField messageFilter = new TextField();
     private final CheckBox friendsOnly = new CheckBox();
     private final CheckBox spamFilter = new CheckBox();
@@ -167,6 +168,7 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> deadRetriesInput;
     private Input<Integer> backupsInput;
     private Input<Integer> filterLevelInput;
+    private Input<String> whitelistInput;
     private Input<Integer> webUiPortInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
@@ -347,6 +349,10 @@ public final class SettingsScreen implements Screen {
         this.filterLevel.setPrefColumnCount(4);
         row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
         grid.add(this.filterLan, 1, row++);
+        this.whitelist.setPrefRowCount(3);
+        this.whitelist.setPrefColumnCount(32);
+        this.whitelist.setPromptText("1.2.3.4\n10.0.0.0/8");
+        row = field(grid, row, this.gui.t("nj.settings.whitelist"), this.whitelist);
         row = section(grid, row, this.gui.t("IDS_EM_MESSAGES"));
         row = field(grid, row, this.gui.t("IDS_FILTERLABEL"), this.messageFilter);
         grid.add(this.friendsOnly, 1, row++);
@@ -398,6 +404,7 @@ public final class SettingsScreen implements Screen {
                                 this.deadRetriesInput,
                                 this.backupsInput,
                                 this.filterLevelInput,
+                                this.whitelistInput,
                                 this.webUiPortInput,
                                 this.webUiPasswordInput,
                                 this.webUiAgainInput))
@@ -446,6 +453,27 @@ public final class SettingsScreen implements Screen {
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
         this.filterLevelInput =
                 inputs.number(this.filterLevel, this.gui.t("IDS_FILTERLEVEL"), 0, Preferences.MAX_IP_FILTER_LEVEL);
+        String whitelistHint = this.gui.t("nj.settings.whitelistHint");
+        this.whitelistInput = Input.of(
+                this.whitelist,
+                this.gui.t("nj.settings.whitelist"),
+                whitelistHint,
+                c -> c == '\n' || !Character.isISOControl(c),
+                Preferences.MAX_IP_FILTER_WHITELIST,
+                t -> {
+                    if (Preferences.invalidWhitelistEntry(t).isPresent()) {
+                        throw new IllegalArgumentException(t);
+                    }
+                    return t;
+                });
+        // The tooltip names the line to fix.
+        this.whitelist
+                .textProperty()
+                .addListener((o, was, now) -> this.whitelist
+                        .getTooltip()
+                        .setText(Preferences.invalidWhitelistEntry(now)
+                                .map(entry -> whitelistHint + "\n" + this.gui.f("nj.settings.whitelistInvalid", entry))
+                                .orElse(whitelistHint)));
         this.backupsInput =
                 inputs.number(this.backups, this.gui.t("nj.settings.backups"), 0, Preferences.MAX_BACKUP_COPIES);
         this.deadRetriesInput =
@@ -562,6 +590,7 @@ public final class SettingsScreen implements Screen {
         this.backups.setText(String.valueOf(p.backupCopies()));
         this.filterLevel.setText(String.valueOf(p.ipFilterLevel()));
         this.filterLan.setSelected(p.filterLanAddresses());
+        this.whitelist.setText(p.ipFilterWhitelist());
         this.messageFilter.setText(p.messageFilter());
         this.friendsOnly.setSelected(p.messagesFromFriendsOnly());
         this.spamFilter.setSelected(p.advancedSpamFilter());
@@ -740,6 +769,10 @@ public final class SettingsScreen implements Screen {
                         Preferences::filterLanAddresses,
                         Preferences.Builder::filterLanAddresses,
                         this.filterLan.isSelected())
+                .set(
+                        Preferences::ipFilterWhitelist,
+                        Preferences.Builder::ipFilterWhitelist,
+                        this.whitelistInput.value())
                 .set(
                         Preferences::messageFilter,
                         Preferences.Builder::messageFilter,
@@ -990,6 +1023,14 @@ public final class SettingsScreen implements Screen {
 
     PasswordField webUiAgainField() {
         return this.webUiAgain;
+    }
+
+    TextArea whitelistArea() {
+        return this.whitelist;
+    }
+
+    Input<String> whitelistInput() {
+        return this.whitelistInput;
     }
 
     /** A cell showing a name for its item. */
