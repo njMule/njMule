@@ -28,7 +28,7 @@ import java.util.function.Supplier;
 
 /**
  * Admission control for incoming TCP connections: the IP filter first, then caps on the total and per-address
- * connections and on the accept rate. Thread-safe.
+ * connections and on the accept rate, in all and per address. Our own connections count in the total too. Thread-safe.
  */
 public final class ConnectionGuard {
 
@@ -38,7 +38,8 @@ public final class ConnectionGuard {
         BANNED,
         TOO_MANY_CONNECTIONS,
         TOO_MANY_FROM_ADDRESS,
-        ACCEPT_RATE
+        ACCEPT_RATE,
+        ACCEPT_RATE_FROM_ADDRESS
     }
 
     /** Admission outcome: a permit to release when the connection closes, or a refusal. */
@@ -74,8 +75,11 @@ public final class ConnectionGuard {
     private final Supplier<Limits> limits;
     private final Ticker ticker;
     private final Map<Integer, Integer> perAddress = new HashMap<>();
-    private final ArrayDeque<Long> recentAccepts = new ArrayDeque<>();
+    private final ArrayDeque<Accept> recentAccepts = new ArrayDeque<>();
+    private final Map<Integer, Integer> recentFrom = new HashMap<>();
     private int total;
+
+    private record Accept(long at, int ip) {}
 
     /** {@code filter} is read on every admission, so a reloaded filter applies at once. */
     public ConnectionGuard(Supplier<IpFilter> filter, Limits limits, Ticker ticker) {
@@ -130,8 +134,10 @@ public final class ConnectionGuard {
         }
         long now = this.ticker.read();
         long window = limits.rateWindow().toNanos();
-        while (!this.recentAccepts.isEmpty() && now - this.recentAccepts.peekFirst() >= window) {
-            this.recentAccepts.pollFirst();
+        while (!this.recentAccepts.isEmpty()
+                && now - this.recentAccepts.peekFirst().at() >= window) {
+            Accept old = this.recentAccepts.pollFirst();
+            this.recentFrom.computeIfPresent(old.ip(), (key, count) -> count > 1 ? count - 1 : null);
         }
         boolean exempted = this.exempt.test(ip);
         if (!exempted && this.recentAccepts.size() >= limits.maxAccepts()) {
@@ -144,38 +150,63 @@ public final class ConnectionGuard {
         if (fromAddress >= limits.maxPerAddress()) {
             return new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS);
         }
+        if (!exempted && this.recentFrom.getOrDefault(ip, 0) >= acceptsPerAddress(limits)) {
+            return new Admission.Refused(Refusal.ACCEPT_RATE_FROM_ADDRESS);
+        }
         // Exempt connections leave the accept rate to the others.
         if (!exempted) {
-            this.recentAccepts.addLast(now);
+            this.recentAccepts.addLast(new Accept(now, ip));
+            this.recentFrom.merge(ip, 1, Integer::sum);
         }
         this.perAddress.put(ip, fromAddress + 1);
         this.total++;
-        return new Admission.Admitted(new Permit(ip));
+        return new Admission.Admitted(new Permit(ip, true));
     }
 
-    /** Connections currently holding a permit. */
+    // An address that opens and closes connections in a row could take the whole accept rate and lock everyone else
+    // out: it gets a quarter of it, or as many accepts as connections it may hold when that is more.
+    private static int acceptsPerAddress(Limits limits) {
+        return Math.max(limits.maxPerAddress(), limits.maxAccepts() / 4);
+    }
+
+    /** Whether a connection of ours fits in the total, which incoming connections share. */
+    public synchronized boolean hasRoom() {
+        return this.total < this.limits.get().maxTotal();
+    }
+
+    /** Counts a connection of ours in the total until the permit is closed. */
+    public synchronized Permit outgoing() {
+        this.total++;
+        return new Permit(0, false);
+    }
+
+    /** Connections currently holding a permit, ours included. */
     public synchronized int openConnections() {
         return this.total;
     }
 
-    private synchronized void release(int ip) {
+    private synchronized void release(int ip, boolean incoming) {
         this.total--;
-        this.perAddress.computeIfPresent(ip, (key, count) -> count > 1 ? count - 1 : null);
+        if (incoming) {
+            this.perAddress.computeIfPresent(ip, (key, count) -> count > 1 ? count - 1 : null);
+        }
     }
 
     /** Held while a connection is open; closing it more than once has no effect. */
     public final class Permit implements AutoCloseable {
         private final int ip;
+        private final boolean incoming;
         private final AtomicBoolean released = new AtomicBoolean();
 
-        private Permit(int ip) {
+        private Permit(int ip, boolean incoming) {
             this.ip = ip;
+            this.incoming = incoming;
         }
 
         @Override
         public void close() {
             if (this.released.compareAndSet(false, true)) {
-                ConnectionGuard.this.release(this.ip);
+                ConnectionGuard.this.release(this.ip, this.incoming);
             }
         }
     }

@@ -415,6 +415,9 @@ All notable changes to this project are documented here. The format follows
 - A client that reads its upload slowly no longer takes the bandwidth of the other slots nor fills
   its connection until it is dropped, and our other packets to a client (answers, chat, the
   requests of our download from it) no longer wait behind the file data queued for it.
+- An address that opens connections in a row can no longer use up the rate of new connections and
+  lock everyone else out, and our own connections to clients count in the maximum number of
+  connections: sources and waiting clients are called once there is room.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

@@ -25,6 +25,7 @@ import java.util.function.Consumer;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.security.ConnectionGuard;
 
 /** Makes the links to clients and keeps the open ones by where the clients listen. Engine thread only. */
 public final class PeerLinks {
@@ -59,8 +60,10 @@ public final class PeerLinks {
     private final Identities identities;
     private final Uploads uploads;
     private final Map<InetSocketAddress, PeerLink> open = new HashMap<>();
+    private final Map<PeerLink, ConnectionGuard.Permit> ours = new HashMap<>();
 
     private volatile Consumer<Hello> greeted = hello -> {};
+    private volatile ConnectionGuard guard;
 
     public PeerLinks(EngineLoop loop, Identities identities, Uploads uploads) {
         this.loop = Objects.requireNonNull(loop, "loop");
@@ -68,9 +71,25 @@ public final class PeerLinks {
         this.uploads = Objects.requireNonNull(uploads, "uploads");
     }
 
+    /** Our connections count in the total of {@code guard}, which the incoming ones share. */
+    public void countIn(ConnectionGuard guard) {
+        this.guard = Objects.requireNonNull(guard, "guard");
+    }
+
+    /** Whether a new connection of ours fits in what the preferences allow. */
+    public boolean mayConnect() {
+        ConnectionGuard g = this.guard;
+        return g == null || g.hasRoom();
+    }
+
     /** A link over a connection of ours, to start before the hellos; {@code opener} hears how they go. */
     public PeerLink outgoing(TcpConnection connection, Opener opener) {
-        return new PeerLink(this.loop, connection, this, opener);
+        PeerLink link = new PeerLink(this.loop, connection, this, opener);
+        ConnectionGuard g = this.guard;
+        if (g != null) {
+            this.ours.put(link, g.outgoing());
+        }
+        return link;
     }
 
     /** A link over a connection the client opened, whose hello we answered. */
@@ -103,7 +122,12 @@ public final class PeerLinks {
         link.peer().ifPresent(this.greeted);
     }
 
+    // The link closed.
     void unregister(PeerLink link) {
         link.peerAddress().ifPresent(address -> this.open.remove(address, link));
+        ConnectionGuard.Permit permit = this.ours.remove(link);
+        if (permit != null) {
+            permit.close();
+        }
     }
 }

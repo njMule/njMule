@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.common.base.Ticker;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -38,6 +39,10 @@ class ConnectionGuardTest {
     private static final int OTHER = Ipv4.parse("5.6.7.8");
 
     private final FakeTicker ticker = new FakeTicker();
+    private final List<ConnectionGuard.Permit> ours = new ArrayList<>();
+    private ConnectionGuard guard;
+    private Admission admission;
+    private int admitted;
 
     @Test
     void filteredAddressesAreRefusedFirst() {
@@ -175,6 +180,77 @@ class ConnectionGuardTest {
         }
         assertThat(new Limits(100, 100, 2, Limits.MAX_RATE_WINDOW).rateWindow()).isEqualTo(Limits.MAX_RATE_WINDOW);
         assertThat(new Limits(100, 100, 2, Duration.ofNanos(1)).rateWindow()).isEqualTo(Duration.ofNanos(1));
+    }
+
+    @Test
+    void anAddressOpeningConnectionsInARowLeavesTheAcceptRateToOthers() {
+        this.givenAGuard(new Limits(100, 2, 8, Duration.ofSeconds(5)));
+        this.givenAnAddressThatOpenedAndClosedConnectionsInARow(PEER, 8);
+
+        this.whenAnotherAddressConnects(OTHER);
+
+        this.thenTheFirstAddressGotOnlyItsShare(2);
+        this.thenTheOtherAddressIsAdmitted();
+    }
+
+    @Test
+    void ourConnectionsCountInTheTotalTheIncomingOnesShare() {
+        this.givenAGuard(new Limits(2, 5, 100, Duration.ofSeconds(5)));
+        this.givenConnectionsOfOurs(2);
+
+        this.whenAnotherAddressConnects(OTHER);
+
+        this.thenTheOtherAddressIsRefused(Refusal.TOO_MANY_CONNECTIONS);
+        this.thenThereIsNoRoomForOneMoreOfOurs();
+        this.thenTheOtherAddressIsAdmittedOnceOneOfOursCloses();
+    }
+
+    private void givenAGuard(Limits limits) {
+        this.guard = new ConnectionGuard(IpFilter::empty, limits, this.ticker);
+    }
+
+    private void givenAnAddressThatOpenedAndClosedConnectionsInARow(int ip, int times) {
+        for (int i = 0; i < times; i++) {
+            if (this.guard.admit(ip) instanceof Admission.Admitted(ConnectionGuard.Permit permit)) {
+                this.admitted++;
+                permit.close();
+            }
+        }
+    }
+
+    private void givenConnectionsOfOurs(int count) {
+        for (int i = 0; i < count; i++) {
+            this.ours.add(this.guard.outgoing());
+        }
+    }
+
+    private void whenAnotherAddressConnects(int ip) {
+        this.admission = this.guard.admit(ip);
+    }
+
+    private void thenTheFirstAddressGotOnlyItsShare(int share) {
+        assertThat(this.admitted).isEqualTo(share);
+    }
+
+    private void thenTheOtherAddressIsAdmitted() {
+        assertThat(this.admission).isInstanceOf(Admission.Admitted.class);
+    }
+
+    private void thenTheOtherAddressIsRefused(Refusal reason) {
+        assertThat(this.admission).isEqualTo(new Admission.Refused(reason));
+    }
+
+    private void thenThereIsNoRoomForOneMoreOfOurs() {
+        assertThat(this.guard.hasRoom()).isFalse();
+        assertThat(this.guard.openConnections()).isEqualTo(2);
+    }
+
+    private void thenTheOtherAddressIsAdmittedOnceOneOfOursCloses() {
+        this.ours.getFirst().close();
+        this.ours.getFirst().close();
+        assertThat(this.guard.hasRoom()).isTrue();
+        assertThat(this.guard.admit(OTHER)).isInstanceOf(Admission.Admitted.class);
+        assertThat(this.guard.hasRoom()).isFalse();
     }
 
     private static ConnectionGuard.Permit permit(Admission admission) {

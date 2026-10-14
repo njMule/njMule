@@ -655,7 +655,10 @@ public final class UploadManager implements AutoCloseable {
                 this.waiting.remove(best.userHash);
                 this.open(best, best.session);
             } else {
-                this.connect(best);
+                // Called once our connections leave room for one more.
+                if (this.links.mayConnect()) {
+                    this.connect(best);
+                }
                 return;
             }
         }

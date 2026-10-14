@@ -474,6 +474,7 @@ final class Network {
                         this.preferences.get().newConnectionsPerFiveSeconds(),
                         ConnectionGuard.Limits.DEFAULT.rateWindow()),
                 Ticker.systemTicker());
+        this.links.countIn(this.guard);
         this.listen(this.preferences.get().tcpPort());
         try {
             this.udp = ServerUdp.open(0, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));

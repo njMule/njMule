@@ -75,6 +75,8 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.security.ConnectionGuard;
+import org.njmule.core.security.IpFilter;
 import org.njmule.core.util.Ipv4;
 
 /** Downloads talking with scripted sources on the loopback address, on a clock the test moves. */
@@ -106,6 +108,9 @@ class DownloadSourcesTest {
     private volatile Optional<DownloadManager.KadSources> kad = Optional.empty();
     private DownloadManager.Listener listener = new Events();
     private DownloadManager manager;
+    private ConnectionGuard guard;
+    private ConnectionGuard.Permit held;
+    private ScriptedSource waitingSource;
 
     @AfterEach
     void stop() throws Exception {
@@ -726,6 +731,39 @@ class DownloadSourcesTest {
         return names;
     }
 
+    @Test
+    void aSourceWaitsWhileOurConnectionsAreAtTheirLimit() throws Exception {
+        this.givenOurConnectionsAtTheirLimit();
+        this.givenADownloadWhoseSourceIsNotCalled();
+
+        this.whenAConnectionOfOursCloses();
+
+        this.thenTheSourceIsCalled();
+    }
+
+    private void givenOurConnectionsAtTheirLimit() {
+        this.guard = new ConnectionGuard(
+                IpFilter::empty, new ConnectionGuard.Limits(1, 5, 20, Duration.ofSeconds(5)), this.ticker);
+        this.held = this.guard.outgoing();
+    }
+
+    private void givenADownloadWhoseSourceIsNotCalled() throws Exception {
+        this.waitingSource = this.source(0, 0);
+        DownloadManager downloads = this.manager();
+        this.onLoop(() -> downloads.add(this.waitingSource.link("waits.bin", 5000, Hash16.parseHex("36".repeat(16)))));
+        assertThat(this.waitingSource.calledWithin(Duration.ofSeconds(2))).isFalse();
+    }
+
+    private void whenAConnectionOfOursCloses() {
+        this.held.close();
+    }
+
+    private void thenTheSourceIsCalled() throws Exception {
+        assertThat(this.waitingSource.calledWithin(WAIT)).isTrue();
+        this.waitingSource.accept().until(Opcodes.Client.SETREQFILEID);
+        assertThat(this.guard.openConnections()).isEqualTo(1);
+    }
+
     private static DownloadManager.Settings settings(ObfuscationMode obfuscation, int maxSources, long minFree) {
         return new DownloadManager.Settings(obfuscation, maxSources, PORT, minFree, true, false, "spam|fake", 0);
     }
@@ -756,12 +794,20 @@ class DownloadSourcesTest {
                 ip -> ip == BLOCKED_IP,
                 random,
                 this.ticker,
-                new PeerLinks(this.loop, identities, link -> Optional.empty()),
+                this.links(identities),
                 (hash, bytes) -> {},
                 () -> this.kad,
                 List::of,
                 this.listener));
         return this.manager;
+    }
+
+    private PeerLinks links(Identities identities) {
+        PeerLinks links = new PeerLinks(this.loop, identities, link -> Optional.empty());
+        if (this.guard != null) {
+            links.countIn(this.guard);
+        }
+        return links;
     }
 
     private void advance(Duration duration) {

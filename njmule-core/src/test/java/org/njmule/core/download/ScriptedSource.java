@@ -125,6 +125,15 @@ final class ScriptedSource implements AutoCloseable {
         return link;
     }
 
+    /** Whether a downloader connects within {@code wait}; its connection is left for {@link #accept()}. */
+    boolean calledWithin(Duration wait) throws InterruptedException {
+        long deadline = System.nanoTime() + wait.toNanos();
+        while (this.accepted.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        return !this.accepted.isEmpty();
+    }
+
     /** Waits for the next downloader and closes its connection without a word. */
     void refuseNext() throws Exception {
         this.nextSocket().close();

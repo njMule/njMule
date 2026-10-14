@@ -1249,6 +1249,10 @@ public final class DownloadManager implements AutoCloseable {
                 this.askKadCallback(source.entry, client.kad);
                 continue;
             }
+            // Our connections share the limit with those of others: the sources wait while it is reached.
+            if (!this.links.mayConnect() && this.links.find(client.address).isEmpty()) {
+                break;
+            }
             client.asked = true;
             client.lastAsk = now;
             client.nextAsk = now + REASK_INTERVAL.toNanos();
