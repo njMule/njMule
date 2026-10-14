@@ -208,6 +208,33 @@ class DownloadQueueTest {
     }
 
     @Test
+    void aFileThatCouldNotBeMovedIsMovedOnResume() throws Exception {
+        byte[] data = random(2000, 7);
+        Path incoming = this.dir.resolve("incoming");
+        Files.writeString(incoming, "a file where the directory should be");
+        DownloadQueue queue = this.queue(file -> incoming);
+        DownloadQueue.Download download = this.onLoop(
+                () -> queue.add(Ed2kLink.FileLink.of("stuck.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        this.onLoop(() -> {
+            queue.received(download, 0, data);
+            return null;
+        });
+        assertThat(this.awaitPrefix("failed")).contains("cannot move");
+        assertThat(this.onLoop(() -> download.file().status())).isEqualTo(PartFile.Status.ERROR);
+
+        Files.delete(incoming);
+        this.onLoop(() -> {
+            queue.pause(download);
+            queue.resume(download);
+            return null;
+        });
+
+        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        assertThat(this.onLoop(() -> queue.get(download.hash()))).isEmpty();
+    }
+
+    @Test
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
         DownloadQueue first = this.queue();

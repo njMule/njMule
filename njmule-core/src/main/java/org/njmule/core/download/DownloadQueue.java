@@ -88,7 +88,7 @@ public final class DownloadQueue implements AutoCloseable {
     /** One download with its storage, its known sources and the parts verified this run. */
     public final class Download {
         private final PartFile file;
-        private final PartFileStorage storage;
+        private PartFileStorage storage;
         private final Set<Ed2kLink.Source> sources = new LinkedHashSet<>();
         private final BitSet verified = new BitSet();
         private boolean dirty;
@@ -311,11 +311,29 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
-    public void resume(Download download) {
-        if (download.file.status() == PartFile.Status.PAUSED || download.file.status() == PartFile.Status.STOPPED) {
-            download.file.setStatus(PartFile.Status.DOWNLOADING);
-            download.dirty = true;
+    /** Resumes a paused, stopped or failed download; {@code false} if it was none of these. */
+    public boolean resume(Download download) {
+        PartFile.Status status = download.file.status();
+        if (status != PartFile.Status.PAUSED && status != PartFile.Status.STOPPED && status != PartFile.Status.ERROR) {
+            return false;
         }
+        download.file.setStatus(PartFile.Status.DOWNLOADING);
+        download.dirty = true;
+        if (download.file.isComplete() && !download.finishing && !download.storage.isOpen()) {
+            // Its move failed: the data is checked again from the reopened file, then moved once more.
+            try {
+                download.storage = PartFileStorage.open(download.file.dataFile());
+            } catch (IOException e) {
+                download.file.setStatus(PartFile.Status.ERROR);
+                this.listener.failed(download, "cannot open the data: " + e.getMessage());
+                return true;
+            }
+            download.verified.clear();
+            for (int part = 0; part < download.file.partCount(); part++) {
+                this.verify(download, part);
+            }
+        }
+        return true;
     }
 
     public void setPreviewFirst(Download download, boolean value) {
