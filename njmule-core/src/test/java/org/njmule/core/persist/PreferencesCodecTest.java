@@ -100,7 +100,7 @@ class PreferencesCodecTest {
     @Test
     void aByteOrderMarkDoesNotHideTheFirstKey() throws IOException {
         Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Files.write(file, ("﻿net.tcpPort=12345\nnet.udpPort=5000\n").getBytes(StandardCharsets.UTF_8));
+        Files.write(file, "﻿net.tcpPort=12345\nnet.udpPort=5000\n".getBytes(StandardCharsets.UTF_8));
 
         assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
     }

@@ -76,10 +76,15 @@ final class HeldFile implements AutoCloseable {
         return holding;
     }
 
-    @Override
-    public void close() throws IOException {
+    /** Lets the file be read again, from any thread; closing does the same. */
+    void release() throws IOException {
         if (this.held.compareAndSet(true, false)) {
             this.release.run();
         }
+    }
+
+    @Override
+    public void close() throws IOException {
+        this.release();
     }
 }

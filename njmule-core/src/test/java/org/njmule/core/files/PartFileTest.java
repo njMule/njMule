@@ -91,8 +91,8 @@ class PartFileTest {
 
     @Property(tries = 300)
     void blocksAreHandedOutOnceWithinTheMissingBytesOfOnePart(
-            @ForAll @LongRange(min = 1, max = 3 * P + 5) long size,
-            @ForAll @Size(max = 8) List<@LongRange(min = 0, max = 3 * P + 5) Long> writes,
+            @ForAll @LongRange(min = 1, max = 3 * Ed2k.PARTSIZE + 5) long size,
+            @ForAll @Size(max = 8) List<@LongRange(min = 0, max = 3 * Ed2k.PARTSIZE + 5) Long> writes,
             @ForAll @IntRange(min = 1, max = 3) int perCall) {
         // No file is written: jqwik gives no temporary directory.
         PartFile file = PartFile.create(1, Path.of("unused"), "any.bin", size, hash(1), Optional.empty(), List.of());

@@ -154,7 +154,7 @@ class DownloadQueueTest {
         // Another process holds a lock on the data: the write fails.
         try (FileChannel other =
                         FileChannel.open(this.dir.resolve("temp").resolve("001.part"), StandardOpenOption.WRITE);
-                FileLock lock = other.lock()) {
+                FileLock _ = other.lock()) {
             this.onLoop(() -> {
                 queue.received(download, 0, Arrays.copyOf(data, Ed2k.EMBLOCKSIZE));
                 return null;

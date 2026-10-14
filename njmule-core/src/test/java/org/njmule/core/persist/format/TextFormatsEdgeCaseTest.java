@@ -131,23 +131,21 @@ class TextFormatsEdgeCaseTest {
         assertThat(ini.getLong("eMule", "Plus")).hasValue(5);
         assertThat(ini.getLong("eMule", "Hex")).isEmpty();
         assertThat(ini.getLong("eMule", "Huge")).isEmpty();
-        assertThat(IniFile.parse(("﻿[x]\r\nk=é\r\n").getBytes(UTF_16LE)).get("x", "k"))
+        assertThat(IniFile.parse("﻿[x]\r\nk=é\r\n".getBytes(UTF_16LE)).get("x", "k"))
                 .contains("é");
     }
 
     @Test
     void ipFilterLinesInTheirManySpellings() {
-        byte[] file = String.join(
-                        "\n",
-                        "1.2.3.0-1.2.3.255,050,tight",
-                        "4.0.0.0\t-\t4.0.0.255\t,\t60\t,\ttabs",
-                        "010.000.000.008 - 010.000.000.009 , 0 , not octal",
-                        "256.0.0.0 - 256.0.0.1 , 0 , bad octet",
-                        "1000.0.0.0 - 1000.0.0.1 , 0 , four digits",
-                        "// comment 9.9.9.9 - 9.9.9.9",
-                        "255.255.255.0 - 255.255.255.255 , 7 , last",
-                        "")
-                .getBytes(US_ASCII);
+        byte[] file = """
+                1.2.3.0-1.2.3.255,050,tight
+                4.0.0.0\t-\t4.0.0.255\t,\t60\t,\ttabs
+                010.000.000.008 - 010.000.000.009 , 0 , not octal
+                256.0.0.0 - 256.0.0.1 , 0 , bad octet
+                1000.0.0.0 - 1000.0.0.1 , 0 , four digits
+                // comment 9.9.9.9 - 9.9.9.9
+                255.255.255.0 - 255.255.255.255 , 7 , last
+                """.getBytes(US_ASCII);
 
         assertThat(IpFilterDat.read(file, "ipfilter.dat"))
                 .containsExactly(

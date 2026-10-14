@@ -132,7 +132,7 @@ class AtomicFilesTest {
             Thread release = Thread.ofVirtual().start(() -> {
                 try {
                     Thread.sleep(60);
-                    held.close();
+                    held.release();
                 } catch (InterruptedException | IOException e) {
                     throw new IllegalStateException(e);
                 }

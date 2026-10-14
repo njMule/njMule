@@ -56,7 +56,11 @@ class MetFilesEdgeCaseTest {
         void use(byte[] data) throws DecodeException;
     }
 
-    record Sample(String name, byte[] data, Use use) {}
+    record Sample(String name, Bytes data, Use use) {
+        Sample(String name, byte[] data, Use use) {
+            this(name, Bytes.of(data), use);
+        }
+    }
 
     // Valid files of every counted format, each read and then used.
     private static List<Sample> samples() {
@@ -146,7 +150,7 @@ class MetFilesEdgeCaseTest {
     void aChangedByteOnlyFailsCleanly(
             @ForAll("sample") Sample sample, @ForAll @IntRange(min = 0, max = 100_000) int at, @ForAll byte value)
             throws Exception {
-        byte[] data = sample.data().clone();
+        byte[] data = sample.data().toByteArray();
         data[at % data.length] = value;
         try {
             sample.use().use(data);
@@ -163,9 +167,11 @@ class MetFilesEdgeCaseTest {
                 continue;
             }
             // preferencesKad.dat ends with a byte nobody reads.
-            int complete = sample.name().equals("preferencesKad.dat") ? 22 : sample.data().length;
+            int complete = sample.name().equals("preferencesKad.dat")
+                    ? 22
+                    : sample.data().length();
             for (int length = 0; length < complete; length++) {
-                byte[] cut = Arrays.copyOf(sample.data(), length);
+                byte[] cut = Arrays.copyOf(sample.data().toByteArray(), length);
                 assertThatThrownBy(() -> sample.use().use(cut))
                         .as("%s cut to %d bytes", sample.name(), length)
                         .isInstanceOf(DecodeException.class);
