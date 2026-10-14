@@ -103,6 +103,28 @@ class WebUiAnswersTest {
         assertThat(this.head("/nowhere").statusCode()).isEqualTo(404);
     }
 
+    @Test
+    void actionsOnADownloadThatIsGoneAreReported() throws Exception {
+        this.start();
+        this.login();
+        String hash = "AB".repeat(16);
+        this.fake.answer("pauseDownload", args -> CompletableFuture.completedFuture(true));
+        assertThat(this.post("/transfers", Map.of("action", "pause", "hash", hash, "csrf", this.csrf()))
+                        .statusCode())
+                .isEqualTo(303);
+
+        for (String action : new String[] {"pauseDownload", "resumeDownload", "stopDownload", "cancelDownload"}) {
+            this.fake.answer(action, args -> CompletableFuture.completedFuture(false));
+        }
+        this.fake.answer("setDownloadPriority", args -> CompletableFuture.completedFuture(false));
+        for (String action : new String[] {"pause", "resume", "stop", "cancel", "priority"}) {
+            HttpResponse<String> gone = this.post(
+                    "/transfers", Map.of("action", action, "hash", hash, "priority", "high", "csrf", this.csrf()));
+            assertThat(gone.statusCode()).as(action).isEqualTo(400);
+            assertThat(gone.body()).as(action).contains("That download is gone");
+        }
+    }
+
     private void start() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));

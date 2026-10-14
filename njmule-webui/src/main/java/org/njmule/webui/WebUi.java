@@ -394,7 +394,9 @@ public final class WebUi implements AutoCloseable {
             case "cancel" -> this.engine.cancelDownload(hash);
             default -> throw new IllegalArgumentException("Unknown action.");
         };
-        this.await(done);
+        if (!this.await(done)) {
+            throw new IllegalArgumentException("That download is gone: reload the page.");
+        }
     }
 
     private String search(Map<String, String> form) {
