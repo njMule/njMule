@@ -665,6 +665,13 @@ final class Network {
             this.session.connect(Optional.empty());
             return;
         }
+        // A server known by its name is checked once the name resolves.
+        int ip = address.get().ip();
+        if (ip != 0 && (this.ipFilter.blocks(ip) || this.isFilteredLan(ip))) {
+            throw new IllegalArgumentException(
+                    (this.isFilteredLan(ip) ? "LAN addresses are filtered: " : "The IP filter blocks ")
+                            + address.get());
+        }
         ServerMet.Server server = this.servers.get(address.get()).orElseGet(() -> this.byHand(address.get()));
         if (this.servers.add(server)) {
             this.saveServers();
@@ -1505,7 +1512,11 @@ final class Network {
         }
     }
 
-    private void datagram(InetSocketAddress from, Packet packet) {
+    void datagram(InetSocketAddress from, Packet packet) {
+        // The socket takes IPv6 too, but servers are IPv4 only.
+        if (!(from.getAddress() instanceof Inet4Address)) {
+            return;
+        }
         if (packet.opcode() == Opcodes.ServerUdp.GLOBSERVSTATRES.code()) {
             this.pinger.received(from, packet);
             return;
