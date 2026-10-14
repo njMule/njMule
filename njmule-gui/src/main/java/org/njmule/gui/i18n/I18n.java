@@ -32,7 +32,7 @@ public final class I18n {
 
     /** The languages of the interface; English first, then by their own names. */
     public static final List<Locale> LANGUAGES =
-            List.of(Locale.ENGLISH, Locale.GERMAN, Locale.of("es"), Locale.FRENCH, Locale.ITALIAN);
+            List.of(Locale.ENGLISH, Locale.GERMAN, Locale.of("es"), Locale.FRENCH, Locale.ITALIAN, Locale.of("nl"));
 
     private static final String EMULE_BUNDLE = "org.njmule.gui.i18n.emule";
     private static final String NJMULE_BUNDLE = "org.njmule.gui.i18n.nj";
