@@ -298,6 +298,49 @@ class KadIndexTest {
         assertThat(this.name(file)).isEqualTo("Popular.avi");
     }
 
+    @Test
+    void sourcesExpireAtTheirExactInstant() {
+        UInt128 file = UInt128.random(this.random);
+        this.index.publishSource(file, UInt128.random(this.random), sourceTags(4662), IP, 4672, NOW);
+        long end = NOW + KadIndex.SOURCE_LIFETIME.toNanos();
+
+        assertThat(this.index.searchSources(file, 0, 0, end - 1)).hasSize(1);
+        assertThat(this.index.searchSources(file, 0, 0, end)).isEmpty();
+    }
+
+    @Test
+    void fullKeywordsAndAFullIndexRefuseNewFilesButTakeKnownOnesAgain() {
+        UInt128 first = UInt128.random(this.random);
+        for (int i = 0; i < KadIndex.MAX_FILES_PER_KEYWORD; i++) {
+            this.index.publishKeyword(
+                    this.keyword, entry(i == 0 ? first : UInt128.random(this.random), "file " + i, 10), IP, NOW);
+        }
+        assertThat(this.index.publishKeyword(this.keyword, entry(UInt128.random(this.random), "more", 10), IP, NOW))
+                .isEqualTo(100);
+        assertThat(this.index.keywordEntries()).isEqualTo(KadIndex.MAX_FILES_PER_KEYWORD);
+        this.index.publishKeyword(this.keyword, entry(first, "file 0", 10), IP, NOW + 1);
+        assertThat(this.index.keywordEntries()).as("published again").isEqualTo(KadIndex.MAX_FILES_PER_KEYWORD);
+
+        UInt128 other = UInt128.random(this.random);
+        int room = KadIndex.MAX_KEYWORD_ENTRIES - KadIndex.MAX_FILES_PER_KEYWORD;
+        for (int i = 0; i < room; i++) {
+            this.index.publishKeyword(other, entry(UInt128.random(this.random), "other " + i, 10), IP, NOW);
+        }
+        assertThat(this.index.publishKeyword(other, entry(UInt128.random(this.random), "x", 10), IP, NOW))
+                .isEqualTo(100);
+        assertThat(this.index.keywordEntries()).isEqualTo(KadIndex.MAX_KEYWORD_ENTRIES);
+    }
+
+    @Test
+    void searchesSkipBeyondTheResultsAndMatchInTheNetworkLowerCase() {
+        this.index.publishKeyword(this.keyword, entry(UInt128.random(this.random), "über alles.avi", 10), IP, NOW);
+
+        assertThat(this.index.searchKeyword(this.keyword, Optional.empty(), 5, NOW))
+                .isEmpty();
+        assertThat(this.search(new SearchExpr.Keyword("ÜBER"))).hasSize(1);
+        assertThat(this.search(new SearchExpr.Keyword("\"über alles\""))).hasSize(1);
+    }
+
     private String name(UInt128 file) {
         return this.index.searchKeyword(this.keyword, Optional.empty(), 0, NOW).stream()
                 .filter(e -> e.id().equals(file))
