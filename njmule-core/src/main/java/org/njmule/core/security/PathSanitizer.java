@@ -36,13 +36,18 @@ public final class PathSanitizer {
 
     private static final String FORBIDDEN = "\\/:*?\"<>|";
     private static final int MAX_EXTENSION = 16;
+    // Windows device names, with the superscript digits it also takes for digits.
     private static final Set<String> RESERVED = Set.of(
-            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
-            "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
+            "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",
+            "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³", "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+            "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³");
 
     private PathSanitizer() {}
 
-    /** A file name without separators, control or forbidden characters, nor a reserved name. */
+    /**
+     * A file name without separators, control or forbidden characters, nor a reserved name; never empty, at most
+     * {@value #MAX_NAME_BYTES} bytes, and its own sanitized form.
+     */
     public static String fileName(String name) {
         StringBuilder out = new StringBuilder(name.length());
         name.codePoints().forEach(c -> {
@@ -52,22 +57,25 @@ public final class PathSanitizer {
                 out.appendCodePoint(c);
             }
         });
-        // Windows drops trailing dots and spaces, which would make two names collide.
-        String cleaned = out.toString().strip();
-        int end = cleaned.length();
-        while (end > 0 && (cleaned.charAt(end - 1) == '.' || cleaned.charAt(end - 1) == ' ')) {
-            end--;
-        }
-        cleaned = cleaned.substring(0, end);
+        String cleaned = trimEnd(truncate(trimEnd(out.toString().strip())));
         if (cleaned.isEmpty()) {
             return "_";
         }
         int dot = cleaned.indexOf('.');
         String base = (dot < 0 ? cleaned : cleaned.substring(0, dot)).toUpperCase(Locale.ROOT);
         if (RESERVED.contains(base.strip())) {
-            cleaned = "_" + cleaned;
+            cleaned = trimEnd(truncate("_" + cleaned));
         }
-        return truncate(cleaned);
+        return cleaned;
+    }
+
+    // Windows drops trailing dots and spaces, which would make two names collide.
+    private static String trimEnd(String name) {
+        int end = name.length();
+        while (end > 0 && (name.charAt(end - 1) == '.' || Character.isWhitespace(name.charAt(end - 1)))) {
+            end--;
+        }
+        return name.substring(0, end);
     }
 
     /** {@code directory/name}, with the name sanitized; never outside {@code directory}. */
@@ -91,11 +99,8 @@ public final class PathSanitizer {
             return first;
         }
         String safe = fileName(name);
-        int dot = safe.lastIndexOf('.');
-        String stem = dot > 0 ? safe.substring(0, dot) : safe;
-        String extension = dot > 0 ? safe.substring(dot) : "";
         for (int n = 2; n < 10_000; n++) {
-            Path candidate = resolveInside(directory, stem + " (" + n + ")" + extension);
+            Path candidate = resolveInside(directory, numbered(safe, n));
             if (!Files.exists(candidate)) {
                 return candidate;
             }
@@ -115,12 +120,9 @@ public final class PathSanitizer {
             // Taken: the numbered names below.
         }
         String safe = fileName(name);
-        int dot = safe.lastIndexOf('.');
-        String stem = dot > 0 ? safe.substring(0, dot) : safe;
-        String extension = dot > 0 ? safe.substring(dot) : "";
         for (int n = 2; n < 10_000; n++) {
             try {
-                return Files.createFile(resolveInside(directory, stem + " (" + n + ")" + extension));
+                return Files.createFile(resolveInside(directory, numbered(safe, n)));
             } catch (FileAlreadyExistsException e) {
                 // Taken too.
             }
@@ -128,20 +130,38 @@ public final class PathSanitizer {
         throw new IOException("no free name for " + name + " in " + directory);
     }
 
+    // "stem (n).ext" from a sanitized name, with the stem cut first so that the number always fits; the result is
+    // already sanitized, so resolving it changes nothing.
+    private static String numbered(String safe, int n) {
+        int dot = safe.lastIndexOf('.');
+        String stem = dot > 0 ? safe.substring(0, dot) : safe;
+        String suffix = " (" + n + ")" + (dot > 0 ? safe.substring(dot) : "");
+        if (utf8Length(suffix) > MAX_NAME_BYTES / 2) {
+            // An extension this long is no extension: the number goes at the end.
+            stem = safe;
+            suffix = " (" + n + ")";
+        }
+        return cut(stem, MAX_NAME_BYTES - utf8Length(suffix)) + suffix;
+    }
+
     // Keeps a short extension, cutting the stem on code point boundaries.
     private static String truncate(String name) {
-        if (name.getBytes(StandardCharsets.UTF_8).length <= MAX_NAME_BYTES) {
+        if (utf8Length(name) <= MAX_NAME_BYTES) {
             return name;
         }
         int dot = name.lastIndexOf('.');
         String extension = dot > 0 && name.length() - dot <= MAX_EXTENSION ? name.substring(dot) : "";
         String stem = extension.isEmpty() ? name : name.substring(0, dot);
-        int budget = MAX_NAME_BYTES - extension.getBytes(StandardCharsets.UTF_8).length;
+        return cut(stem, MAX_NAME_BYTES - utf8Length(extension)).stripTrailing() + extension;
+    }
+
+    // The longest start of text within budget UTF-8 bytes, never splitting a code point.
+    private static String cut(String text, int budget) {
         StringBuilder kept = new StringBuilder();
         int used = 0;
-        for (int i = 0; i < stem.length(); ) {
-            int c = stem.codePointAt(i);
-            int bytes = new String(Character.toChars(c)).getBytes(StandardCharsets.UTF_8).length;
+        for (int i = 0; i < text.length(); ) {
+            int c = text.codePointAt(i);
+            int bytes = utf8Length(Character.toString(c));
             if (used + bytes > budget) {
                 break;
             }
@@ -149,6 +169,10 @@ public final class PathSanitizer {
             used += bytes;
             i += Character.charCount(c);
         }
-        return kept.toString().stripTrailing() + extension;
+        return kept.toString();
+    }
+
+    private static int utf8Length(String text) {
+        return text.getBytes(StandardCharsets.UTF_8).length;
     }
 }

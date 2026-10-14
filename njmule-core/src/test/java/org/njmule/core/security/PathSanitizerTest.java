@@ -75,6 +75,73 @@ class PathSanitizerTest {
                 .isEqualTo(this.dir.toAbsolutePath().normalize());
     }
 
+    @Test
+    void aCutNeverLeavesTrailingDotsOrSpaces() {
+        assertThat(PathSanitizer.fileName("a" + ".".repeat(300) + "b".repeat(20)))
+                .isEqualTo("a");
+        assertThat(PathSanitizer.fileName("a" + " ".repeat(300) + "b".repeat(20)))
+                .isEqualTo("a");
+        assertThat(PathSanitizer.fileName(".".repeat(300) + "b".repeat(20))).isEqualTo("_");
+        assertThat(PathSanitizer.fileName("a　.")).isEqualTo("a");
+        assertThat(PathSanitizer.fileName("a.　")).isEqualTo("a");
+    }
+
+    @Test
+    void theReservedNameCheckSeesTheCutName() {
+        assertThat(PathSanitizer.fileName("CON" + " ".repeat(300) + "x")).isEqualTo("_CON");
+        assertThat(PathSanitizer.fileName("AUX" + " ".repeat(200) + "x.mkv")).isEqualTo("_AUX.mkv");
+        String longReserved = PathSanitizer.fileName("NUL." + "x".repeat(300));
+        assertThat(longReserved).startsWith("_NUL.");
+        assertThat(longReserved.getBytes(StandardCharsets.UTF_8).length)
+                .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "COM¹.txt|_COM¹.txt",
+                "lpt³|_lpt³",
+                "COM0.log|_COM0.log",
+                "lpt0|_lpt0",
+                "CONIN$|_CONIN$",
+                "conout$.txt|_conout$.txt",
+                "CoN .txt|_CoN .txt",
+                "con.|_con",
+                "COM10|COM10",
+                "LPT10.txt|LPT10.txt"
+            })
+    void reservedDeviceNamesAreEscaped(String raw, String expected) {
+        assertThat(PathSanitizer.fileName(raw)).isEqualTo(expected);
+    }
+
+    @Test
+    void numberedNamesOfLongNamesStayDistinct() throws Exception {
+        for (String name : new String[] {"x".repeat(250) + ".mkv", "y".repeat(300), "z".repeat(197) + ".a"}) {
+            java.util.Set<Path> taken = new java.util.HashSet<>();
+            for (int i = 0; i < 12; i++) {
+                Path reserved = PathSanitizer.reserve(this.dir, name);
+                assertThat(taken.add(reserved)).as("%s, copy %d", name, i).isTrue();
+                assertThat(reserved.getFileName().toString().getBytes(StandardCharsets.UTF_8).length)
+                        .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+            }
+            Path free = PathSanitizer.unique(this.dir, name);
+            assertThat(taken).doesNotContain(free);
+            assertThat(free.getFileName().toString()).contains(" (13)");
+        }
+    }
+
+    @Property
+    void namesAreSafeShortAndStable(@ForAll String raw) {
+        String name = PathSanitizer.fileName(raw);
+
+        assertThat(name).isNotEmpty();
+        assertThat(name.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+        assertThat(name.chars()).noneMatch(c -> c < 0x20 || c == 0x7F || "\\/:*?\"<>|".indexOf(c) >= 0);
+        assertThat(name).doesNotEndWith(".").doesNotEndWith(" ");
+        assertThat(PathSanitizer.fileName(name)).isEqualTo(name);
+    }
+
     @Property
     void anyNameStaysInsideTheDirectory(@ForAll String name) throws Exception {
         // Nothing is created: resolving only computes the path.
