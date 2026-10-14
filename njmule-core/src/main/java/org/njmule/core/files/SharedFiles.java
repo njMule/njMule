@@ -589,7 +589,7 @@ public final class SharedFiles implements AutoCloseable {
     // On a thread of its own: each change asks the engine for a scan.
     private void watch() {
         try {
-            while (true) {
+            while (!Thread.currentThread().isInterrupted()) {
                 WatchKey key = this.watcher.take();
                 key.pollEvents();
                 key.reset();
