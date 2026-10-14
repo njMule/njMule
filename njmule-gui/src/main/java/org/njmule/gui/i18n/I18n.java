@@ -45,7 +45,8 @@ public final class I18n {
             Locale.of("ru"),
             Locale.SIMPLIFIED_CHINESE,
             Locale.TRADITIONAL_CHINESE,
-            Locale.JAPANESE);
+            Locale.JAPANESE,
+            Locale.KOREAN);
 
     // Where Chinese is written in the traditional script when the locale names no script.
     private static final Set<String> TRADITIONAL_REGIONS = Set.of("TW", "HK", "MO");

@@ -74,7 +74,8 @@ class LanguagesTest {
                 arguments(Locale.of("ru"), "Русский", "Язык"),
                 arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
                 arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"),
-                arguments(Locale.JAPANESE, "日本語", "言語"));
+                arguments(Locale.JAPANESE, "日本語", "言語"),
+                arguments(Locale.KOREAN, "한국어", "언어"));
     }
 
     static Stream<Locale> translations() {
@@ -98,7 +99,8 @@ class LanguagesTest {
                 Locale.of("ru"),
                 Locale.SIMPLIFIED_CHINESE,
                 Locale.TRADITIONAL_CHINESE,
-                Locale.JAPANESE);
+                Locale.JAPANESE,
+                Locale.KOREAN);
     }
 
     @ParameterizedTest
@@ -117,7 +119,9 @@ class LanguagesTest {
         "zh-CN, IDS_DL_PREVIEW, 预览",
         "ja, IDS_DL_PREVIEW, プレビュー",
         "ja, IDS_DL_RESUME, 再開",
-        "ja, IDS_EXIT, 終了"
+        "ja, IDS_EXIT, 終了",
+        "ko, IDS_EM_SEARCH, 검색",
+        "ko, IDS_DL_PREVIEW, 미리 보기"
     })
     void aMnemonicWrittenInBracketsIsDropped(String language, String key, String text) {
         this.whenTheTextsOfALanguageAreLoaded(Locale.forLanguageTag(language));
@@ -153,6 +157,7 @@ class LanguagesTest {
         "zh-Hant-CN, zh-TW",
         "sv-SE, en",
         "ja-JP, ja",
+        "ko-KR, ko",
         "ar-EG, en",
         "hi-IN, en"
     })
