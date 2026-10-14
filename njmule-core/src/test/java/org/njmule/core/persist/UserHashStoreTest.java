@@ -17,9 +17,13 @@
 package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -61,5 +65,29 @@ class UserHashStoreTest {
         Files.deleteIfExists(AtomicFiles.bakPath(file));
         assertThat(UserHashStore.isUsable(UserHashStore.loadOrCreate(this.dir, RANDOM)))
                 .isTrue();
+    }
+
+    @Test
+    void aUserHashHeldByAnotherProgramIsNotReplaced() throws Exception {
+        Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
+        Path file = this.dir.resolve(UserHashStore.FILE_NAME);
+
+        try (HeldFile _ = HeldFile.hold(file)) {
+            assertThatThrownBy(() -> UserHashStore.loadOrCreate(this.dir, RANDOM))
+                    .isInstanceOf(IOException.class);
+        }
+
+        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(first);
+    }
+
+    @Test
+    void theUserHashIsForItsOwnerOnly() throws Exception {
+        assumeTrue(this.dir.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+
+        UserHashStore.loadOrCreate(this.dir, RANDOM);
+
+        assertThat(PosixFilePermissions.toString(
+                        Files.getPosixFilePermissions(this.dir.resolve(UserHashStore.FILE_NAME))))
+                .isEqualTo("rw-------");
     }
 }

@@ -17,6 +17,7 @@
 package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -127,6 +128,22 @@ class PreferencesCodecTest {
         }
         assertThat(saved).containsEntry("future.option", "on: yes").containsEntry("net.udpPort", "5000");
         assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
+    }
+
+    @Test
+    void preferencesHeldByAnotherProgramAreNotTakenFromTheOlderBackup() throws Exception {
+        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+        PreferencesCodec.save(
+                file, Preferences.defaults().toBuilder().tcpPort(1111).build());
+        PreferencesCodec.save(
+                file, Preferences.defaults().toBuilder().tcpPort(2222).build());
+
+        try (HeldFile _ = HeldFile.hold(file)) {
+            // Loaded from the backup, they would be saved over the newer file at the start.
+            assertThatThrownBy(() -> PreferencesCodec.load(file)).isInstanceOf(IOException.class);
+        }
+
+        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(2222);
     }
 
     @Test

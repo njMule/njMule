@@ -152,7 +152,7 @@ public final class PreferencesCodec {
     /** Loads the preferences, or returns the defaults if the file and its backup are missing. */
     public static Preferences load(Path file) throws IOException {
         try {
-            return AtomicFiles.read(file, in -> parse(new InputStreamReader(in, StandardCharsets.UTF_8)));
+            return AtomicFiles.read(file, in -> parse(new InputStreamReader(in, StandardCharsets.UTF_8)), false);
         } catch (NoSuchFileException e) {
             return Preferences.defaults();
         }

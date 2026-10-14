@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.persist.format.PreferencesDat;
+import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,24 +41,27 @@ public final class UserHashStore {
 
     private UserHashStore() {}
 
-    /** Loads the hash, or creates and saves a new one when the file is missing or unusable. */
+    /**
+     * Loads the hash, or creates and saves a new one when the file is missing or unusable. A file that cannot be read
+     * now fails: the hash in it is the one peers know.
+     */
     public static Hash16 loadOrCreate(Path configDir, SecureRandom random) throws IOException {
         Path file = configDir.resolve(FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(file);
         try {
             Hash16 hash = AtomicFiles.read(
-                    file, in -> PreferencesDat.read(in.readAllBytes()).userHash());
+                    file, in -> PreferencesDat.read(in.readAllBytes()).userHash(), false);
             if (isUsable(hash)) {
                 return hash;
             }
             logger.warn("Unusable user hash in {}, creating a new one", file);
         } catch (NoSuchFileException e) {
             logger.info("Creating the user hash in {}", file);
-        } catch (IOException e) {
-            logger.warn("Cannot read {}, creating a new user hash", file, e);
+        } catch (DecodeException e) {
+            logger.warn("Corrupt {}, creating a new user hash", file, e);
         }
         Hash16 hash = generate(random);
-        AtomicFiles.writeBytes(
+        AtomicFiles.writeSecret(
                 file, PreferencesDat.write(new PreferencesDat.Contents(PreferencesDat.VERSION, hash, Bytes.EMPTY)));
         return hash;
     }

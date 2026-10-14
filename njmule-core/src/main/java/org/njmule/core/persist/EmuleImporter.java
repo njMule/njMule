@@ -173,7 +173,7 @@ public final class EmuleImporter {
             for (String name : IDENTITY) {
                 Path file = pending.resolve(name);
                 if (Files.isRegularFile(file)) {
-                    AtomicFiles.writeBytes(configDir.resolve(name), Files.readAllBytes(file));
+                    AtomicFiles.writeSecret(configDir.resolve(name), Files.readAllBytes(file));
                 }
             }
             logger.info("Using the identity imported from eMule");
@@ -746,9 +746,9 @@ public final class EmuleImporter {
         removeFolder(this.target.configDir().resolve(PENDING_IDENTITY));
     }
 
-    // Without a backup: the folder holds only what the next start takes.
+    // Without a backup: the folder holds only what the next start takes; for its owner only, as an identity.
     private static void writePending(Path file, byte[] data) throws IOException {
-        AtomicFiles.write(file, out -> out.write(data), false);
+        AtomicFiles.write(file, out -> out.write(data), false, true);
     }
 
     /** Checks an identity file and puts it aside for the next start; returns whether it could. */

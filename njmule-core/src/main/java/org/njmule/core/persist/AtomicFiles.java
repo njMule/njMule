@@ -29,7 +29,11 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +51,8 @@ public final class AtomicFiles {
     private static final Logger logger = LoggerFactory.getLogger(AtomicFiles.class);
     private static final int MOVE_ATTEMPTS = 6;
     private static final long FIRST_RETRY_DELAY_MILLIS = 15;
+    private static final FileAttribute<Set<PosixFilePermission>> OWNER_ONLY =
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
 
     private AtomicFiles() {}
 
@@ -77,6 +83,15 @@ public final class AtomicFiles {
 
     /** Replaces {@code target} atomically; on failure {@code target} is left unchanged. */
     public static void write(Path target, Writer writer, boolean keepBackup) throws IOException {
+        write(target, writer, keepBackup, false);
+    }
+
+    /**
+     * Replaces {@code target} atomically; on failure {@code target} is left unchanged.
+     *
+     * @param secret readable by its owner only, where the file system has POSIX permissions
+     */
+    public static void write(Path target, Writer writer, boolean keepBackup, boolean secret) throws IOException {
         Objects.requireNonNull(writer, "writer");
         Path absolute = target.toAbsolutePath();
         Path dir = absolute.getParent();
@@ -84,12 +99,20 @@ public final class AtomicFiles {
             Files.createDirectories(dir);
         }
         Path tmp = tmpPath(absolute);
+        FileAttribute<?>[] attributes = new FileAttribute<?>[0];
+        if (secret && tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            attributes = new FileAttribute<?>[] {OWNER_ONLY};
+            // The permissions are set when the file is created, so not on a leftover.
+            Files.deleteIfExists(tmp);
+        }
         try {
             try (FileChannel channel = FileChannel.open(
                             tmp,
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.TRUNCATE_EXISTING,
-                            StandardOpenOption.WRITE);
+                            Set.of(
+                                    StandardOpenOption.CREATE,
+                                    StandardOpenOption.TRUNCATE_EXISTING,
+                                    StandardOpenOption.WRITE),
+                            attributes);
                     OutputStream out = new BufferedOutputStream(Channels.newOutputStream(channel), 64 * 1024)) {
                 writer.write(out);
                 out.flush();
@@ -110,12 +133,26 @@ public final class AtomicFiles {
         write(target, out -> out.write(content));
     }
 
+    /** As {@link #writeBytes}, for a file only its owner may read: a key or an identity. */
+    public static void writeSecret(Path target, byte[] content) throws IOException {
+        write(target, out -> out.write(content), true, true);
+    }
+
     /**
-     * Reads {@code target}, falling back to its backup when it is missing or rejected by {@code reader}.
+     * Reads {@code target}, falling back to its backup when it is missing or rejected by {@code reader}. A target held
+     * by another program is tried again for a moment first.
      *
      * @throws NoSuchFileException if neither file exists
      */
     public static <T> T read(Path target, Reader<T> reader) throws IOException {
+        return read(target, reader, true);
+    }
+
+    /**
+     * As {@link #read(Path, Reader)}; with {@code backupIfHeld} false a target that still cannot be opened fails
+     * instead of yielding the older backup, which the caller would then save over it.
+     */
+    public static <T> T read(Path target, Reader<T> reader, boolean backupIfHeld) throws IOException {
         Objects.requireNonNull(reader, "reader");
         Path absolute = target.toAbsolutePath();
         Path bak = bakPath(absolute);
@@ -123,6 +160,12 @@ public final class AtomicFiles {
         if (Files.exists(absolute)) {
             try {
                 return readOne(absolute, reader);
+            } catch (FileSystemException e) {
+                if (!backupIfHeld && !(e instanceof NoSuchFileException)) {
+                    throw e;
+                }
+                primaryFailure = e;
+                logger.warn("Cannot open {}, trying backup", absolute, e);
             } catch (IOException | RuntimeException e) {
                 primaryFailure = e;
                 logger.warn("Cannot read {}, trying backup", absolute, e);
@@ -154,8 +197,24 @@ public final class AtomicFiles {
     }
 
     private static <T> T readOne(Path file, Reader<T> reader) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = open(file)) {
             return reader.read(in);
+        }
+    }
+
+    // Retried like a move: a file being scanned or indexed is not corrupt.
+    private static InputStream open(Path file) throws IOException {
+        long delay = FIRST_RETRY_DELAY_MILLIS;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return Files.newInputStream(file);
+            } catch (FileSystemException e) {
+                if (attempt >= MOVE_ATTEMPTS || e instanceof NoSuchFileException) {
+                    throw e;
+                }
+            }
+            pause(delay, file);
+            delay *= 2;
         }
     }
 
@@ -176,13 +235,17 @@ public final class AtomicFiles {
                     throw e;
                 }
             }
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted while replacing " + to, e);
-            }
+            pause(delay, to);
             delay *= 2;
+        }
+    }
+
+    private static void pause(long millis, Path file) throws IOException {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for " + file, e);
         }
     }
 

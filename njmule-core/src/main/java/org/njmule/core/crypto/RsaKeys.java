@@ -136,7 +136,7 @@ public final class RsaKeys {
         for (int i = 0; i < base64.length(); i += BASE64_LINE) {
             text.append(base64, i, Math.min(base64.length(), i + BASE64_LINE)).append('\n');
         }
-        AtomicFiles.writeBytes(file, text.toString().getBytes(StandardCharsets.US_ASCII));
+        AtomicFiles.writeSecret(file, text.toString().getBytes(StandardCharsets.US_ASCII));
     }
 
     // The parser reads only from the array, so lengths inside the DER cannot make it allocate more.

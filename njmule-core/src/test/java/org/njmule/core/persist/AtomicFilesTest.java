@@ -19,11 +19,15 @@ package org.njmule.core.persist;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -116,6 +120,55 @@ class AtomicFilesTest {
                 }))
                 .isInstanceOf(IOException.class)
                 .hasCauseInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void aPrimaryHeldForAMomentIsReadOnceFree() throws Exception {
+        Path file = this.dir.resolve("clients.met");
+        AtomicFiles.writeBytes(file, "valid:1".getBytes(UTF_8));
+        AtomicFiles.writeBytes(file, "valid:2".getBytes(UTF_8));
+
+        try (HeldFile held = HeldFile.hold(file)) {
+            Thread release = Thread.ofVirtual().start(() -> {
+                try {
+                    Thread.sleep(60);
+                    held.close();
+                } catch (InterruptedException | IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            assertThat(readValid(file)).as("not the older backup").isEqualTo("valid:2");
+            release.join();
+        }
+    }
+
+    @Test
+    void aPrimaryHeldLongerYieldsTheBackupOnlyWhereAllowed() throws Exception {
+        Path file = this.dir.resolve("njmule.properties");
+        AtomicFiles.writeBytes(file, "valid:1".getBytes(UTF_8));
+        AtomicFiles.writeBytes(file, "valid:2".getBytes(UTF_8));
+
+        try (HeldFile _ = HeldFile.hold(file)) {
+            assertThat(readValid(file)).isEqualTo("valid:1");
+            assertThatThrownBy(() -> AtomicFiles.read(file, in -> new String(in.readAllBytes(), UTF_8), false))
+                    .isInstanceOf(FileSystemException.class);
+        }
+    }
+
+    @Test
+    void secretsAreForTheirOwnerOnly() throws IOException {
+        Path file = this.dir.resolve("cryptkey.dat");
+        assumeTrue(file.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+        Files.writeString(AtomicFiles.tmpPath(file), "left by a crash");
+
+        AtomicFiles.writeSecret(file, "key 1".getBytes(UTF_8));
+        AtomicFiles.writeSecret(file, "key 2".getBytes(UTF_8));
+
+        assertThat(file).hasContent("key 2");
+        for (Path written : List.of(file, AtomicFiles.bakPath(file))) {
+            assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(written)))
+                    .isEqualTo("rw-------");
+        }
     }
 
     @Test

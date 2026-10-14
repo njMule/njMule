@@ -76,7 +76,8 @@ public final class ConfigBackup {
                     }
                     zip.finish();
                 },
-                false);
+                false,
+                true);
         prune(folder, keep, target);
         return target;
     }
