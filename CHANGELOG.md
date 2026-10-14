@@ -274,6 +274,7 @@ All notable changes to this project are documented here. The format follows
 - The desktop interface in Catalan, Estonian, Lithuanian, Romanian and Bulgarian.
 - The desktop interface in Galician, Latvian, Slovenian, Albanian and Vietnamese; the many texts
   that eMule's Latvian translation leaves in English are translated.
+- The desktop interface in Arabic.
 - Search results keep the media details that servers and Kad give (artist, album, title, length,
   bitrate, codec), by tag id or by the names servers use, and so do the search tabs kept at exit.
 - The search results list shows them in Artist, Album, Title, Length, Bitrate and Codec columns,

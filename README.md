@@ -57,8 +57,8 @@ file-sharing networks, written in Java 25.
   following the system), in English, Catalan, Czech, Danish, German, Estonian, Spanish, French,
   Galician, Italian, Latvian, Lithuanian, Hungarian, Dutch, Norwegian Bokmål, Polish, Brazilian and
   European Portuguese, Romanian, Albanian, Slovenian, Finnish, Swedish, Vietnamese, Turkish, Greek,
-  Bulgarian, Russian, Ukrainian, Simplified and Traditional Chinese, Japanese and Korean, system
-  tray integration and optional registration as the `ed2k://` link handler.
+  Bulgarian, Russian, Ukrainian, Arabic, Simplified and Traditional Chinese, Japanese and Korean,
+  system tray integration and optional registration as the `ed2k://` link handler.
 - **Web interface** — status, transfers, searches and servers, protected by a password.
 - **Networking** — SOCKS 4/5 and HTTP CONNECT proxies, UPnP port forwarding, IP filtering
   (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth

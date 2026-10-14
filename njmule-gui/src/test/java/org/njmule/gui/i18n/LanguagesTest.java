@@ -91,6 +91,7 @@ class LanguagesTest {
                 arguments(Locale.of("bg"), "Български", "Език"),
                 arguments(Locale.of("ru"), "Русский", "Язык"),
                 arguments(Locale.of("uk"), "Українська", "Мова"),
+                arguments(Locale.of("ar"), "العربية", "لغة"),
                 arguments(Locale.SIMPLIFIED_CHINESE, "简体中文", "语言"),
                 arguments(Locale.TRADITIONAL_CHINESE, "繁體中文", "語言"),
                 arguments(Locale.JAPANESE, "日本語", "言語"),
@@ -135,6 +136,7 @@ class LanguagesTest {
                 Locale.of("bg"),
                 Locale.of("ru"),
                 Locale.of("uk"),
+                Locale.of("ar"),
                 Locale.SIMPLIFIED_CHINESE,
                 Locale.TRADITIONAL_CHINESE,
                 Locale.JAPANESE,
@@ -204,6 +206,10 @@ class LanguagesTest {
         "bg-BG, bg",
         "ru-RU, ru",
         "uk-UA, uk",
+        "ar, ar",
+        "ar-EG, ar",
+        "ar-SA, ar",
+        "ar-MA, ar",
         "zh, zh-CN",
         "zh-CN, zh-CN",
         "zh-SG, zh-CN",
@@ -220,7 +226,7 @@ class LanguagesTest {
         "tr-TR, tr",
         "ja-JP, ja",
         "ko-KR, ko",
-        "ar-EG, en",
+        "ur-PK, en",
         "hi-IN, en"
     })
     void theSystemLanguagePicksItsTranslationOrEnglish(String systemLanguage, String chosen) {
