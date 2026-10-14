@@ -129,19 +129,22 @@ public final class SharedFilesBrowser {
 
         @Override
         public void onPacket(TcpConnection connection, Packet packet) {
-            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
+            // Extended packets reuse the opcode of the refusal (a file comment); a packed list comes unpacked as one.
+            boolean basic = packet.protocol() == Protocol.EDONKEY;
+            if (basic && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 connection.setFrameLimit(FrameLimits.CLIENT);
                 connection.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code()));
                 return;
             }
-            if (packet.opcode() == Opcodes.Client.ASKSHAREDFILESANSWER.code()) {
+            if ((basic || packet.protocol() == Protocol.EMULE)
+                    && packet.opcode() == Opcodes.Client.ASKSHAREDFILESANSWER.code()) {
                 try {
                     this.files.complete(files(packet));
                 } catch (DecodeException e) {
                     this.files.completeExceptionally(e);
                 }
                 connection.close();
-            } else if (packet.opcode() == Opcodes.Client.ASKSHAREDDENIEDANS.code()) {
+            } else if (basic && packet.opcode() == Opcodes.Client.ASKSHAREDDENIEDANS.code()) {
                 this.files.completeExceptionally(new IOException("the client does not show its files"));
                 connection.close();
             }
