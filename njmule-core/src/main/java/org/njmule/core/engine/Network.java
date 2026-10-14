@@ -222,8 +222,8 @@ final class Network {
     // Clients that asked us for a direct callback, by address and when; engine thread only.
     private final Map<Integer, Long> directCallers = new HashMap<>();
     private final BuddyLink buddyLink;
-    // The server logged in to or being tried, read by the listener's threads; 0 for none.
-    private volatile int serverIp;
+    // The servers logged in to or being tried, read by the listener's threads.
+    private volatile Set<Integer> serverIps = Set.of();
     private final DownloadManager downloads;
     private final Credits credits;
     private final UploadManager uploads;
@@ -2141,7 +2141,7 @@ final class Network {
     }
 
     private boolean isOurServer(int ip) {
-        return ip != 0 && ip == this.serverIp;
+        return ip != 0 && this.serverIps.contains(ip);
     }
 
     // Any thread: a Kad node we asked to connect to our TCP port.
@@ -2196,7 +2196,7 @@ final class Network {
     private final class SessionEvents implements ServerSession.Listener {
         @Override
         public void connecting(ServerMet.Server server) {
-            Network.this.serverIp = server.ip();
+            Network.this.serverIps = Network.this.session.addresses();
             ServerInfo info = Network.this.info(server);
             Network.this.userLog.log(LogLine.Level.INFO, "Connecting to " + describe(info));
             Network.this.publish.accept(new EngineEvent.ServerConnecting(info));
@@ -2204,6 +2204,7 @@ final class Network {
 
         @Override
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
+            Network.this.serverIps = Network.this.session.addresses();
             Network.this.context = new ServerContext(id.clientId(), server.ip(), server.port());
             ServerInfo info = Network.this.info(server);
             boolean obfuscated = Network.this.session.isObfuscated();
@@ -2226,6 +2227,13 @@ final class Network {
             }
         }
 
+        @Override
+        public void attemptFailed(ServerMet.Server server, String reason) {
+            Network.this.serverIps = Network.this.session.addresses();
+            Network.this.userLog.log(
+                    LogLine.Level.INFO, "Cannot connect to " + describe(Network.this.info(server)) + ": " + reason);
+        }
+
         // Our hello, the sources and Kad tell the id the server gave us last.
         @Override
         public void idChanged(ServerMet.Server server, ServerMessages.IdChange id) {
@@ -2244,7 +2252,7 @@ final class Network {
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
-            Network.this.serverIp = 0;
+            Network.this.serverIps = Network.this.session.addresses();
             Network.this.context = ServerContext.NONE;
             Network.this.publisher.disconnected();
             Network.this.searches.serverLost();

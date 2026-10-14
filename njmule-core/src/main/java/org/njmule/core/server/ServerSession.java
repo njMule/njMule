@@ -61,10 +61,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The connection to one eD2K server at a time: connect, log in, then serve the session. When the preferences ask for
- * obfuscation, the servers that take it, and once those never pinged, are tried obfuscated first, then every server
- * plainly unless obfuscation is required. Used on the engine thread only; network callbacks are posted to it, and those
- * of an abandoned attempt are ignored.
+ * The connection to one eD2K server at a time: connect, log in, then serve the session. Looking for any server, two are
+ * tried at once. When the preferences ask for obfuscation, the servers that take it, and once those never pinged, are
+ * tried obfuscated first, then every server plainly unless obfuscation is required. Used on the engine thread only;
+ * network callbacks are posted to it, and those of an abandoned attempt are ignored.
  */
 public final class ServerSession {
 
@@ -79,6 +79,9 @@ public final class ServerSession {
 
         /** {@code server} is the last server tried, if any. */
         void disconnected(Optional<ServerMet.Server> server, String reason);
+
+        /** An attempt to log in to {@code server} failed; others may go on. */
+        default void attemptFailed(ServerMet.Server server, String reason) {}
 
         void message(ServerMet.Server server, String line);
 
@@ -98,6 +101,9 @@ public final class ServerSession {
 
     /** From the start of an attempt to the id: connection, handshake and login. */
     public static final Duration LOGIN_TIMEOUT = Duration.ofSeconds(25);
+
+    /** Servers tried at once when any will do: a dead or silent one does not hold up the next. */
+    public static final int ATTEMPTS_AT_ONCE = 2;
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
     private static final String VERSION_LINE = "server version";
@@ -205,6 +211,19 @@ public final class ServerSession {
         return this.attempts.isEmpty() ? Optional.empty() : Optional.of(this.attempts.getFirst().server);
     }
 
+    /** The addresses of the servers logged in to or being tried; 0 for a name not looked up yet is left out. */
+    public Set<Integer> addresses() {
+        Set<Integer> addresses = new HashSet<>();
+        if (this.session != null) {
+            addresses.add(this.session.server.ip());
+        }
+        for (Attempt attempt : this.attempts) {
+            addresses.add(attempt.server.ip());
+        }
+        addresses.remove(0);
+        return Set.copyOf(addresses);
+    }
+
     /** Sends a packet to the connected server; {@code false} when there is no session. */
     public boolean send(Packet packet) {
         return this.session != null && this.session.connection.send(packet);
@@ -219,9 +238,10 @@ public final class ServerSession {
         }
     }
 
-    // Starts the next attempt; once the pass is over, the plain pass or the end.
+    // Starts attempts while there is room; once the pass is over, the plain pass or the end.
     private void next() {
-        while (this.attempts.isEmpty() && !this.pending.isEmpty()) {
+        int room = this.target.isPresent() ? 1 : ATTEMPTS_AT_ONCE;
+        while (this.attempts.size() < room && !this.pending.isEmpty()) {
             ServerMet.Server next = this.pending.poll();
             if (next.port() < 1 || next.port() > 0xFFFF) {
                 logger.debug("Skipping {}: no such port", ServerList.addressOf(next));
@@ -569,6 +589,7 @@ public final class ServerSession {
         drop(attempt);
         this.attempts.remove(attempt);
         this.lastFailure = reason;
+        this.listener.attemptFailed(attempt.server, reason);
         this.next();
     }
 

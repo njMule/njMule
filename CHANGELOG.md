@@ -657,3 +657,6 @@ All notable changes to this project are documented here. The format follows
   remembered as taking obfuscation when they do; when no server takes an obfuscated connection,
   every server is tried again plainly (unless obfuscation is required), instead of never obfuscating
   with them or never falling back.
+- Looking for any server, two are tried at once, so a dead or silent server no longer holds up the
+  connection for 25 seconds; each failed attempt shows in the log, and every server being tried may
+  check our port for a HighID.

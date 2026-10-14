@@ -64,26 +64,31 @@ public final class ScriptedServer implements AutoCloseable {
     private final int flags;
     private final boolean obfuscates;
 
-    private ScriptedServer(long clientId, int flags, boolean obfuscates) throws IOException {
+    private ScriptedServer(InetAddress address, long clientId, int flags, boolean obfuscates) throws IOException {
         this.clientId = clientId;
         this.flags = flags;
         this.obfuscates = obfuscates;
-        this.socket = new ServerSocket(0, 8, InetAddress.getLoopbackAddress());
+        this.socket = new ServerSocket(0, 8, address);
         Thread.ofVirtual().name("scripted-server").start(this::accept);
     }
 
     /** A server that logs clients in with {@code clientId} and announces {@code flags}; 0 for no answer. */
     public static ScriptedServer start(long clientId, int flags) throws IOException {
-        return new ScriptedServer(clientId, flags, false);
+        return new ScriptedServer(InetAddress.getLoopbackAddress(), clientId, flags, false);
     }
 
     /** As {@link #start}, taking obfuscated connections too. */
     public static ScriptedServer startObfuscating(long clientId, int flags) throws IOException {
-        return new ScriptedServer(clientId, flags, true);
+        return new ScriptedServer(InetAddress.getLoopbackAddress(), clientId, flags, true);
+    }
+
+    /** As {@link #start}, on another address of this computer: one the server list takes, unlike loopback. */
+    public static ScriptedServer startAt(InetAddress address, long clientId, int flags) throws IOException {
+        return new ScriptedServer(address, clientId, flags, false);
     }
 
     public int ip() {
-        return Ipv4.parse("127.0.0.1");
+        return Ipv4.fromBytes(this.socket.getInetAddress().getAddress());
     }
 
     public int port() {

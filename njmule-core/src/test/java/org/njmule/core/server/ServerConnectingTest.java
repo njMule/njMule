@@ -17,9 +17,16 @@
 package org.njmule.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -31,6 +38,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.engine.EngineLoop;
@@ -52,9 +60,10 @@ class ServerConnectingTest {
     private final List<String> seen = new CopyOnWriteArrayList<>();
     private final List<ScriptedServer> scripted = new ArrayList<>();
     private volatile Preferences preferences = Preferences.defaults();
+    private final ServerList servers = new ServerList();
     private final ServerSession session = new ServerSession(
             this.loop,
-            new ServerList(),
+            this.servers,
             () -> this.preferences,
             Hash16.parseHex("01".repeat(16)),
             () -> 4662,
@@ -120,6 +129,17 @@ class ServerConnectingTest {
     }
 
     @Test
+    void aServerThatDoesNotAnswerDoesNotHoldUpTheNextOne() throws Exception {
+        this.givenObfuscation(ObfuscationMode.REQUESTED);
+        InetAddress lan = lanAddress();
+        this.givenTheKnownServers(ScriptedServer.startAt(lan, 0, 0), ScriptedServer.startAt(lan, HIGH_ID, 0));
+
+        this.whenTheSessionLooksForAnyServer();
+
+        this.thenTheSessionIsLoggedInWithin(Duration.ofSeconds(10));
+    }
+
+    @Test
     void aServerKnownToBePlainIsTriedPlainlyAtOnce() throws Exception {
         this.givenObfuscation(ObfuscationMode.REQUESTED);
         this.givenAPlainServerPingedBefore(this.plainServer());
@@ -155,6 +175,17 @@ class ServerConnectingTest {
                 .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0));
     }
 
+    // Pinged before and plain, the first of high priority.
+    private void givenTheKnownServers(ScriptedServer... known) {
+        for (ScriptedServer server : known) {
+            this.scripted.add(server);
+            ServerMet.Server listed = new ServerMet.Server(server.ip(), server.port(), List.of())
+                    .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0));
+            assertThat(this.servers.add(listed)).isTrue();
+        }
+        this.servers.setPriority(new ServerList.Address(known[0].ip(), known[0].port()), ServerInfo.Priority.HIGH);
+    }
+
     private void givenTheSessionConnectedAndLeft() throws Exception {
         this.whenTheSessionConnects();
         this.thenTheSessionIsLoggedIn(false);
@@ -170,6 +201,17 @@ class ServerConnectingTest {
             this.session.connect(Optional.of(this.target));
             return null;
         });
+    }
+
+    private void whenTheSessionLooksForAnyServer() throws Exception {
+        this.onLoop(() -> {
+            this.session.connect(Optional.empty());
+            return null;
+        });
+    }
+
+    private void thenTheSessionIsLoggedInWithin(Duration time) throws Exception {
+        assertThat(this.next("connected", time)).isEqualTo("connected " + HIGH_ID);
     }
 
     private void thenTheSessionIsLoggedIn(boolean obfuscated) throws Exception {
@@ -194,7 +236,11 @@ class ServerConnectingTest {
     }
 
     private String next(String kind) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        return this.next(kind, Duration.ofSeconds(20));
+    }
+
+    private String next(String kind, Duration wait) throws InterruptedException {
+        long deadline = System.nanoTime() + wait.toNanos();
         while (System.nanoTime() < deadline) {
             String event = this.events.poll(100, TimeUnit.MILLISECONDS);
             if (event != null && event.startsWith(kind)) {
@@ -202,6 +248,22 @@ class ServerConnectingTest {
             }
         }
         throw new AssertionError("no " + kind + " in " + this.seen);
+    }
+
+    // Servers at loopback are not taken in the server list: this computer's LAN address is.
+    private static InetAddress lanAddress() throws SocketException {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) {
+                continue;
+            }
+            for (InetAddress address : Collections.list(nic.getInetAddresses())) {
+                if (address instanceof Inet4Address && !address.isLinkLocalAddress()) {
+                    return address;
+                }
+            }
+        }
+        assumeTrue(false, "no LAN address");
+        throw new IllegalStateException();
     }
 
     private <T> T onLoop(Callable<T> task) throws Exception {
