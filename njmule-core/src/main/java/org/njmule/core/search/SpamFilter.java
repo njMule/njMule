@@ -19,6 +19,9 @@ package org.njmule.core.search;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -30,8 +33,15 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.SearchFiles;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.io.StringEncoding;
+import org.njmule.core.protocol.tag.Ed2kTagFormat;
 import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.TagName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The search results marked as spam, kept in {@code SearchSpam.met}: by file hash, by full name, and the hashes cleared
@@ -40,6 +50,10 @@ import org.njmule.core.protocol.tag.TagName;
 public final class SpamFilter {
 
     public static final String FILE_NAME = "SearchSpam.met";
+
+    private static final Logger logger = LoggerFactory.getLogger(SpamFilter.class);
+    private static final DateTimeFormatter CORRUPT_TIME =
+            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'", Locale.ROOT).withZone(ZoneOffset.UTC);
 
     private final Set<Hash16> spam = new LinkedHashSet<>();
     private final Set<Hash16> notSpam = new LinkedHashSet<>();
@@ -52,18 +66,47 @@ public final class SpamFilter {
         // Markers come from load and mark.
     }
 
-    /** Reads {@code file}, or its backup; a missing file gives no markers. */
+    /**
+     * Reads {@code file}, or its backup; a missing file gives no markers. When neither can be decoded, they are set
+     * aside as {@code <name>.corrupt-<time>}, so that saving does not overwrite them, and there are no markers.
+     */
     public static SpamFilter load(Path file) throws IOException {
         SpamFilter filter = new SpamFilter();
-        if (Files.exists(file) || Files.exists(AtomicFiles.bakPath(file.toAbsolutePath()))) {
-            for (Tag tag : AtomicFiles.read(file, in -> SearchFiles.readSpam(in.readAllBytes()))) {
-                filter.take(tag);
-            }
+        Path bak = AtomicFiles.bakPath(file.toAbsolutePath());
+        if (!Files.exists(file) && !Files.exists(bak)) {
+            return filter;
+        }
+        List<Tag> tags;
+        try {
+            tags = AtomicFiles.read(file, in -> SearchFiles.readSpam(in.readAllBytes()));
+        } catch (DecodeException e) {
+            logger.warn("{} is damaged: set aside, no spam markers", file, e);
+            String suffix = ".corrupt-" + CORRUPT_TIME.format(Instant.now());
+            setAside(file, suffix);
+            setAside(bak, suffix);
+            return filter;
+        }
+        for (Tag tag : tags) {
+            filter.take(tag);
         }
         return filter;
     }
 
+    private static void setAside(Path file, String suffix) {
+        try {
+            if (Files.exists(file)) {
+                Files.move(file, file.resolveSibling(file.getFileName() + suffix));
+            }
+        } catch (IOException e) {
+            logger.warn("Cannot set {} aside", file, e);
+        }
+    }
+
     private void take(Tag tag) {
+        if (!writable(tag)) {
+            logger.debug("Dropping the spam marker {}, which the file cannot hold", tag.name());
+            return;
+        }
         int id = tag.name().isId() ? tag.name().id() : -1;
         switch (tag) {
             case Tag.HashTag h when id == SearchFiles.SPAM_HASH -> this.spam.add(h.value());
@@ -86,7 +129,18 @@ public final class SpamFilter {
             markers.add(new Tag.HashTag(TagName.id(SearchFiles.NOT_SPAM_HASH), hash));
         }
         markers.addAll(this.others);
+        markers.removeIf(marker -> !writable(marker));
         AtomicFiles.writeBytes(file, SearchFiles.writeSpam(markers));
+    }
+
+    // Short blobs and strings too long for their length field cannot be written as eD2K tags.
+    private static boolean writable(Tag tag) {
+        try {
+            TagCodec.writeEd2k(new PacketWriter(), tag, Ed2kTagFormat.NEW, StringEncoding.UTF8_BOM_IF_NEEDED);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /** Marks the file {@code hash} named {@code name} as spam, or clears it. */

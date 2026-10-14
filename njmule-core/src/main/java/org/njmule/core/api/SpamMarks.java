@@ -25,6 +25,9 @@ public record SpamMarks(Set<Hash16> spam, Set<Hash16> notSpam, Set<String> names
 
     public static final SpamMarks NONE = new SpamMarks(Set.of(), Set.of(), Set.of());
 
+    /** Names this long or shorter (such as {@code setup.exe}) are too common to mark other files as spam alone. */
+    public static final int MAX_COMMON_NAME = 10;
+
     public SpamMarks {
         spam = Set.copyOf(spam);
         notSpam = Set.copyOf(notSpam);
@@ -38,6 +41,7 @@ public record SpamMarks(Set<Hash16> spam, Set<Hash16> notSpam, Set<String> names
             return false;
         }
         return this.spam.contains(result.hash())
-                || this.names.contains(result.name().toLowerCase(Locale.ROOT));
+                || (result.name().length() > MAX_COMMON_NAME
+                        && this.names.contains(result.name().toLowerCase(Locale.ROOT)));
     }
 }
