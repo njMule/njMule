@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -74,6 +75,8 @@ class SearchManagerTest {
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final ServerList servers = new ServerList();
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
+    private final List<SearchResult> reported = new CopyOnWriteArrayList<>();
+    private Consumer<List<SearchResult>> kadAnswers;
     private final List<AutoCloseable> resources = new ArrayList<>();
     private volatile Optional<ServerUdp> udp = Optional.empty();
     private volatile Optional<SearchManager.KadSearches> kad = Optional.empty();
@@ -157,6 +160,44 @@ class SearchManagerTest {
                 .isEqualTo("ended " + id.value() + " " + SearchManager.MAX_RESULTS);
         assertThat(stopped).containsExactly("distro");
         assertThat(this.events.poll(200, TimeUnit.MILLISECONDS)).isNull();
+    }
+
+    @Test
+    void shouldFillTheMediaDetailsAFirstAnswerLackedFromLaterOnes() throws Exception {
+        this.givenAKadSearchFor("opening song");
+        this.givenKadAnswered(song(new SearchResult.Media("Some Band", "", "", 0, 192, "")));
+
+        this.whenKadAnswers(song(new SearchResult.Media("Other Band", "First Album", "", 205, 128, "mp3")));
+
+        this.thenTheLastResultHasTheMedia(new SearchResult.Media("Some Band", "First Album", "", 205, 192, "mp3"));
+    }
+
+    private void givenAKadSearchFor(String words) throws Exception {
+        this.kad = Optional.of((keyword, expression, results) -> {
+            this.kadAnswers = results;
+            return Optional.of(() -> {});
+        });
+        this.onLoop(() -> this.manager.start(kad(words)));
+    }
+
+    private void givenKadAnswered(SearchResult result) throws Exception {
+        this.whenKadAnswers(result);
+    }
+
+    private void whenKadAnswers(SearchResult result) throws Exception {
+        this.onLoop(() -> {
+            this.kadAnswers.accept(List.of(result));
+            return null;
+        });
+        this.next();
+    }
+
+    private void thenTheLastResultHasTheMedia(SearchResult.Media expected) {
+        assertThat(this.reported.getLast().media()).isEqualTo(expected);
+    }
+
+    private static SearchResult song(SearchResult.Media media) {
+        return new SearchResult(hash(9), "opening song.mp3", 4_000_000, 1, 0, Optional.of("Audio"), media);
     }
 
     @Test
@@ -359,6 +400,7 @@ class SearchManagerTest {
     private final class Events implements SearchManager.Listener {
         @Override
         public void results(SearchId search, List<SearchResult> changed) {
+            SearchManagerTest.this.reported.addAll(changed);
             SearchResult first = changed.getFirst();
             SearchManagerTest.this.events.add("results " + search.value() + " " + first.name() + " " + first.sources()
                     + "/" + first.completeSources());

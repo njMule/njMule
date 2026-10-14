@@ -38,6 +38,9 @@ class StoredSearchesTest {
     @TempDir
     Path dir;
 
+    private List<SavedSearch> saved;
+    private List<SavedSearch> loaded;
+
     @Test
     void keepsTheOpenSearchesWithTheirResults() throws Exception {
         Path file = this.dir.resolve(StoredSearches.FILE_NAME);
@@ -115,6 +118,36 @@ class StoredSearchesTest {
         Files.write(file, new byte[] {0x0F, 1, 5});
 
         assertThat(StoredSearches.load(file)).isEqualTo(first);
+    }
+
+    @Test
+    void shouldKeepTheMediaDetailsOfTheResults() throws Exception {
+        this.givenAnOpenSearchWith(new SearchResult(
+                hash(7),
+                "song.mp3",
+                4_000_000,
+                1,
+                0,
+                Optional.of("Audio"),
+                new SearchResult.Media("Some Band", "First Album", "Opening Song", 205, 192, "mp3")));
+
+        this.whenTheSearchesAreSavedAndLoaded();
+
+        this.thenTheLoadedSearchesAreTheSaved();
+    }
+
+    private void givenAnOpenSearchWith(SearchResult result) {
+        this.saved = List.of(new SavedSearch("", new SearchRequest("song", SearchRequest.Scope.KAD), List.of(result)));
+    }
+
+    private void whenTheSearchesAreSavedAndLoaded() throws Exception {
+        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
+        StoredSearches.save(file, this.saved);
+        this.loaded = StoredSearches.load(file);
+    }
+
+    private void thenTheLoadedSearchesAreTheSaved() {
+        assertThat(this.loaded).isEqualTo(this.saved);
     }
 
     private static SearchFiles.StoredSearch stored(

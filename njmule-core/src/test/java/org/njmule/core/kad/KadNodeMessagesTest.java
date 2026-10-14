@@ -36,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.kad.KadMessages;
@@ -504,7 +505,9 @@ class KadNodeMessagesTest {
                                 new Tag.StringTag(TagName.id(FileTag.FILENAME), "Ubuntu Desktop 24.iso"),
                                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), 5000),
                                 new Tag.IntTag(TagName.id(FileTag.SOURCES), 7),
-                                new Tag.StringTag(TagName.id(FileTag.FILETYPE), "Iso"))),
+                                new Tag.StringTag(TagName.id(FileTag.FILETYPE), "Iso"),
+                                new Tag.StringTag(TagName.id(FileTag.MEDIA_TITLE), "Noble Numbat"),
+                                new Tag.IntTag(TagName.id(FileTag.MEDIA_LENGTH), 95))),
                 entry(UInt128.random(this.random), "ubuntu server.iso", 5000),
                 entry(UInt128.random(this.random), "ubuntu desktop.iso", 0),
                 new KadMessages.Entry(
@@ -512,8 +515,13 @@ class KadNodeMessagesTest {
         this.receive(PEER, new KadMessages.SearchAnswer(target, target, entries).encode());
 
         assertThat(found)
-                .containsExactly(
-                        new KadNode.FileResult(good.toHash16(), "Ubuntu Desktop 24.iso", 5000, 7, Optional.of("Iso")));
+                .containsExactly(new KadNode.FileResult(
+                        good.toHash16(),
+                        "Ubuntu Desktop 24.iso",
+                        5000,
+                        7,
+                        Optional.of("Iso"),
+                        new SearchResult.Media("", "", "Noble Numbat", 95, 0, "")));
         // Results for a search nobody runs.
         UInt128 other = Keywords.id("debian");
         this.receive(PEER, new KadMessages.SearchAnswer(other, other, entries).encode());

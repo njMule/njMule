@@ -21,12 +21,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.tag.Ed2kTagFormat;
 import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.MediaTags;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.Tags;
@@ -100,5 +102,9 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
     /** The type servers report, e.g. {@code Video} or {@code Pro}. */
     public Optional<String> type() {
         return Tags.stringValue(this.tags, FileTag.FILETYPE);
+    }
+
+    public SearchResult.Media media() {
+        return MediaTags.read(this.tags);
     }
 }

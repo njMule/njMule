@@ -29,6 +29,7 @@ import org.njmule.core.persist.format.SearchFiles;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.MediaTags;
 import org.njmule.core.protocol.tag.Tag;
 
 /** The search tabs left open at exit, in {@code StoredSearches.met}, to show again at the next start. */
@@ -98,7 +99,8 @@ public final class StoredSearches {
                         entry.size().getAsLong(),
                         entry.sources(),
                         entry.completeSources(),
-                        entry.type()));
+                        entry.type(),
+                        entry.media()));
             }
         }
         return new SavedSearch(
@@ -135,6 +137,7 @@ public final class StoredSearches {
             tags.add(Tag.of(FileTag.SOURCES, r.sources()));
             tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
             r.type().ifPresent(t -> tags.add(Tag.of(FileTag.FILETYPE, t)));
+            tags.addAll(MediaTags.of(r.media()));
             results.add(new SearchFiles.Result(r.hash(), 0, 0, tags));
         }
         // The file type stays empty (any): the expression holds the one asked for.

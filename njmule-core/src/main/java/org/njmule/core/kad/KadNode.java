@@ -40,6 +40,7 @@ import java.util.function.ToIntFunction;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.io.DecodeException;
@@ -49,6 +50,7 @@ import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.MediaTags;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
@@ -79,7 +81,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
     public record Source(Hash16 userHash, int ip, int tcpPort, int connectOptions) {}
 
     /** A file a keyword search found. */
-    public record FileResult(Hash16 hash, String name, long size, int sources, Optional<String> type) {}
+    public record FileResult(
+            Hash16 hash, String name, long size, int sources, Optional<String> type, SearchResult.Media media) {}
 
     /**
      * Settings that are not the protocol's.
@@ -1043,7 +1046,8 @@ public final class KadNode implements KadPublisher.Node, AutoCloseable {
                     name.get(),
                     size,
                     (int) Tags.intValue(e.tags(), FileTag.SOURCES).orElse(0),
-                    Tags.stringValue(e.tags(), FileTag.FILETYPE)));
+                    Tags.stringValue(e.tags(), FileTag.FILETYPE),
+                    MediaTags.read(e.tags())));
         }
         return results;
     }

@@ -360,7 +360,8 @@ public final class SearchManager {
                     file.size().getAsLong(),
                     file.sources(),
                     file.completeSources(),
-                    file.type()));
+                    file.type(),
+                    file.media()));
         }
         this.mergeResults(search, found, true);
     }
@@ -395,7 +396,8 @@ public final class SearchManager {
                             addCounts
                                     ? saturatedAdd(known.completeSources(), file.completeSources())
                                     : Math.max(known.completeSources(), file.completeSources()),
-                            known.type().or(file::type));
+                            known.type().or(file::type),
+                            known.media().or(file.media()));
             search.results.put(file.hash(), merged);
             changed.add(merged);
         }
