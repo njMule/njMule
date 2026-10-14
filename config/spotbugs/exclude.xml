@@ -85,6 +85,13 @@
         <Package name="org.njmule.webui"/>
     </Match>
 
+    <!-- The launch agent that starts njMule at login on macOS is written from fixed markup and our
+         own program path and arguments, each escaped for XML element content (AutostartTest). -->
+    <Match>
+        <Bug pattern="POTENTIAL_XML_INJECTION"/>
+        <Class name="org.njmule.app.SystemAutostart$MacOs"/>
+    </Match>
+
     <!-- The desktop interface shares observable state on purpose: JavaFX views bind to the
          model's properties and lists, and screens hand out their nodes; all of it lives on the FX
          thread. -->
