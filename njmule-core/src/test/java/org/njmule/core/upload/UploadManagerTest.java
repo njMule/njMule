@@ -67,6 +67,7 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
+import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
@@ -111,6 +112,7 @@ class UploadManagerTest {
     private final List<ScriptedDownloader> slotHolders = new ArrayList<>();
     private ScriptedDownloader client;
     private SharedFiles.SharedFile file;
+    private SharedFiles.SharedFile other;
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
@@ -730,6 +732,100 @@ class UploadManagerTest {
 
     private void thenOurAnswerCameBeforeMostOfTheData() {
         assertThat(this.dataBeforeAnswer).isLessThan(this.file.size() / 2);
+    }
+
+    @Test
+    void sourcesAreToldOnlyForAFileTheClientAskedForOnItsConnection() throws Exception {
+        this.givenAFileWithAWaitingClient();
+        this.givenAClientThatAskedForAnotherFile();
+
+        this.whenItAsksForTheSourcesOfTheFile();
+
+        this.thenItHearsNoSources();
+        this.thenItHearsTheSourcesOnceItAskedForTheFile();
+    }
+
+    @Test
+    void aClientAtABannedAddressHearsNoSources() throws Exception {
+        this.givenTwoSlotsBusyUnderALimit();
+        this.givenTheirAddressBannedForAClientThatAskedTooOften();
+
+        this.whenASlotHolderAsksForTheSourcesOfItsFile();
+
+        this.thenItHearsNoSources();
+    }
+
+    @Test
+    void theSourceAnswersGivenAreForgottenOnceTheyCanBeAskedAgain() throws Exception {
+        this.givenAFileWithAWaitingClient();
+        this.givenAClientToldItsSources();
+
+        this.whenTheLongestWaitForSourcesPasses();
+
+        this.thenNoSourceAnswerIsRemembered();
+    }
+
+    private void givenAFileWithAWaitingClient() throws Exception {
+        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
+        this.file = this.share("sought.bin", random(3000, 18));
+        this.other = this.share("other.bin", random(3000, 19));
+        this.start();
+        for (int seed = 1; seed <= 3; seed++) {
+            this.ask(this.client(seed, 0, 0), this.file.hash());
+        }
+    }
+
+    private void givenAClientThatAskedForAnotherFile() throws Exception {
+        this.client = this.client(4, 0, 0);
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.other.hash()));
+        this.client.until(Opcodes.Client.REQFILENAMEANSWER);
+    }
+
+    private void givenAClientToldItsSources() throws Exception {
+        this.givenAClientThatAskedForAnotherFile();
+        this.thenItHearsTheSourcesOnceItAskedForTheFile();
+        this.await("the answer remembered", () -> this.manager.describe().contains(", 1 source answers"));
+    }
+
+    private void givenTheirAddressBannedForAClientThatAskedTooOften() throws Exception {
+        ScriptedDownloader eager = this.client(5, 0, 0);
+        for (int i = 0; i < UploadManager.BAD_LIMIT; i++) {
+            this.ask(eager, this.file.hash());
+        }
+        eager.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
+        assertThat(eager.closedWithin(WAIT)).isTrue();
+        this.client = this.slotHolders.getFirst();
+    }
+
+    private void whenItAsksForTheSourcesOfTheFile() throws IOException {
+        this.client.send(SourceExchange.request(this.file.hash()));
+    }
+
+    private void whenASlotHolderAsksForTheSourcesOfItsFile() throws IOException {
+        this.whenItAsksForTheSourcesOfTheFile();
+    }
+
+    private void whenTheLongestWaitForSourcesPasses() {
+        this.advance(Duration.ofMinutes(161));
+    }
+
+    private void thenItHearsNoSources() throws IOException {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        assertThat(names(this.client.until(Protocol.EDONKEY, Opcodes.Client.REQFILENAMEANSWER.code())))
+                .doesNotContain("ANSWERSOURCES2");
+    }
+
+    private void thenItHearsTheSourcesOnceItAskedForTheFile() throws IOException, DecodeException {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        this.client.until(Opcodes.Client.REQFILENAMEANSWER);
+        this.client.send(SourceExchange.request(this.file.hash()));
+        assertThat(SourceExchange.Answer.decode(this.client.until(Opcodes.Extended.ANSWERSOURCES2))
+                        .sources())
+                .hasSize(3);
+    }
+
+    private void thenNoSourceAnswerIsRemembered() throws Exception {
+        this.await("the answer forgotten", () -> this.manager.describe().contains(", 0 source answers"));
     }
 
     private ScriptedDownloader client(int seed, long clientId, int listenPort) throws IOException {

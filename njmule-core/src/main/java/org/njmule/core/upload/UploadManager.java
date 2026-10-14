@@ -138,6 +138,7 @@ public final class UploadManager implements AutoCloseable {
     private static final Duration CREDITS_SAVE = Duration.ofMinutes(13);
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
+    private static final Duration SX_PURGE = Duration.ofMinutes(1);
     private static final int SX_RARE_SOURCES = 50;
     private static final int SX_PACK_ABOVE = 354;
     private static final int HEADER = TcpFraming.HEADER_SIZE;
@@ -179,6 +180,8 @@ public final class UploadManager implements AutoCloseable {
 
     /** A packet to send and the file bytes it completes. */
     private record Item(Packet packet, long payload) {}
+
+    private record Asker(InetAddress ip, Hash16 userHash) {}
 
     private static final class Slot {
         private final Client client;
@@ -222,7 +225,8 @@ public final class UploadManager implements AutoCloseable {
     private final List<Slot> slots = new ArrayList<>();
     // Banned addresses until when; read by the listener thread too.
     private final Map<InetAddress, Long> bans = new ConcurrentHashMap<>();
-    private final Map<Hash16, Long> sourcesAnswered = new HashMap<>();
+    // When each client, by address and user hash, was last told sources.
+    private final Map<Asker, Long> sourcesAnswered = new HashMap<>();
     private final Function<Hash16, List<SourceExchange.Source>> downloadSources;
     private final IntConsumer reachable;
     private final SessionEvents events = new SessionEvents();
@@ -278,6 +282,7 @@ public final class UploadManager implements AutoCloseable {
     private long budget;
     private Function<Hash16, UploadPriority> priorities = hash -> UploadPriority.AUTO;
     private long nextCreditsSave;
+    private long nextSourcesPurge;
     private int turn;
 
     /**
@@ -321,6 +326,7 @@ public final class UploadManager implements AutoCloseable {
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.nextCreditsSave = ticker.read() + CREDITS_SAVE.toNanos();
+        this.nextSourcesPurge = ticker.read() + SX_PURGE.toNanos();
     }
 
     /** Starts serving the queue. */
@@ -331,8 +337,8 @@ public final class UploadManager implements AutoCloseable {
     /** Slots and waiting clients, for diagnostics. */
     public String describe() {
         long called = this.waiting.values().stream().filter(c -> c.nextConnect).count();
-        StringBuilder text =
-                new StringBuilder("waiting " + this.waiting.size() + ", " + called + " called when they ask");
+        StringBuilder text = new StringBuilder("waiting " + this.waiting.size() + ", " + called
+                + " called when they ask, " + this.sourcesAnswered.size() + " source answers");
         for (Slot slot : this.slots) {
             text.append("\nslot ")
                     .append(slot.session.describe())
@@ -459,6 +465,11 @@ public final class UploadManager implements AutoCloseable {
         if (now - this.nextCreditsSave >= 0) {
             this.nextCreditsSave = now + CREDITS_SAVE.toNanos();
             this.credits.save();
+        }
+        // An answer older than the longest wait no longer holds anyone back.
+        if (now - this.nextSourcesPurge >= 0) {
+            this.nextSourcesPurge = now + SX_PURGE.toNanos();
+            this.sourcesAnswered.values().removeIf(at -> now - at >= SX_INTERVAL.toNanos());
         }
     }
 
@@ -816,9 +827,16 @@ public final class UploadManager implements AutoCloseable {
         this.open(client, session);
     }
 
-    // A client may ask once, then again after 40 minutes for rare downloads or 160 for the rest.
+    // A client may ask once, then again after 40 minutes for rare downloads or 160 for the rest; only for a file it
+    // asked
+    // for on the connection, and never while its address is banned. The wait goes by address and user hash, so another
+    // address claiming the hash cannot keep the client from its answer.
     private void answerSources(UploadSession session, SourceExchange.Request request) {
         long now = this.ticker.read();
+        InetAddress ip = session.address().getAddress();
+        if (!session.asked(request.file()) || this.isBanned(ip)) {
+            return;
+        }
         Optional<Uploadable> file = this.find(request.file());
         if (file.isEmpty() || request.version() < 1) {
             return;
@@ -829,7 +847,8 @@ public final class UploadManager implements AutoCloseable {
             sources.addAll(this.downloadSources.apply(request.file()));
         }
         boolean rare = download.isPresent() && sources.size() <= SX_RARE_SOURCES;
-        Long last = this.sourcesAnswered.get(session.userHash());
+        Asker asker = new Asker(ip, session.userHash());
+        Long last = this.sourcesAnswered.get(asker);
         long wait = (rare ? SX_RARE_INTERVAL : SX_INTERVAL).toNanos();
         if (last != null && now - last < wait) {
             return;
@@ -849,7 +868,7 @@ public final class UploadManager implements AutoCloseable {
         if (sources.isEmpty()) {
             return;
         }
-        this.sourcesAnswered.put(session.userHash(), now);
+        this.sourcesAnswered.put(asker, now);
         List<SourceExchange.Source> sent = sources.subList(0, Math.min(sources.size(), SourceExchange.MAX_SOURCES));
         int version = Math.min(request.version(), SourceExchange.VERSION);
         Packet answer = new SourceExchange.Answer(version, request.file(), sent).encode();

@@ -89,13 +89,16 @@ class SourceExchangeAnswerTest {
         downloader.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
         downloader.poll(Duration.ofSeconds(1));
 
+        // Clients ask for the file before they ask for its sources.
         Client fromLan = this.client(lan.get(), engine, 2);
+        fromLan.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
         fromLan.send(SourceExchange.request(file.hash()));
         assertThat(fromLan.answer(Duration.ofSeconds(2)))
                 .as("a loopback address means nothing to another machine")
                 .isEmpty();
 
         Client local = this.client(InetAddress.getLoopbackAddress(), engine, 3);
+        local.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
         local.send(SourceExchange.request(file.hash()));
         assertThat(local.answer(WAIT).orElseThrow().sources())
                 .singleElement()

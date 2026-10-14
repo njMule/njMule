@@ -421,6 +421,9 @@ All notable changes to this project are documented here. The format follows
 - The secure identification works with a LowID and without a server too: signatures are bound to
   and checked with the address the server reports or the one Kad nodes see, so peers that bind
   them to our address get their credits.
+- Source exchange: sources are told only for a file the client asked for on its connection and
+  never to a banned address; the wait between two answers goes by address and user hash, so
+  another address claiming a user hash cannot take its answers, and old answers are forgotten.
 - While Kad is firewalled our hello announces a LowID, as peers expect.
 - Byte-swapped LowIDs in source exchange answers are read as LowIDs.
 - njMule announces a compatible-client id that no other client uses.

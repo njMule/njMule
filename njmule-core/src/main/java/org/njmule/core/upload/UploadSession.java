@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -132,6 +133,8 @@ final class UploadSession implements PeerLink.Role {
     // Requests held while a friend's identity is being proven, at most.
     private static final int MAX_HELD = 16;
 
+    private static final int MAX_NAMED = 32;
+
     private static final Logger logger = LoggerFactory.getLogger(UploadSession.class);
 
     private PeerChannel connection;
@@ -142,6 +145,8 @@ final class UploadSession implements PeerLink.Role {
     private final Set<Block> sent = new HashSet<>();
     private Hello peer;
     private final Set<Hash16> commented = new HashSet<>();
+    // Files of ours the client asked for on this connection, the latest ones.
+    private final Set<Hash16> named = new LinkedHashSet<>();
     private Optional<Uploadable> file = Optional.empty();
     private Optional<Identities.Session> identity = Optional.empty();
     private final List<Packet> held = new ArrayList<>();
@@ -181,6 +186,22 @@ final class UploadSession implements PeerLink.Role {
 
     boolean isOpen() {
         return !this.closed && this.connection.isOpen();
+    }
+
+    /** Whether the client asked for {@code file} of ours on this connection, by name, status or upload. */
+    boolean asked(Hash16 file) {
+        return this.named.contains(file);
+    }
+
+    private Optional<Uploadable> name(Optional<Uploadable> file) {
+        file.ifPresent(f -> {
+            this.named.remove(f.hash());
+            this.named.add(f.hash());
+            if (this.named.size() > MAX_NAMED) {
+                this.named.remove(this.named.iterator().next());
+            }
+        });
+        return file;
     }
 
     boolean hasSlot() {
@@ -345,14 +366,14 @@ final class UploadSession implements PeerLink.Role {
             }
             case REQUESTFILENAME -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.lookup(hash).ifPresent(f -> {
+                this.name(this.lookup(hash)).ifPresent(f -> {
                     this.send(new ClientMessages.FileName(hash, f.name()).encode());
                     this.tellComment(hash);
                 });
             }
             case SETREQFILEID -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.file = this.lookup(hash);
+                this.file = this.name(this.lookup(hash));
                 if (this.file.isEmpty()) {
                     this.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, hash));
                 } else {
@@ -367,7 +388,8 @@ final class UploadSession implements PeerLink.Role {
             }
             case STARTUPLOADREQ -> {
                 if (packet.length() >= Hash16.LENGTH) {
-                    this.file = this.lookup(ClientMessages.fileOf(packet)).or(() -> this.file);
+                    this.file = this.name(this.lookup(ClientMessages.fileOf(packet)))
+                            .or(() -> this.file);
                 }
                 this.file.ifPresent(f -> this.queue.requested(this, f));
             }
