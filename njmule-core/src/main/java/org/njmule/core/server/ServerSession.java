@@ -345,7 +345,7 @@ public final class ServerSession {
                 }
                 case CALLBACKREQUESTED ->
                     this.listener.callbackRequested(ServerMessages.CallbackRequested.decode(packet));
-                case SEARCHRESULT -> this.listener.searchResults(target, ServerMessages.SearchResults.decode(packet));
+                case SEARCHRESULT -> this.listener.searchResults(target, searchResults(packet, target));
                 case FOUNDSOURCES, FOUNDSOURCES_OBFU ->
                     this.listener.foundSources(ServerMessages.FoundSources.decode(packet));
                 case SERVERLIST -> this.listener.serverList(target, ServerMessages.decodeServerList(packet));
@@ -358,6 +358,16 @@ public final class ServerSession {
                     Integer.toHexString(packet.opcode()),
                     ServerList.addressOf(target),
                     e);
+        }
+    }
+
+    // Answers carry no search id, so one that cannot be read still answers the oldest search, as an empty one.
+    private static ServerMessages.SearchResults searchResults(Packet packet, ServerMet.Server from) {
+        try {
+            return ServerMessages.SearchResults.decode(packet);
+        } catch (DecodeException e) {
+            logger.warn("Malformed search answer from {}: {}", ServerList.addressOf(from), e.getMessage());
+            return new ServerMessages.SearchResults(List.of(), false);
         }
     }
 
