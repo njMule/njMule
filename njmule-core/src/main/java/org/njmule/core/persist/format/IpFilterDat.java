@@ -140,10 +140,9 @@ public final class IpFilterDat {
             String rest = line.substring(comma + 1);
             int second = rest.indexOf(',');
             String levelText = (second >= 0 ? rest.substring(0, second) : rest).strip();
-            if (!levelText.isEmpty()
-                    && levelText.length() <= 3
-                    && levelText.chars().allMatch(c -> c >= '0' && c <= '9')) {
-                level = Integer.parseInt(levelText);
+            if (!levelText.isEmpty() && levelText.chars().allMatch(c -> c >= '0' && c <= '9')) {
+                // A level has three digits; lists that write more are read by their first three.
+                level = Integer.parseInt(levelText.substring(0, Math.min(3, levelText.length())));
                 if (second >= 0) {
                     description = rest.substring(second + 1).strip();
                 }

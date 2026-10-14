@@ -20,6 +20,8 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.njmule.core.persist.format.IpFilterDat.Range;
+import org.njmule.core.util.Ipv4;
 
 /** Corner cases of the text formats of an eMule profile. */
 class TextFormatsEdgeCaseTest {
@@ -33,5 +35,13 @@ class TextFormatsEdgeCaseTest {
         assertThat(ini.get("eMule", "ProxyName")).isEmpty();
         assertThat(ini.get("a]b", "k")).contains("v");
         assertThat(ini.sections()).containsExactly("eMule", "Proxy", "a]b");
+    }
+
+    @Test
+    void aLevelOfMoreThanThreeDigitsUsesTheFirstThree() {
+        byte[] file = "001.002.003.000 - 001.002.003.255 , 0127 , Long level\n".getBytes(US_ASCII);
+
+        assertThat(IpFilterDat.read(file, "ipfilter.dat"))
+                .containsExactly(new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 12, "Long level"));
     }
 }
