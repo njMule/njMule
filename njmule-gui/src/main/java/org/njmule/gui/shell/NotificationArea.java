@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
@@ -63,16 +64,22 @@ public final class NotificationArea implements AutoCloseable {
     private final Stage stage;
     private final BooleanSupplier enabled;
     private final Handlers handlers;
+    private final BooleanSupplier supported;
+    // Runs the work on the icon on the AWT event thread.
+    private final Executor awt;
     // A click waits this long for a second one before it counts as single.
     private final PauseTransition single;
     // AWT event thread only.
     private TrayIcon icon;
     private volatile boolean hidden;
 
-    private NotificationArea(Stage stage, BooleanSupplier enabled, Handlers handlers) {
+    private NotificationArea(
+            Stage stage, BooleanSupplier enabled, Handlers handlers, BooleanSupplier supported, Executor awt) {
         this.stage = stage;
         this.enabled = enabled;
         this.handlers = handlers;
+        this.supported = supported;
+        this.awt = awt;
         this.single = new PauseTransition(Duration.millis(doubleClickMillis()));
         this.single.setOnFinished(e -> this.handlers.click());
     }
@@ -92,12 +99,20 @@ public final class NotificationArea implements AutoCloseable {
 
     /** Watches {@code stage}: minimised while {@code enabled} says so, it hides into the notification area. */
     public static NotificationArea attach(Stage stage, BooleanSupplier enabled, Handlers handlers) {
+        return attach(stage, enabled, handlers, NotificationArea::isSupported, EventQueue::invokeLater);
+    }
+
+    /** As above, with {@code supported} telling whether there is a notification area and {@code awt} its thread. */
+    static NotificationArea attach(
+            Stage stage, BooleanSupplier enabled, Handlers handlers, BooleanSupplier supported, Executor awt) {
         NotificationArea area = new NotificationArea(
                 Objects.requireNonNull(stage, "stage"),
                 Objects.requireNonNull(enabled, "enabled"),
-                Objects.requireNonNull(handlers, "handlers"));
+                Objects.requireNonNull(handlers, "handlers"),
+                Objects.requireNonNull(supported, "supported"),
+                Objects.requireNonNull(awt, "awt"));
         stage.iconifiedProperty().addListener((o, was, now) -> {
-            if (now && !area.hidden && area.enabled.getAsBoolean() && isSupported()) {
+            if (now && !area.hidden && area.enabled.getAsBoolean() && area.supported.getAsBoolean()) {
                 area.hide();
             }
         });
@@ -111,7 +126,7 @@ public final class NotificationArea implements AutoCloseable {
 
     /** Hides the window into the notification area now, as when it is minimised. */
     public void hideNow() {
-        if (!this.hidden && isSupported()) {
+        if (!this.hidden && this.supported.getAsBoolean()) {
             this.hide();
         }
     }
@@ -123,7 +138,7 @@ public final class NotificationArea implements AutoCloseable {
             return;
         }
         this.hidden = false;
-        EventQueue.invokeLater(this::removeIcon);
+        this.awt.execute(this::removeIcon);
         this.stage.show();
         this.stage.setIconified(false);
         this.stage.toFront();
@@ -134,7 +149,7 @@ public final class NotificationArea implements AutoCloseable {
     /** Shows {@code text} as a notification of the icon while the window is hidden. */
     public void notify(String text) {
         if (this.hidden) {
-            EventQueue.invokeLater(() -> {
+            this.awt.execute(() -> {
                 if (this.icon != null) {
                     this.icon.displayMessage(NjMuleInfo.NAME, text, TrayIcon.MessageType.INFO);
                 }
@@ -145,7 +160,7 @@ public final class NotificationArea implements AutoCloseable {
     /** The text shown when the pointer rests on the icon. */
     public void tooltip(String text) {
         if (this.hidden) {
-            EventQueue.invokeLater(() -> {
+            this.awt.execute(() -> {
                 if (this.icon != null) {
                     this.icon.setToolTip(text);
                 }
@@ -156,7 +171,7 @@ public final class NotificationArea implements AutoCloseable {
     @Override
     public void close() {
         this.hidden = false;
-        EventQueue.invokeLater(this::removeIcon);
+        this.awt.execute(this::removeIcon);
     }
 
     // The window goes, the icon comes: without the implicit exit off, hiding the last window would end the app.
@@ -164,10 +179,11 @@ public final class NotificationArea implements AutoCloseable {
         this.hidden = true;
         Platform.setImplicitExit(false);
         this.stage.hide();
-        EventQueue.invokeLater(this::showIcon);
+        this.awt.execute(this::showIcon);
     }
 
-    private void clicked() {
+    // A click on the icon, which waits for a second one.
+    void clicked() {
         this.single.playFromStart();
     }
 
