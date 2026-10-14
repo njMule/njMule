@@ -35,6 +35,7 @@ public final class I18n {
     public static final List<Locale> LANGUAGES = List.of(
             Locale.ENGLISH,
             Locale.of("cs"),
+            Locale.of("da"),
             Locale.GERMAN,
             Locale.of("es"),
             Locale.FRENCH,
