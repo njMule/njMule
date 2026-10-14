@@ -98,7 +98,8 @@ public final class GuiSettings {
 
     /** The chosen language; empty to follow the system. */
     public Optional<Locale> language() {
-        String tag = this.values.getProperty("language", "").strip();
+        // it_IT, as Java writes a locale, is the tag it-IT.
+        String tag = this.values.getProperty("language", "").strip().replace('_', '-');
         return tag.isEmpty() ? Optional.empty() : Optional.of(Locale.forLanguageTag(tag));
     }
 

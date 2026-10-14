@@ -165,6 +165,15 @@ class InfraTest {
     }
 
     @Test
+    void aLanguageWrittenWithAnUnderscoreIsUnderstood() throws Exception {
+        Files.writeString(this.dir.resolve(GuiSettings.FILE_NAME), "language=it_IT\n");
+
+        assertThat(GuiSettings.load(this.dir).language())
+                .map(Locale::getLanguage)
+                .contains("it");
+    }
+
+    @Test
     void windowBoundsThatAreNoNumbersAreLeft() throws Exception {
         for (String broken : List.of(
                 "window.x=NaN\nwindow.y=0\nwindow.width=800\nwindow.height=600\n",
