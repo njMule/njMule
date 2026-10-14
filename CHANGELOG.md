@@ -597,3 +597,7 @@ All notable changes to this project are documented here. The format follows
   side, sorting only the bins needed, instead of sorting every contact at each lookup and answer.
 - Kad index searches split and lower-case the words searched for once per search and keep each
   file's most popular name until its names change, instead of working both out for every file.
+- The Kad index (keywords, sources and notes other nodes published to us, and our keywords whose
+  nodes are loaded) is saved when Kad stops and loaded at its start, written crash-safe and read
+  back only as far as it is still alive, near our id and within the limits of live publishes; it
+  is left out of the configuration backups.

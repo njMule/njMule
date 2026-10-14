@@ -39,6 +39,9 @@ class ConfigBackupTest {
     @TempDir
     Path dir;
 
+    private Path config;
+    private Path copy;
+
     @Test
     void copiesTheConfigurationAndKeepsTheLatestOnes() throws Exception {
         Path config = Files.createDirectories(this.dir.resolve("config"));
@@ -112,6 +115,38 @@ class ConfigBackupTest {
                     .isInstanceOf(IllegalArgumentException.class);
         }
         assertThat(ConfigBackup.copies(folder)).isEmpty();
+    }
+
+    @Test
+    void shouldLeaveTheKadIndexOutOfTheCopy() throws Exception {
+        this.givenAConfigurationWith(
+                "nodes.dat", "key_index.dat", "src_index.dat", "notes_index.dat", "load_index.dat");
+
+        this.whenACopyIsWritten();
+
+        this.thenTheCopyHolds("nodes.dat");
+    }
+
+    private void givenAConfigurationWith(String... files) throws Exception {
+        this.config = Files.createDirectories(this.dir.resolve("config"));
+        for (String file : files) {
+            Files.writeString(this.config.resolve(file), "x");
+        }
+    }
+
+    private void whenACopyIsWritten() throws Exception {
+        this.copy =
+                ConfigBackup.write(this.config, this.dir.resolve(ConfigBackup.FOLDER), 1, at("2026-10-15T20:00:00Z"));
+    }
+
+    private void thenTheCopyHolds(String... files) throws Exception {
+        List<String> names = new ArrayList<>();
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(this.copy))) {
+            for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
+                names.add(e.getName());
+            }
+        }
+        assertThat(names).containsExactly(files);
     }
 
     private static Clock at(String instant) {

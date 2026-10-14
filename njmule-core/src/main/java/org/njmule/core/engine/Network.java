@@ -1561,6 +1561,7 @@ final class Network {
             this.kadSocket.deliverTo(this.kad);
             this.kadSocket.deliverClientPacketsTo(this::clientDatagram);
             this.kad.loadNodes();
+            this.kad.loadIndex();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
             this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
                 this.kad.tick();

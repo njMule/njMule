@@ -26,7 +26,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import org.njmule.core.api.FileComment;
+import org.njmule.core.persist.format.KadIndexFiles;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -405,6 +408,228 @@ final class KadIndex {
         }
         this.loaded.remove(key);
         return true;
+    }
+
+    /**
+     * The keyword entries alive at {@code now} for the node {@code ownId}, as a file; times in epoch seconds,
+     * {@code wall} being now. The publishers of each name follow one another, in the order of the names.
+     */
+    KadIndexFiles.KeywordIndex keywordFile(UInt128 ownId, long wall, long now) {
+        List<KadIndexFiles.Keyword> keys = new ArrayList<>();
+        for (Map.Entry<UInt128, Map<UInt128, KeywordEntry>> k : this.keywords.entrySet()) {
+            List<KadIndexFiles.KeywordSource> files = new ArrayList<>();
+            for (Map.Entry<UInt128, KeywordEntry> f : k.getValue().entrySet()) {
+                KeywordEntry entry = f.getValue();
+                entry.forget(now);
+                if (now - entry.expires >= 0 || entry.publishers.isEmpty()) {
+                    continue;
+                }
+                Map<String, List<KadIndexFiles.Publisher>> byName = new HashMap<>();
+                for (Map.Entry<Integer, Publisher> p : entry.publishers.entrySet()) {
+                    byName.computeIfAbsent(p.getValue().name(), n -> new ArrayList<>())
+                            .add(new KadIndexFiles.Publisher(
+                                    p.getKey(), wallOf(p.getValue().at(), wall, now), 0xFFFF));
+                }
+                List<KadIndexFiles.PublishedName> names = new ArrayList<>();
+                List<KadIndexFiles.Publisher> publishers = new ArrayList<>();
+                for (Map.Entry<String, Integer> n : entry.names.entrySet()) {
+                    names.add(new KadIndexFiles.PublishedName(n.getKey(), n.getValue()));
+                    publishers.addAll(byName.getOrDefault(n.getKey(), List.of()));
+                }
+                List<Tag> tags = new ArrayList<>();
+                tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), entry.popularName()));
+                tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), entry.size));
+                tags.addAll(entry.tags);
+                files.add(new KadIndexFiles.KeywordSource(
+                        f.getKey(),
+                        List.of(new KadIndexFiles.KeywordEntry(
+                                wallOf(entry.expires, wall, now),
+                                new KadIndexFiles.Tracking(List.of(), names, publishers),
+                                tags))));
+            }
+            if (!files.isEmpty()) {
+                keys.add(new KadIndexFiles.Keyword(k.getKey(), files));
+            }
+        }
+        return new KadIndexFiles.KeywordIndex(4, wall + KEYWORD_LIFETIME.toSeconds(), ownId, keys);
+    }
+
+    /**
+     * Takes back the keyword entries of a file written for the node {@code ownId}, each publisher as if it published
+     * again when it last did: the same limits apply as to a live publish. Publishers {@code refused} are left out.
+     */
+    void restoreKeywords(KadIndexFiles.KeywordIndex file, UInt128 ownId, IntPredicate refused, long wall, long now) {
+        if (file.expiry() <= wall || !file.ownId().equals(ownId)) {
+            return;
+        }
+        for (KadIndexFiles.Keyword k : file.keywords()) {
+            for (KadIndexFiles.KeywordSource f : k.sources()) {
+                for (KadIndexFiles.KeywordEntry e : f.entries()) {
+                    if (e.lifetime() > wall) {
+                        this.restoreKeyword(k.key(), f.id(), e, refused, wall, now);
+                    }
+                }
+            }
+        }
+    }
+
+    private void restoreKeyword(
+            UInt128 keyword, UInt128 id, KadIndexFiles.KeywordEntry e, IntPredicate refused, long wall, long now) {
+        Optional<String> popular = Tags.stringValue(e.tags(), FileTag.FILENAME);
+        OptionalLong size = Tags.intValue(e.tags(), FileTag.FILESIZE);
+        if (popular.isEmpty() || size.isEmpty()) {
+            return;
+        }
+        List<Tag> other = otherTags(e.tags());
+        // Each name goes to as many of the publishers that follow as it counts.
+        List<KadIndexFiles.Publisher> publishers = e.tracking().publishers();
+        List<String> names = new ArrayList<>();
+        for (KadIndexFiles.PublishedName n : e.tracking().names()) {
+            for (long i = 0; i < n.popularity() && names.size() < publishers.size(); i++) {
+                names.add(n.name());
+            }
+        }
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < publishers.size(); i++) {
+            order.add(i);
+        }
+        order.sort((a, b) ->
+                Long.compare(publishers.get(a).time(), publishers.get(b).time()));
+        for (int i : order) {
+            KadIndexFiles.Publisher p = publishers.get(i);
+            long at = Math.min(p.time(), wall);
+            if (refused.test(p.ip()) || at + KEYWORD_LIFETIME.toSeconds() <= wall) {
+                continue;
+            }
+            List<Tag> tags = new ArrayList<>(other.size() + 2);
+            tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), i < names.size() ? names.get(i) : popular.get()));
+            tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size.getAsLong()));
+            tags.addAll(other);
+            this.publishKeyword(keyword, new KadMessages.Entry(id, tags), p.ip(), tickerOf(at, wall, now));
+        }
+    }
+
+    /** The sources alive at {@code now}, as a file; times in epoch seconds, {@code wall} being now. */
+    KadIndexFiles.SourceIndex sourceFile(long wall, long now) {
+        List<KadIndexFiles.IndexKey> keys = new ArrayList<>();
+        for (Map.Entry<UInt128, Map<UInt128, SourceEntry>> k : this.sources.entrySet()) {
+            List<KadIndexFiles.Source> list = new ArrayList<>();
+            for (Map.Entry<UInt128, SourceEntry> s : k.getValue().entrySet()) {
+                if (now - s.getValue().expires() < 0) {
+                    list.add(new KadIndexFiles.Source(
+                            s.getKey(),
+                            List.of(new KadIndexFiles.Entry(
+                                    wallOf(s.getValue().expires(), wall, now),
+                                    s.getValue().tags()))));
+                }
+            }
+            if (!list.isEmpty()) {
+                keys.add(new KadIndexFiles.IndexKey(k.getKey(), list));
+            }
+        }
+        return new KadIndexFiles.SourceIndex(2, wall + SOURCE_LIFETIME.toSeconds(), keys);
+    }
+
+    /** Takes back the sources of a file whose key is {@code near} us, as live publishes from their address. */
+    void restoreSources(
+            KadIndexFiles.SourceIndex file, Predicate<UInt128> near, IntPredicate refused, long wall, long now) {
+        if (file.expiry() <= wall) {
+            return;
+        }
+        for (KadIndexFiles.IndexKey k : file.keys()) {
+            if (!near.test(k.key())) {
+                continue;
+            }
+            for (KadIndexFiles.Source s : k.sources()) {
+                for (KadIndexFiles.Entry e : s.entries()) {
+                    int ip = (int) Tags.intValue(e.tags(), FileTag.SOURCEIP).orElse(0);
+                    int udp = Tags.portValue(e.tags(), FileTag.SOURCEUPORT).orElse(0);
+                    long lifetime = Math.min(e.lifetime(), wall + SOURCE_LIFETIME.toSeconds());
+                    if (lifetime > wall && ip != 0 && !refused.test(ip)) {
+                        this.publishSource(
+                                k.key(),
+                                s.id(),
+                                e.tags(),
+                                ip,
+                                udp,
+                                tickerOf(lifetime, wall, now) - SOURCE_LIFETIME.toNanos());
+                    }
+                }
+            }
+        }
+    }
+
+    /** The notes alive at {@code now}, as a file of the sources' layout: each note with its publisher's address. */
+    KadIndexFiles.SourceIndex noteFile(long wall, long now) {
+        List<KadIndexFiles.IndexKey> keys = new ArrayList<>();
+        for (Map.Entry<UInt128, Map<UInt128, NoteEntry>> k : this.notes.entrySet()) {
+            List<KadIndexFiles.Source> list = new ArrayList<>();
+            for (Map.Entry<UInt128, NoteEntry> n : k.getValue().entrySet()) {
+                NoteEntry note = n.getValue();
+                if (now - note.expires() < 0) {
+                    List<Tag> tags = new ArrayList<>(note.tags());
+                    tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEIP), Integer.toUnsignedLong(note.ip())));
+                    list.add(new KadIndexFiles.Source(
+                            n.getKey(), List.of(new KadIndexFiles.Entry(wallOf(note.expires(), wall, now), tags))));
+                }
+            }
+            if (!list.isEmpty()) {
+                keys.add(new KadIndexFiles.IndexKey(k.getKey(), list));
+            }
+        }
+        return new KadIndexFiles.SourceIndex(2, wall + NOTE_LIFETIME.toSeconds(), keys);
+    }
+
+    /** Takes back the notes of a file whose key is {@code near} us, as live publishes from their address. */
+    void restoreNotes(
+            KadIndexFiles.SourceIndex file, Predicate<UInt128> near, IntPredicate refused, long wall, long now) {
+        if (file.expiry() <= wall) {
+            return;
+        }
+        for (KadIndexFiles.IndexKey k : file.keys()) {
+            if (!near.test(k.key())) {
+                continue;
+            }
+            for (KadIndexFiles.Source s : k.sources()) {
+                for (KadIndexFiles.Entry e : s.entries()) {
+                    int ip = (int) Tags.intValue(e.tags(), FileTag.SOURCEIP).orElse(0);
+                    long lifetime = Math.min(e.lifetime(), wall + NOTE_LIFETIME.toSeconds());
+                    if (lifetime > wall && ip != 0 && !refused.test(ip)) {
+                        this.publishNote(
+                                k.key(), s.id(), e.tags(), ip, tickerOf(lifetime, wall, now) - NOTE_LIFETIME.toNanos());
+                    }
+                }
+            }
+        }
+    }
+
+    /** Our keywords whose nodes are loaded, until when, as a file. */
+    KadIndexFiles.LoadIndex loadFile(long wall, long now) {
+        List<KadIndexFiles.Load> loads = new ArrayList<>();
+        for (Map.Entry<UInt128, Long> l : this.loaded.entrySet()) {
+            if (now - l.getValue() < 0) {
+                loads.add(new KadIndexFiles.Load(l.getKey(), wallOf(l.getValue(), wall, now)));
+            }
+        }
+        return new KadIndexFiles.LoadIndex(wall, loads);
+    }
+
+    /** Takes back our keywords whose nodes are loaded, for no longer than the most a load spares them. */
+    void restoreLoads(KadIndexFiles.LoadIndex file, Duration longest, long wall, long now) {
+        for (KadIndexFiles.Load l : file.loads()) {
+            long until = Math.min(l.time(), wall + longest.toSeconds());
+            if (until > wall) {
+                this.loaded(l.key(), tickerOf(until, wall, now));
+            }
+        }
+    }
+
+    private static long wallOf(long ticker, long wall, long now) {
+        return wall + Math.floorDiv(ticker - now, 1_000_000_000L);
+    }
+
+    private static long tickerOf(long seconds, long wall, long now) {
+        return now - (wall - seconds) * 1_000_000_000L;
     }
 
     /** Drops what expired, and the publishers silent for as long. */

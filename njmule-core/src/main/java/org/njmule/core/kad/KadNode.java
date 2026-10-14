@@ -45,6 +45,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.persist.AtomicFiles;
+import org.njmule.core.persist.format.KadIndexFiles;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -218,6 +219,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     public static final String NODES_FILE = "nodes.dat";
 
+    /** The files of what other nodes published to us, and of our keywords whose nodes are loaded. */
+    public static final String KEYWORD_INDEX_FILE = "key_index.dat";
+
+    public static final String SOURCE_INDEX_FILE = "src_index.dat";
+    public static final String NOTE_INDEX_FILE = "notes_index.dat";
+    public static final String LOAD_INDEX_FILE = "load_index.dat";
+
     /** A node counts as connected while packets keep arriving. */
     static final Duration CONNECTED_FOR = Duration.ofMinutes(20);
 
@@ -225,6 +233,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     // Fewer contacts than this do not replace a nodes.dat: a short outage must not lose a good one.
     static final int MIN_SAVED_CONTACTS = 25;
+
+    // An index file larger than this is not read: the index holds far less within its own limits.
+    private static final int MAX_INDEX_BYTES = 64 * 1024 * 1024;
 
     /** Contacts of a bootstrap-only nodes.dat kept to start from: those closest to our id. */
     static final int BOOTSTRAP_CONTACTS = 50;
@@ -581,9 +592,79 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
     }
 
+    /** Writes what other nodes published to us. */
+    public void saveIndex() {
+        this.saveIndex(System.currentTimeMillis() / 1000);
+    }
+
+    void saveIndex(long wallSeconds) {
+        long now = this.ticker.read();
+        this.writeIndex(
+                KEYWORD_INDEX_FILE,
+                KadIndexFiles.writeKeywords(this.index.keywordFile(this.identity.id(), wallSeconds, now)));
+        this.writeIndex(SOURCE_INDEX_FILE, KadIndexFiles.writeSources(this.index.sourceFile(wallSeconds, now)));
+        this.writeIndex(NOTE_INDEX_FILE, KadIndexFiles.writeSources(this.index.noteFile(wallSeconds, now)));
+        this.writeIndex(LOAD_INDEX_FILE, KadIndexFiles.writeLoad(this.index.loadFile(wallSeconds, now)));
+    }
+
+    private void writeIndex(String name, byte[] data) {
+        try {
+            AtomicFiles.writeBytes(this.configDir.resolve(name), data);
+        } catch (IOException e) {
+            logger.warn("Cannot save {}", name, e);
+        }
+    }
+
+    /** Loads what other nodes published to us before, as far as it is still alive. */
+    public void loadIndex() {
+        this.loadIndex(System.currentTimeMillis() / 1000);
+    }
+
+    // Read with the limits of live publishes: our tolerance, the IP filter and the index's own caps.
+    void loadIndex(long wallSeconds) {
+        long now = this.ticker.read();
+        IntPredicate refused = this.settings.blocked();
+        this.readIndex(KEYWORD_INDEX_FILE, KadIndexFiles::readKeywords)
+                .ifPresent(f -> this.index.restoreKeywords(f, this.identity.id(), refused, wallSeconds, now));
+        this.readIndex(SOURCE_INDEX_FILE, KadIndexFiles::readSources)
+                .ifPresent(f -> this.index.restoreSources(f, this::inTolerance, refused, wallSeconds, now));
+        this.readIndex(NOTE_INDEX_FILE, KadIndexFiles::readSources)
+                .ifPresent(f -> this.index.restoreNotes(f, this::inTolerance, refused, wallSeconds, now));
+        this.readIndex(LOAD_INDEX_FILE, KadIndexFiles::readLoad)
+                .ifPresent(f -> this.index.restoreLoads(f, LOADED_FOR, wallSeconds, now));
+        int[] held = this.indexed();
+        logger.info("Kad index: {} keyword entries, {} sources, {} notes", held[0], held[1], this.indexedNotes());
+    }
+
+    /** Decodes the bytes of an index file. */
+    private interface IndexReader<T> {
+        T read(byte[] data) throws DecodeException;
+    }
+
+    // A damaged or oversized file is left out: the index fills again as nodes publish.
+    private <T> Optional<T> readIndex(String name, IndexReader<T> reader) {
+        Path file = this.configDir.resolve(name);
+        if (!Files.exists(file) && !Files.exists(AtomicFiles.bakPath(file))) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(AtomicFiles.read(file, in -> {
+                byte[] data = in.readNBytes(MAX_INDEX_BYTES + 1);
+                if (data.length > MAX_INDEX_BYTES) {
+                    throw new DecodeException("larger than " + MAX_INDEX_BYTES + " bytes");
+                }
+                return reader.read(data);
+            }));
+        } catch (IOException e) {
+            logger.warn("Cannot read {}: {}", name, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     @Override
     public void close() {
         this.saveNodes();
+        this.saveIndex();
     }
 
     /** Asks the node at {@code ip:port} for contacts to start from. */

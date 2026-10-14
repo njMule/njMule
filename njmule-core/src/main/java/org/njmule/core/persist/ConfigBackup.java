@@ -35,7 +35,7 @@ import java.util.zip.ZipOutputStream;
 /**
  * Timestamped zip copies of the configuration, the latest few kept: what a disk failure or a bad edit would otherwise
  * take. Lock and handoff files, temporary and backup copies are left out, and so are the AICH hash sets, which can be
- * large and are rebuilt by hashing the files again.
+ * large and are rebuilt by hashing the files again, and the Kad index, other nodes' entries that live a day at most.
  */
 public final class ConfigBackup {
 
@@ -47,7 +47,14 @@ public final class ConfigBackup {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.ROOT);
     private static final Pattern NAME =
             Pattern.compile(Pattern.quote(PREFIX) + "\\d{8}-\\d{6}" + Pattern.quote(SUFFIX));
-    private static final Set<String> LEFT_OUT = Set.of("njmule.lock", "handoff", "known2_64.met");
+    private static final Set<String> LEFT_OUT = Set.of(
+            "njmule.lock",
+            "handoff",
+            "known2_64.met",
+            "key_index.dat",
+            "src_index.dat",
+            "notes_index.dat",
+            "load_index.dat");
 
     private ConfigBackup() {}
 
