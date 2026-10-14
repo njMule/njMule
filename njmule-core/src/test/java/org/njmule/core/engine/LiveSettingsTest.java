@@ -17,7 +17,6 @@
 package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
@@ -75,8 +74,7 @@ class LiveSettingsTest {
                     .get(10, TimeUnit.SECONDS);
             assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
         }
-        assertThatThrownBy(() -> new Socket(InetAddress.getLoopbackAddress(), first).close())
-                .isInstanceOf(IOException.class);
+        assertThat(accepts(first)).as("closed with the engine").isFalse();
     }
 
     private static boolean accepts(int port) {
