@@ -47,6 +47,7 @@ public final class I18n {
             Locale.of("pl"),
             Locale.of("pt", "BR"),
             Locale.of("pt", "PT"),
+            Locale.of("ro"),
             Locale.of("fi"),
             Locale.of("sv"),
             Locale.of("tr"),
