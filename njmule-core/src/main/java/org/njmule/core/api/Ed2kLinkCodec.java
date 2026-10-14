@@ -90,7 +90,7 @@ final class Ed2kLinkCodec {
                 aich = aich(param.substring(2));
             } else if (param.startsWith("p=")) {
                 parts = partHashes(param.substring(2));
-            } else if (param.startsWith("s=") && param.length() > 2) {
+            } else if (param.startsWith("s=") && isWebUrl(param.substring(2))) {
                 http.add(param.substring(2));
             }
         }
@@ -272,10 +272,14 @@ final class Ed2kLinkCodec {
 
     static void checkUrl(String url) {
         Objects.requireNonNull(url, "url");
-        String lower = url.toLowerCase(Locale.ROOT);
-        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+        if (!isWebUrl(url)) {
             throw new IllegalArgumentException("only http and https URLs are allowed: " + url);
         }
+    }
+
+    private static boolean isWebUrl(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
     private static String token(List<String> tokens, int index) {

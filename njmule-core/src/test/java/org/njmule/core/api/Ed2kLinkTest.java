@@ -76,6 +76,29 @@ class Ed2kLinkTest {
     }
 
     @Test
+    void dropsAPaddedAichHash() {
+        String base = "ed2k://|file|a.bin|1|" + HASH + "|h=";
+
+        assertThat(((FileLink) Ed2kLink.parse(base + "A".repeat(29) + "===|/")).aichHash())
+                .isEmpty();
+        assertThat(((FileLink) Ed2kLink.parse(base + "=".repeat(32) + "|/")).aichHash())
+                .isEmpty();
+        assertThat(((FileLink) Ed2kLink.parse(
+                                "magnet:?xt=urn:ed2k:" + HASH + "&xl=1&dn=a&xt=urn:aich:" + "A".repeat(28) + "===="))
+                        .aichHash())
+                .isEmpty();
+    }
+
+    @Test
+    void keepsOnlyWebSourcesOverHttpOrHttps() {
+        FileLink link = (FileLink) Ed2kLink.parse("ed2k://|file|a.bin|1|"
+                + HASH
+                + "|s=file:///etc/passwd|s=ftp://example.org/a|s=HTTPS://example.org/a|s=javascript:x|/");
+
+        assertThat(link.httpSources()).containsExactly("HTTPS://example.org/a");
+    }
+
+    @Test
     void readsSourcesAndHonoursTheirExpiry() {
         String base = "ed2k://|file|a.bin|100|" + HASH + "|/|";
         FileLink link = (FileLink) Ed2kLink.parse(base + "sources,1.2.3.4:4662,host.example.org:4663,bad,5.6.7.8:0|/");
