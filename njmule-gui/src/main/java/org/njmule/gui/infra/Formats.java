@@ -26,11 +26,18 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.FormatStyle;
 import java.util.Locale;
+import java.util.function.UnaryOperator;
+import org.njmule.gui.i18n.I18n;
 
 /** Sizes, rates, durations and counts as the interface shows them, in one locale. */
 public final class Formats {
 
     private static final String[] UNITS = {"B", "KB", "MB", "GB", "TB", "PB"};
+    // The texts that name the units in each language: none names petabytes.
+    private static final String[] UNIT_KEYS = {"IDS_BYTESPERSEC", "IDS_KBYTES", "IDS_MBYTES", "IDS_GBYTES", "IDS_TBYTES"
+    };
+    private static final String RATE = "KB/s";
+    private static final String RATE_KEY = "IDS_KBYTESPERSEC";
     private static final long MINUTE = 60;
     private static final long HOUR = 60 * MINUTE;
     private static final long DAY = 24 * HOUR;
@@ -40,14 +47,50 @@ public final class Formats {
     private final NumberFormat integer;
     private final DateTimeFormatter dateTime;
     private final DateTimeFormatter time;
+    private final String[] units;
+    private final String rateUnit;
 
+    /** Formats with the English units. */
     public Formats(Locale locale) {
+        this(locale, key -> null);
+    }
+
+    /** Formats with the units as the translations of {@code i18n}'s language write them, such as Ko and Ko/s. */
+    public static Formats of(I18n i18n) {
+        return new Formats(i18n.locale(), i18n::t);
+    }
+
+    // A unit the language does not name stays English; "B/s" names bytes too.
+    Formats(Locale locale, UnaryOperator<String> text) {
+        this.units = UNITS.clone();
+        for (int i = 0; i < UNIT_KEYS.length; i++) {
+            String named = unit(text.apply(UNIT_KEYS[i]));
+            if (named != null) {
+                this.units[i] = i == 0 && named.indexOf('/') > 0
+                        ? named.substring(0, named.indexOf('/')).strip()
+                        : named;
+            }
+        }
+        if (this.units[0].isEmpty()) {
+            this.units[0] = UNITS[0];
+        }
+        String rate = unit(text.apply(RATE_KEY));
+        this.rateUnit = rate == null ? RATE : rate;
         this.dateTime = dateTime(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         this.time = time(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(locale);
         this.oneDecimal = new DecimalFormat("0.0", symbols);
         this.twoDecimals = new DecimalFormat("0.00", symbols);
         this.integer = NumberFormat.getIntegerInstance(locale);
+    }
+
+    // A translated unit, or null for a missing one (shown as its key in brackets) or one too odd to use.
+    private static String unit(String text) {
+        if (text == null) {
+            return null;
+        }
+        String unit = text.strip();
+        return unit.isEmpty() || unit.length() > 12 || unit.startsWith("[") ? null : unit;
     }
 
     /** {@code time} as the system shows a date and a time, whatever the language of the interface. */
@@ -77,7 +120,7 @@ public final class Formats {
     /** {@code bytes} with a binary unit: 999 B, 1.00 KB, 12.3 MB, 1.21 GB. */
     public String size(long bytes) {
         if (bytes < 1024) {
-            return Math.max(0, bytes) + " B";
+            return Math.max(0, bytes) + " " + this.units[0];
         }
         double value = bytes;
         int unit = 0;
@@ -87,15 +130,15 @@ public final class Formats {
         }
         // The form follows the rounded value: 99.995 shows as 100.0, 999.95 as 1,000.
         if (value >= 999.95) {
-            return this.integer.format(Math.round(value)) + " " + UNITS[unit];
+            return this.integer.format(Math.round(value)) + " " + this.units[unit];
         }
         DecimalFormat format = value < 99.995 ? this.twoDecimals : this.oneDecimal;
-        return format.format(value) + " " + UNITS[unit];
+        return format.format(value) + " " + this.units[unit];
     }
 
-    /** A rate in KB/s with one decimal. */
+    /** A rate in kilobytes per second with one decimal. */
     public String rate(long bytesPerSecond) {
-        return this.oneDecimal.format(Math.max(0, bytesPerSecond) / 1024.0) + " KB/s";
+        return this.oneDecimal.format(Math.max(0, bytesPerSecond) / 1024.0) + " " + this.rateUnit;
     }
 
     /** A ratio with up to two decimals: 2.5, 0.33. */

@@ -172,7 +172,7 @@ class MainWindowTest {
             I18n i18n = I18n.of(language);
             Gui gui = new Gui(
                     i18n,
-                    new Formats(i18n.locale()),
+                    Formats.of(i18n),
                     this.model,
                     themes,
                     settings,

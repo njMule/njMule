@@ -386,7 +386,7 @@ class TrayWindowsTest {
             I18n i18n = I18n.of(Locale.ITALIAN);
             this.gui = new Gui(
                     i18n,
-                    new Formats(i18n.locale()),
+                    Formats.of(i18n),
                     this.model,
                     new Themes(Themes.Family.NORD, GuiSettings.Mode.LIGHT),
                     settings,

@@ -325,6 +325,8 @@ All notable changes to this project are documented here. The format follows
 
 - The server list and nodes.dat boxes are filled in with the well-known lists of
   upd.emule-security.org while no list was used; nothing is fetched until the user asks.
+- Sizes and rates use the units of the interface language as eMule's translations write them
+  (Ko and Ko/s in French, Кб in Russian).
 
 ### Changed
 

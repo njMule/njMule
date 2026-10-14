@@ -554,7 +554,7 @@ public final class DesktopApp implements AutoCloseable {
         I18n i18n = I18n.of(locale);
         this.gui = new Gui(
                 i18n,
-                new Formats(i18n.locale()),
+                Formats.of(i18n),
                 this.model,
                 this.themes,
                 this.settings,
