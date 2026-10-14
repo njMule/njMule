@@ -59,6 +59,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
+import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
@@ -544,6 +545,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** What the sources of a download said of the file; {@code then} gets it on the FX thread. */
     public void peerComments(Hash16 download, Consumer<List<PeerComment>> then) {
         this.later(this.engine.peerComments(download), then);
+    }
+
+    /** What Kad nodes said of a file, as far as found; {@code then} gets it on the FX thread. */
+    public void kadNotes(Hash16 file, Consumer<List<KadNote>> then) {
+        this.later(this.engine.kadNotes(file), then);
+    }
+
+    /**
+     * Searches Kad for what nodes said of a file; {@code found} gets all the notes known once the search ends, or
+     * {@code failed} why it could not run, on the FX thread.
+     */
+    public void searchKadNotes(Hash16 file, Consumer<List<KadNote>> found, Consumer<String> failed) {
+        this.later(this.engine.searchKadNotes(file), found, failed);
     }
 
     /** Adds a source by hand; {@code added} tells on the FX thread whether it was new. */

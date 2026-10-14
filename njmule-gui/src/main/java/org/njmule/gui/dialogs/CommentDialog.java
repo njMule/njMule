@@ -16,15 +16,19 @@
  */
 package org.njmule.gui.dialogs;
 
+import atlantafx.base.theme.Styles;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -35,11 +39,15 @@ import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadNote;
 import org.njmule.core.api.PeerComment;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 
-/** Our comment and rating of a file, which its downloaders hear, and what the sources of a download said of it. */
+/**
+ * Our comment and rating of a file, which its downloaders hear, and what others said of it: the sources of a download,
+ * and the Kad nodes that hold notes on the file.
+ */
 public final class CommentDialog {
 
     // The ratings from none to the best, as clients number them.
@@ -51,9 +59,16 @@ public final class CommentDialog {
     private final Stage stage = new Stage();
     private final ComboBox<Integer> rating = new ComboBox<>();
     private final TextField text = new TextField();
-    private final ListView<PeerComment> heard = new ListView<>();
+    private final ListView<Heard> heard = new ListView<>();
+    private final Button searchKad;
+    private final Label kadState = new Label();
+    private List<PeerComment> peers = List.of();
+    private List<KadNote> notes = List.of();
     private boolean textChanged;
     private boolean ratingChanged;
+
+    /** One comment heard, from a source over eD2K or from a Kad node. */
+    private record Heard(String who, String fileName, FileComment comment, boolean kad) {}
 
     public CommentDialog(Gui gui, Window owner, Hash16 file, String name, boolean download) {
         this.gui = gui;
@@ -80,28 +95,28 @@ public final class CommentDialog {
         form.addRow(0, new Label(gui.t("IDS_CMT_RATEQUEST")), this.rating);
         form.addRow(1, new Label(gui.t("IDS_CMT_READ")), this.text);
         VBox root = new VBox(10, form);
+        this.heard.setPlaceholder(new Label(gui.t("IDS_CMT_NONE")));
+        this.heard.setCellFactory(l -> new HeardCell());
+        Label title = new Label(gui.t("IDS_CMT_READALL"));
+        title.getStyleClass().add("settings-section");
+        this.searchKad = Fx.button(gui.t("IDS_SEARCHKAD"), Material2MZ.SEARCH, this::searchKad);
+        this.kadState.getStyleClass().add(Styles.TEXT_MUTED);
+        root.getChildren().addAll(title, this.heard, Fx.toolRow(this.searchKad, this.kadState));
+        VBox.setVgrow(this.heard, Priority.ALWAYS);
         if (download) {
-            this.heard.setPlaceholder(new Label(gui.t("IDS_CMT_NONE")));
-            this.heard.setCellFactory(l -> new ListCell<>() {
-                @Override
-                protected void updateItem(PeerComment item, boolean empty) {
-                    super.updateItem(item, empty);
-                    this.setText(empty || item == null ? null : CommentDialog.this.line(item));
-                }
+            gui.model().peerComments(file, found -> {
+                this.peers = found;
+                this.showHeard();
             });
-            Label title = new Label(gui.t("IDS_CMT_READALL"));
-            title.getStyleClass().add("settings-section");
-            root.getChildren().addAll(title, this.heard);
-            VBox.setVgrow(this.heard, Priority.ALWAYS);
-            gui.model().peerComments(file, this.heard.getItems()::setAll);
         }
+        gui.model().kadNotes(file, this::kadNotes);
         root.getChildren()
                 .add(Fx.toolRow(
                         Fx.primary(Fx.button(gui.t("nj.categories.save"), Material2MZ.SAVE, this::save)),
                         Fx.spacer(),
                         Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
         root.setPadding(new Insets(14));
-        Scene scene = new Scene(root, 620, download ? 420 : 180);
+        Scene scene = new Scene(root, 620, 440);
         gui.themes().attach(scene);
         this.stage.setScene(scene);
         // The stored comment may come after the user began to type: what the user changed stays.
@@ -121,6 +136,40 @@ public final class CommentDialog {
         this.stage.show();
     }
 
+    // The button waits for the end of the search: pressed again it would only join it.
+    void searchKad() {
+        this.searchKad.setDisable(true);
+        this.kadState.setText(this.gui.t("IDS_KADSEARCHACTIVE"));
+        this.gui
+                .model()
+                .searchKadNotes(
+                        this.file,
+                        found -> {
+                            this.kadNotes(found);
+                            this.searchKad.setDisable(false);
+                            this.kadState.setText(
+                                    found.isEmpty()
+                                            ? this.gui.t("nj.comments.kadNone")
+                                            : this.gui.f("nj.comments.kadCount", found.size()));
+                        },
+                        why -> {
+                            this.searchKad.setDisable(false);
+                            this.kadState.setText(this.gui.f("nj.comments.kadFailed", why));
+                        });
+    }
+
+    private void kadNotes(List<KadNote> found) {
+        this.notes = found;
+        this.showHeard();
+    }
+
+    private void showHeard() {
+        List<Heard> all = new ArrayList<>();
+        this.peers.forEach(c -> all.add(new Heard(c.user(), c.fileName(), c.comment(), false)));
+        this.notes.forEach(n -> all.add(new Heard(this.gui.t("IDS_KADEMLIA"), n.fileName(), n.comment(), true)));
+        this.heard.getItems().setAll(all);
+    }
+
     void save() {
         FileComment comment = FileComment.of(this.text.getText(), this.rating.getValue());
         this.gui.model().setFileComment(this.file, comment, this.stage::close);
@@ -130,11 +179,31 @@ public final class CommentDialog {
         return this.gui.t(RATINGS.get(Math.clamp(value, 0, RATINGS.size() - 1)));
     }
 
-    private String line(PeerComment c) {
+    private String line(Heard c) {
         String rated = c.comment().rating() == 0
                 ? ""
                 : "[" + this.ratingName(c.comment().rating()) + "] ";
-        return c.user() + ": " + rated + c.comment().text();
+        return c.who() + ": " + rated + c.comment().text();
+    }
+
+    // A note from Kad has the Kad icon, as on the Kad screen; the name the commenter gave the file is a hover away.
+    private final class HeardCell extends ListCell<Heard> {
+        @Override
+        protected void updateItem(Heard item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                this.setText(null);
+                this.setGraphic(null);
+                this.setTooltip(null);
+                return;
+            }
+            this.setText(CommentDialog.this.line(item));
+            this.setGraphic(item.kad() ? Fx.icon(Material2AL.DEVICE_HUB) : null);
+            this.setTooltip(
+                    item.fileName().isEmpty()
+                            ? null
+                            : new Tooltip(CommentDialog.this.gui.t("IDS_DL_FILENAME") + ": " + item.fileName()));
+        }
     }
 
     private final class RatingCell extends ListCell<Integer> {
@@ -155,5 +224,17 @@ public final class CommentDialog {
 
     ComboBox<Integer> ratingBox() {
         return this.rating;
+    }
+
+    ListView<?> heardList() {
+        return this.heard;
+    }
+
+    Button kadButton() {
+        return this.searchKad;
+    }
+
+    Label kadState() {
+        return this.kadState;
     }
 }
