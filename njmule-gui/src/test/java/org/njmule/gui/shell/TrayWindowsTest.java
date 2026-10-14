@@ -22,7 +22,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -37,6 +41,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.Preferences;
+import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
@@ -133,6 +138,43 @@ class TrayWindowsTest {
     }
 
     @Test
+    void openingTheMenuNeverChangesTheLimits() throws Exception {
+        AtomicInteger writes = new AtomicInteger();
+        this.start(real -> Engines.overriding(real, Map.of("updatePreferences", args -> {
+            writes.incrementAndGet();
+            return real.updatePreferences(change(args[0]));
+        })));
+        this.limits(1000, 800);
+        TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
+            @Override
+            public void restore() {}
+
+            @Override
+            public void options() {}
+
+            @Override
+            public void exit() {}
+        }));
+        FxTesting.onFx(() -> menu.show(600, 500));
+        FxTesting.onFx(menu::hide);
+        // The line got slower meanwhile: the slider's top falls below its old position.
+        this.limits(500, 300);
+
+        FxTesting.onFx(() -> menu.show(600, 500));
+        assertThat(writes).as("opening the menu").hasValue(0);
+        assertThat(this.preferences().maxDownloadKiBps()).isEqualTo(300);
+
+        TextField down = FxTesting.onFx(() -> (TextField)
+                menu.scene().getRoot().lookupAll(".text-field").iterator().next());
+        FxTesting.onFx(() -> {
+            down.setText("900");
+            down.fireEvent(new javafx.event.ActionEvent());
+        });
+        assertThat(writes).as("a limit above the slider's top").hasValue(0);
+        assertThat(FxTesting.onFx(() -> down.getText())).isEqualTo("300");
+    }
+
+    @Test
     void theStatusWindowShowsTheStateAtAGlance() throws Exception {
         this.start();
         MiniMule mini = FxTesting.onFx(() -> new MiniMule(this.gui, this.owner, () -> this.dir, new MiniMule.Actions() {
@@ -176,6 +218,25 @@ class TrayWindowsTest {
         return this.engine.preferences();
     }
 
+    @SuppressWarnings("unchecked")
+    private static UnaryOperator<Preferences> change(Object change) {
+        return (UnaryOperator<Preferences>) change;
+    }
+
+    // Changed past the menu, as the settings screen or the scheduler do.
+    private void limits(int capacity, int limit) throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder()
+                        .downloadCapacityKiBps(capacity)
+                        .uploadCapacityKiBps(capacity)
+                        .maxDownloadKiBps(limit)
+                        .maxUploadKiBps(limit)
+                        .build())
+                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(
+                "the new limits", () -> this.model.preferencesProperty().get().maxDownloadKiBps() == limit);
+    }
+
     private void press(Scene scene, String text) throws Exception {
         FxTesting.onFx(() -> {
             for (Node node : scene.getRoot().lookupAll(".tray-item")) {
@@ -189,8 +250,13 @@ class TrayWindowsTest {
     }
 
     private void start() throws Exception {
+        this.start(UnaryOperator.identity());
+    }
+
+    // The model sees the engine through wrap; the test sees the real one.
+    private void start(UnaryOperator<NjMuleEngine> wrap) throws Exception {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
-        this.model = new EngineModel(this.engine, Platform::runLater);
+        this.model = new EngineModel(wrap.apply(this.engine), Platform::runLater);
         FxTesting.onFx(() -> {
             GuiSettings settings = GuiSettings.load(this.engine.directories().gui());
             I18n i18n = I18n.of(Locale.ITALIAN);

@@ -75,6 +75,10 @@ public final class TrayMenu {
     private final Inputs inputs;
     private final Button connect;
     private final Button disconnect;
+    private Input<Integer> downInput;
+    private Input<Integer> upInput;
+    // Set while the menu shows the preferences: moving the sliders then is no change of the user's.
+    private boolean loading;
 
     public TrayMenu(Gui gui, Window owner, Actions actions) {
         this.gui = gui;
@@ -183,7 +187,7 @@ public final class TrayMenu {
     private Node speeds() {
         GridPane grid = new GridPane();
         grid.getStyleClass().add("tray-speeds");
-        this.speed(
+        this.downInput = this.speed(
                 grid,
                 0,
                 Material2AL.ARROW_DOWNWARD,
@@ -191,7 +195,7 @@ public final class TrayMenu {
                 this.down,
                 this.downText,
                 (p, v) -> p.toBuilder().maxDownloadKiBps(v).build());
-        this.speed(
+        this.upInput = this.speed(
                 grid,
                 1,
                 Material2AL.ARROW_UPWARD,
@@ -202,7 +206,7 @@ public final class TrayMenu {
         return grid;
     }
 
-    private void speed(
+    private Input<Integer> speed(
             GridPane grid,
             int row,
             Ikon icon,
@@ -212,18 +216,20 @@ public final class TrayMenu {
             BiFunction<Preferences, Integer, Preferences> change) {
         FontIcon arrow = new FontIcon(icon);
         arrow.getStyleClass().add(row == 0 ? "tray-down" : "tray-up");
-        Input<Integer> input = this.inputs.number(text, name, 0, Preferences.MAX_RATE_KIBPS);
+        // A typed limit stays within the slider, whose top is the line's capacity or the limit set past it.
+        Input<Integer> input =
+                this.inputs.number(text, name, 0, () -> (int) slider.getMax(), Preferences.MAX_RATE_KIBPS);
         text.setPrefColumnCount(4);
         text.setAlignment(Pos.CENTER_RIGHT);
         slider.setPrefWidth(108);
         slider.valueChangingProperty().addListener((o, was, now) -> {
-            if (!now) {
+            if (!now && !this.loading) {
                 this.apply(change, (int) Math.round(slider.getValue()));
             }
         });
         slider.valueProperty().addListener((o, was, now) -> {
             text.setText(String.valueOf(Math.round(now.doubleValue())));
-            if (!slider.isValueChanging()) {
+            if (!slider.isValueChanging() && !this.loading) {
                 this.apply(change, (int) Math.round(now.doubleValue()));
             }
         });
@@ -234,11 +240,12 @@ public final class TrayMenu {
             }
         });
         grid.addRow(row, arrow, new Label(name), slider, text, new Label(this.gui.t("IDS_KBYTESPERSEC")));
+        return input;
     }
 
     private void typed(Slider slider, Input<Integer> input) {
         if (input.isValid()) {
-            slider.setValue(Math.min(input.value(), slider.getMax()));
+            slider.setValue(input.value());
         } else {
             input.field().setText(String.valueOf(Math.round(slider.getValue())));
         }
@@ -263,13 +270,27 @@ public final class TrayMenu {
                         this::load);
     }
 
+    // A new top first clamps the old position, which must not be taken for a choice.
     private void load(Preferences p) {
-        this.down.setMax(Math.max(p.downloadCapacityKiBps(), p.maxDownloadKiBps()));
-        this.up.setMax(Math.max(p.uploadCapacityKiBps(), p.maxUploadKiBps()));
-        this.down.setValue(p.maxDownloadKiBps());
-        this.up.setValue(p.maxUploadKiBps());
-        this.downText.setText(String.valueOf(p.maxDownloadKiBps()));
-        this.upText.setText(String.valueOf(p.maxUploadKiBps()));
+        this.loading = true;
+        try {
+            this.down.setMax(Math.max(p.downloadCapacityKiBps(), p.maxDownloadKiBps()));
+            this.up.setMax(Math.max(p.uploadCapacityKiBps(), p.maxUploadKiBps()));
+            this.down.setValue(p.maxDownloadKiBps());
+            this.up.setValue(p.maxUploadKiBps());
+            this.downText.setText(String.valueOf(p.maxDownloadKiBps()));
+            this.upText.setText(String.valueOf(p.maxUploadKiBps()));
+        } finally {
+            this.loading = false;
+        }
+        this.bound(this.downInput, this.down);
+        this.bound(this.upInput, this.up);
+    }
+
+    // The typed limit is checked against the slider's new top, which its hint tells.
+    private void bound(Input<Integer> input, Slider slider) {
+        input.check();
+        input.field().getTooltip().setText(this.gui.f("nj.input.number", 0, (int) slider.getMax()));
     }
 
     private Button item(String text, Ikon icon, Runnable action) {

@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 import java.util.regex.Pattern;
 import javafx.scene.control.TextField;
 import org.njmule.core.api.Ed2kLink;
@@ -52,13 +53,20 @@ public final class Inputs {
 
     /** A whole number in {@code [min, max]}. */
     public Input<Integer> number(TextField field, String name, int min, int max) {
+        return this.number(field, name, min, () -> max, max);
+    }
+
+    /**
+     * A whole number in {@code [min, max]}, where {@code max} moves up to {@code largest}; check again after it did.
+     */
+    public Input<Integer> number(TextField field, String name, int min, IntSupplier max, int largest) {
         return Input.of(
                 field,
                 name,
-                this.gui.f("nj.input.number", min, max),
+                this.gui.f("nj.input.number", min, max.getAsInt()),
                 Inputs::digit,
-                digits(max),
-                t -> inRange(t, min, max));
+                digits(largest),
+                t -> inRange(t, min, max.getAsInt()));
     }
 
     /** Nothing, or a whole number in {@code [min, max]}. */
