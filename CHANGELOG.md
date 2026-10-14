@@ -261,6 +261,10 @@ All notable changes to this project are documented here. The format follows
   token.
 - Web interface: Kad (state, connect, recheck firewall, bootstrap), shared files (with their
   upload priority) and log pages, and a layout for phones.
+- The desktop interface in German, Spanish, French, Dutch, Polish, Brazilian Portuguese, Russian
+  and Simplified Chinese, with eMule's own translations of its texts and njMule's texts in the same
+  terms; the language box names each language in its own words, and the interface follows the
+  system's language when it is one of them.
 
 ### Changed
 
