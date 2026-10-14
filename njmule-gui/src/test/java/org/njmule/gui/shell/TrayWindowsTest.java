@@ -43,10 +43,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
+import org.njmule.gui.Statuses;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
@@ -290,6 +292,40 @@ class TrayWindowsTest {
         assertThat(FxTesting.onFx(menu::isShowing)).isTrue();
         FxTesting.onFx(() -> menu.scene().getRoot().fireEvent(FxTesting.key(KeyCode.ESCAPE, false)));
         assertThat(FxTesting.onFx(menu::isShowing)).isFalse();
+    }
+
+    @Test
+    void theStatusWindowCountsKadAndAFolderNotMadeYet() throws Exception {
+        EngineStatus onKad = Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
+        this.start(
+                real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
+        FxTesting.await("on Kad", () -> this.model.statusProperty().get() == onKad);
+        MiniMule mini = FxTesting.onFx(() -> new MiniMule(
+                this.gui,
+                this.owner,
+                () -> this.dir.resolve("incoming").resolve("not made yet"),
+                new MiniMule.Actions() {
+                    @Override
+                    public void openIncoming() {}
+
+                    @Override
+                    public void options() {}
+
+                    @Override
+                    public void restore() {}
+                }));
+
+        FxTesting.onFx(mini::show);
+        assertThat(FxTesting.onFx(mini::isShowing)).isTrue();
+        List<String> values = FxTesting.onFx(() -> mini.scene().getRoot().lookupAll(".minimule-value").stream()
+                .map(n -> ((Label) n).getText())
+                .toList());
+        assertThat(values.getFirst()).as("connected to Kad").isEqualTo(this.gui.t("IDS_YES"));
+        assertThat(values.getLast())
+                .as("the free space of the disk it will be on")
+                .isNotEqualTo("?");
+        FxTesting.onFx(mini::hide);
+        assertThat(FxTesting.onFx(mini::isShowing)).isFalse();
     }
 
     private Button item(Scene scene, String text) {
