@@ -63,6 +63,7 @@ class LanguagesTest {
     static Stream<Arguments> languages() {
         return Stream.of(
                 arguments(Locale.ENGLISH, "English", "Language"),
+                arguments(Locale.of("ca"), "Català", "Llengua"),
                 arguments(Locale.of("cs"), "Čeština", "Jazyk"),
                 arguments(Locale.of("da"), "Dansk", "Sprog"),
                 arguments(Locale.GERMAN, "Deutsch", "Sprache"),
@@ -97,6 +98,7 @@ class LanguagesTest {
 
         this.thenTheLanguagesAre(
                 Locale.ENGLISH,
+                Locale.of("ca"),
                 Locale.of("cs"),
                 Locale.of("da"),
                 Locale.GERMAN,
@@ -150,6 +152,7 @@ class LanguagesTest {
     @ParameterizedTest
     @CsvSource({
         "en-GB, en",
+        "ca-ES, ca",
         "cs-CZ, cs",
         "da-DK, da",
         "de-AT, de",
