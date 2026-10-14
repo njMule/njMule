@@ -92,6 +92,9 @@
         <test.excludedGroups>interop,private-fixtures,perf</test.excludedGroups>
         <!-- JVMs running test classes at once; -Dtest.forks=1 runs them one after the other. -->
         <test.forks>4</test.forks>
+        <!-- Optimization of the native images: -O2 by default and for releases; the CI checks and
+             builds by hand may pass -Dnative.optimization=-Ob, which builds faster and runs slower. -->
+        <native.optimization>-O2</native.optimization>
         <jar-plugin.version>3.5.1</jar-plugin.version>
         <resources-plugin.version>3.5.0</resources-plugin.version>
         <clean-plugin.version>3.5.0</clean-plugin.version>

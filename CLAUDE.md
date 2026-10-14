@@ -108,6 +108,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `tools/native-docker.sh` (Maven on a copy of the sources inside the container: ~1.5 min instead of
   ~6 on the bind mount): `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash
   <image> /work/tools/native-docker.sh` (Git Bash: prefix `MSYS_NO_PATHCONV=1`).
+- Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
+  with `-Dnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
 - Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
   through `./mvnw -Pnative -pl njmule-gui -am package -DskipTests` → `njmule-gui/target/native/`
   (exe plus the JDK libraries it loads). Its reachability metadata comes from the GUI tour

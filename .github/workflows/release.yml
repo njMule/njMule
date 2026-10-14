@@ -69,8 +69,9 @@ jobs:
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
                   dotnet tool install --global wix --version 5.0.2
+            # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
             - name: Smoke test
               shell: pwsh
               run: |
@@ -147,8 +148,9 @@ jobs:
                   curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
                   echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
+            # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
             - name: Smoke test
               run: |
                   njmule-app/target/njmule --version
@@ -245,8 +247,9 @@ jobs:
             # The committed metadata comes from Windows and Linux: the tour adds macOS's first.
             - name: Trace the GUI tour
               run: ./mvnw -B -ntp -Pnative-tour -pl njmule-gui -am package -DskipTests
+            # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
+              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests -Dnative.optimization=-O2
             - name: Smoke test
               run: |
                   njmule-app/target/njmule --version

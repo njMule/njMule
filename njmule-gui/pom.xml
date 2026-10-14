@@ -264,6 +264,7 @@
                                         <argument>njmule-gui</argument>
                                         <argument>@${project.basedir}/native/${native.os}.args</argument>
                                         <argument>${native.platform.option}</argument>
+                                        <argument>${native.optimization}</argument>
                                     </arguments>
                                 </configuration>
                             </execution>
