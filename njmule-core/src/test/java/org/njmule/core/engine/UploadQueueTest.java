@@ -177,6 +177,31 @@ class UploadQueueTest {
     }
 
     @Test
+    void anInvertedRangeInARequestIsSkipped() throws Exception {
+        NjMuleEngine engine = this.engine("");
+        SharedFileInfo file = awaitShared(engine);
+        Client client = this.client(engine.preferences().tcpPort(), 21);
+        assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+
+        // Ranges are three starts then three ends: 5000-4000 is backwards.
+        client.send(Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Client.REQUESTPARTS.code(),
+                new PacketWriter()
+                        .hash16(file.hash())
+                        .u32(5000)
+                        .u32(0)
+                        .u32(0)
+                        .u32(4000)
+                        .u32(1000)
+                        .u32(0)));
+
+        ClientMessages.SendingPart part = ClientMessages.SendingPart.decode(client.next());
+        assertThat(part.start()).isZero();
+        assertThat(part.end()).isEqualTo(1000);
+    }
+
+    @Test
     void aFileRenamedDuringItsUploadKeepsBeingSent() throws Exception {
         NjMuleEngine engine = this.engine("");
         SharedFileInfo file = awaitShared(engine);

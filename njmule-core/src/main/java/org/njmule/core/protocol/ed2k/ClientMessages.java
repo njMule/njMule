@@ -223,10 +223,11 @@ public final class ClientMessages {
             List<Range> ranges = new ArrayList<>(BLOCKS_PER_REQUEST);
             for (int i = 0; i < BLOCKS_PER_REQUEST; i++) {
                 long end = wide ? in.u64() : in.u32();
-                if (!isOffset(starts[i]) || !isOffset(end) || end < starts[i]) {
+                if (!isOffset(starts[i]) || !isOffset(end)) {
                     throw new DecodeException("invalid range " + starts[i] + "-" + end);
                 }
-                ranges.add(new Range(starts[i], end));
+                // A backwards range asks for nothing: skipped like an unused slot, not a reason to hang up.
+                ranges.add(new Range(starts[i], Math.max(starts[i], end)));
             }
             return new RequestParts(file, ranges);
         }
