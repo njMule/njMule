@@ -64,6 +64,11 @@ public final class I18n {
         return this.locale;
     }
 
+    /** The name of this language, written in it: Deutsch, Italiano. */
+    public String name() {
+        return this.t("nj.language");
+    }
+
     /** The text of {@code key}; an unknown key shows itself, so it is noticed. */
     public String t(String key) {
         try {

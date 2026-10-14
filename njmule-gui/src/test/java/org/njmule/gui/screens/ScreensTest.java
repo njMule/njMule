@@ -21,11 +21,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.TreeItem;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -47,6 +51,7 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
+import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.webui.WebUiSettings;
 
@@ -59,6 +64,8 @@ class ScreensTest {
     Path dir;
 
     private TestGui test;
+    private SettingsScreen settings;
+    private List<String> languageNames;
 
     @AfterEach
     void close() throws Exception {
@@ -627,6 +634,48 @@ class ScreensTest {
         assertThat(this.test.engine.downloads().get())
                 .extracting(DownloadInfo::name)
                 .containsExactlyInAnyOrder("my holiday video.mkv", "notes.txt");
+    }
+
+    @Test
+    void theLanguageBoxNamesEachLanguageInItself() throws Exception {
+        this.givenTheSettingsScreen();
+
+        this.whenTheLanguagesOfTheLanguageBoxAreRead();
+
+        this.thenTheSystemLanguageComesFirst();
+        this.thenEveryLanguageFollowsByItsOwnName();
+    }
+
+    private void givenTheSettingsScreen() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.settings = new SettingsScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(this.settings::view));
+    }
+
+    private void whenTheLanguagesOfTheLanguageBoxAreRead() throws Exception {
+        this.languageNames = FxTesting.onFx(() -> {
+            ComboBox<Optional<Locale>> box = this.settings.languageBox();
+            ListView<Optional<Locale>> list = new ListView<>(box.getItems());
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < box.getItems().size(); i++) {
+                ListCell<Optional<Locale>> cell = box.getCellFactory().call(list);
+                cell.updateListView(list);
+                cell.updateIndex(i);
+                names.add(cell.getText());
+            }
+            return names;
+        });
+    }
+
+    private void thenTheSystemLanguageComesFirst() {
+        assertThat(this.languageNames).first().isEqualTo("As the system");
+    }
+
+    private void thenEveryLanguageFollowsByItsOwnName() {
+        assertThat(this.languageNames.subList(1, this.languageNames.size()))
+                .isEqualTo(I18n.LANGUAGES.stream().map(l -> I18n.of(l).name()).toList())
+                .doesNotHaveDuplicates()
+                .noneMatch(name -> name.startsWith("["));
     }
 
     // The model learns the engine's state on its ticks, which these tests drive.

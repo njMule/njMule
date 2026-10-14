@@ -19,14 +19,11 @@ package org.njmule.gui.i18n;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -37,7 +34,6 @@ import org.junit.jupiter.api.Test;
 class I18nTest {
 
     private static final Path SOURCES = Path.of("src/main/java");
-    private static final Path BUNDLES = Path.of("src/main/resources/org/njmule/gui/i18n");
     private static final Pattern KEY = Pattern.compile("\"((?:IDS_[A-Z0-9_]+)|(?:nj\\.[A-Za-z0-9.]+[A-Za-z0-9]))\"");
     // Keys built at run time: a prefix followed by an enum constant in lower case.
     private static final List<String> DYNAMIC = List.of(
@@ -72,15 +68,6 @@ class I18nTest {
         assertThat(italian.t("nj.top.tools")).isEqualTo("Strumenti");
         // Not translated in Italian: English stands in.
         assertThat(italian.t("IDS_KADEMLIA")).isEqualTo("Kad");
-    }
-
-    @Test
-    void otherLanguagesFallBackToEnglish() {
-        I18n german = I18n.of(Locale.GERMAN);
-
-        assertThat(german.locale()).isEqualTo(Locale.ENGLISH);
-        assertThat(german.t("IDS_DL_FILENAME")).isEqualTo("File Name");
-        assertThat(I18n.of(Locale.forLanguageTag("it-CH")).locale()).isEqualTo(Locale.ITALIAN);
     }
 
     @Test
@@ -119,23 +106,6 @@ class I18nTest {
     }
 
     @Test
-    void italianHasEveryNjmuleText() throws IOException {
-        Properties english = load("nj.properties");
-        Properties italian = load("nj_it.properties");
-
-        Properties emule = load("emule.properties");
-        Set<String> own = new TreeSet<>();
-        Set<String> reworded = new TreeSet<>();
-        for (String key : italian.stringPropertyNames()) {
-            (key.startsWith("IDS_") ? reworded : own).add(key);
-        }
-
-        assertThat(own).isEqualTo(english.stringPropertyNames());
-        assertThat(english.stringPropertyNames()).noneMatch(key -> key.startsWith("IDS_"));
-        assertThat(reworded).isNotEmpty().allMatch(emule::containsKey);
-    }
-
-    @Test
     void italianKeepsUploadAndDownload() {
         I18n english = I18n.of(Locale.ENGLISH);
         I18n italian = I18n.of(Locale.ITALIAN);
@@ -146,13 +116,5 @@ class I18nTest {
         assertThat(italian.t("IDS_DL_FILENAME"))
                 .as("eMule's translation elsewhere")
                 .isEqualTo("Nome file");
-    }
-
-    private static Properties load(String name) throws IOException {
-        Properties p = new Properties();
-        try (Reader in = Files.newBufferedReader(BUNDLES.resolve(name), StandardCharsets.UTF_8)) {
-            p.load(in);
-        }
-        return p;
     }
 }

@@ -890,7 +890,7 @@ public final class SettingsScreen implements Screen {
     }
 
     private String languageName(Optional<Locale> l) {
-        return l.map(locale -> locale.getDisplayLanguage(locale)).orElse(this.gui.t("nj.settings.systemLanguage"));
+        return l.map(locale -> I18n.of(locale).name()).orElse(this.gui.t("nj.settings.systemLanguage"));
     }
 
     private static String key(Enum<?> e) {
