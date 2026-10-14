@@ -673,7 +673,8 @@ public final class WebUi implements AutoCloseable {
                         + " base-uri 'none'");
         headers.set("X-Frame-Options", "DENY");
         headers.set("X-Content-Type-Options", "nosniff");
-        headers.set("Referrer-Policy", "no-referrer");
+        // Not no-referrer: browsers would then send "Origin: null" with the pages' own forms.
+        headers.set("Referrer-Policy", "same-origin");
         headers.set("Cache-Control", "no-store");
     }
 

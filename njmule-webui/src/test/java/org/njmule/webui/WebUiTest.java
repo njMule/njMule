@@ -155,6 +155,25 @@ class WebUiTest {
     }
 
     @Test
+    void browsersMayPostTheFormsOfThePages() throws Exception {
+        this.start();
+        // With no-referrer a browser sends "Origin: null" even to the page's own origin.
+        assertThat(this.get("/login").headers().firstValue("Referrer-Policy")).hasValue("same-origin");
+        HttpRequest same = this.request("/login")
+                .header("Origin", "http://127.0.0.1:" + this.ui.port())
+                .POST(form(Map.of("password", PASSWORD)))
+                .build();
+        assertThat(this.http.send(same, HttpResponse.BodyHandlers.ofString()).statusCode())
+                .isEqualTo(303);
+        HttpRequest opaque = this.request("/login")
+                .header("Origin", "null")
+                .POST(form(Map.of("password", PASSWORD)))
+                .build();
+        assertThat(this.http.send(opaque, HttpResponse.BodyHandlers.ofString()).statusCode())
+                .isEqualTo(403);
+    }
+
+    @Test
     void refusesOtherHostNames() throws Exception {
         this.start();
         try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
