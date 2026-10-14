@@ -41,6 +41,21 @@ class CategoryTest {
     }
 
     @Test
+    void aRegularExpressionIsOneExpressionMatchingTheWholeName() {
+        Category video = category(".*\\.(avi|mkv)$", true);
+
+        assertThat(video.matches("Holiday.MKV")).isTrue();
+        assertThat(video.matches("film.avi")).isTrue();
+        assertThat(video.matches("film.avi.txt")).isFalse();
+        assertThat(category("ubuntu|debian", true).matches("Ubuntu 24.04 desktop.iso"))
+                .as("the whole name, not a part of it")
+                .isFalse();
+        assertThat(category("ubuntu|debian", true).matches("Debian")).isTrue();
+        assertThat(category("", true).matches("")).isFalse();
+        assertThat(category("ubuntu|debian", false).matches("my debian.iso")).isTrue();
+    }
+
+    @Test
     void refusesWhatCannotBeKept() {
         assertThatThrownBy(() -> new Category(0, "x", Optional.empty(), "", 0, DownloadPriority.AUTO, "", false))
                 .isInstanceOf(IllegalArgumentException.class);

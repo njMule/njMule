@@ -32,7 +32,8 @@ import java.util.regex.Pattern;
  * @param color one of the {@link #COLORS} category colours of the interface, 0 for none
  * @param priority given to the downloads put in it; AUTO leaves theirs
  * @param patterns names that send new downloads here, apart by {@code |}: with {@code *} and {@code ?} a pattern
- *     matches the whole name, without them a part of it; regular expressions when {@code regex}
+ *     matches the whole name, without them a part of it; when {@code regex}, one regular expression (where {@code |} is
+ *     alternation) that must match the whole name, ignoring case
  */
 public record Category(
         int id,
@@ -80,22 +81,18 @@ public record Category(
             throw new IllegalArgumentException("category patterns have at most " + MAX_PATTERNS + " characters");
         }
         if (regex) {
-            for (String pattern : PATTERNS.split(patterns)) {
-                Pattern.compile(pattern);
-            }
+            compiled(patterns);
         }
     }
 
     /** Whether a new download named {@code fileName} goes in this category. */
     public boolean matches(String fileName) {
+        if (this.regex) {
+            return !this.patterns.isEmpty()
+                    && compiled(this.patterns).matcher(fileName).matches();
+        }
         for (String p : PATTERNS.split(this.patterns)) {
-            if (this.regex) {
-                if (Pattern.compile(p, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
-                        .matcher(fileName)
-                        .find()) {
-                    return true;
-                }
-            } else if (p.indexOf('*') >= 0 || p.indexOf('?') >= 0) {
+            if (p.indexOf('*') >= 0 || p.indexOf('?') >= 0) {
                 if (glob(p).matcher(fileName).matches()) {
                     return true;
                 }
@@ -104,6 +101,10 @@ public record Category(
             }
         }
         return false;
+    }
+
+    private static Pattern compiled(String patterns) {
+        return Pattern.compile(patterns, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     }
 
     // * any characters, ? one, the rest as it is.
