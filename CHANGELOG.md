@@ -351,7 +351,8 @@ All notable changes to this project are documented here. The format follows
   accepted as host (no DNS rebinding); `webui.properties` is readable by its owner only on Linux and
   macOS, and a broken one is logged. Desktop searches no longer push out the web's results.
 - njMule starts again after eMule's identity was imported twice before a restart; an identity is
-  never applied in part or mixed with an earlier import, and a dry run changes nothing.
+  never applied in part or mixed with an earlier import, and a dry run changes nothing. A folder
+  left in the imported identity no longer keeps the other leftovers there.
 - Friends, spam markers, cancelled files, comments, static servers and stored searches imported from
   eMule take effect at the next start instead of being overwritten by the running engine.
 - eMule import: a free-space reserve of 2 GiB or more, every "start next paused file" value,

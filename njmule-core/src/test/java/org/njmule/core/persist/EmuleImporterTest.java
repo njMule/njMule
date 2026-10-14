@@ -475,12 +475,12 @@ class EmuleImporterTest {
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         Files.writeString(pending.resolve("preferences.dat.bak"), "older");
         Files.writeString(pending.resolve("cryptkey.dat.tmp"), "interrupted");
-        Files.writeString(Files.createDirectories(pending.resolve("unexpected")).resolve("x"), "x");
+        // A folder among the leftovers must not stop the removal of the files listed after it.
+        Files.writeString(Files.createDirectories(pending.resolve("a folder")).resolve("x"), "x");
 
         assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
 
-        assertThat(pending.resolve("preferences.dat.bak")).doesNotExist();
-        assertThat(pending.resolve("cryptkey.dat.tmp")).doesNotExist();
+        assertThat(pending).doesNotExist();
         assertThat(this.ours.resolve("cryptkey.dat")).hasSameBinaryContentAs(this.emule.config.resolve("cryptkey.dat"));
     }
 

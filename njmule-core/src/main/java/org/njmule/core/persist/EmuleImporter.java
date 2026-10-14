@@ -17,13 +17,16 @@
 package org.njmule.core.persist;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,6 +38,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.ImportOptions;
@@ -213,18 +217,17 @@ public final class EmuleImporter {
         return taken;
     }
 
-    // With what an interrupted or repeated import left in it; a folder that stays is taken again at the next start.
+    // With what an interrupted or repeated import left in it, folders too, children before their parent; a folder that
+    // stays is taken again at the next start.
     private static void removeFolder(Path folder) {
-        try {
-            if (Files.isDirectory(folder)) {
-                try (DirectoryStream<Path> files = Files.newDirectoryStream(folder)) {
-                    for (Path file : files) {
-                        Files.deleteIfExists(file);
-                    }
-                }
+        if (!Files.exists(folder, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try (Stream<Path> tree = Files.walk(folder)) {
+            for (Path path : tree.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
             }
-            Files.deleteIfExists(folder);
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
             logger.warn("Cannot remove {}", folder, e);
         }
     }
