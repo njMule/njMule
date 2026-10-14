@@ -43,6 +43,10 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -67,6 +71,7 @@ public final class Igd implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(Igd.class);
     private static final int MAX_DESCRIPTION = 256 * 1024;
     private static final int MAX_REASON = 120;
+    // For the headers, and for the whole answer: the JDK's timeout ends with the headers.
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
     private static final String[] DEVICES = {
         "urn:schemas-upnp-org:device:InternetGatewayDevice:2", "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
@@ -75,15 +80,15 @@ public final class Igd implements AutoCloseable {
         "urn:schemas-upnp-org:service:WANIPConnection:", "urn:schemas-upnp-org:service:WANPPPConnection:"
     };
 
+    private final URI location;
     private final URI control;
     private final String service;
-    private final InetAddress local;
     private final HttpClient http;
 
-    private Igd(URI control, String service, InetAddress local, HttpClient http) {
+    private Igd(URI location, URI control, String service, HttpClient http) {
+        this.location = location;
         this.control = control;
         this.service = service;
-        this.local = local;
         this.http = http;
     }
 
@@ -134,7 +139,17 @@ public final class Igd implements AutoCloseable {
                     logger.debug("UPnP: ignoring {} announced by {}", location.get(), answer.getAddress());
                     continue;
                 }
-                Optional<Igd> gateway = describe(location.get(), http);
+                Optional<Igd> gateway;
+                try {
+                    gateway = describe(location.get(), http);
+                } catch (IOException e) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw e;
+                    }
+                    // Another device that answers badly must not hide the router.
+                    logger.debug("UPnP: no description at {}: {}", location.get(), e.getMessage());
+                    continue;
+                }
                 if (gateway.isPresent()) {
                     found = true;
                     return gateway;
@@ -167,8 +182,11 @@ public final class Igd implements AutoCloseable {
         }
     }
 
-    /** Forwards {@code port} of {@code protocol} ("TCP" or "UDP") to us. */
-    public void addMapping(String protocol, int port, String description) throws IOException {
+    /**
+     * Forwards {@code port} of {@code protocol} ("TCP" or "UDP") to our address towards the router, for {@code lease}
+     * seconds (0: until removed).
+     */
+    public void addMapping(String protocol, int port, String description, long lease) throws IOException {
         this.call(
                 "AddPortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
@@ -182,13 +200,29 @@ public final class Igd implements AutoCloseable {
                         + port
                         + "</NewInternalPort>"
                         + "<NewInternalClient>"
-                        + this.local.getHostAddress()
+                        // Asked each time: our address may have changed since the router was found.
+                        + localTowards(this.location).getHostAddress()
                         + "</NewInternalClient>"
                         + "<NewEnabled>1</NewEnabled>"
                         + "<NewPortMappingDescription>"
                         + escape(description)
                         + "</NewPortMappingDescription>"
-                        + "<NewLeaseDuration>0</NewLeaseDuration>");
+                        + "<NewLeaseDuration>"
+                        + lease
+                        + "</NewLeaseDuration>");
+    }
+
+    /** Whether the WAN connection is up; a gateway that does not say is not taken as up. */
+    boolean isConnected() {
+        try {
+            byte[] answer = this.call("GetStatusInfo", "");
+            return named(parse(answer, true).getDocumentElement(), "NewConnectionStatus")
+                    .filter("Connected"::equalsIgnoreCase)
+                    .isPresent();
+        } catch (IOException | ParserConfigurationException | SAXException e) {
+            logger.debug("UPnP: no status of {}: {}", this.control, e.getMessage());
+            return false;
+        }
     }
 
     /** Removes the forwarding of {@code port}. */
@@ -204,7 +238,7 @@ public final class Igd implements AutoCloseable {
                         + "</NewProtocol>");
     }
 
-    private void call(String action, String arguments) throws IOException {
+    private byte[] call(String action, String arguments) throws IOException {
         String body = "<?xml version=\"1.0\"?>"
                 + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\""
                 + " s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -223,33 +257,43 @@ public final class Igd implements AutoCloseable {
                 .header("SOAPAction", "\"" + this.service + "#" + action + "\"")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
+        HttpResponse<byte[]> response = exchange(this.http, request);
+        if (response.statusCode() != 200) {
+            String reason = reason(response.statusCode(), response.body());
+            logger.debug("UPnP {} refused: {}", action, reason);
+            throw new Refused(reason);
+        }
+        return response.body();
+    }
+
+    // A device that sends without end, or stops half-way, holds us no longer than the timeout.
+    private static HttpResponse<byte[]> exchange(HttpClient http, HttpRequest request) throws IOException {
+        CompletableFuture<HttpResponse<byte[]>> answer = http.sendAsync(
+                request, HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofByteArray(), MAX_DESCRIPTION));
         try {
-            HttpResponse<byte[]> response = this.http.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() != 200) {
-                String reason = reason(response.statusCode(), response.body());
-                logger.debug("UPnP {} refused: {}", action, reason);
-                throw new Refused(reason);
-            }
+            return answer.get(HTTP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
+            answer.cancel(true);
             Thread.currentThread().interrupt();
             throw new IOException("interrupted", e);
+        } catch (TimeoutException e) {
+            answer.cancel(true);
+            throw new IOException(
+                    "no whole answer from " + request.uri() + " in " + HTTP_TIMEOUT.toSeconds() + " s", e);
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
         }
     }
 
+    // The WAN connection in use, when the router has more than one; else the first.
     private static Optional<Igd> describe(URI location, HttpClient http) throws IOException {
         HttpRequest request =
                 HttpRequest.newBuilder(location).timeout(HTTP_TIMEOUT).GET().build();
-        byte[] xml;
-        try {
-            HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() != 200 || response.body().length > MAX_DESCRIPTION) {
-                return Optional.empty();
-            }
-            xml = response.body();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted", e);
+        HttpResponse<byte[]> response = exchange(http, request);
+        if (response.statusCode() != 200) {
+            return Optional.empty();
         }
+        byte[] xml = response.body();
         Document doc;
         try {
             doc = parse(xml, false);
@@ -258,6 +302,7 @@ public final class Igd implements AutoCloseable {
             return Optional.empty();
         }
         String base = text(doc.getDocumentElement(), "URLBase").orElse(location.toString());
+        List<Igd> candidates = new ArrayList<>();
         NodeList services = doc.getElementsByTagName("service");
         for (int i = 0; i < services.getLength(); i++) {
             Element s = (Element) services.item(i);
@@ -270,14 +315,21 @@ public final class Igd implements AutoCloseable {
                         if (!trusted(control, InetAddress.getByName(location.getHost()))) {
                             return Optional.empty();
                         }
-                        return Optional.of(new Igd(control, type, localTowards(location), http));
+                        candidates.add(new Igd(location, control, type, http));
                     } catch (URISyntaxException | IllegalArgumentException e) {
                         return Optional.empty();
                     }
                 }
             }
         }
-        return Optional.empty();
+        if (candidates.size() > 1) {
+            for (Igd candidate : candidates) {
+                if (candidate.isConnected()) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
+        return candidates.stream().findFirst();
     }
 
     // Only the device that answered may describe itself, and only over plain HTTP on its LAN.

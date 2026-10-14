@@ -18,22 +18,17 @@ package org.njmule.core.upnp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Locale;
 import java.util.OptionalInt;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -41,55 +36,121 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(30)
 class PortForwardingTest {
 
-    private static final InetAddress LOOPBACK = InetAddress.getLoopbackAddress();
+    private static final String IP = "urn:schemas-upnp-org:service:WANIPConnection:1";
+    private static final String PPP = "urn:schemas-upnp-org:service:WANPPPConnection:1";
+    private static final String ADD = "AddPortMapping";
+    private static final String DELETE = "DeletePortMapping";
 
-    private final List<String> soap = new CopyOnWriteArrayList<>();
     private final List<String> log = new CopyOnWriteArrayList<>();
-    private DatagramSocket ssdp;
-    private ServerSocket http;
-    private volatile String description;
-    private volatile int status = 200;
-    private volatile String locationHost;
+    private final Renewals renewals = new Renewals();
+    private FakeGateway gateway;
 
     @AfterEach
     void close() throws IOException {
-        if (this.ssdp != null) {
-            this.ssdp.close();
-        }
-        if (this.http != null) {
-            this.http.close();
+        if (this.gateway != null) {
+            this.gateway.close();
         }
     }
 
     @Test
-    void forwardsOurPortsAndRemovesThemAtTheEnd() throws Exception {
-        this.router(service("urn:schemas-upnp-org:service:WANIPConnection:1", "/ctl"));
+    void forwardsOurPortsForALeaseAndRemovesThemAtTheEnd() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
 
         PortForwarding forwarding = this.start(OptionalInt.of(4672));
         forwarding.awaitStarted(Duration.ofSeconds(10));
 
         assertThat(forwarding.mappings()).containsExactly("TCP 4662", "UDP 4672");
         assertThat(this.log).singleElement().asString().contains("TCP 4662 and UDP 4672 forwarded");
-        assertThat(this.soap).hasSize(2);
-        assertThat(this.soap.getFirst())
-                .contains("#AddPortMapping")
+        assertThat(this.gateway.actions()).hasSize(2);
+        assertThat(this.gateway.actions(ADD).getFirst().body())
                 .contains("<NewExternalPort>4662</NewExternalPort>")
                 .contains("<NewProtocol>TCP</NewProtocol>")
                 .contains("<NewInternalClient>127.0.0.1</NewInternalClient>")
-                .contains("<NewPortMappingDescription>njMule</NewPortMappingDescription>");
+                .contains("<NewPortMappingDescription>njMule</NewPortMappingDescription>")
+                .contains("<NewLeaseDuration>" + PortForwarding.LEASE.toSeconds() + "</NewLeaseDuration>");
 
         forwarding.close();
 
-        assertThat(this.soap).hasSize(4);
-        assertThat(this.soap.get(2)).contains("#DeletePortMapping").contains("<NewProtocol>TCP</NewProtocol>");
-        assertThat(this.soap.get(3)).contains("<NewProtocol>UDP</NewProtocol>");
+        assertThat(this.gateway.actions(DELETE)).hasSize(2);
+        assertThat(this.gateway.actions(DELETE).getFirst().body()).contains("<NewProtocol>TCP</NewProtocol>");
+        assertThat(this.gateway.actions(DELETE).get(1).body()).contains("<NewProtocol>UDP</NewProtocol>");
         assertThat(forwarding.mappings()).isEmpty();
     }
 
     @Test
+    void renewsTheMappingsAtHalfTheLease() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        try (PortForwarding forwarding = this.start(OptionalInt.of(4672))) {
+            forwarding.awaitStarted(Duration.ofSeconds(10));
+
+            assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS)).isEqualTo(PortForwarding.LEASE.dividedBy(2));
+            this.renewals.go.release();
+
+            assertThat(await(() -> this.gateway.actions(ADD).size() == 4)).isTrue();
+            assertThat(this.gateway.actions(ADD).get(2).body()).contains("<NewProtocol>TCP</NewProtocol>");
+            assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS))
+                    .as("and again")
+                    .isNotNull();
+        }
+    }
+
+    @Test
+    void asksForAPermanentMappingWhenTheRouterKeepsNoOther() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        this.gateway.onlyPermanentLeases();
+
+        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+            forwarding.awaitStarted(Duration.ofSeconds(10));
+
+            assertThat(forwarding.mappings()).containsExactly("TCP 4662");
+            assertThat(this.log).singleElement().asString().contains("TCP 4662 forwarded");
+            assertThat(this.gateway.actions(ADD)).hasSize(2);
+            assertThat(this.gateway.actions(ADD).get(1).body()).contains("<NewLeaseDuration>0</NewLeaseDuration>");
+        }
+    }
+
+    @Test
+    void findsTheRouterAgainWhenItStopsAnswering() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        PortForwarding forwarding = this.start(OptionalInt.empty());
+        forwarding.awaitStarted(Duration.ofSeconds(10));
+        assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS)).isNotNull();
+
+        this.gateway.moveHttp();
+        this.renewals.go.release();
+
+        assertThat(await(() -> this.gateway.actions(ADD).size() == 2))
+                .as("mapped again at the router's new address")
+                .isTrue();
+        assertThat(forwarding.mappings()).containsExactly("TCP 4662");
+        forwarding.close();
+        assertThat(this.gateway.actions(DELETE)).hasSize(1);
+    }
+
+    @Test
+    void nothingStaysMappedAfterTheEnd() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        // Each mapping takes the router longer than the end waits for.
+        this.gateway.delayMappings(Duration.ofSeconds(3));
+        PortForwarding forwarding = this.start(OptionalInt.of(4672));
+        assertThat(await(() -> !this.gateway.actions(ADD).isEmpty())).isTrue();
+
+        forwarding.close();
+        Thread.sleep(4_000);
+
+        List<FakeGateway.Action> adds = this.gateway.actions(ADD);
+        for (FakeGateway.Action add : adds) {
+            String port = add.body().replaceAll("(?s).*<NewExternalPort>(\\d+)<.*", "$1");
+            assertThat(this.gateway.actions(DELETE))
+                    .as("the mapping of port %s asked for is removed", port)
+                    .anyMatch(d -> d.nanos() > add.nanos() && d.body().contains(">" + port + "<"));
+        }
+    }
+
+    @Test
     void aPppGatewayWorksTooAndRefusalsAreReported() throws Exception {
-        this.router(service("urn:schemas-upnp-org:service:WANPPPConnection:1", "ctl"));
-        this.status = 500;
+        this.gateway = FakeGateway.start(PPP, "ctl");
+        this.gateway.refuseWith(606);
 
         PortForwarding forwarding = this.start(OptionalInt.empty());
         forwarding.awaitStarted(Duration.ofSeconds(10));
@@ -97,24 +158,73 @@ class PortForwardingTest {
 
         assertThat(forwarding.mappings()).isEmpty();
         assertThat(this.log).singleElement().asString().contains("refused TCP 4662 (606 Action not authorized)");
-        assertThat(this.soap).singleElement().asString().contains("WANPPPConnection:1#AddPortMapping");
+        assertThat(this.gateway.actions())
+                .singleElement()
+                .satisfies(a -> assertThat(a.name()).isEqualTo(ADD));
     }
 
     @Test
     void routersWithoutTheServiceOrElsewhereAreIgnored() throws Exception {
-        this.router(service("urn:schemas-upnp-org:service:Layer3Forwarding:1", "/l3"));
+        this.gateway = FakeGateway.start("urn:schemas-upnp-org:service:Layer3Forwarding:1", "/l3");
         PortForwarding forwarding = this.start(OptionalInt.empty());
         forwarding.awaitStarted(Duration.ofSeconds(10));
         forwarding.close();
         assertThat(this.log).singleElement().asString().contains("no router answered");
 
         // A description announced on another host is not fetched.
-        this.locationHost = "192.168.200.1";
+        this.gateway.announceOn("192.168.200.1");
         PortForwarding elsewhere = this.start(OptionalInt.empty());
         elsewhere.awaitStarted(Duration.ofSeconds(10));
         elsewhere.close();
         assertThat(this.log).last().asString().contains("no router answered");
-        assertThat(this.soap).isEmpty();
+        assertThat(this.gateway.actions()).isEmpty();
+    }
+
+    @Test
+    void aDeviceThatCannotBeReadDoesNotHideTheRouter() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        int closed;
+        try (ServerSocket gone = new ServerSocket(0)) {
+            closed = gone.getLocalPort();
+        }
+        this.gateway.othersAnswerFirst(List.of("http://127.0.0.1:" + closed + "/desc.xml"));
+
+        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+            forwarding.awaitStarted(Duration.ofSeconds(10));
+
+            assertThat(forwarding.mappings()).containsExactly("TCP 4662");
+        }
+    }
+
+    @Test
+    void aDescriptionThatStallsOrNeverEndsIsGivenUp() throws Exception {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+        this.gateway.serveDescription(FakeGateway.Body.STALLED);
+        try (PortForwarding stalled = this.start(OptionalInt.empty())) {
+            stalled.awaitStarted(Duration.ofSeconds(20));
+            assertThat(this.log).singleElement().asString().contains("no router answered");
+        }
+
+        this.gateway.serveDescription(FakeGateway.Body.OVERSIZED);
+        try (PortForwarding oversized = this.start(OptionalInt.empty())) {
+            oversized.awaitStarted(Duration.ofSeconds(10));
+            assertThat(this.log).last().asString().contains("no router answered");
+        }
+        assertThat(this.gateway.actions()).isEmpty();
+    }
+
+    @Test
+    void theWanConnectionInUseIsChosen() throws Exception {
+        this.gateway = FakeGateway.describing(FakeGateway.description(new String[] {IP, "/ip", PPP, "/ppp"}));
+        this.gateway.status("/ip", "Disconnected");
+
+        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+            forwarding.awaitStarted(Duration.ofSeconds(10));
+
+            assertThat(this.gateway.actions(ADD))
+                    .singleElement()
+                    .satisfies(a -> assertThat(a.body()).startsWith("/ppp ").contains("WANPPPConnection"));
+        }
     }
 
     @Test
@@ -130,110 +240,29 @@ class PortForwardingTest {
     }
 
     private PortForwarding start(OptionalInt udp) {
-        return PortForwarding.start(
-                new InetSocketAddress(LOOPBACK, this.ssdp.getLocalPort()),
-                4662,
-                udp,
-                (fine, line) -> this.log.add(line));
+        return PortForwarding.start(this.gateway.ssdp(), 4662, udp, (fine, line) -> this.log.add(line), this.renewals);
     }
 
-    private static String service(String type, String control) {
-        return "<?xml version=\"1.0\"?><root xmlns=\"urn:schemas-upnp-org:device-1-0\"><device>"
-                + "<deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>"
-                + "<deviceList><device><serviceList><service>"
-                + "<serviceType>"
-                + type
-                + "</serviceType>"
-                + "<controlURL>"
-                + control
-                + "</controlURL>"
-                + "</service></serviceList></device></deviceList></device></root>";
+    private static boolean await(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            Thread.sleep(20);
+        }
+        return false;
     }
 
-    // Answers discovery with the address of its HTTP server, which serves the description and
-    // records the SOAP requests.
-    private void router(String deviceDescription) throws IOException {
-        this.description = deviceDescription;
-        this.http = new ServerSocket(0, 10, LOOPBACK);
-        this.ssdp = new DatagramSocket(0, LOOPBACK);
-        Thread.ofVirtual().start(() -> {
-            byte[] buffer = new byte[2048];
-            while (!this.ssdp.isClosed()) {
-                try {
-                    DatagramPacket search = new DatagramPacket(buffer, buffer.length);
-                    this.ssdp.receive(search);
-                    String host = this.locationHost == null ? "127.0.0.1" : this.locationHost;
-                    byte[] answer = ("HTTP/1.1 200 OK\r\n"
-                                    + "ST: upnp:rootdevice\r\n"
-                                    + "LOCATION: http://"
-                                    + host
-                                    + ":"
-                                    + this.http.getLocalPort()
-                                    + "/desc.xml\r\n\r\n")
-                            .getBytes(StandardCharsets.US_ASCII);
-                    this.ssdp.send(new DatagramPacket(answer, answer.length, search.getSocketAddress()));
-                } catch (IOException e) {
-                    return;
-                }
-            }
-        });
-        Thread.ofVirtual().start(() -> {
-            while (!this.http.isClosed()) {
-                try (Socket client = this.http.accept()) {
-                    this.serve(client);
-                } catch (IOException e) {
-                    return;
-                }
-            }
-        });
-    }
+    /** The waits between renewals, let go of by the test one at a time. */
+    private static final class Renewals implements PortForwarding.Pause {
+        private final BlockingQueue<Duration> asked = new LinkedBlockingQueue<>();
+        private final Semaphore go = new Semaphore(0);
 
-    private void serve(Socket client) throws IOException {
-        InputStream in = client.getInputStream();
-        ByteArrayOutputStream head = new ByteArrayOutputStream();
-        while (!head.toString(StandardCharsets.ISO_8859_1).endsWith("\r\n\r\n")) {
-            int c = in.read();
-            if (c < 0) {
-                return;
-            }
-            head.write(c);
+        @Override
+        public void sleep(Duration duration) throws InterruptedException {
+            this.asked.add(duration);
+            this.go.acquire();
         }
-        String request = head.toString(StandardCharsets.ISO_8859_1);
-        int length = 0;
-        String action = "";
-        for (String line : request.split("\r\n", -1)) {
-            String lower = line.toLowerCase(Locale.ROOT);
-            if (lower.startsWith("content-length:")) {
-                length = Integer.parseInt(line.substring(15).strip());
-            } else if (lower.startsWith("soapaction:")) {
-                action = line.substring(11).strip();
-            }
-        }
-        String body = new String(in.readNBytes(length), StandardCharsets.UTF_8);
-        OutputStream out = client.getOutputStream();
-        String reply;
-        int code = 200;
-        if (request.startsWith("GET")) {
-            reply = this.description;
-        } else {
-            this.soap.add(action + " " + body);
-            code = this.status;
-            reply = code == 200
-                    ? "<s:Envelope/>"
-                    : "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><s:Fault>"
-                            + "<faultcode>s:Client</faultcode><faultstring>UPnPError</faultstring><detail>"
-                            + "<UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\"><errorCode>606</errorCode>"
-                            + "<errorDescription>Action not\nauthorized</errorDescription></UPnPError>"
-                            + "</detail></s:Fault></s:Body></s:Envelope>";
-        }
-        byte[] bytes = reply.getBytes(StandardCharsets.UTF_8);
-        out.write(("HTTP/1.1 "
-                        + code
-                        + " X\r\nContent-Type: text/xml\r\nContent-Length: "
-                        + bytes.length
-                        + "\r\nConnection: close\r\n\r\n")
-                .getBytes(StandardCharsets.US_ASCII));
-        out.write(bytes);
-        out.flush();
     }
 }
