@@ -43,6 +43,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PeerComment;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
@@ -59,6 +60,17 @@ class PeerTransferTest {
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
+    private String uploaderSettings = "";
+    private Path uploaderRoot;
+    private NjMuleEngine uploader;
+    private SharedFileInfo shared;
+    private byte[] data;
+    private FileComment comment;
+    private Path downloaderRoot;
+    private NjMuleEngine downloader;
+    private List<SearchResult> browsed;
+    private List<PeerComment> heard;
+
     @AfterEach
     void closeEverything() throws Exception {
         Collections.reverse(this.resources);
@@ -68,94 +80,159 @@ class PeerTransferTest {
     }
 
     @Test
-    void oneNjMuleDownloadsWhatAnotherShares() throws Exception {
-        byte[] data = new byte[12_000_000];
-        new Random(9).nextBytes(data);
-        Arrays.fill(data, 1_000_000, 4_000_000, (byte) 7);
-        Path uploaderRoot = this.dir.resolve("uploader");
-        Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
-        Files.write(incoming.resolve("shared.bin"), data);
-        NjMuleEngine uploader = engine(uploaderRoot);
-        SharedFileInfo shared = awaitShared(uploader);
-        assertThat(shared.size()).isEqualTo(data.length);
+    void shouldDownloadWhatAnotherNjMuleSharesAndCountItForCredits() throws Exception {
+        givenAnUploaderSharingRandomBytes("shared.bin", 12_000_000);
+        givenADownloader();
+        givenTheDownloaderDownloadedTheWholeFileFromTheUploader();
 
-        Path downloaderRoot = this.dir.resolve("downloader");
-        NjMuleEngine downloader = engine(downloaderRoot);
-        BlockingQueue<EngineEvent> events = events(downloader);
-        Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
-                        + "|sources,127.0.0.1:"
-                        + uploader.preferences().tcpPort()
-                        + "|/");
-        DownloadInfo added = downloader.addDownload(link).get(10, TimeUnit.SECONDS);
+        whenBothClose();
 
-        Path file = completed(events, added, downloader, uploader).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-
-        uploader.close();
-        downloader.close();
         // Both proved their identity to each other, so the transfer counts for credits.
-        ClientsMet.Credit atUploader = onlyCredit(uploaderRoot);
-        ClientsMet.Credit atDownloader = onlyCredit(downloaderRoot);
-        assertThat(atUploader.uploaded()).isGreaterThan(5_000_000);
+        thenTheUploaderCreditsTheDownloaderWithMoreUploadedThan(5_000_000);
+        thenTheDownloaderCreditsTheUploaderWithMoreDownloadedThan(5_000_000);
+    }
+
+    @Test
+    void shouldLetAnotherNjMuleSeeOurFilesOnlyWhenThePreferencesSaySo() throws Exception {
+        givenAnUploaderSharingZeros("film.mkv", 300_000);
+        givenADownloader();
+        givenTheDownloaderSeesNoneOfTheUploadersFiles();
+        givenTheUploaderShowsItsFilesTo(SharedFilesVisibility.EVERYBODY);
+
+        whenTheDownloaderBrowsesTheUploader();
+
+        thenTheDownloaderSeesOnly("film.mkv", 300_000);
+    }
+
+    @Test
+    void shouldLetADownloaderHearWhatTheUploaderSaysOfTheFile() throws Exception {
+        givenTheUploaderSendsAtMostKiBps(1);
+        givenAnUploaderSharingZeros("song.mp3", 3_000_000);
+        givenTheUploaderCommentsTheFile("A fine song", 4);
+        givenADownloader();
+        givenTheDownloaderAddsTheFileWithTheUploaderAsSource();
+
+        whenTheDownloaderWaitsToHearWhatPeersSayOfTheFile();
+
+        thenTheDownloaderHeardOnlyTheUploadersComment();
+    }
+
+    private void givenTheUploaderSendsAtMostKiBps(int kibps) {
+        this.uploaderSettings = "limits.uploadKiBps=" + kibps + System.lineSeparator();
+    }
+
+    private void givenAnUploaderSharingRandomBytes(String name, int size) throws Exception {
+        byte[] bytes = new byte[size];
+        new Random(9).nextBytes(bytes);
+        Arrays.fill(bytes, 1_000_000, 4_000_000, (byte) 7);
+        givenAnUploaderSharing(name, bytes);
+    }
+
+    private void givenAnUploaderSharingZeros(String name, int size) throws Exception {
+        givenAnUploaderSharing(name, new byte[size]);
+    }
+
+    private void givenAnUploaderSharing(String name, byte[] bytes) throws Exception {
+        this.data = bytes;
+        this.uploaderRoot = this.dir.resolve("uploader");
+        Path incoming = Files.createDirectories(this.uploaderRoot.resolve("incoming"));
+        Files.write(incoming.resolve(name), bytes);
+        this.uploader = engine(this.uploaderRoot, this.uploaderSettings);
+        this.shared = awaitShared(this.uploader);
+        assertThat(this.shared.size()).isEqualTo(bytes.length);
+    }
+
+    private void givenTheUploaderCommentsTheFile(String text, int rating) throws Exception {
+        this.comment = FileComment.of(text, rating);
+        this.uploader.setFileComment(this.shared.hash(), this.comment).get(10, TimeUnit.SECONDS);
+        assertThat(this.uploader.fileComment(this.shared.hash()).get(10, TimeUnit.SECONDS))
+                .contains(this.comment);
+    }
+
+    private void givenTheUploaderShowsItsFilesTo(SharedFilesVisibility visibility) throws Exception {
+        this.uploader
+                .updatePreferences(
+                        p -> p.toBuilder().sharedFilesVisibility(visibility).build())
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenADownloader() throws IOException {
+        this.downloaderRoot = this.dir.resolve("downloader");
+        this.downloader = engine(this.downloaderRoot);
+    }
+
+    private void givenTheDownloaderAddsTheFileWithTheUploaderAsSource() throws Exception {
+        addTheFileWithTheUploaderAsSource();
+    }
+
+    private void givenTheDownloaderDownloadedTheWholeFileFromTheUploader() throws Exception {
+        BlockingQueue<EngineEvent> events = events(this.downloader);
+        DownloadInfo added = addTheFileWithTheUploaderAsSource();
+        Path file = completed(events, added, this.downloader, this.uploader).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(this.data);
+    }
+
+    private void givenTheDownloaderSeesNoneOfTheUploadersFiles() throws Exception {
+        assertThat(browseTheUploader()).as("nobody sees them by default").isEmpty();
+    }
+
+    private void whenBothClose() {
+        this.uploader.close();
+        this.downloader.close();
+    }
+
+    private void whenTheDownloaderBrowsesTheUploader() throws Exception {
+        this.browsed = browseTheUploader();
+    }
+
+    private void whenTheDownloaderWaitsToHearWhatPeersSayOfTheFile() throws Exception {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        this.heard = List.of();
+        while (this.heard.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(100);
+            this.heard = this.downloader.peerComments(this.shared.hash()).get(10, TimeUnit.SECONDS);
+        }
+    }
+
+    private void thenTheUploaderCreditsTheDownloaderWithMoreUploadedThan(long bytes) throws IOException {
+        ClientsMet.Credit atUploader = onlyCredit(this.uploaderRoot);
+        assertThat(atUploader.uploaded()).isGreaterThan(bytes);
         assertThat(atUploader.publicKey().length()).isPositive();
-        assertThat(atDownloader.downloaded()).isGreaterThan(5_000_000);
+    }
+
+    private void thenTheDownloaderCreditsTheUploaderWithMoreDownloadedThan(long bytes) throws IOException {
+        ClientsMet.Credit atDownloader = onlyCredit(this.downloaderRoot);
+        assertThat(atDownloader.downloaded()).isGreaterThan(bytes);
         assertThat(atDownloader.publicKey().length()).isPositive();
     }
 
-    @Test
-    void anotherNjMuleSeesOurFilesOnlyWhenThePreferencesSaySo() throws Exception {
-        Path uploaderRoot = this.dir.resolve("browsed");
-        Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
-        Files.write(incoming.resolve("film.mkv"), new byte[300_000]);
-        NjMuleEngine browsed = engine(uploaderRoot);
-        SharedFileInfo shared = awaitShared(browsed);
-        NjMuleEngine browser = engine(this.dir.resolve("browser"));
-        ServerAddress address =
-                new ServerAddress("127.0.0.1", browsed.preferences().tcpPort());
-
-        assertThat(browser.browseSharedFiles(address).get(30, TimeUnit.SECONDS))
-                .as("nobody sees them by default")
-                .isEmpty();
-
-        browsed.updatePreferences(p -> p.toBuilder()
-                        .sharedFilesVisibility(SharedFilesVisibility.EVERYBODY)
-                        .build())
-                .get(10, TimeUnit.SECONDS);
-        assertThat(browser.browseSharedFiles(address).get(30, TimeUnit.SECONDS))
-                .singleElement()
-                .satisfies(f -> {
-                    assertThat(f.hash()).isEqualTo(shared.hash());
-                    assertThat(f.name()).isEqualTo("film.mkv");
-                    assertThat(f.size()).isEqualTo(300_000);
-                });
+    private void thenTheDownloaderSeesOnly(String name, long size) {
+        assertThat(this.browsed).singleElement().satisfies(f -> {
+            assertThat(f.hash()).isEqualTo(this.shared.hash());
+            assertThat(f.name()).isEqualTo(name);
+            assertThat(f.size()).isEqualTo(size);
+        });
     }
 
-    @Test
-    void aDownloaderHearsWhatTheUploaderSaysOfTheFile() throws Exception {
-        Path uploaderRoot = this.dir.resolve("commenting");
-        Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
-        Files.write(incoming.resolve("song.mp3"), new byte[3_000_000]);
-        NjMuleEngine uploader = engine(uploaderRoot, "limits.uploadKiBps=1" + System.lineSeparator());
-        SharedFileInfo shared = awaitShared(uploader);
-        FileComment comment = FileComment.of("A fine song", 4);
-        uploader.setFileComment(shared.hash(), comment).get(10, TimeUnit.SECONDS);
-        assertThat(uploader.fileComment(shared.hash()).get(10, TimeUnit.SECONDS))
-                .contains(comment);
+    private void thenTheDownloaderHeardOnlyTheUploadersComment() {
+        assertThat(this.heard)
+                .singleElement()
+                .satisfies(c -> assertThat(c.comment()).isEqualTo(this.comment));
+    }
 
-        NjMuleEngine downloader = engine(this.dir.resolve("listening"));
+    private DownloadInfo addTheFileWithTheUploaderAsSource() throws Exception {
         Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri() + "|sources,127.0.0.1:"
-                        + uploader.preferences().tcpPort() + "|/");
-        downloader.addDownload(link).get(10, TimeUnit.SECONDS);
+                (Ed2kLink.FileLink) Ed2kLink.parse(this.shared.link().toUri()
+                        + "|sources,127.0.0.1:"
+                        + this.uploader.preferences().tcpPort()
+                        + "|/");
+        return this.downloader.addDownload(link).get(10, TimeUnit.SECONDS);
+    }
 
-        long deadline = System.nanoTime() + WAIT.toNanos();
-        List<PeerComment> heard = List.of();
-        while (heard.isEmpty() && System.nanoTime() < deadline) {
-            Thread.sleep(100);
-            heard = downloader.peerComments(shared.hash()).get(10, TimeUnit.SECONDS);
-        }
-        assertThat(heard).singleElement().satisfies(c -> assertThat(c.comment()).isEqualTo(comment));
+    private List<SearchResult> browseTheUploader() throws Exception {
+        ServerAddress address =
+                new ServerAddress("127.0.0.1", this.uploader.preferences().tcpPort());
+        return this.downloader.browseSharedFiles(address).get(30, TimeUnit.SECONDS);
     }
 
     private static ClientsMet.Credit onlyCredit(Path root) throws IOException {

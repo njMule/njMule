@@ -25,10 +25,13 @@ import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,35 +52,98 @@ class StartNextDownloadTest {
     @TempDir
     Path root;
 
-    @Test
-    void cancellingADownloadThatWaitedStartsNoOther() throws Exception {
-        Ed2kLink.FileLink waiting = Ed2kLink.FileLink.of("waiting.bin", 5000, Hash16.parseHex("b1".repeat(16)));
-        Ed2kLink.FileLink paused = Ed2kLink.FileLink.of("paused.bin", 5000, Hash16.parseHex("b2".repeat(16)));
-        Ed2kLink.FileLink running = Ed2kLink.FileLink.of("running.bin", 5000, Hash16.parseHex("b3".repeat(16)));
-        try (NjMuleEngine engine = start()) {
-            engine.addDownload(waiting).get(5, TimeUnit.SECONDS);
-            engine.addDownload(paused).get(5, TimeUnit.SECONDS);
-            engine.pauseDownload(waiting.hash()).get(5, TimeUnit.SECONDS);
-            engine.pauseDownload(paused.hash()).get(5, TimeUnit.SECONDS);
+    private NjMuleEngine engine;
+    private final Map<String, Ed2kLink.FileLink> links = new HashMap<>();
+    private boolean cancelled;
 
-            assertThat(engine.cancelDownload(waiting.hash()).get(5, TimeUnit.SECONDS))
-                    .isTrue();
-            assertThat(status(engine, paused.hash()))
-                    .as("nothing was running in its place")
-                    .isEqualTo(DownloadInfo.Status.PAUSED);
-
-            engine.addDownload(running).get(5, TimeUnit.SECONDS);
-            assertThat(engine.cancelDownload(running.hash()).get(5, TimeUnit.SECONDS))
-                    .isTrue();
-            assertThat(status(engine, paused.hash())).isEqualTo(DownloadInfo.Status.DOWNLOADING);
+    @AfterEach
+    void stopTheEngine() throws Exception {
+        if (this.engine != null) {
+            this.engine.close();
         }
     }
 
     @Test
-    void aDownloadTheSchedulerStoppedIsNotStartedInstead() throws Exception {
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("c1".repeat(16)));
-        Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("c2".repeat(16)));
-        Ed2kLink.FileLink other = Ed2kLink.FileLink.of("other.mp3", 5000, Hash16.parseHex("c3".repeat(16)));
+    void shouldStartAPausedDownloadWhenARunningOneIsCancelledButNotWhenOneThatWaitedIs() throws Exception {
+        givenAnEngineThatStartsTheNextDownload();
+        givenADownload("waiting.bin", "b1");
+        givenADownload("paused.bin", "b2");
+        givenTheDownloadIsPaused("waiting.bin");
+        givenTheDownloadIsPaused("paused.bin");
+        givenTheDownloadIsCancelled("waiting.bin");
+        givenTheDownloadIsStillPaused("paused.bin");
+        givenADownload("running.bin", "b3");
+
+        whenTheDownloadIsCancelled("running.bin");
+
+        thenTheCancelIsAccepted();
+        thenTheStatusOfIs("paused.bin", DownloadInfo.Status.DOWNLOADING);
+    }
+
+    @Test
+    void shouldNotStartADownloadTheSchedulerStoppedInstead() throws Exception {
+        givenAnEngineThatStartsTheNextDownload();
+        givenTheCategoriesFilmsOfHighAndMusicOfLowPriority();
+        givenADownload("film.mkv", "c1");
+        givenADownload("song.mp3", "c2");
+        givenADownload("other.mp3", "c3");
+        givenTheDownloadIsInCategory("film.mkv", 1);
+        givenTheDownloadIsInCategory("song.mp3", 2);
+        givenTheDownloadIsInCategory("other.mp3", 2);
+        givenTheDownloadIsPaused("song.mp3");
+        givenAScheduleRuleStoppingAllDayTheCategory(1);
+        givenTheScheduleStoppedTheDownload("film.mkv");
+
+        whenTheDownloadIsCancelled("other.mp3");
+
+        thenTheRuleKeepsItStoppedThoughOfHigherPriority("film.mkv");
+        thenTheStatusOfIs("song.mp3", DownloadInfo.Status.DOWNLOADING);
+    }
+
+    private void givenAnEngineThatStartsTheNextDownload() throws IOException {
+        AppDirectories dirs = AppDirectories.underRoot(this.root, true);
+        Files.createDirectories(dirs.config());
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
+        }
+        Files.writeString(
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\ndownload.startNext=ANY\n");
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+    }
+
+    private void givenTheCategoriesFilmsOfHighAndMusicOfLowPriority() throws Exception {
+        this.engine
+                .setCategories(List.of(
+                        new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "", false),
+                        new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.LOW, "", false)))
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenADownload(String name, String hashByte) throws Exception {
+        Ed2kLink.FileLink link = Ed2kLink.FileLink.of(name, 5000, Hash16.parseHex(hashByte.repeat(16)));
+        this.links.put(name, link);
+        this.engine.addDownload(link).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheDownloadIsInCategory(String name, int category) throws Exception {
+        this.engine.setDownloadCategory(hash(name), category).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheDownloadIsPaused(String name) throws Exception {
+        this.engine.pauseDownload(hash(name)).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheDownloadIsCancelled(String name) throws Exception {
+        assertThat(this.engine.cancelDownload(hash(name)).get(5, TimeUnit.SECONDS))
+                .isTrue();
+    }
+
+    private void givenTheDownloadIsStillPaused(String name) throws Exception {
+        assertThat(status(name)).as("nothing was running in its place").isEqualTo(DownloadInfo.Status.PAUSED);
+    }
+
+    private void givenAScheduleRuleStoppingAllDayTheCategory(int category) throws Exception {
         Schedule.Rule night = new Schedule.Rule(
                 "night",
                 true,
@@ -88,49 +154,43 @@ class StartNextDownloadTest {
                 OptionalInt.empty(),
                 OptionalInt.empty(),
                 OptionalInt.empty(),
-                OptionalInt.of(1),
+                OptionalInt.of(category),
                 OptionalInt.empty());
-        try (NjMuleEngine engine = start()) {
-            engine.setCategories(List.of(
-                            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "", false),
-                            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.LOW, "", false)))
-                    .get(5, TimeUnit.SECONDS);
-            for (Ed2kLink.FileLink link : List.of(film, song, other)) {
-                engine.addDownload(link).get(5, TimeUnit.SECONDS);
-            }
-            engine.setDownloadCategory(film.hash(), 1).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(song.hash(), 2).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(other.hash(), 2).get(5, TimeUnit.SECONDS);
-            engine.pauseDownload(song.hash()).get(5, TimeUnit.SECONDS);
-            engine.updateSchedule(new Schedule(List.of(night))).get(5, TimeUnit.SECONDS);
-            assertThat(status(engine, film.hash())).isEqualTo(DownloadInfo.Status.STOPPED);
-
-            engine.cancelDownload(other.hash()).get(5, TimeUnit.SECONDS);
-
-            assertThat(status(engine, film.hash()))
-                    .as("the rule keeps it stopped, though of higher priority")
-                    .isEqualTo(DownloadInfo.Status.STOPPED);
-            assertThat(status(engine, song.hash())).isEqualTo(DownloadInfo.Status.DOWNLOADING);
-        }
+        this.engine.updateSchedule(new Schedule(List.of(night))).get(5, TimeUnit.SECONDS);
     }
 
-    private static DownloadInfo.Status status(NjMuleEngine engine, Hash16 hash) throws Exception {
-        return engine.downloads().get(5, TimeUnit.SECONDS).stream()
+    private void givenTheScheduleStoppedTheDownload(String name) throws Exception {
+        assertThat(status(name)).isEqualTo(DownloadInfo.Status.STOPPED);
+    }
+
+    private void whenTheDownloadIsCancelled(String name) throws Exception {
+        this.cancelled = this.engine.cancelDownload(hash(name)).get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenTheCancelIsAccepted() {
+        assertThat(this.cancelled).isTrue();
+    }
+
+    private void thenTheStatusOfIs(String name, DownloadInfo.Status expected) throws Exception {
+        assertThat(status(name)).isEqualTo(expected);
+    }
+
+    private void thenTheRuleKeepsItStoppedThoughOfHigherPriority(String name) throws Exception {
+        assertThat(status(name))
+                .as("the rule keeps it stopped, though of higher priority")
+                .isEqualTo(DownloadInfo.Status.STOPPED);
+    }
+
+    private Hash16 hash(String name) {
+        return this.links.get(name).hash();
+    }
+
+    private DownloadInfo.Status status(String name) throws Exception {
+        Hash16 hash = hash(name);
+        return this.engine.downloads().get(5, TimeUnit.SECONDS).stream()
                 .filter(d -> d.hash().equals(hash))
                 .findFirst()
                 .orElseThrow()
                 .status();
-    }
-
-    private NjMuleEngine start() throws IOException {
-        AppDirectories dirs = AppDirectories.underRoot(this.root, true);
-        Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\ndownload.startNext=ANY\n");
-        return NjMuleEngine.start(new EngineConfig(dirs));
     }
 }

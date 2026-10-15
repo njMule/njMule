@@ -42,6 +42,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -70,6 +72,14 @@ class SourceExchangeAnswerTest {
 
     private final List<AutoCloseable> resources = new ArrayList<>();
 
+    private Optional<InetAddress> lan;
+    private NjMuleEngine engine;
+    private SharedFileInfo file;
+    private Optional<SourceExchange.Answer> answer;
+    private int offered;
+    private InetAddress askingFrom;
+    private boolean passedOn;
+
     @AfterEach
     void closeEverything() throws Exception {
         Collections.reverse(this.resources);
@@ -79,51 +89,96 @@ class SourceExchangeAnswerTest {
     }
 
     @Test
-    void aSourceOnThisMachineIsPassedOnlyToClientsOnThisMachine() throws Exception {
-        Optional<InetAddress> lan = lanAddress();
-        assumeTrue(lan.isPresent(), "a LAN address to ask from");
-        NjMuleEngine engine = engine();
-        SharedFileInfo file = awaitShared(engine);
-        Client downloader = client(InetAddress.getLoopbackAddress(), engine, 1);
-        downloader.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
-        downloader.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
-        downloader.poll(Duration.ofSeconds(1));
+    void shouldPassASourceOnThisMachineOnlyToClientsOnThisMachine() throws Exception {
+        givenALanAddressToAskFrom();
+        givenAnEngineSharingAFile();
+        givenADownloaderOnThisMachineQueuedForTheFile();
+        givenAClientAtTheLanAddressGetsNoSources();
 
-        // Clients ask for the file before they ask for its sources.
-        Client fromLan = client(lan.get(), engine, 2);
-        fromLan.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
-        fromLan.send(SourceExchange.request(file.hash()));
+        whenAClientOnThisMachineAsksForSources();
+
+        thenTheOnlySourceIs("127.0.0.1");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "203.0.113.9, 198.51.100.7, true",
+        "203.0.113.9, 192.168.1.5,  true",
+        "10.1.2.3,    198.51.100.7, false",
+        "10.1.2.3,    192.168.1.5,  true",
+        "10.1.2.3,    127.0.0.1,    true",
+        "127.0.0.1,   198.51.100.7, false",
+        "127.0.0.1,   192.168.1.5,  false",
+        "127.0.0.1,   127.0.0.1,    true",
+        "224.0.0.1,   127.0.0.1,    false",
+        "0.1.2.3,     127.0.0.1,    false"
+    })
+    void shouldKeepAddressesOutsideThePublicNetworkWithinTheirOwn(String source, String client, boolean passedOn) {
+        givenASourceAt(source);
+        givenAClientAt(client);
+
+        whenTheSourceIsOfferedToTheClient();
+
+        thenWhetherTheSourceIsPassedOnIs(passedOn);
+    }
+
+    private void givenALanAddressToAskFrom() throws IOException {
+        this.lan = lanAddress();
+        assumeTrue(this.lan.isPresent(), "a LAN address to ask from");
+    }
+
+    private void givenAnEngineSharingAFile() throws Exception {
+        this.engine = engine();
+        this.file = awaitShared(this.engine);
+    }
+
+    private void givenADownloaderOnThisMachineQueuedForTheFile() throws IOException {
+        Client downloader = client(InetAddress.getLoopbackAddress(), this.engine, 1);
+        downloader.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, this.file.hash()));
+        downloader.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
+        downloader.poll(Duration.ofSeconds(1));
+    }
+
+    private void givenAClientAtTheLanAddressGetsNoSources() throws Exception {
+        Client fromLan = client(this.lan.orElseThrow(), this.engine, 2);
+        askForSources(fromLan);
         assertThat(fromLan.answer(Duration.ofSeconds(2)))
                 .as("a loopback address means nothing to another machine")
                 .isEmpty();
-
-        Client local = client(InetAddress.getLoopbackAddress(), engine, 3);
-        local.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
-        local.send(SourceExchange.request(file.hash()));
-        assertThat(local.answer(WAIT).orElseThrow().sources())
-                .singleElement()
-                .satisfies(s -> assertThat(Ipv4.format(s.ip())).isEqualTo("127.0.0.1"));
     }
 
-    @Test
-    void addressesOutsideThePublicNetworkStayWithinTheirOwn() throws Exception {
-        InetAddress internet = InetAddress.getByAddress(new byte[] {(byte) 198, 51, 100, 7});
-        InetAddress lan = InetAddress.getByAddress(new byte[] {(byte) 192, (byte) 168, 1, 5});
-        InetAddress loopback = InetAddress.getLoopbackAddress();
-        int publicSource = Ipv4.of(203, 0, 113, 9);
-        int lanSource = Ipv4.of(10, 1, 2, 3);
-        int loopbackSource = Ipv4.of(127, 0, 0, 1);
+    private void givenASourceAt(String address) {
+        this.offered = Ipv4.parse(address);
+    }
 
-        assertThat(DownloadManager.passesOn(publicSource, internet)).isTrue();
-        assertThat(DownloadManager.passesOn(publicSource, lan)).isTrue();
-        assertThat(DownloadManager.passesOn(lanSource, internet)).isFalse();
-        assertThat(DownloadManager.passesOn(lanSource, lan)).isTrue();
-        assertThat(DownloadManager.passesOn(lanSource, loopback)).isTrue();
-        assertThat(DownloadManager.passesOn(loopbackSource, internet)).isFalse();
-        assertThat(DownloadManager.passesOn(loopbackSource, lan)).isFalse();
-        assertThat(DownloadManager.passesOn(loopbackSource, loopback)).isTrue();
-        assertThat(DownloadManager.passesOn(Ipv4.of(224, 0, 0, 1), loopback)).isFalse();
-        assertThat(DownloadManager.passesOn(Ipv4.of(0, 1, 2, 3), loopback)).isFalse();
+    private void givenAClientAt(String address) {
+        this.askingFrom = InetAddress.ofLiteral(address);
+    }
+
+    private void whenAClientOnThisMachineAsksForSources() throws Exception {
+        Client local = client(InetAddress.getLoopbackAddress(), this.engine, 3);
+        askForSources(local);
+        this.answer = local.answer(WAIT);
+    }
+
+    private void whenTheSourceIsOfferedToTheClient() {
+        this.passedOn = DownloadManager.passesOn(this.offered, this.askingFrom);
+    }
+
+    private void thenTheOnlySourceIs(String address) {
+        assertThat(this.answer.orElseThrow().sources())
+                .singleElement()
+                .satisfies(s -> assertThat(Ipv4.format(s.ip())).isEqualTo(address));
+    }
+
+    private void thenWhetherTheSourceIsPassedOnIs(boolean expected) {
+        assertThat(this.passedOn).isEqualTo(expected);
+    }
+
+    // Clients ask for the file before they ask for its sources.
+    private void askForSources(Client client) throws IOException {
+        client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        client.send(SourceExchange.request(this.file.hash()));
     }
 
     private static Optional<InetAddress> lanAddress() throws IOException {

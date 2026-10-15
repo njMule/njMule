@@ -17,7 +17,7 @@
 package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -25,13 +25,17 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -56,90 +60,154 @@ class ServerControlTest {
     @TempDir
     Path dir;
 
-    @Test
-    void aServerTheFiltersRefuseIsNotConnectedTo() throws Exception {
-        AppDirectories dirs = dirs("security.filterLan=true\n");
-        Files.write(
-                dirs.config().resolve(Network.IPFILTER_FILE),
-                IpFilterDat.write(List.of(
-                        new IpFilterDat.Range(Ipv4.of(127, 0, 0, 2), Ipv4.of(127, 0, 0, 2), 0, "blocked server"))));
-        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            assertThatThrownBy(() -> engine.connect(Optional.of(new ServerAddress("127.0.0.2", 4661)))
-                            .get(5, TimeUnit.SECONDS))
-                    .as("blocked by the IP filter")
-                    .isInstanceOf(ExecutionException.class)
-                    .hasCauseInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> engine.connect(Optional.of(new ServerAddress("0.1.2.3", 4661)))
-                            .get(5, TimeUnit.SECONDS))
-                    .as("a LAN address while LAN addresses are filtered")
-                    .isInstanceOf(ExecutionException.class)
-                    .hasCauseInstanceOf(IllegalArgumentException.class);
+    private AppDirectories dirs;
+    private Path otherList;
+    private NjMuleEngine engine;
+    private EngineLoop loop;
+    private Network network;
+    private int removed;
+    private Throwable exception;
+
+    @AfterEach
+    void stopEverything() throws Exception {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.loop != null) {
+            this.loop.close();
         }
     }
 
-    @Test
-    void serversThatCanBeFoundAreRemovedWhenOthersCannot() throws Exception {
-        AppDirectories dirs = dirs("");
-        Path met = this.dir.resolve("other.met");
-        Files.write(met, ServerMet.write(List.of(new ServerMet.Server(Ipv4.of(81, 2, 3, 4), 4661, List.of()))));
-        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            engine.addServers(met).get(5, TimeUnit.SECONDS);
+    @ParameterizedTest
+    @CsvSource({"127.0.0.2, blocked by the IP filter", "0.1.2.3,   a LAN address while LAN addresses are filtered"})
+    void shouldNotConnectToAServerTheFiltersRefuse(String server, String why) throws Exception {
+        givenAProfileWithThePreferences("security.filterLan=true\n");
+        givenAnIpFilterBlocking("127.0.0.2");
+        givenTheEngineIsStarted();
 
-            // An address with no IPv4 form cannot be resolved for the list, without asking any name server.
-            int removed = engine.removeServers(
-                            List.of(new ServerAddress("::1", 4661), new ServerAddress("81.2.3.4", 4661)))
-                    .get(5, TimeUnit.SECONDS);
+        whenTheEngineConnectsTo(server, 4661);
 
-            assertThat(removed).isEqualTo(1);
-            assertThat(engine.servers().get(5, TimeUnit.SECONDS)).isEmpty();
-        }
+        thenExceptionOccurred(ExecutionException.class, IllegalArgumentException.class, why);
     }
 
     @Test
-    void datagramsFromIpv6AddressesAreIgnored() throws Exception {
-        AppDirectories dirs = dirs("");
-        Preferences prefs = Preferences.defaults();
-        try (EngineLoop loop = EngineLoop.start()) {
-            Network network = loop.submit(() -> new Network(
-                            loop,
-                            dirs.config(),
-                            () -> prefs,
-                            event -> {},
-                            (level, line) -> {},
-                            Hash16.ZERO,
-                            dirs.data().resolve("temp"),
-                            () -> dirs.data().resolve("incoming"),
-                            Optional.empty(),
-                            false))
-                    .get(10, TimeUnit.SECONDS);
-            InetSocketAddress ipv6 = new InetSocketAddress(InetAddress.ofLiteral("::1"), 4665);
-            FileEntry file = new FileEntry(
-                    Hash16.parseHex("ab".repeat(16)),
-                    0,
-                    0,
-                    List.of(
-                            new Tag.StringTag(TagName.id(FileTag.FILENAME), "x.iso"),
-                            new Tag.IntTag(TagName.id(FileTag.FILESIZE), 10)));
-            Packet results = ServerDatagrams.searchResults(List.of(file));
-            Packet status = Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), new byte[12]);
+    void shouldRemoveTheServersThatCanBeFoundWhenOthersCannot() throws Exception {
+        givenAProfileWithThePreferences("");
+        givenAnotherServerListWith("81.2.3.4", 4661);
+        givenTheEngineIsStarted();
+        givenTheServersOfTheOtherListAreAdded();
 
-            loop.submit(() -> {
-                        network.datagram(ipv6, results);
-                        network.datagram(ipv6, status);
-                        network.close();
-                        return null;
-                    })
-                    .get(10, TimeUnit.SECONDS);
-        }
+        // An address with no IPv4 form cannot be resolved for the list, without asking any name server.
+        whenTheServersAtPortAreRemoved(4661, "::1", "81.2.3.4");
+
+        thenTheNumberOfServersRemovedIs(1);
+        thenNoServerIsLeft();
     }
 
-    private AppDirectories dirs(String preferences) throws IOException {
-        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
-        Files.createDirectories(dirs.config());
+    @Test
+    void shouldIgnoreDatagramsFromIpv6Addresses() throws Exception {
+        givenAProfileWithThePreferences("");
+        givenTheNetworkOnAnEngineLoop();
+
+        whenASearchResultAndAServerStatusArriveFrom("::1", 4665);
+
+        thenNoExceptionOccurred();
+    }
+
+    private void givenAProfileWithThePreferences(String preferences) throws IOException {
+        this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
+        Files.createDirectories(this.dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
+                this.dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + freeTcpPort() + "\nnet.kad.enabled=false\n" + preferences);
-        return dirs;
+    }
+
+    private void givenAnIpFilterBlocking(String address) throws IOException {
+        int ip = Ipv4.parse(address);
+        Files.write(
+                this.dirs.config().resolve(Network.IPFILTER_FILE),
+                IpFilterDat.write(List.of(new IpFilterDat.Range(ip, ip, 0, "blocked server"))));
+    }
+
+    private void givenAnotherServerListWith(String address, int port) throws IOException {
+        this.otherList = this.dir.resolve("other.met");
+        Files.write(
+                this.otherList, ServerMet.write(List.of(new ServerMet.Server(Ipv4.parse(address), port, List.of()))));
+    }
+
+    private void givenTheEngineIsStarted() throws IOException {
+        this.engine = NjMuleEngine.start(new EngineConfig(this.dirs));
+    }
+
+    private void givenTheServersOfTheOtherListAreAdded() throws Exception {
+        this.engine.addServers(this.otherList).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheNetworkOnAnEngineLoop() throws Exception {
+        Preferences prefs = Preferences.defaults();
+        this.loop = EngineLoop.start();
+        this.network = this.loop
+                .submit(() -> new Network(
+                        this.loop,
+                        this.dirs.config(),
+                        () -> prefs,
+                        event -> {},
+                        (level, line) -> {},
+                        Hash16.ZERO,
+                        this.dirs.data().resolve("temp"),
+                        () -> this.dirs.data().resolve("incoming"),
+                        Optional.empty(),
+                        false))
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenTheEngineConnectsTo(String host, int port) {
+        this.exception = catchThrowable(() ->
+                this.engine.connect(Optional.of(new ServerAddress(host, port))).get(5, TimeUnit.SECONDS));
+    }
+
+    private void whenTheServersAtPortAreRemoved(int port, String... hosts) throws Exception {
+        List<ServerAddress> servers =
+                Arrays.stream(hosts).map(host -> new ServerAddress(host, port)).toList();
+        this.removed = this.engine.removeServers(servers).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenASearchResultAndAServerStatusArriveFrom(String address, int port) {
+        InetSocketAddress from = new InetSocketAddress(InetAddress.ofLiteral(address), port);
+        FileEntry file = new FileEntry(
+                Hash16.parseHex("ab".repeat(16)),
+                0,
+                0,
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), "x.iso"),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 10)));
+        Packet results = ServerDatagrams.searchResults(List.of(file));
+        Packet status = Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), new byte[12]);
+        this.exception = catchThrowable(() -> this.loop
+                .submit(() -> {
+                    this.network.datagram(from, results);
+                    this.network.datagram(from, status);
+                    this.network.close();
+                    return null;
+                })
+                .get(10, TimeUnit.SECONDS));
+    }
+
+    private void thenExceptionOccurred(
+            Class<? extends Throwable> type, Class<? extends Throwable> cause, String description) {
+        assertThat(this.exception).as(description).isInstanceOf(type).hasCauseInstanceOf(cause);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheNumberOfServersRemovedIs(int expected) {
+        assertThat(this.removed).isEqualTo(expected);
+    }
+
+    private void thenNoServerIsLeft() throws Exception {
+        assertThat(this.engine.servers().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 
     private static int freeTcpPort() throws IOException {

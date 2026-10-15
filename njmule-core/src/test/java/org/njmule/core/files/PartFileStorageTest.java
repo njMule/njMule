@@ -17,20 +17,24 @@
 package org.njmule.core.files;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
@@ -43,51 +47,181 @@ class PartFileStorageTest {
     @TempDir
     Path dir;
 
-    @Test
-    void whatWasNeverWrittenHashesAsNothing() throws Exception {
-        PartFileStorage storage = PartFileStorage.open(this.dir.resolve("001.part"));
+    private Path data;
+    private PartFileStorage storage;
+    private Path moved;
+    private Hash16 partHash;
+    private List<Hash20> blockHashes;
+    private Throwable exception;
 
-        assertThat(storage.hashPart(SIZE, 0).get(10, TimeUnit.SECONDS)).isEqualTo(Ed2k.EMPTY_PART_HASH);
+    @AfterEach
+    void closeTheStorage() {
+        if (this.storage != null) {
+            this.storage.close();
+        }
+    }
+
+    @Test
+    void shouldHashAPartNeverWrittenAsNothing() throws Exception {
+        givenAStorageAt("001.part");
+
+        whenAPartIsHashed(SIZE, 0);
+
+        thenThePartHashIs(Ed2k.EMPTY_PART_HASH);
+    }
+
+    @Test
+    void shouldHashTheBlocksNeverWrittenAsNothing() throws Exception {
+        givenAStorageAt("001.part");
+
+        whenTheBlocksOfAPartAreHashed(SIZE, 0);
+
+        thenThereIsAHashOfNoBytesPerBlock(3);
+    }
+
+    @Test
+    void shouldMoveTheDataAwayAtTheFinish() throws Exception {
+        givenAStorageAt("002.part");
+        givenTheStorageHolds(new byte[] {1, 2, 3});
+
+        whenTheStorageFinishesAs("done.bin");
+
+        thenTheFinishedFileHolds(new byte[] {1, 2, 3});
+        thenTheStorageIsNotOpen();
+    }
+
+    @Test
+    void shouldHashNoPartAfterTheFinish() throws Exception {
+        givenAStorageAt("002.part");
+        givenTheStorageHolds(new byte[] {1, 2, 3});
+        givenTheStorageFinishedAs("done.bin");
+
+        whenAPartIsHashed(3, 0);
+
+        thenExceptionOccurred(ExecutionException.class);
+        thenTheRootCauseIs(ClosedChannelException.class);
+    }
+
+    @Test
+    void shouldHashNoBlocksAfterTheFinish() throws Exception {
+        givenAStorageAt("002.part");
+        givenTheStorageHolds(new byte[] {1, 2, 3});
+        givenTheStorageFinishedAs("done.bin");
+
+        whenTheBlocksOfAPartAreHashed(3, 0);
+
+        thenTheRootCauseIs(ClosedChannelException.class);
+    }
+
+    @Test
+    void shouldBeClosedAgainWithoutHarmAfterTheFinish() throws Exception {
+        givenAStorageAt("002.part");
+        givenTheStorageHolds(new byte[] {1, 2, 3});
+        givenTheStorageFinishedAs("done.bin");
+        givenTheStorageIsClosed();
+
+        whenTheStorageIsClosed();
+
+        thenNoExceptionOccurred();
+        thenTheStorageIsNotOpen();
+    }
+
+    @Test
+    void shouldGiveTheReservedNameBackWhenAFinishCannotMoveTheData() throws Exception {
+        givenAStorageAt("003.part");
+        givenTheStorageHolds(new byte[] {4, 5, 6});
+        givenItsDataFileIsDeleted();
+
+        whenTheStorageFinishesAs("lost.bin");
+
+        thenExceptionOccurred(ExecutionException.class);
+        thenTheCauseIs(UncheckedIOException.class);
+        thenTheRootCauseIs(NoSuchFileException.class);
+        thenNothingIsLeftInTheIncomingDirectory();
+    }
+
+    private void givenAStorageAt(String name) throws IOException {
+        this.data = this.dir.resolve(name);
+        this.storage = PartFileStorage.open(this.data);
+    }
+
+    private void givenTheStorageHolds(byte[] bytes) throws Exception {
+        this.storage.write(0, bytes).get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenItsDataFileIsDeleted() throws IOException {
+        Files.delete(this.data);
+    }
+
+    private void givenTheStorageFinishedAs(String name) throws Exception {
+        this.moved = this.storage.finish(incoming(), name).get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenTheStorageIsClosed() {
+        this.storage.close();
+    }
+
+    private void whenAPartIsHashed(long size, int part) {
+        this.exception = catchThrowable(
+                () -> this.partHash = this.storage.hashPart(size, part).get(10, TimeUnit.SECONDS));
+    }
+
+    private void whenTheBlocksOfAPartAreHashed(long size, int part) {
+        this.exception = catchThrowable(
+                () -> this.blockHashes = this.storage.hashBlocks(size, part).get(10, TimeUnit.SECONDS));
+    }
+
+    private void whenTheStorageFinishesAs(String name) {
+        this.exception = catchThrowable(
+                () -> this.moved = this.storage.finish(incoming(), name).get(10, TimeUnit.SECONDS));
+    }
+
+    private void whenTheStorageIsClosed() {
+        this.exception = catchThrowable(() -> this.storage.close());
+    }
+
+    private void thenThePartHashIs(Hash16 expected) {
+        assertThat(this.partHash).isEqualTo(expected);
+    }
+
+    private void thenThereIsAHashOfNoBytesPerBlock(int blocks) {
         Hash20 empty = Hash20.of(AichTree.sha1().digest());
-        assertThat(storage.hashBlocks(SIZE, 0).get(10, TimeUnit.SECONDS))
+        assertThat(this.blockHashes)
                 .as("a hash per block, of the bytes there are")
-                .containsExactlyElementsOf(Collections.nCopies(3, empty));
-        storage.close();
+                .containsExactlyElementsOf(Collections.nCopies(blocks, empty));
     }
 
-    @Test
-    void afterTheFinishTheFileTakesNoMoreWork() throws Exception {
-        PartFileStorage storage = PartFileStorage.open(this.dir.resolve("002.part"));
-        storage.write(0, new byte[] {1, 2, 3}).get(10, TimeUnit.SECONDS);
-        Path moved = storage.finish(this.dir.resolve("incoming"), "done.bin").get(10, TimeUnit.SECONDS);
-
-        assertThat(moved).hasBinaryContent(new byte[] {1, 2, 3});
-        assertThat(storage.isOpen()).isFalse();
-        assertThatThrownBy(() -> storage.hashPart(3, 0).get(10, TimeUnit.SECONDS))
-                .isInstanceOf(ExecutionException.class)
-                .hasRootCauseInstanceOf(ClosedChannelException.class);
-        assertThatThrownBy(() -> storage.hashBlocks(3, 0).get(10, TimeUnit.SECONDS))
-                .hasRootCauseInstanceOf(ClosedChannelException.class);
-        storage.close();
-        storage.close();
-        assertThat(storage.isOpen()).isFalse();
+    private void thenTheFinishedFileHolds(byte[] bytes) {
+        assertThat(this.moved).hasBinaryContent(bytes);
     }
 
-    @Test
-    void aFinishThatCannotMoveTheDataGivesItsReservedNameBack() throws Exception {
-        Path data = this.dir.resolve("003.part");
-        PartFileStorage storage = PartFileStorage.open(data);
-        storage.write(0, new byte[] {4, 5, 6}).get(10, TimeUnit.SECONDS);
-        Files.delete(data);
-        Path incoming = this.dir.resolve("incoming");
+    private void thenTheStorageIsNotOpen() {
+        assertThat(this.storage.isOpen()).isFalse();
+    }
 
-        assertThatThrownBy(() -> storage.finish(incoming, "lost.bin").get(10, TimeUnit.SECONDS))
-                .isInstanceOf(ExecutionException.class)
-                .hasCauseInstanceOf(UncheckedIOException.class)
-                .hasRootCauseInstanceOf(NoSuchFileException.class);
-        try (Stream<Path> left = Files.list(incoming)) {
+    private void thenNothingIsLeftInTheIncomingDirectory() throws IOException {
+        try (Stream<Path> left = Files.list(incoming())) {
             assertThat(left).as("the name reserved for it is free again").isEmpty();
         }
-        storage.close();
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenTheCauseIs(Class<? extends Throwable> type) {
+        assertThat(this.exception).hasCauseInstanceOf(type);
+    }
+
+    private void thenTheRootCauseIs(Class<? extends Throwable> type) {
+        assertThat(this.exception).hasRootCauseInstanceOf(type);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private Path incoming() {
+        return this.dir.resolve("incoming");
     }
 }

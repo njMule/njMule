@@ -18,9 +18,11 @@ package org.njmule.core.files;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.FileComment;
@@ -29,37 +31,116 @@ import org.njmule.core.api.Hash16;
 class FileCommentsTest {
 
     private static final Hash16 FILM = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
+    private static final Hash16 SONG = Hash16.parseHex("00".repeat(16));
 
     @TempDir
     Path dir;
 
-    @Test
-    void readsTheCommentsOfAnImportedProfileAndKeepsOurs() throws Exception {
-        Path file = this.dir.resolve(FileComments.FILE_NAME);
-        Files.writeString(
-                file,
-                "[" + FILM.toHex() + "]\r\nComment=Great città\r\nRate=9\r\n[not a hash]\r\nComment=x\r\n",
-                StandardCharsets.UTF_8);
+    private Path file;
+    private FileComments comments;
 
-        FileComments comments = FileComments.load(file);
-
-        assertThat(comments.get(FILM)).contains(new FileComment("Great città", FileComment.MAX_RATING));
-        Hash16 song = Hash16.parseHex("00".repeat(16));
-        comments.set(song, FileComment.of("Nice\nline", 3));
-        assertThat(FileComments.load(file).get(song)).contains(new FileComment("Nice line", 3));
-        comments.set(song, FileComment.NONE);
-        assertThat(FileComments.load(file).get(song)).isEmpty();
-        assertThat(FileComments.load(this.dir.resolve("none")).get(FILM)).isEmpty();
+    @BeforeEach
+    void nameTheFile() {
+        this.file = this.dir.resolve(FileComments.FILE_NAME);
     }
 
     @Test
-    void aMissingFileIsReadFromItsBackup() throws Exception {
-        Path file = this.dir.resolve(FileComments.FILE_NAME);
-        FileComments comments = FileComments.load(file);
-        comments.set(FILM, FileComment.of("kept", 4));
-        comments.set(FILM, FileComment.of("changed", 5));
-        Files.delete(file);
+    void shouldReadTheCommentsOfAnImportedProfile() throws Exception {
+        givenTheCommentsFileOfAnImportedProfile();
 
-        assertThat(FileComments.load(file).get(FILM)).contains(FileComment.of("kept", 4));
+        whenTheCommentsAreLoaded();
+
+        thenTheCommentOfIs(FILM, new FileComment("Great città", FileComment.MAX_RATING));
+    }
+
+    @Test
+    void shouldKeepOurCommentOnAnImportedProfile() throws Exception {
+        givenTheCommentsFileOfAnImportedProfile();
+        givenTheCommentsAreLoaded();
+
+        whenWeCommentTheFile(SONG, "Nice\nline", 3);
+
+        thenTheSavedCommentOfIs(SONG, new FileComment("Nice line", 3));
+    }
+
+    @Test
+    void shouldForgetOurCommentOnceRemoved() throws Exception {
+        givenTheCommentsFileOfAnImportedProfile();
+        givenTheCommentsAreLoaded();
+        givenWeCommentedTheFile(SONG, "Nice\nline", 3);
+
+        whenWeRemoveTheCommentOf(SONG);
+
+        thenNoCommentIsSavedFor(SONG);
+    }
+
+    @Test
+    void shouldHaveNoCommentsWithoutAFile() throws Exception {
+        whenTheCommentsAreLoadedFrom("none");
+
+        thenThereIsNoCommentFor(FILM);
+    }
+
+    @Test
+    void shouldReadAMissingFileFromItsBackup() throws Exception {
+        givenTheCommentsAreLoaded();
+        givenWeCommentedTheFile(FILM, "kept", 4);
+        givenWeCommentedTheFile(FILM, "changed", 5);
+        givenTheFileIsDeleted();
+
+        whenTheCommentsAreLoaded();
+
+        thenTheCommentOfIs(FILM, FileComment.of("kept", 4));
+    }
+
+    private void givenTheCommentsFileOfAnImportedProfile() throws IOException {
+        Files.writeString(
+                this.file,
+                "[" + FILM.toHex() + "]\r\nComment=Great città\r\nRate=9\r\n[not a hash]\r\nComment=x\r\n",
+                StandardCharsets.UTF_8);
+    }
+
+    private void givenTheCommentsAreLoaded() throws IOException {
+        this.comments = FileComments.load(this.file);
+    }
+
+    private void givenWeCommentedTheFile(Hash16 hash, String text, int rating) throws IOException {
+        this.comments.set(hash, FileComment.of(text, rating));
+    }
+
+    private void givenTheFileIsDeleted() throws IOException {
+        Files.delete(this.file);
+    }
+
+    private void whenTheCommentsAreLoaded() throws IOException {
+        this.comments = FileComments.load(this.file);
+    }
+
+    private void whenTheCommentsAreLoadedFrom(String fileName) throws IOException {
+        this.comments = FileComments.load(this.dir.resolve(fileName));
+    }
+
+    private void whenWeCommentTheFile(Hash16 hash, String text, int rating) throws IOException {
+        this.comments.set(hash, FileComment.of(text, rating));
+    }
+
+    private void whenWeRemoveTheCommentOf(Hash16 hash) throws IOException {
+        this.comments.set(hash, FileComment.NONE);
+    }
+
+    private void thenTheCommentOfIs(Hash16 hash, FileComment expected) {
+        assertThat(this.comments.get(hash)).contains(expected);
+    }
+
+    private void thenThereIsNoCommentFor(Hash16 hash) {
+        assertThat(this.comments.get(hash)).isEmpty();
+    }
+
+    private void thenTheSavedCommentOfIs(Hash16 hash, FileComment expected) throws IOException {
+        assertThat(FileComments.load(this.file).get(hash)).contains(expected);
+    }
+
+    private void thenNoCommentIsSavedFor(Hash16 hash) throws IOException {
+        assertThat(FileComments.load(this.file).get(hash)).isEmpty();
     }
 }

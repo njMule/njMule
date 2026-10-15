@@ -38,32 +38,75 @@ class TotalsTest {
     @TempDir
     Path dir;
 
+    private Path file;
+    private Totals totals;
+    private AppDirectories dirs;
+    private EngineStatus status;
+
     @Test
-    void savedTotalsStopAtTheLargestNumberInsteadOfStartingAgain() throws Exception {
-        Path file = this.dir.resolve(Totals.FILE_NAME);
-        Files.writeString(file, HUGE);
+    void shouldStopSavedTotalsAtTheLargestNumberInsteadOfStartingAgain() throws Exception {
+        givenTotalsSavedAtTheLargestNumbers();
+        givenTheTotalsAreLoaded();
 
-        Totals.load(file).save(10, 10, 10);
+        whenASessionIsSaved(10, 10, 10);
 
-        Totals saved = Totals.load(file);
-        assertThat(saved.downloaded()).isEqualTo(Long.MAX_VALUE);
-        assertThat(saved.uploaded()).isEqualTo(Long.MAX_VALUE);
-        assertThat(saved.sessions()).isEqualTo(Long.MAX_VALUE);
-        assertThat(saved.seconds()).isEqualTo(Long.MAX_VALUE);
+        thenTheSavedTotalsAre(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
     }
 
     @Test
-    void theStatusAddsTheSessionWithoutOverflowing() throws Exception {
-        AppDirectories dirs = AppDirectories.underRoot(this.dir, false);
-        Files.createDirectories(dirs.config());
-        Files.writeString(dirs.config().resolve(Totals.FILE_NAME), HUGE);
-        Files.writeString(dirs.config().resolve("njmule.properties"), "net.kad.enabled=false\n");
+    void shouldAddTheSessionToTheStatusWithoutOverflowing() throws Exception {
+        givenAProfileWithTotalsAtTheLargestNumbers();
 
-        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
-            assertThat(status.sessions()).isEqualTo(Long.MAX_VALUE);
-            assertThat(status.totalDownloaded()).isEqualTo(Long.MAX_VALUE);
-            assertThat(status.totalSeconds()).isEqualTo(Long.MAX_VALUE);
+        whenTheEngineStartsAndTellsItsStatus();
+
+        thenTheStatusCountsSessions(Long.MAX_VALUE);
+        thenTheStatusCountsDownloadedBytes(Long.MAX_VALUE);
+        thenTheStatusCountsSeconds(Long.MAX_VALUE);
+    }
+
+    private void givenTotalsSavedAtTheLargestNumbers() throws Exception {
+        this.file = this.dir.resolve(Totals.FILE_NAME);
+        Files.writeString(this.file, HUGE);
+    }
+
+    private void givenTheTotalsAreLoaded() {
+        this.totals = Totals.load(this.file);
+    }
+
+    private void givenAProfileWithTotalsAtTheLargestNumbers() throws Exception {
+        this.dirs = AppDirectories.underRoot(this.dir, false);
+        Files.createDirectories(this.dirs.config());
+        Files.writeString(this.dirs.config().resolve(Totals.FILE_NAME), HUGE);
+        Files.writeString(this.dirs.config().resolve("njmule.properties"), "net.kad.enabled=false\n");
+    }
+
+    private void whenASessionIsSaved(long downloaded, long uploaded, long seconds) {
+        this.totals.save(downloaded, uploaded, seconds);
+    }
+
+    private void whenTheEngineStartsAndTellsItsStatus() throws Exception {
+        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(this.dirs))) {
+            this.status = engine.status().get(5, TimeUnit.SECONDS);
         }
+    }
+
+    private void thenTheSavedTotalsAre(long downloaded, long uploaded, long sessions, long seconds) {
+        Totals saved = Totals.load(this.file);
+        assertThat(saved.downloaded()).isEqualTo(downloaded);
+        assertThat(saved.uploaded()).isEqualTo(uploaded);
+        assertThat(saved.sessions()).isEqualTo(sessions);
+        assertThat(saved.seconds()).isEqualTo(seconds);
+    }
+
+    private void thenTheStatusCountsSessions(long expected) {
+        assertThat(this.status.sessions()).isEqualTo(expected);
+    }
+
+    private void thenTheStatusCountsDownloadedBytes(long expected) {
+        assertThat(this.status.totalDownloaded()).isEqualTo(expected);
+    }
+
+    private void thenTheStatusCountsSeconds(long expected) {
+        assertThat(this.status.totalSeconds()).isEqualTo(expected);
     }
 }

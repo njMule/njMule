@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,55 +51,99 @@ class UpnpTest {
     @TempDir
     Path dir;
 
-    @Test
-    void atTheEndTheFilesAreSavedBeforeTheRouterIsAsked() throws Exception {
-        try (FakeGateway gateway = FakeGateway.start(IP, "/ctl")) {
-            // A router that takes long to answer must not hold the saves back.
-            gateway.delayDeletes(Duration.ofSeconds(8));
-            AppDirectories dirs = dirs();
-            Engine engine = Engine.start(new EngineConfig(dirs), () -> false, Optional.of(gateway.ssdp()));
-            assertThat(await(() -> gateway.actions("AddPortMapping").size() == 1))
-                    .isTrue();
+    private FakeGateway gateway;
+    private AppDirectories dirs;
+    private Engine engine;
+    private int secondPort;
 
-            engine.close();
-
-            FakeGateway.Action delete = gateway.actions("DeletePortMapping").getFirst();
-            Instant saved = Files.getLastModifiedTime(dirs.config().resolve("server.met"))
-                    .toInstant();
-            assertThat(saved).isBefore(delete.at().plusSeconds(1));
+    @AfterEach
+    void stopTheRouter() throws IOException {
+        if (this.gateway != null) {
+            this.gateway.close();
         }
     }
 
     @Test
-    void portsChangedTwiceInARowLeaveNoMappingBehind() throws Exception {
-        try (FakeGateway gateway = FakeGateway.start(IP, "/ctl")) {
-            AppDirectories dirs = dirs();
-            Engine engine = Engine.start(new EngineConfig(dirs), () -> false, Optional.of(gateway.ssdp()));
-            assertThat(await(() -> gateway.actions("AddPortMapping").size() == 1))
-                    .isTrue();
-            int first = freeTcpPort();
-            int second = freeTcpPort();
+    void shouldSaveTheFilesAtTheEndBeforeTheRouterIsAsked() throws Exception {
+        givenARouter();
+        // A router that takes long to answer must not hold the saves back.
+        givenTheRouterTakesSecondsToDeleteAMapping(8);
+        givenAnEngineThatMappedItsPortOnTheRouter();
 
-            CompletableFuture<Preferences> one =
-                    engine.updatePreferences(p -> p.toBuilder().tcpPort(first).build());
-            CompletableFuture<Preferences> two =
-                    engine.updatePreferences(p -> p.toBuilder().tcpPort(second).build());
-            one.get(10, TimeUnit.SECONDS);
-            two.get(10, TimeUnit.SECONDS);
-            assertThat(await(() -> gateway.actions("AddPortMapping").stream()
-                            .anyMatch(a -> a.body().contains(">" + second + "<"))))
-                    .isTrue();
-            Thread.sleep(1_000);
-            engine.close();
-            Thread.sleep(1_000);
+        whenTheEngineCloses();
 
-            List<FakeGateway.Action> adds = gateway.actions("AddPortMapping");
-            for (FakeGateway.Action add : adds) {
-                String port = externalPort(add.body());
-                assertThat(gateway.actions("DeletePortMapping"))
-                        .as("port %s is unmapped after it was mapped", port)
-                        .anyMatch(d -> d.nanos() > add.nanos() && d.body().contains(">" + port + "<"));
-            }
+        thenTheServerListWasSavedBeforeTheRouterWasAskedToDeleteTheMapping();
+    }
+
+    @Test
+    void shouldLeaveNoMappingBehindWhenThePortsChangeTwiceInARow() throws Exception {
+        givenARouter();
+        givenAnEngineThatMappedItsPortOnTheRouter();
+        givenTheTcpPortIsChangedTwiceInARow();
+        givenTheRouterIsAskedToMapTheSecondPort();
+
+        whenTheEngineClosesAndASecondPasses();
+
+        thenEveryPortMappedIsUnmappedAfterwards();
+    }
+
+    private void givenARouter() throws IOException {
+        this.gateway = FakeGateway.start(IP, "/ctl");
+    }
+
+    private void givenTheRouterTakesSecondsToDeleteAMapping(int seconds) {
+        this.gateway.delayDeletes(Duration.ofSeconds(seconds));
+    }
+
+    private void givenAnEngineThatMappedItsPortOnTheRouter() throws Exception {
+        this.dirs = dirs();
+        this.engine = Engine.start(new EngineConfig(this.dirs), () -> false, Optional.of(this.gateway.ssdp()));
+        assertThat(await(() -> this.gateway.actions("AddPortMapping").size() == 1))
+                .isTrue();
+    }
+
+    private void givenTheTcpPortIsChangedTwiceInARow() throws Exception {
+        int first = freeTcpPort();
+        int second = freeTcpPort();
+        this.secondPort = second;
+        CompletableFuture<Preferences> one =
+                this.engine.updatePreferences(p -> p.toBuilder().tcpPort(first).build());
+        CompletableFuture<Preferences> two =
+                this.engine.updatePreferences(p -> p.toBuilder().tcpPort(second).build());
+        one.get(10, TimeUnit.SECONDS);
+        two.get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenTheRouterIsAskedToMapTheSecondPort() throws InterruptedException {
+        assertThat(await(() -> this.gateway.actions("AddPortMapping").stream()
+                        .anyMatch(a -> a.body().contains(">" + this.secondPort + "<"))))
+                .isTrue();
+        Thread.sleep(1_000);
+    }
+
+    private void whenTheEngineCloses() {
+        this.engine.close();
+    }
+
+    private void whenTheEngineClosesAndASecondPasses() throws InterruptedException {
+        this.engine.close();
+        Thread.sleep(1_000);
+    }
+
+    private void thenTheServerListWasSavedBeforeTheRouterWasAskedToDeleteTheMapping() throws IOException {
+        FakeGateway.Action delete = this.gateway.actions("DeletePortMapping").getFirst();
+        Instant saved = Files.getLastModifiedTime(this.dirs.config().resolve("server.met"))
+                .toInstant();
+        assertThat(saved).isBefore(delete.at().plusSeconds(1));
+    }
+
+    private void thenEveryPortMappedIsUnmappedAfterwards() {
+        List<FakeGateway.Action> adds = this.gateway.actions("AddPortMapping");
+        for (FakeGateway.Action add : adds) {
+            String port = externalPort(add.body());
+            assertThat(this.gateway.actions("DeletePortMapping"))
+                    .as("port %s is unmapped after it was mapped", port)
+                    .anyMatch(d -> d.nanos() > add.nanos() && d.body().contains(">" + port + "<"));
         }
     }
 
