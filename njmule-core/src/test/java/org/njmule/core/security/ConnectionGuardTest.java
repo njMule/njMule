@@ -48,6 +48,7 @@ class ConnectionGuardTest {
     private final AtomicReference<Limits> settings = new AtomicReference<>();
     private ConnectionGuard guard;
     private Admission admission;
+    private boolean room;
     private int admitted;
     private Duration window;
     private Limits madeLimits;
@@ -222,6 +223,37 @@ class ConnectionGuardTest {
         thenTheOtherAddressIsAdmittedOnceOneOfOursCloses();
     }
 
+    @Test
+    void shouldLeaveNoRoomForOurConnectionsOnceTheRateOfNewOnesIsReached() {
+        givenAGuard(new Limits(100, 5, 2, Duration.ofSeconds(5)));
+        givenConnectionsOfOurs(2);
+
+        whenRoomForOneMoreOfOursIsAsked();
+
+        thenThereIsNoRoom();
+    }
+
+    @Test
+    void shouldCountOurNewConnectionsInTheRateTheIncomingOnesShare() {
+        givenAGuard(new Limits(100, 5, 2, Duration.ofSeconds(5)));
+        givenConnectionsOfOurs(2);
+
+        whenAnotherAddressConnects(OTHER);
+
+        thenItIsRefused(Refusal.ACCEPT_RATE);
+    }
+
+    @Test
+    void shouldHaveRoomForOurConnectionsAgainOnceTheWindowPassed() {
+        givenAGuard(new Limits(100, 5, 2, Duration.ofSeconds(5)));
+        givenConnectionsOfOurs(2);
+        givenTimePasses(Duration.ofSeconds(5));
+
+        whenRoomForOneMoreOfOursIsAsked();
+
+        thenThereIsRoom();
+    }
+
     private void givenAGuard(Limits limits) {
         this.guard = new ConnectionGuard(IpFilter::empty, limits, this.ticker);
     }
@@ -316,6 +348,10 @@ class ConnectionGuardTest {
         this.admission = this.guard.admit(ip);
     }
 
+    private void whenRoomForOneMoreOfOursIsAsked() {
+        this.room = this.guard.hasRoom();
+    }
+
     private void whenAConnectionComesFrom(int ip) {
         this.admission = this.guard.admit(ip);
     }
@@ -335,6 +371,14 @@ class ConnectionGuardTest {
 
     private void thenTheFirstAddressGotOnlyItsShare(int share) {
         assertThat(this.admitted).isEqualTo(share);
+    }
+
+    private void thenThereIsNoRoom() {
+        assertThat(this.room).isFalse();
+    }
+
+    private void thenThereIsRoom() {
+        assertThat(this.room).isTrue();
     }
 
     private void thenItIsAdmitted() {

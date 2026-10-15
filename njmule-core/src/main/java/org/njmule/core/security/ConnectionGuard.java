@@ -69,6 +69,9 @@ public final class ConnectionGuard {
         }
     }
 
+    // Connections of ours in the rate window: no address of theirs is counted.
+    private static final int OURS = 0;
+
     private final Supplier<IpFilter> filter;
     private final IntPredicate exempt;
     private final IntPredicate banned;
@@ -133,12 +136,7 @@ public final class ConnectionGuard {
             return new Admission.Refused(Refusal.BANNED);
         }
         long now = this.ticker.read();
-        long window = limits.rateWindow().toNanos();
-        while (!this.recentAccepts.isEmpty()
-                && now - this.recentAccepts.peekFirst().at() >= window) {
-            Accept old = this.recentAccepts.pollFirst();
-            this.recentFrom.computeIfPresent(old.ip(), (key, count) -> count > 1 ? count - 1 : null);
-        }
+        forgetOldAccepts(limits, now);
         boolean exempted = this.exempt.test(ip);
         if (!exempted && this.recentAccepts.size() >= limits.maxAccepts()) {
             return new Admission.Refused(Refusal.ACCEPT_RATE);
@@ -169,15 +167,29 @@ public final class ConnectionGuard {
         return Math.max(limits.maxPerAddress(), limits.maxAccepts() / 4);
     }
 
-    /** Whether a connection of ours fits in the total, which incoming connections share. */
+    /**
+     * Whether a connection of ours fits: in the total and in the rate of new connections, which incoming ones share.
+     */
     public synchronized boolean hasRoom() {
-        return this.total < this.limits.get().maxTotal();
+        Limits limits = this.limits.get();
+        forgetOldAccepts(limits, this.ticker.read());
+        return this.total < limits.maxTotal() && this.recentAccepts.size() < limits.maxAccepts();
     }
 
-    /** Counts a connection of ours in the total until the permit is closed. */
+    /** Counts a connection of ours in the total until the permit is closed, and in the rate of new connections. */
     public synchronized Permit outgoing() {
+        this.recentAccepts.addLast(new Accept(this.ticker.read(), OURS));
         this.total++;
         return new Permit(0, false);
+    }
+
+    private void forgetOldAccepts(Limits limits, long now) {
+        long window = limits.rateWindow().toNanos();
+        while (!this.recentAccepts.isEmpty()
+                && now - this.recentAccepts.peekFirst().at() >= window) {
+            Accept old = this.recentAccepts.pollFirst();
+            this.recentFrom.computeIfPresent(old.ip(), (key, count) -> count > 1 ? count - 1 : null);
+        }
     }
 
     /** Connections currently holding a permit, ours included. */
