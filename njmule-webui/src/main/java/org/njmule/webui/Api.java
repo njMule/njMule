@@ -16,7 +16,6 @@
  */
 package org.njmule.webui;
 
-import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -113,27 +112,25 @@ final class Api {
         }
     }
 
-    void handle(HttpExchange exchange) throws IOException {
-        try (exchange) {
-            try {
-                this.route(exchange);
-            } catch (Failure e) {
-                this.error(exchange, e.status, e.getMessage());
-            } catch (IllegalArgumentException e) {
-                this.error(exchange, 400, String.valueOf(e.getMessage()));
-            } catch (RuntimeException e) {
-                logger.warn("API request failed", e);
-                this.error(exchange, 500, "The request failed.");
-            }
+    void handle(Exchange exchange) throws IOException {
+        try {
+            this.route(exchange);
+        } catch (Failure e) {
+            this.error(exchange, e.status, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            this.error(exchange, 400, String.valueOf(e.getMessage()));
+        } catch (RuntimeException e) {
+            logger.warn("API request failed", e);
+            this.error(exchange, 500, "The request failed.");
         }
     }
 
     // No Host check: browsers never send the token by themselves, so a page reaching us through DNS rebinding cannot
     // act, and other computers may use any name of this one.
-    private void route(HttpExchange exchange) throws IOException {
+    private void route(Exchange exchange) throws IOException {
         this.authorize(exchange);
-        String method = exchange.getRequestMethod();
-        List<String> path = segments(exchange.getRequestURI().getRawPath());
+        String method = exchange.method();
+        List<String> path = segments(exchange.rawPath());
         if (path.isEmpty()) {
             this.only(method, GET);
             this.reply(exchange, 200, g -> {
@@ -168,8 +165,8 @@ final class Api {
         }
     }
 
-    private void authorize(HttpExchange exchange) {
-        String header = exchange.getRequestHeaders().getFirst("Authorization");
+    private void authorize(Exchange exchange) {
+        String header = exchange.header("Authorization");
         String given = header != null && header.regionMatches(true, 0, "Bearer ", 0, 7)
                 ? header.substring(7).strip()
                 : null;
@@ -183,8 +180,8 @@ final class Api {
         if (token.isPresent() && ApiToken.matches(token.get(), given)) {
             return;
         }
-        String address = Sessions.clientKey(exchange.getRemoteAddress().getAddress());
-        exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
+        String address = Sessions.clientKey(exchange.remoteAddress());
+        exchange.setHeader("WWW-Authenticate", "Bearer");
         // A wrong token counts as a failed login of its address.
         if (!this.sessions.mayTry(address)) {
             throw new Failure(429, "Too many attempts: wait a minute.");
@@ -195,7 +192,7 @@ final class Api {
         throw new Failure(401, given == null ? "Send the API token as a bearer token." : "Wrong token.");
     }
 
-    private void status(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void status(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, GET);
         var status = this.await(this.engine.status());
@@ -203,7 +200,7 @@ final class Api {
     }
 
     private <T> void list(
-            HttpExchange exchange,
+            Exchange exchange,
             String method,
             List<String> rest,
             Supplier<CompletableFuture<List<T>>> items,
@@ -215,7 +212,7 @@ final class Api {
         this.reply(exchange, 200, g -> ApiJson.array(g, all, each));
     }
 
-    private void downloads(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void downloads(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             switch (method) {
                 case GET -> this.list(exchange, method, rest, this.engine::downloads, ApiJson::download);
@@ -277,7 +274,7 @@ final class Api {
                 .orElseThrow(Api::notFound);
     }
 
-    private void addDownloads(HttpExchange exchange) throws IOException {
+    private void addDownloads(Exchange exchange) throws IOException {
         Map<String, Object> body = this.body(exchange);
         List<Ed2kLink.FileLink> links = new ArrayList<>();
         for (String text : strings(body, "links")) {
@@ -302,7 +299,7 @@ final class Api {
         this.reply(exchange, 201, g -> ApiJson.array(g, added, ApiJson::download));
     }
 
-    private void shared(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void shared(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             this.list(exchange, method, rest, this.engine::sharedFiles, ApiJson::shared);
             return;
@@ -322,7 +319,7 @@ final class Api {
         this.done(exchange);
     }
 
-    private void servers(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void servers(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             switch (method) {
                 case GET -> this.list(exchange, method, rest, this.engine::servers, ApiJson::server);
@@ -364,7 +361,7 @@ final class Api {
         }
     }
 
-    private void kad(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void kad(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             this.only(method, GET);
             var kad = this.await(this.engine.kad());
@@ -411,7 +408,7 @@ final class Api {
         }
     }
 
-    private void searches(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void searches(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             this.only(method, POST);
             Map<String, Object> body = this.body(exchange);
@@ -482,7 +479,7 @@ final class Api {
         }
     }
 
-    private void messages(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void messages(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, POST);
         Map<String, Object> body = this.body(exchange);
@@ -490,7 +487,7 @@ final class Api {
         this.done(exchange);
     }
 
-    private void bans(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void bans(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             this.list(exchange, method, rest, this.engine::bans, ApiJson::ban);
             return;
@@ -501,7 +498,7 @@ final class Api {
         this.done(exchange);
     }
 
-    private void limits(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void limits(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         Preferences now = switch (method) {
             case GET -> this.engine.preferences();
@@ -528,13 +525,13 @@ final class Api {
         });
     }
 
-    private void ipFilter(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void ipFilter(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, POST);
         this.count(exchange, this.await(this.engine.updateIpFilter(url(text(this.body(exchange), "url")))));
     }
 
-    private void log(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void log(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, GET);
         String after = query(exchange).get("after");
@@ -548,7 +545,7 @@ final class Api {
         this.reply(exchange, 200, g -> ApiJson.array(g, lines, (w, e) -> ApiJson.log(w, e.sequence(), e.line())));
     }
 
-    private void events(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void events(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, GET);
         String types = query(exchange).getOrDefault("types", "");
@@ -561,7 +558,7 @@ final class Api {
         }
     }
 
-    private void shutdown(HttpExchange exchange, String method, List<String> rest) throws IOException {
+    private void shutdown(Exchange exchange, String method, List<String> rest) throws IOException {
         this.noMore(rest);
         this.only(method, POST);
         Runnable stop = this.exit.orElseThrow(() -> new Failure(501, "This njMule cannot be stopped from here."));
@@ -573,8 +570,8 @@ final class Api {
 
     // Values of the body.
 
-    private Map<String, Object> body(HttpExchange exchange) throws IOException {
-        try (InputStream in = exchange.getRequestBody()) {
+    private Map<String, Object> body(Exchange exchange) throws IOException {
+        try (InputStream in = exchange.requestBody()) {
             byte[] body = in.readNBytes(ApiJson.MAX_BODY + 1);
             if (body.length > ApiJson.MAX_BODY) {
                 throw new Failure(413, "The body is too large.");
@@ -663,15 +660,15 @@ final class Api {
 
     // Answers.
 
-    private void reply(HttpExchange exchange, int status, Consumer<JsonGenerator> body) throws IOException {
+    private void reply(Exchange exchange, int status, Consumer<JsonGenerator> body) throws IOException {
         this.send(exchange, status, ApiJson.write(body));
     }
 
-    private void done(HttpExchange exchange) throws IOException {
+    private void done(Exchange exchange) throws IOException {
         this.done(exchange, 200);
     }
 
-    private void done(HttpExchange exchange, int status) throws IOException {
+    private void done(Exchange exchange, int status) throws IOException {
         this.reply(exchange, status, g -> {
             g.writeStartObject();
             g.writeBooleanProperty("ok", true);
@@ -679,7 +676,7 @@ final class Api {
         });
     }
 
-    private void count(HttpExchange exchange, int added) throws IOException {
+    private void count(Exchange exchange, int added) throws IOException {
         this.reply(exchange, 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("added", added);
@@ -687,8 +684,8 @@ final class Api {
         });
     }
 
-    private void error(HttpExchange exchange, int status, String message) throws IOException {
-        if (exchange.getResponseCode() < 0) {
+    private void error(Exchange exchange, int status, String message) throws IOException {
+        if (!exchange.started()) {
             this.send(exchange, status, ApiJson.write(g -> {
                 g.writeStartObject();
                 g.writeStringProperty("error", message);
@@ -697,12 +694,12 @@ final class Api {
         }
     }
 
-    private void send(HttpExchange exchange, int status, byte[] body) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", JSON);
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        exchange.sendResponseHeaders(status, body.length);
-        try (OutputStream out = exchange.getResponseBody()) {
+    private void send(Exchange exchange, int status, byte[] body) throws IOException {
+        exchange.setHeader("Content-Type", JSON);
+        exchange.setHeader("Cache-Control", "no-store");
+        exchange.setHeader("X-Content-Type-Options", "nosniff");
+        exchange.sendHeaders(status, body.length);
+        try (OutputStream out = exchange.responseBody()) {
             out.write(body);
         }
     }
@@ -749,8 +746,8 @@ final class Api {
         return parts;
     }
 
-    private static Map<String, String> query(HttpExchange exchange) {
-        String raw = exchange.getRequestURI().getRawQuery();
+    private static Map<String, String> query(Exchange exchange) {
+        String raw = exchange.rawQuery();
         Map<String, String> values = new HashMap<>();
         if (raw == null) {
             return values;

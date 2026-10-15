@@ -16,16 +16,12 @@
  */
 package org.njmule.webui;
 
-import com.sun.net.httpserver.Headers;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
@@ -41,13 +37,21 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.handler.ErrorHandler;
+import org.eclipse.jetty.util.Callback;
+import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -79,7 +83,6 @@ public final class WebUi implements AutoCloseable {
     private static final String TEXT = "text/plain; charset=utf-8";
     private static final String GET = "GET";
     private static final String POST = "POST";
-    private static final String HEAD = "HEAD";
     private static final String TRANSFERS = "/transfers";
     private static final String SEARCH = "/search";
     private static final String SERVERS = "/servers";
@@ -107,8 +110,8 @@ public final class WebUi implements AutoCloseable {
 
     private final NjMuleEngine engine;
     private final WebUiSettings settings;
-    private final HttpServer server;
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final Server server;
+    private final int port;
     private final Sessions sessions = new Sessions(new SecureRandom(), System::nanoTime);
     private final int passwordChecks;
     private final Semaphore checking;
@@ -122,13 +125,19 @@ public final class WebUi implements AutoCloseable {
     private volatile Flow.Subscription subscription;
 
     private WebUi(
-            NjMuleEngine engine, WebUiSettings settings, HttpServer server, int passwordChecks, Duration heartbeat) {
+            NjMuleEngine engine,
+            WebUiSettings settings,
+            Server server,
+            int port,
+            int passwordChecks,
+            Duration heartbeat) {
         this.engine = engine;
         this.settings = settings;
         this.server = server;
+        this.port = port;
         this.passwordChecks = passwordChecks;
         this.checking = new Semaphore(passwordChecks);
-        this.cookie = "njmule-session-" + server.getAddress().getPort();
+        this.cookie = "njmule-session-" + port;
         this.streams = new EventStreams(engine, heartbeat);
     }
 
@@ -161,25 +170,63 @@ public final class WebUi implements AutoCloseable {
             // Made before the first call, so that a command line on this computer finds it.
             ApiToken.loadOrCreate(engine.directories().config(), new SecureRandom());
         }
-        InetSocketAddress bind = settings.lan()
-                ? new InetSocketAddress(settings.port())
-                : new InetSocketAddress(InetAddress.getLoopbackAddress(), settings.port());
-        HttpServer server = HttpServer.create(bind, 0);
-        WebUi ui = new WebUi(engine, settings, server, passwordChecks, heartbeat);
-        server.setExecutor(ui.executor);
-        server.createContext("/", ui::handle);
-        if (settings.api()) {
-            Api api = new Api(engine, ui.sessions, ui.searches, ui.log, ui.streams, exit);
-            server.createContext("/api/", api::handle);
-        }
+        // Every request on a virtual thread of its own, where the pages, the API and the streams may wait.
+        Server server = new Server(new VirtualThreadPool());
+        HttpConfiguration http = new HttpConfiguration();
+        http.setSendServerVersion(false);
+        ServerConnector connector = new ServerConnector(server, new HttpConnectionFactory(http));
+        connector.setHost(
+                settings.lan() ? null : InetAddress.getLoopbackAddress().getHostAddress());
+        connector.setPort(settings.port());
+        server.addConnector(connector);
+        ErrorHandler errors = new ErrorHandler();
+        errors.setShowStacks(false);
+        errors.setShowMessageInTitle(false);
+        server.setErrorHandler(errors);
+        // Bound first: the session cookie is named after the port.
+        connector.open();
+        WebUi ui = new WebUi(engine, settings, server, connector.getLocalPort(), passwordChecks, heartbeat);
+        Optional<Api> api = settings.api()
+                ? Optional.of(new Api(engine, ui.sessions, ui.searches, ui.log, ui.streams, exit))
+                : Optional.empty();
+        server.setHandler(new Handler.Abstract() {
+            @Override
+            public boolean handle(Request request, Response response, Callback callback) {
+                Exchange exchange = new Exchange(request, response);
+                try {
+                    if (api.isPresent() && exchange.path().startsWith("/api/")) {
+                        api.get().handle(exchange);
+                    } else {
+                        ui.handle(exchange);
+                    }
+                    exchange.finish();
+                    callback.succeeded();
+                } catch (IOException | RuntimeException e) {
+                    callback.failed(e);
+                }
+                return true;
+            }
+        });
         engine.events().subscribe(ui.new Results());
-        server.start();
-        logger.info("Web interface on {}{}", server.getAddress(), settings.api() ? " with the remote-control API" : "");
+        try {
+            server.start();
+        } catch (IOException e) {
+            stop(server);
+            throw e;
+        } catch (Exception e) {
+            stop(server);
+            throw new IOException("cannot start the web interface: " + e.getMessage(), e);
+        }
+        logger.info(
+                "Web interface on {}:{}{}",
+                settings.lan() ? "*" : InetAddress.getLoopbackAddress().getHostAddress(),
+                ui.port,
+                settings.api() ? " with the remote-control API" : "");
         return ui;
     }
 
     public int port() {
-        return this.server.getAddress().getPort();
+        return this.port;
     }
 
     /** Passwords being checked now. */
@@ -194,42 +241,46 @@ public final class WebUi implements AutoCloseable {
             s.cancel();
         }
         this.streams.close();
-        this.server.stop(0);
-        this.executor.close();
+        stop(this.server);
     }
 
-    private void handle(HttpExchange exchange) throws IOException {
-        // The answers go out before the exchange closes.
-        try (exchange) {
-            try {
-                this.route(exchange);
-            } catch (EngineFailure e) {
-                this.fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
-            } catch (IllegalArgumentException e) {
-                this.fail(exchange, 400, "Bad request.");
-            } catch (RuntimeException e) {
-                logger.warn("Web interface request failed", e);
-                this.fail(exchange, 500, "The request failed.");
-            }
+    private static void stop(Server server) {
+        try {
+            server.stop();
+        } catch (Exception e) {
+            logger.debug("The web interface did not stop cleanly: {}", e.toString());
+        }
+    }
+
+    private void handle(Exchange exchange) throws IOException {
+        try {
+            this.route(exchange);
+        } catch (EngineFailure e) {
+            this.fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
+        } catch (IllegalArgumentException e) {
+            this.fail(exchange, 400, "Bad request.");
+        } catch (RuntimeException e) {
+            logger.warn("Web interface request failed", e);
+            this.fail(exchange, 500, "The request failed.");
         }
     }
 
     // An error answer, unless another one has started.
-    private void fail(HttpExchange exchange, int status, String message) throws IOException {
-        if (exchange.getResponseCode() < 0) {
+    private void fail(Exchange exchange, int status, String message) throws IOException {
+        if (!exchange.started()) {
             this.send(exchange, status, TEXT, message);
         }
     }
 
-    private void route(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath();
+    private void route(Exchange exchange) throws IOException {
+        String path = exchange.path();
         // A HEAD gets the headers of the GET; send() leaves the body out.
-        String method = exchange.getRequestMethod().equals(HEAD) ? GET : exchange.getRequestMethod();
-        if (!trustedHost(exchange.getRequestHeaders().getFirst("Host"), this.settings.lan())) {
+        String method = exchange.isHead() ? GET : exchange.method();
+        if (!trustedHost(exchange.header("Host"), this.settings.lan())) {
             this.send(exchange, 421, TEXT, "Unknown host name.");
             return;
         }
-        if (method.equals(POST) && !sameOrigin(exchange.getRequestHeaders())) {
+        if (method.equals(POST) && !sameOrigin(exchange)) {
             this.send(exchange, 403, TEXT, "Cross-site request refused.");
             return;
         }
@@ -285,20 +336,20 @@ public final class WebUi implements AutoCloseable {
     }
 
     // Browsers send Origin with every POST; a different one is another site's form.
-    private static boolean sameOrigin(Headers headers) {
-        String origin = headers.getFirst("Origin");
+    private static boolean sameOrigin(Exchange exchange) {
+        String origin = exchange.header("Origin");
         if (origin == null) {
             return true;
         }
         try {
             String authority = new URI(origin).getRawAuthority();
-            return authority != null && authority.equalsIgnoreCase(headers.getFirst("Host"));
+            return authority != null && authority.equalsIgnoreCase(exchange.header("Host"));
         } catch (URISyntaxException e) {
             return false;
         }
     }
 
-    private void login(HttpExchange exchange, String method) throws IOException {
+    private void login(Exchange exchange, String method) throws IOException {
         if (method.equals(GET)) {
             this.send(exchange, 200, HTML, loginPage(""));
             return;
@@ -307,7 +358,7 @@ public final class WebUi implements AutoCloseable {
             this.send(exchange, 405, TEXT, "Method not allowed.");
             return;
         }
-        String address = Sessions.clientKey(exchange.getRemoteAddress().getAddress());
+        String address = Sessions.clientKey(exchange.remoteAddress());
         if (!this.sessions.mayTry(address)) {
             this.send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;
@@ -335,8 +386,7 @@ public final class WebUi implements AutoCloseable {
         }
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
-        exchange.getResponseHeaders()
-                .add("Set-Cookie", this.cookie + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
+        exchange.addHeader("Set-Cookie", this.cookie + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
         this.redirect(exchange, "/");
     }
 
@@ -351,7 +401,7 @@ public final class WebUi implements AutoCloseable {
                         + "<button class=\"main\">Log in</button></form>");
     }
 
-    private void get(HttpExchange exchange, String path, Sessions.Session session) throws IOException {
+    private void get(Exchange exchange, String path, Sessions.Session session) throws IOException {
         String page = switch (path) {
             case "/" -> this.statusPage(session);
             case TRANSFERS -> this.transfersPage(session);
@@ -369,7 +419,7 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private void post(HttpExchange exchange, String path, Sessions.Session session) throws IOException {
+    private void post(Exchange exchange, String path, Sessions.Session session) throws IOException {
         Optional<Map<String, String>> posted = form(exchange, MAX_BODY);
         if (posted.isEmpty()) {
             this.send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
@@ -385,8 +435,8 @@ public final class WebUi implements AutoCloseable {
             next = switch (path) {
                 case "/logout" -> {
                     this.sessions.close(session.id());
-                    exchange.getResponseHeaders()
-                            .add("Set-Cookie", this.cookie + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
+                    exchange.addHeader(
+                            "Set-Cookie", this.cookie + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
                     yield "/login";
                 }
                 case TRANSFERS -> {
@@ -835,8 +885,8 @@ public final class WebUi implements AutoCloseable {
         return "<div class=\"card\">" + Html.text(name) + "<b>" + value + "</b></div>";
     }
 
-    private Optional<Sessions.Session> session(HttpExchange exchange) {
-        for (String header : exchange.getRequestHeaders().getOrDefault("Cookie", List.of())) {
+    private Optional<Sessions.Session> session(Exchange exchange) {
+        for (String header : exchange.headers("Cookie")) {
             for (String cookie : header.split(";", -1)) {
                 String[] pair = cookie.strip().split("=", 2);
                 if (pair.length == 2 && pair[0].equals(this.cookie)) {
@@ -861,8 +911,8 @@ public final class WebUi implements AutoCloseable {
     }
 
     // The posted fields; empty when there are more than limit bytes.
-    private static Optional<Map<String, String>> form(HttpExchange exchange, int limit) throws IOException {
-        try (InputStream in = exchange.getRequestBody()) {
+    private static Optional<Map<String, String>> form(Exchange exchange, int limit) throws IOException {
+        try (InputStream in = exchange.requestBody()) {
             byte[] body = in.readNBytes(limit + 1);
             if (body.length > limit) {
                 return Optional.empty();
@@ -871,8 +921,8 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private static Map<String, String> query(HttpExchange exchange) {
-        String raw = exchange.getRequestURI().getRawQuery();
+    private static Map<String, String> query(Exchange exchange) {
+        String raw = exchange.rawQuery();
         return raw == null ? Map.of() : decode(raw);
     }
 
@@ -890,38 +940,38 @@ public final class WebUi implements AutoCloseable {
         return values;
     }
 
-    private void redirect(HttpExchange exchange, String location) throws IOException {
-        exchange.getResponseHeaders().set("Location", location);
-        securityHeaders(exchange.getResponseHeaders());
-        exchange.sendResponseHeaders(303, -1);
+    private void redirect(Exchange exchange, String location) throws IOException {
+        exchange.setHeader("Location", location);
+        securityHeaders(exchange);
+        exchange.sendHeaders(303, -1);
     }
 
-    private void send(HttpExchange exchange, int status, String type, String body) throws IOException {
+    private void send(Exchange exchange, int status, String type, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", type);
-        securityHeaders(exchange.getResponseHeaders());
-        if (exchange.getRequestMethod().equals(HEAD)) {
+        exchange.setHeader("Content-Type", type);
+        securityHeaders(exchange);
+        if (exchange.isHead()) {
             // The length the GET would have, without the body the server refuses to send.
-            exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-            exchange.sendResponseHeaders(status, -1);
+            exchange.setHeader("Content-Length", String.valueOf(bytes.length));
+            exchange.sendHeaders(status, -1);
             return;
         }
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream out = exchange.getResponseBody()) {
+        exchange.sendHeaders(status, bytes.length);
+        try (OutputStream out = exchange.responseBody()) {
             out.write(bytes);
         }
     }
 
-    private static void securityHeaders(Headers headers) {
-        headers.set(
+    private static void securityHeaders(Exchange exchange) {
+        exchange.setHeader(
                 "Content-Security-Policy",
                 "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none';"
                         + " base-uri 'none'");
-        headers.set("X-Frame-Options", "DENY");
-        headers.set("X-Content-Type-Options", "nosniff");
+        exchange.setHeader("X-Frame-Options", "DENY");
+        exchange.setHeader("X-Content-Type-Options", "nosniff");
         // Not no-referrer: browsers would then send "Origin: null" with the pages' own forms.
-        headers.set("Referrer-Policy", "same-origin");
-        headers.set("Cache-Control", "no-store");
+        exchange.setHeader("Referrer-Policy", "same-origin");
+        exchange.setHeader("Cache-Control", "no-store");
     }
 
     /** The engine could not do what a request asked; the message is meant for the user. */

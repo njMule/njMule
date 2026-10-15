@@ -16,7 +16,6 @@
  */
 package org.njmule.webui;
 
-import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -72,19 +71,19 @@ final class EventStreams implements AutoCloseable {
      * Answers {@code exchange} with the events whose names start with one of {@code wanted} (all when empty), until the
      * caller leaves, falls behind or the interface stops; false when too many streams are open already.
      */
-    boolean serve(HttpExchange exchange, List<String> wanted) throws IOException {
+    boolean serve(Exchange exchange, List<String> wanted) throws IOException {
         if (this.closed || !this.slots.tryAcquire()) {
             return false;
         }
         Stream stream = new Stream(wanted);
         this.open.add(stream);
         try {
-            exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-            exchange.getResponseHeaders().set("Cache-Control", "no-store");
-            exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-            exchange.sendResponseHeaders(200, 0);
+            exchange.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+            exchange.setHeader("Cache-Control", "no-store");
+            exchange.setHeader("X-Content-Type-Options", "nosniff");
+            exchange.sendHeaders(200, 0);
             this.engine.events().subscribe(stream);
-            try (OutputStream out = exchange.getResponseBody()) {
+            try (OutputStream out = exchange.responseBody()) {
                 stream.pump(out);
             }
         } catch (InterruptedException e) {
