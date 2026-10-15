@@ -380,6 +380,19 @@
     -fx-font-style: italic;
 }
 
+/* The index beside the options: the sections in bold, the options found indented below them. */
+.settings-index .list-cell {
+    -fx-cell-size: 2.2em;
+}
+
+.settings-index .list-cell.index-section {
+    -fx-font-weight: bold;
+}
+
+.settings-index .list-cell.index-option {
+    -fx-padding: 0 8 0 20;
+}
+
 .settings-section {
     -fx-font-weight: bold;
     -fx-padding: 8 0 2 0;

@@ -54,6 +54,7 @@ import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import org.kordamp.ikonli.Ikon;
@@ -196,6 +197,7 @@ public final class SettingsScreen implements Screen {
     // The inputs Apply checks, in the order of the page.
     private final List<Input<?>> checked = new ArrayList<>();
     private final ScrollPane scroll = new ScrollPane();
+    private SettingsIndex index;
     // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
     private Preferences loaded;
 
@@ -454,7 +456,11 @@ public final class SettingsScreen implements Screen {
         this.scroll.setContent(grid);
         this.scroll.setFitToWidth(true);
         this.load(this.gui.model().preferencesProperty().get());
-        return Fx.screen(this.title(), tools, this.scroll);
+        // Beside the long page, its sections and a box that finds an option by its words.
+        this.index = new SettingsIndex(this.gui, grid, this.scroll);
+        HBox body = new HBox(12, this.index.view(), this.scroll);
+        HBox.setHgrow(this.scroll, Priority.ALWAYS);
+        return Fx.screen(this.title(), tools, body);
     }
 
     // Each box takes only its kind of value, within the limits the engine accepts.
@@ -1090,6 +1096,11 @@ public final class SettingsScreen implements Screen {
             this.scroll.setVvalue(Math.clamp((at.getMinY() - view / 3) / free, 0.0, 1.0));
         }
         field.requestFocus();
+    }
+
+    /** The index beside the page, for tests. */
+    SettingsIndex index() {
+        return this.index;
     }
 
     /** The scroll pane of the page, for tests. */
