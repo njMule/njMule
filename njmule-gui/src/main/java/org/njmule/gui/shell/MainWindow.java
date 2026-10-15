@@ -17,6 +17,7 @@
 package org.njmule.gui.shell;
 
 import atlantafx.base.controls.Notification;
+import atlantafx.base.theme.Styles;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +75,8 @@ import org.njmule.gui.ui.Screen;
 public final class MainWindow {
 
     private static final Duration MESSAGE_TIME = Duration.seconds(6);
+    // More messages at once push the oldest out: the stack never covers the screen.
+    private static final int MAX_MESSAGES = 4;
     private static final List<KeyCode> DIGITS = List.of(
             KeyCode.DIGIT1,
             KeyCode.DIGIT2,
@@ -115,11 +118,13 @@ public final class MainWindow {
             this.screens.put(screen.id(), screen);
         }
         BorderPane frame = new BorderPane(this.content, this.topBar(), null, this.statusStrip(), this.navRail());
-        this.messages.setAlignment(Pos.TOP_RIGHT);
+        // Messages stack in the bottom corner, above the status strip: never over the tool rows.
+        this.messages.setAlignment(Pos.BOTTOM_RIGHT);
         this.messages.setPickOnBounds(false);
-        this.messages.setPadding(new Insets(56, 16, 16, 16));
+        this.messages.setPadding(new Insets(16, 16, 40, 16));
         this.messages.setMaxWidth(420);
-        StackPane.setAlignment(this.messages, Pos.TOP_RIGHT);
+        this.messages.setMaxHeight(Region.USE_PREF_SIZE);
+        StackPane.setAlignment(this.messages, Pos.BOTTOM_RIGHT);
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
         this.root.setNodeOrientation(gui.orientation());
@@ -138,7 +143,7 @@ public final class MainWindow {
         gui.subscriptions().onChange(model.statusProperty(), (was, now) -> this.showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> {
-            this.message(gui.f("nj.transfers.completed", d.name()));
+            this.success(gui.f("nj.transfers.completed", d.name()));
             this.chime();
         });
         model.chats().onMessage(chat -> {
@@ -169,16 +174,38 @@ public final class MainWindow {
 
     /** Shows a short message for a few seconds. */
     public void message(String text) {
+        this.show(text, new FontIcon(Material2AL.INFO), null, true);
+    }
+
+    /** Shows for a few seconds that something went well, such as a finished download. */
+    public void success(String text) {
+        this.show(text, new FontIcon(Material2AL.CHECK_CIRCLE_OUTLINE), Styles.SUCCESS, true);
+    }
+
+    /** Shows a problem, which stays until the user closes it. */
+    public void problem(String text) {
+        this.show(text, new FontIcon(Material2AL.ERROR_OUTLINE), Styles.DANGER, false);
+    }
+
+    private void show(String text, FontIcon icon, String style, boolean fades) {
         this.elsewhere.accept(text);
-        Notification note = new Notification(text, new FontIcon(Material2AL.INFO));
+        Notification note = new Notification(text, icon);
         note.getStyleClass().add("elevated-1");
+        if (style != null) {
+            note.getStyleClass().add(style);
+        }
         note.setPrefWidth(380);
         note.setMaxWidth(380);
         note.setOnClose(e -> this.messages.getChildren().remove(note));
         this.messages.getChildren().add(note);
-        PauseTransition later = new PauseTransition(MESSAGE_TIME);
-        later.setOnFinished(e -> this.messages.getChildren().remove(note));
-        later.play();
+        if (this.messages.getChildren().size() > MAX_MESSAGES) {
+            this.messages.getChildren().removeFirst();
+        }
+        if (fades) {
+            PauseTransition later = new PauseTransition(MESSAGE_TIME);
+            later.setOnFinished(e -> this.messages.getChildren().remove(note));
+            later.play();
+        }
     }
 
     // The sound of a notification of an event, when the preferences ask for one; not for the replies to the user.

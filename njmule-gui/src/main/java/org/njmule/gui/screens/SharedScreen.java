@@ -241,7 +241,7 @@ public final class SharedScreen implements Screen {
             try {
                 Folders.reveal(selected.getFirst().path());
             } catch (IOException e) {
-                this.gui.inform().accept(e.getMessage());
+                this.gui.warn().accept(e.getMessage());
             }
         }
     }

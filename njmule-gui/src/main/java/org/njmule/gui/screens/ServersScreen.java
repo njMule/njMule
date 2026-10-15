@@ -604,7 +604,7 @@ public final class ServersScreen implements Screen {
     void connectToAddress() {
         if (!this.addressInput.isValid()) {
             this.gui
-                    .inform()
+                    .warn()
                     .accept(this.gui.f(
                             "nj.servers.badAddress", this.address.getText().strip()));
             return;

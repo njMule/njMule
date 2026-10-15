@@ -438,7 +438,7 @@ public final class TransfersScreen implements Screen {
 
     void addLink() {
         if (!this.linkInput.isValid()) {
-            this.gui.inform().accept(this.gui.t("nj.transfers.badLink"));
+            this.gui.warn().accept(this.gui.t("nj.transfers.badLink"));
             return;
         }
         this.linkInput.value().forEach(file -> this.gui.model().addDownload(file));
@@ -492,7 +492,7 @@ public final class TransfersScreen implements Screen {
             try {
                 address = ServerAddress.parse(text);
             } catch (IllegalArgumentException e) {
-                this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
+                this.gui.warn().accept(this.gui.f("nj.servers.badAddress", text));
                 return;
             }
             this.gui
@@ -500,8 +500,7 @@ public final class TransfersScreen implements Screen {
                     .addSource(
                             d.hash(),
                             address,
-                            added -> this.gui
-                                    .inform()
+                            added -> (added ? this.gui.inform() : this.gui.warn())
                                     .accept(this.gui.f(
                                             added ? "nj.transfers.sourceAdded" : "nj.transfers.sourceRefused",
                                             address.host() + ":" + address.port())));
@@ -533,7 +532,7 @@ public final class TransfersScreen implements Screen {
         SourceInfo source = selected.getFirst();
         this.gui.model().swapSource(source.file(), ServerAddress.parse(source.address()), moved -> {
             if (!moved) {
-                this.gui.inform().accept(this.gui.t("nj.a4af.cannotSwap"));
+                this.gui.warn().accept(this.gui.t("nj.a4af.cannotSwap"));
             }
         });
     }
@@ -554,19 +553,19 @@ public final class TransfersScreen implements Screen {
         }
         String player = this.gui.model().preferencesProperty().get().videoPlayer();
         if (!Preview.isSet(player)) {
-            this.gui.inform().accept(this.gui.t("nj.preview.noPlayer"));
+            this.gui.warn().accept(this.gui.t("nj.preview.noPlayer"));
             return;
         }
         String args = this.gui.model().preferencesProperty().get().videoPlayerArgs();
         this.gui.model().downloadData(selected.getFirst().hash(), data -> {
             if (data.isEmpty()) {
-                this.gui.inform().accept(this.gui.t("nj.preview.notYet"));
+                this.gui.warn().accept(this.gui.t("nj.preview.notYet"));
                 return;
             }
             try {
                 Preview.start(player, args, data.get());
             } catch (IOException e) {
-                this.gui.inform().accept(e.getMessage());
+                this.gui.warn().accept(e.getMessage());
             }
         });
     }

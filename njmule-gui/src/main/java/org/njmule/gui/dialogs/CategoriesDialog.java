@@ -198,7 +198,7 @@ public final class CategoriesDialog {
                     this.patternsInput.value(),
                     this.regex.isSelected());
         } catch (IllegalArgumentException e) {
-            this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+            this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return;
         }
         all.removeIf(c -> c.id() == id);

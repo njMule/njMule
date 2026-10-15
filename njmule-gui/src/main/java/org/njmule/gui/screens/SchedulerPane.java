@@ -284,7 +284,7 @@ final class SchedulerPane extends VBox {
                     orEmpty(this.stopCategory.getValue()),
                     orEmpty(this.resumeCategory.getValue())));
         } catch (IllegalArgumentException e) {
-            this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+            this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return Optional.empty();
         }
     }

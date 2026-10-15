@@ -113,6 +113,7 @@ public final class TestGui implements AutoCloseable {
                 GuiSettings.load(engine.directories().gui()),
                 engine.directories(),
                 told::add,
+                told::add,
                 relaunches::incrementAndGet,
                 new Subscriptions(),
                 played::add,

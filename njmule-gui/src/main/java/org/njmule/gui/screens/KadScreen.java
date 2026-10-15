@@ -275,7 +275,7 @@ public final class KadScreen implements Screen {
     void bootstrap() {
         if (!this.nodeInput.isValid()) {
             this.gui
-                    .inform()
+                    .warn()
                     .accept(this.gui.f(
                             "nj.servers.badAddress", this.node.getText().strip()));
             return;

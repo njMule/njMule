@@ -179,13 +179,13 @@ public final class MessagesScreen implements Screen {
     void startChat() {
         String text = this.address.getText().strip();
         if (!this.addressInput.isValid()) {
-            this.gui.inform().accept(this.gui.f("nj.servers.badAddress", text));
+            this.gui.warn().accept(this.gui.f("nj.servers.badAddress", text));
             return;
         }
         ServerAddress to = this.addressInput.value();
         // Clients are reached on their IPv4 address; only an IPv6 one holds colons.
         if (to.host().contains(":")) {
-            this.gui.inform().accept(this.gui.f("nj.chat.ipv4Only", text));
+            this.gui.warn().accept(this.gui.f("nj.chat.ipv4Only", text));
             return;
         }
         this.select(this.gui.model().chats().with(to.toString()));
@@ -199,7 +199,7 @@ public final class MessagesScreen implements Screen {
         }
         Optional<ServerAddress> where = row.get().address();
         if (where.isEmpty()) {
-            this.gui.inform().accept(this.gui.t("nj.chat.noAddress"));
+            this.gui.warn().accept(this.gui.t("nj.chat.noAddress"));
             return;
         }
         this.select(this.gui
@@ -351,7 +351,7 @@ public final class MessagesScreen implements Screen {
 
         void befriend() {
             if (this.chat.userHash().isEmpty()) {
-                MessagesScreen.this.gui.inform().accept(MessagesScreen.this.gui.t("nj.chat.unknownYet"));
+                MessagesScreen.this.gui.warn().accept(MessagesScreen.this.gui.t("nj.chat.unknownYet"));
                 return;
             }
             ServerAddress where = ServerAddress.parse(this.chat.address());

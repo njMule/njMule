@@ -166,11 +166,11 @@ public final class ImportDialog {
         try {
             dir = Path.of(this.directory.getText().strip());
         } catch (InvalidPathException e) {
-            this.gui.inform().accept(e.getMessage());
+            this.gui.warn().accept(e.getMessage());
             return;
         }
         if (!Files.isDirectory(dir)) {
-            this.gui.inform().accept(this.gui.f("nj.import.notADirectory", dir));
+            this.gui.warn().accept(this.gui.f("nj.import.notADirectory", dir));
             return;
         }
         this.working.set(true);
@@ -216,7 +216,7 @@ public final class ImportDialog {
                         Platform.runLater(() -> this.gui.inform().accept(this.gui.t("nj.import.autostart")));
                     } catch (IOException e) {
                         Platform.runLater(() ->
-                                this.gui.inform().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage())));
+                                this.gui.warn().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage())));
                     }
                 }));
     }

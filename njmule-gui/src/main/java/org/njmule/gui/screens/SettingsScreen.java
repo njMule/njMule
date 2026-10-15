@@ -653,7 +653,7 @@ public final class SettingsScreen implements Screen {
                 }
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    this.gui.inform().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage()));
+                    this.gui.warn().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage()));
                     this.loadAutostart();
                 });
             }
@@ -830,7 +830,7 @@ public final class SettingsScreen implements Screen {
                 }
             } catch (IOException e) {
                 Platform.runLater(() -> {
-                    this.gui.inform().accept(this.gui.f("nj.settings.ed2kLinksFailed", e.getMessage()));
+                    this.gui.warn().accept(this.gui.f("nj.settings.ed2kLinksFailed", e.getMessage()));
                     this.loadLinks();
                 });
             }
@@ -847,7 +847,7 @@ public final class SettingsScreen implements Screen {
             shown = changes.over(this.loaded);
             web = this.readWebUi(WebUiSettings.load(this.gui.directories().config()));
         } catch (IllegalArgumentException e) {
-            this.gui.inform().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+            this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return;
         }
         // Only what the user changed: a limit the tray or the scheduler set meanwhile stays.
@@ -871,7 +871,7 @@ public final class SettingsScreen implements Screen {
             this.webUiPassword.clear();
             this.webUiAgain.clear();
         } catch (IOException e) {
-            this.gui.inform().accept(e.getMessage());
+            this.gui.warn().accept(e.getMessage());
         }
         this.applyLinks();
         this.applyAutostart();
@@ -1070,7 +1070,7 @@ public final class SettingsScreen implements Screen {
             ClipboardWatch.copy(ApiToken.loadOrCreate(this.gui.directories().config(), new SecureRandom()));
             this.gui.inform().accept(this.gui.t("nj.webui.tokenCopied"));
         } catch (IOException e) {
-            this.gui.inform().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
+            this.gui.warn().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
         }
     }
 
@@ -1080,7 +1080,7 @@ public final class SettingsScreen implements Screen {
             ClipboardWatch.copy(ApiToken.renew(this.gui.directories().config(), new SecureRandom()));
             this.gui.inform().accept(this.gui.t("nj.webui.tokenRenewed"));
         } catch (IOException e) {
-            this.gui.inform().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
+            this.gui.warn().accept(this.gui.f("nj.webui.tokenFailed", e.getMessage()));
         }
     }
 

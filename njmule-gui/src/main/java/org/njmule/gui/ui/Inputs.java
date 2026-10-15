@@ -229,7 +229,7 @@ public final class Inputs {
                     }
                     return links;
                 })
-                .whenTooLong(() -> this.gui.inform().accept(this.gui.f("nj.input.tooLong", MAX_LINKS_TEXT)));
+                .whenTooLong(() -> this.gui.warn().accept(this.gui.f("nj.input.tooLong", MAX_LINKS_TEXT)));
     }
 
     /** Nothing, or a program and its arguments, which may hold {@code placeholders}; see EventCommands. */

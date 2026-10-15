@@ -206,7 +206,7 @@ public final class DesktopApp implements AutoCloseable {
         try {
             uri = URI.create(url);
         } catch (IllegalArgumentException e) {
-            this.window.message(e.getMessage());
+            this.window.problem(e.getMessage());
             return;
         }
         if (servers) {
@@ -434,7 +434,7 @@ public final class DesktopApp implements AutoCloseable {
                                     .preferences()
                                     .effectiveIncomingDir(DesktopApp.this.directories));
                         } catch (IOException e) {
-                            DesktopApp.this.window.message(e.getMessage());
+                            DesktopApp.this.window.problem(e.getMessage());
                         }
                     }
 
@@ -568,12 +568,13 @@ public final class DesktopApp implements AutoCloseable {
                 this.settings,
                 this.directories,
                 text -> this.window.message(text),
+                text -> this.window.problem(text),
                 this::relaunch,
                 new Subscriptions(),
                 this.sound,
                 this.autostart);
         this.window = new MainWindow(this.gui);
-        this.model.onError(this.window::message);
+        this.model.onError(this.window::problem);
         return this.window.root();
     }
 

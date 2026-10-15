@@ -36,6 +36,7 @@ import org.njmule.gui.model.EngineModel;
  * something.
  *
  * @param inform shows a short message to the user
+ * @param warn shows a problem the user has to read: what failed or was refused, and why
  * @param relaunch rebuilds the window, after a language change
  * @param subscriptions what the window follows of the model, ended when it is rebuilt
  * @param sound plays the sound of the notifications
@@ -49,6 +50,7 @@ public record Gui(
         GuiSettings settings,
         AppDirectories directories,
         Consumer<String> inform,
+        Consumer<String> warn,
         Runnable relaunch,
         Subscriptions subscriptions,
         SoundPlayer sound,
@@ -62,13 +64,17 @@ public record Gui(
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(directories, "directories");
         Objects.requireNonNull(inform, "inform");
+        Objects.requireNonNull(warn, "warn");
         Objects.requireNonNull(relaunch, "relaunch");
         Objects.requireNonNull(subscriptions, "subscriptions");
         Objects.requireNonNull(sound, "sound");
         Objects.requireNonNull(autostart, "autostart");
     }
 
-    /** A context with subscriptions of its own, which plays no sound and never starts at login. */
+    /**
+     * A context with subscriptions of its own, which plays no sound, never starts at login and tells problems as it
+     * tells the rest.
+     */
     public Gui(
             I18n i18n,
             Formats formats,
@@ -85,6 +91,7 @@ public record Gui(
                 themes,
                 settings,
                 directories,
+                inform,
                 inform,
                 relaunch,
                 new Subscriptions(),

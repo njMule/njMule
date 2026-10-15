@@ -354,7 +354,7 @@ public final class SearchScreen implements Screen {
             return;
         }
         if (!this.queryInput.isValid()) {
-            this.gui.inform().accept(this.query.getEditor().getTooltip().getText());
+            this.gui.warn().accept(this.query.getEditor().getTooltip().getText());
             return;
         }
         for (Input<?> input : List.of(
@@ -364,7 +364,7 @@ public final class SearchScreen implements Screen {
                 this.completeInput,
                 this.extensionInput)) {
             if (!input.isValid()) {
-                this.gui.inform().accept(input.field().getTooltip().getText());
+                this.gui.warn().accept(input.field().getTooltip().getText());
                 return;
             }
         }
@@ -379,12 +379,12 @@ public final class SearchScreen implements Screen {
         try {
             SearchRequest.checkExpression(expression);
         } catch (RuntimeException e) {
-            this.gui.inform().accept(e.getMessage());
+            this.gui.warn().accept(e.getMessage());
             return;
         }
         Optional<SearchRequest.Scope> scope = this.scope();
         if (scope.isEmpty()) {
-            this.gui.inform().accept(this.gui.t("IDS_NOTCONNECTEDANY"));
+            this.gui.warn().accept(this.gui.t("IDS_NOTCONNECTEDANY"));
             return;
         }
         this.remember(words.strip());
@@ -396,7 +396,7 @@ public final class SearchScreen implements Screen {
         try {
             this.gui.settings().save();
         } catch (IOException e) {
-            this.gui.inform().accept(e.getMessage());
+            this.gui.warn().accept(e.getMessage());
         }
         this.query.getItems().setAll(this.gui.settings().history(HISTORY));
         this.query.getEditor().setText(words);
