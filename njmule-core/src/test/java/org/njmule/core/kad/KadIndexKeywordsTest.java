@@ -48,8 +48,8 @@ class KadIndexKeywordsTest {
         givenTheFileIsPublishedByAddresses(IP, 99, "Stale.avi", NOW);
         givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW);
         givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
+        givenTheFileIsPublishedByAddresses(IP + 2_000, 1, "Kept.avi", NOW + 24 * HOUR + 1);
 
-        whenTheFileIsPublishedByAddresses(IP + 2_000, 1, "Kept.avi", NOW + 24 * HOUR + 1);
         whenTheKeywordIsSearchedAt(NOW + 24 * HOUR + 2);
 
         thenTheNameFoundIs("Kept.avi");
@@ -60,8 +60,8 @@ class KadIndexKeywordsTest {
     void shouldForgetSilentPublishersWhenTheIndexIsCleaned() {
         givenTheFileIsPublishedByAddresses(IP, 50, "Stale.avi", NOW);
         givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
+        givenTheIndexIsCleanedAt(NOW + 24 * HOUR);
 
-        whenTheIndexIsCleanedAt(NOW + 24 * HOUR);
         whenTheKeywordIsSearchedAt(NOW + 24 * HOUR);
 
         thenTheNameFoundIs("Kept.avi");
@@ -92,13 +92,10 @@ class KadIndexKeywordsTest {
     void shouldAnswerWithTheNameMostPublishersGiveWhileTheyChange() {
         givenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW);
         givenTheKeywordWasSearchedFor(new SearchExpr.Keyword("first"));
+        givenTheFileIsPublishedByAddresses(IP + 10, 2, "Second Name.avi", NOW + HOUR);
+        givenASearchForFindsTheName(new SearchExpr.Keyword("second"), NOW + HOUR, "Second Name.avi");
+        givenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW + 23 * HOUR);
 
-        whenTheFileIsPublishedByAddresses(IP + 10, 2, "Second Name.avi", NOW + HOUR);
-        whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("second"), NOW + HOUR);
-
-        thenTheNameFoundIs("Second Name.avi");
-
-        whenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW + 23 * HOUR);
         whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("FIRST name"), NOW + 25 * HOUR);
 
         thenTheNameFoundIs("First Name.avi");
@@ -107,6 +104,11 @@ class KadIndexKeywordsTest {
     private void givenTheKeywordWasSearchedFor(SearchExpr expression) {
         whenTheKeywordIsSearchedFor(expression, NOW);
         assertThat(this.found).hasSize(1);
+    }
+
+    private void givenASearchForFindsTheName(SearchExpr expression, long at, String name) {
+        whenTheKeywordIsSearchedFor(expression, at);
+        assertTheNameFound(name);
     }
 
     private void whenTheKeywordIsSearchedFor(SearchExpr expression, long at) {
@@ -123,11 +125,7 @@ class KadIndexKeywordsTest {
         this.index.publishKeyword(this.keyword, entry(this.file, "big.avi", tags), IP, NOW);
     }
 
-    private void whenTheFileIsPublishedByAddresses(int firstIp, int count, String name, long at) {
-        givenTheFileIsPublishedByAddresses(firstIp, count, name, at);
-    }
-
-    private void whenTheIndexIsCleanedAt(long at) {
+    private void givenTheIndexIsCleanedAt(long at) {
         this.index.clean(at);
     }
 
@@ -136,6 +134,10 @@ class KadIndexKeywordsTest {
     }
 
     private void thenTheNameFoundIs(String name) {
+        assertTheNameFound(name);
+    }
+
+    private void assertTheNameFound(String name) {
         assertThat(this.found)
                 .singleElement()
                 .satisfies(e ->

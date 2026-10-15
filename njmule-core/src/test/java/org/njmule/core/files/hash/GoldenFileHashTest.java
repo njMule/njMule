@@ -40,20 +40,39 @@ import org.njmule.core.api.Hash20;
 /** Compares with vectors from the independent Python implementation (tools/golden). */
 class GoldenFileHashTest {
 
+    private FileHasher.Result result;
+
     @ParameterizedTest(name = "{0} bytes")
     @MethodSource("vectors")
-    void matchesTheGoldenVectors(long size, Map<String, String> v) throws IOException {
-        FileHasher.Result result = FileHasher.hash(new Pattern(size), size, b -> {});
+    void shouldMatchTheGoldenVectors(long size, Map<String, String> v) throws IOException {
+        whenTheGeneratedDataIsHashed(size);
 
-        assertThat(result.ed2k().fileHash()).isEqualTo(Hash16.parseHex(v.get("md4")));
-        assertThat(result.ed2k().partHashes())
-                .isEqualTo(list(v.get("parts")).stream().map(Hash16::parseHex).toList());
-        AichTree aich = result.aich().orElseThrow();
-        assertThat(aich.masterHash()).isEqualTo(Hash20.parseBase32(v.get("aich")));
-        assertThat(aich.partHashes())
-                .isEqualTo(list(v.get("aichparts")).stream()
-                        .map(Hash20::parseBase32)
-                        .toList());
+        thenTheEd2kFileHashIs(v.get("md4"));
+        thenTheEd2kPartHashesAre(v.get("parts"));
+        thenTheAichMasterHashIs(v.get("aich"));
+        thenTheAichPartHashesAre(v.get("aichparts"));
+    }
+
+    private void whenTheGeneratedDataIsHashed(long size) throws IOException {
+        this.result = FileHasher.hash(new Pattern(size), size, b -> {});
+    }
+
+    private void thenTheEd2kFileHashIs(String hex) {
+        assertThat(this.result.ed2k().fileHash()).isEqualTo(Hash16.parseHex(hex));
+    }
+
+    private void thenTheEd2kPartHashesAre(String hexes) {
+        assertThat(this.result.ed2k().partHashes())
+                .isEqualTo(list(hexes).stream().map(Hash16::parseHex).toList());
+    }
+
+    private void thenTheAichMasterHashIs(String base32) {
+        assertThat(this.result.aich().orElseThrow().masterHash()).isEqualTo(Hash20.parseBase32(base32));
+    }
+
+    private void thenTheAichPartHashesAre(String base32s) {
+        assertThat(this.result.aich().orElseThrow().partHashes())
+                .isEqualTo(list(base32s).stream().map(Hash20::parseBase32).toList());
     }
 
     static Stream<Arguments> vectors() throws IOException {

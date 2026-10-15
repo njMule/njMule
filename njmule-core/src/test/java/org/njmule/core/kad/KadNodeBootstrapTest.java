@@ -82,12 +82,18 @@ class KadNodeBootstrapTest {
     }
 
     @Test
-    void shouldAskOnlyTheFiftyClosestUsableContactsOneByOne() {
+    void shouldAskTheBootstrapContactsOneByOne() {
         givenABootstrapListOfGoodAndBadContacts(60);
 
         whenSecondsPass(10);
 
         thenBootstrapRequestsWent(5);
+    }
+
+    @Test
+    void shouldAskOnlyTheFiftyClosestUsableContacts() {
+        givenABootstrapListOfGoodAndBadContacts(60);
+        givenSecondsPass(10);
 
         whenSecondsPass(200);
 
@@ -109,8 +115,8 @@ class KadNodeBootstrapTest {
     void shouldStopAskingOnceConnectedAndNeverTakeTheNodeThatAnswered() {
         givenABootstrapListOfGoodAndBadContacts(10);
         givenSecondsPass(1);
+        givenTheAskedNodeAnswersWithContacts(3);
 
-        whenTheAskedNodeAnswersWithContacts(3);
         whenSecondsPass(60);
 
         thenBootstrapRequestsWent(1);
@@ -119,12 +125,18 @@ class KadNodeBootstrapTest {
     }
 
     @Test
-    void shouldTellWhetherThereWasANodesDatToLoad() throws IOException {
+    void shouldTellThatThereWasNoNodesDatToLoad() {
         whenTheNodesAreLoaded();
-        thenThereWasNoNodesDat();
 
+        thenThereWasNoNodesDat();
+    }
+
+    @Test
+    void shouldTellThatThereWasANodesDatToLoad() throws IOException {
         givenANodesDat();
+
         whenTheNodesAreLoaded();
+
         thenThereWasANodesDat();
     }
 
@@ -170,7 +182,7 @@ class KadNodeBootstrapTest {
         }
     }
 
-    private void whenTheAskedNodeAnswersWithContacts(int count) {
+    private void givenTheAskedNodeAnswersWithContacts(int count) {
         Sent request = bootstrapRequests().getFirst();
         List<KadMessages.Contact> contacts = new ArrayList<>();
         for (int i = 0; i < count; i++) {

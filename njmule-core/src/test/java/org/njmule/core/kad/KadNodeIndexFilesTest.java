@@ -90,7 +90,7 @@ class KadNodeIndexFilesTest {
     }
 
     @Test
-    void shouldNotLoadWhatExpiredMeanwhile() throws IOException, DecodeException {
+    void shouldNotLoadSourcesExpiredMeanwhile() throws IOException, DecodeException {
         givenAKeywordASourceAndANotePublishedToTheNode();
         givenTheNodeSavesItsIndex();
 
@@ -98,6 +98,13 @@ class KadNodeIndexFilesTest {
 
         thenAKeywordSearchFinds("ubuntu desktop.iso");
         thenASourceSearchFinds(0);
+    }
+
+    @Test
+    void shouldNotLoadKeywordsAndNotesExpiredMeanwhile() throws IOException, DecodeException {
+        givenAKeywordASourceAndANotePublishedToTheNode();
+        givenTheNodeSavesItsIndex();
+        givenTheNodeStartedAgainAfter(Duration.ofHours(6));
 
         whenTheNodeStartsAgainAfter(Duration.ofHours(19));
 
@@ -231,6 +238,10 @@ class KadNodeIndexFilesTest {
         this.node.received(PUBLISHER, PORT, new KadMessages.PublishAnswer(target, load).encode(), false, 0, 0);
         seconds(30);
         assertThat(this.node.runningKeywordPublishes()).isZero();
+    }
+
+    private void givenTheNodeStartedAgainAfter(Duration pause) throws IOException {
+        whenTheNodeStartsAgainAfter(pause);
     }
 
     // The index is saved by the steps before, at the time the test sets, and is not saved again here.

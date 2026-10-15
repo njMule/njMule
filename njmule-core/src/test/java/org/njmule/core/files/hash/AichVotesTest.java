@@ -18,6 +18,7 @@ package org.njmule.core.files.hash;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.util.Ipv4;
@@ -27,35 +28,91 @@ class AichVotesTest {
     private static final Hash20 GOOD = hash(1);
     private static final Hash20 BAD = hash(2);
 
+    private AichVotes votes;
+    private Optional<Hash20> announcement;
+
     @Test
-    void tenNetworksAgreeingMakeAHashTrusted() {
-        AichVotes votes = new AichVotes();
-        for (int i = 0; i < 9; i++) {
-            assertThat(votes.announced(Ipv4.of(10 + i, 1, 1, 1), GOOD)).isEmpty();
-        }
-        assertThat(votes.announced(Ipv4.of(30, 1, 1, 1), GOOD)).contains(GOOD);
+    void shouldTrustAHashOnceTenNetworksAgree() {
+        givenNoVotes();
+        givenNetworksAnnounceWithoutMakingItTrusted(10, 9, GOOD);
+
+        whenAHostAnnounces(Ipv4.of(30, 1, 1, 1), GOOD);
+
+        thenTheAnnouncementMakesTrusted(GOOD);
     }
 
     @Test
-    void oneNetworkCountsOnceAndForItsFirstHash() {
-        AichVotes votes = new AichVotes();
-        for (int i = 0; i < 20; i++) {
-            votes.announced(Ipv4.of(10, 1, 1, i), GOOD);
-        }
-        votes.announced(Ipv4.of(10, 1, 2, 1), BAD);
-        assertThat(votes.trusted()).as("all from one /20").isEmpty();
+    void shouldCountOneNetworkOnceAndForItsFirstHash() {
+        givenNoVotes();
+        givenHostsOfOneNetworkAnnounce(20, GOOD);
+
+        whenAHostAnnounces(Ipv4.of(10, 1, 2, 1), BAD);
+
+        thenNoHashIsTrusted("all from one /20");
     }
 
     @Test
-    void aMinorityOfOtherHashesKeepsTheTrust() {
-        AichVotes votes = new AichVotes();
-        for (int i = 0; i < 12; i++) {
-            votes.announced(Ipv4.of(40 + i, 1, 1, 1), GOOD);
+    void shouldKeepTheTrustWhileOtherHashesAreAMinority() {
+        givenNoVotes();
+        givenNetworksAnnounce(40, 12, GOOD);
+
+        whenAHostAnnounces(Ipv4.of(90, 1, 1, 1), BAD);
+
+        thenTheTrustedHashIs(GOOD, "12 of 13 is 92%");
+    }
+
+    @Test
+    void shouldDropTheTrustWhenOtherHashesAreTooMany() {
+        givenNoVotes();
+        givenNetworksAnnounce(40, 12, GOOD);
+        givenAHostAnnounces(Ipv4.of(90, 1, 1, 1), BAD);
+
+        whenAHostAnnounces(Ipv4.of(91, 1, 1, 1), BAD);
+
+        thenNoHashIsTrusted("12 of 14 is too few");
+    }
+
+    private void givenNoVotes() {
+        this.votes = new AichVotes();
+    }
+
+    private void givenNetworksAnnounceWithoutMakingItTrusted(int firstNetwork, int networks, Hash20 hash) {
+        for (int i = 0; i < networks; i++) {
+            assertThat(this.votes.announced(Ipv4.of(firstNetwork + i, 1, 1, 1), hash))
+                    .isEmpty();
         }
-        votes.announced(Ipv4.of(90, 1, 1, 1), BAD);
-        assertThat(votes.trusted()).as("12 of 13 is 92%").contains(GOOD);
-        votes.announced(Ipv4.of(91, 1, 1, 1), BAD);
-        assertThat(votes.trusted()).as("12 of 14 is too few").isEmpty();
+    }
+
+    private void givenNetworksAnnounce(int firstNetwork, int networks, Hash20 hash) {
+        for (int i = 0; i < networks; i++) {
+            this.votes.announced(Ipv4.of(firstNetwork + i, 1, 1, 1), hash);
+        }
+    }
+
+    private void givenHostsOfOneNetworkAnnounce(int hosts, Hash20 hash) {
+        for (int i = 0; i < hosts; i++) {
+            this.votes.announced(Ipv4.of(10, 1, 1, i), hash);
+        }
+    }
+
+    private void givenAHostAnnounces(int ip, Hash20 hash) {
+        this.votes.announced(ip, hash);
+    }
+
+    private void whenAHostAnnounces(int ip, Hash20 hash) {
+        this.announcement = this.votes.announced(ip, hash);
+    }
+
+    private void thenTheAnnouncementMakesTrusted(Hash20 hash) {
+        assertThat(this.announcement).contains(hash);
+    }
+
+    private void thenTheTrustedHashIs(Hash20 hash, String why) {
+        assertThat(this.votes.trusted()).as(why).contains(hash);
+    }
+
+    private void thenNoHashIsTrusted(String why) {
+        assertThat(this.votes.trusted()).as(why).isEmpty();
     }
 
     private static Hash20 hash(int seed) {

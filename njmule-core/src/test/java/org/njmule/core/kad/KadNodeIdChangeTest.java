@@ -87,8 +87,8 @@ class KadNodeIdChangeTest {
     @Test
     void shouldBanANodeThatProvesAnotherIdWithinAnHour() {
         givenThePeerProvesTheId(new UInt128(1, 1));
+        givenTimePasses(Duration.ofMinutes(30));
 
-        whenTimePasses(Duration.ofMinutes(30));
         whenThePeerProvesTheId(new UInt128(2, 2));
 
         thenThePeerIsIgnored(true);
@@ -98,8 +98,8 @@ class KadNodeIdChangeTest {
     @Test
     void shouldLetANodeChangeItsIdAfterAnHour() {
         givenThePeerProvesTheId(new UInt128(1, 1));
+        givenTimePasses(Duration.ofMinutes(61));
 
-        whenTimePasses(Duration.ofMinutes(61));
         whenThePeerProvesTheId(new UInt128(2, 2));
 
         thenThePeerIsIgnored(false);
@@ -109,8 +109,8 @@ class KadNodeIdChangeTest {
     void shouldIgnoreASearchAnswerUnderAnotherIdThanTheOneProvenThere() {
         givenThePeerProvesTheId(Keywords.id(WORD));
         givenAKeywordSearchThatAskedThePeer();
+        givenThePeerAnswersUnderTheId(new UInt128(3, 3), "ubuntu forged.iso");
 
-        whenThePeerAnswersUnderTheId(new UInt128(3, 3), "ubuntu forged.iso");
         whenThePeerAnswersUnderTheId(Keywords.id(WORD), "ubuntu real.iso");
 
         thenTheFilesFoundAre("ubuntu real.iso");
@@ -134,6 +134,10 @@ class KadNodeIdChangeTest {
         this.node.tick();
     }
 
+    private void givenThePeerAnswersUnderTheId(UInt128 sender, String name) {
+        whenThePeerAnswersUnderTheId(sender, name);
+    }
+
     // A hello carrying the key we give that address: the node there knows it from us.
     private void whenThePeerProvesTheId(UInt128 id) {
         KadMessages.Self sender = new KadMessages.Self(id, 4662, 8);
@@ -146,7 +150,7 @@ class KadNodeIdChangeTest {
                 55);
     }
 
-    private void whenTimePasses(Duration duration) {
+    private void givenTimePasses(Duration duration) {
         this.time.addAndGet(duration.toNanos());
     }
 

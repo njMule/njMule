@@ -83,8 +83,7 @@ class KadNodeLegacyChallengeTest {
     @Test
     void shouldVerifyANodeWithKeysThatAnswersOurPing() {
         givenAHelloFrom(7);
-
-        thenThePeerIsVerified(false);
+        givenThePeerIsNotVerifiedYet();
 
         whenThePeerAnswersOurPing();
 
@@ -94,8 +93,7 @@ class KadNodeLegacyChallengeTest {
     @Test
     void shouldVerifyAnOlderNodeThatAnswersALookupOnlyItWasSent() throws DecodeException {
         givenAHelloFrom(5);
-
-        thenTheChallengeIsAPlainLookupAddressedToThePeer();
+        givenTheChallengeIsAPlainLookupAddressedToThePeer();
 
         whenThePeerAnswersTheLookupFor(challenge());
 
@@ -123,8 +121,8 @@ class KadNodeLegacyChallengeTest {
     @Test
     void shouldChallengeAnOlderNodeAnsweringOurHello() throws DecodeException {
         givenAContactWeSayHelloTo(5);
+        givenThePeerAnswersOurHello(5);
 
-        whenThePeerAnswersOurHello(5);
         whenThePeerAnswersTheLookupFor(challenge());
 
         thenThePeerIsVerified(true);
@@ -156,12 +154,16 @@ class KadNodeLegacyChallengeTest {
                 .anySatisfy(s -> assertThat(s.packet().opcode()).isEqualTo(Opcodes.Kad.HELLO_REQ.code()));
     }
 
+    private void givenThePeerIsNotVerifiedYet() {
+        assertThePeerIsVerified(false);
+    }
+
     private void whenAHelloArrivesFrom(int version) {
         KadMessages.Self sender = new KadMessages.Self(this.peerId, 4662, version);
         this.node.received(PEER, PORT, new KadMessages.Hello(sender, List.of()).encode(false), false, 0, 0);
     }
 
-    private void whenThePeerAnswersOurHello(int version) {
+    private void givenThePeerAnswersOurHello(int version) {
         KadMessages.Self sender = new KadMessages.Self(this.peerId, 4662, version);
         this.node.received(PEER, PORT, new KadMessages.Hello(sender, List.of()).encode(true), false, 0, 0);
     }
@@ -176,6 +178,10 @@ class KadNodeLegacyChallengeTest {
     }
 
     private void thenThePeerIsVerified(boolean verified) {
+        assertThePeerIsVerified(verified);
+    }
+
+    private void assertThePeerIsVerified(boolean verified) {
         assertThat(this.node.contactInfos())
                 .filteredOn(c -> c.address().equals(Ipv4.format(PEER) + ":" + PORT))
                 .singleElement()
@@ -183,7 +189,7 @@ class KadNodeLegacyChallengeTest {
                 .isEqualTo(verified);
     }
 
-    private void thenTheChallengeIsAPlainLookupAddressedToThePeer() throws DecodeException {
+    private void givenTheChallengeIsAPlainLookupAddressedToThePeer() throws DecodeException {
         Sent challenge = sentOf(Opcodes.Kad.REQ).getFirst();
         assertThat(challenge.receiverId()).isEmpty();
         assertThat(KadMessages.Request.decode(challenge.packet()).receiver()).isEqualTo(this.peerId);

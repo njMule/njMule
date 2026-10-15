@@ -27,6 +27,7 @@ import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -51,40 +52,70 @@ class KadInteropTest {
     private static final int PORT = Integer.getInteger("njmule.interop.kadPort", 14897);
 
     private final UInt128 own = UInt128.random(new SecureRandom());
+    private DatagramSocket socket;
+    private UInt128 emule;
+    private int pongPort;
+
+    @AfterEach
+    void closeTheSocket() {
+        if (this.socket != null) {
+            this.socket.close();
+        }
+    }
 
     @Test
-    void anEmuleAnswersBootstrapHelloLookupAndPing() throws Exception {
-        try (DatagramSocket socket = new DatagramSocket()) {
-            socket.setSoTimeout(5_000);
-            UInt128 own = this.own;
+    void shouldBeAnsweredByAnEmuleToBootstrapHelloLookupAndPing() throws Exception {
+        givenASocket();
+        givenAnEmuleThatAnswersTheBootstrap();
+        givenTheEmuleAnswersOurHello();
+        givenTheEmuleAnswersALookupForOurId();
 
-            Optional<Packet> bootstrap = ask(socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
-            assumeTrue(bootstrap.isPresent(), "no eMule Kad answering on UDP port " + PORT);
-            KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(bootstrap.get());
-            assertThat(answer.sender().version()).isGreaterThanOrEqualTo(8);
-            assertThat(answer.contacts()).hasSizeLessThanOrEqualTo(KadMessages.MAX_BOOTSTRAP_CONTACTS);
-            for (KadMessages.Contact c : answer.contacts()) {
-                assertThat(c.ip() >>> 24).as("no loopback contacts").isNotEqualTo(127);
-            }
-            UInt128 emule = answer.sender().id();
+        whenTheEmuleIsPinged();
 
-            KadMessages.Hello hello =
-                    new KadMessages.Hello(new KadMessages.Self(own, 4662, KadMessages.VERSION), List.of());
-            KadMessages.Hello reply = KadMessages.Hello.decode(
-                    ask(socket, hello.encode(false), Opcodes.Kad.HELLO_RES).orElseThrow());
-            assertThat(reply.sender().id()).isEqualTo(emule);
-            assertThat(reply.sender().version()).isEqualTo(KadMessages.VERSION);
+        thenThePongGivesOurPort();
+    }
 
-            KadMessages.Request request = new KadMessages.Request(11, own, emule);
-            KadMessages.Answer contacts = KadMessages.Answer.decode(
-                    ask(socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
-            assertThat(contacts.target()).isEqualTo(own);
-            assertThat(contacts.contacts()).hasSizeLessThanOrEqualTo(11);
+    private void givenASocket() throws IOException {
+        this.socket = new DatagramSocket();
+        this.socket.setSoTimeout(5_000);
+    }
 
-            int port = KadMessages.decodePong(
-                    ask(socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
-            assertThat(port).isEqualTo(socket.getLocalPort());
+    private void givenAnEmuleThatAnswersTheBootstrap() throws IOException, DecodeException {
+        Optional<Packet> bootstrap = ask(this.socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
+        assumeTrue(bootstrap.isPresent(), "no eMule Kad answering on UDP port " + PORT);
+        KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(bootstrap.get());
+        assertThat(answer.sender().version()).isGreaterThanOrEqualTo(8);
+        assertThat(answer.contacts()).hasSizeLessThanOrEqualTo(KadMessages.MAX_BOOTSTRAP_CONTACTS);
+        for (KadMessages.Contact c : answer.contacts()) {
+            assertThat(c.ip() >>> 24).as("no loopback contacts").isNotEqualTo(127);
         }
+        this.emule = answer.sender().id();
+    }
+
+    private void givenTheEmuleAnswersOurHello() throws IOException, DecodeException {
+        KadMessages.Hello hello =
+                new KadMessages.Hello(new KadMessages.Self(this.own, 4662, KadMessages.VERSION), List.of());
+        KadMessages.Hello reply = KadMessages.Hello.decode(
+                ask(this.socket, hello.encode(false), Opcodes.Kad.HELLO_RES).orElseThrow());
+        assertThat(reply.sender().id()).isEqualTo(this.emule);
+        assertThat(reply.sender().version()).isEqualTo(KadMessages.VERSION);
+    }
+
+    private void givenTheEmuleAnswersALookupForOurId() throws IOException, DecodeException {
+        KadMessages.Request request = new KadMessages.Request(11, this.own, this.emule);
+        KadMessages.Answer contacts = KadMessages.Answer.decode(
+                ask(this.socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
+        assertThat(contacts.target()).isEqualTo(this.own);
+        assertThat(contacts.contacts()).hasSizeLessThanOrEqualTo(11);
+    }
+
+    private void whenTheEmuleIsPinged() throws IOException, DecodeException {
+        this.pongPort = KadMessages.decodePong(
+                ask(this.socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
+    }
+
+    private void thenThePongGivesOurPort() {
+        assertThat(this.pongPort).isEqualTo(this.socket.getLocalPort());
     }
 
     // Sends a plain datagram and waits for the answer with the given opcode.
