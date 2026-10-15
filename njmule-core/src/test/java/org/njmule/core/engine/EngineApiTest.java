@@ -406,11 +406,18 @@ class EngineApiTest {
         this.engine = start("");
     }
 
-    private void givenARunningEngineWithKad() throws IOException {
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            this.kadPort = probe.getLocalPort();
+    // A port free when probed may be taken by a test running beside before Kad binds it: then Kad gets another.
+    private void givenARunningEngineWithKad() throws Exception {
+        for (int attempt = 1; ; attempt++) {
+            try (DatagramSocket probe = new DatagramSocket(0)) {
+                this.kadPort = probe.getLocalPort();
+            }
+            this.engine = start("net.kad.enabled=true\nnet.udpPort=" + this.kadPort + "\n");
+            if (attempt == 5 || this.engine.kad().get(5, TimeUnit.SECONDS).isPresent()) {
+                return;
+            }
+            this.engine.close();
         }
-        this.engine = start("net.kad.enabled=true\nnet.udpPort=" + this.kadPort + "\n");
     }
 
     private void givenAProfileWith(String preferences) throws IOException {
