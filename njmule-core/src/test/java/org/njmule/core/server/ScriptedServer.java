@@ -22,6 +22,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -61,6 +62,7 @@ public final class ScriptedServer implements AutoCloseable {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final ServerSocket socket;
+    private final Thread accepting;
     private final BlockingQueue<Packet> received = new LinkedBlockingQueue<>();
     private final List<Socket> clients = new CopyOnWriteArrayList<>();
     private final List<OutputStream> outputs = new CopyOnWriteArrayList<>();
@@ -75,7 +77,7 @@ public final class ScriptedServer implements AutoCloseable {
         this.flags = flags;
         this.obfuscates = obfuscates;
         this.socket = new ServerSocket(0, 8, address);
-        Thread.ofVirtual().name("scripted-server").start(this::accept);
+        this.accepting = Thread.ofVirtual().name("scripted-server").start(this::accept);
     }
 
     /** A server that logs clients in with {@code clientId} and announces {@code flags}; 0 for no answer. */
@@ -166,9 +168,18 @@ public final class ScriptedServer implements AutoCloseable {
         this.outputs.clear();
     }
 
+    /** Stops listening and hangs up; once it returns, connections to the server are refused. */
     @Override
     public void close() throws IOException {
         this.socket.close();
+        // A socket closed while a virtual thread waits in accept keeps listening, and may still accept, until that
+        // thread has left it.
+        try {
+            this.accepting.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while the server stopped listening");
+        }
         hangUp();
     }
 
