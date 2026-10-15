@@ -65,6 +65,7 @@ import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -116,6 +117,7 @@ class UploadManagerTest {
     private SharedFiles.SharedFile file;
     private SharedFiles.SharedFile other;
     private Hello eager;
+    private Optional<UploadManager.ReaskAnswer> reaskAnswer = Optional.empty();
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
@@ -1058,6 +1060,35 @@ class UploadManagerTest {
     }
 
     @Test
+    void shouldTellAClientWaitingForTheFileItsPlaceOverUdp() throws Exception {
+        givenTwoSlotsBusyUnderALimit();
+        givenAClientWaitingThatTakesUdpReasksOnPort(4672);
+
+        whenAReaskForTheFileComesFrom(InetAddress.getLoopbackAddress(), 4672);
+
+        thenTheAnswerTellsThePlace(1);
+    }
+
+    @Test
+    void shouldAnswerNothingToAReaskFromAnotherUdpPortOfTheAddress() throws Exception {
+        givenTwoSlotsBusyUnderALimit();
+        givenAClientWaitingThatTakesUdpReasksOnPort(4672);
+
+        whenAReaskForTheFileComesFrom(InetAddress.getLoopbackAddress(), 4673);
+
+        thenThereIsNoAnswer();
+    }
+
+    @Test
+    void shouldTellAnyoneOverUdpThatWeDoNotShareTheFile() throws Exception {
+        givenTwoSlotsBusyUnderALimit();
+
+        whenAReaskForTheFileComesFrom(InetAddress.getLoopbackAddress(), 4672, Hash16.parseHex("9d".repeat(16)));
+
+        thenTheAnswerIsPlain(ClientReasks.fileNotFound());
+    }
+
+    @Test
     void shouldPassAClientsUdpTestRequestToKadWithItsAddress() throws Exception {
         givenTheUploadsTellKadOfUdpTests();
         givenAClientConnected();
@@ -1099,6 +1130,47 @@ class UploadManagerTest {
         whenTheFirewalledClientAsksAgain();
 
         thenItGetsASlot();
+    }
+
+    private void givenAClientWaitingThatTakesUdpReasksOnPort(int udpPort) throws Exception {
+        this.client = client(Hello.of(
+                hashOf(3),
+                0,
+                5003,
+                "client 3",
+                udpPort,
+                udpPort,
+                ClientReasks.UDP_VERSION << Hello.MISC1_UDP_VERSION_SHIFT,
+                0,
+                0,
+                0));
+        assertThat(rank(ask(this.client, this.file.hash()))).isEqualTo(1);
+    }
+
+    private void whenAReaskForTheFileComesFrom(InetAddress ip, int port) throws Exception {
+        whenAReaskForTheFileComesFrom(ip, port, this.file.hash());
+    }
+
+    private void whenAReaskForTheFileComesFrom(InetAddress ip, int port, Hash16 file) throws Exception {
+        Packet ping =
+                new ClientReasks.Ping(file, ClientMessages.PartStatus.COMPLETE, 0).encode(ClientReasks.UDP_VERSION);
+        this.reaskAnswer = onLoop(() -> this.manager.reasked(ip, port, ping));
+    }
+
+    private void thenTheAnswerTellsThePlace(int place) throws Exception {
+        assertThat(this.reaskAnswer).isPresent();
+        Packet answer = this.reaskAnswer.get().packet();
+        assertThat(answer.opcode()).isEqualTo(Opcodes.ClientUdp.REASKACK.code());
+        assertThat(ClientReasks.Ack.decode(answer, ClientReasks.UDP_VERSION))
+                .isEqualTo(new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), place));
+    }
+
+    private void thenThereIsNoAnswer() {
+        assertThat(this.reaskAnswer).isEmpty();
+    }
+
+    private void thenTheAnswerIsPlain(Packet expected) {
+        assertThat(this.reaskAnswer).contains(new UploadManager.ReaskAnswer(expected, Optional.empty()));
     }
 
     private void givenTwoSlotsBusyUnderALimit() throws Exception {

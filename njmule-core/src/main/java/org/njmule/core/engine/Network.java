@@ -113,6 +113,7 @@ import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
@@ -439,6 +440,7 @@ final class Network {
                 },
                 random,
                 Ticker.systemTicker());
+        this.downloads.reaskOverUdp(new ReaskUdp());
         this.kadNotes = new KadNotes(
                 () -> Optional.ofNullable(this.kad).filter(KadNode::isConnected).map(k -> k),
                 this::runningDownloads,
@@ -1649,6 +1651,8 @@ final class Network {
                         // Comments, version 1.
                         | 1 << 4
                         | Hello.MISC1_DATA_COMPRESSION
+                        // Re-asks over UDP go to the Kad port, announced while Kad is connected.
+                        | (kadPort != 0 ? ClientReasks.UDP_VERSION << Hello.MISC1_UDP_VERSION_SHIFT : 0)
                         | IdentityHandshake.SUPPORTED << 16
                         // Clients do not ask for files that nobody may see.
                         | (prefs.sharedFilesVisibility() == SharedFilesVisibility.NOBODY
@@ -2015,10 +2019,73 @@ final class Network {
                 || this.downloads.download(file).isPresent();
     }
 
-    // Client packets on the Kad socket: a client asks us for a direct callback, which only a firewalled Kad node takes.
+    // Client packets on the Kad socket: re-asks of clients in our queue and the answers to ours, and direct callbacks.
     private void clientDatagram(int ip, int port, Packet packet) {
+        int opcode = packet.opcode();
+        if (opcode == Opcodes.ClientUdp.REASKFILEPING.code()) {
+            answerReask(ip, port, packet);
+        } else if (opcode == Opcodes.ClientUdp.REASKACK.code()
+                || opcode == Opcodes.ClientUdp.QUEUEFULL.code()
+                || opcode == Opcodes.ClientUdp.FILENOTFOUND.code()) {
+            this.downloads.reaskAnswered(ip, port, packet);
+        } else if (opcode == Opcodes.ClientUdp.DIRECTCALLBACKREQ.code()) {
+            directCallback(ip, packet);
+        }
+    }
+
+    private void answerReask(int ip, int port, Packet packet) {
+        KadSocket socket = this.kadSocket;
+        Optional<Inet4Address> from = address(ip);
+        if (socket == null || from.isEmpty()) {
+            return;
+        }
+        this.uploads.reasked(from.get(), port, packet).ifPresent(answer -> {
+            Optional<Hash16> key = this.preferences.get().obfuscation() == ObfuscationMode.DISABLED
+                    ? Optional.empty()
+                    : answer.obfuscateFor();
+            socket.sendClient(ip, port, answer.packet(), key, ourPublicIp());
+        });
+    }
+
+    private int ourPublicIp() {
+        return ourPublicAddress().map(a -> Ipv4.fromBytes(a.getAddress())).orElse(0);
+    }
+
+    private static Optional<Inet4Address> address(int ip) {
+        try {
+            return Optional.of((Inet4Address) InetAddress.getByAddress(Ipv4.toBytes(ip)));
+        } catch (UnknownHostException e) {
+            return Optional.empty();
+        }
+    }
+
+    // A source in whose queue we wait is asked again over UDP when the answer can reach us: through no proxy, which
+    // would carry TCP only, and while we are reachable, as the server or Kad see it.
+    private final class ReaskUdp implements DownloadManager.ClientUdp {
+        @Override
+        public boolean available() {
+            KadNode node = Network.this.kad;
+            boolean reachable = Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT
+                    || (node != null && node.isConnected() && !node.isFirewalled());
+            return Network.this.kadSocket != null
+                    && reachable
+                    && !Network.this.preferences.get().proxy().isEnabled()
+                    && ourPublicIp() != 0;
+        }
+
+        @Override
+        public void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {
+            KadSocket socket = Network.this.kadSocket;
+            if (socket != null && to.getAddress() instanceof Inet4Address v4) {
+                socket.sendClient(Ipv4.fromBytes(v4.getAddress()), to.getPort(), packet, userHash, ourPublicIp());
+            }
+        }
+    }
+
+    // A client asks us for a direct callback, which only a firewalled Kad node takes.
+    private void directCallback(int ip, Packet packet) {
         KadNode node = this.kad;
-        if (packet.opcode() != Opcodes.ClientUdp.DIRECTCALLBACKREQ.code() || node == null || !node.isFirewalled()) {
+        if (node == null || !node.isFirewalled()) {
             return;
         }
         long now = System.nanoTime();

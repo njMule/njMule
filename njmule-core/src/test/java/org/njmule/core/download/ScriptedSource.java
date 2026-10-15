@@ -61,13 +61,20 @@ final class ScriptedSource implements AutoCloseable {
     private final Hash16 userHash;
     private final int misc1;
     private final int misc2;
+    private final int udpPort;
     private final BlockingQueue<Socket> accepted = new LinkedBlockingQueue<>();
 
     /** A source with {@code userHash} announcing the options {@code misc1} and {@code misc2} in its hello. */
     ScriptedSource(Hash16 userHash, int misc1, int misc2) throws IOException {
+        this(userHash, misc1, misc2, 0);
+    }
+
+    /** As above, announcing {@code udpPort} as its UDP port too. */
+    ScriptedSource(Hash16 userHash, int misc1, int misc2, int udpPort) throws IOException {
         this.userHash = userHash;
         this.misc1 = misc1;
         this.misc2 = misc2;
+        this.udpPort = udpPort;
         this.server = new ServerSocket(0, 16, InetAddress.getLoopbackAddress());
         Thread.ofVirtual().name("scripted-source").start(this::acceptLoop);
     }
@@ -98,7 +105,8 @@ final class ScriptedSource implements AutoCloseable {
 
     /** Our hello with another user hash, client id and server, as a firewalled client tells them. */
     Hello hello(Hash16 hash, long clientId, int serverIp) {
-        return Hello.of(hash, clientId, port(), "scripted", 0, 0, this.misc1, this.misc2, serverIp, 4661);
+        return Hello.of(
+                hash, clientId, port(), "scripted", this.udpPort, this.udpPort, this.misc1, this.misc2, serverIp, 4661);
     }
 
     /** Connects to the downloader listening at {@code port} with {@code hello}, as a source calling back does. */

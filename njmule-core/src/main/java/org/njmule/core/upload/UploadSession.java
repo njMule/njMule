@@ -602,12 +602,7 @@ final class UploadSession implements PeerLink.Role {
         if (parts.isEmpty()) {
             return new ClientMessages.FileStatus(file.hash(), 0, new BitSet());
         }
-        // Sizes that are exact multiples of the part size count one more, empty and so complete.
-        int count = (int) (file.size() / Ed2k.PARTSIZE) + 1;
-        BitSet bits = parts.get();
-        if (file.size() % Ed2k.PARTSIZE == 0) {
-            bits.set(count - 1);
-        }
-        return new ClientMessages.FileStatus(file.hash(), count, bits);
+        ClientMessages.PartStatus status = ClientMessages.PartStatus.of(file.size(), parts.get());
+        return new ClientMessages.FileStatus(file.hash(), status.partCount(), status.parts());
     }
 }

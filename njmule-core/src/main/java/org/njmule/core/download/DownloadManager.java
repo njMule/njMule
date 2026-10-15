@@ -64,10 +64,15 @@ import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
+import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.packet.Opcodes;
+import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.security.PathSanitizer;
 import org.njmule.core.util.Ipv4;
 import org.njmule.core.util.RateMeter;
@@ -118,6 +123,15 @@ public final class DownloadManager implements AutoCloseable {
 
         /** Asks the server to have the LowID client {@code lowId} connect to us. */
         boolean requestCallback(long lowId);
+    }
+
+    /** The client UDP port, which Kad shares, as far as the downloads use it. */
+    public interface ClientUdp {
+        /** Whether a source can be asked over UDP now: the port is open and its answer can reach us. */
+        boolean available();
+
+        /** Sends {@code packet} to a client's UDP port, obfuscated for {@code userHash} when one is given. */
+        void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash);
     }
 
     /** Kad, when it runs: finds sources of a file, and asks the firewalled ones to connect to us. */
@@ -203,6 +217,9 @@ public final class DownloadManager implements AutoCloseable {
     /** A source that keeps us in its queue is asked again this often. */
     public static final Duration REASK_INTERVAL = Duration.ofMinutes(29);
 
+    /** A queued source is asked again over UDP this long before it is due over TCP: its answer spares a connection. */
+    public static final Duration UDP_REASK_LEAD = Duration.ofMinutes(2);
+
     /** Sources ban clients that ask more often than this. */
     public static final Duration MIN_REASK = Duration.ofMinutes(10);
 
@@ -242,6 +259,21 @@ public final class DownloadManager implements AutoCloseable {
     private static final int KAD_SEARCHES = 5;
     private static final Duration SX_RARE_INTERVAL = Duration.ofMinutes(40);
     private static final Duration SX_INTERVAL = Duration.ofMinutes(160);
+    // Too close to the TCP re-ask, a UDP one could not be answered in time.
+    private static final Duration UDP_REASK_LAST = Duration.ofSeconds(1);
+    // A client whose UDP re-asks go unanswered more than 30% of the time, after a few, is asked over TCP only.
+    private static final int PINGS_BEFORE_JUDGING = 3;
+    private static final ClientUdp NO_UDP = new ClientUdp() {
+        @Override
+        public boolean available() {
+            return false;
+        }
+
+        @Override
+        public void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {
+            // Nothing to send with.
+        }
+    };
     private static final Duration SX_RARE_ANSWER_GAP = Duration.ofMinutes(5);
     private static final Duration SX_ANSWER_GAP = Duration.ofMinutes(20);
     private static final int SX_VERY_RARE = 10;
@@ -320,6 +352,16 @@ public final class DownloadManager implements AutoCloseable {
         private int failures;
         // How a source firewalled on Kad is asked to call us; null for any other.
         private KadSource kad;
+        // Its UDP port and the version of the UDP messages it takes, from its hello.
+        private int udpPort;
+        private int udpVersion;
+        private boolean exchangesSources;
+        // Whether its last answer kept us in its queue.
+        private boolean queued;
+        // The source a UDP re-ask went to, while its answer is awaited.
+        private Source pinged;
+        private int pings;
+        private int unansweredPings;
 
         Client(InetSocketAddress address, long now) {
             this.address = address;
@@ -430,6 +472,7 @@ public final class DownloadManager implements AutoCloseable {
     private final Set<DownloadSession> throttled = new LinkedHashSet<>();
     // Sources found sending corrupt data (IPv4, host order), until when they are not taken.
     private final Map<Integer, Long> corruptSenders = new HashMap<>();
+    private ClientUdp udp = NO_UDP;
 
     private DownloadManager(
             EngineLoop loop,
@@ -839,6 +882,134 @@ public final class DownloadManager implements AutoCloseable {
         return true;
     }
 
+    /** Queued sources are asked again over {@code udp} shortly before they are due over TCP. */
+    public void reaskOverUdp(ClientUdp udp) {
+        this.udp = Objects.requireNonNull(udp, "udp");
+    }
+
+    /**
+     * A source answered a UDP re-ask from {@code ip} ({@code Ipv4} form) and {@code port}: it keeps our place, it has
+     * no room, or it does not have the file. An answer nobody asked for is ignored.
+     */
+    public void reaskAnswered(int ip, int port, Packet packet) {
+        Client client = pingedAt(ip, port);
+        if (client == null) {
+            logger.debug("Unasked re-ask answer from {}:{}", Ipv4.format(ip), port);
+            return;
+        }
+        Source source = client.pinged;
+        client.pinged = null;
+        Entry entry = source.entry;
+        if (entry.sources.get(client.address) != source) {
+            return;
+        }
+        long now = this.ticker.read();
+        if (packet.opcode() == Opcodes.ClientUdp.FILENOTFOUND.code()) {
+            logger.debug(
+                    "{} no longer has {}", client.address, entry.download.file().name());
+            detach(source, now);
+            return;
+        }
+        int rank = 0;
+        if (packet.opcode() == Opcodes.ClientUdp.REASKACK.code()) {
+            ClientReasks.Ack ack;
+            try {
+                ack = ClientReasks.Ack.decode(packet, client.udpVersion);
+            } catch (DecodeException e) {
+                logger.debug("Bad re-ask answer from {}: {}", client.address, e.getMessage());
+                client.unansweredPings++;
+                return;
+            }
+            rank = ack.rank();
+            long size = entry.download.file().size();
+            ack.parts()
+                    .map(p -> new ClientMessages.FileStatus(entry.download.hash(), p.partCount(), p.parts()))
+                    .filter(status -> status.fits(size))
+                    .ifPresent(status -> {
+                        source.parts = status.dataParts(size);
+                        source.partsAt = now;
+                    });
+        }
+        // Still queued, a full queue included: asked again a whole interval from now.
+        source.rank = rank;
+        client.lastAsk = now;
+        client.nextAsk = now + REASK_INTERVAL.toNanos();
+        entry.changed = true;
+    }
+
+    private Client pingedAt(int ip, int port) {
+        for (Client client : this.clients.values()) {
+            if (client.pinged != null
+                    && client.udpPort == port
+                    && client.address.getAddress() instanceof Inet4Address v4
+                    && Ipv4.fromBytes(v4.getAddress()) == ip) {
+                return client;
+            }
+        }
+        return null;
+    }
+
+    // A queued source due over TCP soon is asked over UDP first; one due for its sources waits for TCP, which asks
+    // for them too.
+    private void pingQueued(Entry entry, long now) {
+        if (!this.udp.available()) {
+            return;
+        }
+        ObfuscationMode obfuscation = this.settings.get().obfuscation();
+        for (Source source : entry.sources.values()) {
+            Client client = source.client;
+            long left = client.nextAsk - now;
+            if (client.current != source
+                    || client.session != null
+                    || client.pinged != null
+                    || !client.queued
+                    || left > UDP_REASK_LEAD.toNanos()
+                    || left < UDP_REASK_LAST.toNanos()
+                    || !mayPing(client)
+                    || (client.exchangesSources && sourcesDue(entry, source, now))) {
+                continue;
+            }
+            Optional<Hash16> key =
+                    obfuscation != ObfuscationMode.DISABLED && (client.cryptOptions & CRYPT_SUPPORTED) != 0
+                            ? client.userHash
+                            : Optional.empty();
+            if (obfuscation == ObfuscationMode.REQUIRED && key.isEmpty()) {
+                continue;
+            }
+            long size = entry.download.file().size();
+            ClientReasks.Ping ping = new ClientReasks.Ping(
+                    entry.download.hash(),
+                    ClientMessages.PartStatus.of(size, entry.download.verifiedParts()),
+                    completeSources(entry, size));
+            this.udp.send(
+                    new InetSocketAddress(client.address.getAddress(), client.udpPort),
+                    ping.encode(client.udpVersion),
+                    key);
+            client.pinged = source;
+            client.pings++;
+        }
+    }
+
+    // Re-asks over UDP need its port and a version that takes them, and go to HighIDs only.
+    private static boolean mayPing(Client client) {
+        return client.udpPort != 0
+                && client.udpVersion >= 3
+                && client.lowId == 0
+                && client.kad == null
+                && (client.pings <= PINGS_BEFORE_JUDGING || client.unansweredPings * 10 <= client.pings * 3);
+    }
+
+    private static int completeSources(Entry entry, long size) {
+        int parts = Ed2k.partCount(size);
+        int complete = 0;
+        for (Source source : entry.sources.values()) {
+            if (source.parts != null && source.parts.cardinality() >= parts) {
+                complete++;
+            }
+        }
+        return complete;
+    }
+
     /** A server connection was made: it is asked for the sources of every download. */
     public void serverConnected() {
         long now = this.ticker.read();
@@ -1156,6 +1327,7 @@ public final class DownloadManager implements AutoCloseable {
                             now + Math.max(this.serverRequestsDue - now, 0) + SERVER_REQUEST_CREDIT.toNanos();
                     entry.nextServerAsk = now + SERVER_SOURCES_INTERVAL.toNanos();
                 }
+                pingQueued(entry, now);
                 starting += startSessions(entry, now, MAX_STARTING - starting);
                 searchKad(entry, now);
             }
@@ -1274,6 +1446,11 @@ public final class DownloadManager implements AutoCloseable {
             Client client = due.client;
             if (client.current != due || client.session != null || now - client.nextAsk < 0) {
                 continue;
+            }
+            if (client.pinged != null) {
+                // No answer over UDP in time: asked over TCP.
+                client.pinged = null;
+                client.unansweredPings++;
             }
             if (!suitsObfuscation(client.cryptOptions, client.userHash)) {
                 continue;
@@ -1914,23 +2091,26 @@ public final class DownloadManager implements AutoCloseable {
         if (source == null) {
             return false;
         }
-        int known = entry.sources.size();
-        int max = Math.min(this.settings.get().maxSourcesPerFile() * 9 / 10, SX_MAX_SOURCES);
-        if (known >= max) {
-            return false;
-        }
         long now = this.ticker.read();
-        boolean rareDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_RARE_INTERVAL.toNanos();
-        boolean commonDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
-        long sinceAnswer = entry.sourcesEverAnswered ? now - entry.sourcesAnswered : Long.MAX_VALUE;
-        boolean allowed = (known <= SX_VERY_RARE && rareDue)
-                || (known <= SX_RARE && rareDue && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos())
-                || (commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos());
+        boolean allowed = sourcesDue(entry, source, now);
         if (allowed) {
             source.sourcesEverAsked = true;
             source.sourcesAsked = now;
         }
         return allowed;
+    }
+
+    private boolean sourcesDue(Entry entry, Source source, long now) {
+        int known = entry.sources.size();
+        if (known >= Math.min(this.settings.get().maxSourcesPerFile() * 9 / 10, SX_MAX_SOURCES)) {
+            return false;
+        }
+        boolean rareDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_RARE_INTERVAL.toNanos();
+        boolean commonDue = !source.sourcesEverAsked || now - source.sourcesAsked >= SX_INTERVAL.toNanos();
+        long sinceAnswer = entry.sourcesEverAnswered ? now - entry.sourcesAnswered : Long.MAX_VALUE;
+        return (known <= SX_VERY_RARE && rareDue)
+                || (known <= SX_RARE && rareDue && sinceAnswer >= SX_RARE_ANSWER_GAP.toNanos())
+                || (commonDue && sinceAnswer >= SX_ANSWER_GAP.toNanos());
     }
 
     private void sourcesFound(DownloadSession session, SourceExchange.Answer answer) {
@@ -2196,6 +2376,12 @@ public final class DownloadManager implements AutoCloseable {
                 source.rank = session.queueRank();
             }
             session.peerHash().ifPresent(hash -> client.userHash = Optional.of(hash));
+            session.peer().ifPresent(hello -> {
+                client.udpPort = hello.udpPort();
+                client.udpVersion = hello.udpVersion();
+                client.exchangesSources = (hello.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0;
+            });
+            client.queued = outcome == DownloadSession.Outcome.QUEUED;
             if (session.peerHash().isPresent()) {
                 client.cryptOptions = session.peerCryptOptions();
             }

@@ -70,6 +70,65 @@ public final class ClientMessages {
     }
 
     /**
+     * The parts a client has of a file: one bit per eD2K part, lowest bit first; a count of zero means the whole file.
+     */
+    public record PartStatus(int partCount, BitSet parts) {
+        public static final PartStatus COMPLETE = new PartStatus(0, new BitSet());
+
+        public PartStatus {
+            parts = (BitSet) parts.clone();
+        }
+
+        /**
+         * The status of a file of {@code size} being downloaded, with {@code complete} data parts; a size that is an
+         * exact multiple of the part size counts one more part, empty and so complete.
+         */
+        public static PartStatus of(long size, BitSet complete) {
+            int count = (int) (size / Ed2k.PARTSIZE) + 1;
+            BitSet bits = (BitSet) complete.clone();
+            if (size % Ed2k.PARTSIZE == 0) {
+                bits.set(count - 1);
+            }
+            return new PartStatus(count, bits);
+        }
+
+        @Override
+        public BitSet parts() {
+            return (BitSet) this.parts.clone();
+        }
+
+        public void write(PacketWriter out) {
+            out.count16(this.partCount);
+            for (int i = 0; i < this.partCount; i += 8) {
+                int bits = 0;
+                for (int b = 0; b < 8 && i + b < this.partCount; b++) {
+                    if (this.parts.get(i + b)) {
+                        bits |= 1 << b;
+                    }
+                }
+                out.u8(bits);
+            }
+        }
+
+        public static PartStatus read(PacketReader in) throws DecodeException {
+            int count = in.u16();
+            if (count > MAX_PARTS) {
+                throw new DecodeException("part count " + count + " exceeds any file size");
+            }
+            BitSet parts = new BitSet(count);
+            for (int i = 0; i < count; i += 8) {
+                int bits = in.u8();
+                for (int b = 0; b < 8 && i + b < count; b++) {
+                    if ((bits & 1 << b) != 0) {
+                        parts.set(i + b);
+                    }
+                }
+            }
+            return new PartStatus(count, parts);
+        }
+    }
+
+    /**
      * OP_FILESTATUS: the parts the uploader has, one bit per eD2K part, lowest bit first; a count of zero means the
      * whole file.
      */
@@ -108,37 +167,21 @@ public final class ClientMessages {
             return (BitSet) this.parts.clone();
         }
 
+        public PartStatus status() {
+            return new PartStatus(this.partCount, this.parts);
+        }
+
         public Packet encode() {
-            PacketWriter out = new PacketWriter().hash16(this.file).count16(this.partCount);
-            for (int i = 0; i < this.partCount; i += 8) {
-                int bits = 0;
-                for (int b = 0; b < 8 && i + b < this.partCount; b++) {
-                    if (this.parts.get(i + b)) {
-                        bits |= 1 << b;
-                    }
-                }
-                out.u8(bits);
-            }
+            PacketWriter out = new PacketWriter().hash16(this.file);
+            status().write(out);
             return Packet.of(Protocol.EDONKEY, Opcodes.Client.FILESTATUS.code(), out);
         }
 
         public static FileStatus decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
             Hash16 file = in.hash16();
-            int count = in.u16();
-            if (count > MAX_PARTS) {
-                throw new DecodeException("part count " + count + " exceeds any file size");
-            }
-            BitSet parts = new BitSet(count);
-            for (int i = 0; i < count; i += 8) {
-                int bits = in.u8();
-                for (int b = 0; b < 8 && i + b < count; b++) {
-                    if ((bits & 1 << b) != 0) {
-                        parts.set(i + b);
-                    }
-                }
-            }
-            return new FileStatus(file, count, parts);
+            PartStatus status = PartStatus.read(in);
+            return new FileStatus(file, status.partCount(), status.parts());
         }
     }
 

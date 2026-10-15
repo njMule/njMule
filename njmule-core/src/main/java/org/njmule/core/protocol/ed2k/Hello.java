@@ -49,6 +49,7 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     public static final int MISC1_AICH_SHIFT = 29;
 
     public static final int MISC1_UNICODE = 1 << 28;
+    public static final int MISC1_UDP_VERSION_SHIFT = 24;
     public static final int MISC1_DATA_COMPRESSION = 1 << 20;
     public static final int MISC1_NO_VIEW_SHARED_FILES = 1 << 2;
 
@@ -148,6 +149,11 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     public int udpPort() {
         return (int) (Tags.intValue(this.tags, ClientTag.EMULE_UDPPORTS).orElse(0) & 0xFFFF);
+    }
+
+    /** The version of the UDP messages between clients it takes, 0 for none; from 3 up it takes re-asks. */
+    public int udpVersion() {
+        return miscOptions1() >>> MISC1_UDP_VERSION_SHIFT & 0xF;
     }
 
     public int kadPort() {

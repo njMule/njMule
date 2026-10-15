@@ -63,6 +63,8 @@ import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
+import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
@@ -153,6 +155,8 @@ public final class UploadManager implements AutoCloseable {
     private static final int MIN_COMPRESSIBLE = 32;
     private static final Logger logger = LoggerFactory.getLogger(UploadManager.class);
     private static final int RATE_SECONDS = 5;
+    // A client not in the queue that asks over UDP is told the queue is full this close to its size.
+    private static final int QUEUE_FULL_MARGIN = 50;
 
     private static final class Client {
         private final Hash16 userHash;
@@ -404,6 +408,64 @@ public final class UploadManager implements AutoCloseable {
                 sent,
                 rate,
                 Math.max(0, now - client.waitStart) / 1_000_000_000L);
+    }
+
+    /** What a UDP re-ask is answered with, and the user hash that obfuscates the answer, when it is known. */
+    public record ReaskAnswer(Packet packet, Optional<Hash16> obfuscateFor) {}
+
+    /**
+     * A client at {@code ip} asked again over UDP from {@code port}. One waiting for the file is told its place and the
+     * parts we have; anyone is told when we do not share the file, or when the queue is about full. A client we cannot
+     * tell apart from others at its address, waiting for another file or due for a slot it can only get over TCP is
+     * answered nothing, and so asks over TCP.
+     */
+    public Optional<ReaskAnswer> reasked(InetAddress ip, int port, Packet ping) {
+        if (isBanned(ip)) {
+            return Optional.empty();
+        }
+        Hash16 hash;
+        try {
+            hash = ClientReasks.Ping.file(ping);
+        } catch (DecodeException e) {
+            return Optional.empty();
+        }
+        long now = this.ticker.read();
+        Client client = waitingAt(ip, port);
+        Optional<Hash16> key = client != null && client.crypt ? Optional.of(client.userHash) : Optional.empty();
+        Optional<Uploadable> file = find(hash);
+        if (file.isEmpty()) {
+            return Optional.of(new ReaskAnswer(ClientReasks.fileNotFound(), key));
+        }
+        if (client == null) {
+            // Its user hash unknown, the answer goes plain.
+            return this.waiting.size() + QUEUE_FULL_MARGIN > this.settings.get().queueSize()
+                    ? Optional.of(new ReaskAnswer(ClientReasks.queueFull(), Optional.empty()))
+                    : Optional.empty();
+        }
+        if (!client.file.hash().equals(hash)
+                || client.nextConnect
+                || askedTooOften(ip, client.port, client.userHash, client.trusted, file.get(), now)) {
+            return Optional.empty();
+        }
+        client.lastAsk = now;
+        int version = client.hello.udpVersion();
+        Optional<ClientMessages.PartStatus> parts =
+                version > 3 ? Optional.of(UploadSession.status(file.get()).status()) : Optional.empty();
+        return Optional.of(new ReaskAnswer(new ClientReasks.Ack(parts, rank(client, now)).encode(version), key));
+    }
+
+    // The client waiting at this address and UDP port; none when it is not the only one there.
+    private Client waitingAt(InetAddress ip, int port) {
+        Client found = null;
+        for (Client client : this.waiting.values()) {
+            if (client.ip.equals(ip) && client.hello.udpPort() == port) {
+                if (found != null) {
+                    return null;
+                }
+                found = client;
+            }
+        }
+        return found;
     }
 
     /** Clients waiting for a slot. */
@@ -781,15 +843,28 @@ public final class UploadManager implements AutoCloseable {
     // holds the friend slot, also when it left the queue meanwhile. Asks for its other files and the end of its slot,
     // which is ours, do not count. A slot it holds runs on.
     private boolean askedTooOften(UploadSession session, Uploadable file, long now) {
-        InetAddress ip = session.address().getAddress();
-        int bad = this.requests.asked(new RequestTracker.Key(ip, session.peer().tcpPort()), file.hash(), now);
-        if (bad < BAD_LIMIT || hasFriendSlot(session.userHash(), session.trust().credits())) {
+        if (!askedTooOften(
+                session.address().getAddress(),
+                session.peer().tcpPort(),
+                session.userHash(),
+                session.trust().credits(),
+                file,
+                now)) {
             return false;
         }
-        ban(ip, now, "asked again too often");
         if (slotOf(session).isEmpty()) {
             session.disconnect();
         }
+        return true;
+    }
+
+    private boolean askedTooOften(
+            InetAddress ip, int port, Hash16 userHash, boolean trusted, Uploadable file, long now) {
+        int bad = this.requests.asked(new RequestTracker.Key(ip, port), file.hash(), now);
+        if (bad < BAD_LIMIT || hasFriendSlot(userHash, trusted)) {
+            return false;
+        }
+        ban(ip, now, "asked again too often");
         return true;
     }
 

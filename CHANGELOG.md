@@ -355,6 +355,11 @@ All notable changes to this project are documented here. The format follows
   for them, with a challenge its answer must carry, so the list shows them without connecting.
 - A server connection with nothing sent for 15 minutes gets an empty file offer, so that routers
   that drop idle connections keep it.
+- Re-asks over UDP between clients: shortly before a source that keeps us in its queue is due to be
+  asked again, it is asked over UDP, and an answer (our place, its parts, a full queue, or that it no
+  longer has the file) spares the connection until the next time; without one it is asked over TCP
+  as before. Clients in our queue are answered the same way, found by address and UDP port, and
+  the hello announces the UDP version while Kad runs.
 - A change of our public address is acted on at once: once the server and Kad saw us at the same
   address, a new one seen by the server has Kad check its firewall again, and one seen by Kad has
   njMule connect to the server again; the log tells it.

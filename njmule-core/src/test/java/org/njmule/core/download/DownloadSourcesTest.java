@@ -68,6 +68,7 @@ import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.FileDescription;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.ServerMessages;
@@ -90,6 +91,7 @@ class DownloadSourcesTest {
     private static final Hash16 PEER = Hash16.parseHex("5e".repeat(16));
     private static final Duration WAIT = ScriptedSource.WAIT;
     private static final Hash16 UNKNOWN = Hash16.parseHex("3a".repeat(16));
+    private static final int SOURCE_UDP_PORT = 46_720;
 
     @TempDir
     Path dir;
@@ -105,6 +107,7 @@ class DownloadSourcesTest {
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
     private final List<AutoCloseable> resources = new ArrayList<>();
     private final Server server = new Server();
+    private final Udp udp = new Udp();
     private volatile DownloadManager.Settings settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
     private volatile Path incoming;
     private volatile Optional<DownloadManager.KadSources> kad = Optional.empty();
@@ -173,6 +176,58 @@ class DownloadSourcesTest {
         whenTheDownloadIsPaused();
 
         thenTheConnectionCloses();
+    }
+
+    @Test
+    void shouldAskAQueuedSourceAgainOverUdpShortlyBeforeItsTime() throws Exception {
+        givenASourceTakingUdpReasksOnItsPort(SOURCE_UDP_PORT);
+        givenTheManagerAskingAgainOverUdp();
+        givenADownloadFromTheSource("udp.bin", Hash16.parseHex("41".repeat(16)));
+        givenTheSourceQueuedUsAt(5);
+        givenTheConnectionClosedWhileQueued();
+
+        whenTimePasses(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+
+        thenTheSourceIsAskedAgainOverUdpForTheFile(SOURCE_UDP_PORT);
+    }
+
+    @Test
+    void shouldTakeTheRankASourceGivesOverUdp() throws Exception {
+        givenAQueuedSourceAskedAgainOverUdp();
+
+        whenTheSourceAnswersOverUdp(new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), 2)
+                .encode(ClientReasks.UDP_VERSION));
+
+        thenTheSourceShowsTheRank(2);
+    }
+
+    @Test
+    void shouldNotConnectWhenItsTimeComesToASourceThatAnsweredOverUdp() throws Exception {
+        givenAQueuedSourceAskedAgainOverUdp();
+        givenTheSourceAnsweredOverUdp(new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), 2)
+                .encode(ClientReasks.UDP_VERSION));
+
+        whenTimePasses(DownloadManager.UDP_REASK_LEAD);
+
+        thenTheSourceIsNotConnectedToWithin(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void shouldConnectWhenItsTimeComesToASourceThatDidNotAnswerOverUdp() throws Exception {
+        givenAQueuedSourceAskedAgainOverUdp();
+
+        whenTimePasses(DownloadManager.UDP_REASK_LEAD);
+
+        thenTheSourceIsConnectedTo();
+    }
+
+    @Test
+    void shouldDropASourceThatSaysOverUdpItNoLongerHasTheFile() throws Exception {
+        givenAQueuedSourceAskedAgainOverUdp();
+
+        whenTheSourceAnswersOverUdp(ClientReasks.fileNotFound());
+
+        thenTheDownloadHasSources(0);
     }
 
     @Test
@@ -449,6 +504,70 @@ class DownloadSourcesTest {
 
     private void givenTheManager() throws Exception {
         manager();
+    }
+
+    private void givenASourceTakingUdpReasksOnItsPort(int udpPort) throws Exception {
+        this.source = new ScriptedSource(PEER, ClientReasks.UDP_VERSION << Hello.MISC1_UDP_VERSION_SHIFT, 0, udpPort);
+        this.resources.add(this.source);
+    }
+
+    private void givenTheManagerAskingAgainOverUdp() throws Exception {
+        manager();
+        onLoop(() -> {
+            this.manager.reaskOverUdp(this.udp);
+            return null;
+        });
+    }
+
+    private void givenTheSourceQueuedUsAt(int rank) throws Exception {
+        this.link = accept(this.source);
+        this.link.until(Opcodes.Client.SETREQFILEID);
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+        this.link.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.QUEUERANKING.code(),
+                new PacketWriter().u16(rank).bytes(new byte[10])));
+        awaitSource(this.source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() == rank);
+    }
+
+    // Queued at 5 and closed, then a minute before its time.
+    private void givenAQueuedSourceAskedAgainOverUdp() throws Exception {
+        givenASourceTakingUdpReasksOnItsPort(SOURCE_UDP_PORT);
+        givenTheManagerAskingAgainOverUdp();
+        givenADownloadFromTheSource("udp.bin", Hash16.parseHex("41".repeat(16)));
+        givenTheSourceQueuedUsAt(5);
+        givenTheConnectionClosedWhileQueued();
+        advance(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+        thenTheSourceIsAskedAgainOverUdpForTheFile(SOURCE_UDP_PORT);
+    }
+
+    private void givenTheSourceAnsweredOverUdp(Packet answer) throws Exception {
+        whenTheSourceAnswersOverUdp(answer);
+        thenTheSourceShowsTheRank(2);
+    }
+
+    private void whenTheSourceAnswersOverUdp(Packet answer) throws Exception {
+        onLoop(() -> {
+            this.manager.reaskAnswered(Ipv4.parse("127.0.0.1"), SOURCE_UDP_PORT, answer);
+            return null;
+        });
+    }
+
+    private void thenTheSourceIsAskedAgainOverUdpForTheFile(int udpPort) throws Exception {
+        Udp.Sent sent = this.udp.sent.poll(WAIT.toSeconds(), TimeUnit.SECONDS);
+        assertThat(sent).as("a re-ask over UDP").isNotNull();
+        assertThat(sent.to()).isEqualTo(new InetSocketAddress(InetAddress.getLoopbackAddress(), udpPort));
+        assertThat(sent.packet().opcode()).isEqualTo(Opcodes.ClientUdp.REASKFILEPING.code());
+        assertThat(ClientReasks.Ping.file(sent.packet())).isEqualTo(this.hash);
+    }
+
+    private void thenTheSourceShowsTheRank(int rank) throws Exception {
+        awaitSource(this.source, s -> s.queueRank() == rank);
+    }
+
+    private void thenTheSourceIsNotConnectedToWithin(Duration wait) throws Exception {
+        assertThat(this.source.isConnectedToWithin(wait)).isFalse();
     }
 
     private void givenADownloadFromTheSource(String name, Hash16 file) throws Exception {
@@ -1387,6 +1506,23 @@ class DownloadSourcesTest {
         byte[] data = new byte[size];
         new Random(seed).nextBytes(data);
         return data;
+    }
+
+    // The client UDP port, always open: what goes out is kept.
+    private static final class Udp implements DownloadManager.ClientUdp {
+        record Sent(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {}
+
+        private final BlockingQueue<Sent> sent = new LinkedBlockingQueue<>();
+
+        @Override
+        public boolean available() {
+            return true;
+        }
+
+        @Override
+        public void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {
+            this.sent.add(new Sent(to, packet, userHash));
+        }
     }
 
     // A HighID connection whose server asks firewalled sources to call us, refusing some.
