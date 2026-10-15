@@ -127,7 +127,8 @@ public final class ClipboardWatch implements AutoCloseable {
     }
 
     /** The file links of a copied {@code text} that starts with one; the parts that are not links are left out. */
-    static List<Ed2kLink.FileLink> fileLinks(String text) {
+    /** The eD2K file links in {@code text}, one or many, as copied or dragged from a page. */
+    public static List<Ed2kLink.FileLink> fileLinks(String text) {
         String stripped = text.strip();
         if (!stripped.regionMatches(true, 0, FILE_LINK, 0, FILE_LINK.length())) {
             return List.of();

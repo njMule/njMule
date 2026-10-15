@@ -42,9 +42,11 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -60,6 +62,7 @@ import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.config.Preferences;
@@ -76,6 +79,7 @@ import org.njmule.gui.screens.SettingsScreen;
 import org.njmule.gui.screens.SharedScreen;
 import org.njmule.gui.screens.StatisticsScreen;
 import org.njmule.gui.screens.TransfersScreen;
+import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Navigate;
@@ -164,6 +168,17 @@ public final class MainWindow {
         this.root.getStyleClass().add("njmule");
         // A screen's button can lead to another screen, such as Search from an empty list of downloads.
         this.root.addEventHandler(Navigate.TO_SCREEN, e -> this.show(e.screen()));
+        // eD2K links dragged from a page or a text onto the window become downloads.
+        this.root.setOnDragOver(e -> {
+            if (!ClipboardWatch.fileLinks(dragged(e.getDragboard())).isEmpty()) {
+                e.acceptTransferModes(TransferMode.COPY_OR_MOVE);
+            }
+            e.consume();
+        });
+        this.root.setOnDragDropped(e -> {
+            e.setDropCompleted(this.dropped(dragged(e.getDragboard())) > 0);
+            e.consume();
+        });
         this.root.setNodeOrientation(gui.orientation());
         // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order; F1 lists the shortcuts.
         this.root.setOnKeyPressed(e -> {
@@ -477,6 +492,22 @@ public final class MainWindow {
         HBox strip = new HBox(this.lastLog, this.server, this.counts);
         strip.getStyleClass().add("status-strip");
         return strip;
+    }
+
+    /** Adds the eD2K file links in {@code text} as downloads, telling each one added; returns how many it found. */
+    int dropped(String text) {
+        List<Ed2kLink.FileLink> links = ClipboardWatch.fileLinks(text);
+        for (Ed2kLink.FileLink link : links) {
+            this.gui.model().addDownload(link, added -> this.message(this.gui.f("nj.transfers.added", added.name())));
+        }
+        return links.size();
+    }
+
+    private static String dragged(Dragboard board) {
+        if (board.hasString()) {
+            return board.getString();
+        }
+        return board.hasUrl() ? board.getUrl() : "";
     }
 
     // The banner's way out of being offline: what Connect does then.
