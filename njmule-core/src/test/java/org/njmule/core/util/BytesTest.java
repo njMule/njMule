@@ -17,32 +17,108 @@
 package org.njmule.core.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.google.common.primitives.Ints;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class BytesTest {
 
-    @Test
-    void slicesMustLieInsideTheSource() {
-        byte[] source = {1, 2, 3, 4};
+    private byte[] source;
+    private Bytes bytes;
+    private Throwable exception;
 
-        assertThat(Bytes.of(source, 1, 3).toByteArray()).containsExactly(2, 3, 4);
-        assertThat(Bytes.of(source, 4, 0)).isEqualTo(Bytes.EMPTY);
-        assertThatThrownBy(() -> Bytes.of(source, 2, 3)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Bytes.of(source, 5, 0)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Bytes.of(source, -1, 2)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Bytes.of(source, 0, -1)).isInstanceOf(IndexOutOfBoundsException.class);
+    @Test
+    void shouldSliceInsideTheSource() {
+        givenTheSource(1, 2, 3, 4);
+
+        whenASliceIsTaken(1, 3);
+
+        thenTheBytesAre(2, 3, 4);
     }
 
     @Test
-    void isImmutable() {
-        byte[] source = {1, 2};
-        Bytes bytes = Bytes.of(source);
-        source[0] = 9;
-        bytes.toByteArray()[1] = 9;
+    void shouldGiveTheEmptyBytesForAnEmptySliceAtTheEnd() {
+        givenTheSource(1, 2, 3, 4);
 
-        assertThat(bytes.toByteArray()).containsExactly(1, 2);
-        assertThat(bytes).isEqualTo(Bytes.of(new byte[] {1, 2})).hasSameHashCodeAs(Bytes.of(new byte[] {1, 2}));
+        whenASliceIsTaken(4, 0);
+
+        thenTheBytesAreTheEmptyOnes();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"2, 3", "5, 0", "-1, 2", "0, -1"})
+    void shouldRefuseASliceOutsideTheSource(int offset, int length) {
+        givenTheSource(1, 2, 3, 4);
+
+        whenASliceIsTaken(offset, length);
+
+        thenExceptionOccurred(IndexOutOfBoundsException.class);
+    }
+
+    @Test
+    void shouldKeepItsContentWhenTheSourceChanges() {
+        givenTheSource(1, 2);
+        givenTheBytesOfTheWholeSource();
+
+        whenAByteOfTheSourceIsOverwritten(0, 9);
+
+        thenTheBytesAre(1, 2);
+        thenTheBytesEqualAndHashLike(1, 2);
+    }
+
+    @Test
+    void shouldKeepItsContentWhenTheArrayItGaveChanges() {
+        givenTheSource(1, 2);
+        givenTheBytesOfTheWholeSource();
+
+        whenAByteOfTheArrayItGivesIsOverwritten(1, 9);
+
+        thenTheBytesAre(1, 2);
+        thenTheBytesEqualAndHashLike(1, 2);
+    }
+
+    private void givenTheSource(int... values) {
+        this.source = toBytes(values);
+    }
+
+    private void givenTheBytesOfTheWholeSource() {
+        this.bytes = Bytes.of(this.source);
+    }
+
+    private void whenASliceIsTaken(int offset, int length) {
+        this.exception = catchThrowable(() -> this.bytes = Bytes.of(this.source, offset, length));
+    }
+
+    private void whenAByteOfTheSourceIsOverwritten(int index, int value) {
+        this.source[index] = (byte) value;
+    }
+
+    private void whenAByteOfTheArrayItGivesIsOverwritten(int index, int value) {
+        this.bytes.toByteArray()[index] = (byte) value;
+    }
+
+    private void thenTheBytesAre(int... expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.bytes.toByteArray()).containsExactly(expected);
+    }
+
+    private void thenTheBytesAreTheEmptyOnes() {
+        assertThat(this.exception).isNull();
+        assertThat(this.bytes).isEqualTo(Bytes.EMPTY);
+    }
+
+    private void thenTheBytesEqualAndHashLike(int... values) {
+        assertThat(this.bytes).isEqualTo(Bytes.of(toBytes(values))).hasSameHashCodeAs(Bytes.of(toBytes(values)));
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private static byte[] toBytes(int... values) {
+        return com.google.common.primitives.Bytes.toArray(Ints.asList(values));
     }
 }

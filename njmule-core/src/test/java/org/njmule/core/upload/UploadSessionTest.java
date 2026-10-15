@@ -32,30 +32,71 @@ import org.njmule.core.protocol.io.PacketReader;
 
 class UploadSessionTest {
 
-    @Test
-    void filesAboveTheOldSizeLimitAreListedOnlyToClientsThatTakeLargeFiles() throws DecodeException {
-        List<SharedFiles.SharedFile> files = List.of(
-                file("small.bin", Ed2k.OLD_MAX_FILE_SIZE, 1),
-                file("just-above.bin", Ed2k.OLD_MAX_FILE_SIZE + 1, 2),
-                file("below-4-gib.bin", 0xFFFF_FFFFL, 3),
-                file("large.bin", 0x1_0000_0000L, 4));
+    private final List<SharedFiles.SharedFile> files = new ArrayList<>();
+    private byte[] list;
 
-        assertThat(names(UploadSession.listing(files, false).toByteArray())).containsExactly("small.bin");
-        assertThat(names(UploadSession.listing(files, true).toByteArray()))
-                .containsExactly("small.bin", "just-above.bin", "below-4-gib.bin", "large.bin");
+    @Test
+    void shouldListOnlyFilesWithinTheOldSizeLimitToAClientWithoutLargeFiles() throws DecodeException {
+        givenTheSharedFile("small.bin", Ed2k.OLD_MAX_FILE_SIZE, 1);
+        givenTheSharedFile("just-above.bin", Ed2k.OLD_MAX_FILE_SIZE + 1, 2);
+        givenTheSharedFile("below-4-gib.bin", 0xFFFF_FFFFL, 3);
+        givenTheSharedFile("large.bin", 0x1_0000_0000L, 4);
+
+        whenTheListIsMadeForAClientWithoutLargeFiles();
+
+        thenTheListNames("small.bin");
     }
 
     @Test
-    void aListStopsGrowingPastItsLimit() throws DecodeException {
-        List<SharedFiles.SharedFile> files = new ArrayList<>();
-        for (int i = 0; i < 20_000; i++) {
-            files.add(file("file number " + i + " with a rather long name.bin", 1000, i));
+    void shouldListFilesAboveTheOldSizeLimitToAClientThatTakesLargeFiles() throws DecodeException {
+        givenTheSharedFile("small.bin", Ed2k.OLD_MAX_FILE_SIZE, 1);
+        givenTheSharedFile("just-above.bin", Ed2k.OLD_MAX_FILE_SIZE + 1, 2);
+        givenTheSharedFile("below-4-gib.bin", 0xFFFF_FFFFL, 3);
+        givenTheSharedFile("large.bin", 0x1_0000_0000L, 4);
+
+        whenTheListIsMadeForAClientThatTakesLargeFiles();
+
+        thenTheListNames("small.bin", "just-above.bin", "below-4-gib.bin", "large.bin");
+    }
+
+    @Test
+    void shouldStopGrowingAListPastItsLimit() throws DecodeException {
+        givenSharedFilesWithLongNames(20_000);
+
+        whenTheListIsMadeForAClientWithoutLargeFiles();
+
+        thenTheListTakesBetween(UploadSession.MAX_SHARED_LIST, UploadSession.MAX_SHARED_LIST + 200);
+        thenTheListNamesFewerFilesThanShared();
+    }
+
+    private void givenTheSharedFile(String name, long size, int seed) {
+        this.files.add(file(name, size, seed));
+    }
+
+    private void givenSharedFilesWithLongNames(int count) {
+        for (int i = 0; i < count; i++) {
+            this.files.add(file("file number " + i + " with a rather long name.bin", 1000, i));
         }
+    }
 
-        byte[] list = UploadSession.listing(files, false).toByteArray();
+    private void whenTheListIsMadeForAClientWithoutLargeFiles() {
+        this.list = UploadSession.listing(this.files, false).toByteArray();
+    }
 
-        assertThat(list.length).isBetween(UploadSession.MAX_SHARED_LIST, UploadSession.MAX_SHARED_LIST + 200);
-        assertThat(names(list)).hasSizeLessThan(files.size());
+    private void whenTheListIsMadeForAClientThatTakesLargeFiles() {
+        this.list = UploadSession.listing(this.files, true).toByteArray();
+    }
+
+    private void thenTheListNames(String... expected) throws DecodeException {
+        assertThat(names(this.list)).containsExactly(expected);
+    }
+
+    private void thenTheListTakesBetween(int least, int most) {
+        assertThat(this.list.length).isBetween(least, most);
+    }
+
+    private void thenTheListNamesFewerFilesThanShared() throws DecodeException {
+        assertThat(names(this.list)).hasSizeLessThan(this.files.size());
     }
 
     private static List<String> names(byte[] list) throws DecodeException {

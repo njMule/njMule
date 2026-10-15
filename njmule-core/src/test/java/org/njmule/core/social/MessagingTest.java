@@ -19,11 +19,13 @@ package org.njmule.core.social;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.BufferedInputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -78,102 +80,194 @@ class MessagingTest {
             () -> this.filter,
             PAL::equals);
 
+    private final List<Packet> sent = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean open = new AtomicBoolean(true);
+    private InetSocketAddress to;
+    private ServerSocket peer;
+    private Socket ours;
+
     @AfterEach
-    void stop() {
+    void stop() throws IOException {
         this.messaging.close();
         this.loop.close();
-    }
-
-    @Test
-    void aSpammerComingBackFromAnotherPortIsStillFiltered() throws Exception {
-        this.filter = new ChatFilter(false, List.of(), true);
-
-        incoming(hello(SPAMMER, 4001), "cheap stuff at http://spam.example", () -> true, p -> {});
-        incoming(hello(SPAMMER, 4002), "hello there", () -> true, p -> {});
-        incoming(hello(PAL, 4003), "a link from a friend: http://pal.example", () -> true, p -> {});
-
-        assertThat(this.received).containsExactly("a link from a friend: http://pal.example");
-    }
-
-    @Test
-    void blankTextStartsNoConversation() throws Exception {
-        onLoop(() -> {
-            this.messaging.send(FROM, " \t ");
-            return null;
-        });
-
-        assertThat(onLoop(this.messaging::conversations)).isZero();
-    }
-
-    @Test
-    void textToAClientThatCannotBeReachedIsReportedAndForgotten() throws Exception {
-        InetSocketAddress closed;
-        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closed = new InetSocketAddress(InetAddress.getLoopbackAddress(), probe.getLocalPort());
+        if (this.ours != null) {
+            this.ours.close();
         }
+        if (this.peer != null) {
+            this.peer.close();
+        }
+    }
+
+    @Test
+    void shouldStillFilterASpammerComingBackFromAnotherPort() throws Exception {
+        givenTheChatFilter(new ChatFilter(false, List.of(), true));
+        givenAMessageFrom(SPAMMER, 4001, "cheap stuff at http://spam.example");
+
+        whenAMessageComesFrom(SPAMMER, 4002, "hello there");
+
+        thenTheMessagesReceivedAre();
+    }
+
+    @Test
+    void shouldLetALinkFromAFriendThroughWhileTheSpammerIsFiltered() throws Exception {
+        givenTheChatFilter(new ChatFilter(false, List.of(), true));
+        givenAMessageFrom(SPAMMER, 4001, "cheap stuff at http://spam.example");
+        givenAMessageFrom(SPAMMER, 4002, "hello there");
+
+        whenAMessageComesFrom(PAL, 4003, "a link from a friend: http://pal.example");
+
+        thenTheMessagesReceivedAre("a link from a friend: http://pal.example");
+    }
+
+    @Test
+    void shouldStartNoConversationForABlankText() throws Exception {
+        givenACorrespondentAt(FROM);
+
+        whenWeSend(" \t ");
+
+        thenThereAreConversations(0);
+    }
+
+    @Test
+    void shouldReportAndForgetATextToAClientThatCannotBeReached() throws Exception {
+        givenACorrespondentNobodyListensFor();
+
+        whenWeSend("anyone?");
+
+        thenTheFailureToReachItIsReported();
+        thenThereAreConversations(0);
+    }
+
+    @Test
+    void shouldEndAConversationOnceItsConnectionClosesWithNothingPending() throws Exception {
+        givenAMessageFrom(PAL, 4001, "hi");
+        givenThereAreConversations(1);
+
+        whenTheConnectionCloses();
+
+        thenThereAreConversations(0);
+        thenTheMessagesReceivedAre("hi");
+    }
+
+    @Test
+    void shouldKeepAConversationThatAnIncomingConnectionServesWhenOursCloses() throws Exception {
+        givenACorrespondentListening();
+        givenWeSent("first");
+        givenItAcceptedOurConnectionAndReadOurHello();
+        givenItConnectedToUsWith("hey");
+        givenOurConnectionClosed();
+        givenTheConversationKeptFor(Duration.ofSeconds(2));
+
+        whenWeSend("second");
+
+        thenThePacketsSentOverItsConnectionAre(2);
+        thenTheSecondOfThemCarries("second");
+        thenNoFailureIsReported();
+    }
+
+    private void givenTheChatFilter(ChatFilter chatFilter) {
+        this.filter = chatFilter;
+    }
+
+    private void givenAMessageFrom(Hash16 hash, int port, String text) throws Exception {
+        incoming(hello(hash, port), text, this.open::get, p -> {});
+    }
+
+    private void givenACorrespondentAt(InetSocketAddress address) {
+        this.to = address;
+    }
+
+    private void givenACorrespondentNobodyListensFor() throws IOException {
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            this.to = new InetSocketAddress(InetAddress.getLoopbackAddress(), probe.getLocalPort());
+        }
+    }
+
+    private void givenThereAreConversations(int count) throws Exception {
+        assertThat(onLoop(this.messaging::conversations)).isEqualTo(count);
+    }
+
+    private void givenACorrespondentListening() throws IOException {
+        this.peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        this.to = new InetSocketAddress(InetAddress.getLoopbackAddress(), this.peer.getLocalPort());
+    }
+
+    private void givenWeSent(String text) throws Exception {
+        whenWeSend(text);
+    }
+
+    private void givenItAcceptedOurConnectionAndReadOurHello() throws Exception {
+        this.ours = this.peer.accept();
+        this.ours.setSoTimeout(5000);
+        assertThat(TcpFraming.read(new BufferedInputStream(this.ours.getInputStream()), FrameLimit.fixed(1 << 16))
+                        .opcode())
+                .isEqualTo(Opcodes.Client.HELLO.code());
+    }
+
+    // The client connects to us before answering our hello: the conversation goes over its connection.
+    private void givenItConnectedToUsWith(String text) throws Exception {
+        onLoop(() -> this.messaging.incoming(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 50_001),
+                hello(PAL, this.peer.getLocalPort()),
+                true,
+                this.sent::add,
+                () -> true,
+                ChatMessages.message(text, true)));
+    }
+
+    private void givenOurConnectionClosed() throws IOException {
+        this.ours.close();
+    }
+
+    private void givenTheConversationKeptFor(Duration duration) throws Exception {
+        long deadline = System.nanoTime() + duration.toNanos();
+        while (System.nanoTime() < deadline) {
+            assertThat(onLoop(this.messaging::conversations)).isEqualTo(1);
+            Thread.sleep(50);
+        }
+    }
+
+    private void whenAMessageComesFrom(Hash16 hash, int port, String text) throws Exception {
+        incoming(hello(hash, port), text, this.open::get, p -> {});
+    }
+
+    private void whenWeSend(String text) throws Exception {
         onLoop(() -> {
-            this.messaging.send(closed, "anyone?");
+            this.messaging.send(this.to, text);
             return null;
         });
+    }
 
+    private void whenTheConnectionCloses() {
+        this.open.set(false);
+    }
+
+    private void thenTheMessagesReceivedAre(String... texts) {
+        assertThat(this.received).containsExactly(texts);
+    }
+
+    private void thenThereAreConversations(int count) throws Exception {
+        assertThat(onLoop(this.messaging::conversations)).isEqualTo(count);
+    }
+
+    private void thenTheFailureToReachItIsReported() throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (this.failed.isEmpty() && System.nanoTime() < deadline) {
             Thread.sleep(20);
         }
-        assertThat(this.failed).containsExactly(closed.toString());
-        assertThat(onLoop(this.messaging::conversations)).isZero();
+        assertThat(this.failed).containsExactly(this.to.toString());
     }
 
-    @Test
-    void aConversationGoesOnceItsConnectionClosesWithNothingPending() throws Exception {
-        AtomicBoolean open = new AtomicBoolean(true);
-        incoming(hello(PAL, 4001), "hi", open::get, p -> {});
-        assertThat(onLoop(this.messaging::conversations)).isEqualTo(1);
-
-        open.set(false);
-
-        assertThat(onLoop(this.messaging::conversations)).isZero();
-        assertThat(this.received).containsExactly("hi");
+    private void thenThePacketsSentOverItsConnectionAre(int count) {
+        assertThat(this.sent).hasSize(count);
     }
 
-    @Test
-    void ourConnectionClosingKeepsAConversationThatAnIncomingOneServes() throws Exception {
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            InetSocketAddress to = new InetSocketAddress(InetAddress.getLoopbackAddress(), peer.getLocalPort());
-            onLoop(() -> {
-                this.messaging.send(to, "first");
-                return null;
-            });
-            List<Packet> sent = new CopyOnWriteArrayList<>();
-            try (Socket ours = peer.accept()) {
-                ours.setSoTimeout(5000);
-                assertThat(TcpFraming.read(new BufferedInputStream(ours.getInputStream()), FrameLimit.fixed(1 << 16))
-                                .opcode())
-                        .isEqualTo(Opcodes.Client.HELLO.code());
-                // The client connects to us before answering our hello: the conversation goes over its connection.
-                onLoop(() -> this.messaging.incoming(
-                        new InetSocketAddress(InetAddress.getLoopbackAddress(), 50_001),
-                        hello(PAL, peer.getLocalPort()),
-                        true,
-                        sent::add,
-                        () -> true,
-                        ChatMessages.message("hey", true)));
-            }
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (System.nanoTime() < deadline) {
-                assertThat(onLoop(this.messaging::conversations)).isEqualTo(1);
-                Thread.sleep(50);
-            }
+    private void thenTheSecondOfThemCarries(String text) throws Exception {
+        assertThat(ChatMessages.text(this.sent.get(1))).isEqualTo(text);
+    }
 
-            onLoop(() -> {
-                this.messaging.send(to, "second");
-                return null;
-            });
-
-            assertThat(sent).hasSize(2);
-            assertThat(ChatMessages.text(sent.get(1))).isEqualTo("second");
-            assertThat(this.failed).isEmpty();
-        }
+    private void thenNoFailureIsReported() {
+        assertThat(this.failed).isEmpty();
     }
 
     private void incoming(Hello peer, String text, BooleanSupplier open, Consumer<Packet> reply) throws Exception {

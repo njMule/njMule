@@ -19,27 +19,79 @@ package org.njmule.core.util;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class Ipv4Test {
 
-    @Test
-    void tellsLanAddresses() {
-        assertThat(Ipv4.isLan(Ipv4.of(10, 0, 0, 1))).isTrue();
-        assertThat(Ipv4.isLan(Ipv4.of(172, 16, 0, 1))).isTrue();
-        assertThat(Ipv4.isLan(Ipv4.of(172, 31, 255, 255))).isTrue();
-        assertThat(Ipv4.isLan(Ipv4.of(192, 168, 1, 1))).isTrue();
-        assertThat(Ipv4.isLan(Ipv4.of(0, 1, 2, 3))).isTrue();
-        assertThat(Ipv4.isLan(Ipv4.of(172, 32, 0, 1))).isFalse();
-        assertThat(Ipv4.isLan(Ipv4.of(192, 169, 0, 1))).isFalse();
-        assertThat(Ipv4.isLan(Ipv4.of(11, 0, 0, 1))).isFalse();
-        assertThat(Ipv4.isLan(Ipv4.of(127, 0, 0, 1))).as("loopback is apart").isFalse();
+    private int address;
+    private boolean answer;
+
+    @ParameterizedTest
+    @CsvSource({"10, 0, 0, 1", "172, 16, 0, 1", "172, 31, 255, 255", "192, 168, 1, 1", "0, 1, 2, 3"})
+    void shouldTellALanAddress(int a, int b, int c, int d) {
+        givenTheAddress(a, b, c, d);
+
+        whenItIsCheckedForTheLan();
+
+        thenTheAnswerIs(true);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"172, 32, 0, 1", "192, 169, 0, 1", "11, 0, 0, 1"})
+    void shouldTellAnAddressOutsideTheLan(int a, int b, int c, int d) {
+        givenTheAddress(a, b, c, d);
+
+        whenItIsCheckedForTheLan();
+
+        thenTheAnswerIs(false);
     }
 
     @Test
-    void tellsUsablePeerAddresses() {
-        assertThat(Ipv4.isUnicastPublicCandidate(Ipv4.of(93, 184, 216, 34))).isTrue();
-        assertThat(Ipv4.isUnicastPublicCandidate(Ipv4.of(127, 0, 0, 1))).isFalse();
-        assertThat(Ipv4.isUnicastPublicCandidate(Ipv4.of(224, 0, 0, 1))).isFalse();
-        assertThat(Ipv4.isUnicastPublicCandidate(0)).isFalse();
+    void shouldKeepLoopbackApartFromTheLan() {
+        givenTheAddress(127, 0, 0, 1);
+
+        whenItIsCheckedForTheLan();
+
+        thenTheAnswerIs(false, "loopback is apart");
+    }
+
+    @Test
+    void shouldTakeAPublicUnicastAddressForAPeer() {
+        givenTheAddress(93, 184, 216, 34);
+
+        whenItIsCheckedForAPeer();
+
+        thenTheAnswerIs(true);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"127, 0, 0, 1", "224, 0, 0, 1", "0, 0, 0, 0"})
+    void shouldRefuseAnAddressThatNoPeerCanHave(int a, int b, int c, int d) {
+        givenTheAddress(a, b, c, d);
+
+        whenItIsCheckedForAPeer();
+
+        thenTheAnswerIs(false);
+    }
+
+    private void givenTheAddress(int a, int b, int c, int d) {
+        this.address = Ipv4.of(a, b, c, d);
+    }
+
+    private void whenItIsCheckedForTheLan() {
+        this.answer = Ipv4.isLan(this.address);
+    }
+
+    private void whenItIsCheckedForAPeer() {
+        this.answer = Ipv4.isUnicastPublicCandidate(this.address);
+    }
+
+    private void thenTheAnswerIs(boolean expected) {
+        assertThat(this.answer).isEqualTo(expected);
+    }
+
+    private void thenTheAnswerIs(boolean expected, String description) {
+        assertThat(this.answer).as(description).isEqualTo(expected);
     }
 }

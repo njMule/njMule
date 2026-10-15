@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -118,6 +119,16 @@ class UploadManagerTest {
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
+    private final Map<Integer, ScriptedDownloader> clients = new HashMap<>();
+    private final Map<String, SharedFiles.SharedFile> files = new HashMap<>();
+    private byte[] data;
+    private byte[] lastPart;
+    private DownloadQueue.Download download;
+    private ServerSocket listening;
+    private ClientMessages.FileStatus status;
+    private ClientMessages.SendingPart block;
+    private List<SourceExchange.Source> toldSources;
+    private int dropped;
 
     @AfterEach
     void stop() throws Exception {
@@ -141,375 +152,823 @@ class UploadManagerTest {
     }
 
     @Test
-    void aSlotGoesBackToTheQueueAfterAboutAPartWhileOthersWait() throws Exception {
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        int blocks = 18;
-        byte[] data = random(blocks * (int) UploadSession.MAX_BLOCK, 1);
-        SharedFiles.SharedFile file = share("big.bin", data);
-        start();
-        ScriptedDownloader first = client(1, 0, 0);
-        ScriptedDownloader second = client(2, 0, 0);
-        ScriptedDownloader firewalled = client(3, LOW_ID, 0);
-        assertThat(ask(first, file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(ask(second, file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(rank(ask(firewalled, file.hash()))).isEqualTo(1);
-        assertThat(onLoop(this.manager::describe)).startsWith("waiting 1").contains("slot");
-
+    void shouldGiveASlotBackToTheQueueAfterAboutAPartWhileOthersWait() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("big.bin", 18 * (int) UploadSession.MAX_BLOCK, 1);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenAFirewalledClientConnected(3);
+        givenTheClientGotASlot(1);
+        givenTheClientGotASlot(2);
+        givenTheClientWaitsAt(3, 1);
+        givenTheQueueDescribedAs("waiting 1", "slot");
         // The firewalled client leaves the queue's connection: we cannot call it, so it waits however many slots
         // a limit lifted gives.
-        firewalled.close();
-        this.settings = new UploadManager.Settings(0, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        for (int at = 0; at < blocks; at += 3) {
-            List<ClientMessages.Range> ranges = new ArrayList<>();
-            for (int b = at; b < at + 3; b++) {
-                ranges.add(new ClientMessages.Range(b * UploadSession.MAX_BLOCK, (b + 1) * UploadSession.MAX_BLOCK));
-            }
-            first.send(new ClientMessages.RequestParts(file.hash(), ranges).encode(false));
-        }
-        long received = 0;
-        while (received < data.length) {
-            Packet packet = first.next();
-            if (packet.opcode() == Opcodes.Client.SENDINGPART.code()) {
-                received += ClientMessages.SendingPart.decode(packet).data().length;
-            }
-        }
+        givenTheClientLeft(3);
+        givenTheSettings(new UploadManager.Settings(0, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
 
-        assertThat(names(first.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
-                .as("about a part sent, the slot goes to the queue and comes back, as no one else can take it")
-                .containsSubsequence("OUTOFPARTREQS", "QUEUERANKING", "ACCEPTUPLOADREQ");
-        assertThat(onLoop(this.manager::uploaded)).isEqualTo(data.length);
-        assertThat(onLoop(this.manager::waitingCount)).isEqualTo(1);
+        whenTheClientDownloadsTheWholeFile(1);
+
+        thenTheClientIsToldInTurn(
+                1,
+                "about a part sent, the slot goes to the queue and comes back, as no one else can take it",
+                "OUTOFPARTREQS",
+                "QUEUERANKING",
+                "ACCEPTUPLOADREQ");
+        thenTheBytesUploadedAre(18 * UploadSession.MAX_BLOCK);
+        thenTheClientsWaitingAre(1);
     }
 
     @Test
-    void theFriendWithTheFriendSlotPassesAFullQueue() throws Exception {
-        Hash16 friend = hashOf(9);
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 1, Optional.of(friend));
-        SharedFiles.SharedFile file = share("wanted.txt", random(5000, 2));
-        start();
-        ScriptedDownloader first = client(1, 0, 0);
-        ScriptedDownloader second = client(2, 0, 0);
-        ScriptedDownloader waiting = client(3, 0, 0);
-        ScriptedDownloader late = client(4, 0, 0);
-        ScriptedDownloader best = client(9, 0, 0);
-        ask(first, file.hash());
-        ask(second, file.hash());
-        assertThat(rank(ask(waiting, file.hash()))).isEqualTo(1);
+    void shouldLetTheFriendWithTheFriendSlotPassAFullQueue() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 1, Optional.of(hashOf(9))));
+        givenTheSharedFile("wanted.txt", 5000, 2);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2, 3, 4, 9);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenTheClientWaitsAt(3, 1);
+        givenTheClientTurnedAwayByTheFullQueue(4);
+        givenTheClientWaitsAt(9, 1, "a friend's place");
+        givenASlotHolderToldOfTheOtherClientsOfTheFile(1, 2, 3, 9);
 
-        late.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
-        assertThat(late.poll(SILENCE)).as("the queue is full").isEmpty();
-        assertThat(rank(ask(best, file.hash()))).as("a friend's place").isEqualTo(1);
+        whenTheClientLeaves(1);
 
-        // A slot holder asks who else has the file: the other clients of it, not itself.
-        first.send(SourceExchange.request(file.hash()));
-        SourceExchange.Answer answer = SourceExchange.Answer.decode(first.until(Opcodes.Extended.ANSWERSOURCES2));
-        assertThat(answer.sources())
-                .extracting(SourceExchange.Source::port)
-                .containsExactlyInAnyOrder(
-                        second.hello().tcpPort(),
-                        waiting.hello().tcpPort(),
-                        best.hello().tcpPort());
-
-        first.close();
-        assertThat(best.until(Opcodes.Client.ACCEPTUPLOADREQ)).isNotNull();
-        assertThat(onLoop(this.manager::uploads))
-                .extracting(UploadInfo::state)
-                .containsExactly(UploadInfo.State.UPLOADING, UploadInfo.State.UPLOADING, UploadInfo.State.QUEUED);
+        thenTheClientGetsASlot(9);
+        thenTheUploadStatesAre(UploadInfo.State.UPLOADING, UploadInfo.State.UPLOADING, UploadInfo.State.QUEUED);
     }
 
     @Test
-    void waitingClientsAreRankedByTheirWaitAndTheirFilesPriority() throws Exception {
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        SharedFiles.SharedFile slotted = share("slotted.txt", random((int) UploadSession.MAX_BLOCK, 3));
-        SharedFiles.SharedFile veryLow = share("very-low.txt", random(3000, 4));
-        SharedFiles.SharedFile normal = share("normal.txt", random(3000, 5));
-        SharedFiles.SharedFile release = share("release.txt", random(3000, 6));
-        SharedFiles.SharedFile low = share("low.txt", random(3000, 7));
-        SharedFiles.SharedFile high = share("high.txt", random(3000, 8));
-        this.priorities.put(veryLow.hash(), UploadPriority.VERY_LOW);
-        this.priorities.put(normal.hash(), UploadPriority.NORMAL);
-        this.priorities.put(release.hash(), UploadPriority.RELEASE);
-        this.priorities.put(low.hash(), UploadPriority.LOW);
-        this.priorities.put(high.hash(), UploadPriority.HIGH);
-        start();
-        // Slots kept busy by the limit, so they are never idle while the clock moves.
-        for (int seed = 1; seed <= 2; seed++) {
-            ScriptedDownloader slot = client(seed, 0, 0);
-            ask(slot, slotted.hash());
-            slot.send(blocks(slotted.hash(), 0, UploadSession.MAX_BLOCK));
-        }
-        ScriptedDownloader c = client(3, 0, 0);
-        ScriptedDownloader d = client(4, 0, 0);
-        ScriptedDownloader e = client(5, 0, 0);
-
-        ask(c, veryLow.hash());
-        advance(Duration.ofSeconds(60));
-        ask(d, normal.hash());
-        advance(Duration.ofSeconds(60));
-        assertThat(rank(ask(e, release.hash())))
-                .as("it has waited for nothing yet")
-                .isEqualTo(3);
-        advance(Duration.ofMinutes(2));
+    void shouldRankWaitingClientsByTheirWaitAndTheirFilesPriority() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("slotted.txt", (int) UploadSession.MAX_BLOCK, 3);
+        givenTheSharedFile("very-low.txt", 3000, 4);
+        givenTheSharedFile("normal.txt", 3000, 5);
+        givenTheSharedFile("release.txt", 3000, 6);
+        givenTheSharedFile("low.txt", 3000, 7);
+        givenTheSharedFile("high.txt", 3000, 8);
+        givenThePriorityOf("very-low.txt", UploadPriority.VERY_LOW);
+        givenThePriorityOf("normal.txt", UploadPriority.NORMAL);
+        givenThePriorityOf("release.txt", UploadPriority.RELEASE);
+        givenThePriorityOf("low.txt", UploadPriority.LOW);
+        givenThePriorityOf("high.txt", UploadPriority.HIGH);
+        givenTheUploadsStarted();
+        givenAClientKeepingASlotBusyWith(1, "slotted.txt");
+        givenAClientKeepingASlotBusyWith(2, "slotted.txt");
+        givenTheClientsConnected(3, 4, 5);
+        givenTheClientAskedFor(3, "very-low.txt");
+        givenTimePassed(Duration.ofSeconds(60));
+        givenTheClientAskedFor(4, "normal.txt");
+        givenTimePassed(Duration.ofSeconds(60));
+        givenTheClientWaitsForAt(5, "release.txt", 3, "it has waited for nothing yet");
+        givenTimePassed(Duration.ofMinutes(2));
         // Waited 240 s at 2, 180 s at 7 and 120 s at 18.
-        assertThat(waitingFiles()).containsExactly("release.txt", "normal.txt", "very-low.txt");
+        givenTheFilesWaitedForAre("release.txt", "normal.txt", "very-low.txt");
+        givenTimePassed(UploadManager.MIN_REQUEST_TIME);
+        givenTheClientWaitsForAt(5, "low.txt", 2, "720 s at 6 against 780 s at 7");
 
-        advance(UploadManager.MIN_REQUEST_TIME);
-        assertThat(rank(ask(e, low.hash()))).as("720 s at 6 against 780 s at 7").isEqualTo(2);
-        assertThat(rank(ask(d, high.hash()))).isEqualTo(1);
-        assertThat(waitingFiles()).containsExactly("high.txt", "low.txt", "very-low.txt");
+        whenTheClientAsksFor(4, "high.txt");
+
+        thenItWaitsAt(1);
+        thenTheFilesWaitedForAre("high.txt", "low.txt", "very-low.txt");
     }
 
     @Test
-    void clientsThatStopAskingAreForgottenAndBansRunOut() throws Exception {
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        SharedFiles.SharedFile file = share("kept.txt", random(3000, 9));
-        start();
-        ScriptedDownloader first = client(1, 0, 0);
-        ScriptedDownloader second = client(2, 0, 0);
-        ask(first, file.hash());
-        ask(second, file.hash());
-        ask(client(3, 0, 0), file.hash());
-        assertThat(onLoop(this.manager::waitingCount)).isEqualTo(1);
+    void shouldForgetClientsThatStopAsking() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("kept.txt", 3000, 9);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenTheClientAsked(3);
+        givenTheClientsWaitingAre(1);
 
-        advance(UploadManager.PURGE_AFTER.plusSeconds(1));
-        await("the silent client forgotten", () -> this.manager.waitingCount() == 0);
+        whenTimePasses(UploadManager.PURGE_AFTER.plusSeconds(1));
 
+        thenTheQueueEmpties("the silent client forgotten");
+    }
+
+    @Test
+    void shouldLetBansRunOut() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("kept.txt", 3000, 9);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenTheClientAsked(3);
+        givenTheClientsWaitingAre(1);
+        givenTimePassed(UploadManager.PURGE_AFTER.plusSeconds(1));
+        givenTheQueueEmptied("the silent client forgotten");
         // A hello again is answered; one with another user hash is an attack, and the address is banned.
-        first.send(first.hello().encode(false));
-        assertThat(first.until(Opcodes.Client.HELLOANSWER)).isNotNull();
-        first.send(hello(8, 0, 0).encode(false));
-        assertThat(first.closedWithin(WAIT)).isTrue();
-        List<BanInfo> bans = onLoop(this.manager::bans);
-        assertThat(bans).singleElement().satisfies(b -> assertThat(b.address()).isEqualTo("127.0.0.1"));
-        assertThat(ScriptedDownloader.connect(this.port, hello(10, 0, 0)).closedWithin(WAIT))
-                .as("a banned address is turned away")
-                .isTrue();
-        second.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
-        assertThat(second.poll(SILENCE))
-                .as("its slot runs to its end, but it asks in vain")
-                .isEmpty();
+        givenTheClientAnsweredOnAHelloAgain(1);
+        givenTheClientCutOffOnAHelloWithTheUserHashOf(1, 8);
+        givenTheOnlyBanIsOf("127.0.0.1");
+        givenANewClientFromTheBannedAddressTurnedAway(10);
+        givenTheClientAskingInVain(2);
 
-        advance(UploadManager.BAN_TIME);
-        await(
-                "the ban over",
-                () -> this.manager.bans().isEmpty() && !this.manager.isBanned(InetAddress.getLoopbackAddress()));
-        ScriptedDownloader back = client(11, 0, 0);
-        back.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
-        assertThat(back.until(Opcodes.Client.FILESTATUS)).isNotNull();
+        whenTimePasses(UploadManager.BAN_TIME);
+
+        thenTheBanIsOver();
+        thenANewClientIsToldTheFileStatus(11);
     }
 
     @Test
-    void aClientThatLeftTheQueueIsCalledForItsSlot() throws Exception {
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        SharedFiles.SharedFile file = share("called.txt", random(3000, 10));
-        start();
-        ScriptedDownloader first = client(1, 0, 0);
-        ScriptedDownloader second = client(2, 0, 0);
-        ask(first, file.hash());
-        ask(second, file.hash());
+    void shouldCallAClientThatLeftTheQueueForItsSlot() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("called.txt", 3000, 10);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenAClientListeningForCallsWaitingAt(3, 1);
+        givenTheClientLeft(3);
 
-        try (ServerSocket listening = new ServerSocket(0, 4, InetAddress.getLoopbackAddress())) {
-            Hello hello = hello(3, 0, listening.getLocalPort());
-            ScriptedDownloader waiting = client(hello);
-            assertThat(rank(ask(waiting, file.hash()))).isEqualTo(1);
-            waiting.close();
-            first.close();
+        whenTheClientLeaves(1);
 
-            // Another client answers at its address first, and slowly: the call is tried again.
-            Thread.sleep(300);
-            ScriptedDownloader impostor = ScriptedDownloader.acceptCall(listening, hello(7, 0, 0));
-            assertThat(impostor.closedWithin(WAIT)).isTrue();
-            ScriptedDownloader called = ScriptedDownloader.acceptCall(listening, hello);
-            this.resources.add(called);
-            assertThat(called.until(Opcodes.Client.ACCEPTUPLOADREQ)).isNotNull();
-        }
-
-        // One whose port is closed is dropped from the queue.
-        int closed;
-        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closed = probe.getLocalPort();
-        }
-        ScriptedDownloader unreachable = client(hello(4, 0, closed));
-        assertThat(rank(ask(unreachable, file.hash()))).isEqualTo(1);
-        unreachable.close();
-        second.close();
-        await("the unreachable client dropped", () -> this.manager.waitingCount() == 0);
-
-        // So is one that hangs up before its hello.
-        ScriptedDownloader third = client(5, 0, 0);
-        ask(third, file.hash());
-        try (ServerSocket listening = new ServerSocket(0, 4, InetAddress.getLoopbackAddress())) {
-            ScriptedDownloader rude = client(hello(6, 0, listening.getLocalPort()));
-            assertThat(rank(ask(rude, file.hash()))).isEqualTo(1);
-            rude.close();
-            third.close();
-            listening.setSoTimeout((int) WAIT.toMillis());
-            listening.accept().close();
-            await("the client that hung up dropped", () -> this.manager.waitingCount() == 0);
-        }
+        thenAnImpostorAnsweringTheCallIsCutOff(7);
+        thenTheClientAnsweringTheCallGetsASlot(3);
     }
 
     @Test
-    void aDownloadSharesItsCheckedPartsAndItsSources() throws Exception {
-        byte[] last = random(1000, 11);
-        Hash16 first = Hash16.parseHex("c1".repeat(16));
-        List<Hash16> parts = List.of(first, Ed2k.md4(last, 0, last.length));
+    void shouldDropFromTheQueueAClientWhosePortIsClosed() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("called.txt", 3000, 10);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenAClientListeningForCallsWaitingAt(3, 1);
+        givenTheClientLeft(3);
+        givenTheClientLeft(1);
+        givenAnImpostorAnsweringTheCallCutOff(7);
+        givenTheClientAnsweringTheCallGotASlot(3);
+        givenAClientThatCannotBeCalledWaitingAt(4, 1);
+        givenTheClientLeft(4);
+
+        whenTheClientLeaves(2);
+
+        thenTheQueueEmpties("the unreachable client dropped");
+    }
+
+    @Test
+    void shouldDropFromTheQueueAClientThatHangsUpBeforeItsHello() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("called.txt", 3000, 10);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenAClientListeningForCallsWaitingAt(3, 1);
+        givenTheClientLeft(3);
+        givenTheClientLeft(1);
+        givenAnImpostorAnsweringTheCallCutOff(7);
+        givenTheClientAnsweringTheCallGotASlot(3);
+        givenAClientThatCannotBeCalledWaitingAt(4, 1);
+        givenTheClientLeft(4);
+        givenTheClientLeft(2);
+        givenTheQueueEmptied("the unreachable client dropped");
+        givenTheClientAsked(5);
+        givenAClientListeningForCallsWaitingAt(6, 1);
+        givenTheClientLeft(6);
+        givenTheClientLeft(5);
+
+        whenTheCalledClientHangsUpBeforeItsHello();
+
+        thenTheQueueEmpties("the client that hung up dropped");
+    }
+
+    @Test
+    void shouldShareOnlyTheCheckedPartsOfADownload() throws Exception {
+        givenADownloadWithOnlyItsLastPartChecked("partial.bin", 1000, 11);
+        givenTheDownloadHasSources(20);
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientToldTheDownloadHasOnlyItsLastPart();
+        givenNoBlocksSentBeforeTheSlot();
+        givenTheSlotGivenAgainWithNothingOfAnotherFile();
+
+        whenTheClientAsksForBlocksOfBothParts();
+
+        thenTheBlockSentStartsAt(Ed2k.PARTSIZE, "only the checked part");
+        thenTheBlockSentIsTheStartOfTheLastPart(500);
+    }
+
+    @Test
+    void shouldShareTheSourcesOfADownload() throws Exception {
+        givenADownloadWithOnlyItsLastPartChecked("partial.bin", 1000, 11);
+        givenTheDownloadHasSources(20);
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientToldTheDownloadHasOnlyItsLastPart();
+        givenNoBlocksSentBeforeTheSlot();
+        givenTheSlotGivenAgainWithNothingOfAnotherFile();
+        givenOnlyTheCheckedPartSent();
+
+        whenTheClientAsksForTheSourcesOfTheDownload();
+
+        thenTheSourcesToldAre(20, "the download's sources, packed");
+    }
+
+    @Test
+    void shouldEndTheConnectionOnARequestThatDoesNotDecodeAndSaveTheCredits() throws Exception {
+        givenADownloadWithOnlyItsLastPartChecked("partial.bin", 1000, 11);
+        givenTheDownloadHasSources(20);
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientToldTheDownloadHasOnlyItsLastPart();
+        givenNoBlocksSentBeforeTheSlot();
+        givenTheSlotGivenAgainWithNothingOfAnotherFile();
+        givenOnlyTheCheckedPartSent();
+        givenTheSourcesOfTheDownloadTold(20);
+        givenTheSourcesAskedAgainAtOnceByAnOldClientAndForAFileWeDoNotHave();
+        givenTheClientConfirmedItReachedUs();
+        givenPacketsOfAnUnknownOpcode(0x7F);
+        givenTheSharedDirectoryListedEmpty("Films");
+        givenKadToldOfTheAddressThatReachedUs("127.0.0.1");
+        // Asked again at once, or by an old client, or for a file we do not have: no answer.
+        givenNoSourcesToldWhenTheClientAsksForTheFileName();
+
+        whenTheClientSendsARequestThatDoesNotDecode();
+
+        thenTheConnectionEnds();
+        thenTheCreditsAreSavedWithin(Duration.ofMinutes(13));
+    }
+
+    @Test
+    void shouldReadABlockWhereItsFileWent() throws Exception {
+        givenTheSharedFile("moved.txt", 4000, 12);
+        givenTheFileListedAt("gone.txt");
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientGotASlot(1);
+        givenTheFileFoundWhereItWent();
+
+        whenTheClientAsksForTheBlock(0, 1000);
+
+        thenTheClientReceivesTheBlock(0, 1000);
+    }
+
+    @Test
+    void shouldEndTheSlotOnceItsFileIsGone() throws Exception {
+        givenTheSharedFile("moved.txt", 4000, 12);
+        givenTheFileListedAt("gone.txt");
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientGotASlot(1);
+        givenTheFileFoundWhereItWent();
+        givenTheClientReceivedTheBlock(0, 1000);
+        givenTheFileNoLongerShared();
+
+        whenTheClientAsksForTheBlock(1000, 2000);
+
+        thenTheConnectionEnds();
+        thenTheSlotIsGone();
+    }
+
+    @Test
+    void shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults() throws Exception {
+        givenTheSharedFile("fine.txt", 3000, 14);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2);
+
+        whenTheClientAsksForAFileWhoseLookUpFaults(1);
+
+        thenTheClientIsCutOff(1);
+        thenTheClientStillGetsASlot(2);
+    }
+
+    @Test
+    void shouldTellTheEmptyLastPartOfADownloadOfWholePartsToo() throws Exception {
+        givenADownloadOfWholePartsWithOnlyItsSecondChecked("whole.bin", 15);
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+
+        whenTheClientAsksForTheDownload();
+
+        thenTheStatusTellsParts(3);
+        thenTheStatusLacksPart(0);
+        thenTheStatusHasPart(1);
+        thenTheStatusHasPart(2, "the empty part a whole number of parts ends with");
+    }
+
+    @Test
+    void shouldDropTheClientsTheIpFilterRefuses() throws Exception {
+        givenTheSettings(new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty()));
+        givenTheSharedFile("filtered.txt", 3000, 13);
+        givenTheUploadsStarted();
+        givenTheClientsConnected(1, 2, 3);
+        givenTheClientAsked(1);
+        givenTheClientAsked(2);
+        givenTheClientAsked(3);
+        givenNoClientDroppedByAFilterThatRefusesNone();
+
+        whenTheClientsAtTheLoopbackAddressAreDropped();
+
+        thenTheClientsDroppedAre(3);
+        thenTheClientIsCutOff(1);
+        thenTheClientIsCutOff(3);
+        thenNoUploadIsLeft();
+    }
+
+    private void givenTheSettings(UploadManager.Settings chosen) {
+        this.settings = chosen;
+    }
+
+    private void givenTheSharedFile(String name, int size, long seed) throws IOException {
+        this.data = random(size, seed);
+        this.file = share(name, this.data);
+        this.files.put(name, this.file);
+    }
+
+    private void givenThePriorityOf(String name, UploadPriority priority) {
+        this.priorities.put(this.files.get(name).hash(), priority);
+    }
+
+    private void givenTheFileListedAt(String name) {
+        this.shared.put(this.file.hash(), withPath(this.file, this.dir.resolve(name)));
+    }
+
+    private void givenTheFileFoundWhereItWent() {
+        this.shared.put(this.file.hash(), this.file);
+    }
+
+    private void givenTheFileNoLongerShared() {
+        this.shared.remove(this.file.hash());
+    }
+
+    private void givenADownloadWithOnlyItsLastPartChecked(String name, int lastSize, long seed) throws Exception {
+        this.lastPart = random(lastSize, seed);
+        List<Hash16> parts =
+                List.of(Hash16.parseHex("c1".repeat(16)), Ed2k.md4(this.lastPart, 0, this.lastPart.length));
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
-                "partial.bin",
-                Ed2k.PARTSIZE + last.length,
+                name,
+                Ed2k.PARTSIZE + this.lastPart.length,
                 Ed2k.fileHash(parts),
                 Optional.empty(),
                 parts,
                 List.of(),
                 List.of());
-        DownloadQueue.Download download = downloadLastPart(link, last);
+        this.download = downloadLastPart(link, this.lastPart);
+    }
+
+    private void givenADownloadOfWholePartsWithOnlyItsSecondChecked(String name, long seed) throws Exception {
+        byte[] second = random((int) Ed2k.PARTSIZE, seed);
+        List<Hash16> parts =
+                List.of(Hash16.parseHex("c2".repeat(16)), Ed2k.md4(second, 0, second.length), Ed2k.EMPTY_PART_HASH);
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                name, 2 * Ed2k.PARTSIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of());
+        this.download = downloadLastPart(link, second);
+    }
+
+    private void givenTheDownloadHasSources(int count) {
         List<SourceExchange.Source> sources = new ArrayList<>();
-        for (int i = 1; i <= 20; i++) {
+        for (int i = 1; i <= count; i++) {
             sources.add(new SourceExchange.Source(
                     Ipv4.of(198, 51, 100, i), 0, 4662, 0, 0, Optional.of(hashOf(100 + i)), 0));
         }
         this.downloadSources = sources;
-        start();
-        ScriptedDownloader client = client(1, 0, 0);
+    }
 
-        client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, download.hash()));
-        ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(client.until(Opcodes.Client.FILESTATUS));
-        assertThat(status.partCount()).isEqualTo(2);
-        assertThat(status.has(0)).isFalse();
-        assertThat(status.has(1)).isTrue();
-        client.send(blocks(download.hash(), Ed2k.PARTSIZE, Ed2k.PARTSIZE + 10));
-        client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, download.hash()));
-        assertThat(names(client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
+    private void givenTheUploadsStarted() throws Exception {
+        start();
+    }
+
+    private void givenTheClientsConnected(int... seeds) throws IOException {
+        for (int seed : seeds) {
+            clientOf(seed);
+        }
+    }
+
+    private void givenAClientConnected(int seed) throws IOException {
+        this.client = clientOf(seed);
+    }
+
+    private void givenAFirewalledClientConnected(int seed) throws IOException {
+        this.clients.put(seed, client(hello(seed, LOW_ID, 0)));
+    }
+
+    private void givenAClientListeningForCallsWaitingAt(int seed, int place) throws Exception {
+        this.listening = new ServerSocket(0, 4, InetAddress.getLoopbackAddress());
+        this.resources.add(this.listening);
+        this.clients.put(seed, client(hello(seed, 0, this.listening.getLocalPort())));
+        givenTheClientWaitsAt(seed, place);
+    }
+
+    private void givenAClientThatCannotBeCalledWaitingAt(int seed, int place) throws Exception {
+        int closed;
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closed = probe.getLocalPort();
+        }
+        this.clients.put(seed, client(hello(seed, 0, closed)));
+        givenTheClientWaitsAt(seed, place);
+    }
+
+    private void givenTheClientAsked(int seed) throws Exception {
+        ask(clientOf(seed), this.file.hash());
+    }
+
+    private void givenTheClientAskedFor(int seed, String name) throws Exception {
+        ask(clientOf(seed), this.files.get(name).hash());
+    }
+
+    private void givenTheClientGotASlot(int seed) throws Exception {
+        assertThat(ask(clientOf(seed), this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+    }
+
+    private void givenTheClientWaitsAt(int seed, int place) throws Exception {
+        assertThat(rank(ask(clientOf(seed), this.file.hash()))).isEqualTo(place);
+    }
+
+    private void givenTheClientWaitsAt(int seed, int place, String why) throws Exception {
+        assertThat(rank(ask(clientOf(seed), this.file.hash()))).as(why).isEqualTo(place);
+    }
+
+    private void givenTheClientWaitsForAt(int seed, String name, int place, String why) throws Exception {
+        assertThat(rank(ask(clientOf(seed), this.files.get(name).hash())))
+                .as(why)
+                .isEqualTo(place);
+    }
+
+    // Slots kept busy by the limit, so they are never idle while the clock moves.
+    private void givenAClientKeepingASlotBusyWith(int seed, String name) throws Exception {
+        Hash16 hash = this.files.get(name).hash();
+        ScriptedDownloader holder = clientOf(seed);
+        ask(holder, hash);
+        holder.send(blocks(hash, 0, UploadSession.MAX_BLOCK));
+    }
+
+    private void givenTheClientTurnedAwayByTheFullQueue(int seed) throws IOException {
+        ScriptedDownloader late = clientOf(seed);
+        late.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
+        assertThat(late.poll(SILENCE)).as("the queue is full").isEmpty();
+    }
+
+    // A slot holder asks who else has the file: the other clients of it, not itself.
+    private void givenASlotHolderToldOfTheOtherClientsOfTheFile(int holder, int... others) throws Exception {
+        ScriptedDownloader asking = clientOf(holder);
+        asking.send(SourceExchange.request(this.file.hash()));
+        SourceExchange.Answer told = SourceExchange.Answer.decode(asking.until(Opcodes.Extended.ANSWERSOURCES2));
+        List<Integer> ports = new ArrayList<>();
+        for (int seed : others) {
+            ports.add(this.clients.get(seed).hello().tcpPort());
+        }
+        assertThat(told.sources()).extracting(SourceExchange.Source::port).containsExactlyInAnyOrderElementsOf(ports);
+    }
+
+    private void givenTheQueueDescribedAs(String start, String part) throws Exception {
+        assertThat(onLoop(this.manager::describe)).startsWith(start).contains(part);
+    }
+
+    private void givenTheClientsWaitingAre(int count) throws Exception {
+        assertThat(onLoop(this.manager::waitingCount)).isEqualTo(count);
+    }
+
+    private void givenTheFilesWaitedForAre(String... names) throws Exception {
+        assertThat(waitingFiles()).containsExactly(names);
+    }
+
+    private void givenTheClientLeft(int seed) throws IOException {
+        this.clients.get(seed).close();
+    }
+
+    private void givenTimePassed(Duration duration) {
+        advance(duration);
+    }
+
+    private void givenTheQueueEmptied(String what) throws Exception {
+        thenTheQueueEmpties(what);
+    }
+
+    private void givenTheClientAnsweredOnAHelloAgain(int seed) throws IOException {
+        ScriptedDownloader known = this.clients.get(seed);
+        known.send(known.hello().encode(false));
+        assertThat(known.until(Opcodes.Client.HELLOANSWER)).isNotNull();
+    }
+
+    private void givenTheClientCutOffOnAHelloWithTheUserHashOf(int seed, int other) throws IOException {
+        ScriptedDownloader known = this.clients.get(seed);
+        known.send(hello(other, 0, 0).encode(false));
+        assertThat(known.closedWithin(WAIT)).isTrue();
+    }
+
+    private void givenTheOnlyBanIsOf(String address) throws Exception {
+        List<BanInfo> bans = onLoop(this.manager::bans);
+        assertThat(bans).singleElement().satisfies(b -> assertThat(b.address()).isEqualTo(address));
+    }
+
+    private void givenANewClientFromTheBannedAddressTurnedAway(int seed) throws IOException {
+        assertThat(client(hello(seed, 0, 0)).closedWithin(WAIT))
+                .as("a banned address is turned away")
+                .isTrue();
+    }
+
+    private void givenTheClientAskingInVain(int seed) throws IOException {
+        ScriptedDownloader holder = this.clients.get(seed);
+        holder.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
+        assertThat(holder.poll(SILENCE))
+                .as("its slot runs to its end, but it asks in vain")
+                .isEmpty();
+    }
+
+    private void givenAnImpostorAnsweringTheCallCutOff(int seed) throws Exception {
+        thenAnImpostorAnsweringTheCallIsCutOff(seed);
+    }
+
+    private void givenTheClientAnsweringTheCallGotASlot(int seed) throws IOException {
+        thenTheClientAnsweringTheCallGetsASlot(seed);
+    }
+
+    private void givenTheClientToldTheDownloadHasOnlyItsLastPart() throws Exception {
+        whenTheClientAsksForTheDownload();
+        thenTheStatusTellsParts(2);
+        thenTheStatusLacksPart(0);
+        thenTheStatusHasPart(1);
+    }
+
+    private void givenNoBlocksSentBeforeTheSlot() throws IOException {
+        this.client.send(blocks(this.download.hash(), Ed2k.PARTSIZE, Ed2k.PARTSIZE + 10));
+        this.client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
+        assertThat(names(this.client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
                 .as("no blocks before the slot")
                 .doesNotContain("SENDINGPART");
-        client.send(blocks(hashOf(78), 0, 10));
-        client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, download.hash()));
-        assertThat(names(client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
+    }
+
+    private void givenTheSlotGivenAgainWithNothingOfAnotherFile() throws IOException {
+        this.client.send(blocks(hashOf(78), 0, 10));
+        this.client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
+        assertThat(names(this.client.until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
                 .as("asked again, the slot is given again; nothing of another file")
                 .doesNotContain("SENDINGPART");
-        client.send(new ClientMessages.RequestParts(
-                        download.hash(),
+    }
+
+    private void givenOnlyTheCheckedPartSent() throws Exception {
+        whenTheClientAsksForBlocksOfBothParts();
+        thenTheBlockSentStartsAt(Ed2k.PARTSIZE, "only the checked part");
+        thenTheBlockSentIsTheStartOfTheLastPart(500);
+    }
+
+    private void givenTheSourcesOfTheDownloadTold(int count) throws Exception {
+        whenTheClientAsksForTheSourcesOfTheDownload();
+        thenTheSourcesToldAre(count, "the download's sources, packed");
+    }
+
+    private void givenTheSourcesAskedAgainAtOnceByAnOldClientAndForAFileWeDoNotHave() throws IOException {
+        this.client.send(SourceExchange.request(this.download.hash()));
+        this.client.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.REQUESTSOURCES2.code(),
+                new PacketWriter().u8(0).u16(0).hash16(this.download.hash())));
+        this.client.send(SourceExchange.request(hashOf(77)));
+    }
+
+    private void givenTheClientConfirmedItReachedUs() throws IOException {
+        this.client.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.KAD_FWTCPCHECK_ACK.code()));
+    }
+
+    private void givenPacketsOfAnUnknownOpcode(int opcode) throws IOException {
+        this.client.send(Packet.empty(Protocol.EMULE, opcode));
+        this.client.send(Packet.empty(Protocol.EDONKEY, opcode));
+    }
+
+    private void givenTheSharedDirectoryListedEmpty(String directory) throws Exception {
+        this.client.send(Packet.of(
+                Protocol.EDONKEY,
+                Opcodes.Client.ASKSHAREDFILESDIR.code(),
+                new PacketWriter().u16(directory.length()).bytes(directory.getBytes(StandardCharsets.US_ASCII))));
+        Packet listing = this.client.until(Opcodes.Client.ASKSHAREDFILESDIRANS);
+        PacketReader in = listing.reader();
+        in.bytes(in.u16());
+        assertThat(in.u32()).as("no files in another directory").isZero();
+    }
+
+    private void givenKadToldOfTheAddressThatReachedUs(String address) {
+        assertThat(this.reachable).containsExactly(Ipv4.parse(address));
+    }
+
+    private void givenNoSourcesToldWhenTheClientAsksForTheFileName() throws IOException {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.download.hash()));
+        assertThat(names(this.client.until(Protocol.EDONKEY, Opcodes.Client.REQFILENAMEANSWER.code())))
+                .doesNotContain("ANSWERSOURCES2");
+    }
+
+    private void givenTheClientReceivedTheBlock(int start, int end) throws Exception {
+        whenTheClientAsksForTheBlock(start, end);
+        thenTheClientReceivesTheBlock(start, end);
+    }
+
+    private void givenNoClientDroppedByAFilterThatRefusesNone() throws Exception {
+        assertThat(onLoop(() -> this.manager.dropClients(ip -> false))).isZero();
+    }
+
+    private void whenTheClientDownloadsTheWholeFile(int seed) throws Exception {
+        ScriptedDownloader downloader = this.clients.get(seed);
+        long count = this.file.size() / UploadSession.MAX_BLOCK;
+        for (long at = 0; at < count; at += 3) {
+            List<ClientMessages.Range> ranges = new ArrayList<>();
+            for (long b = at; b < at + 3; b++) {
+                ranges.add(new ClientMessages.Range(b * UploadSession.MAX_BLOCK, (b + 1) * UploadSession.MAX_BLOCK));
+            }
+            downloader.send(new ClientMessages.RequestParts(this.file.hash(), ranges).encode(false));
+        }
+        long received = 0;
+        while (received < this.file.size()) {
+            Packet packet = downloader.next();
+            if (packet.opcode() == Opcodes.Client.SENDINGPART.code()) {
+                received += ClientMessages.SendingPart.decode(packet).data().length;
+            }
+        }
+    }
+
+    private void whenTheClientLeaves(int seed) throws IOException {
+        this.clients.get(seed).close();
+    }
+
+    private void whenTheClientAsksFor(int seed, String name) throws Exception {
+        this.answer = ask(clientOf(seed), this.files.get(name).hash());
+    }
+
+    private void whenTimePasses(Duration duration) {
+        advance(duration);
+    }
+
+    private void whenTheCalledClientHangsUpBeforeItsHello() throws IOException {
+        this.listening.setSoTimeout((int) WAIT.toMillis());
+        this.listening.accept().close();
+    }
+
+    private void whenTheClientAsksForTheDownload() throws Exception {
+        this.client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, this.download.hash()));
+        this.status = ClientMessages.FileStatus.decode(this.client.until(Opcodes.Client.FILESTATUS));
+    }
+
+    private void whenTheClientAsksForBlocksOfBothParts() throws Exception {
+        this.client.send(new ClientMessages.RequestParts(
+                        this.download.hash(),
                         List.of(
                                 new ClientMessages.Range(0, 1000),
                                 new ClientMessages.Range(Ed2k.PARTSIZE, Ed2k.PARTSIZE + 500),
                                 new ClientMessages.Range(0, 0)))
                 .encode(true));
-        ClientMessages.SendingPart sent = ClientMessages.SendingPart.decode(client.until(Opcodes.Client.SENDINGPART));
-        assertThat(sent.start()).as("only the checked part").isEqualTo(Ed2k.PARTSIZE);
-        assertThat(sent.data()).isEqualTo(Arrays.copyOf(last, 500));
+        this.block = ClientMessages.SendingPart.decode(this.client.until(Opcodes.Client.SENDINGPART));
+    }
 
-        client.send(SourceExchange.request(download.hash()));
-        assertThat(SourceExchange.Answer.decode(client.until(Opcodes.Extended.ANSWERSOURCES2))
-                        .sources())
-                .as("the download's sources, packed")
-                .hasSize(20);
-        client.send(SourceExchange.request(download.hash()));
-        client.send(Packet.of(
-                Protocol.EMULE,
-                Opcodes.Extended.REQUESTSOURCES2.code(),
-                new PacketWriter().u8(0).u16(0).hash16(download.hash())));
-        client.send(SourceExchange.request(hashOf(77)));
-        client.send(Packet.empty(Protocol.EMULE, Opcodes.Extended.KAD_FWTCPCHECK_ACK.code()));
-        client.send(Packet.empty(Protocol.EMULE, 0x7F));
-        client.send(Packet.empty(Protocol.EDONKEY, 0x7F));
-        client.send(Packet.of(
-                Protocol.EDONKEY,
-                Opcodes.Client.ASKSHAREDFILESDIR.code(),
-                new PacketWriter().u16(5).bytes("Films".getBytes(StandardCharsets.US_ASCII))));
-        Packet listing = client.until(Opcodes.Client.ASKSHAREDFILESDIRANS);
-        PacketReader in = listing.reader();
-        in.bytes(in.u16());
-        assertThat(in.u32()).as("no files in another directory").isZero();
-        assertThat(this.reachable).containsExactly(Ipv4.of(127, 0, 0, 1));
+    private void whenTheClientAsksForTheSourcesOfTheDownload() throws Exception {
+        this.client.send(SourceExchange.request(this.download.hash()));
+        this.toldSources = SourceExchange.Answer.decode(this.client.until(Opcodes.Extended.ANSWERSOURCES2))
+                .sources();
+    }
 
-        // Asked again at once, or by an old client, or for a file we do not have: no answer.
-        client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, download.hash()));
-        assertThat(names(client.until(Protocol.EDONKEY, Opcodes.Client.REQFILENAMEANSWER.code())))
-                .doesNotContain("ANSWERSOURCES2");
+    private void whenTheClientSendsARequestThatDoesNotDecode() throws IOException {
+        this.client.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.REQUESTPARTS.code(), new PacketWriter().u8(1)));
+    }
 
-        // A request that does not decode ends the connection.
-        client.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.REQUESTPARTS.code(), new PacketWriter().u8(1)));
-        assertThat(client.closedWithin(WAIT)).isTrue();
-        advance(Duration.ofMinutes(13));
+    private void whenTheClientAsksForTheBlock(int start, int end) throws IOException {
+        this.client.send(blocks(this.file.hash(), start, end));
+    }
+
+    private void whenTheClientAsksForAFileWhoseLookUpFaults(int seed) throws IOException {
+        this.clients.get(seed).send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, FAULTY));
+    }
+
+    private void whenTheClientsAtTheLoopbackAddressAreDropped() throws Exception {
+        this.dropped = onLoop(() -> this.manager.dropClients(InetAddress::isLoopbackAddress));
+    }
+
+    private void thenTheClientIsToldInTurn(int seed, String why, String... told) throws IOException {
+        assertThat(names(this.clients.get(seed).until(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code())))
+                .as(why)
+                .containsSubsequence(told);
+    }
+
+    private void thenTheBytesUploadedAre(long expected) throws Exception {
+        assertThat(onLoop(this.manager::uploaded)).isEqualTo(expected);
+    }
+
+    private void thenTheClientsWaitingAre(int count) throws Exception {
+        assertThat(onLoop(this.manager::waitingCount)).isEqualTo(count);
+    }
+
+    private void thenTheClientGetsASlot(int seed) throws IOException {
+        assertThat(this.clients.get(seed).until(Opcodes.Client.ACCEPTUPLOADREQ)).isNotNull();
+    }
+
+    private void thenTheUploadStatesAre(UploadInfo.State... states) throws Exception {
+        assertThat(onLoop(this.manager::uploads)).extracting(UploadInfo::state).containsExactly(states);
+    }
+
+    private void thenItWaitsAt(int place) throws Exception {
+        assertThat(rank(this.answer)).isEqualTo(place);
+    }
+
+    private void thenTheFilesWaitedForAre(String... names) throws Exception {
+        assertThat(waitingFiles()).containsExactly(names);
+    }
+
+    private void thenTheQueueEmpties(String what) throws Exception {
+        await(what, () -> this.manager.waitingCount() == 0);
+    }
+
+    private void thenTheBanIsOver() throws Exception {
+        await(
+                "the ban over",
+                () -> this.manager.bans().isEmpty() && !this.manager.isBanned(InetAddress.getLoopbackAddress()));
+    }
+
+    private void thenANewClientIsToldTheFileStatus(int seed) throws IOException {
+        ScriptedDownloader back = clientOf(seed);
+        back.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, this.file.hash()));
+        assertThat(back.until(Opcodes.Client.FILESTATUS)).isNotNull();
+    }
+
+    // Another client answers at its address first, and slowly: the call is tried again.
+    private void thenAnImpostorAnsweringTheCallIsCutOff(int seed) throws Exception {
+        Thread.sleep(300);
+        ScriptedDownloader impostor = ScriptedDownloader.acceptCall(this.listening, hello(seed, 0, 0));
+        this.resources.add(impostor);
+        assertThat(impostor.closedWithin(WAIT)).isTrue();
+    }
+
+    private void thenTheClientAnsweringTheCallGetsASlot(int seed) throws IOException {
+        ScriptedDownloader called = ScriptedDownloader.acceptCall(
+                this.listening, this.clients.get(seed).hello());
+        this.resources.add(called);
+        assertThat(called.until(Opcodes.Client.ACCEPTUPLOADREQ)).isNotNull();
+    }
+
+    private void thenTheStatusTellsParts(int count) {
+        assertThat(this.status.partCount()).isEqualTo(count);
+    }
+
+    private void thenTheStatusHasPart(int part) {
+        assertThat(this.status.has(part)).isTrue();
+    }
+
+    private void thenTheStatusHasPart(int part, String why) {
+        assertThat(this.status.has(part)).as(why).isTrue();
+    }
+
+    private void thenTheStatusLacksPart(int part) {
+        assertThat(this.status.has(part)).isFalse();
+    }
+
+    private void thenTheBlockSentStartsAt(long start, String why) {
+        assertThat(this.block.start()).as(why).isEqualTo(start);
+    }
+
+    private void thenTheBlockSentIsTheStartOfTheLastPart(int length) {
+        assertThat(this.block.data()).isEqualTo(Arrays.copyOf(this.lastPart, length));
+    }
+
+    private void thenTheSourcesToldAre(int count, String why) {
+        assertThat(this.toldSources).as(why).hasSize(count);
+    }
+
+    private void thenTheConnectionEnds() throws IOException {
+        assertThat(this.client.closedWithin(WAIT)).isTrue();
+    }
+
+    private void thenTheCreditsAreSavedWithin(Duration duration) throws Exception {
+        advance(duration);
         await("the credits saved", () -> Files.exists(this.dir.resolve(Credits.FILE_NAME)));
     }
 
-    @Test
-    void aBlockIsReadWhereItsFileWentOrTheSlotEnds() throws Exception {
-        byte[] data = random(4000, 12);
-        SharedFiles.SharedFile file = share("moved.txt", data);
-        Path gone = this.dir.resolve("gone.txt");
-        this.shared.put(file.hash(), withPath(file, gone));
-        start();
-        ScriptedDownloader client = client(1, 0, 0);
-        assertThat(ask(client, file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-
-        this.shared.put(file.hash(), file);
-        client.send(blocks(file.hash(), 0, 1000));
-        assertThat(ClientMessages.SendingPart.decode(client.until(Opcodes.Client.SENDINGPART))
+    private void thenTheClientReceivesTheBlock(int start, int end) throws Exception {
+        assertThat(ClientMessages.SendingPart.decode(this.client.until(Opcodes.Client.SENDINGPART))
                         .data())
-                .isEqualTo(Arrays.copyOf(data, 1000));
+                .isEqualTo(Arrays.copyOfRange(this.data, start, end));
+    }
 
-        this.shared.remove(file.hash());
-        client.send(blocks(file.hash(), 1000, 2000));
-        assertThat(client.closedWithin(WAIT)).isTrue();
+    private void thenTheSlotIsGone() throws Exception {
         await("the slot gone", () -> this.manager.slotCount() == 0);
     }
 
-    @Test
-    void aFaultLookingAFileUpEndsOnlyThatClientsSession() throws Exception {
-        SharedFiles.SharedFile file = share("fine.txt", random(3000, 14));
-        start();
-        ScriptedDownloader unlucky = client(1, 0, 0);
-        ScriptedDownloader other = client(2, 0, 0);
-
-        unlucky.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, FAULTY));
-
-        assertThat(unlucky.closedWithin(WAIT)).isTrue();
-        assertThat(ask(other, file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+    private void thenTheClientIsCutOff(int seed) throws IOException {
+        assertThat(this.clients.get(seed).closedWithin(WAIT)).isTrue();
     }
 
-    @Test
-    void aDownloadOfWholePartsTellsItsEmptyLastPartToo() throws Exception {
-        byte[] second = random((int) Ed2k.PARTSIZE, 15);
-        List<Hash16> parts =
-                List.of(Hash16.parseHex("c2".repeat(16)), Ed2k.md4(second, 0, second.length), Ed2k.EMPTY_PART_HASH);
-        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
-                "whole.bin", 2 * Ed2k.PARTSIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of());
-        DownloadQueue.Download download = downloadLastPart(link, second);
-        start();
-        ScriptedDownloader client = client(1, 0, 0);
-
-        client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, download.hash()));
-
-        ClientMessages.FileStatus status = ClientMessages.FileStatus.decode(client.until(Opcodes.Client.FILESTATUS));
-        assertThat(status.partCount()).isEqualTo(3);
-        assertThat(status.has(0)).isFalse();
-        assertThat(status.has(1)).isTrue();
-        assertThat(status.has(2))
-                .as("the empty part a whole number of parts ends with")
-                .isTrue();
+    private void thenTheClientStillGetsASlot(int seed) throws Exception {
+        assertThat(ask(this.clients.get(seed), this.file.hash()).opcode())
+                .isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
     }
 
-    @Test
-    void clientsTheIpFilterRefusesAreDropped() throws Exception {
-        this.settings = new UploadManager.Settings(1, ObfuscationMode.SUPPORTED, 100, Optional.empty());
-        SharedFiles.SharedFile file = share("filtered.txt", random(3000, 13));
-        start();
-        ScriptedDownloader first = client(1, 0, 0);
-        ScriptedDownloader second = client(2, 0, 0);
-        ScriptedDownloader third = client(3, 0, 0);
-        ask(first, file.hash());
-        ask(second, file.hash());
-        ask(third, file.hash());
+    private void thenTheClientsDroppedAre(int count) {
+        assertThat(this.dropped).isEqualTo(count);
+    }
 
-        assertThat(onLoop(() -> this.manager.dropClients(ip -> false))).isZero();
-        assertThat(onLoop(() -> this.manager.dropClients(InetAddress::isLoopbackAddress)))
-                .isEqualTo(3);
-
-        assertThat(first.closedWithin(WAIT)).isTrue();
-        assertThat(third.closedWithin(WAIT)).isTrue();
+    private void thenNoUploadIsLeft() throws Exception {
         assertThat(onLoop(this.manager::uploads)).isEmpty();
+    }
+
+    /** The client of {@code seed}, connected on first use. */
+    private ScriptedDownloader clientOf(int seed) throws IOException {
+        ScriptedDownloader known = this.clients.get(seed);
+        if (known == null) {
+            known = client(seed, 0, 0);
+            this.clients.put(seed, known);
+        }
+        return known;
     }
 
     private DownloadQueue.Download downloadLastPart(Ed2kLink.FileLink link, byte[] last) throws Exception {

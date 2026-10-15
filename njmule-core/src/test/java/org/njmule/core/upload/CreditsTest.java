@@ -33,56 +33,198 @@ class CreditsTest {
     private static final long MIB = 1024 * 1024;
     private static final Hash16 PEER = Hash16.parseHex("11".repeat(16));
     private static final Hash16 OTHER = Hash16.parseHex("22".repeat(16));
+    private static final long NOW = 1_000_000;
 
     @TempDir
     Path dir;
 
+    private Credits credits;
+    private double ratio;
+
     @Test
-    void theRatioGrowsWithWhatAClientGaveUs() {
-        Credits credits = Credits.load(this.dir, clock(1_000_000));
-        assertThat(credits.ratio(PEER, true)).isEqualTo(1.0);
+    void shouldGiveAClientThatGaveUsNothingARatioOfOne() {
+        givenTheCreditsLoadedAt(NOW);
 
-        credits.downloaded(PEER, MIB / 2);
-        assertThat(credits.ratio(PEER, true)).as("below 1 MiB").isEqualTo(1.0);
+        whenTheRatioIsComputedFor(PEER, true);
 
-        credits.downloaded(PEER, 7 * MIB + MIB / 2);
-        // Nothing uploaded and 8 MiB received: the linear ramp is the lowest term.
-        double ramp = (8.0 * MIB - MIB) / (9_646_899 - MIB) * 2.34 + 1;
-        assertThat(credits.ratio(PEER, true)).isCloseTo(ramp, within(1e-9));
-        assertThat(credits.ratio(PEER, false)).as("identity in doubt").isEqualTo(1.0);
-
-        credits.downloaded(PEER, 92 * MIB);
-        // 100 MiB received: sqrt(100 + 2) caps the ratio of 10.
-        assertThat(credits.ratio(PEER, true)).isEqualTo(10.0);
-        credits.uploaded(PEER, 50 * MIB);
-        assertThat(credits.ratio(PEER, true)).isEqualTo(4.0);
-        credits.uploaded(PEER, 1000 * MIB);
-        assertThat(credits.ratio(PEER, true)).isEqualTo(1.0);
+        thenTheRatioIs(1.0);
     }
 
     @Test
-    void keepsCreditsAndKeysAcrossRestartsAndForgetsOldClients() {
-        Credits first = Credits.load(this.dir, clock(1_000_000));
-        first.downloaded(PEER, 5 * MIB);
-        first.uploaded(PEER, MIB);
-        first.identified(PEER, Bytes.of(new byte[] {1, 2, 3}));
-        first.identified(PEER, Bytes.of(new byte[] {9}));
-        // Pinning the first key wipes what the hash gathered before.
-        assertThat(first.get(PEER).orElseThrow().downloaded()).isEqualTo(1);
-        first.downloaded(PEER, 5 * MIB - 1);
-        first.uploaded(PEER, MIB - 1);
-        first.downloaded(OTHER, 0);
-        first.save();
+    void shouldKeepTheRatioAtOneBelowOneMebibyteReceived() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2);
 
-        Credits second = Credits.load(this.dir, clock(1_000_000 + 3600));
-        Credits.Credit credit = second.get(PEER).orElseThrow();
-        assertThat(credit.downloaded()).isEqualTo(5 * MIB);
-        assertThat(credit.uploaded()).isEqualTo(MIB);
-        assertThat(credit.publicKey()).isEqualTo(Bytes.of(new byte[] {1, 2, 3}));
-        assertThat(second.get(OTHER)).isEmpty();
+        whenTheRatioIsComputedFor(PEER, true);
 
-        long later = 1_000_000 + Credits.EXPIRY.toSeconds() + 1;
-        assertThat(Credits.load(this.dir, clock(later)).get(PEER)).isEmpty();
+        thenTheRatioIs(1.0, "below 1 MiB");
+    }
+
+    // Nothing uploaded and 8 MiB received: the linear ramp is the lowest term.
+    @Test
+    void shouldRaiseTheRatioAlongTheRampWithWhatAClientGaveUs() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2, 7 * MIB + MIB / 2);
+
+        whenTheRatioIsComputedFor(PEER, true);
+
+        thenTheRatioIsCloseTo((8.0 * MIB - MIB) / (9_646_899 - MIB) * 2.34 + 1);
+    }
+
+    @Test
+    void shouldGiveARatioOfOneToAClientWhoseIdentityIsInDoubt() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2, 7 * MIB + MIB / 2);
+
+        whenTheRatioIsComputedFor(PEER, false);
+
+        thenTheRatioIs(1.0, "identity in doubt");
+    }
+
+    // 100 MiB received: sqrt(100 + 2) caps the ratio of 10.
+    @Test
+    void shouldCapTheRatioAtTen() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2, 7 * MIB + MIB / 2, 92 * MIB);
+
+        whenTheRatioIsComputedFor(PEER, true);
+
+        thenTheRatioIs(10.0);
+    }
+
+    @Test
+    void shouldLowerTheRatioWithWhatWeSentTheClient() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2, 7 * MIB + MIB / 2, 92 * MIB);
+        givenWeSentTo(PEER, 50 * MIB);
+
+        whenTheRatioIsComputedFor(PEER, true);
+
+        thenTheRatioIs(4.0);
+    }
+
+    @Test
+    void shouldBringTheRatioBackToOneWhenWeSentTheClientFarMore() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, MIB / 2, 7 * MIB + MIB / 2, 92 * MIB);
+        givenWeSentTo(PEER, 50 * MIB, 1000 * MIB);
+
+        whenTheRatioIsComputedFor(PEER, true);
+
+        thenTheRatioIs(1.0);
+    }
+
+    // Pinning the first key wipes what the hash gathered before.
+    @Test
+    void shouldWipeWhatAClientGaveBeforeItsFirstKeyIsPinned() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, 5 * MIB);
+        givenWeSentTo(PEER, MIB);
+
+        whenTheClientIsIdentifiedBy(PEER, new byte[] {1, 2, 3});
+
+        thenWeHaveReceivedFrom(PEER, 1);
+    }
+
+    @Test
+    void shouldKeepCreditsAndTheFirstKeyAcrossARestart() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, 5 * MIB);
+        givenWeSentTo(PEER, MIB);
+        givenTheClientIdentifiedBy(PEER, new byte[] {1, 2, 3});
+        givenTheClientIdentifiedBy(PEER, new byte[] {9});
+        givenWeReceivedFrom(PEER, 5 * MIB - 1);
+        givenWeSentTo(PEER, MIB - 1);
+        givenWeReceivedFrom(OTHER, 0);
+        givenTheCreditsSaved();
+
+        whenTheCreditsAreLoadedAt(NOW + 3600);
+
+        thenWeHaveReceivedFrom(PEER, 5 * MIB);
+        thenWeHaveSentTo(PEER, MIB);
+        thenTheKeyOfIs(PEER, new byte[] {1, 2, 3});
+        thenNothingIsKnownOf(OTHER);
+    }
+
+    @Test
+    void shouldForgetClientsNotSeenForTooLong() {
+        givenTheCreditsLoadedAt(NOW);
+        givenWeReceivedFrom(PEER, 5 * MIB);
+        givenWeSentTo(PEER, MIB);
+        givenTheClientIdentifiedBy(PEER, new byte[] {1, 2, 3});
+        givenTheClientIdentifiedBy(PEER, new byte[] {9});
+        givenWeReceivedFrom(PEER, 5 * MIB - 1);
+        givenWeSentTo(PEER, MIB - 1);
+        givenWeReceivedFrom(OTHER, 0);
+        givenTheCreditsSaved();
+
+        whenTheCreditsAreLoadedAt(NOW + Credits.EXPIRY.toSeconds() + 1);
+
+        thenNothingIsKnownOf(PEER);
+    }
+
+    private void givenTheCreditsLoadedAt(long epochSecond) {
+        this.credits = Credits.load(this.dir, clock(epochSecond));
+    }
+
+    private void givenWeReceivedFrom(Hash16 client, long... amounts) {
+        for (long bytes : amounts) {
+            this.credits.downloaded(client, bytes);
+        }
+    }
+
+    private void givenWeSentTo(Hash16 client, long... amounts) {
+        for (long bytes : amounts) {
+            this.credits.uploaded(client, bytes);
+        }
+    }
+
+    private void givenTheClientIdentifiedBy(Hash16 client, byte[] key) {
+        this.credits.identified(client, Bytes.of(key));
+    }
+
+    private void givenTheCreditsSaved() {
+        this.credits.save();
+    }
+
+    private void whenTheRatioIsComputedFor(Hash16 client, boolean trusted) {
+        this.ratio = this.credits.ratio(client, trusted);
+    }
+
+    private void whenTheClientIsIdentifiedBy(Hash16 client, byte[] key) {
+        this.credits.identified(client, Bytes.of(key));
+    }
+
+    private void whenTheCreditsAreLoadedAt(long epochSecond) {
+        this.credits = Credits.load(this.dir, clock(epochSecond));
+    }
+
+    private void thenTheRatioIs(double expected) {
+        assertThat(this.ratio).isEqualTo(expected);
+    }
+
+    private void thenTheRatioIs(double expected, String description) {
+        assertThat(this.ratio).as(description).isEqualTo(expected);
+    }
+
+    private void thenTheRatioIsCloseTo(double expected) {
+        assertThat(this.ratio).isCloseTo(expected, within(1e-9));
+    }
+
+    private void thenWeHaveReceivedFrom(Hash16 client, long expected) {
+        assertThat(this.credits.get(client).orElseThrow().downloaded()).isEqualTo(expected);
+    }
+
+    private void thenWeHaveSentTo(Hash16 client, long expected) {
+        assertThat(this.credits.get(client).orElseThrow().uploaded()).isEqualTo(expected);
+    }
+
+    private void thenTheKeyOfIs(Hash16 client, byte[] expected) {
+        assertThat(this.credits.get(client).orElseThrow().publicKey()).isEqualTo(Bytes.of(expected));
+    }
+
+    private void thenNothingIsKnownOf(Hash16 client) {
+        assertThat(this.credits.get(client)).isEmpty();
     }
 
     private static Clock clock(long epochSecond) {

@@ -17,66 +17,134 @@
 package org.njmule.core.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class RateMeterTest {
 
     private static final long SECOND = 1_000_000_000L;
+    private static final long START = 100 * SECOND;
 
-    @Test
-    void averagesTheLastSeconds() {
-        RateMeter meter = new RateMeter(4);
-        long start = 100 * SECOND;
+    private RateMeter meter;
+    private long rate;
+    private Throwable exception;
 
-        meter.add(4_000, start);
-        meter.add(4_000, start + SECOND);
-        assertThat(meter.rate(start + SECOND)).isEqualTo(2_000);
-        assertThat(meter.rate(start + 3 * SECOND)).isEqualTo(2_000);
-        // The first second leaves the window, then the second one.
-        assertThat(meter.rate(start + 4 * SECOND)).isEqualTo(1_000);
-        assertThat(meter.rate(start + 5 * SECOND)).isZero();
-        assertThat(meter.total()).isEqualTo(8_000);
+    // The first second leaves the window after four seconds, then the second one.
+    @ParameterizedTest
+    @CsvSource({"1, 2000", "3, 2000", "4, 1000", "5, 0"})
+    void shouldAverageTheLastSeconds(long secondsLater, long expected) {
+        givenAMeterOver(4);
+        givenBytesAddedAt(4_000, START);
+        givenBytesAddedAt(4_000, START + SECOND);
+
+        whenTheRateIsReadAt(START + secondsLater * SECOND);
+
+        thenTheRateIs(expected);
     }
 
     @Test
-    void aLongPauseClearsTheWindow() {
-        RateMeter meter = new RateMeter(3);
-        meter.add(900, 0);
+    void shouldCountEveryByteInTheTotal() {
+        givenAMeterOver(4);
+        givenBytesAddedAt(4_000, START);
 
-        meter.add(300, 60 * SECOND);
+        whenBytesAreAddedAt(4_000, START + SECOND);
 
-        assertThat(meter.rate(60 * SECOND)).isEqualTo(100);
-        assertThat(meter.total()).isEqualTo(1_200);
+        thenTheTotalIs(8_000);
     }
 
     @Test
-    void aClockGoingBackwardsCountsInTheLatestSecond() {
-        RateMeter meter = new RateMeter(2);
-        meter.add(1_000, 10 * SECOND);
+    void shouldClearTheWindowAfterALongPause() {
+        givenAMeterOver(3);
+        givenBytesAddedAt(900, 0);
 
-        meter.add(1_000, 5 * SECOND);
+        whenBytesAreAddedAt(300, 60 * SECOND);
 
-        assertThat(meter.rate(10 * SECOND)).isEqualTo(1_000);
-        assertThat(meter.rate(12 * SECOND)).isZero();
-        assertThat(meter.total()).isEqualTo(2_000);
+        thenTheRateAtIs(60 * SECOND, 100);
+        thenTheTotalIs(1_200);
     }
 
     @Test
-    void negativeTimesAndTheirCrossingOfZeroWork() {
-        RateMeter meter = new RateMeter(2);
-        meter.add(400, -SECOND / 2);
-        meter.add(600, SECOND / 2);
+    void shouldCountBytesOfAClockGoingBackwardsInTheLatestSecond() {
+        givenAMeterOver(2);
+        givenBytesAddedAt(1_000, 10 * SECOND);
 
-        assertThat(meter.rate(SECOND / 2)).isEqualTo(500);
-        assertThat(meter.rate(Long.MAX_VALUE)).isZero();
-        meter.add(10, Long.MIN_VALUE + 1);
-        assertThat(meter.total()).isEqualTo(1_010);
+        whenBytesAreAddedAt(1_000, 5 * SECOND);
+
+        thenTheRateAtIs(10 * SECOND, 1_000);
+        thenTheRateAtIs(12 * SECOND, 0);
+        thenTheTotalIs(2_000);
     }
 
     @Test
-    void needsAWindow() {
-        assertThatThrownBy(() -> new RateMeter(0)).isInstanceOf(IllegalArgumentException.class);
+    void shouldAverageAcrossTheCrossingOfZero() {
+        givenAMeterOver(2);
+        givenBytesAddedAt(400, -SECOND / 2);
+
+        whenBytesAreAddedAt(600, SECOND / 2);
+
+        thenTheRateAtIs(SECOND / 2, 500);
+        thenTheRateAtIs(Long.MAX_VALUE, 0);
+    }
+
+    @Test
+    void shouldCountBytesAddedAtTheMostNegativeTimes() {
+        givenAMeterOver(2);
+        givenBytesAddedAt(400, -SECOND / 2);
+        givenBytesAddedAt(600, SECOND / 2);
+        givenTheRateWasReadAt(Long.MAX_VALUE);
+
+        whenBytesAreAddedAt(10, Long.MIN_VALUE + 1);
+
+        thenTheTotalIs(1_010);
+    }
+
+    @Test
+    void shouldNeedAWindow() {
+        whenAMeterIsMadeOver(0);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    private void givenAMeterOver(int seconds) {
+        this.meter = new RateMeter(seconds);
+    }
+
+    private void givenBytesAddedAt(long bytes, long now) {
+        this.meter.add(bytes, now);
+    }
+
+    private void givenTheRateWasReadAt(long now) {
+        this.meter.rate(now);
+    }
+
+    private void whenBytesAreAddedAt(long bytes, long now) {
+        this.meter.add(bytes, now);
+    }
+
+    private void whenTheRateIsReadAt(long now) {
+        this.rate = this.meter.rate(now);
+    }
+
+    private void whenAMeterIsMadeOver(int seconds) {
+        this.exception = catchThrowable(() -> new RateMeter(seconds));
+    }
+
+    private void thenTheRateIs(long expected) {
+        assertThat(this.rate).isEqualTo(expected);
+    }
+
+    private void thenTheRateAtIs(long now, long expected) {
+        assertThat(this.meter.rate(now)).isEqualTo(expected);
+    }
+
+    private void thenTheTotalIs(long expected) {
+        assertThat(this.meter.total()).isEqualTo(expected);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 }
