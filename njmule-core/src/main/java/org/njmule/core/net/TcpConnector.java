@@ -58,9 +58,10 @@ public final class TcpConnector {
 
     private static final int BUFFER = 16 * 1024;
 
-    // One engine per process: the network sets where outgoing connections go.
+    // One engine per process: the network sets where outgoing connections go, and takes it back when it closes.
     private static volatile Supplier<Proxy> proxy = () -> Proxy.NO_PROXY;
     private static volatile Supplier<BindInterface.Binding> binding = BindInterface.Binding.Any::new;
+    private static final Object BINDING = new Object();
 
     private TcpConnector() {}
 
@@ -76,7 +77,21 @@ public final class TcpConnector {
 
     /** Outgoing connections leave from the interface {@code supplier} gives at each connection, or not at all. */
     public static void useBinding(Supplier<BindInterface.Binding> supplier) {
-        binding = Objects.requireNonNull(supplier, "supplier");
+        Objects.requireNonNull(supplier, "supplier");
+        synchronized (BINDING) {
+            binding = supplier;
+        }
+    }
+
+    /** Outgoing connections leave from any interface again, unless another binding was set after {@code supplier}. */
+    @SuppressWarnings("ReferenceEquality")
+    public static void releaseBinding(Supplier<BindInterface.Binding> supplier) {
+        synchronized (BINDING) {
+            // The very supplier set, whatever it gives: a network that closes late leaves a newer one's binding alone.
+            if (binding == supplier) {
+                binding = BindInterface.Binding.Any::new;
+            }
+        }
     }
 
     /** The interface outgoing connections leave from now. */

@@ -82,6 +82,7 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.download.DownloadManager;
 import org.njmule.core.files.CancelledFiles;
@@ -222,6 +223,9 @@ final class Network {
     private final GlobalSources globalSources;
     // What the interface of the preferences binds to now; read on connection threads too.
     private volatile BindInterface.Binding binding = new BindInterface.Binding.Any();
+    // Set for the whole process while this network runs, and taken back when it closes.
+    private final Supplier<ProxySettings> proxyOfThePreferences;
+    private final Supplier<BindInterface.Binding> outgoingBinding;
     // The UDP keys of the servers we sent obfuscated datagrams to, by address and port, which they answer from: read
     // on the server socket's thread.
     private final Map<Long, Integer> serverUdpKeys = new ConcurrentHashMap<>();
@@ -301,6 +305,8 @@ final class Network {
         this.automaticConnections = automaticConnections;
         this.loop = Objects.requireNonNull(loop, "loop");
         this.preferences = Objects.requireNonNull(preferences, "preferences");
+        this.proxyOfThePreferences = () -> preferences.get().proxy();
+        this.outgoingBinding = () -> this.binding;
         this.publish = Objects.requireNonNull(publish, "publish");
         this.userLog = Objects.requireNonNull(log, "log");
         this.userHash = Objects.requireNonNull(userHash, "userHash");
@@ -520,9 +526,9 @@ final class Network {
 
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
     void start() {
-        ProxyRoute.install(() -> this.preferences.get().proxy());
+        ProxyRoute.install(this.proxyOfThePreferences);
         this.binding = BindInterface.resolve(this.preferences.get().bindInterface());
-        TcpConnector.useBinding(() -> this.binding);
+        TcpConnector.useBinding(this.outgoingBinding);
         if (this.binding instanceof BindInterface.Binding.Missing missing) {
             this.userLog.log(LogLine.Level.WARNING, offline(missing));
         }
@@ -1647,6 +1653,9 @@ final class Network {
             this.udp.close();
         }
         saveServers();
+        // The next engine of the process, or test, starts from direct connections on any interface.
+        ProxyRoute.uninstall(this.proxyOfThePreferences);
+        TcpConnector.releaseBinding(this.outgoingBinding);
         changeMappings(this::unmap);
         return this.upnpChanges;
     }

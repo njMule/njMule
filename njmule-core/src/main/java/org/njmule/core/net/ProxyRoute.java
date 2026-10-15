@@ -30,8 +30,10 @@ import org.njmule.core.config.ProxySettings;
  */
 public final class ProxyRoute extends Authenticator {
 
-    // One engine per process: the network sets the proxy, which web requests read too.
+    // One engine per process: the network sets the proxy, which web requests read too, and takes it back when it
+    // closes.
     private static volatile Supplier<ProxySettings> current = () -> ProxySettings.NONE;
+    private static final Object INSTALLING = new Object();
 
     private final Supplier<ProxySettings> settings;
 
@@ -42,9 +44,26 @@ public final class ProxyRoute extends Authenticator {
     /** From now on connections follow {@code settings}, read at each connection. */
     public static void install(Supplier<ProxySettings> settings) {
         Objects.requireNonNull(settings, "settings");
-        current = settings;
-        TcpConnector.useProxy(() -> proxy(settings.get()));
-        Authenticator.setDefault(new ProxyRoute(settings));
+        synchronized (INSTALLING) {
+            current = settings;
+            TcpConnector.useProxy(() -> proxy(settings.get()));
+            Authenticator.setDefault(new ProxyRoute(settings));
+        }
+    }
+
+    /** Connections go direct again, unless other settings were installed after {@code settings}. */
+    @SuppressWarnings("ReferenceEquality")
+    public static void uninstall(Supplier<ProxySettings> settings) {
+        synchronized (INSTALLING) {
+            // The very supplier installed, whatever it gives: a network that closes late leaves a newer one's proxy
+            // alone.
+            if (current != settings) {
+                return;
+            }
+            current = () -> ProxySettings.NONE;
+            TcpConnector.useProxy(() -> Proxy.NO_PROXY);
+            Authenticator.setDefault(null);
+        }
     }
 
     /** The proxy of the preferences now. */
