@@ -129,6 +129,8 @@ public final class ApiClient {
      * Follows the event stream, handing each event's name and data to {@code each} until it returns false or the stream
      * ends.
      */
+    // The abort is not waited for: the client stops right after.
+    @SuppressWarnings("FutureReturnValueIgnored")
     public void events(String types, EventSink each) throws IOException, InterruptedException {
         HttpClient http = start();
         try {
@@ -141,16 +143,16 @@ public final class ApiClient {
             try {
                 answer = listener.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                var _ = request.abort(e);
+                request.abort(e);
                 throw new IOException("No answer from " + this.base.getHost() + " in time.", e);
             } catch (ExecutionException e) {
                 throw failure(e.getCause());
             }
-            try (InputStream body = listener.getInputStream()) {
+            try (InputStream body = listener.getInputStream();
+                    BufferedReader in = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
                 if (answer.getStatus() != 200) {
                     throw failure(answer.getStatus(), body.readNBytes(64 * 1024));
                 }
-                BufferedReader in = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
                 String name = "message";
                 for (String line = in.readLine(); line != null; line = in.readLine()) {
                     if (line.startsWith("event: ")) {
