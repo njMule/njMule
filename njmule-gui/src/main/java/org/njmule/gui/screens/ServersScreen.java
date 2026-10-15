@@ -323,6 +323,12 @@ public final class ServersScreen implements Screen {
         return this.logTabs;
     }
 
+    /** Brings the log to the front, below the server list. */
+    public void showLog() {
+        this.view();
+        this.logTabs.getSelectionModel().selectLast();
+    }
+
     Button connectButton() {
         return this.connectButton;
     }

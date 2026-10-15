@@ -160,8 +160,11 @@ class MainWindowActionsTest {
 
         FxTesting.onFx(() -> {
             MenuButton tools = (MenuButton) window.root().lookup(".menu-button");
+            // Open Incoming Folder would start the system's file manager: not here.
             for (MenuItem item : tools.getItems()) {
-                item.fire();
+                if ("import".equals(item.getId()) || "about".equals(item.getId())) {
+                    item.fire();
+                }
             }
         });
         FxTesting.await(

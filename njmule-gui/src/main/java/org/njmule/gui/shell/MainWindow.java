@@ -18,6 +18,7 @@ package org.njmule.gui.shell;
 
 import atlantafx.base.controls.Notification;
 import atlantafx.base.theme.Styles;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,12 +29,14 @@ import javafx.animation.PauseTransition;
 import javafx.geometry.Dimension2D;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -53,10 +56,10 @@ import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
-import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.ImportDialog;
+import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.screens.KadScreen;
@@ -99,6 +102,7 @@ public final class MainWindow {
     private final Map<String, Screen> screens = new LinkedHashMap<>();
     private final Map<String, ToggleButton> rail = new LinkedHashMap<>();
     private final NetworkPane network;
+    private final ServersScreen servers;
     private final Label activeBadge = badge();
     private final Label unreadBadge = badge();
     private final Circle networkDot = new Circle(4);
@@ -121,6 +125,7 @@ public final class MainWindow {
     public MainWindow(Gui gui) {
         this.gui = gui;
         ServersScreen servers = new ServersScreen(gui);
+        this.servers = servers;
         KadScreen kadScreen = new KadScreen(gui);
         for (Screen screen : List.of(
                 new TransfersScreen(gui),
@@ -320,7 +325,6 @@ public final class MainWindow {
     private Node topBar() {
         this.connect.setId("connect");
         this.connect.setOnAction(e -> this.toggleConnection());
-        this.connect.getStyleClass().add("accent");
         Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Material2AL.BRIGHTNESS_MEDIUM, this::toggleTheme);
         MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Material2AL.INPUT));
         importer.setOnAction(
@@ -330,10 +334,26 @@ public final class MainWindow {
         theme.setId("theme");
         importer.setId("import");
         about.setId("about");
-        MenuButton tools = new MenuButton(this.gui.t("nj.top.tools"), new FontIcon(Material2AL.BUILD), importer, about);
+        MenuItem incoming = new MenuItem(this.gui.t("IDS_OPENINC"), Fx.icon(Material2AL.FOLDER_OPEN));
+        incoming.setOnAction(e -> this.openIncoming());
+        incoming.setId("incoming");
+        MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Material2MZ.SETTINGS));
+        options.setOnAction(e -> this.show("settings"));
+        options.setId("options");
+        MenuButton tools = new MenuButton(
+                this.gui.t("nj.top.tools"),
+                new FontIcon(Material2AL.BUILD),
+                incoming,
+                options,
+                new SeparatorMenuItem(),
+                importer,
+                about);
         for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, tools)) {
             Fx.whole(whole);
         }
+        // The chips open the network, at the part they tell of.
+        this.opens(this.ed2k, "servers");
+        this.opens(this.kad, "kad");
         HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), this.down, this.up, tools, theme);
         bar.getStyleClass().add("top-bar");
         return bar;
@@ -415,8 +435,14 @@ public final class MainWindow {
         HBox.setHgrow(this.lastLog, Priority.ALWAYS);
         this.lastLog.setMaxWidth(Double.MAX_VALUE);
         Fx.leftToRight(this.lastLog);
-        Label version = Fx.leftToRight(new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version()));
-        HBox strip = new HBox(this.lastLog, this.server, this.counts, version);
+        // The last line of the log opens the whole log; the version is in About and in the title.
+        this.lastLog.setOnMouseClicked(e -> {
+            this.show("servers");
+            this.servers.showLog();
+        });
+        this.lastLog.setCursor(Cursor.HAND);
+        this.lastLog.setTooltip(new Tooltip(this.gui.t("IDS_SV_LOG")));
+        HBox strip = new HBox(this.lastLog, this.server, this.counts);
         strip.getStyleClass().add("status-strip");
         return strip;
     }
@@ -462,6 +488,11 @@ public final class MainWindow {
                 });
         this.connect.setGraphic(new FontIcon(
                 state == EngineModel.Connection.DISCONNECTED ? Material2AL.LINK : Material2MZ.POWER_SETTINGS_NEW));
+        // Connecting is what to do while disconnected: only then does the button take the accent.
+        this.connect.getStyleClass().remove("accent");
+        if (state == EngineModel.Connection.DISCONNECTED) {
+            this.connect.getStyleClass().add("accent");
+        }
         String text = switch (state) {
             case DISCONNECTED -> this.gui.t("IDS_NOTCONNECTED");
             case CONNECTING -> this.gui.t("IDS_CONNECTING") + " " + name;
@@ -561,6 +592,25 @@ public final class MainWindow {
         Label label = new Label("", new FontIcon(Material2AL.FIBER_MANUAL_RECORD));
         label.getStyleClass().add("connection-chip");
         return label;
+    }
+
+    private void opens(Label chip, String screen) {
+        chip.setOnMouseClicked(e -> this.show(screen));
+        chip.setCursor(Cursor.HAND);
+        chip.setTooltip(new Tooltip(this.gui.t("IDS_NETWORK")));
+    }
+
+    // Opens the folder of finished downloads in the system's file manager.
+    private void openIncoming() {
+        Preferences preferences = this.gui.model().preferencesProperty().get();
+        if (preferences == null) {
+            return;
+        }
+        try {
+            Folders.open(preferences.effectiveIncomingDir(this.gui.directories()));
+        } catch (IOException e) {
+            this.problem(e.getMessage());
+        }
     }
 
     private static Label badge() {
