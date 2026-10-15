@@ -18,6 +18,8 @@ package org.njmule.app;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -49,7 +51,7 @@ final class RemoteControl {
                                             search, wait a moment and print the results
             results <id>                    the results of a search
             get <id> <hash>                 download a result of a search
-            limits [<upload KiB/s> <download KiB/s>]  (0: unlimited)
+            limits [<upload> <download>]    in KiB/s, or with K, M or G (1.5M); 0: unlimited
             log                             the latest log lines
             events [<prefix>,...]           print events as they come, until interrupted
             shutdown                        save and exit
@@ -352,19 +354,40 @@ final class RemoteControl {
         this.out.println("Download: " + limit(number(now, "downloadKiBps")));
     }
 
-    private static String limit(long kibps) {
-        return kibps == 0 ? "unlimited" : kibps + " KiB/s";
+    /** A limit as it reads best: unlimited, 50 KiB/s, 1.50 MiB/s or 1.10 GiB/s. */
+    static String limit(long kibps) {
+        if (kibps == 0) {
+            return "unlimited";
+        }
+        if (kibps < 1024) {
+            return kibps + " KiB/s";
+        }
+        return kibps < 1024 * 1024
+                ? String.format(Locale.ROOT, "%.2f MiB/s", kibps / 1024.0)
+                : String.format(Locale.ROOT, "%.2f GiB/s", kibps / (1024.0 * 1024));
     }
 
-    private static long rate(String text) throws Usage {
+    /** A rate in KiB/s, or with a unit: 500K, 1.5M, 1G (binary units). */
+    static long rate(String text) throws Usage {
+        String typed = text.strip();
+        long unit = 1;
+        if (!typed.isEmpty()) {
+            switch (Character.toUpperCase(typed.charAt(typed.length() - 1))) {
+                case 'K' -> unit = 1;
+                case 'M' -> unit = 1024;
+                case 'G' -> unit = 1024 * 1024;
+                default -> unit = 0;
+            }
+        }
+        String number = unit == 0 ? typed : typed.substring(0, typed.length() - 1);
         try {
-            long value = Long.parseLong(text.strip());
-            if (value < 0) {
+            BigDecimal value = new BigDecimal(number).multiply(BigDecimal.valueOf(Math.max(1, unit)));
+            if (value.signum() < 0 || (unit == 0 && value.scale() > 0)) {
                 throw new NumberFormatException();
             }
-            return value;
-        } catch (NumberFormatException e) {
-            throw new Usage("Not a rate in KiB/s: " + text);
+            return value.setScale(0, RoundingMode.HALF_UP).longValueExact();
+        } catch (NumberFormatException | ArithmeticException e) {
+            throw new Usage("Not a rate in KiB/s, or with K, M or G: " + text);
         }
     }
 
