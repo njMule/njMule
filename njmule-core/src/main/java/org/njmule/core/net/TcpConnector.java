@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PushbackInputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.Socket;
@@ -34,6 +35,7 @@ import java.util.function.Supplier;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.protocol.crypt.StreamObfuscation;
 import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Protocol;
@@ -58,6 +60,7 @@ public final class TcpConnector {
 
     // One engine per process: the network sets where outgoing connections go.
     private static volatile Supplier<Proxy> proxy = () -> Proxy.NO_PROXY;
+    private static volatile Supplier<BindInterface.Binding> binding = BindInterface.Binding.Any::new;
 
     private TcpConnector() {}
 
@@ -69,6 +72,26 @@ public final class TcpConnector {
     /** The proxy outgoing connections go through now. */
     static Proxy currentProxy() {
         return proxy.get();
+    }
+
+    /** Outgoing connections leave from the interface {@code supplier} gives at each connection, or not at all. */
+    public static void useBinding(Supplier<BindInterface.Binding> supplier) {
+        binding = Objects.requireNonNull(supplier, "supplier");
+    }
+
+    /** The interface outgoing connections leave from now. */
+    static BindInterface.Binding currentBinding() {
+        return binding.get();
+    }
+
+    /** The local address to bind a socket for the interface chosen now: null for any; none at all while it is gone. */
+    static InetAddress localAddress() throws IOException {
+        return switch (binding.get()) {
+            case BindInterface.Binding.Any _ -> null;
+            case BindInterface.Binding.Bound bound -> bound.address();
+            case BindInterface.Binding.Missing missing ->
+                throw new IOException("the network interface " + missing.choice() + " is not available");
+        };
     }
 
     /** Connects to a server, obfuscated with a Diffie-Hellman key exchange if requested. */
@@ -169,8 +192,12 @@ public final class TcpConnector {
 
     private static Socket connect(InetSocketAddress address, Duration timeout) throws IOException {
         int millis = Math.toIntExact(timeout.toMillis());
+        InetAddress local = localAddress();
         Socket socket = new Socket(proxy.get());
         try {
+            if (local != null) {
+                socket.bind(new InetSocketAddress(local, 0));
+            }
             socket.connect(address, millis);
             socket.setTcpNoDelay(true);
             socket.setSoTimeout(millis);

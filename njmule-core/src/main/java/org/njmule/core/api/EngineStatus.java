@@ -31,6 +31,7 @@ import java.util.Optional;
  * @param publicIp our address as the server sees it, empty when unknown
  * @param tcpPort the port other clients reach us on
  * @param relatedSearch whether the server we are on finds the files related to others
+ * @param missingInterface the network interface the preferences bind to while it is not there, which keeps us offline
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -53,11 +54,61 @@ public record EngineStatus(
         long totalSeconds,
         String publicIp,
         int tcpPort,
-        boolean relatedSearch) {
+        boolean relatedSearch,
+        Optional<String> missingInterface) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(kad, "kad");
         Objects.requireNonNull(publicIp, "publicIp");
+        Objects.requireNonNull(missingInterface, "missingInterface");
+    }
+
+    /** A status with every network interface there is. */
+    public EngineStatus(
+            Optional<ServerInfo> server,
+            long clientId,
+            boolean lowId,
+            boolean obfuscated,
+            Optional<KadInfo> kad,
+            long downloadBytesPerSecond,
+            long uploadBytesPerSecond,
+            long downloaded,
+            long uploaded,
+            int downloads,
+            int uploads,
+            int queued,
+            int sharedFiles,
+            long totalDownloaded,
+            long totalUploaded,
+            long sessions,
+            long sessionSeconds,
+            long totalSeconds,
+            String publicIp,
+            int tcpPort,
+            boolean relatedSearch) {
+        this(
+                server,
+                clientId,
+                lowId,
+                obfuscated,
+                kad,
+                downloadBytesPerSecond,
+                uploadBytesPerSecond,
+                downloaded,
+                uploaded,
+                downloads,
+                uploads,
+                queued,
+                sharedFiles,
+                totalDownloaded,
+                totalUploaded,
+                sessions,
+                sessionSeconds,
+                totalSeconds,
+                publicIp,
+                tcpPort,
+                relatedSearch,
+                Optional.empty());
     }
 }

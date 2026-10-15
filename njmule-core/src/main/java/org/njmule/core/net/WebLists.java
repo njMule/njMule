@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -110,7 +111,7 @@ public final class WebLists {
             throw new IOException("interrupted while fetching " + current.getHost());
         }
         // A client for each fetch, as the proxy of the preferences may have changed since the last one.
-        HttpClient http = client(ProxyRoute.current());
+        HttpClient http = client(ProxyRoute.current(), TcpConnector.localAddress());
         try {
             http.start();
         } catch (Exception e) {
@@ -160,8 +161,11 @@ public final class WebLists {
     }
 
     // Redirects are ours to check; bodies come as sent, packed ones unpacked here within the size limit.
-    private static HttpClient client(ProxySettings proxy) {
+    private static HttpClient client(ProxySettings proxy, InetAddress local) {
         HttpClient http = new HttpClient();
+        if (local != null) {
+            http.setBindAddress(new InetSocketAddress(local, 0));
+        }
         http.setExecutor(new VirtualThreadPool());
         http.setFollowRedirects(false);
         http.setConnectTimeout(CONNECT_TIMEOUT.toMillis());

@@ -91,6 +91,7 @@ public final class PreferencesCodec {
         key("dirs.temp", p -> p.tempDir().map(Path::toString).orElse(""), (b, v) -> b.tempDir(optionalPath(v)));
         key("log.level", Preferences::logLevel, (b, v) -> b.logLevel(v.strip().toUpperCase(Locale.ROOT)));
         boolKey("net.upnp", Preferences::upnp, Preferences.Builder::upnp);
+        key("net.bindInterface", Preferences::bindInterface, Preferences.Builder::bindInterface);
         intKey("backup.copies", Preferences::backupCopies, Preferences.Builder::backupCopies);
         intKey("security.ipFilterLevel", Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel);
         boolKey("security.filterLan", Preferences::filterLanAddresses, Preferences.Builder::filterLanAddresses);

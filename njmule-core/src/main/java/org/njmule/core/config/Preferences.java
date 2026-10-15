@@ -31,6 +31,8 @@ import org.njmule.core.security.IpWhitelist;
  * @param tempDir empty = platform default ({@link AppDirectories#temp()})
  * @param logLevel one of {@link #LOG_LEVELS}
  * @param upnp whether the router is asked to forward our ports
+ * @param bindInterface the network interface (name, display name or IPv4 address) every connection goes through; blank
+ *     = any (see {@link BindInterface})
  * @param downloadCapacityKiBps what the line can download, the top of the speed controls
  * @param uploadCapacityKiBps what the line can upload
  * @param minFreeSpaceMiB downloads wait while the temp disk has less free space; {@code 0} = never
@@ -60,6 +62,7 @@ public record Preferences(
         String logLevel,
         ProxySettings proxy,
         boolean upnp,
+        String bindInterface,
         int downloadCapacityKiBps,
         int uploadCapacityKiBps,
         int minFreeSpaceMiB,
@@ -122,6 +125,9 @@ public record Preferences(
     public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
 
     public static final int MAX_MESSAGE_FILTER = 4096;
+
+    /** Longest name of a network interface to bind to. */
+    public static final int MAX_BIND_INTERFACE = 256;
     /** File comments holding one of these words, apart by {@code |}, are left out. */
     public static final String DEFAULT_COMMENT_FILTER = "http://|https://|ftp://|www.|ftp.";
     /** Incoming connections taken in five seconds at most. */
@@ -167,6 +173,10 @@ public record Preferences(
         videoPlayer = Objects.requireNonNull(videoPlayer, "videoPlayer").strip();
         videoPlayerArgs =
                 Objects.requireNonNull(videoPlayerArgs, "videoPlayerArgs").strip();
+        bindInterface = Objects.requireNonNull(bindInterface, "bindInterface").strip();
+        if (bindInterface.length() > MAX_BIND_INTERFACE || bindInterface.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("bindInterface must be a short name without control characters");
+        }
         Objects.requireNonNull(commentFilter, "commentFilter");
         if (commentFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("commentFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
@@ -221,6 +231,7 @@ public record Preferences(
                 "INFO",
                 ProxySettings.NONE,
                 true,
+                "",
                 DEFAULT_DOWNLOAD_CAPACITY,
                 DEFAULT_UPLOAD_CAPACITY,
                 DEFAULT_MIN_FREE_SPACE,
@@ -316,6 +327,7 @@ public record Preferences(
         private String proxyUser;
         private String proxyPassword;
         private boolean upnp;
+        private String bindInterface;
         private int downloadCapacityKiBps;
         private int uploadCapacityKiBps;
         private int minFreeSpaceMiB;
@@ -369,6 +381,7 @@ public record Preferences(
             this.logLevel = p.logLevel;
             proxy(p.proxy);
             this.upnp = p.upnp;
+            this.bindInterface = p.bindInterface;
             this.downloadCapacityKiBps = p.downloadCapacityKiBps;
             this.uploadCapacityKiBps = p.uploadCapacityKiBps;
             this.minFreeSpaceMiB = p.minFreeSpaceMiB;
@@ -528,6 +541,11 @@ public record Preferences(
 
         public Builder upnp(boolean value) {
             this.upnp = value;
+            return this;
+        }
+
+        public Builder bindInterface(String value) {
+            this.bindInterface = value;
             return this;
         }
 
@@ -724,6 +742,7 @@ public record Preferences(
                     new ProxySettings(
                             this.proxyType, this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword),
                     this.upnp,
+                    this.bindInterface,
                     this.downloadCapacityKiBps,
                     this.uploadCapacityKiBps,
                     this.minFreeSpaceMiB,

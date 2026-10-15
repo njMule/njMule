@@ -19,6 +19,7 @@ package org.njmule.core.server;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.SecureRandom;
@@ -74,12 +75,17 @@ public final class ServerUdp implements AutoCloseable {
      * receiving.
      */
     public static ServerUdp openBeside(int kept, Receiver receiver) throws SocketException {
-        DatagramSocket socket = new DatagramSocket(0);
+        return openBeside(kept, null, receiver);
+    }
+
+    /** As above, on the local address {@code local} only (null: every interface). */
+    public static ServerUdp openBeside(int kept, InetAddress local, Receiver receiver) throws SocketException {
+        DatagramSocket socket = new DatagramSocket(new InetSocketAddress(local, 0));
         if (socket.getLocalPort() == kept) {
             DatagramSocket first = socket;
             try {
                 // Picked while the first still holds the port, so it is another one.
-                socket = new DatagramSocket(0);
+                socket = new DatagramSocket(new InetSocketAddress(local, 0));
             } finally {
                 first.close();
             }

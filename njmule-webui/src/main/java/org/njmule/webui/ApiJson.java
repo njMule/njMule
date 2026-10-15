@@ -174,6 +174,10 @@ final class ApiJson {
         g.writeNumberProperty("totalSeconds", s.totalSeconds());
         g.writeStringProperty("publicIp", s.publicIp());
         g.writeNumberProperty("tcpPort", s.tcpPort());
+        // Present while the network interface the preferences bind to is gone, which keeps njMule offline.
+        if (s.missingInterface().isPresent()) {
+            g.writeStringProperty("missingInterface", s.missingInterface().get());
+        }
         g.writeEndObject();
     }
 

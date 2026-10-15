@@ -79,6 +79,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.SharedFilesVisibility;
@@ -164,6 +165,8 @@ final class Network {
     // Server updates are saved together, at most this long after the first one.
     private static final Duration SAVE_DELAY = Duration.ofSeconds(30);
     private static final Duration TOTALS_SAVE = Duration.ofMinutes(5);
+    // How often the network interface of the preferences is looked for: gone, back, or with another address.
+    private static final Duration BIND_CHECK = Duration.ofSeconds(10);
 
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
@@ -213,6 +216,8 @@ final class Network {
     private final ServerSession session;
     private final SearchManager searches;
     private final ServerPinger pinger;
+    // What the interface of the preferences binds to now; read on connection threads too.
+    private volatile BindInterface.Binding binding = new BindInterface.Binding.Any();
     // The UDP keys of the servers we sent obfuscated datagrams to, by address and port, which they answer from: read
     // on the server socket's thread.
     private final Map<Long, Integer> serverUdpKeys = new ConcurrentHashMap<>();
@@ -488,6 +493,11 @@ final class Network {
     /** Opens the listening socket and the server UDP socket; failures leave us reachable less. */
     void start() {
         ProxyRoute.install(() -> this.preferences.get().proxy());
+        this.binding = BindInterface.resolve(this.preferences.get().bindInterface());
+        TcpConnector.useBinding(() -> this.binding);
+        if (this.binding instanceof BindInterface.Binding.Missing missing) {
+            this.userLog.log(LogLine.Level.WARNING, offline(missing));
+        }
         this.guard = new ConnectionGuard(
                 () -> this.ipFilter,
                 // Refusing the server or a Kad node that checks our port would leave us a LowID or firewalled.
@@ -501,11 +511,7 @@ final class Network {
                 Ticker.systemTicker());
         this.links.countIn(this.guard);
         listen(this.preferences.get().tcpPort());
-        try {
-            this.udp = openServerUdp(this.preferences.get().udpPort());
-        } catch (IOException e) {
-            this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
-        }
+        openServerUdp();
         this.shares = SharedFiles.open(
                 this.loop, this.configDir, this::incomingDirs, () -> List.of(tempDir()), new ShareEvents());
         this.shares.rememberDownloaded(this.preferences.get().rememberDownloadedFiles());
@@ -514,6 +520,7 @@ final class Network {
             startKad();
         }
         restartForwarding();
+        this.loop.scheduleRepeating("network interface", BIND_CHECK, BIND_CHECK, this::checkBinding);
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
                 "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
@@ -530,7 +537,8 @@ final class Network {
     // The "connect at start" preference: any known server, when eD2K is on.
     private void connectAtStart() {
         Preferences prefs = this.preferences.get();
-        if (prefs.ed2kEnabled()
+        if (!offline()
+                && prefs.ed2kEnabled()
                 && prefs.autoConnect()
                 && !this.servers.connectable().isEmpty()) {
             this.session.connect(Optional.empty());
@@ -539,9 +547,84 @@ final class Network {
 
     // Any free port but the one Kad and clients use, which the preferences may give later.
     private ServerUdp openServerUdp(int kadPort) throws SocketException {
-        ServerUdp udp = ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> datagram(from, packet)));
+        ServerUdp udp = ServerUdp.openBeside(
+                kadPort, boundAddress(), (from, packet) -> this.loop.post(() -> datagram(from, packet)));
         udp.decodeWith(this::serverUdpKey);
         return udp;
+    }
+
+    // The socket for server queries, unless the network interface of the preferences is gone.
+    private void openServerUdp() {
+        if (offline()) {
+            return;
+        }
+        try {
+            this.udp = openServerUdp(this.preferences.get().udpPort());
+        } catch (IOException e) {
+            this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
+        }
+    }
+
+    private void closeServerUdp() {
+        if (this.udp != null) {
+            this.udp.close();
+            this.udp = null;
+        }
+    }
+
+    // While the interface the preferences bind to is gone nothing reaches the network, not even another way.
+    private boolean offline() {
+        return this.binding instanceof BindInterface.Binding.Missing;
+    }
+
+    // The local address of the interface of the preferences; null for any.
+    private InetAddress boundAddress() {
+        return this.binding instanceof BindInterface.Binding.Bound bound ? bound.address() : null;
+    }
+
+    private static String offline(BindInterface.Binding.Missing missing) {
+        return "The network interface " + missing.choice() + " is not available: njMule stays offline until it is back";
+    }
+
+    // The interface may go (a VPN that drops), come back, or come back with another address.
+    private void checkBinding() {
+        if (this.closed) {
+            return;
+        }
+        BindInterface.Binding now = BindInterface.resolve(this.preferences.get().bindInterface());
+        if (!now.equals(this.binding)) {
+            rebind(now);
+        }
+    }
+
+    // Every socket bound for the old interface closes; the new one opens them again, or nothing does while it is gone.
+    // Connections already made finish as they are: those through a dropped interface end with it.
+    private void rebind(BindInterface.Binding now) {
+        this.binding = now;
+        this.session.disconnect();
+        stopKad();
+        closeListener();
+        closeServerUdp();
+        if (now instanceof BindInterface.Binding.Missing missing) {
+            this.userLog.log(LogLine.Level.WARNING, offline(missing));
+        } else {
+            Preferences prefs = this.preferences.get();
+            listen(prefs.tcpPort());
+            openServerUdp();
+            if (prefs.kadEnabled() && !this.kadStoppedByHand) {
+                startKad();
+            }
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    now instanceof BindInterface.Binding.Bound bound
+                            ? "Connections go through " + prefs.bindInterface() + " ("
+                                    + bound.address().getHostAddress() + ")"
+                            : "Connections go through any network interface");
+            if (this.automaticConnections) {
+                connectAtStart();
+            }
+        }
+        restartForwarding();
     }
 
     // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
@@ -697,7 +780,10 @@ final class Network {
                         .orElse(""),
                 listenPort(),
                 id.map(i -> (i.serverFlags() & ServerMessages.TCP_RELATED_SEARCH) != 0)
-                        .orElse(false));
+                        .orElse(false),
+                this.binding instanceof BindInterface.Binding.Missing missing
+                        ? Optional.of(missing.choice())
+                        : Optional.empty());
     }
 
     private long sessionSeconds() {
@@ -1252,8 +1338,13 @@ final class Network {
 
     // Other clients reach us on this port; a port that cannot be had leaves us unreachable, with a LowID.
     private void listen(int port) {
+        if (offline()) {
+            this.listener = null;
+            return;
+        }
         try {
-            this.listener = TcpListener.open(new InetSocketAddress(port), this.guard, this.greetings::accepted);
+            this.listener =
+                    TcpListener.open(new InetSocketAddress(boundAddress(), port), this.guard, this.greetings::accepted);
         } catch (IOException e) {
             this.listener = null;
             this.userLog.log(
@@ -1276,6 +1367,12 @@ final class Network {
         }
         boolean tcp = was.tcpPort() != now.tcpPort();
         boolean udp = was.udpPort() != now.udpPort();
+        if (!was.bindInterface().equals(now.bindInterface())) {
+            // Everything opens again on the new interface, with the new ports.
+            rebind(BindInterface.resolve(now.bindInterface()));
+            tcp = false;
+            udp = false;
+        }
         if (tcp) {
             closeListener();
             listen(now.tcpPort());
@@ -1628,12 +1725,22 @@ final class Network {
     }
 
     private void startKad() {
+        if (offline()) {
+            this.userLog.log(LogLine.Level.WARNING, "Kad waits for the network interface to come back");
+            return;
+        }
         Preferences prefs = this.preferences.get();
         freeForKad(prefs.udpPort());
         try {
             KadIdentity identity = KadIdentity.loadOrCreate(this.configDir, this.random);
             this.kadSocket = KadSocket.open(
-                    prefs.udpPort(), this.loop, this.userHash, identity, ip -> this.ipFilter.blocks(ip), this.random);
+                    boundAddress(),
+                    prefs.udpPort(),
+                    this.loop,
+                    this.userHash,
+                    identity,
+                    ip -> this.ipFilter.blocks(ip),
+                    this.random);
             this.kad = new KadNode(
                     identity,
                     this.kadSocket,

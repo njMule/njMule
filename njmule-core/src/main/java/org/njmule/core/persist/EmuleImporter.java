@@ -43,6 +43,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
@@ -336,6 +337,12 @@ public final class EmuleImporter {
         }
         ini.getLong(SECTION, "MaxConnections").ifPresent(v -> b.maxConnections(Math.clamp(v, 1, 10_000)));
         ini.getLong(SECTION, "MaxSourcesPerFile").ifPresent(v -> b.maxSourcesPerFile(Math.clamp(v, 1, 10_000)));
+        // The address eMule's sockets are bound to; 0.0.0.0 is eMule's own "any".
+        ini.get(SECTION, "BindAddr")
+                .map(String::strip)
+                .filter(BindInterface::isAddress)
+                .filter(a -> !a.equals("0.0.0.0"))
+                .ifPresent(b::bindInterface);
         ini.getBoolean(SECTION, "Reconnect").ifPresent(b::reconnect);
         ini.getBoolean(SECTION, "Autoconnect").ifPresent(b::autoConnect);
         ini.getLong(SECTION, "DeadServerRetry")

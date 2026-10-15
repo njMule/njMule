@@ -19,6 +19,7 @@ package org.njmule.core.kad;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.SecureRandom;
@@ -89,8 +90,21 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     public static KadSocket open(
             int port, EngineLoop loop, Hash16 userHash, KadIdentity identity, IntPredicate blocked, SecureRandom random)
             throws SocketException {
+        return open(null, port, loop, userHash, identity, blocked, random);
+    }
+
+    /** As above, on the local address {@code local} only (null: every interface). */
+    public static KadSocket open(
+            InetAddress local,
+            int port,
+            EngineLoop loop,
+            Hash16 userHash,
+            KadIdentity identity,
+            IntPredicate blocked,
+            SecureRandom random)
+            throws SocketException {
         KadSocket socket = new KadSocket(
-                new DatagramSocket(port),
+                new DatagramSocket(new InetSocketAddress(local, port)),
                 Objects.requireNonNull(loop, "loop"),
                 Objects.requireNonNull(userHash, "userHash"),
                 Objects.requireNonNull(identity, "identity"),
