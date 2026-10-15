@@ -901,7 +901,10 @@ public final class DownloadManager implements AutoCloseable {
         return this.queue.restore(hash).thenApply(Optional::isPresent);
     }
 
-    /** Queued sources are asked again over {@code udp} shortly before they are due over TCP. */
+    /**
+     * Queued sources are asked again over {@code udp} shortly before they are due over TCP; those firewalled on Kad
+     * through their buddy.
+     */
     public void reaskOverUdp(ClientUdp udp) {
         this.udp = Objects.requireNonNull(udp, "udp");
     }
@@ -985,34 +988,55 @@ public final class DownloadManager implements AutoCloseable {
                     || (client.exchangesSources && sourcesDue(entry, source, now))) {
                 continue;
             }
-            Optional<Hash16> key =
-                    obfuscation != ObfuscationMode.DISABLED && (client.cryptOptions & CRYPT_SUPPORTED) != 0
-                            ? client.userHash
-                            : Optional.empty();
-            if (obfuscation == ObfuscationMode.REQUIRED && key.isEmpty()) {
-                continue;
-            }
             long size = entry.download.file().size();
             ClientReasks.Ping ping = new ClientReasks.Ping(
                     entry.download.hash(),
                     ClientMessages.PartStatus.of(size, entry.download.verifiedParts()),
                     completeSources(entry, size));
-            this.udp.send(
-                    new InetSocketAddress(client.address.getAddress(), client.udpPort),
-                    ping.encode(client.udpVersion),
-                    key);
+            Optional<KadCallback> buddy = buddyOf(client);
+            if (buddy.isPresent()) {
+                // Plain, as the buddy's obfuscation is unknown; the source answers from its own port.
+                KadCallback route = buddy.get();
+                if (obfuscation == ObfuscationMode.REQUIRED || this.blocked.test(route.buddyIp())) {
+                    continue;
+                }
+                this.udp.send(
+                        new InetSocketAddress(Ipv4.format(route.buddyIp()), route.buddyPort()),
+                        ping.encodeThroughBuddy(route.buddyId().orElseThrow(), client.udpVersion),
+                        Optional.empty());
+            } else {
+                Optional<Hash16> key =
+                        obfuscation != ObfuscationMode.DISABLED && (client.cryptOptions & CRYPT_SUPPORTED) != 0
+                                ? client.userHash
+                                : Optional.empty();
+                if (obfuscation == ObfuscationMode.REQUIRED && key.isEmpty()) {
+                    continue;
+                }
+                this.udp.send(
+                        new InetSocketAddress(client.address.getAddress(), client.udpPort),
+                        ping.encode(client.udpVersion),
+                        key);
+            }
             client.pinged = source;
             client.pings++;
         }
     }
 
-    // Re-asks over UDP need its port and a version that takes them, and go to HighIDs only.
+    // Re-asks over UDP need its port and a version that takes them, and go to HighIDs, or through its buddy to a source
+    // firewalled on Kad.
     private static boolean mayPing(Client client) {
         return client.udpPort != 0
                 && client.udpVersion >= 3
                 && client.lowId == 0
-                && client.kad == null
+                && (client.kad == null || buddyOf(client).isPresent())
                 && (client.pings <= PINGS_BEFORE_JUDGING || client.unansweredPings * 10 <= client.pings * 3);
+    }
+
+    // The buddy a source firewalled on Kad is reached through; none for any other source.
+    private static Optional<KadCallback> buddyOf(Client client) {
+        return client.kad == null
+                ? Optional.empty()
+                : client.kad.callback().filter(r -> r.viaBuddy() && r.buddyIp() != 0 && r.buddyPort() != 0);
     }
 
     private static int completeSources(Entry entry, long size) {

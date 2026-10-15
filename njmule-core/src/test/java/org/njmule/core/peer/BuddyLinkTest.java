@@ -54,6 +54,8 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.kad.KadNode;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.TcpListener;
+import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.packet.FrameLimit;
@@ -74,6 +76,8 @@ class BuddyLinkTest {
     private static final Hash16 BUDDY = Hash16.parseHex("bb".repeat(16));
     private static final Hash16 FIREWALLED = Hash16.parseHex("cc".repeat(16));
     private static final int LOOPBACK = Ipv4.of(127, 0, 0, 1);
+    private static final Packet PING =
+            new ClientReasks.Ping(Hash16.parseHex("dd".repeat(16)), ClientMessages.PartStatus.COMPLETE, 3).encode(4);
     private static final Duration WAIT = Duration.ofSeconds(20);
     private static final Set<Integer> IDENTIFICATION = Set.of(
             Opcodes.Extended.SECIDENTSTATE.code(),
@@ -93,6 +97,7 @@ class BuddyLinkTest {
     };
     private final List<AutoCloseable> resources = new ArrayList<>();
     private final List<LowIdMessages.Callback> callbacks = new CopyOnWriteArrayList<>();
+    private final List<ClientReasks.Relayed> reasks = new CopyOnWriteArrayList<>();
     private final UInt128 buddyId = UInt128.parseHex("00112233445566778899AABBCCDDEEFF");
     private BuddyLink buddies;
     private int listenPort;
@@ -112,7 +117,14 @@ class BuddyLinkTest {
         Hello hello = Hello.of(OURS, 1, 4662, "test", 4672, 4672, 0, 0, 0, 0);
         PeerLinks links = new PeerLinks(this.loop, identities, link -> Optional.empty());
         this.buddies = new BuddyLink(
-                this.loop, links, () -> hello, options -> false, this.callbacks::add, random, this.ticker);
+                this.loop,
+                links,
+                () -> hello,
+                options -> false,
+                this.callbacks::add,
+                this.reasks::add,
+                random,
+                this.ticker);
         PeerGreetings greetings = new PeerGreetings(OURS, () -> hello, () -> true, ip -> false, random);
         greetings.routeTo((connection, from) -> {
             try {
@@ -230,6 +242,49 @@ class BuddyLinkTest {
     }
 
     @Test
+    void shouldRelayToTheNodeWeServeTheReasksForItsId() throws Exception {
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
+
+        whenAReaskThroughUsArrivesFrom(Ipv4.of(5, 6, 7, 8), 4672, this.buddyId);
+
+        thenTheRelayWent(true);
+        thenTheFirewalledNodeGetsTheReaskOf(Ipv4.of(5, 6, 7, 8), 4672);
+    }
+
+    @Test
+    void shouldNotRelayAReaskForAnotherId() throws Exception {
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
+
+        whenAReaskThroughUsArrivesFrom(Ipv4.of(5, 6, 7, 8), 4672, UInt128.random(new SecureRandom()));
+
+        thenTheRelayWent(false);
+    }
+
+    @Test
+    void shouldRelayTheReasksOfAClientOnceInThirtySeconds() throws Exception {
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
+        givenAReaskThroughUsRelayedFrom(Ipv4.of(5, 6, 7, 8), 4672);
+        givenSecondsPassed(29);
+
+        whenAReaskThroughUsArrivesFrom(Ipv4.of(5, 6, 7, 8), 4672, this.buddyId);
+
+        thenTheRelayWent(false);
+    }
+
+    @Test
+    void shouldLetOurBuddyRelayTheReasksOfClientsInOurQueue() throws Exception {
+        givenABuddyListening();
+        givenItIsOurBuddy();
+
+        whenTheBuddyRelaysAReaskFrom(Ipv4.of(1, 2, 3, 4), 4672);
+
+        thenAReaskArrivesFrom(Ipv4.of(1, 2, 3, 4), 4672);
+    }
+
+    @Test
     void shouldNotTakeAClientWeDidNotAgreeToServe() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
 
@@ -290,6 +345,19 @@ class BuddyLinkTest {
         passMinutes(minutes);
     }
 
+    private void givenAReaskThroughUsRelayedFrom(int ip, int port) throws Exception {
+        whenAReaskThroughUsArrivesFrom(ip, port, this.buddyId);
+        thenTheRelayWent(true);
+    }
+
+    private void givenSecondsPassed(int seconds) throws Exception {
+        this.now.addAndGet(Duration.ofSeconds(seconds).toNanos());
+        onLoop(() -> {
+            this.buddies.tick();
+            return null;
+        });
+    }
+
     private void givenItPinged() throws IOException {
         ping();
     }
@@ -322,6 +390,15 @@ class BuddyLinkTest {
 
     private void whenTheBuddyRelaysACallbackFrom(int ip, int port) throws IOException {
         this.peer.send(new LowIdMessages.Callback(this.buddyId, UInt128.ZERO, ip, port).encode());
+    }
+
+    private void whenAReaskThroughUsArrivesFrom(int ip, int port, UInt128 id) throws Exception {
+        Packet throughUs = new ClientReasks.ThroughBuddy(id.toHash16(), PING).encode();
+        this.relayed = onLoop(() -> this.buddies.relayReask(ip, port, throughUs));
+    }
+
+    private void whenTheBuddyRelaysAReaskFrom(int ip, int port) throws IOException {
+        this.peer.send(new ClientReasks.Relayed(ip, port, PING).encode());
     }
 
     private void whenACallbackIsRelayed(UInt128 id) throws Exception {
@@ -395,6 +472,20 @@ class BuddyLinkTest {
             Thread.sleep(20);
         }
         assertThat(this.callbacks).containsExactly(new LowIdMessages.Callback(this.buddyId, UInt128.ZERO, ip, port));
+    }
+
+    private void thenTheFirewalledNodeGetsTheReaskOf(int ip, int port) throws Exception {
+        Packet packet = this.peer.next();
+        assertThat(packet.opcode()).isEqualTo(Opcodes.Extended.REASKCALLBACKTCP.code());
+        assertThat(ClientReasks.Relayed.decode(packet)).isEqualTo(new ClientReasks.Relayed(ip, port, PING));
+    }
+
+    private void thenAReaskArrivesFrom(int ip, int port) throws Exception {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (this.reasks.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertThat(this.reasks).containsExactly(new ClientReasks.Relayed(ip, port, PING));
     }
 
     private void thenTheRelayWent(boolean went) {

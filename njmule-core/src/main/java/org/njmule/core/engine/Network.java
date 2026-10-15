@@ -396,6 +396,7 @@ final class Network {
                 options ->
                         (options & CRYPT_SUPPORTED) != 0 && preferences.get().obfuscation() != ObfuscationMode.DISABLED,
                 this::relayedCallback,
+                this::relayedReask,
                 random,
                 Ticker.systemTicker());
         this.downloads = DownloadManager.open(
@@ -2068,17 +2069,27 @@ final class Network {
                 || this.downloads.download(file).isPresent();
     }
 
-    // Client packets on the Kad socket: re-asks of clients in our queue and the answers to ours, and direct callbacks.
+    // Client packets on the Kad socket: re-asks of clients in our queue and the answers to ours, re-asks for the node
+    // we serve as its buddy, and direct callbacks.
     private void clientDatagram(int ip, int port, Packet packet) {
         int opcode = packet.opcode();
         if (opcode == Opcodes.ClientUdp.REASKFILEPING.code()) {
             answerReask(ip, port, packet);
+        } else if (opcode == Opcodes.ClientUdp.REASKCALLBACKUDP.code()) {
+            this.buddyLink.relayReask(ip, port, packet);
         } else if (opcode == Opcodes.ClientUdp.REASKACK.code()
                 || opcode == Opcodes.ClientUdp.QUEUEFULL.code()
                 || opcode == Opcodes.ClientUdp.FILENOTFOUND.code()) {
             this.downloads.reaskAnswered(ip, port, packet);
         } else if (opcode == Opcodes.ClientUdp.DIRECTCALLBACKREQ.code()) {
             directCallback(ip, packet);
+        }
+    }
+
+    // Our buddy relays the re-ask of a client: answered straight to the client, as one it sent us.
+    private void relayedReask(ClientReasks.Relayed reask) {
+        if (!this.ipFilter.blocks(reask.requesterIp())) {
+            answerReask(reask.requesterIp(), reask.requesterPort(), reask.ping());
         }
     }
 

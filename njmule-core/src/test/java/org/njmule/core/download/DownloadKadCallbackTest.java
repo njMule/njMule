@@ -29,9 +29,11 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -56,9 +58,12 @@ import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.protocol.ed2k.ClientMessages;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
 import org.njmule.core.util.Ipv4;
@@ -72,6 +77,8 @@ class DownloadKadCallbackTest {
     private static final Hash16 PEER = Hash16.parseHex("5f".repeat(16));
     private static final Hash16 FILE = Hash16.parseHex("61".repeat(16));
     private static final int BUDDY_IP = Ipv4.of(198, 51, 100, 20);
+    private static final Hash16 BUDDY_ID = Hash16.parseHex("77".repeat(16));
+    private static final int SOURCE_UDP_PORT = 4673;
     private static final Duration WAIT = ScriptedSource.WAIT;
 
     /** A callback request Kad was asked to send. */
@@ -92,6 +99,7 @@ class DownloadKadCallbackTest {
     private final List<Asked> asked = new CopyOnWriteArrayList<>();
     private final List<String> routed = new CopyOnWriteArrayList<>();
     private final AtomicReference<Consumer<List<DownloadManager.KadSource>>> search = new AtomicReference<>();
+    private final Udp udp = new Udp();
     private DownloadManager manager;
     private ScriptedSource source;
     private ScriptedSource.Link link;
@@ -99,7 +107,8 @@ class DownloadKadCallbackTest {
 
     @BeforeEach
     void start() throws Exception {
-        this.source = new ScriptedSource(PEER, 0, 0);
+        this.source =
+                new ScriptedSource(PEER, ClientReasks.UDP_VERSION << Hello.MISC1_UDP_VERSION_SHIFT, 0, SOURCE_UDP_PORT);
         this.resources.add(this.source);
         SecureRandom random = new SecureRandom();
         Identities identities = new Identities(
@@ -237,7 +246,91 @@ class DownloadKadCallbackTest {
         thenTheSourceIsNotPassedOn();
     }
 
+    @Test
+    void shouldAskASourceBehindABuddyAgainOverUdpThroughTheBuddy() throws Exception {
+        givenTheManagerAskingAgainOverUdp();
+        givenADownloadThatKadSearches();
+        givenKadFound(behindABuddy(PEER));
+        givenTheSourceCalledBackAndQueuedUsAt(5);
+
+        whenTimePasses(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+
+        thenTheBuddyIsAskedAgainOverUdpForTheFile();
+    }
+
+    @Test
+    void shouldNotAskASourceToCallBackWhenItAnsweredThroughItsBuddy() throws Exception {
+        givenTheManagerAskingAgainOverUdp();
+        givenADownloadThatKadSearches();
+        givenKadFound(behindABuddy(PEER));
+        givenTheSourceCalledBackAndQueuedUsAt(5);
+        givenTheBuddyWasAskedAgainOverUdp();
+        givenTheSourceAnsweredOverUdpWithTheRank(2);
+
+        whenTimePasses(Duration.ofMinutes(1));
+
+        thenNoCallbackIsAskedAgainWithin(Duration.ofSeconds(3));
+    }
+
     // Steps.
+
+    private void givenTheManagerAskingAgainOverUdp() throws Exception {
+        onLoop(() -> {
+            this.manager.reaskOverUdp(this.udp);
+            return null;
+        });
+    }
+
+    private void givenTheSourceCalledBackAndQueuedUsAt(int rank) throws Exception {
+        whenTheSourceCallsBackAs(PEER);
+        thenTheCallIs("adopted");
+        this.link.until(Opcodes.Client.SETREQFILEID);
+        this.link.send(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+        this.link.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.QUEUERANKING.code(),
+                new PacketWriter().u16(rank).bytes(new byte[10])));
+        await("queued", () -> this.manager.sources().stream().anyMatch(s -> s.queueRank() == rank));
+        this.link.close();
+        await(
+                "the session ends",
+                () -> this.manager.sources().stream()
+                        .allMatch(s ->
+                                s.state() != SourceInfo.State.CONNECTING && s.state() != SourceInfo.State.DOWNLOADING));
+    }
+
+    private void givenTheBuddyWasAskedAgainOverUdp() throws Exception {
+        whenTimePasses(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+        thenTheBuddyIsAskedAgainOverUdpForTheFile();
+    }
+
+    private void givenTheSourceAnsweredOverUdpWithTheRank(int rank) throws Exception {
+        onLoop(() -> {
+            this.manager.reaskAnswered(
+                    Ipv4.parse("127.0.0.1"),
+                    SOURCE_UDP_PORT,
+                    new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), rank)
+                            .encode(ClientReasks.UDP_VERSION));
+            return null;
+        });
+        await("the rank", () -> this.manager.sources().stream().anyMatch(s -> s.queueRank() == rank));
+    }
+
+    private void whenTimePasses(Duration duration) {
+        this.now.addAndGet(duration.toNanos());
+    }
+
+    private void thenTheBuddyIsAskedAgainOverUdpForTheFile() throws Exception {
+        Udp.Sent sent = this.udp.sent.poll(WAIT.toSeconds(), TimeUnit.SECONDS);
+        assertThat(sent).as("a re-ask through the buddy").isNotNull();
+        assertThat(sent.to()).isEqualTo(new InetSocketAddress(Ipv4.format(BUDDY_IP), 4672));
+        assertThat(sent.userHash()).as("a plain datagram").isEmpty();
+        assertThat(sent.packet().opcode()).isEqualTo(Opcodes.ClientUdp.REASKCALLBACKUDP.code());
+        ClientReasks.ThroughBuddy reask = ClientReasks.ThroughBuddy.decode(sent.packet());
+        assertThat(reask.buddyId()).isEqualTo(BUDDY_ID);
+        assertThat(ClientReasks.Ping.file(reask.ping())).isEqualTo(FILE);
+    }
 
     private void givenADownloadThatKadSearches() throws Exception {
         onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, FILE)));
@@ -293,6 +386,12 @@ class DownloadKadCallbackTest {
         assertThat(last.source().callback().orElseThrow().viaBuddy()).isEqualTo(viaBuddy);
     }
 
+    // A callback queued on one tick goes out on the next: three ticks see one that is due.
+    private void thenNoCallbackIsAskedAgainWithin(Duration wait) throws Exception {
+        Thread.sleep(wait.toMillis());
+        assertThat(this.asked).hasSize(1);
+    }
+
     private void thenNoMoreCallbacksAreAsked() throws Exception {
         Thread.sleep(1500);
         assertThat(this.asked).hasSize(1);
@@ -319,8 +418,7 @@ class DownloadKadCallbackTest {
                 new InetSocketAddress(Ipv4.format(Ipv4.of(203, 0, 113, 5)), this.source.port()),
                 Optional.of(userHash),
                 0,
-                Optional.of(new DownloadManager.KadCallback(
-                        BUDDY_IP, 4672, Optional.of(Hash16.parseHex("77".repeat(16))), 4672)));
+                Optional.of(new DownloadManager.KadCallback(BUDDY_IP, 4672, Optional.of(BUDDY_ID), 4672)));
     }
 
     private DownloadManager.KadSource takingDirectCallbacks(Hash16 userHash) {
@@ -344,6 +442,23 @@ class DownloadKadCallbackTest {
 
     private <T> T onLoop(Callable<T> task) throws Exception {
         return this.loop.submit(task).get(30, TimeUnit.SECONDS);
+    }
+
+    // The client UDP port, always open: what goes out is kept.
+    private static final class Udp implements DownloadManager.ClientUdp {
+        record Sent(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {}
+
+        private final BlockingQueue<Sent> sent = new LinkedBlockingQueue<>();
+
+        @Override
+        public boolean available() {
+            return true;
+        }
+
+        @Override
+        public void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {
+            this.sent.add(new Sent(to, packet, userHash));
+        }
     }
 
     // No server: the sources come from Kad only.

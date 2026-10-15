@@ -25,6 +25,7 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.util.Ipv4;
 
 /**
  * Re-asks over UDP between clients: a client waiting in an uploader's queue asks again for its file without connecting,
@@ -59,6 +60,13 @@ public final class ClientReasks {
             return Packet.of(Protocol.EMULE, Opcodes.ClientUdp.REASKFILEPING.code(), out);
         }
 
+        /**
+         * The ping for a firewalled client of {@code udpVersion}, sent to its buddy, which knows it by {@code buddyId}.
+         */
+        public Packet encodeThroughBuddy(Hash16 buddyId, int udpVersion) {
+            return new ThroughBuddy(buddyId, encode(udpVersion)).encode();
+        }
+
         /** Reads a ping from a client of {@code udpVersion}; what it does not send is a complete file and no count. */
         public static Ping decode(Packet packet, int udpVersion) throws DecodeException {
             PacketReader in = packet.reader();
@@ -73,6 +81,58 @@ public final class ClientReasks {
         public static Hash16 file(Packet packet) throws DecodeException {
             return packet.reader().hash16();
         }
+    }
+
+    /**
+     * OP_REASKCALLBACKUDP: a ping for a firewalled client, sent to the buddy that knows it by {@code buddyId}
+     * (big-endian bytes of the Kad id).
+     */
+    public record ThroughBuddy(Hash16 buddyId, Packet ping) {
+        public ThroughBuddy {
+            Objects.requireNonNull(buddyId, "buddyId");
+            Objects.requireNonNull(ping, "ping");
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter().hash16(this.buddyId).bytes(this.ping.payload());
+            return Packet.of(Protocol.EMULE, Opcodes.ClientUdp.REASKCALLBACKUDP.code(), out);
+        }
+
+        public static ThroughBuddy decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new ThroughBuddy(in.hash16(), restAsPing(in));
+        }
+    }
+
+    /**
+     * OP_REASKCALLBACKTCP: a buddy passes on to the firewalled client it serves the ping of the client at
+     * {@code requesterIp} ({@code Ipv4} form) and UDP {@code requesterPort}, where the answer goes.
+     */
+    public record Relayed(int requesterIp, int requesterPort, Packet ping) {
+        public Relayed {
+            Objects.requireNonNull(ping, "ping");
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter()
+                    .u32(Ipv4.toEd2k(this.requesterIp))
+                    .u16(this.requesterPort)
+                    .bytes(this.ping.payload());
+            return Packet.of(Protocol.EMULE, Opcodes.Extended.REASKCALLBACKTCP.code(), out);
+        }
+
+        public static Relayed decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            return new Relayed(Ipv4.fromEd2k(in.u32()), in.u16(), restAsPing(in));
+        }
+    }
+
+    // The rest of a message is a ping, which names its file at least.
+    private static Packet restAsPing(PacketReader in) throws DecodeException {
+        if (in.remaining() < Hash16.LENGTH) {
+            throw new DecodeException("a re-ask without its file");
+        }
+        return Packet.of(Protocol.EMULE, Opcodes.ClientUdp.REASKFILEPING.code(), in.rest());
     }
 
     /** OP_REASKACK: the asker's place in the queue; from UDP version 4 with the uploader's parts of the file. */

@@ -359,7 +359,10 @@ All notable changes to this project are documented here. The format follows
   asked again, it is asked over UDP, and an answer (our place, its parts, a full queue, or that it no
   longer has the file) spares the connection until the next time; without one it is asked over TCP
   as before. Clients in our queue are answered the same way, found by address and UDP port, and
-  the hello announces the UDP version while Kad runs.
+  the hello announces the UDP version while Kad runs. A source firewalled on Kad is asked through
+  its buddy, which passes the re-ask on over its TCP link (once in 30 seconds per client at most)
+  and the source answers straight over UDP; firewalled ourselves, we answer the re-asks our buddy
+  passes on.
 - Pasted eD2K links are shown before they are downloaded when there are several or one is known
   already (downloading, shared, downloaded or cancelled before): each can be left out, and all go
   in the category chosen (or that of their names), paused if asked; the engine API adds a download

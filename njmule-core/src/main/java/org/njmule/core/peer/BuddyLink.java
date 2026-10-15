@@ -26,7 +26,9 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,6 +43,7 @@ import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.PeerChannel;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
+import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
 import org.njmule.core.protocol.io.DecodeException;
@@ -55,7 +58,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The TCP link between Kad buddies. Firewalled, we connect to the nodes that offered to be our buddy, one at a time,
  * keep the first link that stands and ping it now and then. Open, we serve one firewalled node that asked us: we take
- * its connection and relay to it the callback requests of other clients. Engine thread only.
+ * its connection and relay to it the callback requests and the UDP re-asks of other clients. Engine thread only.
  */
 public final class BuddyLink implements KadNode.Buddies {
 
@@ -72,6 +75,12 @@ public final class BuddyLink implements KadNode.Buddies {
 
     /** A firewalled node that asked us waits this long for its connection to be taken. */
     static final Duration EXPECTED_FOR = Duration.ofMinutes(10);
+
+    /** The re-asks of one client, by address and UDP port, are relayed to the node we serve this rarely at most. */
+    static final Duration RELAY_GAP = Duration.ofSeconds(30);
+
+    // Clients whose re-asks were relayed within the gap, kept at once: beyond, new ones wait.
+    private static final int MAX_RELAYED = 512;
 
     // Offers and requests kept at once: the first link to stand wins, the rest are dropped.
     private static final int MAX_OFFERS = 10;
@@ -129,10 +138,13 @@ public final class BuddyLink implements KadNode.Buddies {
     private final Supplier<Hello> ourHello;
     private final IntPredicate obfuscate;
     private final Consumer<LowIdMessages.Callback> callbacks;
+    private final Consumer<ClientReasks.Relayed> reasks;
     private final SecureRandom random;
     private final Ticker ticker;
     private final Deque<Offer> offers = new ArrayDeque<>();
     private final List<Expected> expected = new ArrayList<>();
+    // When the re-asks of each client (address and UDP port) were last relayed to the node we serve.
+    private final Map<Long, Long> relayed = new HashMap<>();
     // Our buddy's address while we have one, read by connection threads too for our hello.
     private final AtomicReference<Address> buddy = new AtomicReference<>(NO_BUDDY);
     private State state = State.NONE;
@@ -148,6 +160,7 @@ public final class BuddyLink implements KadNode.Buddies {
     /**
      * @param obfuscate whether a connection to a buddy announcing these connect options is obfuscated
      * @param callbacks the callback requests our buddy relays to us
+     * @param reasks the UDP re-asks of the clients in our queue, which our buddy relays to us
      */
     public BuddyLink(
             EngineLoop loop,
@@ -155,6 +168,7 @@ public final class BuddyLink implements KadNode.Buddies {
             Supplier<Hello> ourHello,
             IntPredicate obfuscate,
             Consumer<LowIdMessages.Callback> callbacks,
+            Consumer<ClientReasks.Relayed> reasks,
             SecureRandom random,
             Ticker ticker) {
         this.loop = Objects.requireNonNull(loop, "loop");
@@ -162,6 +176,7 @@ public final class BuddyLink implements KadNode.Buddies {
         this.ourHello = Objects.requireNonNull(ourHello, "ourHello");
         this.obfuscate = Objects.requireNonNull(obfuscate, "obfuscate");
         this.callbacks = Objects.requireNonNull(callbacks, "callbacks");
+        this.reasks = Objects.requireNonNull(reasks, "reasks");
         this.random = Objects.requireNonNull(random, "random");
         this.ticker = Objects.requireNonNull(ticker, "ticker");
     }
@@ -251,6 +266,33 @@ public final class BuddyLink implements KadNode.Buddies {
         return this.channel.send(new LowIdMessages.Callback(buddyId, file, requesterIp, requesterPort).encode());
     }
 
+    /**
+     * Relays to the node we serve the re-ask a client at {@code ip} ({@code Ipv4} form) and UDP {@code port} sent us,
+     * when it names that node; {@code false} otherwise.
+     */
+    public boolean relayReask(int ip, int port, Packet throughBuddy) {
+        if (this.state != State.SERVING) {
+            return false;
+        }
+        ClientReasks.ThroughBuddy reask;
+        try {
+            reask = ClientReasks.ThroughBuddy.decode(throughBuddy);
+        } catch (DecodeException e) {
+            logger.debug("Bad re-ask through us from {}: {}", Ipv4.format(ip), e.getMessage());
+            return false;
+        }
+        long now = this.ticker.read();
+        long client = Integer.toUnsignedLong(ip) << 16 | port;
+        Long last = this.relayed.get(client);
+        if (!UInt128.of(reask.buddyId()).equals(this.servedId)
+                || (last != null && now - last < RELAY_GAP.toNanos())
+                || (last == null && this.relayed.size() >= MAX_RELAYED)) {
+            return false;
+        }
+        this.relayed.put(client, now);
+        return this.channel.send(new ClientReasks.Relayed(ip, port, reask.ping()).encode());
+    }
+
     @Override
     public void release() {
         this.offers.clear();
@@ -268,6 +310,7 @@ public final class BuddyLink implements KadNode.Buddies {
     public void tick() {
         long now = this.ticker.read();
         this.expected.removeIf(e -> now - e.since() >= EXPECTED_FOR.toNanos());
+        this.relayed.values().removeIf(at -> now - at >= RELAY_GAP.toNanos());
         if (this.state == State.CONNECTED && now - this.nextPing.get() >= 0) {
             this.nextPing.set(now + PING_EVERY.toNanos());
             this.channel.send(LowIdMessages.buddyPing());
@@ -376,6 +419,7 @@ public final class BuddyLink implements KadNode.Buddies {
         this.state = State.NONE;
         this.buddy.set(NO_BUDDY);
         this.servedId = null;
+        this.relayed.clear();
     }
 
     /** The buddy side of the link. */
@@ -410,8 +454,13 @@ public final class BuddyLink implements KadNode.Buddies {
                         callback(packet);
                     }
                 }
+                case REASKCALLBACKTCP -> {
+                    if (buddies.state == State.CONNECTED) {
+                        reask(packet);
+                    }
+                }
                 default -> {
-                    // Re-asks through the buddy need UDP re-asks, which we do not use.
+                    // Nothing else travels on a buddy link.
                 }
             }
         }
@@ -421,6 +470,14 @@ public final class BuddyLink implements KadNode.Buddies {
                 BuddyLink.this.callbacks.accept(LowIdMessages.Callback.decode(packet));
             } catch (DecodeException e) {
                 logger.debug("Bad callback from our buddy: {}", e.getMessage());
+            }
+        }
+
+        private void reask(Packet packet) {
+            try {
+                BuddyLink.this.reasks.accept(ClientReasks.Relayed.decode(packet));
+            } catch (DecodeException e) {
+                logger.debug("Bad re-ask from our buddy: {}", e.getMessage());
             }
         }
 

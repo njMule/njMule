@@ -23,9 +23,11 @@ import java.util.HexFormat;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.util.Ipv4;
 
 /** The UDP re-asks between clients, byte by byte, as each UDP version carries them. */
 class ClientReasksTest {
@@ -33,10 +35,15 @@ class ClientReasksTest {
     private static final Hash16 FILE = Hash16.parseHex("00112233445566778899aabbccddeeff");
     private static final String FILE_HEX = "00112233445566778899aabbccddeeff";
     private static final ClientMessages.PartStatus FIRST_AND_THIRD = new ClientMessages.PartStatus(3, bits(0, 2));
+    private static final Hash16 BUDDY_ID = Hash16.parseHex("ffeeddccbbaa99887766554433221100");
+    private static final String BUDDY_ID_HEX = "ffeeddccbbaa99887766554433221100";
 
     private Packet packet;
     private ClientReasks.Ping ping;
     private ClientReasks.Ack ack;
+    private ClientReasks.ThroughBuddy throughBuddy;
+    private ClientReasks.Relayed relayed;
+    private Exception exception;
 
     @Test
     void shouldGiveTheFileOurPartsAndTheCompleteSourcesInAPingOfVersion4() {
@@ -77,6 +84,100 @@ class ClientReasksTest {
         thenTheAnswerIs(new ClientReasks.Ack(Optional.empty(), 300));
     }
 
+    @Test
+    void shouldPutTheBuddyIdBeforeAPingSentThroughTheBuddy() {
+        whenThePingIsMadeThroughTheBuddyForVersion(new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2), 3);
+
+        thenThePacketIs(Opcodes.ClientUdp.REASKCALLBACKUDP, BUDDY_ID_HEX + FILE_HEX + "0200");
+    }
+
+    @Test
+    void shouldReadTheBuddyIdAndThePingOfAPingThroughTheBuddy() throws Exception {
+        givenThePingThroughTheBuddyForVersion(new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2), 3);
+
+        whenThePingThroughTheBuddyIsRead();
+
+        thenTheBuddyIdIs(BUDDY_ID);
+        thenTheCarriedPingIs(new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2).encode(3));
+    }
+
+    @Test
+    void shouldRefuseAPingThroughTheBuddyWithoutItsFile() {
+        givenAPingThroughTheBuddyOf(BUDDY_ID_HEX + "0011223344556677");
+
+        whenThePingThroughTheBuddyIsRead();
+
+        thenADecodeExceptionOccurred();
+    }
+
+    @Test
+    void shouldGiveTheRequesterAddressBeforeTheRelayedPing() {
+        whenTheRelayedPingIsMadeFor(Ipv4.of(1, 2, 3, 4), 4672, new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2));
+
+        thenThePacketIs(Opcodes.Extended.REASKCALLBACKTCP, "01020304" + "4012" + FILE_HEX + "0300" + "05" + "0200");
+    }
+
+    @Test
+    void shouldReadBackARelayedPing() throws Exception {
+        givenTheRelayedPingFor(Ipv4.of(1, 2, 3, 4), 4672, new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2));
+
+        whenTheRelayedPingIsRead();
+
+        thenTheRelayedPingIs(new ClientReasks.Relayed(
+                Ipv4.of(1, 2, 3, 4), 4672, new ClientReasks.Ping(FILE, FIRST_AND_THIRD, 2).encode(4)));
+    }
+
+    private void givenThePingThroughTheBuddyForVersion(ClientReasks.Ping sent, int udpVersion) {
+        this.packet = sent.encodeThroughBuddy(BUDDY_ID, udpVersion);
+    }
+
+    private void givenAPingThroughTheBuddyOf(String payload) {
+        this.packet = Packet.of(
+                Protocol.EMULE,
+                Opcodes.ClientUdp.REASKCALLBACKUDP.code(),
+                HexFormat.of().parseHex(payload));
+    }
+
+    private void givenTheRelayedPingFor(int ip, int port, ClientReasks.Ping sent) {
+        this.packet = new ClientReasks.Relayed(ip, port, sent.encode(4)).encode();
+    }
+
+    private void whenThePingIsMadeThroughTheBuddyForVersion(ClientReasks.Ping sent, int udpVersion) {
+        this.packet = sent.encodeThroughBuddy(BUDDY_ID, udpVersion);
+    }
+
+    private void whenThePingThroughTheBuddyIsRead() {
+        try {
+            this.throughBuddy = ClientReasks.ThroughBuddy.decode(this.packet);
+        } catch (DecodeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenTheRelayedPingIsMadeFor(int ip, int port, ClientReasks.Ping sent) {
+        this.packet = new ClientReasks.Relayed(ip, port, sent.encode(4)).encode();
+    }
+
+    private void whenTheRelayedPingIsRead() throws Exception {
+        this.relayed = ClientReasks.Relayed.decode(this.packet);
+    }
+
+    private void thenTheBuddyIdIs(Hash16 expected) {
+        assertThat(this.throughBuddy.buddyId()).isEqualTo(expected);
+    }
+
+    private void thenTheCarriedPingIs(Packet expected) {
+        assertThat(this.throughBuddy.ping()).isEqualTo(expected);
+    }
+
+    private void thenADecodeExceptionOccurred() {
+        assertThat(this.exception).isInstanceOf(DecodeException.class);
+    }
+
+    private void thenTheRelayedPingIs(ClientReasks.Relayed expected) {
+        assertThat(this.relayed).isEqualTo(expected);
+    }
+
     private void givenThePingForVersion(ClientReasks.Ping sent, int udpVersion) {
         this.packet = sent.encode(udpVersion);
     }
@@ -102,8 +203,16 @@ class ClientReasksTest {
     }
 
     private void thenThePacketIs(Opcodes.ClientUdp opcode, String payload) {
+        thenThePacketHas(opcode.code(), payload);
+    }
+
+    private void thenThePacketIs(Opcodes.Extended opcode, String payload) {
+        thenThePacketHas(opcode.code(), payload);
+    }
+
+    private void thenThePacketHas(int opcode, String payload) {
         assertThat(this.packet.protocol()).isEqualTo(Protocol.EMULE);
-        assertThat(this.packet.opcode()).isEqualTo(opcode.code());
+        assertThat(this.packet.opcode()).isEqualTo(opcode);
         assertThat(HexFormat.of().formatHex(this.packet.payload())).isEqualTo(payload);
     }
 
