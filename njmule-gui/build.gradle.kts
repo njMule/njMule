@@ -12,11 +12,26 @@ plugins {
 
 description = "njMule GUI"
 
+val javafxPlatformsDeclared = configurations.dependencyScope("javafxPlatformsDeclared")
+
+configurations.resolvable("javafxPlatforms") {
+    extendsFrom(javafxPlatformsDeclared.get())
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+}
+
 dependencies {
     components {
         val classifier = JavaFxPlatformRule.hostClassifier()
         listOf("javafx-base", "javafx-graphics", "javafx-controls").forEach {
             withModule<JavaFxPlatformRule>("org.openjfx:$it") { params(classifier) }
+        }
+    }
+
+    // The OpenJFX jars of every platform, resolved only so that their checksums are written to
+    // gradle/verification-metadata.xml: a build resolves the jars of its own platform alone.
+    for (platform in listOf("win", "linux", "linux-aarch64", "mac", "mac-aarch64")) {
+        for (module in listOf("javafx-base", "javafx-graphics", "javafx-controls")) {
+            javafxPlatformsDeclared("org.openjfx:$module:${libs.versions.javafx.get()}:$platform")
         }
     }
 

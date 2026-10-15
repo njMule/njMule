@@ -8,6 +8,8 @@ version = 1
 [[annotations]]
 path = [
     "NOTICE",
+    "*.lockfile",
+    "**/*.lockfile",
     "**/META-INF/services/**",
     "**/META-INF/native-image/**",
     "**/src/test/resources/**",

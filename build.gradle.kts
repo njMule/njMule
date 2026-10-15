@@ -4,6 +4,12 @@
 // njMule - Next generation Java Mule: a modern eD2K and Kad client, wire-compatible with eMule.
 // The modules share their set-up through build-logic (njmule.java-conventions).
 
+buildscript {
+    configurations.classpath {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
+
 // Every plugin of the modules is loaded here once, so that the modules share its classes (and build services).
 plugins {
     id("njmule.java-conventions") apply false
@@ -13,6 +19,12 @@ plugins {
     alias(libs.plugins.cyclonedx)
     alias(libs.plugins.dependency.check)
     alias(libs.plugins.sonarqube)
+}
+
+// Every resolved version is locked in gradle.lockfile and every artifact checked against
+// gradle/verification-metadata.xml; both are rewritten after a version change (CLAUDE.md).
+dependencyLocking {
+    lockAllConfigurations()
 }
 
 // JSVG for tools/IconGen.java (branding/README.md): ./gradlew iconTools → build/tools/

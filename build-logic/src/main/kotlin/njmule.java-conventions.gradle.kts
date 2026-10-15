@@ -32,6 +32,12 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(versionOf("java"))
 }
 
+// Every resolved version is locked in gradle.lockfile and every artifact checked against
+// gradle/verification-metadata.xml; both are rewritten after a version change (CLAUDE.md).
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 dependencies {
     errorprone(library("errorprone-core"))
     testImplementation(platform(library("junit-bom")))
