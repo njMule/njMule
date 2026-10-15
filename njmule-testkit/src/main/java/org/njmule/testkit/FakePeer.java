@@ -20,6 +20,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.InetAddress;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.njmule.core.api.Ed2kLink;
@@ -108,6 +110,9 @@ public final class FakePeer implements AutoCloseable {
     private final Optional<AichTree> aich;
     private final AtomicLong sent = new AtomicLong();
     private final Set<Socket> clients = ConcurrentHashMap.newKeySet();
+    // A party for each session, which holds the file open, and one for the closing, which waits for them.
+    private final Phaser sessions = new Phaser(1);
+    private Thread accepting;
     private volatile boolean stalled;
     private final AtomicBoolean truncateNext = new AtomicBoolean();
 
@@ -124,7 +129,7 @@ public final class FakePeer implements AutoCloseable {
         Ed2kLink.FileLink link = FileHashing.link(file, bytes -> {});
         Optional<AichTree> aich = FileHasher.hash(file).aich();
         FakePeer peer = new FakePeer(file, link, aich, config, new ServerSocket(0, 16, address));
-        Thread.ofVirtual().name("fake-peer-accept").start(peer::acceptLoop);
+        peer.accepting = Thread.ofVirtual().name("fake-peer-accept").start(peer::acceptLoop);
         return peer;
     }
 
@@ -196,9 +201,19 @@ public final class FakePeer implements AutoCloseable {
         return this.sent.get();
     }
 
+    /** Stops sharing and drops the downloaders; returns once their sessions have closed the file. */
     @Override
     public void close() throws IOException {
         this.tcp.close();
+        // A socket closed while a virtual thread waits in accept may still accept until that thread has left it.
+        try {
+            this.accepting.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while the peer stopped sharing");
+        }
+        dropDownloaders();
+        this.sessions.arriveAndAwaitAdvance();
     }
 
     private void acceptLoop() {
@@ -232,6 +247,7 @@ public final class FakePeer implements AutoCloseable {
 
     private void serve(Socket client, Answer answer) {
         boolean calledBack = answer == Answer.SLOT;
+        this.sessions.register();
         this.clients.add(client);
         try (client;
                 RandomAccessFile data = new RandomAccessFile(this.file.toFile(), "r")) {
@@ -240,13 +256,15 @@ public final class FakePeer implements AutoCloseable {
             if (answer != Answer.NONE) {
                 session.send(session.hello().encode(false));
             }
-            while (!client.isClosed()) {
+            // A session starting while the peer closes, too late to be dropped, ends at once.
+            while (!client.isClosed() && !this.tcp.isClosed()) {
                 session.handle(TcpFraming.read(in, FrameLimit.fixed(1 << 20)));
             }
         } catch (IOException e) {
             logger.debug("Fake peer client gone: {}", e.getMessage());
         } finally {
             this.clients.remove(client);
+            this.sessions.arriveAndDeregister();
         }
     }
 
