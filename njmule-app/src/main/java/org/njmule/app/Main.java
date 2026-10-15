@@ -35,6 +35,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.DownloadInfo;
@@ -427,7 +428,11 @@ public final class Main {
                 return code;
             }
         } catch (InterruptedException e) {
+            // As for a one-shot command: closed before the flag is set again, so that the close waits for the saves.
+            engine.close();
+            LoggingSetup.disableFileLog();
             Thread.currentThread().interrupt();
+            return EXIT_FAILURE;
         }
 
         Optional<WebUi> web = startWebUi(engine, dirs, out, stop);
@@ -445,8 +450,17 @@ public final class Main {
             stop.complete(null);
         });
         Runtime.getRuntime().addShutdownHook(hook);
+        // Interrupting the thread that runs njMule stops it too; the flag is set again only after the close, which
+        // waits for the saves.
+        boolean interrupted = false;
         try {
-            stop.join();
+            try {
+                stop.get();
+            } catch (InterruptedException e) {
+                interrupted = true;
+            } catch (ExecutionException e) {
+                logger.warn("Stopping: {}", e.getCause().toString());
+            }
             shutdown.run();
             try {
                 Runtime.getRuntime().removeShutdownHook(hook);
@@ -455,6 +469,9 @@ public final class Main {
             }
         } finally {
             LoggingSetup.disableFileLog();
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
         return EXIT_OK;
     }

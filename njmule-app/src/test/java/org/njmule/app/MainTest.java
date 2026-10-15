@@ -69,11 +69,22 @@ class MainTest {
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
+    private final CompletableFuture<Void> stop = new CompletableFuture<>();
+    private final AtomicInteger runCode = new AtomicInteger(-1);
+    private Thread running;
 
     // A one-shot run lowers the console log to its errors: the tests that read logs must not depend on the order.
     @AfterEach
     void restoreTheLogLevel() {
         LoggingSetup.setLevel("INFO");
+    }
+
+    @AfterEach
+    void stopWhatStillRuns() throws InterruptedException {
+        this.stop.complete(null);
+        if (this.running != null) {
+            this.running.join(Duration.ofSeconds(20));
+        }
     }
 
     private int run(String... args) {
@@ -455,6 +466,38 @@ class MainTest {
             }
             assertThat(code.get()).isEqualTo(Main.EXIT_FAILURE);
         }
+        // The engine was closed, its saves done, before the run returned: another may start at once.
+        assertThat(LinkHandoff.awaitGone(this.dir.resolve("config"), Duration.ofMillis(500)))
+                .as("the configuration is unlocked")
+                .isTrue();
+    }
+
+    @Test
+    void anInterruptedRunStopsAndStillUnlocksTheConfiguration() throws Exception {
+        this.givenANjMuleRunningOnItsOwnThread();
+        this.whenItsThreadIsInterrupted();
+        this.thenItHasStoppedWithItsConfigurationUnlocked();
+    }
+
+    private void givenANjMuleRunningOnItsOwnThread() throws InterruptedException {
+        this.running = Thread.ofPlatform()
+                .start(() -> this.runCode.set(Main.run(
+                        new String[] {"--config-dir", this.dir.toString()},
+                        new PrintStream(this.out, true, UTF_8),
+                        new PrintStream(this.err, true, UTF_8),
+                        this.stop)));
+        Path handoff = this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME);
+        await(() -> Files.exists(handoff));
+    }
+
+    private void whenItsThreadIsInterrupted() throws InterruptedException {
+        this.running.interrupt();
+        this.running.join(Duration.ofSeconds(20));
+    }
+
+    private void thenItHasStoppedWithItsConfigurationUnlocked() {
+        assertThat(this.running.isAlive()).as("still running").isFalse();
+        assertThat(this.runCode.get()).isEqualTo(Main.EXIT_OK);
         // The engine was closed, its saves done, before the run returned: another may start at once.
         assertThat(LinkHandoff.awaitGone(this.dir.resolve("config"), Duration.ofMillis(500)))
                 .as("the configuration is unlocked")
