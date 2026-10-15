@@ -23,10 +23,9 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2MZ;
@@ -83,9 +82,6 @@ public final class StatisticsScreen implements Screen {
         return this.view;
     }
 
-    private static final int COLUMNS = 3;
-    private static final double CARD_MIN_WIDTH = 120;
-
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
@@ -101,18 +97,18 @@ public final class StatisticsScreen implements Screen {
                 new Label(this.gui.f("nj.stats.span", RateGraph.SPAN / 60)));
         legend.setAlignment(Pos.CENTER_LEFT);
         // What happens now first, then the rates over time, then the session and all sessions.
-        GridPane present = cards(
+        TilePane present = cards(
                 KadScreen.card(this.gui.t("nj.stats.downRate"), this.downRate),
                 KadScreen.card(this.gui.t("nj.stats.upRate"), this.upRate),
                 KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
                 KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
                 KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
                 KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared));
-        GridPane session = cards(
+        TilePane session = cards(
                 KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
                 KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
                 KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
-        GridPane cumulative = cards(
+        TilePane cumulative = cards(
                 KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
                 KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
                 KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions));
@@ -140,26 +136,15 @@ public final class StatisticsScreen implements Screen {
         return Fx.screen(this.title(), Fx.toolRow(), split);
     }
 
-    // Cards of one width in a regular grid, as high as the highest of their row; long names wrap.
-    private static GridPane cards(VBox... cards) {
-        GridPane grid = new GridPane(12, 12);
-        for (int i = 0; i < COLUMNS; i++) {
-            ColumnConstraints column = new ColumnConstraints();
-            column.setPercentWidth(100.0 / COLUMNS);
-            grid.getColumnConstraints().add(column);
-        }
-        for (int i = 0; i < cards.length; i++) {
-            VBox card = cards[i];
-            // Never measured narrower than a few words: wrapping text in a width near zero breaks JavaFX's text
-            // layout (an index out of bounds with some fonts).
-            card.setMinWidth(CARD_MIN_WIDTH);
+    // Cards of one size in a regular grid, as wide as the widest. Their names never wrap: JavaFX's text layout can
+    // fail on some wrapped texts with the Linux fonts (an index out of bounds).
+    private static TilePane cards(VBox... cards) {
+        TilePane pane = new TilePane(12, 12, cards);
+        pane.setTileAlignment(Pos.TOP_LEFT);
+        for (VBox card : cards) {
             card.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
-            for (Node n : card.getChildren()) {
-                ((Label) n).setWrapText(true);
-            }
-            grid.add(card, i % COLUMNS, i / COLUMNS);
         }
-        return grid;
+        return pane;
     }
 
     private static Label heading(String text) {
