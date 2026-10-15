@@ -62,6 +62,7 @@ import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.app.Autostart;
 import org.njmule.app.LinkAssociation;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.ObfuscationMode;
@@ -104,6 +105,10 @@ public final class SettingsScreen implements Screen {
     private final TextField queueSize = new TextField();
     private final TextField sources = new TextField();
     private final ComboBox<ObfuscationMode> obfuscation = new ComboBox<>();
+    // The interface every connection goes through: "" for any, else a name or an address.
+    private final ComboBox<String> bindInterface = new ComboBox<>();
+    // The interfaces up when the options were read, for the names of the choices.
+    private List<BindInterface.Candidate> interfaces = List.of();
     private final CheckBox ed2k = new CheckBox();
     private final CheckBox ed2kLinks = new CheckBox();
     private final CheckBox tray = new CheckBox();
@@ -238,6 +243,9 @@ public final class SettingsScreen implements Screen {
         this.obfuscation.getItems().addAll(ObfuscationMode.values());
         this.obfuscation.setCellFactory(l -> new NamedCell<>(this::obfuscationName));
         this.obfuscation.setButtonCell(new NamedCell<>(this::obfuscationName));
+        this.bindInterface.setCellFactory(l -> new NamedCell<>(this::interfaceName));
+        this.bindInterface.setButtonCell(new NamedCell<>(this::interfaceName));
+        this.bindInterface.setTooltip(new Tooltip(this.gui.t("nj.settings.bindInterface.hint")));
         this.theme.getItems().addAll(Themes.Family.values());
         this.theme.setCellFactory(l -> new NamedCell<>(f -> this.gui.t("nj.theme." + key(f))));
         this.theme.setButtonCell(new NamedCell<>(f -> this.gui.t("nj.theme." + key(f))));
@@ -341,6 +349,7 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_QUEUESIZE"), this.queueSize);
         row = field(grid, row, this.gui.t("IDS_PW_MAXSOURCES"), this.sources);
         row = field(grid, row, this.gui.t("nj.settings.obfuscation"), this.obfuscation);
+        row = field(grid, row, this.gui.t("nj.settings.bindInterface"), this.bindInterface);
         grid.add(this.ed2k, 1, row++);
         grid.add(this.kad, 1, row++);
         grid.add(this.autoConnect, 1, row++);
@@ -740,6 +749,9 @@ public final class SettingsScreen implements Screen {
         this.queueSize.setText(String.valueOf(p.uploadQueueSize()));
         this.sources.setText(String.valueOf(p.maxSourcesPerFile()));
         this.obfuscation.setValue(p.obfuscation());
+        this.interfaces = BindInterface.choices();
+        this.bindInterface.getItems().setAll(interfaceChoices(p.bindInterface()));
+        this.bindInterface.setValue(p.bindInterface());
         this.ed2k.setSelected(p.ed2kEnabled());
         this.kad.setSelected(p.kadEnabled());
         this.autoConnect.setSelected(p.autoConnect());
@@ -943,6 +955,10 @@ public final class SettingsScreen implements Screen {
                 .set(Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize, this.queueSizeInput.value())
                 .set(Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile, this.sourcesInput.value())
                 .set(Preferences::obfuscation, Preferences.Builder::obfuscation, this.obfuscation.getValue())
+                .set(
+                        Preferences::bindInterface,
+                        Preferences.Builder::bindInterface,
+                        Objects.requireNonNullElse(this.bindInterface.getValue(), ""))
                 .set(Preferences::ed2kEnabled, Preferences.Builder::ed2kEnabled, this.ed2k.isSelected())
                 .set(Preferences::kadEnabled, Preferences.Builder::kadEnabled, this.kad.isSelected())
                 .set(Preferences::autoConnect, Preferences.Builder::autoConnect, this.autoConnect.isSelected())
@@ -1131,6 +1147,37 @@ public final class SettingsScreen implements Screen {
         }
     }
 
+    // Any, the interfaces up now, and the one chosen before even while it is not there.
+    private List<String> interfaceChoices(String chosen) {
+        List<String> choices = new ArrayList<>();
+        choices.add("");
+        this.interfaces.forEach(c -> choices.add(c.name()));
+        if (!chosen.isBlank() && !choices.contains(chosen)) {
+            choices.add(chosen);
+        }
+        return choices;
+    }
+
+    private String interfaceName(String choice) {
+        if (choice.isBlank()) {
+            return this.gui.t("nj.settings.bindInterface.any");
+        }
+        for (BindInterface.Candidate c : this.interfaces) {
+            if (c.name().equals(choice)) {
+                return c.displayName() + " ("
+                        + String.join(
+                                ", ",
+                                c.addresses().stream()
+                                        .map(a -> a.getHostAddress())
+                                        .toList()) + ")";
+            }
+            if (c.addresses().stream().anyMatch(a -> a.getHostAddress().equals(choice))) {
+                return choice + " (" + c.displayName() + ")";
+            }
+        }
+        return this.gui.f("nj.settings.bindInterface.missing", choice);
+    }
+
     private String obfuscationName(ObfuscationMode m) {
         return this.gui.t("nj.obfuscation." + key(m));
     }
@@ -1217,6 +1264,10 @@ public final class SettingsScreen implements Screen {
 
     TextField tcpPortField() {
         return this.tcpPort;
+    }
+
+    ComboBox<String> bindInterfaceBox() {
+        return this.bindInterface;
     }
 
     ComboBox<ProxySettings.Type> proxyTypeBox() {

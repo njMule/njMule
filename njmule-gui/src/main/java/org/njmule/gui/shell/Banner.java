@@ -44,6 +44,8 @@ final class Banner {
     /** What the banner tells of. */
     enum Kind {
         NONE,
+        /** The network interface the options bind to is gone: connecting would not help. */
+        INTERFACE_MISSING,
         OFFLINE,
         UNREACHABLE
     }
@@ -62,6 +64,7 @@ final class Banner {
     private Kind shown = Kind.NONE;
     private Kind closed = Kind.NONE;
     private int port;
+    private String missingInterface = "";
 
     Banner(Gui gui, Runnable connect, Runnable options) {
         this.gui = gui;
@@ -97,6 +100,7 @@ final class Banner {
     void update(EngineModel.Connection connection, EngineStatus status) {
         Kind kind = kindOf(connection, status);
         this.port = status.tcpPort();
+        this.missingInterface = status.missingInterface().orElse("");
         if (kind != this.wanted) {
             this.wanted = kind;
             if (kind != this.closed) {
@@ -109,6 +113,9 @@ final class Banner {
     // Offline when no server is connected or tried and Kad does not run; unreachable when a network is up but
     // others cannot connect to us.
     static Kind kindOf(EngineModel.Connection connection, EngineStatus status) {
+        if (status.missingInterface().isPresent()) {
+            return Kind.INTERFACE_MISSING;
+        }
         Optional<KadInfo> kad = status.kad();
         if (connection == EngineModel.Connection.DISCONNECTED && kad.isEmpty()) {
             return Kind.OFFLINE;
@@ -128,6 +135,12 @@ final class Banner {
         this.box.setVisible(on);
         this.box.setManaged(on);
         switch (kind) {
+            case INTERFACE_MISSING -> {
+                this.box.getStyleClass().add("offline");
+                this.icon.setIconCode(Material2AL.LINK_OFF);
+                this.text.setText(this.gui.f("nj.banner.interfaceMissing", this.missingInterface));
+                this.action.setText(this.gui.t("IDS_EM_PREFS"));
+            }
             case OFFLINE -> {
                 this.box.getStyleClass().add("offline");
                 this.icon.setIconCode(Material2AL.CLOUD_OFF);
