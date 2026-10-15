@@ -341,6 +341,8 @@ All notable changes to this project are documented here. The format follows
   nothing is published while nobody could.
 - The server list and nodes.dat boxes are filled in with the well-known lists of
   upd.emule-security.org while no list was used; nothing is fetched until the user asks.
+- A manifest for each import of an eMule profile, in the `import` folder of the configuration:
+  every file read, with its size and SHA-256, and what became of it.
 - A network interface to bind to (by name, or an IPv4 address, also taken from eMule's BindAddr):
   every connection and web list goes through it only, and while it is gone, as when a VPN drops,
   njMule stays offline with a banner saying why, and comes back by itself once it is there again.

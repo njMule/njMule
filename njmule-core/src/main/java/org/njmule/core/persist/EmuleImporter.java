@@ -16,6 +16,7 @@
  */
 package org.njmule.core.persist;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -24,13 +25,22 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -107,7 +117,14 @@ public final class EmuleImporter {
     /** Under the config directory: imported files that the running engine would overwrite, waiting for its start. */
     public static final String PENDING_FILES = "import-files";
 
+    /**
+     * Under the config directory: a manifest for each import, naming every file read from eMule with its size and
+     * SHA-256 and what became of it.
+     */
+    public static final String MANIFESTS = "import";
+
     private static final Logger logger = LoggerFactory.getLogger(EmuleImporter.class);
+    private static final DateTimeFormatter MANIFEST_NAME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final String SECTION = "eMule";
     private static final String PROXY = "Proxy";
     // Limits at or above this mean "no limit".
@@ -132,6 +149,8 @@ public final class EmuleImporter {
     private final Target target;
     private final BooleanSupplier emuleRunning;
     private final List<ImportReport.Item> items = new ArrayList<>();
+    // The size and SHA-256 of each file read, by name, for the manifest.
+    private final Map<String, String> fingerprints = new LinkedHashMap<>();
     // The ids of eMule's categories taken over: only downloads in these keep theirs.
     private final Set<Integer> categoriesTaken = new HashSet<>();
 
@@ -271,6 +290,10 @@ public final class EmuleImporter {
         }
         identity(ini);
         downloads(ini);
+        // Nothing to list when no file of the profile was there to read.
+        if (!this.options.dryRun() && !this.fingerprints.isEmpty()) {
+            writeManifest();
+        }
         return new ImportReport(
                 this.options.dryRun(),
                 this.items,
@@ -876,12 +899,51 @@ public final class EmuleImporter {
     }
 
     // A file far larger than any of a real profile is refused rather than read into memory.
-    private static byte[] read(Path file) throws IOException {
+    private byte[] read(Path file) throws IOException {
         long size = Files.size(file);
         if (size > MAX_FILE_SIZE) {
             throw new IOException("too large to be eMule's: " + size + " bytes");
         }
-        return Files.readAllBytes(file);
+        byte[] data = Files.readAllBytes(file);
+        this.fingerprints.put(String.valueOf(file.getFileName()), data.length + "\t" + sha256(data));
+        return data;
+    }
+
+    private static String sha256(byte[] data) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("every Java platform has SHA-256", e);
+        }
+    }
+
+    // What was read and what became of it, for whoever wants to check an import later.
+    private void writeManifest() {
+        StringBuilder text = new StringBuilder()
+                .append("# njMule import from ")
+                .append(this.emule.toAbsolutePath())
+                .append(" at ")
+                .append(Instant.now())
+                .append("\n# outcome\tbytes\tSHA-256\tfile\tdetail\n");
+        for (ImportReport.Item item : this.items) {
+            text.append(item.outcome())
+                    .append('\t')
+                    .append(this.fingerprints.getOrDefault(item.file(), "\t"))
+                    .append('\t')
+                    .append(item.file())
+                    .append('\t')
+                    .append(CharMatcher.javaIsoControl().replaceFrom(item.detail(), ' '))
+                    .append('\n');
+        }
+        Path folder = this.target.configDir().resolve(MANIFESTS);
+        try {
+            Files.createDirectories(folder);
+            AtomicFiles.writeBytes(
+                    folder.resolve(MANIFEST_NAME.format(LocalDateTime.now(ZoneId.systemDefault())) + ".txt"),
+                    text.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            logger.warn("Cannot write the import manifest in {}: {}", folder, e.getMessage());
+        }
     }
 
     // The nearest existing folder resolved, so that links and other spellings of one folder compare equal.
