@@ -30,6 +30,9 @@ import org.njmule.core.config.ProxySettings;
  */
 public final class ProxyRoute extends Authenticator {
 
+    // One engine per process: the network sets the proxy, which web requests read too.
+    private static volatile Supplier<ProxySettings> current = () -> ProxySettings.NONE;
+
     private final Supplier<ProxySettings> settings;
 
     private ProxyRoute(Supplier<ProxySettings> settings) {
@@ -39,8 +42,14 @@ public final class ProxyRoute extends Authenticator {
     /** From now on connections follow {@code settings}, read at each connection. */
     public static void install(Supplier<ProxySettings> settings) {
         Objects.requireNonNull(settings, "settings");
+        current = settings;
         TcpConnector.useProxy(() -> proxy(settings.get()));
         Authenticator.setDefault(new ProxyRoute(settings));
+    }
+
+    /** The proxy of the preferences now. */
+    public static ProxySettings current() {
+        return current.get();
     }
 
     /** The JDK proxy for {@code settings}. */

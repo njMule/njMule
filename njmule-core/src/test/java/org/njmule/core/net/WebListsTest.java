@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import com.google.common.base.Splitter;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -34,10 +35,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
@@ -57,6 +60,9 @@ class WebListsTest {
     private final Set<String> stalls = ConcurrentHashMap.newKeySet();
     private ServerSocket server;
     private final WebLists anyAddress = new WebLists(a -> true);
+    private final List<ServerSocket> proxies = new CopyOnWriteArrayList<>();
+    private final List<String> proxySaw = new CopyOnWriteArrayList<>();
+    private byte[] fetched;
 
     @BeforeEach
     void start() throws IOException {
@@ -88,6 +94,9 @@ class WebListsTest {
     @AfterEach
     void stop() throws IOException {
         this.server.close();
+        for (ServerSocket proxy : this.proxies) {
+            proxy.close();
+        }
     }
 
     @Test
@@ -199,6 +208,84 @@ class WebListsTest {
         } finally {
             ProxyRoute.install(() -> ProxySettings.NONE);
             Authenticator.setDefault(null);
+        }
+    }
+
+    @Test
+    void listsGoThroughTheSocksProxyOfThePreferencesWithItsCredentials() throws Exception {
+        this.givenAList("/server.met", "through socks");
+        this.givenASocksProxyThatWantsAPassword();
+        try {
+            this.whenTheListIsFetched("/server.met");
+            this.thenTheListCame("through socks");
+            this.thenTheProxyWasAskedWithTheCredentialsForTheServer();
+        } finally {
+            ProxyRoute.install(() -> ProxySettings.NONE);
+        }
+    }
+
+    private void givenAList(String path, String text) {
+        this.responses.put(path, response(200, "", text.getBytes(StandardCharsets.US_ASCII)));
+    }
+
+    private void givenASocksProxyThatWantsAPassword() throws IOException {
+        ServerSocket proxy = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
+        this.proxies.add(proxy);
+        Thread.ofVirtual().start(() -> this.socks5(proxy));
+        ProxyRoute.install(
+                () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret"));
+    }
+
+    private void whenTheListIsFetched(String path) throws IOException {
+        this.fetched = this.anyAddress.fetch(this.uri(path));
+    }
+
+    private void thenTheListCame(String text) {
+        assertThat(new String(this.fetched, StandardCharsets.US_ASCII)).isEqualTo(text);
+    }
+
+    private void thenTheProxyWasAskedWithTheCredentialsForTheServer() {
+        assertThat(this.proxySaw).containsExactly("auth me:secret", "connect 127.0.0.1:" + this.server.getLocalPort());
+    }
+
+    // A SOCKS 5 proxy (RFC 1928, user name and password per RFC 1929) that relays one connection both ways.
+    private void socks5(ServerSocket proxy) {
+        try (Socket client = proxy.accept()) {
+            DataInputStream in = new DataInputStream(client.getInputStream());
+            OutputStream out = client.getOutputStream();
+            in.readUnsignedByte();
+            in.readFully(new byte[in.readUnsignedByte()]);
+            out.write(new byte[] {5, 2});
+            in.readUnsignedByte();
+            String user = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+            String password = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+            this.proxySaw.add("auth " + user + ":" + password);
+            out.write(new byte[] {1, 0});
+            in.readFully(new byte[3]);
+            int kind = in.readUnsignedByte();
+            String host = kind == 3
+                    ? new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII)
+                    : InetAddress.getByAddress(in.readNBytes(kind == 1 ? 4 : 16))
+                            .getHostAddress();
+            int port = in.readUnsignedShort();
+            this.proxySaw.add("connect " + host + ":" + port);
+            try (Socket upstream = new Socket(host, port)) {
+                out.write(new byte[] {5, 0, 0, 1, 127, 0, 0, 1, 0, 0});
+                out.flush();
+                Thread.ofVirtual().start(() -> relay(upstream, client));
+                relay(client, upstream);
+            }
+        } catch (IOException e) {
+            // The test closes everything at the end.
+        }
+    }
+
+    private static void relay(Socket from, Socket to) {
+        try {
+            from.getInputStream().transferTo(to.getOutputStream());
+            to.shutdownOutput();
+        } catch (IOException e) {
+            // One side closed.
         }
     }
 

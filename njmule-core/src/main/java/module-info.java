@@ -23,6 +23,7 @@ module org.njmule.core {
     requires static com.google.errorprone.annotations;
     requires java.net.http;
     requires java.xml;
+    requires org.eclipse.jetty.client;
     requires org.bouncycastle.provider;
     requires org.slf4j;
 

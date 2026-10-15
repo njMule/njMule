@@ -70,6 +70,7 @@
         <!-- Runtime dependencies -->
         <slf4j.version>2.0.20</slf4j.version>
         <jackson.version>3.2.3</jackson.version>
+        <jetty.version>12.1.14</jetty.version>
         <logback.version>1.6.5</logback.version>
         <javafx.version>27</javafx.version>
         <atlantafx.version>3.0.0</atlantafx.version>
@@ -160,6 +161,13 @@
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
                 <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-bom</artifactId>
+                <version>${jetty.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

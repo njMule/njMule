@@ -22,15 +22,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.Proxy;
-import java.net.ProxySelector;
-import java.net.SocketAddress;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
@@ -42,14 +36,26 @@ import java.util.function.Predicate;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.eclipse.jetty.client.CompletableResponseListener;
+import org.eclipse.jetty.client.ContentResponse;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.HttpProxy;
+import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.client.Socks5;
+import org.eclipse.jetty.client.Socks5Proxy;
+import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.config.ProxySettings;
 
 /**
- * Fetches a list (server.met, nodes.dat, an IP filter) from the web at the user's request, with the JDK's HTTP client:
+ * Fetches a list (server.met, nodes.dat, an IP filter) from the web at the user's request, with Jetty's HTTP client:
  * http or https only, at most three redirects, each checked again and never from https to http, never to a loopback,
  * private, link-local or multicast address, at most 50 MiB and 90 seconds in all; a gzip or zip body is unpacked within
- * the same limit. The HTTP proxy of the preferences is used; the client takes no SOCKS proxy, so with one lists come
- * directly.
+ * the same limit. The proxy of the preferences is used, HTTP or SOCKS 5 with its user name and password. The host is
+ * looked up here to check its addresses, also when a proxy then connects to it.
  */
 public final class WebLists {
 
@@ -58,25 +64,11 @@ public final class WebLists {
     private static final int MAX_REDIRECTS = 3;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration TIMEOUT = Duration.ofSeconds(90);
+    private static final String USER_AGENT = NjMuleInfo.NAME + "/" + NjMuleInfo.version();
     // What an archive holds the list as, by kind; any other file only when none of these is there.
     private static final Set<String> LIST_NAMES =
             Set.of("ipfilter.dat", "guarding.p2p", "guardian.p2p", "server.met", "nodes.dat");
 
-    // The proxy of the preferences, read at each request.
-    private static final ProxySelector PREFERRED_PROXY = new ProxySelector() {
-        @Override
-        public List<Proxy> select(URI uri) {
-            Proxy proxy = TcpConnector.currentProxy();
-            return List.of(proxy.type() == Proxy.Type.HTTP ? proxy : Proxy.NO_PROXY);
-        }
-
-        @Override
-        public void connectFailed(URI uri, SocketAddress address, IOException e) {
-            // The request fails and says why.
-        }
-    };
-
-    private final HttpClient http;
     private final Predicate<InetAddress> reachable;
     private final Duration timeout;
 
@@ -87,11 +79,6 @@ public final class WebLists {
     WebLists(Predicate<InetAddress> reachable, Duration timeout) {
         this.reachable = Objects.requireNonNull(reachable, "reachable");
         this.timeout = Objects.requireNonNull(timeout, "timeout");
-        this.http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .connectTimeout(CONNECT_TIMEOUT)
-                .proxy(PREFERRED_PROXY)
-                .build();
     }
 
     /** A fetcher that reaches public addresses only. */
@@ -119,42 +106,107 @@ public final class WebLists {
     private byte[] fetch(URI uri, boolean lines) throws IOException {
         URI current = Objects.requireNonNull(uri, "uri");
         long deadline = System.nanoTime() + this.timeout.toNanos();
-        for (int hop = 0; ; hop++) {
-            this.check(current);
-            HttpRequest request = HttpRequest.newBuilder(current)
-                    .timeout(left(deadline))
-                    .header("User-Agent", NjMuleInfo.NAME + "/" + NjMuleInfo.version())
-                    .GET()
-                    .build();
-            HttpResponse<InputStream> response;
-            try {
-                response = this.http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("interrupted while fetching " + current.getHost(), e);
-            }
-            try (InputStream body = response.body()) {
-                int status = response.statusCode();
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IOException("interrupted while fetching " + current.getHost());
+        }
+        // A client for each fetch, as the proxy of the preferences may have changed since the last one.
+        HttpClient http = client(ProxyRoute.current());
+        try {
+            http.start();
+        } catch (Exception e) {
+            throw new IOException("cannot start the HTTP client", e);
+        }
+        try {
+            for (int hop = 0; ; hop++) {
+                this.check(current);
+                // The whole answer, within the size and the time left: the next hop starts after this one is done.
+                Request request =
+                        http.newRequest(current).timeout(left(deadline).toNanos(), TimeUnit.NANOSECONDS);
+                ContentResponse response = answer(
+                        new CompletableResponseListener(request, (int) MAX_SIZE).send(), current, left(deadline));
+                int status = response.getStatus();
                 if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                     if (hop >= MAX_REDIRECTS) {
                         throw new IOException("too many redirects from " + uri.getHost());
                     }
-                    String location = response.headers()
-                            .firstValue("Location")
-                            .orElseThrow(() -> new IOException("a redirect without a location"));
+                    String location = response.getHeaders().get(HttpHeader.LOCATION);
+                    if (location == null) {
+                        throw new IOException("a redirect without a location");
+                    }
                     current = redirect(current, location);
                     continue;
                 }
                 if (status != 200) {
                     throw new IOException("HTTP " + status + " from " + current.getHost());
                 }
-                byte[] data = readWithin(body, left(deadline));
+                byte[] data = response.getContent();
                 if (lines && !isPacked(data) && endsWithConnection(response) && !endsWithLineBreak(data)) {
                     throw new IOException("the list from " + current.getHost() + " was cut short");
                 }
                 return unpack(data);
             }
+        } finally {
+            try {
+                http.stop();
+            } catch (Exception e) {
+                // The list came, or the failure that matters is already on its way.
+            }
         }
+    }
+
+    // Redirects are ours to check; bodies come as sent, packed ones unpacked here within the size limit.
+    private static HttpClient client(ProxySettings proxy) {
+        HttpClient http = new HttpClient();
+        http.setExecutor(new VirtualThreadPool());
+        http.setFollowRedirects(false);
+        http.setConnectTimeout(CONNECT_TIMEOUT.toMillis());
+        http.setUserAgentField(new HttpField(HttpHeader.USER_AGENT, USER_AGENT));
+        http.getContentDecoderFactories().clear();
+        switch (proxy.type()) {
+            case NONE -> {
+                // Direct.
+            }
+            case HTTP -> http.getProxyConfiguration().addProxy(new HttpProxy(proxy.host(), proxy.port()));
+            case SOCKS -> {
+                Socks5Proxy socks = new Socks5Proxy(proxy.host(), proxy.port());
+                if (!proxy.user().isEmpty()) {
+                    socks.putAuthenticationFactory(new Socks5.UsernamePasswordAuthenticationFactory(
+                            proxy.user(), proxy.password(), StandardCharsets.UTF_8));
+                }
+                http.getProxyConfiguration().addProxy(socks);
+            }
+        }
+        return http;
+    }
+
+    private static ContentResponse answer(CompletableFuture<ContentResponse> answer, URI uri, Duration left)
+            throws IOException {
+        try {
+            return answer.get(left.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            answer.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while fetching " + uri.getHost(), e);
+        } catch (TimeoutException e) {
+            answer.cancel(true);
+            throw new IOException("the list did not come in time", e);
+        } catch (ExecutionException e) {
+            throw failure(e.getCause(), uri);
+        }
+    }
+
+    private static IOException failure(Throwable cause, URI uri) {
+        if (cause instanceof TimeoutException) {
+            return new IOException("the list did not come in time", cause);
+        }
+        // The buffer refuses more than its capacity.
+        if (cause instanceof IllegalArgumentException
+                && String.valueOf(cause.getMessage()).contains("capacity")) {
+            return new IOException("the list is larger than " + MAX_SIZE / (1024 * 1024) + " MiB", cause);
+        }
+        return cause instanceof IOException io
+                ? io
+                : new IOException("cannot fetch from " + uri.getHost() + ": " + cause.getMessage(), cause);
     }
 
     // A redirect is checked like the first address, and one from https stays on https.
@@ -179,36 +231,11 @@ public final class WebLists {
         return Duration.ofNanos(nanos);
     }
 
-    // The client's own timeout ends with the headers: a body that stops coming is given up at the deadline.
-    private static byte[] readWithin(InputStream body, Duration left) throws IOException {
-        CompletableFuture<byte[]> read = new CompletableFuture<>();
-        Thread reader = Thread.ofVirtual().name("njmule-web-read").start(() -> {
-            try {
-                read.complete(readAtMost(body));
-            } catch (IOException | RuntimeException e) {
-                read.completeExceptionally(e);
-            }
-        });
-        try {
-            return read.get(left.toNanos(), TimeUnit.NANOSECONDS);
-        } catch (TimeoutException e) {
-            reader.interrupt();
-            body.close();
-            throw new IOException("the list did not come in time", e);
-        } catch (InterruptedException e) {
-            reader.interrupt();
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted while reading a list", e);
-        } catch (ExecutionException e) {
-            throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
-        }
-    }
-
-    // An HTTP/1.1 body with neither a length nor chunks ends when the server closes: a cut looks the same.
-    private static boolean endsWithConnection(HttpResponse<?> response) {
-        return response.version() == HttpClient.Version.HTTP_1_1
-                && response.headers().firstValue("Content-Length").isEmpty()
-                && response.headers().firstValue("Transfer-Encoding").isEmpty();
+    // An HTTP/1 body with neither a length nor chunks ends when the server closes: a cut looks the same.
+    private static boolean endsWithConnection(ContentResponse response) {
+        return (response.getVersion() == HttpVersion.HTTP_1_1 || response.getVersion() == HttpVersion.HTTP_1_0)
+                && !response.getHeaders().contains(HttpHeader.CONTENT_LENGTH)
+                && !response.getHeaders().contains(HttpHeader.TRANSFER_ENCODING);
     }
 
     private static boolean endsWithLineBreak(byte[] data) {
@@ -228,7 +255,8 @@ public final class WebLists {
         return body.length >= 4 && body[0] == 'P' && body[1] == 'K' && body[2] == 3 && body[3] == 4;
     }
 
-    // The host is looked up here and again by the client: a name that changes its address in between is not stopped.
+    // The host is looked up here and again by the client or the proxy: a name that changes its address in between is
+    // not stopped.
     private void check(URI uri) throws IOException {
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
