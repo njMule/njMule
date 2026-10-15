@@ -81,6 +81,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.PartBar;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
@@ -223,6 +224,17 @@ public final class TransfersScreen implements Screen {
                 html,
                 clear));
 
+        // An empty list says how to fill it, with the two ways to.
+        Button search = Fx.button(
+                this.gui.t("IDS_EM_SEARCH"),
+                Material2MZ.SEARCH,
+                () -> this.downloads.fireEvent(new Navigate("search")));
+        Button paste = Fx.button(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Material2AL.CONTENT_PASTE, () -> {
+            this.link.requestFocus();
+            this.link.paste();
+        });
+        this.downloads.setPlaceholder(
+                Fx.emptyState(Material2AL.CLOUD_DOWNLOAD, this.gui.t("nj.transfers.none"), search, paste));
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
         this.link.setOnAction(e -> this.addLink());

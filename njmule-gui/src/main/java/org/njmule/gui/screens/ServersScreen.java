@@ -147,6 +147,10 @@ public final class ServersScreen implements Screen {
 
     private Node build() {
         this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"), this.shown);
+        this.table.setPlaceholder(Fx.emptyState(
+                Material2AL.DNS,
+                this.gui.t("nj.servers.none"),
+                Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl)));
         // The usual server columns; the hard file limit and the version start hidden.
         this.table
                 .getColumns()

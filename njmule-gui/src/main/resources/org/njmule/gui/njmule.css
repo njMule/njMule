@@ -232,6 +232,17 @@
     -fx-icon-color: -color-warning-fg;
 }
 
+/* An empty list: a large muted icon, the words, and the buttons that fill it. */
+.empty-state .empty-icon {
+    -fx-icon-size: 40;
+    -fx-icon-color: -color-fg-subtle;
+}
+
+.empty-state .empty-text {
+    -fx-text-alignment: center;
+    -fx-font-size: 1.05em;
+}
+
 /* Screens. */
 .screen {
     -fx-padding: 12;

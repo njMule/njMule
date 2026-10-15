@@ -233,6 +233,22 @@ public final class Fx {
         return row;
     }
 
+    /** What an empty list shows: an icon, what is missing and how to get it, and the buttons that do it. */
+    public static VBox emptyState(Ikon ikon, String text, Node... actions) {
+        FontIcon icon = icon(ikon);
+        icon.getStyleClass().add("empty-icon");
+        Label words = new Label(text);
+        words.setWrapText(true);
+        words.setMaxWidth(420);
+        words.getStyleClass().add("empty-text");
+        HBox buttons = new HBox(8, actions);
+        buttons.setAlignment(Pos.CENTER);
+        VBox box = actions.length == 0 ? new VBox(10, icon, words) : new VBox(10, icon, words, buttons);
+        box.setAlignment(Pos.CENTER);
+        box.getStyleClass().add("empty-state");
+        return box;
+    }
+
     /** A screen: a title, a tool row and a content that takes the rest. */
     public static VBox screen(String title, HBox tools, Node content) {
         VBox box = new VBox(title(title), tools, content);

@@ -73,6 +73,7 @@ import org.njmule.gui.screens.StatisticsScreen;
 import org.njmule.gui.screens.TransfersScreen;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.Screen;
 
 /**
@@ -156,6 +157,8 @@ public final class MainWindow {
         StackPane.setAlignment(this.messages, Pos.BOTTOM_RIGHT);
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
+        // A screen's button can lead to another screen, such as Search from an empty list of downloads.
+        this.root.addEventHandler(Navigate.TO_SCREEN, e -> this.show(e.screen()));
         this.root.setNodeOrientation(gui.orientation());
         // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order.
         this.root.setOnKeyPressed(e -> {
