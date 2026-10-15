@@ -387,7 +387,11 @@ All notable changes to this project are documented here. The format follows
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.
 - Rates switch to MB/s from a thousand KB/s on, and to GB/s from a thousand MB/s, in the desktop
   and the web interfaces, with the units of each language; the rate graph rounds its scale to whole
-  units of what it shows. The speed limits stay in KB/s.
+  units of what it shows. Speeds are typed that way too: the limits in the options and the scheduler
+  in KB/s or MB/s with decimals, or "No limit" instead of 0; the speed of the line in Mbit/s, as
+  lines are sold, with the same speed in bytes beside; the limit sliders of the top bar and the
+  tray on a logarithmic scale, from no limit to the line's speed; `njmule --remote limits` takes
+  500K, 1.5M or 1G. Settings and the API keep KiB/s.
 - Ctrl+K opens a command palette: typing finds a place or a command of the menus, searches the
   network for the words typed, or downloads the eD2K links pasted.
 - Kad tells its state in plain words with what to do about it, and the two ways to join it (a list

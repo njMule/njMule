@@ -63,6 +63,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.RateField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,8 +123,8 @@ public final class FirstRunWizard {
     private final Input<Integer> udpInput;
     private final CheckBox upnp = new CheckBox();
     private final ComboBox<Line> line = new ComboBox<>();
-    private final TextField down = new TextField();
-    private final TextField up = new TextField();
+    private final RateField<Integer> down;
+    private final RateField<Integer> up;
     private final Input<Integer> downInput;
     private final Input<Integer> upInput;
     private final CheckBox importEmule = new CheckBox();
@@ -150,8 +151,10 @@ public final class FirstRunWizard {
         this.incomingInput = inputs.folder(this.incoming, gui.t("IDS_PW_INCOMING"));
         this.tcpInput = inputs.number(this.tcp, "TCP", 1, Preferences.MAX_PORT);
         this.udpInput = inputs.number(this.udp, "UDP", 1, Preferences.MAX_PORT);
-        this.downInput = inputs.number(this.down, gui.t("nj.settings.downloadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
-        this.upInput = inputs.number(this.up, gui.t("nj.settings.uploadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
+        this.down = RateField.line(gui, gui.t("nj.settings.downloadCapacity"));
+        this.up = RateField.line(gui, gui.t("nj.settings.uploadCapacity"));
+        this.downInput = this.down.input();
+        this.upInput = this.up.input();
         this.pages.addAll(List.of(Page.START, Page.NICK, Page.FOLDERS, Page.CONNECTION));
         if (emule.isPresent()) {
             this.pages.add(Page.EMULE);
@@ -190,15 +193,15 @@ public final class FirstRunWizard {
         this.udp.setText(Integer.toString(ports.udp()));
         this.upnp.setText(this.gui.t("nj.settings.upnp"));
         this.upnp.setSelected(this.preferences.upnp());
-        this.down.setText(Integer.toString(this.preferences.downloadCapacityKiBps()));
-        this.up.setText(Integer.toString(this.preferences.uploadCapacityKiBps()));
+        this.down.show(this.preferences.downloadCapacityKiBps());
+        this.up.show(this.preferences.uploadCapacityKiBps());
         this.line.getItems().addAll(LINES);
         this.line.setConverter(named(
                 l -> this.gui.f("nj.wizard.mbits", Integer.toString(l.downMbits()), Integer.toString(l.upMbits()))));
         this.line.valueProperty().addListener((o, was, now) -> {
             if (now != null) {
-                this.down.setText(Integer.toString(Line.kib(now.downMbits())));
-                this.up.setText(Integer.toString(Line.kib(now.upMbits())));
+                this.down.show(Line.kib(now.downMbits()));
+                this.up.show(Line.kib(now.upMbits()));
             }
         });
         this.importEmule.setText(this.gui.t("nj.wizard.emuleImport"));
@@ -347,8 +350,6 @@ public final class FirstRunWizard {
     private Node connection() {
         this.tcp.setPrefColumnCount(6);
         this.udp.setPrefColumnCount(6);
-        this.down.setPrefColumnCount(8);
-        this.up.setPrefColumnCount(8);
         HBox ports = new HBox(8, this.tcp, Fx.whole(new Label("UDP")), this.udp);
         ports.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(
@@ -359,7 +360,7 @@ public final class FirstRunWizard {
                                 this.gui.t("nj.wizard.line"),
                                 this.gui.t("nj.settings.downloadCapacity"),
                                 this.gui.t("nj.settings.uploadCapacity")),
-                        List.of(ports, this.line, this.down, this.up)),
+                        List.of(ports, this.line, this.down.node(), this.up.node())),
                 this.upnp);
         return box;
     }
@@ -498,11 +499,11 @@ public final class FirstRunWizard {
     }
 
     TextField downField() {
-        return this.down;
+        return this.down.field();
     }
 
     TextField upField() {
-        return this.up;
+        return this.up.field();
     }
 
     ComboBox<Line> lineBox() {

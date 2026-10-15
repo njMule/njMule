@@ -77,6 +77,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.UrlBox;
 import org.njmule.webui.ApiToken;
@@ -94,10 +95,10 @@ public final class SettingsScreen implements Screen {
     private final TextField nick = new TextField();
     private final TextField tcpPort = new TextField();
     private final TextField udpPort = new TextField();
-    private final TextField upload = new TextField();
-    private final TextField download = new TextField();
-    private final TextField downloadCapacity = new TextField();
-    private final TextField uploadCapacity = new TextField();
+    private RateField<Integer> upload;
+    private RateField<Integer> download;
+    private RateField<Integer> downloadCapacity;
+    private RateField<Integer> uploadCapacity;
     private final TextField connections = new TextField();
     private final TextField newConnections = new TextField();
     private final TextField queueSize = new TextField();
@@ -329,10 +330,10 @@ public final class SettingsScreen implements Screen {
         row = section(grid, row, this.gui.t("nj.settings.connection"));
         row = field(grid, row, this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcpPort);
         row = field(grid, row, "UDP", this.udpPort);
-        row = field(grid, row, this.gui.t("nj.settings.upload"), this.upload);
-        row = field(grid, row, this.gui.t("nj.settings.download"), this.download);
-        row = field(grid, row, this.gui.t("nj.settings.downloadCapacity"), this.downloadCapacity);
-        row = field(grid, row, this.gui.t("nj.settings.uploadCapacity"), this.uploadCapacity);
+        row = field(grid, row, this.gui.t("nj.settings.upload"), this.upload.node());
+        row = field(grid, row, this.gui.t("nj.settings.download"), this.download.node());
+        row = field(grid, row, this.gui.t("nj.settings.downloadCapacity"), this.downloadCapacity.node());
+        row = field(grid, row, this.gui.t("nj.settings.uploadCapacity"), this.uploadCapacity.node());
         row = field(grid, row, this.gui.t("IDS_PW_MAXC"), this.connections);
         this.newConnections.setPrefColumnCount(5);
         row = field(grid, row, this.gui.t("IDS_MAXCON5SECLABEL"), this.newConnections);
@@ -469,13 +470,15 @@ public final class SettingsScreen implements Screen {
         this.nickInput = inputs.nick(this.nick, this.gui.t("IDS_PW_NICK"), Preferences.MAX_NICK_LENGTH);
         this.tcpPortInput = inputs.number(this.tcpPort, "TCP", 1, Preferences.MAX_PORT);
         this.udpPortInput = inputs.number(this.udpPort, "UDP", 1, Preferences.MAX_PORT);
-        this.uploadInput = inputs.number(this.upload, this.gui.t("nj.settings.upload"), 0, Preferences.MAX_RATE_KIBPS);
-        this.downloadInput =
-                inputs.number(this.download, this.gui.t("nj.settings.download"), 0, Preferences.MAX_RATE_KIBPS);
-        this.downloadCapacityInput = inputs.number(
-                this.downloadCapacity, this.gui.t("nj.settings.downloadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
-        this.uploadCapacityInput = inputs.number(
-                this.uploadCapacity, this.gui.t("nj.settings.uploadCapacity"), 1, Preferences.MAX_RATE_KIBPS);
+        // Limits in KB/s or MB/s or none, the line in Mbit/s as it is sold; all kept in KiB/s.
+        this.upload = RateField.limit(this.gui, this.gui.t("nj.settings.upload"));
+        this.download = RateField.limit(this.gui, this.gui.t("nj.settings.download"));
+        this.downloadCapacity = RateField.line(this.gui, this.gui.t("nj.settings.downloadCapacity"));
+        this.uploadCapacity = RateField.line(this.gui, this.gui.t("nj.settings.uploadCapacity"));
+        this.uploadInput = this.upload.input();
+        this.downloadInput = this.download.input();
+        this.downloadCapacityInput = this.downloadCapacity.input();
+        this.uploadCapacityInput = this.uploadCapacity.input();
         this.connectionsInput =
                 inputs.number(this.connections, this.gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
         this.newConnectionsInput = inputs.number(
@@ -728,10 +731,10 @@ public final class SettingsScreen implements Screen {
         this.nick.setText(p.nick());
         this.tcpPort.setText(String.valueOf(p.tcpPort()));
         this.udpPort.setText(String.valueOf(p.udpPort()));
-        this.upload.setText(String.valueOf(p.maxUploadKiBps()));
-        this.download.setText(String.valueOf(p.maxDownloadKiBps()));
-        this.downloadCapacity.setText(String.valueOf(p.downloadCapacityKiBps()));
-        this.uploadCapacity.setText(String.valueOf(p.uploadCapacityKiBps()));
+        this.upload.show(p.maxUploadKiBps());
+        this.download.show(p.maxDownloadKiBps());
+        this.downloadCapacity.show(p.downloadCapacityKiBps());
+        this.uploadCapacity.show(p.uploadCapacityKiBps());
         this.connections.setText(String.valueOf(p.maxConnections()));
         this.newConnections.setText(String.valueOf(p.newConnectionsPerFiveSeconds()));
         this.queueSize.setText(String.valueOf(p.uploadQueueSize()));

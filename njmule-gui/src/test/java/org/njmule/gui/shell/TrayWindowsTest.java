@@ -36,7 +36,6 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
-import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -113,12 +112,11 @@ class TrayWindowsTest {
             return null;
         });
 
-        FxTesting.onFx(() -> {
-            TextField down = (TextField)
-                    menu.scene().getRoot().lookupAll(".text-field").iterator().next();
-            down.setText("250");
-            down.fireEvent(new javafx.event.ActionEvent());
-        });
+        int top = Math.max(
+                this.preferences().downloadCapacityKiBps(), this.preferences().maxDownloadKiBps());
+        FxTesting.onFx(() -> ((Slider)
+                        menu.scene().getRoot().lookupAll(".slider").iterator().next())
+                .setValue(SpeedLimits.position(250, top)));
         FxTesting.await("the download limit", () -> this.preferences().maxDownloadKiBps() == 250);
 
         this.press(menu.scene(), this.gui.t("IDS_PW_PA"));
@@ -171,14 +169,14 @@ class TrayWindowsTest {
         assertThat(writes).as("opening the menu").hasValue(0);
         assertThat(this.preferences().maxDownloadKiBps()).isEqualTo(300);
 
-        TextField down = FxTesting.onFx(() -> (TextField)
-                menu.scene().getRoot().lookupAll(".text-field").iterator().next());
-        FxTesting.onFx(() -> {
-            down.setText("900");
-            down.fireEvent(new javafx.event.ActionEvent());
-        });
-        assertThat(writes).as("a limit above the slider's top").hasValue(0);
-        assertThat(FxTesting.onFx(() -> down.getText())).isEqualTo("300");
+        assertThat(FxTesting.onFx(() -> ((Label) menu.scene()
+                                .getRoot()
+                                .lookupAll(".speed-value")
+                                .iterator()
+                                .next())
+                        .getText()))
+                .as("the limit as set")
+                .isEqualTo(this.gui.formats().rate(300 * 1024L));
     }
 
     @Test
@@ -272,9 +270,11 @@ class TrayWindowsTest {
         FxTesting.onFx(() -> menu.show(600, 500));
         Slider up = FxTesting.onFx(
                 () -> (Slider) menu.scene().getRoot().lookupAll(".slider").toArray()[1]);
+        int top = Math.max(
+                this.preferences().uploadCapacityKiBps(), this.preferences().maxUploadKiBps());
         FxTesting.onFx(() -> {
             up.setValueChanging(true);
-            up.setValue(300);
+            up.setValue(SpeedLimits.position(300, top));
         });
         assertThat(writes).as("while dragged").hasValue(0);
         FxTesting.onFx(() -> up.setValueChanging(false));

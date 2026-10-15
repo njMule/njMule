@@ -52,6 +52,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.RateField;
 
 /**
  * The scheduler's rules: a list, a form for one rule, and saving them to the engine. Empty limit fields leave the
@@ -67,8 +68,8 @@ final class SchedulerPane extends VBox {
     private final Map<DayOfWeek, CheckBox> days = new EnumMap<>(DayOfWeek.class);
     private final TextField start = new TextField("00:00");
     private final TextField end = new TextField("00:00");
-    private final TextField upload = new TextField();
-    private final TextField download = new TextField();
+    private final RateField<OptionalInt> upload;
+    private final RateField<OptionalInt> download;
     private final TextField connections = new TextField();
     private final TextField sources = new TextField();
     private final CheckBox enabled = new CheckBox();
@@ -87,6 +88,9 @@ final class SchedulerPane extends VBox {
     SchedulerPane(Gui gui) {
         super(8);
         this.gui = gui;
+        // Empty for no change, no limit, or a limit in KB/s or MB/s.
+        this.upload = RateField.optionalLimit(gui, gui.t("nj.settings.upload"));
+        this.download = RateField.optionalLimit(gui, gui.t("nj.settings.download"));
         this.rules
                 .getColumns()
                 .addAll(List.of(
@@ -96,8 +100,8 @@ final class SchedulerPane extends VBox {
                                 gui.t("nj.scheduler.from"), 70, r -> r.start().toString())),
                         Fx.leftToRight(column(
                                 gui.t("nj.scheduler.to"), 70, r -> r.end().toString())),
-                        Fx.leftToRight(column(gui.t("nj.settings.upload"), 90, r -> text(r.uploadKiBps()))),
-                        Fx.leftToRight(column(gui.t("nj.settings.download"), 90, r -> text(r.downloadKiBps()))),
+                        Fx.leftToRight(column(gui.t("nj.settings.upload"), 90, r -> this.rate(r.uploadKiBps()))),
+                        Fx.leftToRight(column(gui.t("nj.settings.download"), 90, r -> this.rate(r.downloadKiBps()))),
                         column(gui.t("nj.scheduler.enabled"), 70, r -> r.enabled() ? "✓" : "")));
         this.rules.setPrefHeight(160);
         this.rules.setPlaceholder(new Label(gui.t("nj.scheduler.none")));
@@ -112,7 +116,7 @@ final class SchedulerPane extends VBox {
         }
         this.enabled.setText(gui.t("nj.scheduler.enabled"));
         this.enabled.setSelected(true);
-        for (TextField f : List.of(this.start, this.end, this.upload, this.download, this.connections, this.sources)) {
+        for (TextField f : List.of(this.start, this.end, this.connections, this.sources)) {
             f.setPrefColumnCount(6);
         }
         Inputs inputs = new Inputs(gui);
@@ -120,10 +124,8 @@ final class SchedulerPane extends VBox {
         this.nameInput = inputs.text(this.name, gui.t("nj.scheduler.name"), MAX_NAME, false);
         this.startInput = inputs.time(this.start, window);
         this.endInput = inputs.time(this.end, window);
-        this.uploadInput =
-                inputs.optionalNumber(this.upload, gui.t("nj.settings.upload"), 0, Preferences.MAX_RATE_KIBPS);
-        this.downloadInput =
-                inputs.optionalNumber(this.download, gui.t("nj.settings.download"), 0, Preferences.MAX_RATE_KIBPS);
+        this.uploadInput = this.upload.input();
+        this.downloadInput = this.download.input();
         this.connectionsInput =
                 inputs.optionalNumber(this.connections, gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
         this.sourcesInput =
@@ -144,8 +146,8 @@ final class SchedulerPane extends VBox {
         form.addRow(1, new Label(gui.t("nj.scheduler.days")), dayBoxes);
         GridPane.setColumnSpan(dayBoxes, 2);
         form.addRow(2, new Label(window), new HBox(8, this.start, this.end));
-        form.addRow(3, new Label(gui.t("nj.settings.upload")), this.upload);
-        form.addRow(4, new Label(gui.t("nj.settings.download")), this.download);
+        form.addRow(3, new Label(gui.t("nj.settings.upload")), this.upload.node());
+        form.addRow(4, new Label(gui.t("nj.settings.download")), this.download.node());
         form.addRow(5, new Label(gui.t("IDS_PW_MAXC")), this.connections);
         form.addRow(6, new Label(gui.t("IDS_PW_MAXSOURCES")), this.sources);
         for (ComboBox<OptionalInt> box : List.of(this.stopCategory, this.resumeCategory)) {
@@ -221,8 +223,8 @@ final class SchedulerPane extends VBox {
         this.days.forEach((day, box) -> box.setSelected(rule.days().contains(day)));
         this.start.setText(rule.start().toString());
         this.end.setText(rule.end().toString());
-        this.upload.setText(text(rule.uploadKiBps()));
-        this.download.setText(text(rule.downloadKiBps()));
+        this.upload.showOptional(rule.uploadKiBps());
+        this.download.showOptional(rule.downloadKiBps());
         this.connections.setText(text(rule.maxConnections()));
         this.sources.setText(text(rule.maxSourcesPerFile()));
         this.stopCategory.setValue(rule.stopCategory());
@@ -300,6 +302,16 @@ final class SchedulerPane extends VBox {
         return value == null ? OptionalInt.empty() : value;
     }
 
+    // A limit of a rule: nothing when it changes none, no limit, or the speed in the unit that suits it.
+    private String rate(OptionalInt kib) {
+        if (kib.isEmpty()) {
+            return "";
+        }
+        return kib.getAsInt() == 0
+                ? this.gui.t("nj.rate.noLimit")
+                : this.gui.formats().rate(kib.getAsInt() * 1024L);
+    }
+
     private static String text(OptionalInt value) {
         return value.isPresent() ? String.valueOf(value.getAsInt()) : "";
     }
@@ -325,7 +337,7 @@ final class SchedulerPane extends VBox {
     }
 
     TextField uploadField() {
-        return this.upload;
+        return this.upload.field();
     }
 
     TextField startField() {

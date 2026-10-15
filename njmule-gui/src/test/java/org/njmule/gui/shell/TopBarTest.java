@@ -114,10 +114,16 @@ class TopBarTest {
                         .anyMatch(w -> w.getScene().getRoot().lookup(".tray-speeds") != null));
         List<String> values = FxTesting.onFx(() -> javafx.stage.Window.getWindows().stream()
                 .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
-                .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .text-field").stream())
-                .map(n -> ((javafx.scene.control.TextField) n).getText())
+                .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .speed-value").stream())
+                .map(n -> ((javafx.scene.control.Label) n).getText())
                 .toList());
-        assertThat(values).containsExactly(String.valueOf(down), String.valueOf(up));
+        assertThat(values).containsExactly(this.limit(down), this.limit(up));
+    }
+
+    private String limit(int kib) {
+        return kib == 0
+                ? this.test.gui.t("nj.rate.noLimit")
+                : this.test.gui.formats().rate(kib * 1024L);
     }
 
     private void whenTheServerIsTried() throws Exception {

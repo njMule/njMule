@@ -95,7 +95,7 @@ class FirstRunWizardTest {
     void aLineFillsTheCapacitiesOfTheLine() throws Exception {
         this.givenTheWizard();
         this.whenTheLineIs(1);
-        this.thenTheCapacitiesAre("12207", "2441");
+        this.thenTheCapacitiesAre("100", "20");
     }
 
     @Test
