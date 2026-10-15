@@ -111,16 +111,21 @@ public final class I18n {
 
     /** The texts of {@code locale}'s language, or English when there is no translation. */
     public static I18n of(Locale locale) {
+        return new I18n(translation(locale));
+    }
+
+    // The language of the interface that writes locale's: one of LANGUAGES, English when none does.
+    private static Locale translation(Locale locale) {
         Objects.requireNonNull(locale, "locale");
         if (OTHER_NORWEGIAN.contains(locale.getLanguage())) {
-            return new I18n(Locale.of("nb"));
+            return Locale.of("nb");
         }
         for (Locale language : LANGUAGES) {
             if (language.getLanguage().equals(locale.getLanguage()) && sameWriting(language, locale)) {
-                return new I18n(language);
+                return language;
             }
         }
-        return new I18n(Locale.ENGLISH);
+        return Locale.ENGLISH;
     }
 
     // Chinese is written in two scripts and Portuguese in two standards: the locale picks the translation.
@@ -178,6 +183,16 @@ public final class I18n {
     /** The name of this language, written in it: Deutsch, Italiano. */
     public String name() {
         return this.t("nj.language");
+    }
+
+    /**
+     * The name of {@code language}, written in it, as {@link #name()} gives it. A list of the languages needs only
+     * these names: reading the small bundle of each, not every text of all of them, keeps it quick.
+     */
+    public static String nameOf(Locale language) {
+        Locale chosen = translation(language);
+        Locale lookup = chosen.getLanguage().equals("en") ? Locale.ROOT : chosen;
+        return ResourceBundle.getBundle(NJMULE_BUNDLE, lookup).getString("nj.language");
     }
 
     /** The text of {@code key}; an unknown key shows itself, so it is noticed. */

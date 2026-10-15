@@ -170,8 +170,7 @@ public final class FirstRunWizard {
         this.language.getItems().add(Optional.empty());
         I18n.LANGUAGES.forEach(l -> this.language.getItems().add(Optional.of(l)));
         this.language.setValue(this.gui.settings().language());
-        this.language.setConverter(
-                named(l -> l.map(locale -> I18n.of(locale).name()).orElse(this.gui.t("nj.settings.systemLanguage"))));
+        this.language.setConverter(named(l -> l.map(I18n::nameOf).orElse(this.gui.t("nj.settings.systemLanguage"))));
         this.mode.getItems().addAll(GuiSettings.Mode.values());
         this.mode.setValue(this.modeBefore);
         this.mode.setConverter(named(m -> this.gui.t("nj.mode." + m.name().toLowerCase(Locale.ROOT))));
