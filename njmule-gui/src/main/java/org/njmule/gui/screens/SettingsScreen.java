@@ -36,6 +36,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
+import javafx.geometry.Bounds;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -192,6 +193,9 @@ public final class SettingsScreen implements Screen {
     private Input<String> webUiAgainInput;
     private final Map<EventCommands.Event, CheckBox> eventSwitches = new EnumMap<>(EventCommands.Event.class);
     private final Map<EventCommands.Event, Input<String>> eventInputs = new EnumMap<>(EventCommands.Event.class);
+    // The inputs Apply checks, in the order of the page.
+    private final List<Input<?>> checked = new ArrayList<>();
+    private final ScrollPane scroll = new ScrollPane();
     // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
     private Preferences loaded;
 
@@ -417,7 +421,8 @@ public final class SettingsScreen implements Screen {
         grid.add(note, 0, row, 2, 1);
 
         Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply));
-        List<Input<?>> checked = new ArrayList<>(List.of(
+        List<Input<?>> checked = this.checked;
+        checked.addAll(List.of(
                 this.nickInput,
                 this.tcpPortInput,
                 this.udpPortInput,
@@ -444,12 +449,12 @@ public final class SettingsScreen implements Screen {
                 this.webUiPasswordInput,
                 this.webUiAgainInput));
         checked.addAll(this.eventInputs.values());
-        apply.disableProperty().bind(Input.allValid(checked).not());
+        // Apply stays enabled: pressed with a wrong value, it shows that field and says what it takes.
         var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
-        ScrollPane scroll = new ScrollPane(grid);
-        scroll.setFitToWidth(true);
+        this.scroll.setContent(grid);
+        this.scroll.setFitToWidth(true);
         this.load(this.gui.model().preferencesProperty().get());
-        return Fx.screen(this.title(), tools, scroll);
+        return Fx.screen(this.title(), tools, this.scroll);
     }
 
     // Each box takes only its kind of value, within the limits the engine accepts.
@@ -839,6 +844,9 @@ public final class SettingsScreen implements Screen {
 
     /** Validates the form, then saves the preferences and the look; errors are shown. */
     void apply() {
+        Optional<Input<?>> wrong =
+                this.checked.stream().filter(i -> !i.isValid()).findFirst();
+        wrong.ifPresent(i -> this.reveal(i.field()));
         Changes changes;
         Preferences shown;
         WebUiSettings web;
@@ -848,6 +856,14 @@ public final class SettingsScreen implements Screen {
             web = this.readWebUi(WebUiSettings.load(this.gui.directories().config()));
         } catch (IllegalArgumentException e) {
             this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+            return;
+        }
+        if (wrong.isPresent()) {
+            try {
+                wrong.get().value();
+            } catch (IllegalArgumentException e) {
+                this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+            }
             return;
         }
         // Only what the user changed: a limit the tray or the scheduler set meanwhile stays.
@@ -1062,6 +1078,23 @@ public final class SettingsScreen implements Screen {
         }
         return new WebUiSettings(
                 this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash, this.webUiApi.isSelected());
+    }
+
+    // Scrolls the page to show field a third of the way down, and puts the cursor in it.
+    private void reveal(Node field) {
+        Node content = this.scroll.getContent();
+        Bounds at = content.sceneToLocal(field.localToScene(field.getBoundsInLocal()));
+        double view = this.scroll.getViewportBounds().getHeight();
+        double free = content.getLayoutBounds().getHeight() - view;
+        if (free > 0) {
+            this.scroll.setVvalue(Math.clamp((at.getMinY() - view / 3) / free, 0.0, 1.0));
+        }
+        field.requestFocus();
+    }
+
+    /** The scroll pane of the page, for tests. */
+    ScrollPane scrollPane() {
+        return this.scroll;
     }
 
     // The token callers of the remote-control API need, made on first use.
