@@ -17,19 +17,23 @@
 package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -49,10 +53,43 @@ class ServerCallbackTest {
     @TempDir
     Path dir;
 
+    private final List<AutoCloseable> resources = new ArrayList<>();
+    private final BlockingQueue<EngineEvent> events = new LinkedBlockingQueue<>();
+    private final InetAddress loopback = InetAddress.getLoopbackAddress();
+    private FakeServer server;
+    private NjMuleEngine engine;
+    private ServerSocket firewalled;
+    private Throwable exception;
+
+    @AfterEach
+    void closeEverything() throws Exception {
+        Collections.reverse(this.resources);
+        for (AutoCloseable resource : this.resources) {
+            resource.close();
+        }
+    }
+
     @Test
-    void aServerCannotHaveUsCallALanAddressWhileLanAddressesAreFiltered() throws Exception {
-        InetAddress lan = ServerFlowTest.lanAddress();
-        InetAddress loopback = InetAddress.getLoopbackAddress();
+    void shouldNotLetAServerHaveUsCallALanAddressWhileLanAddressesAreFiltered() throws Exception {
+        givenAServerOnTheLoopback();
+        givenNjMuleRunningWithLanAddressesFiltered();
+        givenAFirewalledPeerListeningOnTheLan();
+        givenNjMuleConnectedToTheServer();
+        givenTheServerAskedUsToCallTheFirewalledPeer();
+
+        whenThePeerWaitsForACallForMillis(3_000);
+
+        thenExceptionOccurred(SocketTimeoutException.class);
+    }
+
+    private void givenAServerOnTheLoopback() throws IOException {
+        this.server = FakeServer.start(
+                this.loopback,
+                new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(this.loopback.getAddress())), "hi", List.of()));
+        this.resources.add(this.server);
+    }
+
+    private void givenNjMuleRunningWithLanAddressesFiltered() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
         int port;
@@ -62,44 +99,56 @@ class ServerCallbackTest {
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.kad.enabled=false\nsecurity.filterLan=true\n");
-        BlockingQueue<EngineEvent> events = new LinkedBlockingQueue<>();
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(this.engine);
+    }
 
-        try (FakeServer server = FakeServer.start(
-                        loopback,
-                        new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(loopback.getAddress())), "hi", List.of()));
-                NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-                ServerSocket firewalled = new ServerSocket(0, 4, lan)) {
-            engine.events().subscribe(new Flow.Subscriber<>() {
-                @Override
-                public void onSubscribe(Flow.Subscription subscription) {
-                    subscription.request(Long.MAX_VALUE);
-                }
+    private void givenAFirewalledPeerListeningOnTheLan() throws IOException {
+        this.firewalled = new ServerSocket(0, 4, ServerFlowTest.lanAddress());
+        this.resources.add(this.firewalled);
+    }
 
-                @Override
-                public void onNext(EngineEvent item) {
-                    events.add(item);
-                }
+    private void givenNjMuleConnectedToTheServer() throws Exception {
+        this.engine.events().subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
 
-                @Override
-                public void onError(Throwable throwable) {}
+            @Override
+            public void onNext(EngineEvent item) {
+                ServerCallbackTest.this.events.add(item);
+            }
 
-                @Override
-                public void onComplete() {}
-            });
-            engine.connect(Optional.of(new ServerAddress(loopback.getHostAddress(), server.port())))
-                    .get(10, TimeUnit.SECONDS);
-            assertThat(connected(events)).isTrue();
+            @Override
+            public void onError(Throwable throwable) {}
 
-            server.broadcast(Packet.of(
-                    Protocol.EDONKEY,
-                    0x35,
-                    new PacketWriter()
-                            .u32(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())))
-                            .u16(firewalled.getLocalPort())));
+            @Override
+            public void onComplete() {}
+        });
+        this.engine
+                .connect(Optional.of(new ServerAddress(this.loopback.getHostAddress(), this.server.port())))
+                .get(10, TimeUnit.SECONDS);
+        assertThat(connected(this.events)).isTrue();
+    }
 
-            firewalled.setSoTimeout(3_000);
-            assertThatThrownBy(firewalled::accept).isInstanceOf(SocketTimeoutException.class);
-        }
+    private void givenTheServerAskedUsToCallTheFirewalledPeer() throws IOException {
+        this.server.broadcast(Packet.of(
+                Protocol.EDONKEY,
+                0x35,
+                new PacketWriter()
+                        .u32(Ipv4.toEd2k(
+                                Ipv4.fromBytes(ServerFlowTest.lanAddress().getAddress())))
+                        .u16(this.firewalled.getLocalPort())));
+    }
+
+    private void whenThePeerWaitsForACallForMillis(int millis) throws IOException {
+        this.firewalled.setSoTimeout(millis);
+        this.exception = catchThrowable(this.firewalled::accept);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 
     private static boolean connected(BlockingQueue<EngineEvent> events) throws InterruptedException {

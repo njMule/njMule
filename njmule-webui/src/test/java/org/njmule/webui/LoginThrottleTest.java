@@ -37,6 +37,11 @@ class LoginThrottleTest {
         whenAnAttemptComesFrom("2001:db8:1:2:abcd::99");
 
         thenTheAttemptIsAllowed(false);
+    }
+
+    @Test
+    void shouldCountEachIpv6NetworkOnItsOwn() {
+        givenFailedAttemptsFromAddressesOf("2001:db8:1:2::", Sessions.MAX_FAILURES);
 
         whenAnAttemptComesFrom("2001:db8:1:3::1");
 

@@ -19,7 +19,6 @@ package org.njmule.testkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +48,10 @@ class SourceExchangeFlowTest {
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private NjMuleEngine uploader;
+    private Ed2kLink.FileLink link;
+    private NjMuleEngine second;
+    private DownloadInfo added;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -59,33 +62,58 @@ class SourceExchangeFlowTest {
     }
 
     @Test
-    void anUploaderTellsWhoElseDownloadsTheFile() throws Exception {
-        InetAddress lan = ServerFlowTest.lanAddress();
-        byte[] data = new byte[2_000_000];
-        new Random(11).nextBytes(data);
+    void shouldLetAnUploaderTellWhoElseDownloadsTheFile() throws Exception {
+        givenAnUploaderSharingRandomBytes("x.bin", 2_000_000, 11);
+        givenTheLinkOfTheSharedFileWithTheUploaderAsSource();
+        givenAFirstDownloaderGettingTheFile();
+        givenASecondDownloaderRunning();
+
+        whenTheSecondDownloaderAddsTheLink();
+
+        thenTheSecondDownloaderStartsWithSources(1);
+        thenTheSecondDownloaderSoonLearnsAnotherSource();
+    }
+
+    // Slow, so the first downloader is still there when the second asks.
+    private void givenAnUploaderSharingRandomBytes(String name, int size, long seed) throws IOException {
+        byte[] data = new byte[size];
+        new Random(seed).nextBytes(data);
         Path uploaderRoot = this.dir.resolve("uploader");
-        Files.write(Files.createDirectories(uploaderRoot.resolve("incoming")).resolve("x.bin"), data);
-        // Slow, so the first downloader is still there when the second asks.
-        NjMuleEngine uploader = engine(uploaderRoot, "limits.uploadKiBps=1\n");
-        SharedFileInfo shared = awaitShared(uploader);
-        Ed2kLink.FileLink link =
-                (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
-                        + "|sources,"
-                        + lan.getHostAddress()
-                        + ":"
-                        + uploader.preferences().tcpPort()
-                        + "|/");
+        Files.write(Files.createDirectories(uploaderRoot.resolve("incoming")).resolve(name), data);
+        this.uploader = engine(uploaderRoot, "limits.uploadKiBps=1\n");
+    }
 
+    private void givenTheLinkOfTheSharedFileWithTheUploaderAsSource() throws Exception {
+        SharedFileInfo shared = awaitShared(this.uploader);
+        this.link = (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
+                + "|sources,"
+                + ServerFlowTest.lanAddress().getHostAddress()
+                + ":"
+                + this.uploader.preferences().tcpPort()
+                + "|/");
+    }
+
+    private void givenAFirstDownloaderGettingTheFile() throws Exception {
         NjMuleEngine first = engine(this.dir.resolve("first"), "");
-        first.addDownload(link).get(10, TimeUnit.SECONDS);
+        first.addDownload(this.link).get(10, TimeUnit.SECONDS);
         awaitDownloading(first);
+    }
 
-        NjMuleEngine second = engine(this.dir.resolve("second"), "");
-        DownloadInfo added = second.addDownload(link).get(10, TimeUnit.SECONDS);
-        assertThat(added.sources()).isEqualTo(1);
+    private void givenASecondDownloaderRunning() throws IOException {
+        this.second = engine(this.dir.resolve("second"), "");
+    }
 
+    private void whenTheSecondDownloaderAddsTheLink() throws Exception {
+        this.added = this.second.addDownload(this.link).get(10, TimeUnit.SECONDS);
+    }
+
+    private void thenTheSecondDownloaderStartsWithSources(int sources) {
+        assertThat(this.added.sources()).isEqualTo(sources);
+    }
+
+    private void thenTheSecondDownloaderSoonLearnsAnotherSource() throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
-        while (second.downloads().get().getFirst().sources() < 2) {
+        while (this.second.downloads().get().getFirst().sources() < 2) {
             assertThat(System.nanoTime()).as("no source learned").isLessThan(deadline);
             Thread.sleep(100);
         }

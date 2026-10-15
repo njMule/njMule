@@ -18,6 +18,7 @@ package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -26,6 +27,7 @@ import java.time.Duration;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,47 +45,48 @@ class DownloadLimitFlowTest {
     @TempDir
     Path dir;
 
-    @Test
-    void theDownloadLimitHoldsAlsoWhenSetWhileRunning() throws Exception {
-        byte[] data = new byte[1_500_000];
-        new Random(31).nextBytes(data);
-        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("limited.bin");
-        Files.write(shared, data);
-        byte[] seed = new byte[16];
-        new Random(31).nextBytes(seed);
-        try (FakePeer peer = FakePeer.start(
-                        InetAddress.getLoopbackAddress(),
-                        shared,
-                        new FakePeer.Config(Hash16.of(seed), false, FakePeer.Slot.NOW, 0, Set.of()));
-                NjMuleEngine engine = engine()) {
-            // Unlimited first, for a while, then limited.
-            Thread.sleep(500);
-            engine.updatePreferences(
-                            p -> p.toBuilder().maxDownloadKiBps(LIMIT_KIBPS).build())
-                    .get(10, TimeUnit.SECONDS);
+    private byte[] data;
+    private FakePeer peer;
+    private NjMuleEngine engine;
+    private Duration took;
 
-            long start = System.nanoTime();
-            DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
-            long deadline = start + Duration.ofSeconds(60).toNanos();
-            while (engine.downloads().get(10, TimeUnit.SECONDS).stream()
-                    .map(DownloadInfo::hash)
-                    .toList()
-                    .contains(added.hash())) {
-                assertThat(System.nanoTime()).as("the download goes on").isLessThan(deadline);
-                Thread.sleep(50);
-            }
-            Duration took = Duration.ofNanos(System.nanoTime() - start);
-
-            // A second of burst and one block ahead at most; unlimited, it takes a fraction of a second.
-            long allowed = LIMIT_KIBPS * 1024L + 184_320;
-            assertThat(took)
-                    .as("%d bytes at %d KiB/s", data.length, LIMIT_KIBPS)
-                    .isGreaterThan(Duration.ofMillis((data.length - allowed) * 1000L / (LIMIT_KIBPS * 1024L)));
-            assertThat(peer.bytesSent()).isEqualTo(data.length);
+    @AfterEach
+    void stop() throws IOException {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.peer != null) {
+            this.peer.close();
         }
     }
 
-    private NjMuleEngine engine() throws Exception {
+    @Test
+    void shouldHoldTheDownloadLimitAlsoWhenSetWhileRunning() throws Exception {
+        givenAPeerSharingRandomBytes("limited.bin", 1_500_000, 31);
+        givenNjMuleRunning();
+        givenItRanWithoutLimitForMillis(500);
+        givenTheDownloadLimitSetTo(LIMIT_KIBPS);
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenTheDownloadTookAtLeastWhatTheLimitAllows(LIMIT_KIBPS);
+        thenThePeerSentTheFileOnce();
+    }
+
+    private void givenAPeerSharingRandomBytes(String name, int size, long seed) throws IOException {
+        this.data = new byte[size];
+        new Random(seed).nextBytes(this.data);
+        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve(name);
+        Files.write(shared, this.data);
+        byte[] userHash = new byte[16];
+        new Random(seed).nextBytes(userHash);
+        this.peer = FakePeer.start(
+                InetAddress.getLoopbackAddress(),
+                shared,
+                new FakePeer.Config(Hash16.of(userHash), false, FakePeer.Slot.NOW, 0, Set.of()));
+    }
+
+    private void givenNjMuleRunning() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         int port;
@@ -91,6 +94,43 @@ class DownloadLimitFlowTest {
             port = probe.getLocalPort();
         }
         Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n");
-        return NjMuleEngine.start(new EngineConfig(dirs));
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+    }
+
+    // Unlimited first, for a while, then limited.
+    private void givenItRanWithoutLimitForMillis(long millis) throws InterruptedException {
+        Thread.sleep(millis);
+    }
+
+    private void givenTheDownloadLimitSetTo(int kibps) throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().maxDownloadKiBps(kibps).build())
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenTheLinkOfThePeerIsDownloaded() throws Exception {
+        long start = System.nanoTime();
+        DownloadInfo added = this.engine.addDownload(this.peer.link()).get(10, TimeUnit.SECONDS);
+        long deadline = start + Duration.ofSeconds(60).toNanos();
+        while (this.engine.downloads().get(10, TimeUnit.SECONDS).stream()
+                .map(DownloadInfo::hash)
+                .toList()
+                .contains(added.hash())) {
+            assertThat(System.nanoTime()).as("the download goes on").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        this.took = Duration.ofNanos(System.nanoTime() - start);
+    }
+
+    // A second of burst and one block ahead at most; unlimited, it takes a fraction of a second.
+    private void thenTheDownloadTookAtLeastWhatTheLimitAllows(int kibps) {
+        long allowed = kibps * 1024L + 184_320;
+        assertThat(this.took)
+                .as("%d bytes at %d KiB/s", this.data.length, kibps)
+                .isGreaterThan(Duration.ofMillis((this.data.length - allowed) * 1000L / (kibps * 1024L)));
+    }
+
+    private void thenThePeerSentTheFileOnce() {
+        assertThat(this.peer.bytesSent()).isEqualTo(this.data.length);
     }
 }

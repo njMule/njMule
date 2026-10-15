@@ -17,7 +17,7 @@
 package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
@@ -27,6 +27,7 @@ import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -78,6 +79,21 @@ class ServerFlowTest {
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private final Map<String, SearchResult> results = new HashMap<>();
+    private InetAddress local;
+    private FakeServer server;
+    private FakeServer other;
+    private int deadPort;
+    private NjMuleEngine engine;
+    private Events events;
+    private EngineEvent.ServerConnected login;
+    private EngineEvent.SearchEnded ended;
+    private CompletableFuture<SearchId> pending;
+    private SearchId search;
+    private long deadline;
+    private ServerSocket firewalled;
+    private PeerInfo answer;
+    private Throwable exception;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -88,225 +104,385 @@ class ServerFlowTest {
     }
 
     @Test
-    void logsInAndSearchesTheServerThenTheOthersOverUdp() throws Exception {
-        InetAddress local = lanAddress();
-        FakeServer connected = server(
-                local,
-                new FakeServer.Config(
-                        highId(local),
-                        "server version 17.15\nWelcome to the fake server",
-                        List.of(
-                                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50),
-                                // Unusable results, which must not reach the front ends.
-                                FakeServer.file("empty.bin", 0, 3),
-                                FakeServer.file(" ", 100, 1))));
-        FakeServer other = server(
-                local,
-                new FakeServer.Config(
-                        1,
-                        "",
-                        List.of(
-                                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 7),
-                                FakeServer.file("ubuntu notes.txt", 10, 1))));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
+    void shouldLogInAndSearchTheServerThenTheOthersOverUdp() throws Exception {
+        givenAServerOnTheLan(
+                "server version 17.15\nWelcome to the fake server",
+                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 50),
+                // Unusable results, which must not reach the front ends.
+                FakeServer.file("empty.bin", 0, 3),
+                FakeServer.file(" ", 100, 1));
+        givenAnotherServerFinding(
+                FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 7), FakeServer.file("ubuntu notes.txt", 10, 1));
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheOtherServer();
+        givenNjMuleConnectedToTheServer();
+        givenTheLoginGotAHighIdAndTheMessageStartingWith("Welcome");
+
+        whenASearchRuns("ubuntu iso", SearchRequest.Scope.GLOBAL);
+
+        thenTheSearchEndedWithResults(2);
+        thenTheResultHas("ubuntu-24.04.iso", 57, 6_000_000_000L);
+        thenTheResultsHold("ubuntu notes.txt");
+        thenTheServerWasSearchedTimes(1);
+        thenTheOtherServerWasSearchedOverUdpTimes(1);
+    }
+
+    @Test
+    void shouldKeepAnAnswerOfTheServerWithTheSearchItAnswers() throws Exception {
+        givenAServerOnTheLan("");
+        givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch();
+        givenNjMuleRunning();
+        givenNjMuleConnectedToTheServer();
+        givenAServerSearchSentFor("first");
+
+        whenAnotherServerSearchIsSentBeforeTheAnswerFor("second");
+
+        thenTheResultsOfTheLatestSearchAre("second.bin");
+    }
+
+    @Test
+    void shouldOfferTheSharedFilesToTheServer() throws Exception {
+        givenAServerOnTheLan("hi");
+        givenOurIncomingFolderHolds("song.mp3", new byte[] {1, 2, 3, 4, 5});
+        givenNjMuleRunning();
+        givenTheFileShared();
+
+        whenNjMuleConnectsToTheServer();
+
+        thenTheServerIsOffered("song.mp3", 5, "Audio");
+        thenTheOfferLeavesOurAddressToTheServer();
+    }
+
+    @Test
+    void shouldMoveOnToTheNextServerAndReportALowId() throws Exception {
+        givenADeadPortOnTheLan();
+        givenAServerOnTheLanGivingTheId(1234, "low");
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheDeadServerThenTheAliveOne();
+
+        whenNjMuleConnectsToAnyServer();
+
+        thenTheLoginGotTheLowId(1234);
+        thenTheLoginIsOnTheAliveServer();
+    }
+
+    @Test
+    void shouldDropDeadServersButStaticOnesAndTakeTheServerListWhenAsked() throws Exception {
+        givenADeadPortOnTheLan();
+        givenAServerOnTheLan("hi");
+        givenTheServerKnowsTheServer("81.2.3.9", 4661);
+        givenNjMuleRunningAndTakingTheServerListsOfServers();
+        givenNjMuleKnowsTheDeadServerAndAnotherThatFailedOnce("81.2.3.7", 4661);
+        givenTheServerMadeStatic("81.2.3.7", 4661);
+
+        whenNjMuleConnectsToTheServer();
+
+        thenTheServerListChangesTimes(2);
+        thenNjMuleKnowsTheServerAnd("81.2.3.7:4661", "81.2.3.9:4661");
+        thenTheServerHasThePriority("81.2.3.9:4661", ServerInfo.Priority.LOW);
+    }
+
+    @Test
+    void shouldPingTheKnownServersAndConnectBackOnCallbackRequests() throws Exception {
+        givenAServerOnTheLan("hi");
+        givenAnotherServerFinding();
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheOtherServer();
+        givenNjMuleConnectedToTheServer();
+        givenTheOtherServerPingedWithUsersAndFiles(10, 20);
+        givenAFirewalledPeerListeningOnTheLan();
+        givenTheServerAskedTwiceToHaveThePeerCalled();
+        givenThePeerWasCalledWithAHello();
+
+        whenThePeerWaitsForAnotherCallForMillis(2_000);
+
+        thenExceptionOccurred(SocketTimeoutException.class);
+    }
+
+    @Test
+    void shouldAnswerHellosAndReportTheAnswer() throws Exception {
+        givenNjMuleRunning();
+
+        whenNjMuleSaysHelloToItself();
+
+        thenTheAnswerComesFromSoftwareStartingWith("njMule v");
+        thenTheAnswerHasOurNick();
+        thenTheAnswerIsNotObfuscated();
+    }
+
+    private void givenAServerOnTheLan(String welcome, FileEntry... files) throws IOException {
+        this.local = lanAddress();
+        this.server = server(new FakeServer.Config(highId(this.local), welcome, List.of(files)));
+    }
+
+    private void givenAServerOnTheLanGivingTheId(long clientId, String welcome) throws IOException {
+        this.local = lanAddress();
+        this.server = server(new FakeServer.Config(clientId, welcome, List.of()));
+    }
+
+    private void givenAnotherServerFinding(FileEntry... files) throws IOException {
+        this.other = server(new FakeServer.Config(1, "", List.of(files)));
+    }
+
+    private void givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch() {
+        this.server.answerSearches(expression -> List.of(
+                FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
+    }
+
+    private void givenTheServerKnowsTheServer(String ip, int port) {
+        this.server.knowsServers(List.of(new ServerMessages.Endpoint(Ipv4.parse(ip), port)));
+    }
+
+    private void givenADeadPortOnTheLan() throws IOException {
+        this.local = lanAddress();
+        try (ServerSocket probe = new ServerSocket(0, 1, this.local)) {
+            this.deadPort = probe.getLocalPort();
+        }
+    }
+
+    private void givenOurIncomingFolderHolds(String name, byte[] content) throws IOException {
+        Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
+        Files.write(incoming.resolve(name), content);
+    }
+
+    private void givenNjMuleRunning() throws IOException {
+        startNjMule();
+        this.events = new Events(this.engine);
+    }
+
+    private void givenNjMuleRunningAndTakingTheServerListsOfServers() throws Exception {
+        startNjMule();
+        this.engine
+                .updatePreferences(p -> p.toBuilder().addServersFromServer(true).build())
+                .get();
+        this.events = new Events(this.engine);
+    }
+
+    private void givenNjMuleKnowsTheOtherServer() throws Exception {
         Path serverMet = this.dir.resolve("other-server.met");
         Files.write(
                 serverMet,
-                ServerMet.write(
-                        List.of(new ServerMet.Server(Ipv4.fromBytes(local.getAddress()), other.port(), List.of()))));
-        assertThat(engine.addServers(serverMet).get()).isEqualTo(1);
-
-        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), connected.port())))
-                .get();
-
-        EngineEvent.ServerConnected login = events.next(EngineEvent.ServerConnected.class, e -> true);
-        assertThat(login.lowId()).isFalse();
-        assertThat(events.next(EngineEvent.ServerMessage.class, e -> e.text().startsWith("Welcome")))
-                .isNotNull();
-        assertThat(connected.logins()).hasSize(1);
-
-        SearchId search = engine.search(new SearchRequest("ubuntu iso", SearchRequest.Scope.GLOBAL))
-                .get();
-        Map<String, SearchResult> results = new HashMap<>();
-        while (true) {
-            EngineEvent event = events.next(
-                    EngineEvent.class,
-                    e -> e instanceof EngineEvent.SearchResults || e instanceof EngineEvent.SearchEnded);
-            if (event instanceof EngineEvent.SearchResults r && r.search().equals(search)) {
-                r.results().forEach(result -> results.put(result.name(), result));
-            } else if (event instanceof EngineEvent.SearchEnded ended
-                    && ended.search().equals(search)) {
-                assertThat(ended.results()).isEqualTo(2);
-                break;
-            }
-        }
-        assertThat(results.get("ubuntu-24.04.iso").sources()).isEqualTo(57);
-        assertThat(results.get("ubuntu-24.04.iso").size()).isEqualTo(6_000_000_000L);
-        assertThat(results).containsKey("ubuntu notes.txt");
-        assertThat(connected.searches()).hasSize(1);
-        assertThat(other.udpSearches()).hasSize(1);
+                ServerMet.write(List.of(
+                        new ServerMet.Server(Ipv4.fromBytes(this.local.getAddress()), this.other.port(), List.of()))));
+        assertThat(this.engine.addServers(serverMet).get()).isEqualTo(1);
     }
 
-    @Test
-    void anAnswerOfTheServerStaysWithTheSearchItAnswers() throws Exception {
-        InetAddress local = lanAddress();
-        FakeServer server = server(local, new FakeServer.Config(highId(local), "", List.of()));
-        server.answerSearches(expression -> List.of(
-                FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), server.port())))
-                .get();
-        events.next(EngineEvent.ServerConnected.class, e -> true);
-
-        // The second search goes out before the answer to the first comes in.
-        CompletableFuture<SearchId> first = engine.search(new SearchRequest("first", SearchRequest.Scope.SERVER));
-        SearchId second = engine.search(new SearchRequest("second", SearchRequest.Scope.SERVER))
-                .get();
-        first.get();
-
-        EngineEvent.SearchResults results =
-                events.next(EngineEvent.SearchResults.class, r -> r.search().equals(second));
-        assertThat(results.results()).extracting(SearchResult::name).containsExactly("second.bin");
-    }
-
-    @Test
-    void offersTheSharedFilesToTheServer() throws Exception {
-        InetAddress local = lanAddress();
-        FakeServer server = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
-        Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
-        Files.write(incoming.resolve("song.mp3"), new byte[] {1, 2, 3, 4, 5});
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        long deadline = System.nanoTime() + WAIT.toNanos();
-        while (engine.sharedFiles().get().isEmpty()) {
-            assertThat(System.nanoTime()).isLessThan(deadline);
-            Thread.sleep(50);
-        }
-
-        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), server.port())))
-                .get();
-        events.next(EngineEvent.ServerConnected.class, e -> true);
-
-        while (server.offers().isEmpty()) {
-            assertThat(System.nanoTime()).isLessThan(deadline);
-            Thread.sleep(50);
-        }
-        FileEntry offer = server.offers().getFirst();
-        assertThat(offer.name()).contains("song.mp3");
-        assertThat(offer.size()).hasValue(5);
-        assertThat(offer.type()).contains("Audio");
-        // A server with compression learns our address from the connection.
-        assertThat(offer.clientId()).isEqualTo(0xFBFB_FBFBL);
-        assertThat(offer.port()).isEqualTo(0xFBFB);
-    }
-
-    @Test
-    void movesOnToTheNextServerAndReportsALowId() throws Exception {
-        InetAddress local = lanAddress();
-        int deadPort;
-        try (ServerSocket probe = new ServerSocket(0, 1, local)) {
-            deadPort = probe.getLocalPort();
-        }
-        FakeServer alive = server(local, new FakeServer.Config(1234, "low", List.of()));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
+    private void givenNjMuleKnowsTheDeadServerThenTheAliveOne() throws Exception {
         Path serverMet = this.dir.resolve("two-servers.met");
-        int ip = Ipv4.fromBytes(local.getAddress());
+        int ip = Ipv4.fromBytes(this.local.getAddress());
         Files.write(
                 serverMet,
                 ServerMet.write(List.of(
-                        new ServerMet.Server(ip, deadPort, List.of()),
-                        new ServerMet.Server(ip, alive.port(), List.of()))));
-        engine.addServers(serverMet).get();
-
-        engine.connect(Optional.empty()).get();
-
-        EngineEvent.ServerConnected login = events.next(EngineEvent.ServerConnected.class, e -> true);
-        assertThat(login.lowId()).isTrue();
-        assertThat(login.clientId()).isEqualTo(1234);
-        assertThat(login.server().address()).endsWith(":" + alive.port());
+                        new ServerMet.Server(ip, this.deadPort, List.of()),
+                        new ServerMet.Server(ip, this.server.port(), List.of()))));
+        this.engine.addServers(serverMet).get();
     }
 
-    @Test
-    void dropsDeadServersButStaticOnesAndTakesTheServersListWhenAsked() throws Exception {
-        InetAddress local = lanAddress();
-        int deadPort;
-        try (ServerSocket probe = new ServerSocket(0, 1, local)) {
-            deadPort = probe.getLocalPort();
-        }
-        FakeServer alive = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
-        alive.knowsServers(List.of(new ServerMessages.Endpoint(Ipv4.of(81, 2, 3, 9), 4661)));
-        NjMuleEngine engine = engine();
-        engine.updatePreferences(p -> p.toBuilder().addServersFromServer(true).build())
-                .get();
-        Events events = new Events(engine);
+    private void givenNjMuleKnowsTheDeadServerAndAnotherThatFailedOnce(String ip, int port) throws Exception {
         Path serverMet = this.dir.resolve("dead.met");
         List<Tag> failedOnce = List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 1));
         Files.write(
                 serverMet,
                 ServerMet.write(List.of(
-                        new ServerMet.Server(Ipv4.fromBytes(local.getAddress()), deadPort, failedOnce),
-                        new ServerMet.Server(Ipv4.of(81, 2, 3, 7), 4661, failedOnce))));
-        engine.addServers(serverMet).get();
-        assertThat(engine.setStaticServer(new ServerAddress("81.2.3.7", 4661), true)
-                        .get())
-                .isTrue();
-
-        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), alive.port())))
-                .get();
-        events.next(EngineEvent.ServerConnected.class, e -> true);
-        events.next(EngineEvent.ServersChanged.class, e -> true);
-        events.next(EngineEvent.ServersChanged.class, e -> true);
-
-        List<ServerInfo> servers = engine.servers().get();
-        assertThat(servers)
-                .extracting(ServerInfo::address)
-                .containsExactlyInAnyOrder(
-                        local.getHostAddress() + ":" + alive.port(), "81.2.3.7:4661", "81.2.3.9:4661");
-        assertThat(servers)
-                .filteredOn(s -> s.address().equals("81.2.3.9:4661"))
-                .singleElement()
-                .satisfies(s -> assertThat(s.priority()).isEqualTo(ServerInfo.Priority.LOW));
+                        new ServerMet.Server(Ipv4.fromBytes(this.local.getAddress()), this.deadPort, failedOnce),
+                        new ServerMet.Server(Ipv4.parse(ip), port, failedOnce))));
+        this.engine.addServers(serverMet).get();
     }
 
-    @Test
-    void pingsTheKnownServersAndConnectsBackOnCallbackRequests() throws Exception {
-        InetAddress local = lanAddress();
-        FakeServer connected = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
-        FakeServer other = server(local, new FakeServer.Config(1, "", List.of()));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        Path serverMet = this.dir.resolve("other.met");
-        Files.write(
-                serverMet,
-                ServerMet.write(
-                        List.of(new ServerMet.Server(Ipv4.fromBytes(local.getAddress()), other.port(), List.of()))));
-        engine.addServers(serverMet).get();
-        engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), connected.port())))
-                .get();
-        events.next(EngineEvent.ServerConnected.class, e -> true);
+    private void givenTheServerMadeStatic(String host, int port) throws Exception {
+        assertThat(this.engine
+                        .setStaticServer(new ServerAddress(host, port), true)
+                        .get())
+                .isTrue();
+    }
 
-        EngineEvent.ServerUpdated pinged = events.next(
-                EngineEvent.ServerUpdated.class,
-                e -> e.server().address().endsWith(":" + other.port())
-                        && e.server().users() == 10);
-        assertThat(pinged.server().files()).isEqualTo(20);
+    private void givenNjMuleConnectedToTheServer() throws Exception {
+        whenNjMuleConnectsToTheServer();
+    }
 
-        try (ServerSocket firewalled = new ServerSocket(0, 4, local)) {
-            Packet request = callbackRequested(Ipv4.fromBytes(local.getAddress()), firewalled.getLocalPort());
-            connected.broadcast(request);
-            // The same request again is not answered twice in a row.
-            connected.broadcast(request);
-            try (Socket peer = firewalled.accept()) {
-                peer.setSoTimeout(10_000);
-                Packet hello = TcpFraming.read(peer.getInputStream(), FrameLimit.fixed(4096));
-                assertThat(hello.opcode()).isEqualTo(0x01);
-            }
-            firewalled.setSoTimeout(2_000);
-            assertThatThrownBy(firewalled::accept).isInstanceOf(java.net.SocketTimeoutException.class);
+    private void givenTheLoginGotAHighIdAndTheMessageStartingWith(String start) throws InterruptedException {
+        assertThat(this.login.lowId()).isFalse();
+        assertThat(this.events.next(
+                        EngineEvent.ServerMessage.class, e -> e.text().startsWith(start)))
+                .isNotNull();
+        assertThat(this.server.logins()).hasSize(1);
+    }
+
+    // The second search goes out before the answer to the first comes in.
+    private void givenAServerSearchSentFor(String expression) {
+        this.pending = this.engine.search(new SearchRequest(expression, SearchRequest.Scope.SERVER));
+    }
+
+    private void givenTheFileShared() throws Exception {
+        this.deadline = System.nanoTime() + WAIT.toNanos();
+        while (this.engine.sharedFiles().get().isEmpty()) {
+            assertThat(System.nanoTime()).isLessThan(this.deadline);
+            Thread.sleep(50);
         }
+    }
+
+    private void givenTheOtherServerPingedWithUsersAndFiles(int users, int files) throws InterruptedException {
+        EngineEvent.ServerUpdated pinged = this.events.next(
+                EngineEvent.ServerUpdated.class,
+                e -> e.server().address().endsWith(":" + this.other.port())
+                        && e.server().users() == users);
+        assertThat(pinged.server().files()).isEqualTo(files);
+    }
+
+    private void givenAFirewalledPeerListeningOnTheLan() throws IOException {
+        this.firewalled = new ServerSocket(0, 4, this.local);
+        this.resources.add(this.firewalled);
+    }
+
+    // The same request again is not answered twice in a row.
+    private void givenTheServerAskedTwiceToHaveThePeerCalled() throws IOException {
+        Packet request = callbackRequested(Ipv4.fromBytes(this.local.getAddress()), this.firewalled.getLocalPort());
+        this.server.broadcast(request);
+        this.server.broadcast(request);
+    }
+
+    private void givenThePeerWasCalledWithAHello() throws IOException {
+        try (Socket peer = this.firewalled.accept()) {
+            peer.setSoTimeout(10_000);
+            Packet hello = TcpFraming.read(peer.getInputStream(), FrameLimit.fixed(4096));
+            assertThat(hello.opcode()).isEqualTo(0x01);
+        }
+    }
+
+    private void whenASearchRuns(String expression, SearchRequest.Scope scope) throws Exception {
+        SearchId id = this.engine.search(new SearchRequest(expression, scope)).get();
+        while (true) {
+            EngineEvent event = this.events.next(
+                    EngineEvent.class,
+                    e -> e instanceof EngineEvent.SearchResults || e instanceof EngineEvent.SearchEnded);
+            if (event instanceof EngineEvent.SearchResults r && r.search().equals(id)) {
+                r.results().forEach(result -> this.results.put(result.name(), result));
+            } else if (event instanceof EngineEvent.SearchEnded end
+                    && end.search().equals(id)) {
+                this.ended = end;
+                break;
+            }
+        }
+    }
+
+    private void whenAnotherServerSearchIsSentBeforeTheAnswerFor(String expression) throws Exception {
+        this.search = this.engine
+                .search(new SearchRequest(expression, SearchRequest.Scope.SERVER))
+                .get();
+        this.pending.get();
+    }
+
+    private void whenNjMuleConnectsToTheServer() throws Exception {
+        this.engine
+                .connect(Optional.of(new ServerAddress(this.local.getHostAddress(), this.server.port())))
+                .get();
+        this.login = this.events.next(EngineEvent.ServerConnected.class, e -> true);
+    }
+
+    private void whenNjMuleConnectsToAnyServer() throws Exception {
+        this.engine.connect(Optional.empty()).get();
+        this.login = this.events.next(EngineEvent.ServerConnected.class, e -> true);
+    }
+
+    private void whenThePeerWaitsForAnotherCallForMillis(int millis) throws IOException {
+        this.firewalled.setSoTimeout(millis);
+        this.exception = catchThrowable(this.firewalled::accept);
+    }
+
+    private void whenNjMuleSaysHelloToItself() throws Exception {
+        int port = this.engine.preferences().tcpPort();
+        this.answer = this.engine.hello(new ServerAddress("127.0.0.1", port)).get(10, TimeUnit.SECONDS);
+    }
+
+    private void thenTheSearchEndedWithResults(int count) {
+        assertThat(this.ended.results()).isEqualTo(count);
+    }
+
+    private void thenTheResultHas(String name, int sources, long size) {
+        assertThat(this.results.get(name).sources()).isEqualTo(sources);
+        assertThat(this.results.get(name).size()).isEqualTo(size);
+    }
+
+    private void thenTheResultsHold(String name) {
+        assertThat(this.results).containsKey(name);
+    }
+
+    private void thenTheServerWasSearchedTimes(int times) {
+        assertThat(this.server.searches()).hasSize(times);
+    }
+
+    private void thenTheOtherServerWasSearchedOverUdpTimes(int times) {
+        assertThat(this.other.udpSearches()).hasSize(times);
+    }
+
+    private void thenTheResultsOfTheLatestSearchAre(String... names) throws InterruptedException {
+        EngineEvent.SearchResults found = this.events.next(
+                EngineEvent.SearchResults.class, r -> r.search().equals(this.search));
+        assertThat(found.results()).extracting(SearchResult::name).containsExactly(names);
+    }
+
+    private void thenTheServerIsOffered(String name, long size, String type) throws InterruptedException {
+        while (this.server.offers().isEmpty()) {
+            assertThat(System.nanoTime()).isLessThan(this.deadline);
+            Thread.sleep(50);
+        }
+        FileEntry offer = this.server.offers().getFirst();
+        assertThat(offer.name()).contains(name);
+        assertThat(offer.size()).hasValue(size);
+        assertThat(offer.type()).contains(type);
+    }
+
+    // A server with compression learns our address from the connection.
+    private void thenTheOfferLeavesOurAddressToTheServer() {
+        FileEntry offer = this.server.offers().getFirst();
+        assertThat(offer.clientId()).isEqualTo(0xFBFB_FBFBL);
+        assertThat(offer.port()).isEqualTo(0xFBFB);
+    }
+
+    private void thenTheLoginGotTheLowId(long clientId) {
+        assertThat(this.login.lowId()).isTrue();
+        assertThat(this.login.clientId()).isEqualTo(clientId);
+    }
+
+    private void thenTheLoginIsOnTheAliveServer() {
+        assertThat(this.login.server().address()).endsWith(":" + this.server.port());
+    }
+
+    private void thenTheServerListChangesTimes(int times) throws InterruptedException {
+        for (int i = 0; i < times; i++) {
+            this.events.next(EngineEvent.ServersChanged.class, e -> true);
+        }
+    }
+
+    private void thenNjMuleKnowsTheServerAnd(String... addresses) throws Exception {
+        List<String> expected = new ArrayList<>(List.of(addresses));
+        expected.add(this.local.getHostAddress() + ":" + this.server.port());
+        assertThat(this.engine.servers().get())
+                .extracting(ServerInfo::address)
+                .containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    private void thenTheServerHasThePriority(String address, ServerInfo.Priority priority) throws Exception {
+        assertThat(this.engine.servers().get())
+                .filteredOn(s -> s.address().equals(address))
+                .singleElement()
+                .satisfies(s -> assertThat(s.priority()).isEqualTo(priority));
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenTheAnswerComesFromSoftwareStartingWith(String start) {
+        assertThat(this.answer.software()).startsWith(start);
+    }
+
+    private void thenTheAnswerHasOurNick() {
+        assertThat(this.answer.nick()).contains(this.engine.preferences().nick());
+    }
+
+    private void thenTheAnswerIsNotObfuscated() {
+        assertThat(this.answer.obfuscated()).isFalse();
     }
 
     private static Packet callbackRequested(int ip, int port) {
@@ -314,25 +490,13 @@ class ServerFlowTest {
                 Protocol.EDONKEY, 0x35, new PacketWriter().u32(Ipv4.toEd2k(ip)).u16(port));
     }
 
-    @Test
-    void answersHellosAndReportsTheAnswer() throws Exception {
-        NjMuleEngine engine = engine();
-        int port = engine.preferences().tcpPort();
-
-        PeerInfo self = engine.hello(new ServerAddress("127.0.0.1", port)).get(10, TimeUnit.SECONDS);
-
-        assertThat(self.software()).startsWith("njMule v");
-        assertThat(self.nick()).contains(engine.preferences().nick());
-        assertThat(self.obfuscated()).isFalse();
+    private FakeServer server(FakeServer.Config config) throws IOException {
+        FakeServer started = FakeServer.start(this.local, config);
+        this.resources.add(started);
+        return started;
     }
 
-    private FakeServer server(InetAddress address, FakeServer.Config config) throws IOException {
-        FakeServer server = FakeServer.start(address, config);
-        this.resources.add(server);
-        return server;
-    }
-
-    private NjMuleEngine engine() throws IOException {
+    private void startNjMule() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         int port;
@@ -342,9 +506,8 @@ class ServerFlowTest {
         // The fake servers and peers listen on this machine's LAN address, which must be let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-        this.resources.add(engine);
-        return engine;
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(this.engine);
     }
 
     // Servers on loopback are not kept in the server list, so these tests need a LAN address.

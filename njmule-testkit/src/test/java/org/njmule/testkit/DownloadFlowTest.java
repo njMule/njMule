@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -62,6 +63,15 @@ class DownloadFlowTest {
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private byte[] data;
+    private FakePeer peer;
+    private FakeServer server;
+    private NjMuleEngine engine;
+    private Events events;
+    private DownloadInfo added;
+    private EngineEvent.DownloadCompleted completion;
+    private int closedPort;
+    private boolean cancelled;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -72,40 +82,341 @@ class DownloadFlowTest {
     }
 
     @Test
-    void downloadsAFileSentInCompressedBlocks() throws Exception {
-        byte[] data = content(2 * PART + 12_345, 1);
-        FakePeer peer = peer(data, FakePeer.Config.simple(hash(1)));
+    void shouldDownloadAFileSentInCompressedBlocks() throws Exception {
+        givenAPeerSharing(2 * PART + 12_345, 1);
+        givenNjMuleRunning();
 
-        Path file = download(peer);
+        whenTheLinkOfThePeerIsDownloaded();
 
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(file.getFileName().toString()).isEqualTo("shared.bin");
-        assertThat(peer.received())
-                .containsSubsequence("HELLO", "SETREQFILEID", "HASHSETREQUEST", "STARTUPLOADREQ")
-                .contains("REQUESTPARTS");
-        assertThat(Collections.frequency(peer.received(), "STARTUPLOADREQ")).isEqualTo(1);
+        thenTheDownloadStartedDownloadingFromSources(1);
+        thenTheDownloadIsComplete();
+        thenTheFileHoldsTheData();
+        thenTheFileIsNamed("shared.bin");
+        thenThePeerReceivedInOrder("HELLO", "SETREQFILEID", "HASHSETREQUEST", "STARTUPLOADREQ");
+        thenThePeerReceived("REQUESTPARTS");
+        thenThePeerReceivedTimes("STARTUPLOADREQ", 1);
     }
 
     @Test
-    void aSourceDownloadsFromUsOverTheConnectionWeDownloadOn() throws Exception {
+    void shouldLetASourceDownloadFromUsOverTheConnectionWeDownloadOn() throws Exception {
+        givenOurIncomingFolderHolds("ours.bin", 300_000, 9);
+        givenAPeerSharing(PART / 2, 10);
+        givenNjMuleRunning();
+        givenThePeerAlsoAsksForOurSharedFile();
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenThePeerSoonGetsASlot();
+        thenThePeerReceived("FILESTATUS");
+    }
+
+    @Test
+    void shouldWaitInTheQueueAndGetASlotAgainAfterTheSessionEnds() throws Exception {
+        givenAPeerSharing(PART + 500_000, 2, false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of());
+        givenNjMuleRunning();
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenTheDownloadStartedDownloadingFromSources(1);
+        thenTheDownloadIsComplete();
+        thenTheFileHoldsTheData();
+        thenThePeerReceivedTimes("STARTUPLOADREQ", 1);
+    }
+
+    @Test
+    void shouldDownloadACorruptPartAgain() throws Exception {
+        givenAPeerSharing(2 * PART + 1000, 3, true, FakePeer.Slot.NOW, 0, Set.of(1));
+        givenNjMuleRunning();
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenTheDownloadStartedDownloadingFromSources(1);
+        thenTheDownloadIsComplete();
+        thenTheFileHoldsTheData();
+        thenThePeerSentMoreThanTheFile();
+    }
+
+    @Test
+    void shouldSaveTheGoodBlocksOfACorruptPartWithAichRecoveryData() throws Exception {
+        givenAPeerSharing(3 * PART + 1000, 6, false, FakePeer.Slot.NOW, 0, Set.of(1));
+        givenNjMuleRunning();
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenTheDownloadStartedDownloadingFromSources(1);
+        thenTheDownloadIsComplete();
+        thenTheFileHoldsTheData();
+        thenThePeerReceived("AICHREQUEST");
+        thenThePeerSentTheBadBlockAgainOnly();
+    }
+
+    @Test
+    void shouldGetTheSlotWhenTheSourceCallsBack() throws Exception {
+        givenAPeerSharing(PART / 2, 4, true, FakePeer.Slot.CALL_BACK, 0, Set.of());
+        givenNjMuleRunning();
+
+        whenTheLinkOfThePeerIsDownloaded();
+
+        thenTheDownloadStartedDownloadingFromSources(1);
+        thenTheDownloadIsComplete();
+        thenTheFileHoldsTheData();
+        thenThePeerReceivedInOrder("STARTUPLOADREQ", "HELLOANSWER");
+    }
+
+    @Test
+    void shouldDownloadFromTheSourcesTheServerKnows() throws Exception {
+        givenAPeerOnTheLanSharing("shared", "served.bin", 1_000_000, 5);
+        givenAServerOnTheLan();
+        givenTheServerKnowsThePeerAsSource();
+        givenNjMuleRunning();
+        givenNjMuleConnectedToTheServer();
+
+        whenTheFileIsDownloadedWithoutSources("served.bin");
+
+        thenTheDownloadStartedWithSources(0);
+        thenTheFileHoldsTheData();
+    }
+
+    @Test
+    void shouldAskAFirewalledSourceTheServerKnowsToCallUs() throws Exception {
+        givenAPeerOnTheLanSharing("lowid", "firewalled.bin", 800_000, 6);
+        givenAServerOnTheLan();
+        givenTheServerKnowsThePeerAsLowIdSource(4242);
+        givenNjMuleRunning();
+        givenNjMuleConnectedToTheServer();
+
+        whenTheFileIsDownloadedWithoutSources("firewalled.bin");
+
+        thenTheFileHoldsTheData();
+        thenTheServerWasAskedToHaveCalledBack(4242);
+        thenThePeerReceivedInOrder("SETREQFILEID", "STARTUPLOADREQ");
+    }
+
+    @Test
+    void shouldPauseResumeAndCancelADownload() throws Exception {
+        givenNjMuleRunning();
+        givenADownloadWithASourceOnAClosedPort("nowhere.bin");
+        givenItsSourceIsListed("nowhere.bin");
+        givenTheDownloadPaused();
+        givenTheDownloadResumed();
+
+        whenTheDownloadIsCancelled();
+
+        thenTheDownloadIsRemoved();
+        thenTheDownloadIsRememberedAsCancelled();
+        thenTheDownloadCanNoLongerBePaused();
+        thenNoTemporaryFileIsLeft();
+    }
+
+    private void givenAPeerSharing(int size, int seed) throws IOException {
+        startPeer(
+                InetAddress.getLoopbackAddress(),
+                "shared",
+                "shared.bin",
+                size,
+                seed,
+                FakePeer.Config.simple(hash(seed)));
+    }
+
+    private void givenAPeerSharing(
+            int size, int seed, boolean compress, FakePeer.Slot slot, long sessionLimit, Set<Integer> corruptParts)
+            throws IOException {
+        startPeer(
+                InetAddress.getLoopbackAddress(),
+                "shared",
+                "shared.bin",
+                size,
+                seed,
+                new FakePeer.Config(hash(seed), compress, slot, sessionLimit, corruptParts));
+    }
+
+    private void givenAPeerOnTheLanSharing(String folder, String name, int size, int seed) throws IOException {
+        startPeer(ServerFlowTest.lanAddress(), folder, name, size, seed, FakePeer.Config.simple(hash(seed)));
+    }
+
+    private void givenOurIncomingFolderHolds(String name, int size, long seed) throws IOException {
         Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
-        Files.write(incoming.resolve("ours.bin"), content(300_000, 9));
-        byte[] data = content(PART / 2, 10);
-        FakePeer peer = peer(data, FakePeer.Config.simple(hash(10)));
-        NjMuleEngine engine = engine();
-        peer.alsoAskFor(awaitShared(engine).hash());
-        Events events = new Events(engine);
+        Files.write(incoming.resolve(name), content(size, seed));
+    }
 
-        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
-        events.completed(added.hash());
+    private void givenNjMuleRunning() throws IOException {
+        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
+        Files.createDirectories(dirs.config());
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
+        }
+        // The fake servers and peers listen on this machine's LAN address, which must be let in.
+        Files.writeString(
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(this.engine);
+        this.events = new Events(this.engine);
+    }
 
-        // The peer asked for our file on our connection and got a slot there.
+    private void givenThePeerAlsoAsksForOurSharedFile() throws Exception {
+        this.peer.alsoAskFor(awaitShared(this.engine).hash());
+    }
+
+    private void givenAServerOnTheLan() throws IOException {
+        InetAddress lan = ServerFlowTest.lanAddress();
+        this.server = FakeServer.start(
+                lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
+        this.resources.add(this.server);
+    }
+
+    private void givenTheServerKnowsThePeerAsSource() throws SocketException {
+        this.server.addSource(
+                this.peer.link().hash(), new InetSocketAddress(ServerFlowTest.lanAddress(), this.peer.port()));
+    }
+
+    private void givenTheServerKnowsThePeerAsLowIdSource(long lowId) {
+        this.server.addLowIdSource(this.peer.link().hash(), lowId, this.peer);
+    }
+
+    private void givenNjMuleConnectedToTheServer() throws Exception {
+        this.engine
+                .connect(Optional.of(
+                        new ServerAddress(ServerFlowTest.lanAddress().getHostAddress(), this.server.port())))
+                .get();
+    }
+
+    private void givenADownloadWithASourceOnAClosedPort(String name) throws Exception {
+        try (ServerSocket probe = new ServerSocket(0)) {
+            this.closedPort = probe.getLocalPort();
+        }
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
+                "ed2k://|file|" + name + "|5000|" + "12".repeat(16) + "|/|sources,127.0.0.1:" + this.closedPort + "|/");
+        this.added = this.engine.addDownload(link).get(10, TimeUnit.SECONDS);
+        assertThat(this.events.next(EngineEvent.DownloadAdded.class).download().name())
+                .isEqualTo(name);
+    }
+
+    private void givenItsSourceIsListed(String name) throws Exception {
+        assertThat(this.engine.sources().get(10, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(s -> {
+                    assertThat(s.file()).isEqualTo(this.added.hash());
+                    assertThat(s.fileName()).isEqualTo(name);
+                    assertThat(s.address()).isEqualTo("127.0.0.1:" + this.closedPort);
+                    assertThat(s.received()).isZero();
+                    assertThat(s.partCount()).isEqualTo(1);
+                });
+    }
+
+    private void givenTheDownloadPaused() throws Exception {
+        assertThat(this.engine.pauseDownload(this.added.hash()).get()).isTrue();
+        assertThat(this.engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.PAUSED);
+    }
+
+    private void givenTheDownloadResumed() throws Exception {
+        assertThat(this.engine.resumeDownload(this.added.hash()).get()).isTrue();
+        assertThat(this.engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
+    }
+
+    private void whenTheLinkOfThePeerIsDownloaded() throws Exception {
+        download(this.peer.link());
+    }
+
+    private void whenTheFileIsDownloadedWithoutSources(String name) throws Exception {
+        download(Ed2kLink.FileLink.of(name, this.data.length, this.peer.link().hash()));
+    }
+
+    private void whenTheDownloadIsCancelled() throws Exception {
+        this.cancelled = this.engine.cancelDownload(this.added.hash()).get();
+    }
+
+    private void thenTheDownloadStartedDownloadingFromSources(int sources) {
+        assertThat(this.added.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
+        assertThat(this.added.sources()).isEqualTo(sources);
+    }
+
+    private void thenTheDownloadStartedWithSources(int sources) {
+        assertThat(this.added.sources()).isEqualTo(sources);
+    }
+
+    private void thenTheDownloadIsComplete() throws Exception {
+        assertThat(this.completion.download().completed())
+                .isEqualTo(this.completion.download().size());
+        assertThat(this.engine.downloads().get(10, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenTheFileHoldsTheData() throws IOException {
+        assertThat(Files.readAllBytes(this.completion.file())).isEqualTo(this.data);
+    }
+
+    private void thenTheFileIsNamed(String name) {
+        assertThat(this.completion.file().getFileName().toString()).isEqualTo(name);
+    }
+
+    private void thenThePeerReceived(String message) {
+        assertThat(this.peer.received()).contains(message);
+    }
+
+    private void thenThePeerReceivedInOrder(String... messages) {
+        assertThat(this.peer.received()).containsSubsequence(messages);
+    }
+
+    private void thenThePeerReceivedTimes(String message, int times) {
+        assertThat(Collections.frequency(this.peer.received(), message)).isEqualTo(times);
+    }
+
+    private void thenThePeerSentMoreThanTheFile() {
+        assertThat(this.peer.bytesSent()).isGreaterThan(this.data.length);
+    }
+
+    // The part waits for the recovery data: only the bad block comes again.
+    private void thenThePeerSentTheBadBlockAgainOnly() {
+        assertThat(this.peer.bytesSent()).as("one bad block costs one block").isLessThan(this.data.length + PART / 10);
+    }
+
+    // The peer asked for our file on our connection and got a slot there.
+    private void thenThePeerSoonGetsASlot() throws InterruptedException {
         long deadline = System.nanoTime() + WAIT.toNanos();
-        while (!peer.received().contains("ACCEPTUPLOADREQ")) {
+        while (!this.peer.received().contains("ACCEPTUPLOADREQ")) {
             assertThat(System.nanoTime()).as("no slot for the peer").isLessThan(deadline);
             Thread.sleep(50);
         }
-        assertThat(peer.received()).contains("FILESTATUS");
+    }
+
+    private void thenTheServerWasAskedToHaveCalledBack(long lowId) {
+        assertThat(this.server.callbackRequests()).containsExactly(lowId);
+    }
+
+    private void thenTheDownloadIsRemoved() throws Exception {
+        assertThat(this.cancelled).isTrue();
+        assertThat(this.events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(this.added.hash());
+        assertThat(this.engine.downloads().get()).isEmpty();
+    }
+
+    private void thenTheDownloadIsRememberedAsCancelled() throws Exception {
+        assertThat(this.engine.fileHistory().get().cancelled(this.added.hash()))
+                .as("remembered as cancelled")
+                .isTrue();
+    }
+
+    private void thenTheDownloadCanNoLongerBePaused() throws Exception {
+        assertThat(this.engine.pauseDownload(this.added.hash()).get()).isFalse();
+    }
+
+    private void thenNoTemporaryFileIsLeft() throws IOException {
+        try (Stream<Path> left = Files.list(this.engine.directories().temp())) {
+            assertThat(left).isEmpty();
+        }
+    }
+
+    private void download(Ed2kLink.FileLink link) throws Exception {
+        this.added = this.engine.addDownload(link).get(10, TimeUnit.SECONDS);
+        this.completion = this.events.completed(this.added.hash());
+    }
+
+    private void startPeer(InetAddress address, String folder, String name, int size, long seed, FakePeer.Config config)
+            throws IOException {
+        this.data = content(size, seed);
+        Path shared = Files.createDirectories(this.dir.resolve(folder)).resolve(name);
+        Files.write(shared, this.data);
+        this.peer = FakePeer.start(address, shared, config);
+        this.resources.add(this.peer);
     }
 
     private static SharedFileInfo awaitShared(NjMuleEngine engine) throws Exception {
@@ -118,180 +429,6 @@ class DownloadFlowTest {
             assertThat(System.nanoTime()).as("nothing shared").isLessThan(deadline);
             Thread.sleep(50);
         }
-    }
-
-    @Test
-    void waitsInTheQueueAndGetsASlotAgainAfterTheSessionEnds() throws Exception {
-        byte[] data = content(PART + 500_000, 2);
-        FakePeer peer = peer(data, new FakePeer.Config(hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
-
-        Path file = download(peer);
-
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(Collections.frequency(peer.received(), "STARTUPLOADREQ")).isEqualTo(1);
-    }
-
-    @Test
-    void downloadsACorruptPartAgain() throws Exception {
-        byte[] data = content(2 * PART + 1000, 3);
-        FakePeer peer = peer(data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
-
-        Path file = download(peer);
-
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(peer.bytesSent()).isGreaterThan(data.length);
-    }
-
-    @Test
-    void aichRecoveryDataSavesTheGoodBlocksOfACorruptPart() throws Exception {
-        byte[] data = content(3 * PART + 1000, 6);
-        FakePeer peer = peer(data, new FakePeer.Config(hash(6), false, FakePeer.Slot.NOW, 0, Set.of(1)));
-
-        Path file = download(peer);
-
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(peer.received()).contains("AICHREQUEST");
-        // The part waits for the recovery data: only the bad block comes again.
-        assertThat(peer.bytesSent()).as("one bad block costs one block").isLessThan(data.length + PART / 10);
-    }
-
-    @Test
-    void getsTheSlotWhenTheSourceCallsBack() throws Exception {
-        byte[] data = content(PART / 2, 4);
-        FakePeer peer = peer(data, new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
-
-        Path file = download(peer);
-
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(peer.received()).containsSubsequence("STARTUPLOADREQ", "HELLOANSWER");
-    }
-
-    @Test
-    void downloadsFromTheSourcesTheServerKnows() throws Exception {
-        InetAddress lan = ServerFlowTest.lanAddress();
-        byte[] data = content(1_000_000, 5);
-        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("served.bin");
-        Files.write(shared, data);
-        FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(5)));
-        this.resources.add(peer);
-        FakeServer server = FakeServer.start(
-                lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
-        this.resources.add(server);
-        server.addSource(peer.link().hash(), new InetSocketAddress(lan, peer.port()));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
-                .get();
-
-        Ed2kLink.FileLink bare =
-                Ed2kLink.FileLink.of("served.bin", data.length, peer.link().hash());
-        DownloadInfo added = engine.addDownload(bare).get(10, TimeUnit.SECONDS);
-        assertThat(added.sources()).isZero();
-
-        Path file = events.completed(added.hash()).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-    }
-
-    @Test
-    void aFirewalledSourceTheServerKnowsIsAskedToCallUs() throws Exception {
-        InetAddress lan = ServerFlowTest.lanAddress();
-        byte[] data = content(800_000, 6);
-        Path shared = Files.createDirectories(this.dir.resolve("lowid")).resolve("firewalled.bin");
-        Files.write(shared, data);
-        FakePeer peer = FakePeer.start(lan, shared, FakePeer.Config.simple(hash(6)));
-        this.resources.add(peer);
-        FakeServer server = FakeServer.start(
-                lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
-        this.resources.add(server);
-        long lowId = 4242;
-        server.addLowIdSource(peer.link().hash(), lowId, peer);
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
-                .get();
-
-        DownloadInfo added = engine.addDownload(Ed2kLink.FileLink.of(
-                        "firewalled.bin", data.length, peer.link().hash()))
-                .get(10, TimeUnit.SECONDS);
-
-        Path file = events.completed(added.hash()).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(server.callbackRequests()).containsExactly(lowId);
-        assertThat(peer.received()).containsSubsequence("SETREQFILEID", "STARTUPLOADREQ");
-    }
-
-    @Test
-    void pausesResumesAndCancelsDownloads() throws Exception {
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        int closed;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            closed = probe.getLocalPort();
-        }
-        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
-                "ed2k://|file|nowhere.bin|5000|" + "12".repeat(16) + "|/|sources,127.0.0.1:" + closed + "|/");
-        DownloadInfo added = engine.addDownload(link).get(10, TimeUnit.SECONDS);
-        assertThat(events.next(EngineEvent.DownloadAdded.class).download().name())
-                .isEqualTo("nowhere.bin");
-        assertThat(engine.sources().get(10, TimeUnit.SECONDS)).singleElement().satisfies(s -> {
-            assertThat(s.file()).isEqualTo(added.hash());
-            assertThat(s.fileName()).isEqualTo("nowhere.bin");
-            assertThat(s.address()).isEqualTo("127.0.0.1:" + closed);
-            assertThat(s.received()).isZero();
-            assertThat(s.partCount()).isEqualTo(1);
-        });
-
-        assertThat(engine.pauseDownload(added.hash()).get()).isTrue();
-        assertThat(engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.PAUSED);
-        assertThat(engine.resumeDownload(added.hash()).get()).isTrue();
-        assertThat(engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
-
-        assertThat(engine.cancelDownload(added.hash()).get()).isTrue();
-        assertThat(events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(added.hash());
-        assertThat(engine.downloads().get()).isEmpty();
-        assertThat(engine.fileHistory().get().cancelled(added.hash()))
-                .as("remembered as cancelled")
-                .isTrue();
-        assertThat(engine.pauseDownload(added.hash()).get()).isFalse();
-        try (Stream<Path> left = Files.list(engine.directories().temp())) {
-            assertThat(left).isEmpty();
-        }
-    }
-
-    private Path download(FakePeer peer) throws Exception {
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
-        assertThat(added.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
-        assertThat(added.sources()).isEqualTo(1);
-
-        EngineEvent.DownloadCompleted done = events.completed(added.hash());
-        assertThat(done.download().completed()).isEqualTo(done.download().size());
-        assertThat(engine.downloads().get(10, TimeUnit.SECONDS)).isEmpty();
-        return done.file();
-    }
-
-    private FakePeer peer(byte[] data, FakePeer.Config config) throws IOException {
-        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("shared.bin");
-        Files.write(shared, data);
-        FakePeer peer = FakePeer.start(InetAddress.getLoopbackAddress(), shared, config);
-        this.resources.add(peer);
-        return peer;
-    }
-
-    private NjMuleEngine engine() throws IOException {
-        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
-        Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        // The fake servers and peers listen on this machine's LAN address, which must be let in.
-        Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-        this.resources.add(engine);
-        return engine;
     }
 
     // Random bytes with runs of zeros, so compression has something to do.

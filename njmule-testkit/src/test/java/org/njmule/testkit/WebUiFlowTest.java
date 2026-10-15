@@ -18,6 +18,7 @@ package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -36,12 +37,14 @@ import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.util.Ipv4;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUi;
@@ -57,72 +60,145 @@ class WebUiFlowTest {
     Path dir;
 
     private final HttpClient http = HttpClient.newHttpClient();
+    private FakeServer server;
+    private NjMuleEngine engine;
+    private WebUi ui;
     private int port;
     private String cookie;
+    private String results;
+    private String hash;
+
+    @AfterEach
+    void stop() throws IOException {
+        if (this.ui != null) {
+            this.ui.close();
+        }
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.server != null) {
+            this.server.close();
+        }
+    }
 
     @Test
-    void connectsSearchesAndDownloadsAResult() throws Exception {
+    void shouldConnectSearchDownloadAResultAndDisconnect() throws Exception {
+        givenAServerFinding(FakeServer.file("linux web.iso", 700_000_000L, 40), FakeServer.file("linux.txt", 10, 2));
+        givenNjMuleRunningWithTheWebInterfaceAndThePassword("flow password");
+        givenLoggedInWith("flow password");
+        givenConnectedToTheServerThroughThePages();
+        givenTheStatusSoonShows("(HighID)");
+        givenThePageShows("/servers", "<h1>Servers</h1>", "Disconnect");
+        givenASearchForNothingLeadsTo("/search");
+        givenASearchStartedFor("linux", "SERVER");
+        givenTheResultsSoonShow("linux.txt");
+        givenTheResultsShow("2 results", "linux web.iso");
+        givenTheResultsListBefore("linux web.iso", "linux.txt");
+        givenTheFirstResultDownloaded();
+        givenTheTransfersShowTheDownloadOf("linux web.iso");
+        givenADownloadFromTheUnknownSearchRefused("424242");
+        givenThePageShowsNoResults("/search?id=nonsense");
+
+        whenDisconnectedThroughThePages();
+
+        thenTheStatusSoonShows("not connected");
+    }
+
+    private void givenAServerFinding(FileEntry... files) throws IOException {
+        this.server = FakeServer.start(
+                InetAddress.getLoopbackAddress(),
+                new FakeServer.Config(Ipv4.toEd2k(Ipv4.parse("1.2.3.4")), "welcome", List.of(files)));
+    }
+
+    private void givenNjMuleRunningWithTheWebInterfaceAndThePassword(String password) throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
-        try (FakeServer server = FakeServer.start(
-                        InetAddress.getLoopbackAddress(),
-                        new FakeServer.Config(
-                                Ipv4.toEd2k(Ipv4.parse("1.2.3.4")),
-                                "welcome",
-                                List.of(
-                                        FakeServer.file("linux web.iso", 700_000_000L, 40),
-                                        FakeServer.file("linux.txt", 10, 2))));
-                NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-                WebUi ui = WebUi.start(
-                        engine,
-                        new WebUiSettings(
-                                true,
-                                freePort(),
-                                false,
-                                Passwords.hash("flow password".toCharArray(), new SecureRandom())))) {
-            this.port = ui.port();
-            HttpResponse<String> login = post("/login", Map.of("password", "flow password"));
-            String set = login.headers().firstValue("Set-Cookie").orElseThrow();
-            this.cookie = set.substring(0, set.indexOf(';'));
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.ui = WebUi.start(
+                this.engine,
+                new WebUiSettings(true, freePort(), false, Passwords.hash(password.toCharArray(), new SecureRandom())));
+        this.port = this.ui.port();
+    }
 
-            String address = "127.0.0.1:" + server.port();
-            HttpResponse<String> connect =
-                    post("/servers", Map.of("action", "connect", "address", address, "csrf", csrf()));
-            assertThat(connect.statusCode()).isEqualTo(303);
-            await(() -> page("/").contains("(HighID)"));
-            assertThat(page("/servers")).contains("<h1>Servers</h1>", "Disconnect");
+    private void givenLoggedInWith(String password) throws Exception {
+        HttpResponse<String> login = post("/login", Map.of("password", password));
+        String set = login.headers().firstValue("Set-Cookie").orElseThrow();
+        this.cookie = set.substring(0, set.indexOf(';'));
+    }
 
-            assertThat(post("/search", Map.of("query", " ", "csrf", csrf()))
-                            .headers()
-                            .firstValue("Location"))
-                    .hasValue("/search");
-            HttpResponse<String> search = post("/search", Map.of("query", "linux", "scope", "SERVER", "csrf", csrf()));
-            String results = search.headers().firstValue("Location").orElseThrow();
-            assertThat(results).startsWith("/search?id=");
-            await(() -> page(results).contains("linux.txt"));
-            String found = page(results);
-            assertThat(found).contains("2 results", "linux web.iso");
-            assertThat(found.indexOf("linux web.iso")).isLessThan(found.indexOf("linux.txt"));
+    private void givenConnectedToTheServerThroughThePages() throws Exception {
+        String address = "127.0.0.1:" + this.server.port();
+        HttpResponse<String> connect =
+                post("/servers", Map.of("action", "connect", "address", address, "csrf", csrf()));
+        assertThat(connect.statusCode()).isEqualTo(303);
+    }
 
-            Matcher download = Pattern.compile("name=\"download\" value=\"([0-9A-F]{32})\"")
-                    .matcher(found);
-            assertThat(download.find()).isTrue();
-            String hash = download.group(1);
-            String id = results.substring(results.indexOf('=') + 1);
-            HttpResponse<String> taken = post("/search", Map.of("search", id, "download", hash, "csrf", csrf()));
-            assertThat(taken.headers().firstValue("Location")).hasValue("/transfers");
-            assertThat(page("/transfers")).contains("linux web.iso", hash);
+    private void givenTheStatusSoonShows(String text) throws InterruptedException {
+        thenTheStatusSoonShows(text);
+    }
 
-            HttpResponse<String> gone = post("/search", Map.of("search", "424242", "download", hash, "csrf", csrf()));
-            assertThat(gone.statusCode()).isEqualTo(400);
-            assertThat(gone.body()).contains("search again");
-            assertThat(page("/search?id=nonsense")).doesNotContain("results;");
+    private void givenThePageShows(String path, String... parts) {
+        assertThat(page(path)).contains(parts);
+    }
 
-            post("/servers", Map.of("action", "disconnect", "csrf", csrf()));
-            await(() -> page("/").contains("not connected"));
-        }
+    private void givenASearchForNothingLeadsTo(String location) throws Exception {
+        assertThat(post("/search", Map.of("query", " ", "csrf", csrf()))
+                        .headers()
+                        .firstValue("Location"))
+                .hasValue(location);
+    }
+
+    private void givenASearchStartedFor(String query, String scope) throws Exception {
+        HttpResponse<String> search = post("/search", Map.of("query", query, "scope", scope, "csrf", csrf()));
+        this.results = search.headers().firstValue("Location").orElseThrow();
+        assertThat(this.results).startsWith("/search?id=");
+    }
+
+    private void givenTheResultsSoonShow(String text) throws InterruptedException {
+        await(() -> page(this.results).contains(text));
+    }
+
+    private void givenTheResultsShow(String... parts) {
+        givenThePageShows(this.results, parts);
+    }
+
+    private void givenTheResultsListBefore(String first, String second) {
+        String found = page(this.results);
+        assertThat(found.indexOf(first)).isLessThan(found.indexOf(second));
+    }
+
+    private void givenTheFirstResultDownloaded() throws Exception {
+        Matcher download =
+                Pattern.compile("name=\"download\" value=\"([0-9A-F]{32})\"").matcher(page(this.results));
+        assertThat(download.find()).isTrue();
+        this.hash = download.group(1);
+        String id = this.results.substring(this.results.indexOf('=') + 1);
+        HttpResponse<String> taken = post("/search", Map.of("search", id, "download", this.hash, "csrf", csrf()));
+        assertThat(taken.headers().firstValue("Location")).hasValue("/transfers");
+    }
+
+    private void givenTheTransfersShowTheDownloadOf(String name) {
+        givenThePageShows("/transfers", name, this.hash);
+    }
+
+    private void givenADownloadFromTheUnknownSearchRefused(String search) throws Exception {
+        HttpResponse<String> gone = post("/search", Map.of("search", search, "download", this.hash, "csrf", csrf()));
+        assertThat(gone.statusCode()).isEqualTo(400);
+        assertThat(gone.body()).contains("search again");
+    }
+
+    private void givenThePageShowsNoResults(String path) {
+        assertThat(page(path)).doesNotContain("results;");
+    }
+
+    private void whenDisconnectedThroughThePages() throws Exception {
+        post("/servers", Map.of("action", "disconnect", "csrf", csrf()));
+    }
+
+    private void thenTheStatusSoonShows(String text) throws InterruptedException {
+        await(() -> page("/").contains(text));
     }
 
     private String csrf() throws Exception {

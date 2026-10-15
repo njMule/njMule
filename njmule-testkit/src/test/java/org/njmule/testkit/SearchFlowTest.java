@@ -66,9 +66,23 @@ class SearchFlowTest {
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private final ByteArrayOutputStream log = new ByteArrayOutputStream();
+    private InetAddress local;
+    private FakeServer server;
+    private FakeServer other;
+    private NjMuleEngine engine;
+    private Events events;
+    private SearchId earlier;
+    private SearchId latest;
+    private EngineEvent.SearchEnded ended;
+    private boolean more;
+    private PrintStream console;
 
     @AfterEach
     void closeEverything() throws Exception {
+        if (this.console != null) {
+            System.setOut(this.console);
+        }
         Collections.reverse(this.resources);
         for (AutoCloseable resource : this.resources) {
             resource.close();
@@ -76,118 +90,202 @@ class SearchFlowTest {
     }
 
     @Test
-    void aNewGlobalSearchEndsTheOneBeforeSoUdpAnswersReachTheNewOne() throws Exception {
-        InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer connected = server(local, new FakeServer.Config(highId(local), "", List.of()));
-        connected.answerSearches(expression -> List.of(
+    void shouldEndTheGlobalSearchBeforeANewOneSoUdpAnswersReachTheNewOne() throws Exception {
+        givenAServerOnTheLan();
+        givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch();
+        givenAnotherServerFinding("udp.bin", 2000);
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheOtherServer();
+        givenNjMuleConnectedToTheServer();
+        givenASearchStarted("first", SearchRequest.Scope.GLOBAL);
+        givenTheOtherServerSearchedOverUdpTimes(1);
+
+        whenASearchStarts("second", SearchRequest.Scope.GLOBAL);
+
+        thenTheEarlierSearchEndsBeforeTheLatestFinds("second.bin", "udp.bin");
+        thenTheOtherServerWasSearchedOverUdpTimes(2);
+    }
+
+    @Test
+    void shouldAskMoreResultsOnlyForTheLatestServerSearch() throws Exception {
+        givenAServerOnTheLan();
+        givenTheServerFindsAFileNamedAfterTheSearchAndHasMore();
+        givenNjMuleRunning();
+        givenNjMuleConnectedToTheServer();
+        givenAServerSearchAnswered("first");
+        givenAServerSearchAnswered("second");
+        givenNoMoreResultsAreAskedForTheEarlierSearch();
+
+        whenMoreResultsAreAskedForTheLatestSearch();
+
+        thenMoreResultsAreAsked();
+        thenTheServerIsAskedForMoreResultsOnlyOf("second");
+    }
+
+    @Test
+    void shouldSkipServersWithoutAUdpPortInAGlobalSearch() throws Exception {
+        givenAServerOnTheLan();
+        givenAnotherServerFinding("udp.bin", 2000);
+        givenNjMuleRunning();
+        givenNjMuleKnowsAPreferredServerWithoutUdpPortAt(65_533);
+        givenNjMuleKnowsTheOtherServer();
+        givenNjMuleConnectedToTheServer();
+        givenTheConsoleRecorded();
+
+        whenASearchRuns("anything", SearchRequest.Scope.GLOBAL);
+
+        thenTheSearchEndedWithResults(1);
+        thenTheOtherServerWasSearchedOverUdpTimes(1);
+        thenTheConsoleDoesNotShow("global search failed");
+    }
+
+    private void givenAServerOnTheLan() throws IOException {
+        this.local = ServerFlowTest.lanAddress();
+        this.server = server(new FakeServer.Config(highId(this.local), "", List.of()));
+    }
+
+    private void givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch() {
+        this.server.answerSearches(expression -> List.of(
                 FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
-        FakeServer other = server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        knows(engine, local, other.port(), List.of());
-        connect(engine, events, local, connected);
+    }
 
-        SearchId first = engine.search(new SearchRequest("first", SearchRequest.Scope.GLOBAL))
-                .get();
-        waitFor(() -> other.udpSearches().size() == 1);
-        SearchId second = engine.search(new SearchRequest("second", SearchRequest.Scope.GLOBAL))
-                .get();
+    private void givenTheServerFindsAFileNamedAfterTheSearchAndHasMore() {
+        this.server.answerSearches(expression -> List.of(FakeServer.file(expression + ".bin", 1000, 1)));
+        this.server.announceMoreResults(true);
+    }
 
-        Set<String> secondResults = new HashSet<>();
-        boolean firstEnded = false;
-        while (true) {
-            EngineEvent event = events.next(
-                    EngineEvent.class,
-                    e -> e instanceof EngineEvent.SearchResults || e instanceof EngineEvent.SearchEnded);
-            if (event instanceof EngineEvent.SearchEnded ended && ended.search().equals(first)) {
-                firstEnded = true;
-            } else if (event instanceof EngineEvent.SearchResults r
-                    && r.search().equals(second)) {
-                r.results().forEach(result -> secondResults.add(result.name()));
-            } else if (event instanceof EngineEvent.SearchEnded ended
-                    && ended.search().equals(second)) {
-                break;
-            }
+    private void givenAnotherServerFinding(String name, long size) throws IOException {
+        this.other = server(new FakeServer.Config(1, "", List.of(FakeServer.file(name, size, 1))));
+    }
+
+    private void givenNjMuleRunning() throws IOException {
+        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
+        Files.createDirectories(dirs.config());
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
         }
-        assertThat(firstEnded).as("the first search ended before the second").isTrue();
-        assertThat(secondResults).containsExactlyInAnyOrder("second.bin", "udp.bin");
-        assertThat(other.udpSearches()).hasSize(2);
+        Files.writeString(
+                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(this.engine);
+        this.events = new Events(this.engine);
     }
 
-    @Test
-    void moreResultsAreAskedOnlyForTheLatestServerSearch() throws Exception {
-        InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer server = server(local, new FakeServer.Config(highId(local), "", List.of()));
-        server.answerSearches(expression -> List.of(FakeServer.file(expression + ".bin", 1000, 1)));
-        server.announceMoreResults(true);
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        connect(engine, events, local, server);
-
-        SearchId first = engine.search(new SearchRequest("first", SearchRequest.Scope.SERVER))
-                .get();
-        events.next(EngineEvent.SearchResults.class, r -> r.search().equals(first));
-        SearchId second = engine.search(new SearchRequest("second", SearchRequest.Scope.SERVER))
-                .get();
-        events.next(EngineEvent.SearchResults.class, r -> r.search().equals(second));
-
-        assertThat(engine.moreResults(first).get()).isFalse();
-        assertThat(engine.moreResults(second).get()).isTrue();
-        waitFor(() -> server.moreRequests().size() == 1);
-        assertThat(server.moreRequests().getFirst().toString()).contains("second");
+    private void givenNjMuleKnowsTheOtherServer() throws Exception {
+        knows(this.other.port(), List.of());
     }
 
-    @Test
-    void aGlobalSearchSkipsServersWithoutAUdpPort() throws Exception {
-        InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer connected = server(local, new FakeServer.Config(highId(local), "", List.of()));
-        FakeServer other = server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        // Asked first for its high priority; its UDP port, TCP port + 4, does not exist.
-        knows(engine, local, 65_533, List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1)));
-        knows(engine, local, other.port(), List.of());
-        connect(engine, events, local, connected);
+    // Asked first for its high priority; its UDP port, TCP port + 4, does not exist.
+    private void givenNjMuleKnowsAPreferredServerWithoutUdpPortAt(int port) throws Exception {
+        knows(port, List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1)));
+    }
 
-        // The engine survives a failing timer job and only logs it, so the log (on the console) is what tells.
-        ByteArrayOutputStream log = new ByteArrayOutputStream();
-        PrintStream console = System.out;
+    private void givenNjMuleConnectedToTheServer() throws Exception {
+        this.engine
+                .connect(Optional.of(new ServerAddress(this.local.getHostAddress(), this.server.port())))
+                .get();
+        this.events.next(EngineEvent.ServerConnected.class, e -> true);
+    }
+
+    private void givenASearchStarted(String expression, SearchRequest.Scope scope) throws Exception {
+        whenASearchStarts(expression, scope);
+    }
+
+    private void givenAServerSearchAnswered(String expression) throws Exception {
+        whenASearchStarts(expression, SearchRequest.Scope.SERVER);
+        SearchId search = this.latest;
+        this.events.next(EngineEvent.SearchResults.class, r -> r.search().equals(search));
+    }
+
+    private void givenTheOtherServerSearchedOverUdpTimes(int times) throws InterruptedException {
+        waitFor(() -> this.other.udpSearches().size() == times);
+    }
+
+    private void givenNoMoreResultsAreAskedForTheEarlierSearch() throws Exception {
+        assertThat(this.engine.moreResults(this.earlier).get()).isFalse();
+    }
+
+    // The engine survives a failing timer job and only logs it, so the log (on the console) is what tells.
+    private void givenTheConsoleRecorded() {
+        PrintStream original = System.out;
+        this.console = original;
         System.setOut(new PrintStream(
                 new OutputStream() {
                     @Override
                     public void write(int b) {
-                        console.write(b);
-                        log.write(b);
+                        original.write(b);
+                        SearchFlowTest.this.log.write(b);
                     }
                 },
                 true,
                 StandardCharsets.UTF_8));
-        EngineEvent.SearchEnded ended;
-        try {
-            SearchId search = engine.search(new SearchRequest("anything", SearchRequest.Scope.GLOBAL))
-                    .get();
-            ended = events.next(EngineEvent.SearchEnded.class, e -> e.search().equals(search));
-        } finally {
-            System.setOut(console);
-        }
-
-        assertThat(ended.results()).isEqualTo(1);
-        assertThat(other.udpSearches()).hasSize(1);
-        assertThat(log.toString(StandardCharsets.UTF_8)).doesNotContain("global search failed");
     }
 
-    private void knows(NjMuleEngine engine, InetAddress address, int port, List<Tag> tags) throws Exception {
+    private void whenASearchStarts(String expression, SearchRequest.Scope scope) throws Exception {
+        this.earlier = this.latest;
+        this.latest = this.engine.search(new SearchRequest(expression, scope)).get();
+    }
+
+    private void whenASearchRuns(String expression, SearchRequest.Scope scope) throws Exception {
+        whenASearchStarts(expression, scope);
+        SearchId search = this.latest;
+        this.ended =
+                this.events.next(EngineEvent.SearchEnded.class, e -> e.search().equals(search));
+    }
+
+    private void whenMoreResultsAreAskedForTheLatestSearch() throws Exception {
+        this.more = this.engine.moreResults(this.latest).get();
+    }
+
+    private void thenTheEarlierSearchEndsBeforeTheLatestFinds(String... names) throws InterruptedException {
+        Set<String> latestResults = new HashSet<>();
+        boolean earlierEnded = false;
+        while (true) {
+            EngineEvent event = this.events.next(
+                    EngineEvent.class,
+                    e -> e instanceof EngineEvent.SearchEnded || e instanceof EngineEvent.SearchResults);
+            if (event instanceof EngineEvent.SearchEnded end && end.search().equals(this.earlier)) {
+                earlierEnded = true;
+            } else if (event instanceof EngineEvent.SearchResults r
+                    && r.search().equals(this.latest)) {
+                r.results().forEach(result -> latestResults.add(result.name()));
+            } else if (event instanceof EngineEvent.SearchEnded end
+                    && end.search().equals(this.latest)) {
+                break;
+            }
+        }
+        assertThat(earlierEnded).as("the first search ended before the second").isTrue();
+        assertThat(latestResults).containsExactlyInAnyOrder(names);
+    }
+
+    private void thenTheOtherServerWasSearchedOverUdpTimes(int times) {
+        assertThat(this.other.udpSearches()).hasSize(times);
+    }
+
+    private void thenMoreResultsAreAsked() {
+        assertThat(this.more).isTrue();
+    }
+
+    private void thenTheServerIsAskedForMoreResultsOnlyOf(String expression) throws InterruptedException {
+        waitFor(() -> this.server.moreRequests().size() == 1);
+        assertThat(this.server.moreRequests().getFirst().toString()).contains(expression);
+    }
+
+    private void thenTheSearchEndedWithResults(int results) {
+        assertThat(this.ended.results()).isEqualTo(results);
+    }
+
+    private void thenTheConsoleDoesNotShow(String text) {
+        assertThat(this.log.toString(StandardCharsets.UTF_8)).doesNotContain(text);
+    }
+
+    private void knows(int port, List<Tag> tags) throws Exception {
         Path serverMet = Files.createTempFile(this.dir, "known", ".met");
         Files.write(
                 serverMet,
-                ServerMet.write(List.of(new ServerMet.Server(Ipv4.fromBytes(address.getAddress()), port, tags))));
-        assertThat(engine.addServers(serverMet).get()).isEqualTo(1);
-    }
-
-    private void connect(NjMuleEngine engine, Events events, InetAddress address, FakeServer server) throws Exception {
-        engine.connect(Optional.of(new ServerAddress(address.getHostAddress(), server.port())))
-                .get();
-        events.next(EngineEvent.ServerConnected.class, e -> true);
+                ServerMet.write(List.of(new ServerMet.Server(Ipv4.fromBytes(this.local.getAddress()), port, tags))));
+        assertThat(this.engine.addServers(serverMet).get()).isEqualTo(1);
     }
 
     private void waitFor(java.util.function.BooleanSupplier condition) throws InterruptedException {
@@ -198,24 +296,10 @@ class SearchFlowTest {
         }
     }
 
-    private FakeServer server(InetAddress address, FakeServer.Config config) throws IOException {
-        FakeServer server = FakeServer.start(address, config);
-        this.resources.add(server);
-        return server;
-    }
-
-    private NjMuleEngine engine() throws IOException {
-        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
-        Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-        this.resources.add(engine);
-        return engine;
+    private FakeServer server(FakeServer.Config config) throws IOException {
+        FakeServer started = FakeServer.start(this.local, config);
+        this.resources.add(started);
+        return started;
     }
 
     private static long highId(InetAddress address) {

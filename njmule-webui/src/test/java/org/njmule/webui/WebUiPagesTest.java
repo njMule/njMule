@@ -75,26 +75,42 @@ class WebUiPagesTest {
     }
 
     @Test
-    void shouldListTheSharedFilesAndSetTheirPriority() throws Exception {
+    void shouldListTheSharedFiles() throws Exception {
         givenALoggedInUser();
         givenTheEngineShares("talk.bin", "/files");
 
         whenThePageIsAsked("/shared");
+
         thenThePageShows("talk.bin", Path.of("/files") + " (with subfolders)", "value=\"high\" selected");
+    }
+
+    @Test
+    void shouldSetThePriorityOfASharedFile() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineShares("talk.bin", "/files");
 
         whenPosted("/shared", Map.of("action", "priority", "hash", HASH, "priority", "release"));
+
         thenTheEngineWasAsked("upload priority " + HASH + " RELEASE");
     }
 
     @Test
-    void shouldShowKadAndBootstrapIt() throws Exception {
+    void shouldShowKad() throws Exception {
         givenALoggedInUser();
         givenKadConnectedAndFirewalled();
 
         whenThePageIsAsked("/kad");
+
         thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall", "Buddy");
+    }
+
+    @Test
+    void shouldBootstrapKad() throws Exception {
+        givenALoggedInUser();
+        givenKadConnectedAndFirewalled();
 
         whenPosted("/kad", Map.of("action", "bootstrap", "address", "10.0.0.5:4672"));
+
         thenTheEngineWasAsked("bootstrap 10.0.0.5:4672");
     }
 

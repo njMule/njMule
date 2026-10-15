@@ -55,6 +55,8 @@ class WebUiTest {
 
     private static final String PASSWORD = "correct horse";
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
+    private static final String HASH = "0123456789ABCDEF0123456789ABCDEF";
+    private static final String REFUSED_LINK = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
 
     @TempDir
     static Path dir;
@@ -64,6 +66,10 @@ class WebUiTest {
     private final HttpClient http = HttpClient.newHttpClient();
     private WebUi ui;
     private String cookie;
+    private String formToken;
+    private String origin;
+    private HttpResponse<String> answer;
+    private String rawAnswer;
 
     @BeforeAll
     static void startEngine() throws IOException {
@@ -87,144 +93,218 @@ class WebUiTest {
     }
 
     @Test
-    void sendsVisitorsToTheLoginPage() throws Exception {
-        start();
-        HttpResponse<String> root = get("/");
-        assertThat(root.statusCode()).isEqualTo(303);
-        assertThat(root.headers().firstValue("Location")).hasValue("/login");
-        assertThat(root.headers().firstValue("X-Frame-Options")).hasValue("DENY");
-        assertThat(root.headers().firstValue("Content-Security-Policy").orElseThrow())
-                .contains("default-src 'none'")
-                .contains("frame-ancestors 'none'");
+    void shouldSendVisitorsToTheLoginPage() throws Exception {
+        givenTheWebInterfaceRuns();
 
-        HttpResponse<String> login = get("/login");
-        assertThat(login.statusCode()).isEqualTo(200);
-        assertThat(login.body()).contains("type=\"password\"").doesNotContain("csrf");
-        assertThat(get("/style.css").body()).contains("color-scheme");
-        assertThat(post("/transfers", Map.of("action", "add")).statusCode()).isEqualTo(403);
+        whenThePageIsAsked("/");
+
+        thenTheStatusIs(303);
+        thenTheHeaderIs("Location", "/login");
+        thenTheAnswerForbidsFramesAndForeignContent();
     }
 
     @Test
-    void locksOutAfterTooManyWrongPasswords() throws Exception {
-        start();
-        for (int i = 0; i < Sessions.MAX_FAILURES; i++) {
-            HttpResponse<String> wrong = post("/login", Map.of("password", "guess " + i));
-            assertThat(wrong.statusCode()).isEqualTo(401);
-            assertThat(wrong.body()).contains("Wrong password");
-        }
-        HttpResponse<String> locked = post("/login", Map.of("password", PASSWORD));
-        assertThat(locked.statusCode()).isEqualTo(429);
-        assertThat(locked.headers().firstValue("Set-Cookie")).isEmpty();
+    void shouldShowTheLoginPageWithoutFormToken() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/login");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("type=\"password\"");
+        thenTheBodyDoesNotContain("csrf");
     }
 
     @Test
-    void showsStatusAndEndsTheSessionOnLogout() throws Exception {
-        start();
-        login();
-        HttpResponse<String> status = get("/");
-        assertThat(status.statusCode()).isEqualTo(200);
-        assertThat(status.body()).contains("<h1>Status</h1>", "not connected", "Log out");
-        assertThat(get("/nowhere").statusCode()).isEqualTo(404);
-        assertThat(send("/", "PUT").statusCode()).isEqualTo(405);
+    void shouldServeTheStyleSheetToVisitors() throws Exception {
+        givenTheWebInterfaceRuns();
 
-        HttpResponse<String> out = post("/logout", Map.of("csrf", csrf("/")));
-        assertThat(out.statusCode()).isEqualTo(303);
-        assertThat(out.headers().firstValue("Set-Cookie").orElseThrow()).contains("Max-Age=0");
-        assertThat(get("/").statusCode()).isEqualTo(303);
+        whenThePageIsAsked("/style.css");
+
+        thenTheBodyContains("color-scheme");
     }
 
     @Test
-    void refusesFormsWithoutTokenOrFromOtherSites() throws Exception {
-        start();
-        login();
-        String link = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
-        assertThat(post("/transfers", Map.of("action", "add", "link", link)).statusCode())
-                .isEqualTo(403);
-        assertThat(post("/transfers", Map.of("action", "add", "link", link, "csrf", "not-the-token"))
-                        .statusCode())
-                .isEqualTo(403);
-        HttpRequest foreign = request("/transfers")
-                .header("Origin", "http://evil.example")
-                .POST(form(Map.of("action", "add", "link", link, "csrf", csrf("/transfers"))))
-                .build();
-        assertThat(this.http.send(foreign, HttpResponse.BodyHandlers.ofString()).statusCode())
-                .isEqualTo(403);
-        assertThat(get("/transfers").body()).doesNotContain("refused.bin");
+    void shouldRefuseTheFormsOfVisitors() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenPosted("/transfers", Map.of("action", "add"));
+
+        thenTheStatusIs(403);
     }
 
     @Test
-    void browsersMayPostTheFormsOfThePages() throws Exception {
-        start();
-        // With no-referrer a browser sends "Origin: null" even to the page's own origin.
-        assertThat(get("/login").headers().firstValue("Referrer-Policy")).hasValue("same-origin");
-        HttpRequest same = request("/login")
-                .header("Origin", "http://127.0.0.1:" + this.ui.port())
-                .POST(form(Map.of("password", PASSWORD)))
-                .build();
-        assertThat(this.http.send(same, HttpResponse.BodyHandlers.ofString()).statusCode())
-                .isEqualTo(303);
-        HttpRequest opaque = request("/login")
-                .header("Origin", "null")
-                .POST(form(Map.of("password", PASSWORD)))
-                .build();
-        assertThat(this.http.send(opaque, HttpResponse.BodyHandlers.ofString()).statusCode())
-                .isEqualTo(403);
+    void shouldLockOutAfterTooManyWrongPasswords() throws Exception {
+        givenTheWebInterfaceRuns();
+        givenWrongPasswordsSent(Sessions.MAX_FAILURES);
+
+        whenPosted("/login", Map.of("password", PASSWORD));
+
+        thenTheStatusIs(429);
+        thenNoCookieIsSet();
     }
 
     @Test
-    void refusesOtherHostNames() throws Exception {
-        start();
-        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
-            OutputStream out = socket.getOutputStream();
-            out.write(
-                    ("GET /login HTTP/1.1\r\nHost: rebound.example:" + this.ui.port() + "\r\nConnection: close\r\n\r\n")
-                            .getBytes(StandardCharsets.US_ASCII));
-            out.flush();
-            InputStream in = socket.getInputStream();
-            String answer = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
-            assertThat(answer).startsWith("HTTP/1.1 421");
-        }
+    void shouldShowTheStatusToAUserLoggedIn() throws Exception {
+        givenALoggedInUser();
+
+        whenThePageIsAsked("/");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("<h1>Status</h1>", "not connected", "Log out");
     }
 
     @Test
-    void addsPausesResumesAndCancelsDownloads() throws Exception {
-        start();
-        login();
-        String hash = "0123456789ABCDEF0123456789ABCDEF";
-        String link = "ed2k://|file|web & test.bin|1000|" + hash + "|/";
-        HttpResponse<String> added =
-                post("/transfers", Map.of("action", "add", "link", link, "csrf", csrf("/transfers")));
-        assertThat(added.statusCode()).isEqualTo(303);
-        assertThat(added.headers().firstValue("Location")).hasValue("/transfers");
-        String page = get("/transfers").body();
-        assertThat(page).contains("web &amp; test.bin", "Pause").doesNotContain("web & test");
+    void shouldAnswerNotFoundForAnUnknownPage() throws Exception {
+        givenALoggedInUser();
 
-        action("pause", hash);
-        assertThat(get("/transfers").body()).contains("paused", "Resume");
-        action("resume", hash);
-        assertThat(get("/transfers").body()).contains("Pause");
-        action("stop", hash);
-        assertThat(get("/transfers").body()).contains("stopped", "Resume");
-        post("/transfers", Map.of("action", "priority", "hash", hash, "priority", "high", "csrf", csrf("/transfers")));
-        assertThat(get("/transfers").body()).contains("value=\"high\" selected");
-        action("cancel", hash);
-        await(() -> !uncheckedGet("/transfers").contains("web &amp; test.bin"));
+        whenThePageIsAsked("/nowhere");
 
-        HttpResponse<String> bad = post(
-                "/transfers",
-                Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/", "csrf", csrf("/transfers")));
-        assertThat(bad.statusCode()).isEqualTo(400);
-        assertThat(bad.body()).contains("Not an eD2K file link");
-        HttpResponse<String> unknown = post("/transfers", Map.of("action", "explode", "hash", hash, "csrf", csrf("/")));
-        assertThat(unknown.statusCode()).isEqualTo(400);
+        thenTheStatusIs(404);
     }
 
-    private void start() throws IOException {
+    @Test
+    void shouldRefuseAMethodThePagesDoNotTake() throws Exception {
+        givenALoggedInUser();
+
+        whenThePageIsAskedWithTheMethod("/", "PUT");
+
+        thenTheStatusIs(405);
+    }
+
+    @Test
+    void shouldEndTheSessionOnLogout() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/");
+
+        whenPosted("/logout", Map.of());
+
+        thenTheStatusIs(303);
+        thenTheCookieExpires();
+        thenTheSessionIsOver();
+    }
+
+    @Test
+    void shouldRefuseAFormWithoutToken() throws Exception {
+        givenALoggedInUser();
+
+        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+
+        thenTheStatusIs(403);
+        thenTheDownloadsDoNotShow("refused.bin");
+    }
+
+    @Test
+    void shouldRefuseAFormWithAnotherToken() throws Exception {
+        givenALoggedInUser();
+        givenTheFormToken("not-the-token");
+
+        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+
+        thenTheStatusIs(403);
+        thenTheDownloadsDoNotShow("refused.bin");
+    }
+
+    @Test
+    void shouldRefuseAFormFromAnotherSite() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/transfers");
+        givenTheOrigin("http://evil.example");
+
+        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+
+        thenTheStatusIs(403);
+        thenTheDownloadsDoNotShow("refused.bin");
+    }
+
+    // With no-referrer a browser sends "Origin: null" even to the page's own origin.
+    @Test
+    void shouldHaveBrowsersSendTheOriginOfThePages() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/login");
+
+        thenTheHeaderIs("Referrer-Policy", "same-origin");
+    }
+
+    @Test
+    void shouldTakeALoginFromTheOriginOfThePages() throws Exception {
+        givenTheWebInterfaceRuns();
+        givenTheOriginOfThePages();
+
+        whenPosted("/login", Map.of("password", PASSWORD));
+
+        thenTheStatusIs(303);
+    }
+
+    @Test
+    void shouldRefuseALoginFromAnOpaqueOrigin() throws Exception {
+        givenTheWebInterfaceRuns();
+        givenTheOrigin("null");
+
+        whenPosted("/login", Map.of("password", PASSWORD));
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldRefuseOtherHostNames() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAskedForTheHost("/login", "rebound.example");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 421");
+    }
+
+    @Test
+    void shouldAddPauseResumeAndCancelADownload() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/transfers");
+        givenADownloadAdded("ed2k://|file|web & test.bin|1000|" + HASH + "|/");
+        givenTheDownloadsShow("web &amp; test.bin", "Pause");
+        givenTheDownloadsDoNotShow("web & test");
+        givenTheActionDoneOnTheDownload("pause", HASH);
+        givenTheDownloadsShow("paused", "Resume");
+        givenTheActionDoneOnTheDownload("resume", HASH);
+        givenTheDownloadsShow("Pause");
+        givenTheActionDoneOnTheDownload("stop", HASH);
+        givenTheDownloadsShow("stopped", "Resume");
+        givenThePriorityOfTheDownloadSet(HASH, "high");
+        givenTheDownloadsShow("value=\"high\" selected");
+
+        whenPosted("/transfers", Map.of("action", "cancel", "hash", HASH));
+
+        thenTheStatusIs(303);
+        thenTheDownloadsSoonDoNotShow("web &amp; test.bin");
+    }
+
+    @Test
+    void shouldRefuseALinkThatIsNoFileLink() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/transfers");
+
+        whenPosted("/transfers", Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/"));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Not an eD2K file link");
+    }
+
+    @Test
+    void shouldRefuseAnUnknownAction() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/");
+
+        whenPosted("/transfers", Map.of("action", "explode", "hash", HASH));
+
+        thenTheStatusIs(400);
+    }
+
+    private void givenTheWebInterfaceRuns() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(engine, new WebUiSettings(true, freePort(), false, hash));
     }
 
-    private void login() throws Exception {
+    private void givenALoggedInUser() throws Exception {
+        givenTheWebInterfaceRuns();
         HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
@@ -232,16 +312,136 @@ class WebUiTest {
         this.cookie = set.substring(0, set.indexOf(';'));
     }
 
-    private void action(String action, String hash) throws Exception {
-        HttpResponse<String> done =
-                post("/transfers", Map.of("action", action, "hash", hash, "csrf", csrf("/transfers")));
-        assertThat(done.statusCode()).isEqualTo(303);
+    private void givenWrongPasswordsSent(int count) throws Exception {
+        for (int i = 0; i < count; i++) {
+            HttpResponse<String> wrong = post("/login", Map.of("password", "guess " + i));
+            assertThat(wrong.statusCode()).isEqualTo(401);
+            assertThat(wrong.body()).contains("Wrong password");
+        }
     }
 
-    private String csrf(String page) throws Exception {
+    private void givenTheFormTokenOfThePage(String page) throws Exception {
         Matcher m = CSRF.matcher(get(page).body());
         assertThat(m.find()).isTrue();
-        return m.group(1);
+        this.formToken = m.group(1);
+    }
+
+    private void givenTheFormToken(String token) {
+        this.formToken = token;
+    }
+
+    private void givenTheOrigin(String value) {
+        this.origin = value;
+    }
+
+    private void givenTheOriginOfThePages() {
+        this.origin = "http://127.0.0.1:" + this.ui.port();
+    }
+
+    private void givenADownloadAdded(String link) throws Exception {
+        whenPosted("/transfers", Map.of("action", "add", "link", link));
+        assertThat(this.answer.statusCode()).isEqualTo(303);
+        assertThat(this.answer.headers().firstValue("Location")).hasValue("/transfers");
+    }
+
+    private void givenTheActionDoneOnTheDownload(String action, String hash) throws Exception {
+        whenPosted("/transfers", Map.of("action", action, "hash", hash));
+        assertThat(this.answer.statusCode()).isEqualTo(303);
+    }
+
+    private void givenThePriorityOfTheDownloadSet(String hash, String priority) throws Exception {
+        whenPosted("/transfers", Map.of("action", "priority", "hash", hash, "priority", priority));
+    }
+
+    private void givenTheDownloadsShow(String... parts) throws Exception {
+        assertThat(get("/transfers").body()).contains(parts);
+    }
+
+    private void givenTheDownloadsDoNotShow(String part) throws Exception {
+        thenTheDownloadsDoNotShow(part);
+    }
+
+    private void whenThePageIsAsked(String path) throws Exception {
+        this.answer = get(path);
+    }
+
+    private void whenThePageIsAskedWithTheMethod(String path, String method) throws Exception {
+        this.answer = this.http.send(
+                request(path)
+                        .method(method, HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenPosted(String path, Map<String, String> fields) throws Exception {
+        Map<String, String> all = new LinkedHashMap<>(fields);
+        if (this.formToken != null) {
+            all.put("csrf", this.formToken);
+        }
+        HttpRequest.Builder request = request(path);
+        if (this.origin != null) {
+            request.header("Origin", this.origin);
+        }
+        this.answer = this.http.send(request.POST(form(all)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenThePageIsAskedForTheHost(String path, String host) throws IOException {
+        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
+            OutputStream out = socket.getOutputStream();
+            out.write(("GET " + path + " HTTP/1.1\r\nHost: " + host + ":" + this.ui.port()
+                            + "\r\nConnection: close\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            InputStream in = socket.getInputStream();
+            this.rawAnswer = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+        }
+    }
+
+    private void thenTheStatusIs(int status) {
+        assertThat(this.answer.statusCode()).isEqualTo(status);
+    }
+
+    private void thenTheHeaderIs(String name, String value) {
+        assertThat(this.answer.headers().firstValue(name)).hasValue(value);
+    }
+
+    private void thenTheAnswerForbidsFramesAndForeignContent() {
+        assertThat(this.answer.headers().firstValue("X-Frame-Options")).hasValue("DENY");
+        assertThat(this.answer.headers().firstValue("Content-Security-Policy").orElseThrow())
+                .contains("default-src 'none'")
+                .contains("frame-ancestors 'none'");
+    }
+
+    private void thenTheBodyContains(String... parts) {
+        assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenTheBodyDoesNotContain(String part) {
+        assertThat(this.answer.body()).doesNotContain(part);
+    }
+
+    private void thenNoCookieIsSet() {
+        assertThat(this.answer.headers().firstValue("Set-Cookie")).isEmpty();
+    }
+
+    private void thenTheCookieExpires() {
+        assertThat(this.answer.headers().firstValue("Set-Cookie").orElseThrow()).contains("Max-Age=0");
+    }
+
+    private void thenTheSessionIsOver() throws Exception {
+        assertThat(get("/").statusCode()).isEqualTo(303);
+    }
+
+    private void thenTheDownloadsDoNotShow(String part) throws Exception {
+        assertThat(get("/transfers").body()).doesNotContain(part);
+    }
+
+    private void thenTheDownloadsSoonDoNotShow(String part) throws InterruptedException {
+        await(() -> !uncheckedGet("/transfers").contains(part));
+    }
+
+    private void thenTheRawAnswerStartsWith(String start) {
+        assertThat(this.rawAnswer).startsWith(start);
     }
 
     private HttpResponse<String> get(String path) throws Exception {
@@ -254,14 +454,6 @@ class WebUiTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private HttpResponse<String> send(String path, String method) throws Exception {
-        return this.http.send(
-                request(path)
-                        .method(method, HttpRequest.BodyPublishers.noBody())
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {

@@ -162,15 +162,24 @@ class ApiTest {
     }
 
     @Test
-    void shouldPauseAKnownDownloadAndReportAnUnknownOne() throws Exception {
+    void shouldPauseAKnownDownload() throws Exception {
         givenTheApiRuns();
         givenTheEngineDownloads(download());
         givenTheEnginePausesOnly(HASH);
 
         whenCalled("POST", "/api/v1/downloads/" + HASH + "/pause", "");
+
         thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldReportAnUnknownDownloadToPause() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDownloads(download());
+        givenTheEnginePausesOnly(HASH);
 
         whenCalled("POST", "/api/v1/downloads/" + "CD".repeat(16) + "/pause", "");
+
         thenTheStatusIs(404);
     }
 
@@ -187,13 +196,11 @@ class ApiTest {
     void shouldGiveTheResultsOfASearchItStarted() throws Exception {
         givenTheApiRuns();
         givenTheEngineSearchesAs(7);
-
-        whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"kad\"}");
-        thenTheStatusIs(201);
-        thenTheBodyContains("\"id\":7");
-
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7");
         givenTheEngineFinds(7, "talk.bin");
+
         whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
+
         thenTheStatusIs(200);
         thenTheBodyContains("\"name\":\"talk.bin\"");
         thenTheEngineWasAsked("search talk KAD");
@@ -208,7 +215,7 @@ class ApiTest {
 
         thenTheStatusIs(200);
         thenTheBodyContains("\"uploadKiBps\":50", "\"downloadKiBps\":0");
-        assertThat(this.preferences.maxUploadKiBps()).isEqualTo(50);
+        thenTheUploadLimitIs(50);
     }
 
     @Test
@@ -299,6 +306,12 @@ class ApiTest {
             this.calls.add("search " + request.expression() + " " + request.scope());
             return CompletableFuture.completedFuture(new SearchId(id));
         });
+    }
+
+    private void givenASearchStarted(String body, String answered) throws Exception {
+        whenCalled("POST", "/api/v1/searches", body);
+        thenTheStatusIs(201);
+        thenTheBodyContains(answered);
     }
 
     private void givenTheEngineFinds(long search, String name) {
@@ -401,6 +414,10 @@ class ApiTest {
             line = this.stream.readLine();
         }
         assertThat(line).isNull();
+    }
+
+    private void thenTheUploadLimitIs(int kibps) {
+        assertThat(this.preferences.maxUploadKiBps()).isEqualTo(kibps);
     }
 
     private void thenNjMuleWasStopped() throws InterruptedException {

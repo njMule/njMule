@@ -60,6 +60,8 @@ class RemoteControlFlowTest {
     private final List<AutoCloseable> running = new ArrayList<>();
     private final CountDownLatch exited = new CountDownLatch(1);
     private FakeServer server;
+    private String hash;
+    private String search;
     private int code;
     private String printed;
     private String errors;
@@ -75,28 +77,22 @@ class RemoteControlFlowTest {
     void shouldConnectSearchDownloadAndStopARunningNjMuleFromTheCommandLine() throws Exception {
         givenAServerWithFiles();
         givenNjMuleRunningWithTheApi();
-
-        whenRunRemotely("connect", "127.0.0.1:" + this.server.port());
-        thenItPrints("Connecting.");
-        thenTheStatusSoonShows("HighID");
-
-        whenRunRemotely("search", "linux");
-        String hash = thenAResultIsListed();
-        String search = thenTheSearchIsNamed();
-
-        whenRunRemotely("get", search, hash);
-        thenItPrints("Downloading linux web.iso");
-
-        whenRunRemotely("downloads");
-        thenItPrints(hash, "linux web.iso");
-
-        whenRunRemotely("pause", hash);
-        thenItPrints("linux web.iso: paused");
-
-        whenRunRemotely("limits", "50", "0");
-        thenItPrints("Upload:   50 KiB/s", "Download: unlimited");
+        givenToldRemotelyToConnectToTheServer();
+        givenItPrinted("Connecting.");
+        givenTheStatusSoonShows("HighID");
+        givenRunRemotely("search", "linux");
+        givenAResultAndTheSearchListed();
+        givenToldRemotelyToGetTheResult();
+        givenItPrinted("Downloading linux web.iso");
+        givenRunRemotely("downloads");
+        givenItPrintedTheHashOfTheResultAnd("linux web.iso");
+        givenToldRemotelyToPauseTheResult();
+        givenItPrinted("linux web.iso: paused");
+        givenRunRemotely("limits", "50", "0");
+        givenItPrinted("Upload:   50 KiB/s", "Download: unlimited");
 
         whenRunRemotely("shutdown");
+
         thenItPrints("saving and exiting");
         thenNjMuleWasAskedToExit();
     }
@@ -152,6 +148,52 @@ class RemoteControlFlowTest {
         this.running.add(WebUi.start(engine, web, this.exited::countDown));
     }
 
+    private void givenRunRemotely(String... command) {
+        whenRunRemotely(command);
+    }
+
+    private void givenToldRemotelyToConnectToTheServer() {
+        whenRunRemotely("connect", "127.0.0.1:" + this.server.port());
+    }
+
+    private void givenToldRemotelyToGetTheResult() {
+        whenRunRemotely("get", this.search, this.hash);
+    }
+
+    private void givenToldRemotelyToPauseTheResult() {
+        whenRunRemotely("pause", this.hash);
+    }
+
+    private void givenItPrinted(String... parts) {
+        thenItPrints(parts);
+    }
+
+    private void givenItPrintedTheHashOfTheResultAnd(String name) {
+        thenItPrints(this.hash, name);
+    }
+
+    private void givenTheStatusSoonShows(String text) throws InterruptedException {
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        do {
+            whenRunRemotely("status");
+            if (this.printed.contains(text)) {
+                break;
+            }
+            Thread.sleep(100);
+        } while (System.nanoTime() < end);
+        thenItPrints(text);
+    }
+
+    private void givenAResultAndTheSearchListed() {
+        thenItPrints("linux.txt");
+        Matcher result = RESULT.matcher(this.printed);
+        assertThat(result.find()).as(this.printed).isTrue();
+        this.hash = result.group(1);
+        Matcher named = SEARCH.matcher(this.printed);
+        assertThat(named.find()).as(this.printed).isTrue();
+        this.search = named.group(1);
+    }
+
     // When
 
     private void whenRunRemotely(String... command) {
@@ -178,31 +220,6 @@ class RemoteControlFlowTest {
     private void thenItFailsSaying(String... parts) {
         assertThat(this.code).isNotZero();
         assertThat(this.errors).contains(parts);
-    }
-
-    private void thenTheStatusSoonShows(String text) throws InterruptedException {
-        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        do {
-            whenRunRemotely("status");
-            if (this.printed.contains(text)) {
-                break;
-            }
-            Thread.sleep(100);
-        } while (System.nanoTime() < end);
-        thenItPrints(text);
-    }
-
-    private String thenAResultIsListed() {
-        thenItPrints("linux.txt");
-        Matcher m = RESULT.matcher(this.printed);
-        assertThat(m.find()).as(this.printed).isTrue();
-        return m.group(1);
-    }
-
-    private String thenTheSearchIsNamed() {
-        Matcher m = SEARCH.matcher(this.printed);
-        assertThat(m.find()).as(this.printed).isTrue();
-        return m.group(1);
     }
 
     private void thenNjMuleWasAskedToExit() throws InterruptedException {

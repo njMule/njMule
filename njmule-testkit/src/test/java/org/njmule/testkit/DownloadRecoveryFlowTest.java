@@ -65,6 +65,13 @@ class DownloadRecoveryFlowTest {
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private byte[] data;
+    private Path shared;
+    private FakePeer source;
+    private FakePeer second;
+    private NjMuleEngine engine;
+    private Events events;
+    private DownloadInfo added;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -75,66 +82,169 @@ class DownloadRecoveryFlowTest {
     }
 
     @Test
-    void aSourceWithASlotTakesTheBlocksOfOneThatLeft() throws Exception {
-        byte[] data = content(5 * BLOCK - 1000, 21);
-        Path shared = share(data);
-        FakePeer silent = peer(shared, new FakePeer.Config(hash(21), false, FakePeer.Slot.NOW, 0, Set.of()));
-        silent.stall();
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        DownloadInfo added = engine.addDownload(silent.link()).get(10, TimeUnit.SECONDS);
-        await(() -> silent.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
+    void shouldLetASourceWithASlotTakeTheBlocksOfOneThatLeft() throws Exception {
+        givenTheFileShared(5 * BLOCK - 1000, 21);
+        givenASourceThatStalls(21);
+        givenNjMuleRunning();
+        givenTheDownloadOfTheSourceAdded();
+        givenTheSourceWasAskedForBlocks();
+        givenASecondSourceAdded(22);
+        givenTheSecondSourceSentTheBlocksLeft();
 
-        // The second source gets the two blocks left, then has nothing to ask for.
-        FakePeer second = peer(shared, new FakePeer.Config(hash(22), false, FakePeer.Slot.NOW, 0, Set.of()));
-        assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
-                        .get(10, TimeUnit.SECONDS))
-                .isTrue();
-        await(() -> second.bytesSent() == data.length - 3L * BLOCK, "the second source sent the blocks left");
-        Thread.sleep(500);
-        silent.dropDownloaders();
+        whenTheFirstSourceDropsItsDownloaders();
 
-        Path file = events.completed(added.hash(), SOON).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        thenTheDownloadCompletesWithTheDataWithin(SOON);
     }
 
     @Test
-    void aSourceWithASlotTakesTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
-        byte[] data = content(5 * BLOCK - 1000, 28);
-        Path shared = share(data);
-        FakePeer filtered = FakePeer.start(
-                InetAddress.getByName("127.0.0.2"),
-                shared,
-                new FakePeer.Config(hash(28), false, FakePeer.Slot.NOW, 0, Set.of()));
-        this.resources.add(filtered);
-        filtered.stall();
-        // The range blocks only once the filter level is raised above its own.
-        NjMuleEngine engine =
-                engine(List.of(new IpFilterDat.Range(Ipv4.of(127, 0, 0, 2), Ipv4.of(127, 0, 0, 2), 150, "test")));
-        Events events = new Events(engine);
-        DownloadInfo added = engine.addDownload(filtered.link()).get(10, TimeUnit.SECONDS);
-        await(() -> filtered.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
-        FakePeer second = peer(shared, new FakePeer.Config(hash(29), false, FakePeer.Slot.NOW, 0, Set.of()));
-        assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
-                        .get(10, TimeUnit.SECONDS))
-                .isTrue();
-        await(() -> second.bytesSent() == data.length - 3L * BLOCK, "the second source sent the blocks left");
-        Thread.sleep(500);
+    void shouldLetASourceWithASlotTakeTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
+        givenTheFileShared(5 * BLOCK - 1000, 28);
+        givenASourceThatStallsAt("127.0.0.2", 28);
+        givenNjMuleRunningWithTheIpFilterRange("127.0.0.2", 150);
+        givenTheDownloadOfTheSourceAdded();
+        givenTheSourceWasAskedForBlocks();
+        givenASecondSourceAdded(29);
+        givenTheSecondSourceSentTheBlocksLeft();
 
-        engine.updatePreferences(p -> p.toBuilder().ipFilterLevel(200).build()).get(10, TimeUnit.SECONDS);
+        whenTheIpFilterLevelIsRaisedTo(200);
 
-        Path file = events.completed(added.hash(), SOON).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+        thenTheDownloadCompletesWithTheDataWithin(SOON);
     }
 
     @Test
-    void aPartWithoutRecoveryDataIsDownloadedAgainAtOnce() throws Exception {
-        byte[] data = content(2 * PART + 1000, 23);
-        FakePeer peer = peer(share(data), new FakePeer.Config(hash(23), false, FakePeer.Slot.NOW, 0, Set.of(1)));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        // A master hash the source does not know: it answers that it has no recovery data.
-        Ed2kLink.FileLink link = peer.link();
+    void shouldDownloadAPartWithoutRecoveryDataAgainAtOnce() throws Exception {
+        givenTheFileShared(2 * PART + 1000, 23);
+        givenASourceSendingCorruptParts(23, Set.of(1));
+        givenNjMuleRunning();
+
+        whenTheFileIsDownloadedWithAMasterHashTheSourceDoesNotKnow();
+
+        thenTheDownloadCompletesWithTheDataWithin(SOON);
+        thenTheSourceReceived("AICHREQUEST");
+    }
+
+    @Test
+    void shouldAskAtOnceForTheRestOfABlockWhoseCompressedStreamEndsEarly() throws Exception {
+        givenTheFileShared(3 * BLOCK, 26);
+        givenASourceCuttingTheNextBlockShort(26);
+        givenNjMuleRunning();
+
+        whenTheFileOfTheSourceIsDownloaded();
+
+        thenTheDownloadCompletesWithTheDataWithin(SOON);
+    }
+
+    @Test
+    void shouldRecoverTheCorruptBlockOfAFileOfOnePart() throws Exception {
+        givenTheFileShared(PART - 1000, 27);
+        givenASourceSendingCorruptParts(27, Set.of(0));
+        givenNjMuleRunning();
+
+        whenTheFileOfTheSourceIsDownloaded();
+
+        thenTheDownloadCompletesWithTheDataWithin(WAIT);
+        thenTheSourceReceived("AICHREQUEST");
+        thenTheSourceSentTheBadBlockAgainOnly();
+    }
+
+    @Test
+    void shouldRecoverTheCorruptPartsOfAFileDownloadedAgain() throws Exception {
+        givenTheFileShared(3 * PART + 1000, 24);
+        givenNjMuleRunning();
+        givenASourceSendingCorruptParts(24, Set.of(1));
+        givenTheFileOfTheSourceDownloadedWithin(WAIT);
+        givenTheSourceReceived("AICHREQUEST");
+        givenASourceSendingCorruptParts(25, Set.of(1));
+
+        whenTheFileOfTheSourceIsDownloaded();
+
+        thenTheDownloadCompletesWithTheDataWithin(WAIT);
+        thenTheSourceReceived("AICHREQUEST", "the part tried before is recovered again");
+    }
+
+    private void givenTheFileShared(int size, long seed) throws IOException {
+        this.data = content(size, seed);
+        this.shared = Files.createDirectories(this.dir.resolve("shared")).resolve("shared.bin");
+        Files.write(this.shared, this.data);
+    }
+
+    private void givenASourceThatStalls(int seed) throws IOException {
+        this.source = peer(InetAddress.getLoopbackAddress(), config(seed, Set.of()));
+        this.source.stall();
+    }
+
+    private void givenASourceThatStallsAt(String address, int seed) throws IOException {
+        this.source = peer(InetAddress.getByName(address), config(seed, Set.of()));
+        this.source.stall();
+    }
+
+    private void givenASourceSendingCorruptParts(int seed, Set<Integer> parts) throws IOException {
+        this.source = peer(InetAddress.getLoopbackAddress(), config(seed, parts));
+    }
+
+    private void givenASourceCuttingTheNextBlockShort(int seed) throws IOException {
+        this.source = peer(InetAddress.getLoopbackAddress(), FakePeer.Config.simple(hash(seed)));
+        this.source.truncateNextBlock();
+    }
+
+    private void givenNjMuleRunning() throws IOException {
+        startNjMule(List.of());
+    }
+
+    // The range blocks only once the filter level is raised above its own.
+    private void givenNjMuleRunningWithTheIpFilterRange(String address, int level) throws IOException {
+        int ip = Ipv4.parse(address);
+        startNjMule(List.of(new IpFilterDat.Range(ip, ip, level, "test")));
+    }
+
+    private void givenTheDownloadOfTheSourceAdded() throws Exception {
+        this.added = this.engine.addDownload(this.source.link()).get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenTheSourceWasAskedForBlocks() throws Exception {
+        await(() -> this.source.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
+    }
+
+    // The second source gets the two blocks left, then has nothing to ask for.
+    private void givenASecondSourceAdded(int seed) throws Exception {
+        this.second = peer(InetAddress.getLoopbackAddress(), config(seed, Set.of()));
+        assertThat(this.engine
+                        .addSource(this.added.hash(), new ServerAddress("127.0.0.1", this.second.port()))
+                        .get(10, TimeUnit.SECONDS))
+                .isTrue();
+    }
+
+    private void givenTheSecondSourceSentTheBlocksLeft() throws Exception {
+        await(() -> this.second.bytesSent() == this.data.length - 3L * BLOCK, "the second source sent the blocks left");
+        Thread.sleep(500);
+    }
+
+    private void givenTheFileOfTheSourceDownloadedWithin(Duration within) throws Exception {
+        whenTheFileOfTheSourceIsDownloaded();
+        this.events.completed(this.added.hash(), within);
+    }
+
+    private void givenTheSourceReceived(String message) {
+        assertThat(this.source.received()).contains(message);
+    }
+
+    private void whenTheFirstSourceDropsItsDownloaders() throws IOException {
+        this.source.dropDownloaders();
+    }
+
+    private void whenTheIpFilterLevelIsRaisedTo(int level) throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().ipFilterLevel(level).build())
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenTheFileOfTheSourceIsDownloaded() throws Exception {
+        this.added = this.engine.addDownload(this.source.link()).get(10, TimeUnit.SECONDS);
+    }
+
+    // A master hash the source does not know: it answers that it has no recovery data.
+    private void whenTheFileIsDownloadedWithAMasterHashTheSourceDoesNotKnow() throws Exception {
+        Ed2kLink.FileLink link = this.source.link();
         Ed2kLink.FileLink unknownAich = new Ed2kLink.FileLink(
                 link.name(),
                 link.size(),
@@ -143,81 +253,39 @@ class DownloadRecoveryFlowTest {
                 link.partHashes(),
                 link.sources(),
                 link.httpSources());
-
-        DownloadInfo added = engine.addDownload(unknownAich).get(10, TimeUnit.SECONDS);
-
-        Path file = events.completed(added.hash(), SOON).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(peer.received()).contains("AICHREQUEST");
+        this.added = this.engine.addDownload(unknownAich).get(10, TimeUnit.SECONDS);
     }
 
-    @Test
-    void theRestOfABlockWhoseCompressedStreamEndsEarlyIsAskedForAtOnce() throws Exception {
-        byte[] data = content(3 * BLOCK, 26);
-        FakePeer peer = peer(share(data), FakePeer.Config.simple(hash(26)));
-        peer.truncateNextBlock();
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-
-        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
-
-        Path file = events.completed(added.hash(), SOON).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
+    private void thenTheDownloadCompletesWithTheDataWithin(Duration within) throws Exception {
+        Path file = this.events.completed(this.added.hash(), within).file();
+        assertThat(Files.readAllBytes(file)).isEqualTo(this.data);
     }
 
-    @Test
-    void aFileOfOnePartRecoversItsCorruptBlock() throws Exception {
-        byte[] data = content(PART - 1000, 27);
-        FakePeer peer = peer(share(data), new FakePeer.Config(hash(27), false, FakePeer.Slot.NOW, 0, Set.of(0)));
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-
-        DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
-
-        Path file = events.completed(added.hash(), WAIT).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(peer.received()).contains("AICHREQUEST");
-        assertThat(peer.bytesSent()).as("only the bad block comes again").isLessThan(data.length + PART / 10);
+    private void thenTheSourceReceived(String message) {
+        assertThat(this.source.received()).contains(message);
     }
 
-    @Test
-    void aFileDownloadedAgainRecoversItsCorruptPartsAgain() throws Exception {
-        byte[] data = content(3 * PART + 1000, 24);
-        Path shared = share(data);
-        NjMuleEngine engine = engine();
-        Events events = new Events(engine);
-        FakePeer first = peer(shared, new FakePeer.Config(hash(24), false, FakePeer.Slot.NOW, 0, Set.of(1)));
-        DownloadInfo once = engine.addDownload(first.link()).get(10, TimeUnit.SECONDS);
-        events.completed(once.hash(), WAIT);
-        assertThat(first.received()).contains("AICHREQUEST");
-
-        FakePeer again = peer(shared, new FakePeer.Config(hash(25), false, FakePeer.Slot.NOW, 0, Set.of(1)));
-        DownloadInfo twice = engine.addDownload(again.link()).get(10, TimeUnit.SECONDS);
-
-        Path file = events.completed(twice.hash(), WAIT).file();
-        assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(again.received())
-                .as("the part tried before is recovered again")
-                .contains("AICHREQUEST");
+    private void thenTheSourceReceived(String message, String why) {
+        assertThat(this.source.received()).as(why).contains(message);
     }
 
-    private Path share(byte[] data) throws IOException {
-        Path shared = Files.createDirectories(this.dir.resolve("shared")).resolve("shared.bin");
-        Files.write(shared, data);
-        return shared;
+    private void thenTheSourceSentTheBadBlockAgainOnly() {
+        assertThat(this.source.bytesSent())
+                .as("only the bad block comes again")
+                .isLessThan(this.data.length + PART / 10);
     }
 
-    private FakePeer peer(Path shared, FakePeer.Config config) throws IOException {
-        FakePeer peer = FakePeer.start(InetAddress.getLoopbackAddress(), shared, config);
+    private FakePeer.Config config(int seed, Set<Integer> corruptParts) {
+        return new FakePeer.Config(hash(seed), false, FakePeer.Slot.NOW, 0, corruptParts);
+    }
+
+    private FakePeer peer(InetAddress address, FakePeer.Config config) throws IOException {
+        FakePeer peer = FakePeer.start(address, this.shared, config);
         this.resources.add(peer);
         return peer;
     }
 
-    private NjMuleEngine engine() throws IOException {
-        return engine(List.of());
-    }
-
-    private NjMuleEngine engine(List<IpFilterDat.Range> ipFilter) throws IOException {
+    private void startNjMule(List<IpFilterDat.Range> ipFilter) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         if (!ipFilter.isEmpty()) {
@@ -228,9 +296,9 @@ class DownloadRecoveryFlowTest {
             port = probe.getLocalPort();
         }
         Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n");
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
-        this.resources.add(engine);
-        return engine;
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.resources.add(this.engine);
+        this.events = new Events(this.engine);
     }
 
     private interface Condition {

@@ -17,7 +17,7 @@
 package org.njmule.webui;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -28,15 +28,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -46,6 +44,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -53,7 +53,6 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
-import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -67,11 +66,30 @@ class WebUiAnswersTest {
 
     private static final String PASSWORD = "correct horse";
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
+    private static final String HASH = "AB".repeat(16);
+    private static final String ED2K_LINK = "ed2k://|file|a.bin|1000|" + HASH + "|/";
+    private static final String MAGNET_LINK = "magnet:?xt=urn:ed2k:" + "CD".repeat(16) + "&xl=1000&dn=b.bin";
 
     private final FakeEngine fake = new FakeEngine();
     private final HttpClient http = HttpClient.newHttpClient();
+    private final List<Ed2kLink.FileLink> added = new CopyOnWriteArrayList<>();
+    private final List<SearchRequest> searched = new CopyOnWriteArrayList<>();
+    private final List<Object> asked = new CopyOnWriteArrayList<>();
     private WebUi ui;
     private String cookie;
+    private String origin;
+    private HttpResponse<String> answer;
+    private CompletableFuture<HttpResponse<String>> firstLogin;
+    private Pattern linkPattern;
+    private int linkMaxLength;
+    private Optional<ServerInfo> server = Optional.empty();
+    private boolean lowId;
+    private Optional<KadInfo> kad = Optional.empty();
+    private FakeEngine otherEngine;
+    private WebUi other;
+    private String otherCookie;
+    private String mine;
+    private Throwable exception;
 
     @AfterEach
     void stop() {
@@ -79,311 +97,687 @@ class WebUiAnswersTest {
             this.ui.close();
         }
         this.fake.events.close();
+        if (this.other != null) {
+            this.other.close();
+        }
+        if (this.otherEngine != null) {
+            this.otherEngine.events.close();
+        }
     }
 
     @Test
-    void anEngineThatFailsGetsAnAnswer() throws Exception {
-        start();
-        login();
-        HttpResponse<String> failed = get("/");
-        assertThat(failed.statusCode()).isEqualTo(503);
-        assertThat(failed.body()).contains("status failed");
+    void shouldAnswerUnavailableWhenTheEngineFails() throws Exception {
+        givenALoggedInUser();
 
-        this.fake.answer("status", args -> CompletableFuture.completedFuture(null));
-        assertThat(get("/").statusCode()).as("a fault of the page").isEqualTo(500);
+        whenThePageIsAsked("/");
+
+        thenTheStatusIs(503);
+        thenTheBodyContains("status failed");
     }
 
     @Test
-    void checksFewPasswordsAtOnce() throws Exception {
+    void shouldAnswerAnInternalErrorForAFaultOfThePage() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAnswersNoStatus();
+
+        whenThePageIsAsked("/");
+
+        thenTheStatusIs(500, "a fault of the page");
+    }
+
+    @Test
+    void shouldCheckFewPasswordsAtOnce() throws Exception {
+        givenTheWebInterfaceRunsWithASlowPassword(1);
+        givenALoginBeingChecked("first");
+
+        whenPostedWithoutToken("/login", Map.of("password", "second"));
+
+        thenTheStatusIs(429);
+        thenTheBodyContains("try again");
+        thenTheFirstLoginGets(401);
+    }
+
+    @Test
+    void shouldAnswerHeadWithTheHeadersOnly() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenTheHeadIsAsked("/login");
+
+        thenTheStatusIs(200);
+        thenTheHeaderIs("Content-Type", "text/html; charset=utf-8");
+        thenTheContentLengthIsPositive();
+        thenTheBodyIs("");
+    }
+
+    @Test
+    void shouldSendAVisitorAskingTheHeadOfAPageToTheLogin() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenTheHeadIsAsked("/search");
+
+        thenTheStatusIs(303);
+    }
+
+    @Test
+    void shouldAnswerTheHeadOfAPageToAUserLoggedIn() throws Exception {
+        givenALoggedInUser();
+
+        whenTheHeadIsAsked("/search");
+
+        thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldAnswerTheHeadOfAnUnknownPageWithNotFound() throws Exception {
+        givenALoggedInUser();
+
+        whenTheHeadIsAsked("/nowhere");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
+    void shouldDoAnActionOnADownload() throws Exception {
+        givenALoggedInUser();
+        givenTheEnginePausesTheDownload();
+
+        whenTheFormIsPosted("/transfers", Map.of("action", "pause", "hash", HASH));
+
+        thenTheStatusIs(303);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pause", "resume", "stop", "cancel", "priority"})
+    void shouldReportAnActionOnADownloadThatIsGone(String action) throws Exception {
+        givenALoggedInUser();
+        givenTheEngineNoLongerHasTheDownload();
+
+        whenTheFormIsPosted("/transfers", Map.of("action", action, "hash", HASH, "priority", "high"));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("That download is gone");
+    }
+
+    @Test
+    void shouldLetTheLinkFieldTakeAnEd2kLinkAndAMagnetLink() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+
+        whenTheLinkFieldOfTheTransfersIsRead();
+
+        thenTheLinkFieldTakes(ED2K_LINK);
+        thenTheLinkFieldTakes(" " + MAGNET_LINK);
+    }
+
+    @Test
+    void shouldAddTheDownloadsOfAnEd2kLinkAndAMagnetLink() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+
+        whenTheLinesAreAdded(ED2K_LINK, MAGNET_LINK);
+
+        thenTheStatusIs(303);
+        thenTheDownloadsAddedAre("a.bin", "b.bin");
+    }
+
+    @Test
+    void shouldAddTheLongestLinkTheFieldTakes() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+        givenTheLinkFieldOfTheTransfers();
+
+        whenLinksAsLongAsTheFieldTakesAreAdded(1);
+
+        thenTheStatusIs(303);
+        thenTheDownloadsAddedAre(1);
+    }
+
+    @Test
+    void shouldRefuseMoreTextThanTheLinkFieldTakes() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+        givenTheLinkFieldOfTheTransfers();
+
+        whenLinksAsLongAsTheFieldTakesAreAdded(2);
+
+        thenTheStatusIs(413);
+        thenTheHeaderIs("Content-Type", "text/html; charset=utf-8");
+        thenTheBodyContains("Too much text");
+    }
+
+    @Test
+    void shouldLeaveTheResultsOfTheSearchesOfTheWindowOutOfThePages() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(1);
+        givenASearchStarted("linux", "/search?id=1");
+        givenTheEngineFinds(1, "first.iso");
+        givenTheEngineFindsForTheSearches(100, 120, "other.iso");
+        givenTheEngineFinds(1, "second.iso");
+
+        whenThePageIsAskedUntilItShows("/search?id=1", "second.iso");
+
+        thenTheBodyContains("first.iso");
+        thenTheBodyDoesNotContain("other.iso");
+        thenThePageDoesNotShow("/search?id=100", "results;");
+    }
+
+    @Test
+    void shouldKeepTheResultsThatComeBeforeTheSearchHasItsId() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineFindsBeforeTheSearchHasItsId(2, "early.iso");
+        givenASearchStarted("early");
+
+        whenThePageIsAsked("/search?id=2");
+
+        thenTheBodyContains("early.iso");
+    }
+
+    @Test
+    void shouldKeepTheSessionsOfTwoInstancesOnOneComputer() throws Exception {
+        givenALoggedInUser();
+        givenAnotherInstanceWithTheUserLoggedIn();
+
+        whenThePageIsAskedWithTheCookiesOfBothInstances("/search");
+
+        thenTheStatusIs(200);
+        thenTheCookiesAreNamedAfterThePortsOfTheirInstances();
+    }
+
+    @Test
+    void shouldNotStartWhileOff() {
+        whenTheWebInterfaceStartsWith(WebUiSettings.DEFAULTS);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldNotStartWithoutAPassword() {
+        whenTheWebInterfaceStartsWith(new WebUiSettings(true, 4711, false, ""));
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldShowALowIdOnAServerAndKadOff() throws Exception {
+        givenALoggedInUser();
+        givenConnectedToTheServer("Big <server>", true);
+
+        whenThePageIsAsked("/");
+
+        thenTheBodyContains("eD2K<b>Big &lt;server&gt; (LowID)</b>", "Kad<b>off</b>");
+    }
+
+    @Test
+    void shouldShowAHighIdOnAServerAndKadFirewalled() throws Exception {
+        givenALoggedInUser();
+        givenConnectedToTheServer("Big", false);
+        givenKad(true, true);
+
+        whenThePageIsAsked("/");
+
+        thenTheBodyContains("eD2K<b>Big (HighID)</b>", "Kad<b>firewalled</b>");
+    }
+
+    @Test
+    void shouldShowNoServerAndKadOpen() throws Exception {
+        givenALoggedInUser();
+        givenKad(true, false);
+
+        whenThePageIsAsked("/");
+
+        thenTheBodyContains("eD2K<b>not connected</b>", "Kad<b>open</b>");
+    }
+
+    @Test
+    void shouldShowKadNotConnected() throws Exception {
+        givenALoggedInUser();
+        givenKad(false, false);
+
+        whenThePageIsAsked("/");
+
+        thenTheBodyContains("Kad<b>not connected</b>");
+    }
+
+    @Test
+    void shouldListTheServers() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineKnowsTheServer("10.0.0.1:4661", "Fake <1>");
+
+        whenThePageIsAsked("/servers");
+
+        thenTheBodyContains(
+                "<h1>Servers</h1>",
+                "<td>Fake &lt;1&gt;</td><td>10.0.0.1:4661</td><td>1200</td><td>34000</td>",
+                "name=\"address\" value=\"10.0.0.1:4661\"");
+    }
+
+    @Test
+    void shouldConnectToTheServerChosen() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "connect", "address", "10.0.0.1:4661"));
+
+        thenTheStatusIs(303);
+        thenTheAnswerLeadsTo("/servers");
+        thenTheEngineWasAskedToConnectTo("10.0.0.1", 4661);
+    }
+
+    @Test
+    void shouldConnectToAnyServerWithoutAnAddress() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "connect", "address", " "));
+
+        thenTheEngineWasAskedToConnectToAnyServer();
+    }
+
+    @Test
+    void shouldDisconnectFromTheServer() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "disconnect"));
+
+        thenTheEngineWasAskedToDisconnect();
+    }
+
+    @Test
+    void shouldRefuseAnUnknownActionOnTheServers() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "explode"));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Unknown action.", "<a href=\"/servers\">Back</a>");
+    }
+
+    @Test
+    void shouldRefuseAServerAddressWithoutAPort() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "connect", "address", "nowhere"));
+
+        thenTheStatusIs(400, "an address without a port");
+    }
+
+    @Test
+    void shouldReportAConnectionThatFails() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineFailsToConnect("no server answers");
+
+        whenTheFormIsPosted("/servers", Map.of("action", "connect"));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("no server answers");
+    }
+
+    @Test
+    void shouldStayOnTheSearchPageWithNothingToSearch() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+
+        whenTheFormIsPosted("/search", Map.of("query", " "));
+
+        thenTheAnswerLeadsTo("/search", "nothing to search");
+    }
+
+    @Test
+    void shouldSearchInTheScopeChosen() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+
+        whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "KAD"));
+
+        thenTheAnswerLeadsTo("/search?id=5");
+        thenTheEngineSearched("linux", SearchRequest.Scope.KAD);
+    }
+
+    @Test
+    void shouldDownloadASearchResultWhileItIsKept() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+        givenTheEngineAddsDownloads();
+        givenASearchStarted("linux", "/search?id=5");
+        givenTheEngineFinds(5, "found.iso");
+        givenThePageShows("/search?id=5", "found.iso");
+
+        whenTheResultIsDownloaded(5, "found.iso");
+
+        thenTheAnswerLeadsTo("/transfers");
+        thenTheResultWasAdded("found.iso");
+    }
+
+    @Test
+    void shouldAskToSearchAgainForAResultThatIsNotKept() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+        givenTheEngineAddsDownloads();
+        givenASearchStarted("linux", "/search?id=5");
+        givenTheEngineFinds(5, "found.iso");
+        givenThePageShows("/search?id=5", "found.iso");
+
+        whenTheFormIsPosted("/search", Map.of("search", "5", "download", HASH));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("search again");
+    }
+
+    @Test
+    void shouldRefuseAnUnknownSearchScope() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+
+        whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "MARS"));
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
+    void shouldKeepSoManyResultsOfASearchAndUpdateThem() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(6);
+        givenASearchStarted("many");
+        givenTheEngineFindsNumberedResults(6, 1005);
+        // A kept result gets its new sources, a new one finds no room.
+        givenTheEngineFinds(6, numbered(0, 99), numbered(2000, 1));
+
+        whenThePageIsAskedUntilItShows("/search?id=6", "<td>99</td>");
+
+        thenTheBodyContains("1000 results;", "n0.iso", "n999.iso");
+        thenTheBodyDoesNotContain("n1000.iso", "n2000.iso");
+    }
+
+    @Test
+    void shouldShowAnEmptyFileAsNotStarted() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDownloadsAnEmptyStoppedFile("empty.txt");
+
+        whenThePageIsAsked("/transfers");
+
+        thenTheBodyContains("empty.txt", "value=\"0\"></progress> 0 %", "stopped", "Resume");
+        thenTheBodyDoesNotContain(">Stop<");
+    }
+
+    @Test
+    void shouldRefuseALoginThatIsNoPost() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAskedWithTheMethod("/login", "PUT");
+
+        thenTheStatusIs(405);
+    }
+
+    @Test
+    void shouldRefuseAHugeLogin() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenPostedWithoutToken("/login", Map.of("password", "x".repeat(16 * 1024)));
+
+        thenTheStatusIs(400);
+        thenTheBodyIs("Bad request.");
+    }
+
+    @Test
+    void shouldRefuseALoginFromAnUnreadableOrigin() throws Exception {
+        givenTheWebInterfaceRuns();
+        givenTheOrigin("http://bad host");
+
+        whenPostedWithoutToken("/login", Map.of("password", PASSWORD));
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldRefuseToTakeAPostOnTheStyleSheet() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenPostedWithoutToken("/style.css", Map.of());
+
+        thenTheStatusIs(403, "the style sheet is only read");
+    }
+
+    @Test
+    void shouldNotOpenTheSessionWithOtherCookies() throws Exception {
+        givenALoggedInUser();
+        givenOnlyTheCookies("other=1; broken");
+
+        whenThePageIsAsked("/search");
+
+        thenTheStatusIs(303);
+    }
+
+    @Test
+    void shouldNotOpenTheSessionWithAForgedCookie() throws Exception {
+        givenALoggedInUser();
+        givenTheSessionCookieForged("forged");
+
+        whenThePageIsAsked("/search");
+
+        thenTheStatusIs(303);
+    }
+
+    @Test
+    void shouldOpenTheSessionWithItsOwnCookieAmongOthers() throws Exception {
+        givenALoggedInUser();
+        givenOtherCookiesBeforeTheSessionOne("other=1; broken");
+
+        whenThePageIsAsked("/search");
+
+        thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldReadAQueryWithEmptyOrBareFields() throws Exception {
+        givenALoggedInUser();
+
+        whenThePageIsAsked("/search?&id&x=1");
+
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain("results;");
+    }
+
+    @Test
+    void shouldAddNothingForAnEmptyLink() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+
+        whenTheLinesAreAdded("  ");
+
+        thenTheStatusIs(303, "no link, nothing to add");
+        thenTheDownloadsAddedAre(0);
+    }
+
+    @Test
+    void shouldAnswerNotFoundForAFormOfAnUnknownPage() throws Exception {
+        givenALoggedInUser();
+
+        whenTheFormIsPosted("/nowhere", Map.of());
+
+        thenTheStatusIs(404);
+        thenTheBodyIs("Not found.");
+    }
+
+    @Test
+    void shouldStillAnswerOnceTheEventsEnd() throws Exception {
+        givenALoggedInUser();
+        givenTheEventsEndWith("engine stopped");
+
+        whenThePageIsAsked("/search");
+
+        thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldStillShowTheLoginPageOnceTheEventsEnd() throws Exception {
+        givenAnotherInstanceWhoseEventsEnded();
+
+        whenTheLoginPageOfTheOtherInstanceIsAsked();
+
+        thenTheStatusIs(200);
+    }
+
+    private void givenTheWebInterfaceRuns() throws IOException {
+        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
+    }
+
+    private void givenALoggedInUser() throws Exception {
+        givenTheWebInterfaceRuns();
+        HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
+        assertThat(in.statusCode()).isEqualTo(303);
+        String set = in.headers().firstValue("Set-Cookie").orElseThrow();
+        this.cookie = set.substring(0, set.indexOf(';'));
+    }
+
+    private void givenTheWebInterfaceRunsWithASlowPassword(int checksAtOnce) throws IOException {
         // Two million rounds keep the first check busy for a while.
         String slow = "pbkdf2-sha512$2000000$" + "A".repeat(22) + "$" + "A".repeat(86);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, slow), 1);
-        CompletableFuture<HttpResponse<String>> first = this.http.sendAsync(
-                request("/login").POST(form(Map.of("password", "first"))).build(),
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, slow), checksAtOnce);
+    }
+
+    private void givenALoginBeingChecked(String password) throws InterruptedException {
+        this.firstLogin = this.http.sendAsync(
+                request("/login").POST(form(Map.of("password", password))).build(),
                 HttpResponse.BodyHandlers.ofString());
         long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (this.ui.checkingPasswords() == 0) {
             assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
             Thread.sleep(5);
         }
-        HttpResponse<String> second = post("/login", Map.of("password", "second"));
-        assertThat(second.statusCode()).isEqualTo(429);
-        assertThat(second.body()).contains("try again");
-        assertThat(first.get().statusCode()).isEqualTo(401);
     }
 
-    @Test
-    void answersHeadWithTheHeadersOnly() throws Exception {
-        start();
-        HttpResponse<String> login = head("/login");
-        assertThat(login.statusCode()).isEqualTo(200);
-        assertThat(login.headers().firstValue("Content-Type")).hasValue("text/html; charset=utf-8");
-        assertThat(login.headers().firstValueAsLong("Content-Length").orElse(0)).isPositive();
-        assertThat(login.body()).isEmpty();
-
-        assertThat(head("/search").statusCode()).isEqualTo(303);
-        login();
-        assertThat(head("/search").statusCode()).isEqualTo(200);
-        assertThat(head("/nowhere").statusCode()).isEqualTo(404);
+    private void givenTheEngineAnswersNoStatus() {
+        this.fake.answer("status", args -> CompletableFuture.completedFuture(null));
     }
 
-    @Test
-    void actionsOnADownloadThatIsGoneAreReported() throws Exception {
-        start();
-        login();
-        String hash = "AB".repeat(16);
+    private void givenTheEnginePausesTheDownload() {
         this.fake.answer("pauseDownload", args -> CompletableFuture.completedFuture(true));
-        assertThat(post("/transfers", Map.of("action", "pause", "hash", hash, "csrf", csrf()))
-                        .statusCode())
-                .isEqualTo(303);
+    }
 
+    private void givenTheEngineNoLongerHasTheDownload() {
         for (String action : new String[] {"pauseDownload", "resumeDownload", "stopDownload", "cancelDownload"}) {
             this.fake.answer(action, args -> CompletableFuture.completedFuture(false));
         }
         this.fake.answer("setDownloadPriority", args -> CompletableFuture.completedFuture(false));
-        for (String action : new String[] {"pause", "resume", "stop", "cancel", "priority"}) {
-            HttpResponse<String> gone =
-                    post("/transfers", Map.of("action", action, "hash", hash, "priority", "high", "csrf", csrf()));
-            assertThat(gone.statusCode()).as(action).isEqualTo(400);
-            assertThat(gone.body()).as(action).contains("That download is gone");
-        }
     }
 
-    @Test
-    void theLinkFieldTakesWhatTheServerTakes() throws Exception {
-        start();
-        login();
-        List<String> added = new CopyOnWriteArrayList<>();
+    private void givenTheEngineAddsDownloads() {
         this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of()));
         this.fake.answer("addDownload", args -> {
-            added.add(((Ed2kLink.FileLink) args[0]).name());
+            this.added.add((Ed2kLink.FileLink) args[0]);
             return CompletableFuture.completedFuture(null);
         });
-        String page = get("/transfers").body();
-        Matcher field = Pattern.compile("name=\"link\"[^>]* pattern=\"([^\"]+)\" maxlength=\"(\\d+)\"")
-                .matcher(page);
-        assertThat(field.find()).isTrue();
-        Pattern browser = Pattern.compile(field.group(1));
-        int maxLength = Integer.parseInt(field.group(2));
-        String hash = "AB".repeat(16);
-        String ed2k = "ed2k://|file|a.bin|1000|" + hash + "|/";
-        String magnet = "magnet:?xt=urn:ed2k:" + "CD".repeat(16) + "&xl=1000&dn=b.bin";
-        assertThat(browser.matcher(ed2k).matches()).isTrue();
-        assertThat(browser.matcher(" " + magnet).matches()).isTrue();
-
-        assertThat(post("/transfers", Map.of("action", "add", "link", ed2k + "\n" + magnet, "csrf", csrf()))
-                        .statusCode())
-                .isEqualTo(303);
-        assertThat(added).containsExactly("a.bin", "b.bin");
-
-        // The longest text the field takes, each character taking 9 bytes once encoded.
-        String head = "ed2k://|file|";
-        String tail = "|1000|" + hash + "|/";
-        String longest = head + "\u20AC".repeat(maxLength - head.length() - tail.length()) + tail;
-        assertThat(post("/transfers", Map.of("action", "add", "link", longest, "csrf", csrf()))
-                        .statusCode())
-                .isEqualTo(303);
-        assertThat(added).hasSize(3);
-
-        HttpResponse<String> tooMuch =
-                post("/transfers", Map.of("action", "add", "link", longest + " " + longest, "csrf", csrf()));
-        assertThat(tooMuch.statusCode()).isEqualTo(413);
-        assertThat(tooMuch.headers().firstValue("Content-Type")).hasValue("text/html; charset=utf-8");
-        assertThat(tooMuch.body()).contains("Too much text");
     }
 
-    @Test
-    void searchesOfTheWindowLeaveThoseOfThePagesAlone() throws Exception {
-        start();
-        login();
-        this.fake.answer("search", args -> CompletableFuture.completedFuture(new SearchId(1)));
-        HttpResponse<String> started = post("/search", Map.of("query", "linux", "csrf", csrf()));
-        assertThat(started.headers().firstValue("Location")).hasValue("/search?id=1");
-        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(1), List.of(result("first.iso"))));
-        for (long other = 100; other < 120; other++) {
-            this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(other), List.of(result("other.iso"))));
-        }
-        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(1), List.of(result("second.iso"))));
-        awaitPage(() -> get("/search?id=1").body().contains("second.iso"));
-        assertThat(get("/search?id=1").body()).contains("first.iso").doesNotContain("other.iso");
-        assertThat(get("/search?id=100").body()).doesNotContain("results;");
+    private void givenTheLinkFieldOfTheTransfers() throws Exception {
+        readTheLinkFieldOfTheTransfers();
+    }
 
-        // Results may come before the request that started the search has its id.
+    private void givenTheEngineSearchesAs(long id) {
         this.fake.answer("search", args -> {
-            this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(2), List.of(result("early.iso"))));
-            return CompletableFuture.supplyAsync(
-                    () -> new SearchId(2), CompletableFuture.delayedExecutor(500, TimeUnit.MILLISECONDS));
+            this.searched.add((SearchRequest) args[0]);
+            return CompletableFuture.completedFuture(new SearchId(id));
         });
-        post("/search", Map.of("query", "early", "csrf", csrf()));
-        assertThat(get("/search?id=2").body()).contains("early.iso");
     }
 
-    @Test
-    void twoInstancesOnOneComputerKeepTheirSessions() throws Exception {
-        start();
-        login();
-        String mine = this.cookie;
-        FakeEngine otherEngine = new FakeEngine();
-        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        try (WebUi other = WebUi.start(otherEngine.engine(), new WebUiSettings(true, freePort(), false, hash))) {
-            HttpResponse<String> in = this.http.send(
-                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + other.port() + "/login"))
-                            .POST(form(Map.of("password", PASSWORD)))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
-            String set = in.headers().firstValue("Set-Cookie").orElseThrow();
-            String theirs = set.substring(0, set.indexOf(';'));
-            assertThat(mine).startsWith("njmule-session-" + this.ui.port() + "=");
-            assertThat(theirs).startsWith("njmule-session-" + other.port() + "=");
+    // Results may come before the request that started the search has its id.
+    private void givenTheEngineFindsBeforeTheSearchHasItsId(long id, String name) {
+        this.fake.answer("search", args -> {
+            this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(id), List.of(result(name))));
+            return CompletableFuture.supplyAsync(
+                    () -> new SearchId(id), CompletableFuture.delayedExecutor(500, TimeUnit.MILLISECONDS));
+        });
+    }
 
-            // Cookies do not depend on the port: the browser sends both to each.
-            this.cookie = theirs + "; " + mine;
-            assertThat(get("/search").statusCode()).isEqualTo(200);
-        } finally {
-            otherEngine.events.close();
+    private void givenASearchStarted(String query) throws Exception {
+        whenTheFormIsPosted("/search", Map.of("query", query));
+    }
+
+    private void givenASearchStarted(String query, String location) throws Exception {
+        whenTheFormIsPosted("/search", Map.of("query", query));
+        thenTheAnswerLeadsTo(location);
+    }
+
+    private void givenTheEngineFinds(long search, String name) {
+        givenTheEngineFinds(search, result(name));
+    }
+
+    private void givenTheEngineFinds(long search, SearchResult... results) {
+        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(search), List.of(results)));
+    }
+
+    private void givenTheEngineFindsForTheSearches(long from, long to, String name) {
+        for (long search = from; search < to; search++) {
+            givenTheEngineFinds(search, name);
         }
     }
 
-    @Test
-    void startsOnlyWhenOnAndWithAPassword() {
-        NjMuleEngine engine = this.fake.engine();
-        WebUiSettings withoutPassword = new WebUiSettings(true, 4711, false, "");
-
-        assertThatThrownBy(() -> WebUi.start(engine, WebUiSettings.DEFAULTS))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> WebUi.start(engine, withoutPassword)).isInstanceOf(IllegalArgumentException.class);
+    private void givenTheEngineFindsNumberedResults(long search, int count) {
+        this.fake.events.submit(new EngineEvent.SearchResults(
+                new SearchId(search),
+                IntStream.range(0, count).mapToObj(i -> numbered(i, 1)).toList()));
     }
 
-    @Test
-    void theStatusPageTellsHowEachNetworkIsReached() throws Exception {
-        start();
-        login();
-        Queue<EngineStatus> states = new ConcurrentLinkedQueue<>(List.of(
-                status(Optional.of(server("10.0.0.1:4661", "Big <server>")), true, Optional.empty()),
-                status(Optional.of(server("10.0.0.1:4661", "Big")), false, Optional.of(kad(true, true))),
-                status(Optional.empty(), false, Optional.of(kad(true, false))),
-                status(Optional.empty(), false, Optional.of(kad(false, false)))));
-        this.fake.answer("status", args -> CompletableFuture.completedFuture(states.poll()));
-
-        assertThat(get("/").body()).contains("eD2K<b>Big &lt;server&gt; (LowID)</b>", "Kad<b>off</b>");
-        assertThat(get("/").body()).contains("eD2K<b>Big (HighID)</b>", "Kad<b>firewalled</b>");
-        assertThat(get("/").body()).contains("eD2K<b>not connected</b>", "Kad<b>open</b>");
-        assertThat(get("/").body()).contains("Kad<b>not connected</b>");
+    private void givenThePageShows(String path, String text) throws Exception {
+        askUntilItShows(path, text);
     }
 
-    @Test
-    void listsTheServersAndConnectsOrDisconnects() throws Exception {
-        start();
-        login();
-        this.fake.answer(
-                "servers", args -> CompletableFuture.completedFuture(List.of(server("10.0.0.1:4661", "Fake <1>"))));
-        List<Object> asked = new CopyOnWriteArrayList<>();
+    private void givenAnotherInstanceWithTheUserLoggedIn() throws Exception {
+        startAnotherInstance();
+        HttpResponse<String> in = this.http.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.other.port() + "/login"))
+                        .POST(form(Map.of("password", PASSWORD)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        String set = in.headers().firstValue("Set-Cookie").orElseThrow();
+        this.otherCookie = set.substring(0, set.indexOf(';'));
+    }
+
+    private void givenAnotherInstanceWhoseEventsEnded() throws IOException {
+        startAnotherInstance();
+        this.otherEngine.events.close();
+    }
+
+    private void givenConnectedToTheServer(String name, boolean low) {
+        this.server = Optional.of(server("10.0.0.1:4661", name));
+        this.lowId = low;
+        answerTheStatus();
+    }
+
+    private void givenKad(boolean connected, boolean firewalled) {
+        this.kad = Optional.of(kad(connected, firewalled));
+        answerTheStatus();
+    }
+
+    private void givenTheEngineKnowsTheServer(String address, String name) {
+        this.fake.answer("servers", args -> CompletableFuture.completedFuture(List.of(server(address, name))));
+    }
+
+    private void givenTheEngineConnectsAndDisconnects() {
         this.fake.answer("connect", args -> {
-            asked.add(args[0]);
+            this.asked.add(args[0]);
             return CompletableFuture.completedFuture(null);
         });
         this.fake.answer("disconnect", args -> {
-            asked.add("disconnect");
+            this.asked.add("disconnect");
             return CompletableFuture.completedFuture(null);
         });
-
-        assertThat(get("/servers").body())
-                .contains(
-                        "<h1>Servers</h1>",
-                        "<td>Fake &lt;1&gt;</td><td>10.0.0.1:4661</td><td>1200</td><td>34000</td>",
-                        "name=\"address\" value=\"10.0.0.1:4661\"");
-        HttpResponse<String> one =
-                post("/servers", Map.of("action", "connect", "address", "10.0.0.1:4661", "csrf", csrf()));
-        assertThat(one.statusCode()).isEqualTo(303);
-        assertThat(one.headers().firstValue("Location")).hasValue("/servers");
-        post("/servers", Map.of("action", "connect", "address", " ", "csrf", csrf()));
-        post("/servers", Map.of("action", "disconnect", "csrf", csrf()));
-        assertThat(asked)
-                .containsExactly(Optional.of(new ServerAddress("10.0.0.1", 4661)), Optional.empty(), "disconnect");
-
-        HttpResponse<String> unknown = post("/servers", Map.of("action", "explode", "csrf", csrf()));
-        assertThat(unknown.statusCode()).isEqualTo(400);
-        assertThat(unknown.body()).contains("Unknown action.", "<a href=\"/servers\">Back</a>");
-        assertThat(post("/servers", Map.of("action", "connect", "address", "nowhere", "csrf", csrf()))
-                        .statusCode())
-                .as("an address without a port")
-                .isEqualTo(400);
-        this.fake.answer(
-                "connect", args -> CompletableFuture.failedFuture(new IllegalStateException("no server answers")));
-        HttpResponse<String> failed = post("/servers", Map.of("action", "connect", "csrf", csrf()));
-        assertThat(failed.statusCode()).isEqualTo(400);
-        assertThat(failed.body()).contains("no server answers");
     }
 
-    @Test
-    void downloadsASearchResultWhileItIsKept() throws Exception {
-        start();
-        login();
-        List<SearchRequest> searched = new CopyOnWriteArrayList<>();
-        this.fake.answer("search", args -> {
-            searched.add((SearchRequest) args[0]);
-            return CompletableFuture.completedFuture(new SearchId(5));
-        });
-        List<Ed2kLink.FileLink> added = new CopyOnWriteArrayList<>();
-        this.fake.answer("addDownload", args -> {
-            added.add((Ed2kLink.FileLink) args[0]);
-            return CompletableFuture.completedFuture(null);
-        });
-
-        assertThat(post("/search", Map.of("query", " ", "csrf", csrf()))
-                        .headers()
-                        .firstValue("Location"))
-                .as("nothing to search")
-                .hasValue("/search");
-        HttpResponse<String> started = post("/search", Map.of("query", "linux", "scope", "KAD", "csrf", csrf()));
-        assertThat(started.headers().firstValue("Location")).hasValue("/search?id=5");
-        assertThat(searched).containsExactly(new SearchRequest("linux", SearchRequest.Scope.KAD));
-        SearchResult found = result("found.iso");
-        this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(5), List.of(found)));
-        awaitPage(() -> get("/search?id=5").body().contains("found.iso"));
-
-        HttpResponse<String> taken =
-                post("/search", Map.of("search", "5", "download", found.hash().toHex(), "csrf", csrf()));
-        assertThat(taken.headers().firstValue("Location")).hasValue("/transfers");
-        assertThat(added).containsExactly(found.link());
-
-        HttpResponse<String> gone = post("/search", Map.of("search", "5", "download", "AB".repeat(16), "csrf", csrf()));
-        assertThat(gone.statusCode()).isEqualTo(400);
-        assertThat(gone.body()).contains("search again");
-        assertThat(post("/search", Map.of("query", "linux", "scope", "MARS", "csrf", csrf()))
-                        .statusCode())
-                .isEqualTo(400);
+    private void givenTheEngineFailsToConnect(String message) {
+        this.fake.answer("connect", args -> CompletableFuture.failedFuture(new IllegalStateException(message)));
     }
 
-    @Test
-    void aSearchKeepsSoManyResultsAndUpdatesThem() throws Exception {
-        start();
-        login();
-        this.fake.answer("search", args -> CompletableFuture.completedFuture(new SearchId(6)));
-        post("/search", Map.of("query", "many", "csrf", csrf()));
-
-        this.fake.events.submit(new EngineEvent.SearchResults(
-                new SearchId(6),
-                IntStream.range(0, 1005).mapToObj(i -> numbered(i, 1)).toList()));
-        // A kept result gets its new sources, a new one finds no room.
-        this.fake.events.submit(
-                new EngineEvent.SearchResults(new SearchId(6), List.of(numbered(0, 99), numbered(2000, 1))));
-        awaitPage(() -> get("/search?id=6").body().contains("<td>99</td>"));
-
-        assertThat(get("/search?id=6").body())
-                .contains("1000 results;", "n0.iso", "n999.iso")
-                .doesNotContain("n1000.iso", "n2000.iso");
-    }
-
-    @Test
-    void transfersShowAnEmptyFileAsNotStarted() throws Exception {
-        start();
-        login();
+    private void givenTheEngineDownloadsAnEmptyStoppedFile(String name) {
         this.fake.answer(
                 "downloads",
                 args -> CompletableFuture.completedFuture(List.of(new DownloadInfo(
-                        Hash16.parseHex("AB".repeat(16)),
-                        "empty.txt",
+                        Hash16.parseHex(HASH),
+                        name,
                         0,
                         0,
                         DownloadInfo.Status.STOPPED,
@@ -394,92 +788,219 @@ class WebUiAnswersTest {
                         0,
                         PartMap.EMPTY))));
         this.fake.answer("categories", args -> CompletableFuture.completedFuture(List.of()));
-
-        assertThat(get("/transfers").body())
-                .contains("empty.txt", "value=\"0\"></progress> 0 %", "stopped", "Resume")
-                .doesNotContain(">Stop<");
     }
 
-    @Test
-    void refusesLoginsThatAreNoForm() throws Exception {
-        start();
-        HttpResponse<String> put = this.http.send(
-                request("/login")
-                        .method("PUT", HttpRequest.BodyPublishers.noBody())
+    private void givenTheOrigin(String value) {
+        this.origin = value;
+    }
+
+    private void givenOnlyTheCookies(String cookies) {
+        this.cookie = cookies;
+    }
+
+    private void givenTheSessionCookieForged(String value) {
+        this.cookie = this.cookie.substring(0, this.cookie.indexOf('=')) + "=" + value;
+    }
+
+    private void givenOtherCookiesBeforeTheSessionOne(String others) {
+        this.cookie = others + "; " + this.cookie;
+    }
+
+    private void givenTheEventsEndWith(String message) {
+        this.fake.events.closeExceptionally(new IllegalStateException(message));
+    }
+
+    private void whenThePageIsAsked(String path) throws Exception {
+        this.answer = get(path);
+    }
+
+    private void whenTheHeadIsAsked(String path) throws Exception {
+        whenThePageIsAskedWithTheMethod(path, "HEAD");
+    }
+
+    private void whenThePageIsAskedWithTheMethod(String path, String method) throws Exception {
+        this.answer = this.http.send(
+                request(path)
+                        .method(method, HttpRequest.BodyPublishers.noBody())
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
-        assertThat(put.statusCode()).isEqualTo(405);
-
-        HttpResponse<String> huge = post("/login", Map.of("password", "x".repeat(16 * 1024)));
-        assertThat(huge.statusCode()).isEqualTo(400);
-        assertThat(huge.body()).isEqualTo("Bad request.");
-
-        HttpResponse<String> unreadable = this.http.send(
-                request("/login")
-                        .header("Origin", "http://bad host")
-                        .POST(form(Map.of("password", PASSWORD)))
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertThat(unreadable.statusCode()).isEqualTo(403);
-        assertThat(post("/style.css", Map.of()).statusCode())
-                .as("the style sheet is only read")
-                .isEqualTo(403);
     }
 
-    @Test
-    void onlyItsOwnCookieOpensTheSession() throws Exception {
-        start();
-        login();
-        String mine = this.cookie;
-
-        this.cookie = "other=1; broken";
-        assertThat(get("/search").statusCode()).isEqualTo(303);
-        this.cookie = mine.substring(0, mine.indexOf('=')) + "=forged";
-        assertThat(get("/search").statusCode()).isEqualTo(303);
-        this.cookie = "other=1; broken; " + mine;
-        assertThat(get("/search").statusCode()).isEqualTo(200);
+    private void whenThePageIsAskedUntilItShows(String path, String text) throws Exception {
+        askUntilItShows(path, text);
     }
 
-    @Test
-    void readsFormsAndQueriesWithEmptyOrBareFields() throws Exception {
-        start();
-        login();
-        List<Object> added = new CopyOnWriteArrayList<>();
-        this.fake.answer("addDownload", args -> {
-            added.add(args[0]);
-            return CompletableFuture.completedFuture(null);
-        });
-
-        HttpResponse<String> bare = get("/search?&id&x=1");
-        assertThat(bare.statusCode()).isEqualTo(200);
-        assertThat(bare.body()).doesNotContain("results;");
-        assertThat(post("/transfers", Map.of("action", "add", "link", "  ", "csrf", csrf()))
-                        .statusCode())
-                .as("no link, nothing to add")
-                .isEqualTo(303);
-        assertThat(added).isEmpty();
-        HttpResponse<String> nowhere = post("/nowhere", Map.of("csrf", csrf()));
-        assertThat(nowhere.statusCode()).isEqualTo(404);
-        assertThat(nowhere.body()).isEqualTo("Not found.");
+    private void whenTheFormIsPosted(String path, Map<String, String> fields) throws Exception {
+        Map<String, String> all = new LinkedHashMap<>(fields);
+        all.put("csrf", csrf());
+        this.answer = post(path, all);
     }
 
-    @Test
-    void pagesStillAnswerOnceTheEventsEnd() throws Exception {
-        start();
-        login();
-        this.fake.events.closeExceptionally(new IllegalStateException("engine stopped"));
-        assertThat(get("/search").statusCode()).isEqualTo(200);
-
-        FakeEngine stopped = new FakeEngine();
-        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        try (WebUi other = WebUi.start(stopped.engine(), new WebUiSettings(true, freePort(), false, hash))) {
-            stopped.events.close();
-            HttpResponse<String> login = this.http.send(
-                    HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + other.port() + "/login"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
-            assertThat(login.statusCode()).isEqualTo(200);
+    private void whenPostedWithoutToken(String path, Map<String, String> fields) throws Exception {
+        HttpRequest.Builder request = request(path);
+        if (this.origin != null) {
+            request.header("Origin", this.origin);
         }
+        this.answer = this.http.send(request.POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenTheLinkFieldOfTheTransfersIsRead() throws Exception {
+        readTheLinkFieldOfTheTransfers();
+    }
+
+    private void whenTheLinesAreAdded(String... lines) throws Exception {
+        whenTheFormIsPosted("/transfers", Map.of("action", "add", "link", String.join("\n", lines)));
+    }
+
+    // The longest text the field takes, each character taking 9 bytes once encoded.
+    private void whenLinksAsLongAsTheFieldTakesAreAdded(int count) throws Exception {
+        String head = "ed2k://|file|";
+        String tail = "|1000|" + HASH + "|/";
+        String longest = head + "\u20AC".repeat(this.linkMaxLength - head.length() - tail.length()) + tail;
+        whenTheFormIsPosted(
+                "/transfers", Map.of("action", "add", "link", String.join(" ", Collections.nCopies(count, longest))));
+    }
+
+    private void whenTheResultIsDownloaded(long search, String name) throws Exception {
+        whenTheFormIsPosted(
+                "/search",
+                Map.of(
+                        "search",
+                        Long.toString(search),
+                        "download",
+                        result(name).hash().toHex()));
+    }
+
+    // Cookies do not depend on the port: the browser sends both to each.
+    private void whenThePageIsAskedWithTheCookiesOfBothInstances(String path) throws Exception {
+        this.mine = this.cookie;
+        this.cookie = this.otherCookie + "; " + this.mine;
+        this.answer = get(path);
+    }
+
+    private void whenTheWebInterfaceStartsWith(WebUiSettings settings) {
+        this.exception = catchThrowable(() -> this.ui = WebUi.start(this.fake.engine(), settings));
+    }
+
+    private void whenTheLoginPageOfTheOtherInstanceIsAsked() throws Exception {
+        this.answer = this.http.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.other.port() + "/login"))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void thenTheStatusIs(int status) {
+        assertThat(this.answer.statusCode()).isEqualTo(status);
+    }
+
+    private void thenTheStatusIs(int status, String why) {
+        assertThat(this.answer.statusCode()).as(why).isEqualTo(status);
+    }
+
+    private void thenTheHeaderIs(String name, String value) {
+        assertThat(this.answer.headers().firstValue(name)).hasValue(value);
+    }
+
+    private void thenTheAnswerLeadsTo(String location) {
+        assertThat(this.answer.headers().firstValue("Location")).hasValue(location);
+    }
+
+    private void thenTheAnswerLeadsTo(String location, String why) {
+        assertThat(this.answer.headers().firstValue("Location")).as(why).hasValue(location);
+    }
+
+    private void thenTheContentLengthIsPositive() {
+        assertThat(this.answer.headers().firstValueAsLong("Content-Length").orElse(0))
+                .isPositive();
+    }
+
+    private void thenTheBodyIs(String body) {
+        assertThat(this.answer.body()).isEqualTo(body);
+    }
+
+    private void thenTheBodyContains(String... parts) {
+        assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenTheBodyDoesNotContain(String... parts) {
+        assertThat(this.answer.body()).doesNotContain(parts);
+    }
+
+    private void thenThePageDoesNotShow(String path, String text) throws Exception {
+        assertThat(get(path).body()).doesNotContain(text);
+    }
+
+    private void thenTheFirstLoginGets(int status) throws Exception {
+        assertThat(this.firstLogin.get().statusCode()).isEqualTo(status);
+    }
+
+    private void thenTheLinkFieldTakes(String text) {
+        assertThat(this.linkPattern.matcher(text).matches()).isTrue();
+    }
+
+    private void thenTheDownloadsAddedAre(String... names) {
+        assertThat(this.added).extracting(Ed2kLink.FileLink::name).containsExactly(names);
+    }
+
+    private void thenTheDownloadsAddedAre(int count) {
+        assertThat(this.added).hasSize(count);
+    }
+
+    private void thenTheResultWasAdded(String name) {
+        assertThat(this.added).containsExactly(result(name).link());
+    }
+
+    private void thenTheEngineSearched(String expression, SearchRequest.Scope scope) {
+        assertThat(this.searched).containsExactly(new SearchRequest(expression, scope));
+    }
+
+    private void thenTheCookiesAreNamedAfterThePortsOfTheirInstances() {
+        assertThat(this.mine).startsWith("njmule-session-" + this.ui.port() + "=");
+        assertThat(this.otherCookie).startsWith("njmule-session-" + this.other.port() + "=");
+    }
+
+    private void thenTheEngineWasAskedToConnectTo(String host, int port) {
+        assertThat(this.asked).containsExactly(Optional.of(new ServerAddress(host, port)));
+    }
+
+    private void thenTheEngineWasAskedToConnectToAnyServer() {
+        assertThat(this.asked).containsExactly(Optional.empty());
+    }
+
+    private void thenTheEngineWasAskedToDisconnect() {
+        assertThat(this.asked).containsExactly("disconnect");
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void answerTheStatus() {
+        this.fake.answer(
+                "status", args -> CompletableFuture.completedFuture(status(this.server, this.lowId, this.kad)));
+    }
+
+    private void readTheLinkFieldOfTheTransfers() throws Exception {
+        String page = get("/transfers").body();
+        Matcher field = Pattern.compile("name=\"link\"[^>]* pattern=\"([^\"]+)\" maxlength=\"(\\d+)\"")
+                .matcher(page);
+        assertThat(field.find()).isTrue();
+        this.linkPattern = Pattern.compile(field.group(1));
+        this.linkMaxLength = Integer.parseInt(field.group(2));
+    }
+
+    private void askUntilItShows(String path, String text) throws Exception {
+        long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        for (this.answer = get(path); !this.answer.body().contains(text); this.answer = get(path)) {
+            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
+            Thread.sleep(20);
+        }
+    }
+
+    private void startAnotherInstance() throws IOException {
+        this.otherEngine = new FakeEngine();
+        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
+        this.other = WebUi.start(this.otherEngine.engine(), new WebUiSettings(true, freePort(), false, hash));
     }
 
     private static EngineStatus status(Optional<ServerInfo> server, boolean lowId, Optional<KadInfo> kad) {
@@ -517,26 +1038,6 @@ class WebUiAnswersTest {
                 Optional.empty());
     }
 
-    private static void awaitPage(Callable<Boolean> condition) throws Exception {
-        long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-        while (!condition.call()) {
-            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
-            Thread.sleep(20);
-        }
-    }
-
-    private void start() throws IOException {
-        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
-    }
-
-    private void login() throws Exception {
-        HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
-        assertThat(in.statusCode()).isEqualTo(303);
-        String set = in.headers().firstValue("Set-Cookie").orElseThrow();
-        this.cookie = set.substring(0, set.indexOf(';'));
-    }
-
     // The search page asks nothing of the engine.
     private String csrf() throws Exception {
         Matcher m = CSRF.matcher(get("/search").body());
@@ -546,14 +1047,6 @@ class WebUiAnswersTest {
 
     private HttpResponse<String> get(String path) throws Exception {
         return this.http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
-    }
-
-    private HttpResponse<String> head(String path) throws Exception {
-        return this.http.send(
-                request(path)
-                        .method("HEAD", HttpRequest.BodyPublishers.noBody())
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
