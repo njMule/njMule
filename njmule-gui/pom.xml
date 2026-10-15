@@ -31,6 +31,10 @@
              platforms repeat an option of their argument file, as an argument cannot be empty. -->
         <native.resources.skip>true</native.resources.skip>
         <native.platform.option>-H:+ReportExceptionStackTraces</native.platform.option>
+        <!-- The capture tour (CaptureTour) pictures the interface only when given a folder:
+             -Dnjmule.capture=target/gui-capture, optionally -Dnjmule.capture.sets=it-light-full,... -->
+        <njmule.capture></njmule.capture>
+        <njmule.capture.sets></njmule.capture.sets>
     </properties>
 
     <dependencies>
@@ -118,6 +122,8 @@
                         <glass.platform>Headless</glass.platform>
                         <prism.order>sw</prism.order>
                         <njmule.snapshots>${project.build.directory}/gui-snapshots</njmule.snapshots>
+                        <njmule.capture>${njmule.capture}</njmule.capture>
+                        <njmule.capture.sets>${njmule.capture.sets}</njmule.capture.sets>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
