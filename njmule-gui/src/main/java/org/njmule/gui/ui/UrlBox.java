@@ -64,6 +64,7 @@ public final class UrlBox {
             this.box.getItems().setAll(used);
         }
         this.input = new Inputs(gui).url(this.box.getEditor(), name).quietWhenEmpty();
+        Fx.hintOnBox(this.box);
     }
 
     // An empty history starts with what was typed in eMule's box, when its profile was imported.

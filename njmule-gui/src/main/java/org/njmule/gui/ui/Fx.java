@@ -38,6 +38,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
@@ -94,6 +95,21 @@ public final class Fx {
             startWithTheLayout(labeled);
         }
         return node;
+    }
+
+    /**
+     * Shows the hint of an editable box's editor, set by an input, as the box's own tooltip, which the box's skin gives
+     * its editor; it is left out while the box's list shows, which it would cover.
+     */
+    public static void hintOnBox(ComboBox<?> box) {
+        Tooltip hint = box.getEditor().getTooltip();
+        box.setTooltip(hint);
+        box.showingProperty().addListener((o, was, showing) -> {
+            if (showing && hint != null) {
+                hint.hide();
+            }
+            box.setTooltip(showing ? null : hint);
+        });
     }
 
     /** As {@link #leftToRight(Node)}, for the cells of {@code column}; call it after setting their factory. */
