@@ -73,6 +73,15 @@ public final class FxTesting {
             if (started) {
                 return;
             }
+            // Each test JVM unpacks JavaFX's native libraries into a folder of its own: on a new CI runner the forks
+            // unpacking into one folder at once loaded libraries still being written.
+            String cache = System.getProperty("njmule.javafx.cache");
+            if (cache != null && System.getProperty("javafx.cachedir") == null) {
+                System.setProperty(
+                        "javafx.cachedir",
+                        Path.of(cache, Long.toString(ProcessHandle.current().pid()))
+                                .toString());
+            }
             CountDownLatch ready = new CountDownLatch(1);
             Platform.startup(ready::countDown);
             Platform.setImplicitExit(false);
@@ -276,7 +285,7 @@ public final class FxTesting {
         return NjMuleEngine.start(new EngineConfig(dirs));
     }
 
-    /** Saves a picture of {@code node} as {@code name}.png under target/gui-snapshots. */
+    /** Saves a picture of {@code node} as {@code name}.png under build/gui-snapshots. */
     public static void snapshot(Node node, String name) throws IOException {
         String dir = System.getProperty("njmule.snapshots");
         if (dir == null) {
