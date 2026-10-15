@@ -297,6 +297,8 @@ public final class FakePeer implements AutoCloseable {
         private final boolean calledBack;
         private int downloaderPort;
         private long sessionBytes;
+        // From the end of an upload session to the next slot: the blocks asked for meanwhile are not sent.
+        private volatile boolean sessionEnded;
         private boolean askedForOurs;
 
         Session(Socket socket, RandomAccessFile data, boolean calledBack) throws IOException {
@@ -315,6 +317,13 @@ public final class FakePeer implements AutoCloseable {
             }
             if (packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.AICHREQUEST.code()) {
                 aichRequested(packet);
+                return;
+            }
+            if (packet.protocol() == Protocol.EMULE
+                    && packet.opcode() == Opcodes.Extended.PUBLICIP_ANSWER.code()
+                    && this.sessionEnded) {
+                this.sessionEnded = false;
+                send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                 return;
             }
             if (packet.protocol() != Protocol.EDONKEY) {
@@ -418,7 +427,7 @@ public final class FakePeer implements AutoCloseable {
         }
 
         private void blocks(ClientMessages.RequestParts request) throws IOException {
-            if (FakePeer.this.stalled) {
+            if (FakePeer.this.stalled || this.sessionEnded) {
                 return;
             }
             for (ClientMessages.Range range : request.ranges()) {
@@ -437,8 +446,11 @@ public final class FakePeer implements AutoCloseable {
                 long limit = FakePeer.this.config.sessionLimit();
                 if (limit > 0 && this.sessionBytes >= limit) {
                     this.sessionBytes = 0;
+                    this.sessionEnded = true;
                     send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-                    slotLater();
+                    // Answered once the downloader has handled the end, after the blocks it asked for before, which
+                    // are dropped: none of them can follow the next slot and come twice. No fixed wait would do.
+                    send(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code()));
                     return;
                 }
             }
