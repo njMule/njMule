@@ -40,6 +40,7 @@ import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javax.imageio.ImageIO;
@@ -107,7 +108,7 @@ public final class MessagesScreen implements Screen {
             }
         });
         this.gui.subscriptions().onChange(this.gui.model().friendSlotProperty(), (was, now) -> this.friends.refresh());
-        Label friendsTitle = new Label(this.gui.t("IDS_PW_FRIENDS"));
+        Label friendsTitle = new Label(this.gui.t("IDS_FRIENDLIST"));
         friendsTitle.getStyleClass().add("settings-section");
         VBox left = new VBox(
                 6,
@@ -301,6 +302,8 @@ public final class MessagesScreen implements Screen {
             VBox.setVgrow(lines, Priority.ALWAYS);
             Label request = new Label(MessagesScreen.this.gui.t("IDS_CAPTCHAREQUEST"));
             request.setWrapText(true);
+            // The list above gives way: the request is read whole, never cut short.
+            request.setMinHeight(Region.USE_PREF_SIZE);
             this.solution.setOnAction(e -> this.solve());
             this.captchaBox = new VBox(
                     6,
@@ -311,6 +314,7 @@ public final class MessagesScreen implements Screen {
                             this.solution,
                             Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::solve)));
             this.captchaBox.getStyleClass().add("stat-card");
+            this.captchaBox.setMinHeight(Region.USE_PREF_SIZE);
             MessagesScreen.this
                     .gui
                     .subscriptions()
