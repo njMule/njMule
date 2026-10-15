@@ -151,8 +151,11 @@
     -fx-icon-color: -color-warning-emphasis;
 }
 
+/* The rates in the interface's own font, whose digits are of one width, in a box wide enough for
+   100 MB/s and aligned to its end: the bar does not shift as they change. */
 .rate-label {
-    -fx-font-family: monospace;
+    -fx-min-width: 8em;
+    -fx-alignment: center-right;
 }
 
 /* Screens. */
