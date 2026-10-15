@@ -495,9 +495,36 @@ public final class SearchScreen implements Screen {
         known.setCellFactory(c -> new KnownCell());
         TableColumn<LiveList.Row<SearchResult>, String> fileId = Fx.leftToRight(Fx.column(
                 this.gui.t("IDS_FILEID"), 220, (SearchResult r) -> r.hash().toHex()));
-        // Offered in the column menu; the media columns show from the start.
+        // Offered in the column menu.
         fileId.setVisible(false);
         String kbits = this.gui.t("IDS_KBITSSEC");
+        List<TableColumn<LiveList.Row<SearchResult>, ?>> media = List.of(
+                Fx.ownDirection(Fx.column(
+                        this.gui.t("IDS_ARTIST"),
+                        100,
+                        (SearchResult r) -> r.media().artist())),
+                Fx.ownDirection(Fx.column(
+                        this.gui.t("IDS_ALBUM"),
+                        100,
+                        (SearchResult r) -> r.media().album())),
+                Fx.ownDirection(Fx.column(
+                        this.gui.t("IDS_TITLE"),
+                        100,
+                        (SearchResult r) -> r.media().title())),
+                Fx.leftToRight(Fx.column(
+                        this.gui.t("IDS_LENGTH"),
+                        60,
+                        (SearchResult r) -> r.media().length(),
+                        s -> s == 0 ? "" : formats.playingTime(s))),
+                Fx.leftToRight(Fx.column(
+                        this.gui.t("IDS_BITRATE"),
+                        80,
+                        (SearchResult r) -> r.media().bitrate(),
+                        b -> b == 0 ? "" : formats.count(b) + " " + kbits)),
+                Fx.leftToRight(Fx.column(
+                        this.gui.t("IDS_CODEC"),
+                        60,
+                        (SearchResult r) -> r.media().codec())));
         // Columns are remembered by their place: new ones go last.
         table.getColumns()
                 .addAll(List.of(
@@ -510,34 +537,12 @@ public final class SearchScreen implements Screen {
                                 90,
                                 (SearchResult r) -> r.type().orElse(""))),
                         known,
-                        fileId,
-                        Fx.ownDirection(Fx.column(
-                                this.gui.t("IDS_ARTIST"),
-                                100,
-                                (SearchResult r) -> r.media().artist())),
-                        Fx.ownDirection(Fx.column(
-                                this.gui.t("IDS_ALBUM"),
-                                100,
-                                (SearchResult r) -> r.media().album())),
-                        Fx.ownDirection(Fx.column(
-                                this.gui.t("IDS_TITLE"),
-                                100,
-                                (SearchResult r) -> r.media().title())),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_LENGTH"),
-                                60,
-                                (SearchResult r) -> r.media().length(),
-                                s -> s == 0 ? "" : formats.playingTime(s))),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_BITRATE"),
-                                80,
-                                (SearchResult r) -> r.media().bitrate(),
-                                b -> b == 0 ? "" : formats.count(b) + " " + kbits)),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_CODEC"),
-                                60,
-                                (SearchResult r) -> r.media().codec()))));
+                        fileId));
+        table.getColumns().addAll(media);
         TableLayout.remember(table, "search", this.gui.settings());
+        MediaColumns mediaColumns = new MediaColumns(media);
+        mediaColumns.follow(search.results().rows());
+        this.gui.subscriptions().onListChange(search.results().rows(), c -> mediaColumns.follow(c.getList()));
         table.setRowFactory(t -> {
             TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();
             row.setOnMouseClicked(e -> {
@@ -796,6 +801,44 @@ public final class SearchScreen implements Screen {
         protected void updateItem(FileType item, boolean empty) {
             super.updateItem(item, empty);
             this.setText(empty || item == null ? null : SearchScreen.this.gui.t(item.text));
+        }
+    }
+
+    /** Whether a result is a song or a film: its type says so, or it has media details. */
+    static boolean isMedia(SearchResult result) {
+        String type = result.type().orElse("");
+        return type.equalsIgnoreCase("audio")
+                || type.equalsIgnoreCase("video")
+                || !result.media().equals(SearchResult.Media.NONE);
+    }
+
+    /**
+     * The media columns of a list of results: shown while it holds songs or films, hidden otherwise, until the column
+     * menu shows or hides one of them for this list.
+     */
+    private static final class MediaColumns {
+        private final List<TableColumn<LiveList.Row<SearchResult>, ?>> columns;
+        private boolean chosen;
+        private boolean following;
+
+        MediaColumns(List<TableColumn<LiveList.Row<SearchResult>, ?>> columns) {
+            this.columns = columns;
+            for (TableColumn<LiveList.Row<SearchResult>, ?> column : columns) {
+                column.visibleProperty().addListener((o, was, now) -> this.chosen |= !this.following);
+            }
+        }
+
+        void follow(List<? extends LiveList.Row<SearchResult>> rows) {
+            if (this.chosen) {
+                return;
+            }
+            boolean shown = rows.stream().anyMatch(r -> isMedia(r.get()));
+            this.following = true;
+            try {
+                this.columns.forEach(c -> c.setVisible(shown));
+            } finally {
+                this.following = false;
+            }
         }
     }
 

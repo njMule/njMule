@@ -51,6 +51,10 @@ class SearchColumnsTest {
             "short song.flac",
             new SearchResult.Media("", "", "", 205, 1000, "flac"));
 
+    private static final SearchResult DISC = new SearchResult(
+            Hash16.parseHex("11111111111111111111111111111111"), "debian.iso", 4_000_000, 9, 9, Optional.of("Iso"));
+    private static final String[] MEDIA = {"Artist", "Album", "Title", "Length", "Bitrate", "Codec"};
+
     @TempDir
     Path dir;
 
@@ -73,6 +77,36 @@ class SearchColumnsTest {
         this.thenTheHiddenColumnsAre("File ID");
         this.thenTheShownColumnsInclude("Artist", "Album", "Title", "Length", "Bitrate", "Codec");
         this.thenTheCellsShow("Some Band", "First Album", "Long Song", "1:02:03", "96 Kbit/s", "3:25", "1,000 Kbit/s");
+    }
+
+    @Test
+    void shouldHideTheMediaColumnsWithoutSongsOrFilms() throws Exception {
+        this.givenASearchTab();
+
+        this.whenTheServerFinds(DISC);
+
+        this.thenTheHiddenColumnsAre("File ID", "Artist", "Album", "Title", "Length", "Bitrate", "Codec");
+    }
+
+    @Test
+    void shouldShowTheMediaColumnsOnceASongComes() throws Exception {
+        this.givenASearchTab();
+        this.givenTheServerFound(DISC);
+
+        this.whenTheServerFinds(DISC, SHORT_SONG);
+
+        this.thenTheShownColumnsInclude(MEDIA);
+    }
+
+    @Test
+    void shouldKeepTheMediaColumnsTheColumnMenuChose() throws Exception {
+        this.givenASearchTab();
+        this.givenTheServerFound(LONG_SONG);
+
+        this.whenTheColumnIsHidden("Artist");
+        this.whenTheServerFinds(LONG_SONG, SHORT_SONG);
+
+        this.thenTheHiddenColumnsAre("File ID", "Artist");
     }
 
     @Test
@@ -128,6 +162,10 @@ class SearchColumnsTest {
     private void whenTheServerFinds(SearchResult... results) throws Exception {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(results))));
         FxTesting.await("the results", () -> this.table.getItems().size() == results.length);
+    }
+
+    private void whenTheColumnIsHidden(String title) throws Exception {
+        FxTesting.onFx(() -> this.column(title).setVisible(false));
     }
 
     private void whenTheColumnIsShown(String title) throws Exception {

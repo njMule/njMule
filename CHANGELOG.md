@@ -365,6 +365,8 @@ All notable changes to this project are documented here. The format follows
   Details pane (Alt+Enter) shows the parts drawn large with a legend and the facts the columns cut.
 - The lists use dense rows; empty lists say how to fill them and offer the buttons that do it.
 - The search parameters fold behind a button that counts those in use.
+- The media columns of a search (artist, album, title, length, bitrate, codec) show while its results
+  hold songs or films and hide otherwise, until the column menu shows or hides one of them.
 - The options have an index of their sections and a box that finds an option by its words.
 - The rate graph has a scale; chat tabs with unread messages are marked. The statistics show what
   happens now first, then the graph, then the session and the cumulative figures, each in a regular
