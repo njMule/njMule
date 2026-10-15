@@ -17,6 +17,7 @@
 package org.njmule.gui.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.njmule.core.api.DownloadPriority.AUTO;
 
 import java.io.IOException;
@@ -911,7 +912,7 @@ class EngineModelTest {
         long deadline = System.nanoTime() + 20_000_000_000L;
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > deadline) {
-                throw new AssertionError("timed out");
+                fail("timed out");
             }
             Thread.sleep(20);
         }
