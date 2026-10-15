@@ -33,6 +33,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
@@ -111,17 +112,23 @@ public final class CategoriesDialog {
         });
         this.list.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.edit(now));
         this.list.setPrefWidth(200);
+        this.list.setMinWidth(180);
 
         GridPane form = new GridPane();
         form.setHgap(10);
         form.setVgap(8);
         int row = 0;
-        form.addRow(row++, new Label(gui.t("IDS_TITLE")), this.name);
-        form.addRow(row++, new Label(gui.t("IDS_PW_INCOMING")), new HBox(6, this.incoming, this.browse()));
-        form.addRow(row++, new Label(gui.t("IDS_COMMENT")), this.comment);
-        form.addRow(row++, new Label(gui.t("IDS_COLOR")), this.color);
-        form.addRow(row++, new Label(gui.t("IDS_PRIORITY")), this.priority);
-        form.addRow(row++, new Label(gui.t("IDS_AUTOCAT_LABEL")), this.patterns);
+        // The names keep their whole width; the long one wraps rather than being cut.
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_TITLE"))), this.name);
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PW_INCOMING"))), new HBox(6, this.incoming, this.browse()));
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COMMENT"))), this.comment);
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COLOR"))), this.color);
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PRIORITY"))), this.priority);
+        Label patternsName = new Label(gui.t("IDS_AUTOCAT_LABEL"));
+        patternsName.setWrapText(true);
+        patternsName.setMaxWidth(220);
+        patternsName.setMinHeight(Region.USE_PREF_SIZE);
+        form.addRow(row++, patternsName, this.patterns);
         form.add(this.regex, 1, row);
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
         this.name.setPrefColumnCount(24);

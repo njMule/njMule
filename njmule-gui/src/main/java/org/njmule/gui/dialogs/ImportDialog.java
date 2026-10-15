@@ -38,6 +38,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
@@ -104,10 +105,12 @@ public final class ImportDialog {
         this.report.getStyleClass().add("import-report");
 
         Label intro = new Label(gui.t("nj.import.intro"));
+        // Read whole: the report below gives way.
+        intro.setMinHeight(Region.USE_PREF_SIZE);
         intro.setWrapText(true);
         HBox dir = new HBox(
                 8,
-                new Label(gui.t("nj.import.directory")),
+                Fx.whole(new Label(gui.t("nj.import.directory"))),
                 this.directory,
                 Fx.button(gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::browse));
         HBox.setHgrow(this.directory, Priority.ALWAYS);
@@ -117,7 +120,12 @@ public final class ImportDialog {
                 Fx.spacer(),
                 this.summary,
                 Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
-        VBox root = new VBox(10, intro, dir, new HBox(16, this.identity, this.downloads), this.report, buttons);
+        // One option a line, each wrapping: their texts are long in every language.
+        for (var option : List.of(this.identity, this.downloads)) {
+            option.setWrapText(true);
+            option.setMinHeight(Region.USE_PREF_SIZE);
+        }
+        VBox root = new VBox(10, intro, dir, new VBox(6, this.identity, this.downloads), this.report, buttons);
         VBox.setVgrow(this.report, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 820, 520);

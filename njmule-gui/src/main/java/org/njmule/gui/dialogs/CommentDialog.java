@@ -92,8 +92,9 @@ public final class CommentDialog {
         GridPane form = new GridPane();
         form.setHgap(10);
         form.setVgap(6);
-        form.addRow(0, new Label(gui.t("IDS_CMT_RATEQUEST")), this.rating);
-        form.addRow(1, new Label(gui.t("IDS_CMT_READ")), this.text);
+        // The names keep their whole width: the fields give way.
+        form.addRow(0, Fx.whole(new Label(gui.t("IDS_CMT_RATEQUEST"))), this.rating);
+        form.addRow(1, Fx.whole(new Label(gui.t("IDS_CMT_READ"))), this.text);
         VBox root = new VBox(10, form);
         this.heard.setPlaceholder(new Label(gui.t("IDS_CMT_NONE")));
         this.heard.setCellFactory(l -> new HeardCell());
