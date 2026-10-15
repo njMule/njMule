@@ -108,8 +108,9 @@ All notable changes to this project are documented here. The format follows
   and About. AtlantaFX themes (Nord by default), light, dark or as the system, with sober pastel
   colour tokens; English and Italian, with eMule's own interface texts converted from its string
   tables by `tools/Rc2Properties.java`. Tables keep their selection and order while they refresh.
-- Proxy for outgoing TCP connections (SOCKS 4/5, with or without credentials, and HTTP CONNECT),
-  also taken from an eMule profile.
+- Proxy for outgoing TCP connections (SOCKS 4/5, with or without credentials, and HTTP CONNECT)
+  and for the server, Kad and IP filter lists fetched from the web (SOCKS 5 or HTTP), also taken
+  from an eMule profile.
 - Scheduler: rules by weekday and time that change the transfer limits and connections; edited
   in the options and kept in `scheduler.properties`.
 - Port forwarding with UPnP (on by default): the router is found on the local network, ports are
