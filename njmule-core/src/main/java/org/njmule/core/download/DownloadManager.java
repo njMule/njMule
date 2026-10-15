@@ -1029,7 +1029,7 @@ public final class DownloadManager implements AutoCloseable {
                     continue;
                 }
                 this.udp.send(
-                        new InetSocketAddress(Ipv4.format(route.buddyIp()), route.buddyPort()),
+                        Ipv4.socketAddress(route.buddyIp(), route.buddyPort()),
                         ping.encodeThroughBuddy(route.buddyId().orElseThrow(), client.udpVersion),
                         Optional.empty());
             } else {
@@ -1112,7 +1112,7 @@ public final class DownloadManager implements AutoCloseable {
             if (!usable(ip, source.port())) {
                 continue;
             }
-            Source fresh = addSource(entry, new InetSocketAddress(Ipv4.format(ip), source.port()));
+            Source fresh = addSource(entry, Ipv4.socketAddress(ip, source.port()));
             if (fresh != null) {
                 learn(fresh.client, source.userHash(), source.cryptOptions());
                 added++;
@@ -2220,7 +2220,7 @@ public final class DownloadManager implements AutoCloseable {
                     || s.userHash().filter(this::isOurs).isPresent()) {
                 continue;
             }
-            Source fresh = addSource(entry, new InetSocketAddress(Ipv4.format(s.ip()), s.port()));
+            Source fresh = addSource(entry, Ipv4.socketAddress(s.ip(), s.port()));
             if (fresh != null) {
                 learn(fresh.client, s.userHash().filter(h -> !h.equals(Hash16.ZERO)), s.cryptOptions());
                 added++;

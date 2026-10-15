@@ -19,7 +19,6 @@ package org.njmule.core.kad;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
 import com.google.common.base.Utf8;
-import com.google.common.net.InetAddresses;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -119,14 +118,15 @@ public class KadTextBench {
         return HEX.toHexDigits(this.id.high()) + HEX.toHexDigits(this.id.low());
     }
 
-    /** Today's code: the address formatted to a string, then parsed back. */
+    /** The replaced code: the address formatted to a string, then parsed back. */
     @Benchmark
     public InetSocketAddress socketAddressViaString() {
         return new InetSocketAddress(Ipv4.format(this.ip), this.port);
     }
 
+    /** Today's code, on Guava's InetAddresses. */
     @Benchmark
     public InetSocketAddress socketAddressGuava() {
-        return new InetSocketAddress(InetAddresses.fromInteger(this.ip), this.port);
+        return Ipv4.socketAddress(this.ip, this.port);
     }
 }

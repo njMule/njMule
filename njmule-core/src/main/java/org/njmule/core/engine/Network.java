@@ -1932,7 +1932,7 @@ final class Network {
     // A UDP test helper: after the hellos it is asked to send its datagram; the link stays open while we wait for it.
     private void checkUdp(int ip, int port, LowIdMessages.UdpCheckRequest request) {
         KadNode node = this.kad;
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), port);
+        InetSocketAddress address = Ipv4.socketAddress(ip, port);
         Thread.ofVirtual().name("njmule-udp-check-" + address).start(() -> {
             try {
                 TcpConnection connection = TcpConnector.connectToClient(
@@ -2065,7 +2065,7 @@ final class Network {
             return;
         }
         callBack(
-                new InetSocketAddress(Ipv4.format(callback.requesterIp()), callback.requesterPort()),
+                Ipv4.socketAddress(callback.requesterIp(), callback.requesterPort()),
                 Optional.empty(),
                 "through our buddy");
     }
@@ -2166,7 +2166,7 @@ final class Network {
             boolean obfuscate = (request.connectOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
                     && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
             callBack(
-                    new InetSocketAddress(Ipv4.format(ip), request.tcpPort()),
+                    Ipv4.socketAddress(ip, request.tcpPort()),
                     obfuscate ? Optional.of(request.userHash()) : Optional.empty(),
                     "direct callback");
         } catch (DecodeException e) {
@@ -2176,7 +2176,7 @@ final class Network {
 
     // A node asked us to prove it reachable: we connect back and say so after the hellos.
     private void checkReachable(int ip, int port, Hash16 peer, int connectOptions) {
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), port);
+        InetSocketAddress address = Ipv4.socketAddress(ip, port);
         Optional<Hash16> obfuscateFor =
                 (connectOptions & 0x01) != 0 && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED
                         ? Optional.of(peer)
@@ -2252,7 +2252,7 @@ final class Network {
     }
 
     private static DownloadManager.KadSource kadSource(KadNode.Source s) {
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(s.ip()), s.tcpPort());
+        InetSocketAddress address = Ipv4.socketAddress(s.ip(), s.tcpPort());
         Optional<DownloadManager.KadCallback> callback = Optional.empty();
         if (s.buddy().isPresent()) {
             KadNode.Buddy buddy = s.buddy().get();
@@ -2675,7 +2675,7 @@ final class Network {
                     && Network.this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
             // A server could otherwise have us open any number of connections, or the same one again and again.
             Network.this.callBack(
-                    new InetSocketAddress(Ipv4.format(ip), request.endpoint().port()),
+                    Ipv4.socketAddress(ip, request.endpoint().port()),
                     obfuscate ? request.userHash() : Optional.empty(),
                     "asked by the server");
         }

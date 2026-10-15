@@ -19,6 +19,7 @@ package org.njmule.core.util;
 import com.google.common.net.InetAddresses;
 import com.google.common.primitives.Ints;
 import java.net.Inet4Address;
+import java.net.InetSocketAddress;
 
 /**
  * IPv4 addresses as {@code int}s holding {@code a.b.c.d} as {@code a<<24 | b<<16 | c<<8 | d}. Kad files store this
@@ -56,6 +57,11 @@ public final class Ipv4 {
 
     public static String format(int ip) {
         return InetAddresses.fromInteger(ip).getHostAddress();
+    }
+
+    /** The socket address of {@code ip}, made without a round trip through its text. */
+    public static InetSocketAddress socketAddress(int ip, int port) {
+        return new InetSocketAddress(InetAddresses.fromInteger(ip), port);
     }
 
     /** Parses an IPv4 literal without any name lookup. */

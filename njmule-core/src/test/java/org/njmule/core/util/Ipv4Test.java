@@ -18,6 +18,7 @@ package org.njmule.core.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.InetSocketAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -26,6 +27,7 @@ class Ipv4Test {
 
     private int address;
     private boolean answer;
+    private InetSocketAddress socketAddress;
 
     @ParameterizedTest
     @CsvSource({"10, 0, 0, 1", "172, 16, 0, 1", "172, 31, 255, 255", "192, 168, 1, 1", "0, 1, 2, 3"})
@@ -75,6 +77,16 @@ class Ipv4Test {
         thenTheAnswerIs(false);
     }
 
+    @ParameterizedTest
+    @CsvSource({"81, 2, 133, 47, 4672", "255, 255, 255, 255, 1", "128, 0, 0, 1, 65535"})
+    void shouldMakeTheSameSocketAddressAsItsTextWithoutLookingItUp(int a, int b, int c, int d, int port) {
+        givenTheAddress(a, b, c, d);
+
+        whenItsSocketAddressIsMadeFor(port);
+
+        thenTheSocketAddressIsThatOf(a + "." + b + "." + c + "." + d, port);
+    }
+
     private void givenTheAddress(int a, int b, int c, int d) {
         this.address = Ipv4.of(a, b, c, d);
     }
@@ -85,6 +97,16 @@ class Ipv4Test {
 
     private void whenItIsCheckedForAPeer() {
         this.answer = Ipv4.isUnicastPublicCandidate(this.address);
+    }
+
+    private void whenItsSocketAddressIsMadeFor(int port) {
+        this.socketAddress = Ipv4.socketAddress(this.address, port);
+    }
+
+    private void thenTheSocketAddressIsThatOf(String literal, int port) {
+        assertThat(this.socketAddress).isEqualTo(new InetSocketAddress(literal, port));
+        assertThat(this.socketAddress.isUnresolved()).isFalse();
+        assertThat(this.socketAddress.getHostString()).isEqualTo(literal);
     }
 
     private void thenTheAnswerIs(boolean expected) {

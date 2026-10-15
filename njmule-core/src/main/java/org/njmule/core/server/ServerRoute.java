@@ -52,10 +52,9 @@ public record ServerRoute(InetSocketAddress target, int key) {
                 && port <= 0xFFFF
                 && ourIp != 0
                 && server.udpKeyIp().orElse(0) == Ipv4.toEd2k(ourIp)) {
-            return new ServerRoute(new InetSocketAddress(Ipv4.format(server.ip()), port), (int) key);
+            return new ServerRoute(Ipv4.socketAddress(server.ip(), port), (int) key);
         }
-        return new ServerRoute(
-                new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET), 0);
+        return new ServerRoute(Ipv4.socketAddress(server.ip(), server.port() + ServerUdp.PORT_OFFSET), 0);
     }
 
     public boolean isObfuscated() {

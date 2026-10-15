@@ -166,8 +166,7 @@ public final class ServerPinger {
             return;
         }
         long challenge = ServerDatagrams.descriptionChallenge(this.random.nextInt());
-        InetSocketAddress target =
-                new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+        InetSocketAddress target = Ipv4.socketAddress(server.ip(), server.port() + ServerUdp.PORT_OFFSET);
         try {
             socket.get().send(target, ServerDatagrams.descriptionRequest(challenge));
             this.descriptions.put(
@@ -230,8 +229,7 @@ public final class ServerPinger {
                 return;
             }
             long challenge = CHALLENGE_BASE | (this.random.nextInt() & 0xFFFF);
-            InetSocketAddress target =
-                    new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+            InetSocketAddress target = Ipv4.socketAddress(server.ip(), server.port() + ServerUdp.PORT_OFFSET);
             try {
                 socket.get().send(target, ServerDatagrams.statusRequest(challenge));
                 this.pending.put(address, new Pending(challenge, now, this.clock.millis()));

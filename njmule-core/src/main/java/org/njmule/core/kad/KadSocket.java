@@ -153,8 +153,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
     private void transmit(int ip, int port, byte[] datagram) {
         try {
-            this.socket.send(
-                    new DatagramPacket(datagram, datagram.length, new InetSocketAddress(Ipv4.format(ip), port)));
+            this.socket.send(new DatagramPacket(datagram, datagram.length, Ipv4.socketAddress(ip, port)));
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
             logger.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());

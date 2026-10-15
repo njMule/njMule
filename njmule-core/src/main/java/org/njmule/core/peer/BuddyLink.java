@@ -223,7 +223,7 @@ public final class BuddyLink implements KadNode.Buddies {
     public boolean asked(int ip, int tcpPort, int udpPort, Hash16 userHash, UInt128 buddyId) {
         long now = this.ticker.read();
         this.expected.removeIf(e -> now - e.since() >= EXPECTED_FOR.toNanos());
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(ip), tcpPort);
+        InetSocketAddress address = Ipv4.socketAddress(ip, tcpPort);
         // A client we deal with already would mix up both uses of the link.
         if (this.state != State.NONE
                 || this.expected.size() >= MAX_EXPECTED
@@ -325,7 +325,7 @@ public final class BuddyLink implements KadNode.Buddies {
         Offer offer = this.offers.removeFirst();
         this.connecting = offer;
         this.state = State.CONNECTING;
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(offer.ip()), offer.tcpPort());
+        InetSocketAddress address = Ipv4.socketAddress(offer.ip(), offer.tcpPort());
         Optional<Hash16> obfuscateFor =
                 this.obfuscate.test(offer.connectOptions()) ? Optional.of(offer.userHash()) : Optional.empty();
         dial(this.loop, address, obfuscateFor, this.random, c -> opened(offer, c), why -> failed(offer, why));

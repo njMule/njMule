@@ -380,7 +380,7 @@ public final class ServerSession {
 
     private void dial(Attempt attempt) {
         ServerMet.Server server = attempt.server;
-        InetSocketAddress address = new InetSocketAddress(Ipv4.format(server.ip()), portFor(attempt));
+        InetSocketAddress address = Ipv4.socketAddress(server.ip(), portFor(attempt));
         this.listener.connecting(server);
         Thread.ofVirtual().name("njmule-server-connect").start(() -> {
             try {

@@ -731,8 +731,7 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<PeerInfo> hello(ServerAddress peer) {
-        return resolve(peer.host())
-                .thenCompose(ip -> this.network.hello(new InetSocketAddress(Ipv4.format(ip), peer.port())));
+        return resolve(peer.host()).thenCompose(ip -> this.network.hello(Ipv4.socketAddress(ip, peer.port())));
     }
 
     @Override
@@ -777,7 +776,7 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(source, "source");
         return resolve(source.host())
                 .thenCompose(ip -> this.loop.submit(
-                        () -> this.network.addSource(download, new InetSocketAddress(Ipv4.format(ip), source.port()))));
+                        () -> this.network.addSource(download, Ipv4.socketAddress(ip, source.port()))));
     }
 
     @Override
@@ -809,8 +808,8 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(download, "download");
         Objects.requireNonNull(source, "source");
         return resolve(source.host())
-                .thenCompose(ip -> this.loop.submit(() -> this.network.swapSourceToDownload(
-                        download, new InetSocketAddress(Ipv4.format(ip), source.port()))));
+                .thenCompose(ip -> this.loop.submit(
+                        () -> this.network.swapSourceToDownload(download, Ipv4.socketAddress(ip, source.port()))));
     }
 
     @Override
@@ -1038,8 +1037,8 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<List<SearchResult>> browseSharedFiles(ServerAddress client) {
         Objects.requireNonNull(client, "client");
         return resolve(client.host())
-                .thenCompose(ip -> this.loop.submitAsync(
-                        () -> this.network.browse(new InetSocketAddress(Ipv4.format(ip), client.port()))));
+                .thenCompose(
+                        ip -> this.loop.submitAsync(() -> this.network.browse(Ipv4.socketAddress(ip, client.port()))));
     }
 
     @Override
@@ -1159,7 +1158,7 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(text, "text");
         return resolve(to.host())
                 .thenCompose(ip -> this.loop.submit(() -> {
-                    this.network.sendMessage(new InetSocketAddress(Ipv4.format(ip), to.port()), text);
+                    this.network.sendMessage(Ipv4.socketAddress(ip, to.port()), text);
                     return null;
                 }));
     }
