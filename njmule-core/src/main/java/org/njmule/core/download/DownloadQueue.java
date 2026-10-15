@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,6 +58,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.PartFile;
 import org.njmule.core.files.PartFileStorage;
@@ -109,8 +111,20 @@ public final class DownloadQueue implements AutoCloseable {
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(30);
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
+    // The met of a cancelled download kept for an undo: no start loads it, and the next start deletes it.
+    private static final String SET_ASIDE = ".cancelled";
+    private static final Pattern SET_ASIDE_NAME = Pattern.compile("(\\d{1,6})"
+            + Pattern.quote(PartFile.MET_SUFFIX)
+            + "(?:" + Pattern.quote(AtomicFiles.BAK_SUFFIX) + ")?"
+            + Pattern.quote(SET_ASIDE));
     private static final Pattern MET_NAME = Pattern.compile(
             "(\\d{1,6})" + Pattern.quote(PartFile.MET_SUFFIX) + "(?:" + Pattern.quote(AtomicFiles.BAK_SUFFIX) + ")?");
+
+    /** How long the files of a cancelled download are kept, so that the cancel can be undone. */
+    public static final Duration CANCEL_GRACE = NjMuleEngine.CANCEL_UNDO_TIME;
+
+    // A cancelled download: its storage closes and its met is set aside, then its files go at the end of the grace.
+    private record Withdrawn(Download download, CompletableFuture<Void> setAside, ScheduledFuture<?> discard) {}
 
     /** One download with its storage, its known sources and the parts verified this run. */
     public final class Download {
@@ -183,6 +197,9 @@ public final class DownloadQueue implements AutoCloseable {
     private boolean spaceShort;
     // The files of cancelled downloads, deleted once their disk threads are done.
     private final List<CompletableFuture<Void>> cancelled = new ArrayList<>();
+    // Cancelled downloads whose files are kept for a while, so that the cancel can be undone.
+    private final Map<Hash16, Withdrawn> withdrawn = new HashMap<>();
+    private Duration grace = CANCEL_GRACE;
     // Whether a write found the disk full: then downloads wait for the reserve at least, whatever the minimum is.
     private boolean diskFull;
 
@@ -215,6 +232,7 @@ public final class DownloadQueue implements AutoCloseable {
             throws IOException {
         DownloadQueue queue = new DownloadQueue(loop, tempDir, incomingDir, minFree, listener);
         Files.createDirectories(tempDir);
+        deleteSetAside(tempDir);
         Set<Integer> numbers = new TreeSet<>();
         try (DirectoryStream<Path> mets = Files.newDirectoryStream(tempDir, "*" + PartFile.MET_SUFFIX + "*")) {
             for (Path met : mets) {
@@ -467,21 +485,146 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     /**
-     * Stops the download and deletes its files; {@code false} while its finished file is being moved, as a link added
-     * again would take the same files.
+     * Stops the download; its files are kept as they are for {@link #CANCEL_GRACE}, for {@link #restore}, then deleted.
+     * {@code false} while its finished file is being moved, as a link added again would take the same files.
      */
     public boolean cancel(Download download) {
         if (download.finishing) {
             return false;
         }
         this.downloads.remove(download.hash());
-        // Saves still queued are skipped, and the files go once its disk thread is done with them.
+        // The met as it is now, after the data queued before it; the saves still queued are skipped.
         download.saves.incrementAndGet();
         Path met = download.file.metFile();
-        download.storage.closeAndDelete(met, AtomicFiles.bakPath(met.toAbsolutePath()));
-        this.cancelled.removeIf(CompletableFuture::isDone);
-        this.cancelled.add(download.storage.whenClosed());
+        if (download.storage.isOpen()) {
+            this.loop.whenDone(
+                    download.storage.saveMet(met, download.file.metContents(), () -> true), (ok, failure) -> {
+                        if (failure != null) {
+                            logger.warn("Cannot save {} for an undo: {}", met, failure.toString());
+                        }
+                    });
+        }
+        download.storage.close();
+        CompletableFuture<Void> setAside = download.storage.whenClosed().thenRun(() -> setAside(met));
+        Hash16 hash = download.hash();
+        ScheduledFuture<?> discard =
+                this.loop.schedule("discard a cancelled download", this.grace, () -> discard(hash));
+        Withdrawn old = this.withdrawn.put(hash, new Withdrawn(download, setAside, discard));
+        if (old != null) {
+            old.discard().cancel(false);
+            deleteLater(old);
+        }
         return true;
+    }
+
+    /** Keeps the files of cancelled downloads for {@code grace} from now on. */
+    public void keepCancelledFor(Duration grace) {
+        this.grace = Objects.requireNonNull(grace, "grace");
+    }
+
+    /**
+     * Takes back a download cancelled less than {@link #CANCEL_GRACE} ago, as it was, once its files are closed; empty
+     * when its files are gone, or when a link added meanwhile downloads the file.
+     */
+    public CompletableFuture<Optional<Download>> restore(Hash16 hash) {
+        Withdrawn kept = this.withdrawn.remove(hash);
+        if (kept == null) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        kept.discard().cancel(false);
+        CompletableFuture<Optional<Download>> restored = new CompletableFuture<>();
+        this.loop.whenDone(kept.setAside(), (ok, failure) -> restored.complete(reload(kept)));
+        return restored;
+    }
+
+    private Optional<Download> reload(Withdrawn kept) {
+        PartFile old = kept.download().file;
+        if (this.downloads.containsKey(old.hash())) {
+            deleteLater(kept);
+            return Optional.empty();
+        }
+        try {
+            takeBack(old.metFile());
+            PartFile file = PartFile.load(this.tempDir, old.number());
+            Download download = new Download(file, PartFileStorage.open(file.dataFile()));
+            this.downloads.put(file.hash(), download);
+            this.listener.added(download);
+            hashSetKnown(download);
+            return Optional.of(download);
+        } catch (IOException | RuntimeException e) {
+            logger.warn("Cannot take back the download {}", PartFile.fileName(old.number()), e);
+            deleteLater(kept);
+            return Optional.empty();
+        }
+    }
+
+    private void discard(Hash16 hash) {
+        Withdrawn kept = this.withdrawn.remove(hash);
+        if (kept != null) {
+            deleteLater(kept);
+        }
+    }
+
+    // The files go once set aside, which is once the download's disk thread is done with them.
+    private void deleteLater(Withdrawn kept) {
+        PartFile file = kept.download().file;
+        this.cancelled.removeIf(CompletableFuture::isDone);
+        this.cancelled.add(kept.setAside().handle((ok, failure) -> {
+            deleteFiles(file.metFile(), file.dataFile());
+            return null;
+        }));
+    }
+
+    private static void setAside(Path met) {
+        for (Path file : List.of(met, AtomicFiles.bakPath(met.toAbsolutePath()))) {
+            try {
+                if (Files.exists(file)) {
+                    Files.move(file, aside(file), StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                logger.warn("Cannot set {} aside", file, e);
+            }
+        }
+    }
+
+    private static void takeBack(Path met) throws IOException {
+        for (Path file : List.of(met, AtomicFiles.bakPath(met.toAbsolutePath()))) {
+            if (Files.exists(aside(file))) {
+                Files.move(aside(file), file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    private static Path aside(Path file) {
+        return file.resolveSibling(file.getFileName() + SET_ASIDE);
+    }
+
+    private static void deleteFiles(Path met, Path data) {
+        Path bak = AtomicFiles.bakPath(met.toAbsolutePath());
+        for (Path file : List.of(met, bak, aside(met), aside(bak), data)) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException e) {
+                logger.warn("Cannot delete {}", file, e);
+            }
+        }
+    }
+
+    // What a cancel kept when njMule stopped before deleting it: the cancel stands.
+    private static void deleteSetAside(Path tempDir) throws IOException {
+        Set<Integer> numbers = new TreeSet<>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(tempDir, "*" + SET_ASIDE)) {
+            for (Path file : files) {
+                Matcher m = SET_ASIDE_NAME.matcher(String.valueOf(file.getFileName()));
+                if (m.matches()) {
+                    numbers.add(Integer.parseInt(m.group(1)));
+                }
+            }
+        }
+        for (int number : numbers) {
+            String base = PartFile.fileName(number);
+            deleteFiles(tempDir.resolve(base + PartFile.MET_SUFFIX), tempDir.resolve(base + PartFile.DATA_SUFFIX));
+        }
     }
 
     /** Saves every part file and closes the storages. */
@@ -489,6 +632,12 @@ public final class DownloadQueue implements AutoCloseable {
     public void close() {
         if (this.saver != null) {
             this.saver.cancel(false);
+        }
+        // Undo ends with njMule: the cancelled downloads go.
+        for (Hash16 hash : List.copyOf(this.withdrawn.keySet())) {
+            Withdrawn kept = this.withdrawn.get(hash);
+            kept.discard().cancel(false);
+            discard(hash);
         }
         if (this.spaceChecker != null) {
             this.spaceChecker.cancel(false);

@@ -19,6 +19,7 @@ package org.njmule.core.api;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +36,9 @@ import org.njmule.core.engine.Engine;
  * their futures there, events are delivered on a dedicated thread.
  */
 public interface NjMuleEngine extends AutoCloseable {
+
+    /** How long a cancelled download can be taken back with {@link #restoreDownload}. */
+    Duration CANCEL_UNDO_TIME = Duration.ofSeconds(15);
 
     /** Creates the directories, loads the preferences and starts the engine. */
     static NjMuleEngine start(EngineConfig config) throws IOException {
@@ -215,8 +219,17 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Sets how early the download asks for sources and starts transfers, before the others. */
     CompletableFuture<Boolean> setDownloadPriority(Hash16 hash, DownloadPriority priority);
 
-    /** Stops the download and deletes its data. */
+    /**
+     * Stops the download; its data is deleted once {@link #CANCEL_UNDO_TIME} has passed, unless
+     * {@link #restoreDownload} takes it back meanwhile.
+     */
     CompletableFuture<Boolean> cancelDownload(Hash16 hash);
+
+    /**
+     * Takes back a download cancelled less than {@link #CANCEL_UNDO_TIME} ago, as it was but for its sources;
+     * {@code false} when it is gone.
+     */
+    CompletableFuture<Boolean> restoreDownload(Hash16 hash);
 
     /** The files we share: those of the incoming directory and of the shared directories. */
     CompletableFuture<List<SharedFileInfo>> sharedFiles();

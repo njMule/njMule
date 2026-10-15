@@ -527,6 +527,17 @@ class NetworkTest {
     }
 
     @Test
+    void shouldTakeBackACancelledDownloadAndForgetTheCancel() throws Exception {
+        givenANetwork();
+        givenTheDownloadIsCancelled(CANCELLED_FILM);
+
+        whenTheDownloadIsTakenBack(CANCELLED_FILM);
+
+        thenTheDownloadIsBack(CANCELLED_FILM);
+        thenTheFileIsNoLongerRememberedAsCancelled(CANCELLED_FILM);
+    }
+
+    @Test
     void shouldLeaveOnDiskTheCancelledFilesThatCannotBeForgotten() throws Exception {
         givenANetwork();
         givenTheDownloadIsCancelled(CANCELLED_FILM);
@@ -1441,6 +1452,21 @@ class NetworkTest {
 
     private void whenTheDownloadIsStopped(Ed2kLink.FileLink link) throws Exception {
         this.reply = onLoop(() -> this.network.stopDownload(link.hash()));
+    }
+
+    private void whenTheDownloadIsTakenBack(Ed2kLink.FileLink link) throws Exception {
+        this.reply = onLoop(() -> this.network.restoreDownload(link.hash())).get(30, TimeUnit.SECONDS);
+    }
+
+    private void thenTheDownloadIsBack(Ed2kLink.FileLink link) throws Exception {
+        assertThat(this.reply).isEqualTo(true);
+        assertThat(onLoop(this.network::downloads))
+                .extracting(DownloadInfo::hash)
+                .contains(link.hash());
+    }
+
+    private void thenTheFileIsNoLongerRememberedAsCancelled(Ed2kLink.FileLink link) throws Exception {
+        assertThat(onLoop(this.network::history).cancelled(link.hash())).isFalse();
     }
 
     private void whenTheDownloadIsCancelled(Ed2kLink.FileLink link) throws Exception {

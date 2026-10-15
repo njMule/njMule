@@ -360,6 +360,9 @@ All notable changes to this project are documented here. The format follows
   longer has the file) spares the connection until the next time; without one it is asked over TCP
   as before. Clients in our queue are answered the same way, found by address and UDP port, and
   the hello announces the UDP version while Kad runs.
+- Undo for cancelled downloads: a cancel asks nothing first, and its message offers to take the
+  downloads back; their files are kept for 15 seconds (engine API `restoreDownload`), set aside so
+  that a start in between does not load them, then deleted.
 - A change of our public address is acted on at once: once the server and Kad saw us at the same
   address, a new one seen by the server has Kad check its firewall again, and one seen by Kad has
   njMule connect to the server again; the log tells it.

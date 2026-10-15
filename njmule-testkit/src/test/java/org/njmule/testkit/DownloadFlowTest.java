@@ -226,7 +226,7 @@ class DownloadFlowTest {
         thenTheDownloadIsRemoved();
         thenTheDownloadIsRememberedAsCancelled();
         thenTheDownloadCanNoLongerBePaused();
-        thenNoTemporaryFileIsLeft();
+        thenNoTemporaryFileIsLeftOnceTheCancelCanNoLongerBeUndone();
     }
 
     private void givenAPeerSharing(int size, int seed) throws IOException {
@@ -443,9 +443,18 @@ class DownloadFlowTest {
         assertThat(this.engine.pauseDownload(this.added.hash()).get()).isFalse();
     }
 
-    private void thenNoTemporaryFileIsLeft() throws IOException {
+    private void thenNoTemporaryFileIsLeftOnceTheCancelCanNoLongerBeUndone() throws Exception {
+        long deadline = System.nanoTime()
+                + NjMuleEngine.CANCEL_UNDO_TIME.plusSeconds(15).toNanos();
+        while (System.nanoTime() < deadline && !temporaryFiles().isEmpty()) {
+            Thread.sleep(100);
+        }
+        assertThat(temporaryFiles()).isEmpty();
+    }
+
+    private List<Path> temporaryFiles() throws IOException {
         try (Stream<Path> left = Files.list(this.engine.directories().temp())) {
-            assertThat(left).isEmpty();
+            return left.toList();
         }
     }
 

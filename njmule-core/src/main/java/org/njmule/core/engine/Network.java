@@ -1062,6 +1062,19 @@ final class Network {
                 c -> this.userLog.log(LogLine.Level.INFO, "Scheduler: downloads of category " + c + " resumed"));
     }
 
+    CompletableFuture<Boolean> restoreDownload(Hash16 hash) {
+        return this.downloads.restore(hash).thenApply(restored -> {
+            if (restored) {
+                try {
+                    this.cancelled.remove(hash);
+                } catch (IOException e) {
+                    logger.warn("Cannot save {}", CancelledFiles.FILE_NAME, e);
+                }
+            }
+            return restored;
+        });
+    }
+
     boolean cancelDownload(Hash16 hash) {
         Optional<DownloadInfo> download = this.downloads.download(hash);
         int category = download.map(DownloadInfo::category).orElse(Category.NONE);

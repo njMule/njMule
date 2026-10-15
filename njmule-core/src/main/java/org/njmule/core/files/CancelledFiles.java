@@ -94,6 +94,13 @@ public final class CancelledFiles {
         }
     }
 
+    /** Forgets that the download of {@code fileHash} was cancelled, as when the cancel is undone. */
+    public void remove(Hash16 fileHash) throws IOException {
+        if (this.seed != 0 && this.keys.remove(CancelledMet.key(this.seed, fileHash))) {
+            save();
+        }
+    }
+
     /** Forgets every cancelled download. */
     public void clear() throws IOException {
         if (!this.keys.isEmpty()) {

@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -880,6 +881,14 @@ public final class DownloadManager implements AutoCloseable {
         this.queue.cancel(entry.download);
         this.listener.removed(hash);
         return true;
+    }
+
+    /**
+     * Takes back a download cancelled moments ago, as it was but for its sources, which are looked for again;
+     * {@code false} when its files are gone.
+     */
+    public CompletableFuture<Boolean> restore(Hash16 hash) {
+        return this.queue.restore(hash).thenApply(Optional::isPresent);
     }
 
     /** Queued sources are asked again over {@code udp} shortly before they are due over TCP. */

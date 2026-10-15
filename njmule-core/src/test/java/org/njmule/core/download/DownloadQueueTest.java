@@ -79,6 +79,8 @@ class DownloadQueueTest {
     private Path file;
     private List<PartFile.Block> blocks;
     private boolean accepted;
+    private Duration cancelGrace = Duration.ZERO;
+    private Optional<DownloadQueue.Download> restored = Optional.empty();
 
     @AfterEach
     void stop() {
@@ -434,7 +436,7 @@ class DownloadQueueTest {
 
         thenItIsAccepted();
         thenTheQueueIsEmpty();
-        thenItsBackupIsLeftBehind();
+        thenItsBackupIsLeftBehindSetAside();
     }
 
     @Test
@@ -455,6 +457,132 @@ class DownloadQueueTest {
 
     private void givenTheData(byte[] bytes) {
         this.data = bytes;
+    }
+
+    @Test
+    void shouldKeepTheFilesOfACancelledDownloadWhileItCanBeTakenBack() throws Exception {
+        givenAQueueKeepingCancelledDownloadsFor(Duration.ofMinutes(1));
+        givenADownload("undo.bin", 5000, Hash16.parseHex("21".repeat(16)));
+
+        whenTheDownloadIsCancelled();
+
+        thenItsDataIsKeptButNoStartLoadsIt();
+    }
+
+    @Test
+    void shouldTakeBackACancelledDownloadAsItWas() throws Exception {
+        givenAQueueKeepingCancelledDownloadsFor(Duration.ofMinutes(1));
+        givenADownload("undo.bin", 5000, Hash16.parseHex("22".repeat(16)));
+        givenTheDownloadPaused();
+        givenTheDownloadCancelled();
+
+        whenTheDownloadIsTakenBack();
+
+        thenItIsBackPaused();
+    }
+
+    @Test
+    void shouldDeleteTheFilesOfACancelledDownloadOnceItCanNoLongerBeTakenBack() throws Exception {
+        givenAQueueKeepingCancelledDownloadsFor(Duration.ofMillis(100));
+        givenADownload("undo.bin", 5000, Hash16.parseHex("23".repeat(16)));
+        givenTheDownloadCancelled();
+        givenNothingIsLeftInTheTempDirectorySoon();
+
+        whenTheDownloadIsTakenBack();
+
+        thenNothingIsTakenBack();
+    }
+
+    @Test
+    void shouldNotTakeBackACancelledDownloadWhoseLinkWasAddedAgain() throws Exception {
+        givenAQueueKeepingCancelledDownloadsFor(Duration.ofMinutes(1));
+        givenADownload("undo.bin", 5000, Hash16.parseHex("24".repeat(16)));
+        givenTheDownloadCancelled();
+        givenTheLinkAddedAgain();
+
+        whenTheDownloadIsTakenBack();
+
+        thenNothingIsTakenBack();
+    }
+
+    @Test
+    void shouldDeleteWhatACancelKeptWhenNjMuleStopped() throws Exception {
+        givenTheFilesACancelKeptForTheNumber(7);
+
+        whenTheQueueIsLoadedAgain();
+
+        thenTheQueueIsEmpty();
+        thenNothingIsLeftInTheTempDirectory();
+    }
+
+    private void givenAQueueKeepingCancelledDownloadsFor(Duration grace) throws Exception {
+        this.cancelGrace = grace;
+        givenAQueue();
+    }
+
+    private void givenTheDownloadCancelled() throws Exception {
+        whenTheDownloadIsCancelled();
+        thenItIsAccepted();
+    }
+
+    private void givenTheLinkAddedAgain() throws Exception {
+        Hash16 hash = this.download.hash();
+        onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("undo.bin", 5000, hash)));
+    }
+
+    private void givenNothingIsLeftInTheTempDirectorySoon() throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline && !tempDirectoryIsEmpty()) {
+            Thread.sleep(20);
+        }
+        thenNothingIsLeftInTheTempDirectory();
+    }
+
+    private void givenTheFilesACancelKeptForTheNumber(int number) throws IOException {
+        Path temp = Files.createDirectories(this.dir.resolve("temp"));
+        String base = PartFile.fileName(number);
+        Files.write(temp.resolve(base + PartFile.MET_SUFFIX + ".cancelled"), new byte[] {1});
+        Files.write(temp.resolve(base + PartFile.MET_SUFFIX + ".bak.cancelled"), new byte[] {1});
+        Files.write(temp.resolve(base + PartFile.DATA_SUFFIX), new byte[] {1});
+    }
+
+    private void whenTheDownloadIsTakenBack() throws Exception {
+        Hash16 hash = this.download.hash();
+        this.restored = onLoop(() -> this.queue.restore(hash)).get(30, TimeUnit.SECONDS);
+    }
+
+    private void thenItsDataIsKeptButNoStartLoadsIt() throws Exception {
+        onLoop(() -> this.download.storage().whenClosed()).get(30, TimeUnit.SECONDS);
+        Path temp = this.dir.resolve("temp");
+        String base = PartFile.fileName(this.download.file().number());
+        assertThat(temp.resolve(base + PartFile.DATA_SUFFIX)).exists();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline && Files.exists(temp.resolve(base + PartFile.MET_SUFFIX))) {
+            Thread.sleep(20);
+        }
+        assertThat(temp.resolve(base + PartFile.MET_SUFFIX)).doesNotExist();
+        assertThat(temp.resolve(base + PartFile.MET_SUFFIX + ".cancelled")).exists();
+    }
+
+    private void thenItIsBackPaused() throws Exception {
+        assertThat(this.restored).isPresent();
+        assertThat(onLoop(() ->
+                        this.queue.get(this.download.hash()).map(d -> d.file().status())))
+                .contains(PartFile.Status.PAUSED);
+        assertThat(this.dir
+                        .resolve("temp")
+                        .resolve(PartFile.fileName(this.download.file().number()) + PartFile.MET_SUFFIX))
+                .exists();
+    }
+
+    private void thenNothingIsTakenBack() {
+        assertThat(this.restored).isEmpty();
+    }
+
+    private boolean tempDirectoryIsEmpty() throws IOException {
+        try (Stream<Path> left = Files.list(this.dir.resolve("temp"))) {
+            return left.findAny().isEmpty();
+        }
     }
 
     private void givenAQueue() throws Exception {
@@ -1050,6 +1178,17 @@ class DownloadQueueTest {
         assertThat(AtomicFiles.bakPath(this.met)).isDirectory();
     }
 
+    // Set aside for an undo, then left where nothing loads it; the next start tries again to delete it.
+    private void thenItsBackupIsLeftBehindSetAside() throws Exception {
+        Path aside = AtomicFiles.bakPath(this.met)
+                .resolveSibling(AtomicFiles.bakPath(this.met).getFileName() + ".cancelled");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline && !Files.isDirectory(aside)) {
+            Thread.sleep(20);
+        }
+        assertThat(aside).isDirectory();
+    }
+
     private DownloadQueue.Download reloaded() {
         return this.queue.get(this.download.hash()).orElseThrow();
     }
@@ -1124,8 +1263,14 @@ class DownloadQueueTest {
     }
 
     private DownloadQueue queue(Function<PartFile, Path> incoming, DownloadQueue.Listener listener) throws Exception {
-        return onLoop(
-                () -> DownloadQueue.load(this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, listener));
+        return onLoop(() -> keeping(
+                DownloadQueue.load(this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, listener)));
+    }
+
+    // Cancelled downloads go at once here, unless a test keeps them for an undo.
+    private DownloadQueue keeping(DownloadQueue queue) {
+        queue.keepCancelledFor(this.cancelGrace);
+        return queue;
     }
 
     private void awaitCorruptPart0(DownloadQueue.Download download) throws Exception {
@@ -1146,7 +1291,7 @@ class DownloadQueueTest {
     }
 
     private DownloadQueue queue(Function<PartFile, Path> incoming) throws Exception {
-        return onLoop(() -> DownloadQueue.load(
+        return onLoop(() -> keeping(DownloadQueue.load(
                 this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, new DownloadQueue.Listener() {
                     @Override
                     public void diskSpace(boolean enough) {
@@ -1172,7 +1317,7 @@ class DownloadQueueTest {
                     public void failed(DownloadQueue.Download d, String reason) {
                         DownloadQueueTest.this.events.add("failed " + reason);
                     }
-                }));
+                })));
     }
 
     private String awaitPrefix(String prefix) throws InterruptedException {

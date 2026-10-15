@@ -891,6 +891,20 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> restoreDownload(Hash16 hash) {
+        Objects.requireNonNull(hash, "hash");
+        CompletableFuture<Boolean> restored = new CompletableFuture<>();
+        this.loop.post(() -> this.loop.whenDone(this.network.restoreDownload(hash), (ok, failure) -> {
+            if (failure == null) {
+                restored.complete(ok);
+            } else {
+                restored.completeExceptionally(failure);
+            }
+        }));
+        return restored;
+    }
+
+    @Override
     public CompletableFuture<List<SharedFileInfo>> sharedFiles() {
         return this.loop.submit(this.network::sharedFiles);
     }
