@@ -742,6 +742,13 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) {
+        Objects.requireNonNull(link, "link");
+        Objects.requireNonNull(category, "category");
+        return this.loop.submit(() -> this.network.addDownload(link, category, paused));
+    }
+
+    @Override
     public CompletableFuture<List<DownloadInfo>> downloads() {
         return this.loop.submit(this.network::downloads);
     }

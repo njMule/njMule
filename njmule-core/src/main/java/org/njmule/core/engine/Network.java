@@ -1005,9 +1005,13 @@ final class Network {
     }
 
     DownloadInfo addDownload(Ed2kLink.FileLink link) throws IOException {
+        return addDownload(link, OptionalInt.empty(), false);
+    }
+
+    DownloadInfo addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) throws IOException {
         boolean fresh = this.downloads.download(link.hash()).isEmpty();
-        DownloadInfo info = this.downloads.add(link);
-        if (fresh && this.preferences.get().addDownloadsPaused()) {
+        DownloadInfo info = this.downloads.add(link, category);
+        if (fresh && (paused || this.preferences.get().addDownloadsPaused())) {
             this.downloads.pause(info.hash());
             info = this.downloads.download(info.hash()).orElse(info);
         }

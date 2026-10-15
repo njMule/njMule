@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.function.UnaryOperator;
@@ -160,6 +161,12 @@ public interface NjMuleEngine extends AutoCloseable {
      * link's sources.
      */
     CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link);
+
+    /**
+     * Adds a download in {@code category}, or in the one its name falls in when empty; {@code paused}, it asks no
+     * source until resumed. A download of the file already there keeps its own.
+     */
+    CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused);
 
     CompletableFuture<List<DownloadInfo>> downloads();
 

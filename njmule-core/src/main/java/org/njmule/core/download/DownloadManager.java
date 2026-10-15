@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
@@ -551,12 +552,21 @@ public final class DownloadManager implements AutoCloseable {
      * category whose names it matches, with that category's priority.
      */
     public DownloadInfo add(Ed2kLink.FileLink link) throws IOException {
+        return add(link, OptionalInt.empty());
+    }
+
+    /** Adds a download in {@code category}, a known one or none; empty, in the category its name falls in. */
+    public DownloadInfo add(Ed2kLink.FileLink link, OptionalInt chosen) throws IOException {
         Optional<DownloadQueue.Download> known = this.queue.get(link.hash());
         // A link of another file under the same hash would give sources that cannot serve this one.
         boolean same = known.map(d -> DownloadQueue.sameFile(d.file(), link)).orElse(true);
         int category = Category.NONE;
         DownloadPriority priority = DownloadPriority.AUTO;
-        if (known.isEmpty()) {
+        Optional<Category> given = chosen.isPresent() ? category(chosen.getAsInt()) : Optional.empty();
+        if (known.isEmpty() && given.isPresent()) {
+            category = given.get().id();
+            priority = given.get().priority();
+        } else if (known.isEmpty() && chosen.isEmpty()) {
             // Set before the download is announced, so the news of it tells them.
             String name = PathSanitizer.fileName(link.name());
             for (Category c : this.categories.get()) {
