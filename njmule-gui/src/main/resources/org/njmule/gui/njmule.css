@@ -190,6 +190,20 @@
     -fx-icon-color: -nj-on-accent;
 }
 
+/* A main action that cannot run yet looks like any disabled button: a faded orange reads as a weak
+   accent, not as "not now". */
+.button.accent:disabled,
+.button:default:disabled {
+    -color-button-bg: -color-bg-subtle;
+    -color-button-fg: -color-fg-muted;
+    -color-button-border: -color-border-default;
+}
+
+.button.accent:disabled .ikonli-font-icon,
+.button:default:disabled .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+}
+
 .tool-row {
     -fx-spacing: 8;
     -fx-alignment: center-left;
