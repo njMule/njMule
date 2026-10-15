@@ -264,6 +264,11 @@
     -fx-icon-color: -color-warning-fg;
 }
 
+/* Between the groups of a tool row. */
+.tool-row .tool-gap {
+    -fx-padding: 4 2 4 2;
+}
+
 /* An empty list: a large muted icon, the words, and the buttons that fill it. */
 .empty-state .empty-icon {
     -fx-icon-size: 40;

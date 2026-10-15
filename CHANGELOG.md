@@ -386,7 +386,8 @@ All notable changes to this project are documented here. The format follows
   log, its sections side by side, and the ways to add servers (a server.met from the web, an
   address, a server.met file) sit together in a section that is open while the list is empty.
 - The commands that act on the chosen downloads, shared files or search results are off while none
-  is chosen, and More and Stop while no search is open.
+  is chosen, and More and Stop while no search is open; a line in the transfers tool row sets them
+  apart from the commands on the whole list.
 - Messages come in three kinds: news, successes (a finished download) and problems, which carry a
   colour and an icon of their own and stay until closed. They stack in the bottom corner above the
   status strip, at most four at a time, instead of covering the tool rows.

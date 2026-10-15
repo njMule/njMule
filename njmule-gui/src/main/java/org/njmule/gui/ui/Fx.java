@@ -30,6 +30,7 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.NodeOrientation;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -42,6 +43,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
+import javafx.scene.control.Separator;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -232,6 +234,13 @@ public final class Fx {
         row.getStyleClass().add("tool-row");
         row.setAlignment(Pos.CENTER_LEFT);
         return row;
+    }
+
+    /** A thin line between groups of a tool row: what acts on the selection apart from what acts on the list. */
+    public static Separator toolGap() {
+        Separator gap = new Separator(Orientation.VERTICAL);
+        gap.getStyleClass().add("tool-gap");
+        return gap;
     }
 
     /** What an empty list shows: an icon, what is missing and how to get it, and the buttons that do it. */

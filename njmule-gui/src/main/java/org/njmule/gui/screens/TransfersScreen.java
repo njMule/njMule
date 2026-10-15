@@ -258,6 +258,7 @@ public final class TransfersScreen implements Screen {
                 cancelButton,
                 priorityButton,
                 copyButton,
+                Fx.toolGap(),
                 Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
                 Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
                 this.detailsButton,
