@@ -273,11 +273,13 @@ again, so a build with nothing changed takes about a second.
 
 Every dependency version is locked (`gradle.lockfile` in each project) and every downloaded
 artifact is checked against its SHA-256 in `gradle/verification-metadata.xml`. After changing a
-version, rewrite both and review the new checksums:
+version, rewrite both and review the new checksums (`--refresh-dependencies` makes Gradle record
+the parent POMs it already holds in its cache too):
 
 ```bash
-./gradlew --no-configuration-cache --write-verification-metadata sha256 --write-locks \
-    spotlessCheck :njmule-app:collectReachabilityMetadata :njmule-gui:generateLicenseReport cyclonedxBom
+./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
+    --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
+    :njmule-gui:generateLicenseReport cyclonedxBom
 ```
 
 <details>

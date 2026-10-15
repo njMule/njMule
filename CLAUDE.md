@@ -102,11 +102,14 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   against its SHA-256 in `gradle/verification-metadata.xml` (the OpenJFX jars of all five platforms
   included), and any difference fails the build. After changing a version (`libs.versions.toml`, a
   plugin, Gradle itself) rewrite both, then delete the entries of the versions no longer used and
-  review the new checksums; Dependabot's pull requests need the same step:
+  review the new checksums; Dependabot's pull requests need the same step. Without
+  `--refresh-dependencies` Gradle leaves out the parent POMs and BOMs it already holds in its cache,
+  and CI, which starts with an empty one, then fails on them:
 
   ```bash
-  ./gradlew --no-configuration-cache --write-verification-metadata sha256 --write-locks \
-      spotlessCheck :njmule-app:collectReachabilityMetadata :njmule-gui:generateLicenseReport cyclonedxBom
+  ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
+      --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
+      :njmule-gui:generateLicenseReport cyclonedxBom
   ```
 - Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
   `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g: Gradle's own 512 MiB slows
