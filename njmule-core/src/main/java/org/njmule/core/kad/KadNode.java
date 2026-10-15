@@ -481,11 +481,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return this.selfLookupDone;
     }
 
-    /** Loads the contacts of {@code nodes.dat}, if any. */
-    public void loadNodes() {
+    /** Loads the contacts of {@code nodes.dat}, if any; false when there is no such file. */
+    public boolean loadNodes() {
         Path file = this.configDir.resolve(NODES_FILE);
         if (!Files.exists(file)) {
-            return;
+            return false;
         }
         try {
             NodesDat.Contents contents = NodesDat.read(Files.readAllBytes(file));
@@ -498,6 +498,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         } catch (IOException e) {
             logger.warn("Cannot read {}", file, e);
         }
+        return true;
     }
 
     /**

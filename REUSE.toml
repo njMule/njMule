@@ -31,3 +31,15 @@ path = ["mvnw", "mvnw.cmd"]
 precedence = "override"
 SPDX-FileCopyrightText = "The Apache Software Foundation"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The server list and Kad contacts a new profile starts from, downloaded unchanged on 15 October
+# 2026 from http://upd.emule-security.org/server.met and /nodes.dat: public addresses, ports and
+# server names, facts not covered by copyright.
+[[annotations]]
+path = [
+    "njmule-core/src/main/resources/org/njmule/core/engine/server.met",
+    "njmule-core/src/main/resources/org/njmule/core/engine/nodes.dat",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"

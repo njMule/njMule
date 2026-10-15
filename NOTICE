@@ -51,3 +51,11 @@ versions is generated at release time in THIRD-PARTY.txt.
     (Substrate VM runtime embedded in the native executables)
 
 Test-only dependencies (JUnit, AssertJ, jqwik) are not distributed.
+
+
+Shipped server list and Kad contacts
+------------------------------------
+A new profile starts from the server list and the Kad contacts published at
+http://upd.emule-security.org (server.met and nodes.dat, downloaded unchanged
+on 15 October 2026). They hold public addresses, ports and server names, facts
+not covered by copyright (CC0-1.0 in REUSE.toml).

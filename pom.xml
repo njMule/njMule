@@ -320,7 +320,7 @@
                     <configuration>
                         <!-- @{argLine} keeps the JaCoCo agent. -->
                         <!-- UPnP stays off in every test: it would change the router's port mappings. -->
-                        <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true</argLine>
+                        <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true -Dnjmule.defaultlists.disabled=true</argLine>
                         <excludedGroups>${test.excludedGroups}</excludedGroups>
                         <!-- Test classes spread over JVMs of their own: no static state is shared, and each
                              test keeps to its temp folders and port 0. -->

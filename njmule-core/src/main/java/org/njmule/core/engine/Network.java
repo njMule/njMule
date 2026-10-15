@@ -310,6 +310,8 @@ final class Network {
                 random);
         this.serverMet = configDir.resolve(ServerList.FILE_NAME);
         AtomicFiles.cleanupInterruptedWrite(this.serverMet);
+        boolean newProfile =
+                !Files.exists(this.serverMet) && !Files.exists(AtomicFiles.bakPath(this.serverMet.toAbsolutePath()));
         this.servers = ServerList.load(this.serverMet);
         // eMule's list of servers to keep, taken over by the import.
         this.staticServers = configDir.resolve(ServerList.STATIC_FILE_NAME);
@@ -326,6 +328,10 @@ final class Network {
         }
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get());
         this.servers.filter(ip -> this.ipFilter.blocks(ip) || this.isFilteredLan(ip));
+        // A profile that never had a server list starts from the shipped one; an emptied list stays empty.
+        if (newProfile && DefaultLists.enabled()) {
+            this.servers.addAll(DefaultLists.servers());
+        }
         this.session = new ServerSession(
                 loop,
                 this.servers,
@@ -1612,7 +1618,10 @@ final class Network {
             this.kad.useBuddies(this.buddyLink);
             this.kadSocket.deliverTo(this.kad);
             this.kadSocket.deliverClientPacketsTo(this::clientDatagram);
-            this.kad.loadNodes();
+            if (!this.kad.loadNodes() && DefaultLists.enabled()) {
+                int kept = this.kad.addContacts(DefaultLists.nodes());
+                logger.info("{} Kad contacts shipped with njMule to bootstrap from", kept);
+            }
             this.kad.loadIndex();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
             this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {

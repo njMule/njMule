@@ -49,8 +49,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 | | |
 |---|---|
-| 🌐 **eD2K** | Server connections with optional protocol obfuscation, static servers and `server.met` updates from a URL. Searches on the connected server, on all known servers over UDP or on Kad, filtered by file type, size, availability and extension. Downloads verified part by part, with corrupt parts repaired from AICH recovery data. Uploads through a credit-scored queue, with secure identification and source exchange. |
-| 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, `nodes.dat` bootstrap from a URL. |
+| 🌐 **eD2K** | Server connections with optional protocol obfuscation, static servers, a starting server list shipped with njMule and `server.met` updates from a URL. Searches on the connected server, on all known servers over UDP or on Kad, filtered by file type, size, availability and extension. Downloads verified part by part, with corrupt parts repaired from AICH recovery data. Uploads through a credit-scored queue, with secure identification and source exchange. |
+| 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, bootstrap from the contacts shipped with njMule or from a `nodes.dat` URL. |
 | 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
 | 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
 | 🌍 **Web interface** | Status, transfers, searches and servers, protected by a password. |

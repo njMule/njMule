@@ -340,6 +340,10 @@ All notable changes to this project are documented here. The format follows
   nothing is published while nobody could.
 - The server list and nodes.dat boxes are filled in with the well-known lists of
   upd.emule-security.org while no list was used; nothing is fetched until the user asks.
+- A new profile starts from the server list and the Kad contacts of upd.emule-security.org,
+  shipped with njMule: their servers fill a profile that never had a list (one emptied later
+  stays empty), and while there is no nodes.dat Kad asks the shipped contacts for contacts one at
+  a time, without taking them as its own.
 - Sizes and rates use the units of the interface language as eMule's translations write them
   (Ko and Ko/s in French, Кб in Russian).
 - The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one

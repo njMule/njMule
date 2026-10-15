@@ -8,6 +8,12 @@
         },
         {
             "glob": "org/njmule/core/api/build-info.properties"
+        },
+        {
+            "glob": "org/njmule/core/engine/server.met"
+        },
+        {
+            "glob": "org/njmule/core/engine/nodes.dat"
         }
     ]
 }

@@ -86,7 +86,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- The tests reach the web interface with the JDK HTTP client. -->
-                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true --add-modules java.net.http --add-reads org.njmule.app=java.net.http</argLine>
+                    <argLine>@{argLine} -XX:+EnableDynamicAgentLoading -Dfile.encoding=UTF-8 -Dnjmule.upnp.disabled=true -Dnjmule.defaultlists.disabled=true --add-modules java.net.http --add-reads org.njmule.app=java.net.http</argLine>
                 </configuration>
             </plugin>
             <plugin>

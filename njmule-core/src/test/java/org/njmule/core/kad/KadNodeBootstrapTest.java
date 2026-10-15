@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -65,6 +66,7 @@ class KadNodeBootstrapTest {
     private final List<NodesDat.Contact> good = new ArrayList<>();
     private final List<NodesDat.Contact> bad = new ArrayList<>();
     private KadNode node;
+    private boolean loaded;
 
     @BeforeEach
     void create() throws IOException {
@@ -114,6 +116,33 @@ class KadNodeBootstrapTest {
         this.thenBootstrapRequestsWent(1);
         this.thenTheNodeHasContacts(3);
         this.thenTheAnsweringNodeIsNoContact();
+    }
+
+    @Test
+    void shouldTellWhetherThereWasANodesDatToLoad() throws IOException {
+        this.whenTheNodesAreLoaded();
+        this.thenThereWasNoNodesDat();
+
+        this.givenANodesDat();
+        this.whenTheNodesAreLoaded();
+        this.thenThereWasANodesDat();
+    }
+
+    private void givenANodesDat() throws IOException {
+        this.good.add(record(UInt128.random(this.random), Ipv4.of(20, 1, 1, 1), PORT, 8));
+        Files.write(this.dir.resolve(KadNode.NODES_FILE), NodesDat.write(this.good));
+    }
+
+    private void whenTheNodesAreLoaded() {
+        this.loaded = this.node.loadNodes();
+    }
+
+    private void thenThereWasNoNodesDat() {
+        assertThat(this.loaded).isFalse();
+    }
+
+    private void thenThereWasANodesDat() {
+        assertThat(this.loaded).isTrue();
     }
 
     private void givenABootstrapListOfGoodAndBadContacts(int goodOnes) {
