@@ -186,6 +186,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
     private long ticks;
+    // The poll whose status is shown.
+    private long statusPoll;
     private long maxDown;
     private long maxUp;
     // Restored searches have ids of their own, below those of the engine.
@@ -246,8 +248,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Runs once a second on the FX thread: polls what events do not tell. */
     public void tick() {
-        this.ticks++;
+        long poll = ++this.ticks;
         this.later(this.engine.status(), s -> {
+            // A slow answer to an earlier poll must not hide the newer state already shown.
+            if (poll < this.statusPoll) {
+                return;
+            }
+            this.statusPoll = poll;
             this.status.set(s);
             this.maxDown = Math.max(this.maxDown, s.downloadBytesPerSecond());
             this.maxUp = Math.max(this.maxUp, s.uploadBytesPerSecond());

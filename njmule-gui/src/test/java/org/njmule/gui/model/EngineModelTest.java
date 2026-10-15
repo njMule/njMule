@@ -44,6 +44,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -57,11 +58,15 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
+import org.njmule.gui.Statuses;
 
 @Timeout(60)
 class EngineModelTest {
 
     private static final Hash16 FILE = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
+    private static final EngineStatus NOTHING = Statuses.of(Optional.empty(), 0, false, Optional.empty(), false);
+    private static final EngineStatus KAD_ONLY =
+            Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
 
     @TempDir
     Path dir;
@@ -70,6 +75,7 @@ class EngineModelTest {
     private EngineModel model;
     private EngineModel.Search opened;
     private final List<String> errors = new CopyOnWriteArrayList<>();
+    private final List<CompletableFuture<EngineStatus>> statusPolls = new CopyOnWriteArrayList<>();
 
     @AfterEach
     void close() {
@@ -339,6 +345,39 @@ class EngineModelTest {
     private void thenTheSearchHasTheResultsAndHasEnded() {
         assertThat(this.opened.results().size()).isEqualTo(1);
         assertThat(this.opened.runningProperty().get()).isFalse();
+    }
+
+    @Test
+    void aLateAnswerToAnEarlierPollDoesNotHideANewerState() throws Exception {
+        this.givenAModelWhoseEngineAnswersStatusPollsWhenTold();
+        this.whenTheModelPollsAgain();
+        this.whenTheSecondPollIsAnsweredFirst(KAD_ONLY);
+        this.whenTheFirstPollIsAnswered(NOTHING);
+        this.thenTheModelShows(KAD_ONLY);
+    }
+
+    private void givenAModelWhoseEngineAnswersStatusPollsWhenTold() throws Exception {
+        this.start(real -> Engines.overriding(real, Map.of("status", args -> {
+            CompletableFuture<EngineStatus> answer = new CompletableFuture<>();
+            this.statusPolls.add(answer);
+            return answer;
+        })));
+    }
+
+    private void whenTheModelPollsAgain() {
+        this.model.tick();
+    }
+
+    private void whenTheSecondPollIsAnsweredFirst(EngineStatus status) {
+        this.statusPolls.get(1).complete(status);
+    }
+
+    private void whenTheFirstPollIsAnswered(EngineStatus status) {
+        this.statusPolls.getFirst().complete(status);
+    }
+
+    private void thenTheModelShows(EngineStatus status) {
+        assertThat(this.model.statusProperty().get()).isEqualTo(status);
     }
 
     @Test
