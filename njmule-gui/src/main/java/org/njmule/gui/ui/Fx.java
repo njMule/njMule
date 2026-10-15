@@ -270,6 +270,8 @@ public final class Fx {
 
     private static <V> TableView<LiveList.Row<V>> table(ObservableList<LiveList.Row<V>> rows, String empty) {
         TableView<LiveList.Row<V>> table = new TableView<>();
+        // Rows two thirds as tall as the theme's: a list of transfers is read many rows at a time.
+        table.getStyleClass().add(Styles.DENSE);
         SortedList<LiveList.Row<V>> sorted = new SortedList<>(rows);
         sorted.comparatorProperty().bind(table.comparatorProperty());
         table.setItems(sorted);
