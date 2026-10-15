@@ -102,7 +102,7 @@ public final class ServerUdp implements AutoCloseable {
         // The port is free only once the receiving thread has left the socket: until then binding it again fails,
         // as when Kad starts again at once on the same port.
         Thread reading = this.reader;
-        if (reading != null && reading != Thread.currentThread()) {
+        if (reading != null && !reading.equals(Thread.currentThread())) {
             try {
                 if (!reading.join(CLOSE_WAIT)) {
                     logger.debug("The UDP reader of port {} is still running", this.socket.getLocalPort());
