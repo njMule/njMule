@@ -43,6 +43,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Circle;
 import javax.imageio.ImageIO;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.material2.Material2AL;
@@ -235,9 +236,41 @@ public final class MessagesScreen implements Screen {
                                 : chat.nickProperty().get(),
                         chat.nickProperty()));
         tab.setOnClosed(e -> this.gui.model().chats().close(chat));
+        // A conversation that has news while another shows is marked until it is looked at.
+        this.gui.subscriptions().onListChange(chat.lines(), c -> {
+            while (c.next()) {
+                boolean theirs =
+                        c.wasAdded() && c.getAddedSubList().stream().anyMatch(l -> l.author() == Chats.Author.THEM);
+                if (theirs && !tab.isSelected()) {
+                    unread(tab, true);
+                }
+            }
+        });
+        tab.selectedProperty().addListener((o, was, now) -> {
+            if (now) {
+                unread(tab, false);
+            }
+        });
         this.open.put(chat, tab);
         this.tabs.getTabs().add(tab);
         this.tabs.getSelectionModel().select(tab);
+    }
+
+    private static void unread(Tab tab, boolean on) {
+        tab.getStyleClass().remove("unread");
+        if (on) {
+            tab.getStyleClass().add("unread");
+            Circle dot = new Circle(4);
+            dot.getStyleClass().add("unread-dot");
+            tab.setGraphic(dot);
+        } else {
+            tab.setGraphic(null);
+        }
+    }
+
+    /** Whether {@code tab} is marked as having news, for tests. */
+    static boolean isUnread(Tab tab) {
+        return tab.getStyleClass().contains("unread");
     }
 
     private void closed(Chats.Chat chat) {

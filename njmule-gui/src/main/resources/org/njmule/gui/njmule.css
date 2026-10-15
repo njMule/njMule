@@ -371,6 +371,15 @@
     -fx-min-height: 4;
 }
 
+/* A conversation with news not yet seen: bold, with a dot of the accent. */
+.tab.unread .tab-label {
+    -fx-font-weight: bold;
+}
+
+.unread-dot {
+    -fx-fill: -nj-brand-accent;
+}
+
 .chat-us {
     -fx-text-fill: -color-fg-muted;
 }
