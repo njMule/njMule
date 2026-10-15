@@ -66,7 +66,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Versioning
 
-- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `<revision>` in the root `pom.xml`.
+- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `version` in `gradle.properties`.
 - `0.y.z` during milestones, pre-releases `-alpha.N` / `-beta.N` / `-rc.N`, `1.0.0` at feature parity.
 - Tags are annotated: `vX.Y.Z`. `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/).
 
@@ -80,6 +80,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `njmule-webui` (`org.njmule.webui`) | web interface and remote-control API on Jetty (password, sessions, CSRF) |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
+| `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
+| `gradle/` | `libs.versions.toml` (every library and plugin version) and the Gradle Wrapper |
 | `config/` | license header, Checkstyle and SpotBugs configuration |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
 | `tools/` | single-file helper programs (`IconGen.java`) |
@@ -87,33 +89,45 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Tooling and commands
 
-- Build with the Maven Wrapper (Java 25): `./mvnw verify` (Windows: `.\mvnw.cmd verify`) runs
-  Spotless check, Checkstyle, Error Prone, tests, JaCoCo (core ≥ 70% lines) and SpotBugs +
-  FindSecBugs. Format first with `./mvnw spotless:apply`.
-- Other profiles: `-Plicenses` (THIRD-PARTY.txt + CycloneDX SBOM), `-Psecurity` (OWASP
-  dependency-check, needs `NVD_API_KEY`), `-Pnative` in `njmule-app` (GraalVM native image).
-- Run headless: `./mvnw -pl njmule-app -am package`, then
-  `java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main`
-  (`;` as separator on Windows). Run the GUI: `./mvnw -pl njmule-gui javafx:run` after `install`.
-- Benchmarks: `./mvnw -pl njmule-bench -am package -DskipTests`, then
-  `java -jar njmule-bench/target/benchmarks.jar` (one operation = 1 MiB, so ops/s = MiB/s).
-- Static analysis on SonarQube Cloud: `./mvnw verify sonar:sonar -Dsonar.token=<token>` (project
+- Build with the Gradle Wrapper (Java 25 toolchain): `./gradlew build` (Windows:
+  `.\gradlew.bat build`) runs Spotless, Checkstyle, Error Prone, tests, JaCoCo (core ≥ 70% lines)
+  and SpotBugs + FindSecBugs. Format first with `./gradlew spotlessApply`. The modules share their
+  set-up through `build-logic` (`njmule.java-conventions`); versions live in
+  `gradle/libs.versions.toml`.
+- Builds are incremental and cached (build cache and configuration cache, `gradle.properties`): with
+  nothing changed `./gradlew build` takes about a second, a change re-runs only what depends on it,
+  and worktrees share the build cache in `~/.gradle`. `clean` is never needed for a correct build.
+- Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
+  `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g: Gradle's own 512 MiB slows
+  the window tests to a time-out) and `test.parallelModules=1` (one module's tests at a time, for
+  machines with few cores). Any `-Pnjmule.<name>=<value>` reaches the tests as a system property.
+  One class: `./gradlew :njmule-core:test --tests '*TagCodecTest'`.
+- Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
+  `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
+  dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
+- Run headless: `./gradlew :njmule-app:run --args="--help"` (module path), or
+  `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the GUI:
+  `./gradlew :njmule-gui:run`.
+- Benchmarks: `./gradlew :njmule-bench:shadowJar`, then
+  `java -jar njmule-bench/build/libs/benchmarks.jar` (one operation = 1 MiB, so ops/s = MiB/s).
+- Static analysis on SonarQube Cloud: `./gradlew build sonar -Dsonar.token=<token>` (project
   `njMule_njMule`, organisation `njmule`); in CI the `sonar` job runs once the
   `SONAR_TOKEN` secret is set.
 - Native image: GraalVM Community `25.0.4.1.1` (25 Innovation 4, same as CI). Locally it is installed
   in `%LOCALAPPDATA%\Programs\GraalVM` with `GRAALVM_HOME` set; on Windows `native-image` needs the
-  Visual Studio 2022 Build Tools (C++ workload) and produces `njmule.exe`:
-  `./mvnw -Pnative -pl njmule-app -am package -DskipTests`. The Linux x64 binary comes from the
-  pinned container `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` through
-  `tools/native-docker.sh` (Maven on a copy of the sources inside the container: ~1.5 min instead of
-  ~6 on the bind mount): `docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash
-  <image> /work/tools/native-docker.sh` (Git Bash: prefix `MSYS_NO_PATHCONV=1`).
+  Visual Studio 2022 Build Tools (C++ workload): `./gradlew :njmule-app:nativeCompile` →
+  `njmule-app/build/native/nativeCompile/njmule.exe`. The Linux x64 binary comes from the pinned
+  container `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` through `tools/native-docker.sh`
+  (Gradle on a copy of the sources inside the container, much faster than on the bind mount; its user
+  home in the Docker volume `njmule-gradle`): `docker run --rm -v "$PWD:/work" -v
+  njmule-gradle:/root/.gradle --entrypoint bash <image> /work/tools/native-docker.sh` (Git Bash:
+  prefix `MSYS_NO_PATHCONV=1`) → `njmule-app/build/native-linux/njmule`.
 - Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
-  with `-Dnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
+  with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
 - Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
-  through `./mvnw -Pnative -pl njmule-gui -am package -DskipTests` → `njmule-gui/target/native/`
-  (exe plus the JDK libraries it loads). Its reachability metadata comes from the GUI tour
-  (`GuiTour`, system property `njmule.gui.tour`): `-Pnative-tour` runs it under the tracing agent
+  through `./gradlew :njmule-gui:nativeGui` → `njmule-gui/build/native/` (exe plus the JDK
+  libraries it loads). Its reachability metadata comes from the GUI tour (`GuiTour`, system property
+  `njmule.gui.tour`): `./gradlew :njmule-gui:nativeTour` runs it under the tracing agent
   (accelerated and software rendering) and merges into
   `src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour`; `manual/` holds the JNI
   entries the tour cannot reach (file choosers). Regenerate after GUI changes on Windows, and for
@@ -125,14 +139,15 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG. All in
   `.github/workflows/release.yml` (manual run: packages only; tag `vX.Y.Z`: draft release).
 - Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
-- Library versions are always the latest stable ones; check Maven Central before adding or bumping.
+- Library versions are always the latest stable ones (`gradle/libs.versions.toml`); check Maven
+  Central and the Gradle Plugin Portal before adding or bumping.
   Known constraint: palantir-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
 - **Until the whole plan (M0–M8) is complete: no pull requests.** Each milestone lives on its own
   branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md` §10.1 met
-  and `./mvnw verify` green) fast-forward `main` to it, push `main`, and start the next milestone
+  and `./gradlew build` green) fast-forward `main` to it, push `main`, and start the next milestone
   from the updated `main`. After the plan, pull requests start and `main` gets branch protection.
 
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
@@ -155,16 +170,17 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   and is formatted with [palantir-java-format](https://github.com/palantir/palantir-java-format) in
   its **PALANTIR** style: **4-space indent** (8 for continuations), **120 columns**, compact lambdas
   and call chains, Javadoc reflowed, sorted imports, no wildcard imports.
-- **Indentation: 4 spaces** in every file type (Java, XML/POM, YAML, scripts); tabs only in Makefiles.
+- **Indentation: 4 spaces** in every file type (Java, Kotlin build scripts, XML, YAML, scripts); tabs
+  only in Makefiles.
 - **Line endings: LF (Linux style)** everywhere; the only exception is `*.cmd`/`*.bat` (CRLF,
   required by cmd.exe). Spotless rewrites Java sources with LF; `.gitattributes` normalises the rest.
-- Enforced by Spotless in the `validate` phase: the build fails on unformatted code or a missing
-  license header. Fix with `./mvnw spotless:apply` before committing.
+- Enforced by Spotless (`spotlessCheck`, part of `./gradlew build`): the build fails on unformatted
+  code or a missing license header. Fix with `./gradlew spotlessApply` before committing.
 - Always qualify instance fields with `this.` (e.g. `this.queue.offer(task)`), also where it is not
   needed to disambiguate, and call the object's own methods without it (`publish(event)`, not
   `this.publish(event)`). Checkstyle enforces both (`RequireThis` and a regexp check in
   `config/checkstyle/checkstyle.xml`).
-- Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotless:check`).
+- Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotlessCheck`).
 - IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
 - Markdown is wrapped at ~100 columns.
 

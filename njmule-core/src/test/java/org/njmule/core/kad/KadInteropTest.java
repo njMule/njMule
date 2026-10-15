@@ -43,7 +43,7 @@ import org.njmule.core.protocol.packet.UdpFraming;
 
 /**
  * Talks Kad with an eMule on this computer, without changing anything in it: bootstrap, hello, lookup and ping. Its UDP
- * port comes from {@code -Dnjmule.interop.kadPort} (default 14897).
+ * port comes from {@code -Pnjmule.interop.kadPort} (default 14897).
  */
 @Tag("interop")
 @Timeout(60)

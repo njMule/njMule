@@ -33,7 +33,7 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 3. Commit with [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
    messages: `<type>[scope][!]: <description>` — types `feat`, `fix`, `build`, `ci`, `docs`,
    `perf`, `refactor`, `style`, `test`, `chore`, `revert`.
-4. Run `./mvnw verify` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs).
+4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs).
 5. Open a pull request whose **title** is a Conventional Commits header; fill in the template.
    PRs are squash-merged.
 
@@ -41,7 +41,7 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 
 - [Google Java Style](https://google.github.io/styleguide/javaguide.html) formatted by
   [palantir-java-format](https://github.com/palantir/palantir-java-format) (PALANTIR style: 4-space
-  indent, 120 columns): run `./mvnw spotless:apply`.
+  indent, 120 columns): run `./gradlew spotlessApply`.
 - Always qualify instance fields with `this.`, and call the object's own methods without it
   (both enforced by Checkstyle).
 - LF line endings, UTF-8, the SPDX header from `config/license/header-java.txt` on every Java file.

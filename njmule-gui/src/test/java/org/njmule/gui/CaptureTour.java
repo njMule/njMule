@@ -113,9 +113,9 @@ import org.njmule.gui.ui.Subscriptions;
 
 /**
  * Pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu, icon-button tooltip and dialog
- * of the interface, with example data, for reviews of its design. Runs only when asked: {@code ./mvnw -pl njmule-gui
- * -am test -Dtest=CaptureTour -Dsurefire.failIfNoSpecifiedTests=false -Dnjmule.capture=target/gui-capture};
- * {@code -Dnjmule.capture.sets} picks the sets (see {@link #SETS}).
+ * of the interface, with example data, for reviews of its design. Runs only when asked: {@code ./gradlew
+ * :njmule-gui:test --tests CaptureTour -Pnjmule.capture=build/gui-capture}; {@code -Pnjmule.capture.sets} picks the
+ * sets (see {@link #SETS}).
  */
 @Timeout(1800)
 @EnabledIfSystemProperty(named = "njmule.capture", matches = ".+")

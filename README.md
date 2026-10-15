@@ -241,7 +241,7 @@ njmule --remote help
 
 | Tool | Required for |
 |---|---|
-| JDK 25 (e.g. Eclipse Temurin) | all builds; the Maven Wrapper provides Maven |
+| JDK 25 (e.g. Eclipse Temurin) | all builds; the Gradle Wrapper provides Gradle |
 | GraalVM Community `25.0.4.1.1`, with `GRAALVM_HOME` set | native executables |
 | Visual Studio 2022 Build Tools, C++ workload | native executables on Windows |
 | Docker | Linux x64 native executables without a local GraalVM |
@@ -256,32 +256,35 @@ dotnet tool install --global wix --version 5.0.2
 
 ### Build and test
 
-On Windows, use `.\mvnw.cmd` instead of `./mvnw`.
+On Windows, use `.\gradlew.bat` instead of `./gradlew`.
 
 ```bash
-./mvnw verify                          # full build with all quality gates (see below)
-./mvnw spotless:apply                  # format the sources (palantir-java-format)
-./mvnw -Plicenses package -DskipTests  # THIRD-PARTY.txt and the CycloneDX SBOM
-./mvnw -Psecurity verify               # OWASP dependency check (requires NVD_API_KEY)
+./gradlew build                               # full build with all quality gates (see below)
+./gradlew spotlessApply                       # format the sources (palantir-java-format)
+./gradlew :njmule-gui:generateLicenseReport   # THIRD-PARTY.txt (build/reports/licenses)
+./gradlew cyclonedxBom                        # CycloneDX SBOM (build/reports/cyclonedx)
+./gradlew dependencyCheckAggregate            # OWASP dependency check (requires NVD_API_KEY)
 ```
 
-`verify` checks formatting (Spotless) and license headers, runs Checkstyle, Error Prone, the
+`build` checks formatting (Spotless) and license headers, runs Checkstyle, Error Prone, the
 tests, JaCoCo coverage (at least 70% of the lines of `njmule-core`) and SpotBugs with FindSecBugs.
+Builds are incremental and use Gradle's build cache: tasks whose inputs did not change are not run
+again, so a build with nothing changed takes about a second.
 
 <details>
 <summary><strong>Running from the build</strong></summary>
 
-Command-line interface and headless engine (on Windows, separate the module path with `;`):
+Command-line interface and headless engine, from the module path:
 
 ```bash
-./mvnw -pl njmule-app -am package
-java -p njmule-app/target/lib:njmule-app/target/classes -m org.njmule.app/org.njmule.app.Main --help
+./gradlew :njmule-app:run --args="--help"
 ```
 
-Desktop application:
+`./gradlew :njmule-app:installDist` also installs it with a launcher script in
+`njmule-app/build/install/njmule/`. Desktop application:
 
 ```bash
-./mvnw -pl njmule-gui -am install -DskipTests && ./mvnw -pl njmule-gui javafx:run
+./gradlew :njmule-gui:run
 ```
 
 </details>
@@ -292,25 +295,25 @@ Desktop application:
 With a local GraalVM, for the host system:
 
 ```bash
-./mvnw -Pnative -pl njmule-app,njmule-gui -am package -DskipTests
+./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui
 ```
 
-The command-line executable is `njmule-app/target/njmule(.exe)`; the desktop application is in
-`njmule-gui/target/native/`, next to the JDK shared libraries it loads. `-pl njmule-app` builds
-the command-line executable only.
+The command-line executable is `njmule-app/build/native/nativeCompile/njmule(.exe)`; the desktop
+application is in `njmule-gui/build/native/`, next to the JDK shared libraries it loads.
+`:njmule-app:nativeCompile` alone builds the command-line executable only.
 
 Without a local GraalVM, Docker builds the Linux x64 command-line executable in the same image as
-CI. The script compiles a copy of the sources inside the container, because on Docker Desktop
-(Windows, macOS) Maven is several times slower on a bind-mounted checkout (about 6 minutes instead
-of 1.5). In PowerShell use `"${PWD}:/work"`; in Git Bash prefix the command with
-`MSYS_NO_PATHCONV=1`:
+CI, into `njmule-app/build/native-linux/`. The script compiles a copy of the sources inside the
+container, because on Docker Desktop (Windows, macOS) builds are several times slower on a
+bind-mounted checkout; Gradle's downloads stay in the Docker volume `njmule-gradle`. In PowerShell
+use `"${PWD}:/work"`; in Git Bash prefix the command with `MSYS_NO_PATHCONV=1`:
 
 ```bash
-docker run --rm -v "$PWD:/work" -v "$HOME/.m2:/root/.m2" --entrypoint bash ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 /work/tools/native-docker.sh
+docker run --rm -v "$PWD:/work" -v njmule-gradle:/root/.gradle --entrypoint bash ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1 /work/tools/native-docker.sh
 ```
 
 The native desktop application requires reachability metadata, recorded by an automated tour of
-the whole interface under GraalVM's tracing agent (`-Pnative-tour`) and stored in
+the whole interface under GraalVM's tracing agent (`./gradlew :njmule-gui:nativeTour`) and stored in
 `njmule-gui/src/main/resources/META-INF/native-image`; record it again after changing the GUI. For
 Linux, `tools/native-gui-docker.sh` records the metadata and builds both executables in an Ubuntu
 container (usage in the script header).
@@ -325,7 +328,7 @@ and is the reference for the exact steps. Locally, after the native build, the W
 
 ```powershell
 New-Item -ItemType Directory -Force stage\njmule | Out-Null
-Copy-Item njmule-app\target\njmule.exe, njmule-gui\target\native\* stage\njmule
+Copy-Item njmule-app\build\native\nativeCompile\njmule.exe, njmule-gui\build\native\* stage\njmule
 wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
 ```
 
@@ -333,8 +336,8 @@ The Linux deb and rpm packages (`ARCH` is `amd64` or `arm64`):
 
 ```bash
 mkdir -p stage/gui stage/doc dist
-install -m 755 njmule-app/target/njmule stage/njmule
-cp -r njmule-gui/target/native/. stage/gui/
+install -m 755 njmule-app/build/native/nativeCompile/njmule stage/njmule
+cp -r njmule-gui/build/native/. stage/gui/
 cp README.md CHANGELOG.md NOTICE stage/doc/
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/
@@ -343,7 +346,7 @@ VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dis
 The macOS application bundle is assembled from `packaging/macos/Info.plist`, ad-hoc signed with
 `codesign` and packed into a disk image with `hdiutil`.
 
-Pushing an annotated tag `vX.Y.Z` that matches `<revision>` in the root `pom.xml` triggers the
+Pushing an annotated tag `vX.Y.Z` that matches `version` in `gradle.properties` triggers the
 release workflow: native builds on every target system, the GUI tour as a smoke test, packaging,
 and finally a draft GitHub release with the packages, the SBOM, `SHA256SUMS` and the release notes
 of that version from `CHANGELOG.md`. Publishing the draft is a manual step. A manual run of the
@@ -358,8 +361,8 @@ JMH benchmarks of the hashing and cipher hot paths (one operation processes 1 Mi
 equals MiB/s):
 
 ```bash
-./mvnw -pl njmule-bench -am package -DskipTests
-java -jar njmule-bench/target/benchmarks.jar
+./gradlew :njmule-bench:shadowJar
+java -jar njmule-bench/build/libs/benchmarks.jar
 ```
 
 </details>
@@ -377,6 +380,7 @@ java -jar njmule-bench/target/benchmarks.jar
 | `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata |
 | `branding` | original artwork: master SVG and generated icons |
 | `config` | license header, Checkstyle and SpotBugs configuration |
+| `build-logic`, `gradle` | Gradle set-up shared by the modules, library versions, Gradle Wrapper |
 | `tools` | helper programs and Docker build scripts |
 
 ## Contributing

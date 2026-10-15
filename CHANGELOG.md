@@ -12,8 +12,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Maven multi-module project (`njmule-core`, `njmule-testkit`, `njmule-app`, `njmule-gui`) with
-  the Maven Wrapper, Java 25 and JPMS modules.
+- Gradle multi-module build (`njmule-core`, `njmule-testkit`, `njmule-app`, `njmule-gui`) with the
+  Gradle Wrapper, Java 25 and JPMS modules; incremental, with the build and configuration caches.
 - Engine skeleton: single-threaded engine loop with timers, monotonic clock, crash-safe atomic
   file writes with backup fallback, OS-specific data directories (Windows Known Folders, macOS
   Library, XDG) with portable mode, typed preferences stored in `njmule.properties`.
@@ -362,7 +362,7 @@ All notable changes to this project are documented here. The format follows
   to import, one page each and all skippable. It opens at the first start only and again from Tools
   and the command palette.
 - A capture tour of the desktop interface for design reviews (`CaptureTour`, run on demand with
-  `-Dtest=CaptureTour -Dnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
+  `--tests CaptureTour -Pnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
   drop-down list, column menu, dialog and message kind, with example data, in light, dark, English
   and right-to-left sets.
 

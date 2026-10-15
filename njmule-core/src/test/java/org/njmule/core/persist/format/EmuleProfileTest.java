@@ -40,7 +40,7 @@ import org.njmule.core.persist.format.PartMet.Gap;
 
 /**
  * Reads a real eMule profile, read-only, from {@code NJMULE_EMULE_CONFIG} (and the downloads in progress from
- * {@code NJMULE_EMULE_TEMP}). Run with {@code -Dtest.excludedGroups=interop,perf -Dgroups=private-fixtures}; it prints
+ * {@code NJMULE_EMULE_TEMP}). Run with {@code -Ptest.excludedTags=interop,perf -Ptest.tags=private-fixtures}; it prints
  * only counts, never names or hashes.
  */
 @Tag("private-fixtures")

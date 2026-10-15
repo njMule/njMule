@@ -37,7 +37,7 @@ import javax.imageio.ImageIO;
  * Renders the master icon SVG with JSVG into PNG, ICO and ICNS. The ICO and ICNS containers are
  * written here: they only wrap the PNG renders, and no well-known library writes ICNS.
  *
- * <p>Usage: {@code java -cp target/tools/jsvg-<version>.jar tools/IconGen.java
+ * <p>Usage: {@code java -cp build/tools/jsvg-<version>.jar tools/IconGen.java
  * branding/njmule-icon.svg <output dir>} (see {@code branding/README.md} for fetching the jar).
  */
 public final class IconGen {

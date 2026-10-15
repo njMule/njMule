@@ -23,11 +23,11 @@ tones compatible with the AtlantaFX themes.
 | Accent | `#F5A65B` | warm orange for forelock, eyes and nostrils, 4.9:1 against the brand blue; dark badge text on it reads at 6.3:1 |
 
 Regenerate after editing the master (the GUI build packages the 16–512 px PNGs of `generated/` as
-its window icons, see `njmule-gui/pom.xml`):
+its window icons, see `njmule-gui/build.gradle.kts`):
 
 ```bash
-./mvnw -q dependency:copy -Dartifact=com.github.weisj:jsvg:2.2.0 -DoutputDirectory=target/tools
-java -Djava.awt.headless=true -cp target/tools/jsvg-2.2.0.jar tools/IconGen.java branding/njmule-icon.svg branding/generated
+./gradlew -q iconTools
+java -Djava.awt.headless=true -cp build/tools/jsvg-2.2.0.jar tools/IconGen.java branding/njmule-icon.svg branding/generated
 ```
 
 `IconGen` renders the SVG with [JSVG](https://github.com/weisJ/jsvg) (MIT), a build-time tool only.
