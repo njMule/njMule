@@ -251,6 +251,10 @@ final class Api {
                 only(method, PUT);
                 yield await(this.engine.setDownloadCategory(file, (int) number(body, "category")));
             }
+            case "name" -> {
+                only(method, PUT);
+                yield await(this.engine.renameDownload(file, text(body, "name")));
+            }
             case "sources" -> {
                 only(method, POST);
                 yield await(this.engine.addSource(file, address(text(body, ADDRESS))));

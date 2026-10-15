@@ -241,6 +241,12 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The files we share: those of the incoming directory and of the shared directories. */
     CompletableFuture<List<SharedFileInfo>> sharedFiles();
 
+    /**
+     * Renames a download, as its file is named once complete; completes with {@code false} for no such download, and
+     * fails for a blank name. The name is made safe for any file system.
+     */
+    CompletableFuture<Boolean> renameDownload(Hash16 hash, String name);
+
     /** Sets how a shared file ranks in the upload queue; completes with {@code false} for a file not shared. */
     CompletableFuture<Boolean> setUploadPriority(Hash16 hash, UploadPriority priority);
 

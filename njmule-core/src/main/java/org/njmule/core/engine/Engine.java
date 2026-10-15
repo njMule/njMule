@@ -924,6 +924,13 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> renameDownload(Hash16 hash, String name) {
+        Objects.requireNonNull(hash, "hash");
+        Objects.requireNonNull(name, "name");
+        return this.loop.submit(() -> this.network.renameDownload(hash, name));
+    }
+
+    @Override
     public CompletableFuture<Boolean> renameSharedFile(Hash16 hash, String name) {
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(name, "name");

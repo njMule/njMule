@@ -787,7 +787,8 @@ class TransfersMenusTest {
                         state == SourceInfo.State.WAITING ? 0 : 2,
                         state == SourceInfo.State.WAITING ? 0 : 4,
                         a4af ? Optional.of(OTHER) : Optional.empty(),
-                        a4af ? "other.bin" : ""));
+                        a4af ? "other.bin" : "",
+                        Optional.empty()));
             }
             return CompletableFuture.completedFuture(sources);
         });

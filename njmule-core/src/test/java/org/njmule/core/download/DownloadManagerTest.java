@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -92,6 +93,7 @@ class DownloadManagerTest {
     private boolean answer;
     private Optional<DownloadInfo> next;
     private Optional<Path> preview;
+    private Throwable exception;
 
     @AfterEach
     void stop() throws Exception {
@@ -384,6 +386,48 @@ class DownloadManagerTest {
 
         thenItIsAccepted();
         thenTheDownloadIsNowInTheCategory(hashOf("cd"), 2);
+    }
+
+    @Test
+    void shouldRenameADownloadWithANameEveryFileSystemTakes() throws Exception {
+        givenTheDownloadManager();
+        givenADownload("draft.iso", hashOf("f1"));
+
+        whenTheDownloadIsRenamed("a/b:c?.iso");
+
+        thenItIsAccepted();
+        thenTheDownloadIsNamed(hashOf("f1"), "a_b_c_.iso");
+    }
+
+    @Test
+    void shouldKeepTheNameOfARenamedDownloadAfterARestart() throws Exception {
+        givenTheDownloadManager();
+        givenADownload("draft.iso", hashOf("f2"));
+        givenTheDownloadRenamed("Debian 13.iso");
+
+        whenTheDownloadManagerIsClosedAndOpenedAgain();
+
+        thenTheDownloadIsNamed(hashOf("f2"), "Debian 13.iso");
+    }
+
+    @Test
+    void shouldRefuseABlankNameForADownload() throws Exception {
+        givenTheDownloadManager();
+        givenADownload("draft.iso", hashOf("f3"));
+
+        whenTheDownloadIsRenamed("  ");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+        thenTheDownloadIsNamed(hashOf("f3"), "draft.iso");
+    }
+
+    @Test
+    void shouldRenameNoDownloadWeDoNotHave() throws Exception {
+        givenTheDownloadManager();
+
+        whenADownloadWeDoNotHaveIsRenamed(hashOf("f4"));
+
+        thenItIsRefused();
     }
 
     @Test
@@ -740,6 +784,41 @@ class DownloadManagerTest {
 
     private void whenTheDownloadIsMovedToTheCategory(int category) throws Exception {
         this.answer = onLoop(() -> this.manager.setCategory(this.hash, category));
+    }
+
+    private void givenTheDownloadRenamed(String name) throws Exception {
+        whenTheDownloadIsRenamed(name);
+        thenItIsAccepted();
+    }
+
+    private void whenTheDownloadIsRenamed(String name) throws Exception {
+        try {
+            this.answer = onLoop(() -> this.manager.rename(this.hash, name));
+        } catch (ExecutionException e) {
+            this.exception = e.getCause();
+        }
+    }
+
+    private void whenADownloadWeDoNotHaveIsRenamed(Hash16 unknown) throws Exception {
+        this.answer = onLoop(() -> this.manager.rename(unknown, "any.iso"));
+    }
+
+    // Saved as it closes, read back as it opens.
+    private void whenTheDownloadManagerIsClosedAndOpenedAgain() throws Exception {
+        onLoop(() -> {
+            this.manager.close();
+            return null;
+        });
+        manager();
+    }
+
+    private void thenTheDownloadIsNamed(Hash16 download, String name) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(download).orElseThrow().name()))
+                .isEqualTo(name);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 
     private void whenTheCategoriesChange() throws Exception {

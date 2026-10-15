@@ -173,6 +173,29 @@ class ApiTest {
     }
 
     @Test
+    void shouldRenameADownload() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDownloads(download());
+        givenTheEngineRenamesDownloads();
+
+        whenCalled("PUT", "/api/v1/downloads/" + HASH + "/name", "{\"name\":\"Debian 13.iso\"}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("renameDownload Debian 13.iso");
+    }
+
+    @Test
+    void shouldRefuseABlankNameForADownload() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDownloads(download());
+        givenTheEngineRenamesDownloads();
+
+        whenCalled("PUT", "/api/v1/downloads/" + HASH + "/name", "{\"name\":\" \"}");
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
     void shouldReportAnUnknownDownloadToPause() throws Exception {
         givenTheApiRuns();
         givenTheEngineDownloads(download());
@@ -292,6 +315,18 @@ class ApiTest {
             Ed2kLink.FileLink link = (Ed2kLink.FileLink) args[0];
             this.calls.add("addDownload " + link.name());
             return CompletableFuture.completedFuture(download());
+        });
+    }
+
+    // As the engine does: a blank name is refused.
+    private void givenTheEngineRenamesDownloads() {
+        this.fake.answer("renameDownload", args -> {
+            String name = (String) args[1];
+            if (name.isBlank()) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("a download needs a name"));
+            }
+            this.calls.add("renameDownload " + name);
+            return CompletableFuture.completedFuture(true);
         });
     }
 

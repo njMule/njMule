@@ -72,6 +72,7 @@ class DownloadSessionTest {
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final BlockingQueue<String> events = new LinkedBlockingQueue<>();
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private Optional<String> shownName = Optional.empty();
     private DownloadQueue queue;
     private DownloadQueue.Download download;
     private ScriptedSource source;
@@ -93,6 +94,20 @@ class DownloadSessionTest {
         for (AutoCloseable resource : this.resources) {
             resource.close();
         }
+    }
+
+    @Test
+    void shouldCutTheNameASourceGivesAtItsLongest() {
+        whenASourceGivesTheName("a".repeat(DownloadSession.MAX_NAME + 40));
+
+        thenTheNameShownIs("a".repeat(DownloadSession.MAX_NAME));
+    }
+
+    @Test
+    void shouldShowNoNameForOneOfSpacesAndControlCharacters() {
+        whenASourceGivesTheName(" \u0000\t ");
+
+        thenNoNameIsShown();
     }
 
     @Test
@@ -391,5 +406,17 @@ class DownloadSessionTest {
         public void sourcesFound(DownloadSession session, SourceExchange.Answer answer) {
             DownloadSessionTest.this.events.add("sources " + answer.sources().size());
         }
+    }
+
+    private void whenASourceGivesTheName(String name) {
+        this.shownName = DownloadSession.shown(name);
+    }
+
+    private void thenTheNameShownIs(String name) {
+        assertThat(this.shownName).contains(name);
+    }
+
+    private void thenNoNameIsShown() {
+        assertThat(this.shownName).isEmpty();
     }
 }

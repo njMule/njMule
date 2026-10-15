@@ -1260,6 +1260,10 @@ final class Network {
         }
     }
 
+    boolean renameDownload(Hash16 hash, String name) {
+        return this.downloads.rename(hash, name);
+    }
+
     boolean setDownloadCategory(Hash16 hash, int category) {
         return this.downloads.setCategory(hash, category);
     }

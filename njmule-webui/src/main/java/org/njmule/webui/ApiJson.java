@@ -245,6 +245,7 @@ final class ApiJson {
         g.writeNumberProperty("received", s.received());
         g.writeNumberProperty("parts", s.parts());
         g.writeNumberProperty("partCount", s.partCount());
+        optional(g, "reportedName", s.reportedName());
         g.writeEndObject();
     }
 

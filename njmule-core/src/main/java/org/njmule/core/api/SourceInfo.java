@@ -27,6 +27,7 @@ import java.util.Optional;
  * @param received bytes it sent us in this session
  * @param parts the parts of the file it has, of {@code partCount}; 0 when not known yet
  * @param askedFor in state {@link State#A4AF}, the download the client is asked for instead, with its name
+ * @param reportedName the name the client gives the file, once it told
  */
 public record SourceInfo(
         Hash16 file,
@@ -40,7 +41,8 @@ public record SourceInfo(
         int parts,
         int partCount,
         Optional<Hash16> askedFor,
-        String askedForName) {
+        String askedForName,
+        Optional<String> reportedName) {
 
     public enum State {
         /** Asked again later. */
@@ -63,6 +65,7 @@ public record SourceInfo(
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(askedFor, "askedFor");
         Objects.requireNonNull(askedForName, "askedForName");
+        Objects.requireNonNull(reportedName, "reportedName");
     }
 
     /** A source asked for this download, or waiting to be. */
@@ -89,6 +92,7 @@ public record SourceInfo(
                 parts,
                 partCount,
                 Optional.empty(),
-                "");
+                "",
+                Optional.empty());
     }
 }

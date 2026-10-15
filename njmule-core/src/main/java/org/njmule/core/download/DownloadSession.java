@@ -114,6 +114,9 @@ final class DownloadSession implements PeerLink.Role {
         /** The source told its comment on the file. */
         default void commented(DownloadSession session, FileComment comment) {}
 
+        /** The source told the name it gives {@code file}, made fit to show. */
+        default void named(DownloadSession session, Hash16 file, String name) {}
+
         /**
          * The source has nothing for the download asked for: no part we need, or not the file at all when
          * {@code hasFile} is false. Returns another download it is a source of, to ask it for on this connection
@@ -172,6 +175,9 @@ final class DownloadSession implements PeerLink.Role {
     static final int MAX_CORRUPT_STREAMS = 3;
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadSession.class);
+
+    /** The longest name of a file a source gives that is kept, in characters. */
+    static final int MAX_NAME = 255;
 
     /** One requested block and the bytes of it still to come. */
     private static final class Pending {
@@ -502,8 +508,9 @@ final class DownloadSession implements PeerLink.Role {
             case SENDINGPART -> data(ClientMessages.SendingPart.decode(packet));
             case OUTOFPARTREQS -> backToQueue("the source ended our upload session");
             case CANCELTRANSFER -> backToQueue("the source cancelled the transfer");
+            case REQFILENAMEANSWER -> named(ClientMessages.FileName.decode(packet));
             default -> {
-                // File names and other messages need nothing from us.
+                // Other messages need nothing from us.
             }
         }
     }
@@ -536,6 +543,25 @@ final class DownloadSession implements PeerLink.Role {
                 // Nothing else is expected from an uploader.
             }
         }
+    }
+
+    // Names of the files asked for on this connection only, as the source writes them.
+    private void named(ClientMessages.FileName answer) {
+        if (this.asked.containsKey(answer.file())) {
+            shown(answer.name()).ifPresent(name -> this.listener.named(this, answer.file(), name));
+        }
+    }
+
+    // A name from the network as text to show: control characters made spaces, at most MAX_NAME characters.
+    static Optional<String> shown(String name) {
+        StringBuilder out = new StringBuilder(Math.min(name.length(), MAX_NAME));
+        name.strip().codePoints().forEach(c -> {
+            if (out.length() + Character.charCount(c) <= MAX_NAME) {
+                out.appendCodePoint(Character.isISOControl(c) ? ' ' : c);
+            }
+        });
+        String shown = out.toString().strip();
+        return shown.isEmpty() ? Optional.empty() : Optional.of(shown);
     }
 
     private void requestFile() {

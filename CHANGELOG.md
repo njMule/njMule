@@ -369,6 +369,10 @@ All notable changes to this project are documented here. The format follows
   in a category and paused at once.
 - The lists below the downloads (uploading, waiting, downloading from, banned) are segments with
   their counts, one list shown at a time.
+- The name each source gives a download is kept with the source (engine API `SourceInfo`), and a
+  download can be renamed (engine API `renameDownload`, web API `PUT
+  /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file
+  gets once complete.
 - Windows high contrast: while it is on, the desktop interface takes the system's colours (window,
   text, selection, links, disabled text) for every surface, text, selection, part bar and graph of
   the theme, alerts included, and follows the system when the scheme changes or is turned off.

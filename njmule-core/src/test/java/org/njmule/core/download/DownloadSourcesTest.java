@@ -232,6 +232,31 @@ class DownloadSourcesTest {
     }
 
     @Test
+    void shouldShowTheNameASourceGivesTheFileWithoutControlCharacters() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("sintel.mkv", Hash16.parseHex("44".repeat(16)));
+        givenTheSourceAskedForTheFile();
+
+        whenTheSourceNamesTheFile("Sintel\t2010.mkv\u0007");
+
+        thenTheSourceGivesTheName("Sintel 2010.mkv");
+    }
+
+    @Test
+    void shouldTakeNoNameASourceGivesAFileNotAskedFor() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("sintel.mkv", Hash16.parseHex("45".repeat(16)));
+        givenTheSourceAskedForTheFile();
+        givenTheSourceNamedTheFile("Sintel.mkv");
+
+        whenTheSourceNamesAnotherFileBeforeTellingItsParts("Other.mkv");
+
+        thenTheSourceGivesTheName("Sintel.mkv");
+    }
+
+    @Test
     void shouldCountThePartsOfASourceThatKeepsUsQueuedInTheirRarity() throws Exception {
         givenASource(0, 0);
         givenTheManager();
@@ -553,6 +578,32 @@ class DownloadSourcesTest {
         givenTheConnectionClosedWhileQueued();
         advance(DownloadManager.REASK_INTERVAL.minusMinutes(1));
         thenTheSourceIsAskedAgainOverUdpForTheFile(SOURCE_UDP_PORT);
+    }
+
+    private void givenTheSourceAskedForTheFile() throws Exception {
+        this.link = accept(this.source);
+        this.link.until(Opcodes.Client.SETREQFILEID);
+    }
+
+    private void givenTheSourceNamedTheFile(String name) throws Exception {
+        whenTheSourceNamesTheFile(name);
+        thenTheSourceGivesTheName(name);
+    }
+
+    private void whenTheSourceNamesTheFile(String name) throws Exception {
+        this.link.send(new ClientMessages.FileName(this.hash, name).encode());
+    }
+
+    // The parts come after the name: once they are known, the name was read.
+    private void whenTheSourceNamesAnotherFileBeforeTellingItsParts(String name) throws Exception {
+        this.link.send(new ClientMessages.FileName(Hash16.parseHex("46".repeat(16)), name).encode());
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        awaitSource(this.source, s -> s.parts() > 0);
+    }
+
+    private void thenTheSourceGivesTheName(String name) throws Exception {
+        awaitSource(this.source, s -> s.reportedName().isPresent());
+        assertThat(awaitSource(this.source, s -> true).reportedName()).contains(name);
     }
 
     private void givenTheSourceAnsweredOverUdp(Packet answer) throws Exception {

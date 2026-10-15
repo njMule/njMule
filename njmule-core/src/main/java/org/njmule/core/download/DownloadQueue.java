@@ -484,6 +484,12 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
+    /** Names the download {@code name}, a safe file name: its file gets it once complete. */
+    public void rename(Download download, String name) {
+        download.file.rename(name);
+        download.dirty = true;
+    }
+
     /**
      * Stops the download; its files are kept as they are for {@link #CANCEL_GRACE}, for {@link #restore}, then deleted.
      * {@code false} while its finished file is being moved, as a link added again would take the same files.

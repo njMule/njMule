@@ -391,6 +391,8 @@ public final class DownloadManager implements AutoCloseable {
         // Swapped away from by hand: other downloads go first until then.
         private boolean away;
         private long awayUntil;
+        // The name the client gives the file, once it told.
+        private Optional<String> reportedName = Optional.empty();
 
         Source(Entry entry, Client client) {
             this.entry = entry;
@@ -788,6 +790,25 @@ public final class DownloadManager implements AutoCloseable {
         } else {
             this.queue.setCategory(entry.download, Category.NONE);
         }
+        this.listener.progress(info(entry));
+        return true;
+    }
+
+    /**
+     * Names the download {@code name}, made a safe file name, which its file gets once complete; {@code false} for no
+     * such download.
+     *
+     * @throws IllegalArgumentException for a blank name
+     */
+    public boolean rename(Hash16 hash, String name) {
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("a download needs a name");
+        }
+        Entry entry = this.entries.get(hash);
+        if (entry == null) {
+            return false;
+        }
+        this.queue.rename(entry.download, PathSanitizer.fileName(name));
         this.listener.progress(info(entry));
         return true;
     }
@@ -1937,7 +1958,8 @@ public final class DownloadManager implements AutoCloseable {
                         parts == null ? 0 : parts.cardinality(),
                         file.partCount(),
                         a4af ? Optional.of(askedFor.hash()) : Optional.empty(),
-                        a4af ? askedFor.name() : ""));
+                        a4af ? askedFor.name() : "",
+                        source.reportedName));
             }
         }
         return all;
@@ -2102,6 +2124,14 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     // A comment holding a word of the filter is left out, as spam; a source keeps its latest one.
+    private void named(DownloadSession session, Hash16 file, String name) {
+        Entry entry = this.entries.get(file);
+        Source source = entry == null ? null : entry.sources.get(session.address());
+        if (source != null) {
+            source.reportedName = Optional.of(name);
+        }
+    }
+
     private void commented(DownloadSession session, FileComment comment) {
         Entry entry = this.entries.get(session.download().hash());
         if (entry == null || comment.isEmpty()) {
@@ -2385,6 +2415,11 @@ public final class DownloadManager implements AutoCloseable {
         @Override
         public void commented(DownloadSession session, FileComment comment) {
             DownloadManager.this.commented(session, comment);
+        }
+
+        @Override
+        public void named(DownloadSession session, Hash16 file, String name) {
+            DownloadManager.this.named(session, file, name);
         }
 
         @Override

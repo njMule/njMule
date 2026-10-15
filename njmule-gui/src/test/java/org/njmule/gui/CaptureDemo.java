@@ -385,7 +385,8 @@ final class CaptureDemo {
                         state == SourceInfo.State.WAITING ? 0 : (partCount * (n % 5 + 1)) / 6,
                         state == SourceInfo.State.WAITING ? 0 : partCount,
                         a4af ? Optional.of(downloads.get(2).hash()) : Optional.empty(),
-                        a4af ? downloads.get(2).name() : ""));
+                        a4af ? downloads.get(2).name() : "",
+                        Optional.empty()));
                 n++;
             }
         }

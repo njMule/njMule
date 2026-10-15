@@ -259,6 +259,7 @@ class TransfersViewTest {
                 1,
                 2,
                 Optional.empty(),
-                "");
+                "",
+                Optional.empty());
     }
 }
