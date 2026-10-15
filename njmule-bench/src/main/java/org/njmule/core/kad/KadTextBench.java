@@ -58,7 +58,7 @@ public class KadTextBench {
     private final int ip = Ipv4.of(81, 2, 133, 47);
     private final int port = 4672;
 
-    /** Today's code: {@code String.split} with a regular expression. */
+    /** The replaced code: {@code String.split} with a regular expression. */
     @Benchmark
     public List<String> searchWordsRegex() {
         List<String> parts = new ArrayList<>();
@@ -70,6 +70,7 @@ public class KadTextBench {
         return parts;
     }
 
+    /** Today's code (the Kad index's search words), on Guava's Splitter. */
     @Benchmark
     public List<String> searchWordsGuavaSplitter() {
         return WORDS.splitToList(KadLowerCase.toLowerCase(NAME));

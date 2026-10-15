@@ -298,6 +298,25 @@ class KadIndexTest {
         thenNothingIsFound();
     }
 
+    @ParameterizedTest
+    @MethodSource("fileNameDelimiters")
+    void shouldSplitATermAtEachCharacterThatSplitsFileNames(char delimiter) {
+        givenAnotherFileIsPublished("linux.iso", 10);
+
+        whenTheKeywordIsSearchedForTheTerm("lin" + delimiter + "iso");
+
+        thenTheEntriesFoundAre(1);
+    }
+
+    @Test
+    void shouldKeepATermWholeAtAnyOtherCharacter() {
+        givenAnotherFileIsPublished("linux.iso", 10);
+
+        whenTheKeywordIsSearchedForTheTerm("lin+iso");
+
+        thenNothingIsFound();
+    }
+
     @Test
     void shouldMatchTheWordOfATermWithinPunctuation() {
         givenAnotherFileIsPublished("linux.iso", 10);
@@ -782,5 +801,9 @@ class KadIndexTest {
         return List.of(
                 new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), 1),
                 new Tag.IntTag(TagName.id(FileTag.SOURCEPORT), tcpPort));
+    }
+
+    static Stream<Character> fileNameDelimiters() {
+        return Keywords.DELIMITERS.chars().mapToObj(c -> (char) c);
     }
 }

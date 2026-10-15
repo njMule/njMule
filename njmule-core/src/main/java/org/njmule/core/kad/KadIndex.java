@@ -16,6 +16,8 @@
  */
 package org.njmule.core.kad;
 
+import com.google.common.base.CharMatcher;
+import com.google.common.base.Splitter;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -86,6 +88,10 @@ final class KadIndex {
 
     // The largest information an answer carries about the publishers of a file.
     private static final long MAX_PUBLISH_INFO = 0xFFFF_FFFFL;
+
+    // The words of a search term, split where file names are split into keywords.
+    private static final Splitter WORDS =
+            Splitter.on(CharMatcher.anyOf(Keywords.DELIMITERS).precomputed()).omitEmptyStrings();
 
     /** A publisher of a file under a keyword: the name it gave last, and when. */
     private record Publisher(String name, long at) {}
@@ -773,13 +779,7 @@ final class KadIndex {
     }
 
     private static List<String> words(String text) {
-        List<String> parts = new ArrayList<>();
-        for (String part : KadLowerCase.toLowerCase(text).split("[\" ()\\[\\]{}<>,._\\-!?:;\\\\/]+", -1)) {
-            if (!part.isEmpty()) {
-                parts.add(part);
-            }
-        }
-        return parts;
+        return WORDS.splitToList(KadLowerCase.toLowerCase(text));
     }
 
     // A term made only of separators names no word: it matches nothing.
