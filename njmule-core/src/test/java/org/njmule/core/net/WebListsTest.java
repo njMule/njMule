@@ -115,15 +115,11 @@ class WebListsTest {
     }
 
     @AfterEach
-    void stop() throws IOException {
+    void stopAndRemoveTheProxy() throws IOException {
         this.server.close();
         for (ServerSocket proxy : this.proxies) {
             proxy.close();
         }
-    }
-
-    @AfterEach
-    void removeTheProxy() {
         if (this.proxyInstalled) {
             ProxyRoute.install(() -> ProxySettings.NONE);
             Authenticator.setDefault(null);

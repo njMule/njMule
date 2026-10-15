@@ -88,6 +88,7 @@ public final class FakeServer implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(FakeServer.class);
     private static final int UDP_OFFSET = 4;
     private static final SecureRandom PORTS = new SecureRandom();
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final Config config;
     private final ServerSocket tcp;
@@ -391,7 +392,6 @@ public final class FakeServer implements AutoCloseable {
     private void obfuscatedUdpLoop(DatagramSocket socket) {
         byte[] buffer = new byte[8192];
         DatagramPacket datagram = new DatagramPacket(buffer, buffer.length);
-        SecureRandom random = new SecureRandom();
         while (!socket.isClosed()) {
             try {
                 datagram.setLength(buffer.length);
@@ -404,7 +404,7 @@ public final class FakeServer implements AutoCloseable {
                 Packet answer = answerUdp(received.packet(), this.obfuscatedUdpSearches);
                 if (answer != null) {
                     byte[] bytes =
-                            DatagramObfuscation.encryptFromServer(UdpFraming.encode(answer), this.udpKey, random);
+                            DatagramObfuscation.encryptFromServer(UdpFraming.encode(answer), this.udpKey, RANDOM);
                     socket.send(new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));
                 }
             } catch (IOException e) {
