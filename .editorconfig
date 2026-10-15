@@ -11,7 +11,7 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-[*.java]
+[*.{java,kt,kts}]
 max_line_length = 120
 
 # cmd.exe mis-parses labels in batch files with LF endings: the only CRLF exception.

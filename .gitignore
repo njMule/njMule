@@ -15,6 +15,11 @@ buildNumber.properties
 # The Maven Wrapper uses the "only-script" distribution: no wrapper jar is committed.
 .mvn/wrapper/maven-wrapper.jar
 
+# --- Gradle ------------------------------------------------------------------
+.gradle/
+build/
+.kotlin/
+
 # --- Java / JVM --------------------------------------------------------------
 *.class
 hs_err_pid*
@@ -29,6 +34,8 @@ fuzz/crashes/
 
 # --- Archives and packages -----------------------------------------------------
 *.jar
+# The Gradle Wrapper needs its jar (checksum pinned in gradle-wrapper.properties).
+!gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
