@@ -21,6 +21,7 @@ import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.Duration;
 import java.util.Objects;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.ConnectionGuard.Admission;
@@ -42,10 +43,12 @@ public final class TcpListener implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(TcpListener.class);
     private static final int BACKLOG = 128;
+    private static final Duration CLOSE_WAIT = Duration.ofSeconds(2);
 
     private final ServerSocket server;
     private final ConnectionGuard guard;
     private final Acceptor acceptor;
+    private Thread accepting;
 
     private TcpListener(ServerSocket server, ConnectionGuard guard, Acceptor acceptor) {
         this.server = server;
@@ -66,7 +69,9 @@ public final class TcpListener implements AutoCloseable {
             throw e;
         }
         TcpListener listener = new TcpListener(server, guard, acceptor);
-        Thread.ofVirtual().name("njmule-tcp-listener-" + listener.port()).start(listener::run);
+        listener.accepting = Thread.ofVirtual()
+                .name("njmule-tcp-listener-" + listener.port())
+                .start(listener::run);
         return listener;
     }
 
@@ -77,6 +82,18 @@ public final class TcpListener implements AutoCloseable {
     @Override
     public void close() throws IOException {
         this.server.close();
+        // The port is free only once the accepting thread has left the socket: until then binding it again fails, as
+        // when the port changes in the preferences.
+        Thread thread = this.accepting;
+        if (thread != null && !thread.equals(Thread.currentThread())) {
+            try {
+                if (!thread.join(CLOSE_WAIT)) {
+                    logger.debug("The listener of port {} is still accepting", port());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void run() {
