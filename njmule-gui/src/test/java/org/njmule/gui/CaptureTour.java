@@ -672,6 +672,8 @@ class CaptureTour {
         shot("transfers-details-none", "Transfers with the details open, nothing chosen");
         select(transfers, 0, 0);
         shot("transfers-details", "Transfers with the details of the download chosen");
+        fx(() -> ((ScrollPane) transfers.lookup(".download-details .scroll-pane")).setVvalue(1));
+        shot("transfers-details-names", "The details scrolled to the names the sources give, to rename by");
         fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
     }
 

@@ -364,6 +364,15 @@ final class CaptureDemo {
         return list;
     }
 
+    // Most sources give the name of the link, some another form of it, a few none yet.
+    private static Optional<String> reportedName(String name, int n) {
+        return switch (n % 4) {
+            case 0, 1 -> Optional.of(name);
+            case 2 -> Optional.of(name.replace(' ', '_').replace('-', '.'));
+            default -> Optional.empty();
+        };
+    }
+
     static List<SourceInfo> sources() {
         List<SourceInfo> list = new ArrayList<>();
         List<DownloadInfo> downloads = downloads();
@@ -386,7 +395,7 @@ final class CaptureDemo {
                         state == SourceInfo.State.WAITING ? 0 : partCount,
                         a4af ? Optional.of(downloads.get(2).hash()) : Optional.empty(),
                         a4af ? downloads.get(2).name() : "",
-                        Optional.empty()));
+                        reportedName(d.name(), n)));
                 n++;
             }
         }

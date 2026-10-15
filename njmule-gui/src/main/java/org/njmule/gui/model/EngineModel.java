@@ -591,6 +591,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.restoreDownload(file), ok -> {});
     }
 
+    /** Renames a download; it shows the new name with the engine's news of it. */
+    public void renameDownload(Hash16 file, String name) {
+        later(this.engine.renameDownload(file, name), ok -> {});
+    }
+
     /** Renames a shared file; a name taken already is told through the errors. */
     public void renameShared(Hash16 file, String name) {
         later(this.engine.renameSharedFile(file, name), ok -> refreshShared());

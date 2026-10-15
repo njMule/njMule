@@ -373,6 +373,9 @@ All notable changes to this project are documented here. The format follows
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file
   gets once complete.
+- The download details list the names its sources give it, each with how many give it, the most
+  given first: one is taken over into the new name (or with a double click), which can be tidied
+  and given to the download.
 - File names tidied (engine API `FileNames.cleanUp`): escapes, dots and underscores used as spaces,
   tags in square brackets and the words of a list in the options go, and each word starts with a
   capital. New downloads can get the tidy name as they are added (an option, off by default); the
