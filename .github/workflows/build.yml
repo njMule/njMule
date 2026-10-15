@@ -79,6 +79,12 @@ jobs:
                   path: |
                       **/build/test-results/
                       **/build/reports/tests/
+            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
+            # files Windows does not let it read.
+            - name: Stop Gradle
+              if: always() && runner.os == 'Windows'
+              shell: bash
+              run: ./gradlew --stop
 
     actionlint:
         name: actionlint
@@ -115,7 +121,7 @@ jobs:
               with:
                   cache-provider: basic
             - name: Build the native executable
-              run: ./gradlew :njmule-app:nativeCompile -Pnative.optimization=-Ob
+              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
             - name: Smoke test
               run: |
                   njmule-app/build/native/nativeCompile/njmule --version
@@ -156,7 +162,7 @@ jobs:
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
             - name: Build the native executable
-              run: ./gradlew :njmule-app:nativeCompile -Pnative.optimization=-Ob
+              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
             - name: Smoke test
               shell: pwsh
               run: |
@@ -168,6 +174,11 @@ jobs:
               with:
                   name: njmule-windows-x64
                   path: njmule-app/build/native/nativeCompile/njmule.exe
+            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
+            # files Windows does not let it read.
+            - name: Stop Gradle
+              if: always()
+              run: ./gradlew --stop
 
     sonar:
         name: SonarQube Cloud
