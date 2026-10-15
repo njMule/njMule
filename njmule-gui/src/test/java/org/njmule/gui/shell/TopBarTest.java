@@ -82,7 +82,7 @@ class TopBarTest {
     @Test
     void theToolsOpenTheIncomingFolderAndTheOptions() throws Exception {
         this.givenTheWindow();
-        this.thenTheToolsAre("incoming", "options", null, "import", "shortcuts", "about");
+        this.thenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
         this.whenTheToolIsChosen("options");
         this.thenTheScreenIs("settings");
     }

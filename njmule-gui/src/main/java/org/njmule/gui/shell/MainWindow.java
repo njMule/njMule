@@ -57,6 +57,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import javafx.util.Duration;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -68,6 +69,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
+import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.GuiSettings;
@@ -383,11 +385,15 @@ public final class MainWindow {
         shortcuts.setAccelerator(new KeyCodeCombination(KeyCode.F1));
         shortcuts.setOnAction(e -> this.showShortcuts());
         shortcuts.setId("shortcuts");
+        MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Material2AL.ASSISTANT));
+        wizard.setOnAction(e -> this.showWizard());
+        wizard.setId("wizard");
         MenuButton tools = new MenuButton(
                 this.gui.t("nj.top.tools"),
                 new FontIcon(Material2AL.BUILD),
                 incoming,
                 options,
+                wizard,
                 new SeparatorMenuItem(),
                 importer,
                 shortcuts,
@@ -717,6 +723,24 @@ public final class MainWindow {
         }
     }
 
+    // The questions of the first start, asked again from the settings as they are now.
+    private void showWizard() {
+        Preferences preferences = this.gui.model().preferencesProperty().get();
+        if (preferences == null) {
+            return;
+        }
+        Window owner = this.root.getScene().getWindow();
+        new FirstRunWizard(this.gui, owner, preferences, ImportDialog.guessEmuleDirectory(), outcome -> {
+                    if (outcome.importEmule()) {
+                        new ImportDialog(this.gui, owner).show();
+                    }
+                    if (outcome.languageChanged()) {
+                        this.gui.relaunch().run();
+                    }
+                })
+                .show();
+    }
+
     // What the palette offers: the places, then the commands of the bar and the menus.
     private List<CommandPalette.Command> commands() {
         List<CommandPalette.Command> all = new ArrayList<>();
@@ -729,6 +753,7 @@ public final class MainWindow {
         }
         all.add(new CommandPalette.Command(this.connect.getText(), "", this::toggleConnection));
         all.add(new CommandPalette.Command(this.gui.t("IDS_OPENINC"), "", this::openIncoming));
+        all.add(new CommandPalette.Command(this.gui.t("nj.wizard.title"), "", this::showWizard));
         all.add(new CommandPalette.Command(
                 this.gui.t("nj.import.title"),
                 "",

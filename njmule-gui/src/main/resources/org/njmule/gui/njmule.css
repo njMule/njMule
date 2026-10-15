@@ -269,6 +269,24 @@
     -fx-padding: 4 2 4 2;
 }
 
+/* The first start: its steps as a row of chips, the one shown on the accent tint and in bold. */
+.wizard-steps .wizard-step {
+    -fx-padding: 3 10 3 10;
+    -fx-background-radius: 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.wizard-steps .wizard-step.current {
+    -fx-background-color: -color-accent-muted;
+    -fx-text-fill: -color-fg-default;
+    -fx-font-weight: bold;
+}
+
+.wizard .wizard-hint {
+    -fx-text-fill: -color-fg-muted;
+}
+
 /* An empty list: a large muted icon, the words, and the buttons that fill it. */
 .empty-state .empty-icon {
     -fx-icon-size: 40;

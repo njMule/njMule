@@ -53,6 +53,7 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Folders;
@@ -346,9 +347,22 @@ public final class DesktopApp implements AutoCloseable {
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, this.appTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
-            // At the first start an eMule on this computer is offered for import.
-            ImportDialog.guessEmuleDirectory().ifPresent(dir -> new ImportDialog(this.gui, stage).show());
+            // At the first start a few questions set njMule up; an eMule on this computer is offered for import.
+            this.firstRun(stage);
         }
+    }
+
+    private void firstRun(Stage stage) {
+        new FirstRunWizard(this.gui, stage, this.engine.preferences(), ImportDialog.guessEmuleDirectory(), outcome -> {
+                    if (outcome.languageChanged()) {
+                        this.relaunch();
+                    }
+                    // After the relaunch, so that it speaks the language chosen.
+                    if (outcome.importEmule()) {
+                        new ImportDialog(this.gui, stage).show();
+                    }
+                })
+                .show();
     }
 
     // Dialogs and alerts do not take the icon of their owner: every window of ours that opens without one gets it.

@@ -344,6 +344,10 @@ All notable changes to this project are documented here. The format follows
   (Ko and Ko/s in French, Кб in Russian).
 - The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one
   being tried is in italics, whether njMule chose it or the user did.
+- A first-start wizard in the desktop interface: language and look, nick, incoming and shared
+  folders, ports, UPnP and the speed of the line (with presets), and an eMule found on the computer
+  to import, one page each and all skippable; ports an eMule there uses are left to it. It opens at
+  the first start only and again from Tools and the command palette.
 - A capture tour of the desktop interface for design reviews (`CaptureTour`, run on demand with
   `-Dtest=CaptureTour -Dnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
   drop-down list, column menu, dialog and message kind, with example data, in light, dark, English
