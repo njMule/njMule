@@ -28,17 +28,21 @@ import java.util.Locale;
 import java.util.Optional;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.event.Event;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.MenuButton;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
@@ -107,6 +111,17 @@ final class GuiTour {
             this.steps.add(() -> this.popups(this.stage.getScene().getRoot()));
             this.steps.add(this::closePopups);
         }
+        // What a key or a button opens rather than the popups of the screens.
+        this.steps.add(() -> this.window.show("transfers"));
+        this.steps.add(() -> this.click("#details"));
+        this.steps.add(() -> this.click("#details"));
+        this.steps.add(() -> this.window.show("search"));
+        this.steps.add(() -> this.click("#search-parameters"));
+        this.steps.add(() -> this.click("#rates"));
+        this.steps.add(this::closePopups);
+        this.steps.add(() -> this.press(KeyCode.K, true));
+        this.steps.add(() -> this.press(KeyCode.ESCAPE, false));
+        this.steps.add(() -> this.press(KeyCode.F1, false));
         Themes themes = this.gui.themes();
         Themes.Family family = themes.family();
         GuiSettings.Mode mode = themes.mode();
@@ -158,6 +173,20 @@ final class GuiTour {
         if (node instanceof Parent parent) {
             parent.getChildrenUnmodifiable().forEach(this::popups);
         }
+    }
+
+    private void click(String id) {
+        if (this.stage.getScene().lookup(id) instanceof ButtonBase button) {
+            button.fire();
+        }
+    }
+
+    // A key pressed where the focus is, with Ctrl or Cmd if shortcut.
+    private void press(KeyCode code, boolean shortcut) {
+        Node focus = this.stage.getScene().getFocusOwner();
+        Event.fireEvent(
+                focus == null ? this.stage.getScene().getRoot() : focus,
+                new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, false, shortcut, false, shortcut));
     }
 
     private void closePopups() {
