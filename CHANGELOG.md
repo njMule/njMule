@@ -366,7 +366,9 @@ All notable changes to this project are documented here. The format follows
 - The lists use dense rows; empty lists say how to fill them and offer the buttons that do it.
 - The search parameters fold behind a button that counts those in use.
 - The options have an index of their sections and a box that finds an option by its words.
-- The rate graph has a scale; chat tabs with unread messages are marked.
+- The rate graph has a scale; chat tabs with unread messages are marked. The statistics show what
+  happens now first, then the graph, then the session and the cumulative figures, each in a regular
+  grid of cards; the statistics tree has dense rows.
 - What was done with a search result (downloading, shared, downloaded, cancelled, spam) shows with
   an icon besides its tint and words.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.

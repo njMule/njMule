@@ -16,12 +16,15 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.theme.Styles;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
-import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -80,6 +83,8 @@ public final class StatisticsScreen implements Screen {
         return this.view;
     }
 
+    private static final int COLUMNS = 3;
+
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
@@ -94,32 +99,73 @@ public final class StatisticsScreen implements Screen {
                 Fx.spacer(),
                 new Label(this.gui.f("nj.stats.span", RateGraph.SPAN / 60)));
         legend.setAlignment(Pos.CENTER_LEFT);
-        FlowPane cards = new FlowPane(
-                12,
-                12,
+        // What happens now first, then the rates over time, then the session and all sessions.
+        GridPane present = cards(
                 KadScreen.card(this.gui.t("nj.stats.downRate"), this.downRate),
                 KadScreen.card(this.gui.t("nj.stats.upRate"), this.upRate),
-                KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
-                KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
                 KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
                 KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
                 KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
-                KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared),
+                KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared));
+        GridPane session = cards(
+                KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
+                KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
+                KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
+        GridPane cumulative = cards(
                 KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
                 KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
-                KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions),
-                KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
+                KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions));
         this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         // A short window scrolls the cards instead of setting a tall minimum for the whole window.
-        ScrollPane scroll = new ScrollPane(new VBox(10, graph, legend, cards));
+        VBox all = new VBox(
+                10,
+                present,
+                graph,
+                legend,
+                heading(this.gui.t("IDS_STATS_SESSION")),
+                session,
+                heading(this.gui.t("IDS_STATS_CUMULATIVE")),
+                cumulative);
+        all.setPadding(new Insets(0, 4, 8, 0));
+        ScrollPane scroll = new ScrollPane(all);
         scroll.setFitToWidth(true);
         // The tree on the left, the rates and totals beside it.
+        this.tree.view().getStyleClass().add("stats-tree");
         SplitPane split = new SplitPane(this.tree.view(), scroll);
         split.setDividerPositions(0.34);
         SplitPane.setResizableWithParent(this.tree.view(), false);
         this.tree.refresh();
         return Fx.screen(this.title(), Fx.toolRow(), split);
+    }
+
+    // Cards of one width in a regular grid, as high as the highest of their row; long names wrap.
+    private static GridPane cards(VBox... cards) {
+        GridPane grid = new GridPane(12, 12);
+        for (int i = 0; i < COLUMNS; i++) {
+            ColumnConstraints column = new ColumnConstraints();
+            column.setPercentWidth(100.0 / COLUMNS);
+            grid.getColumnConstraints().add(column);
+        }
+        for (int i = 0; i < cards.length; i++) {
+            VBox card = cards[i];
+            card.setMinWidth(0);
+            card.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+            for (Node n : card.getChildren()) {
+                Label label = (Label) n;
+                label.setWrapText(true);
+                label.setMinHeight(Region.USE_PREF_SIZE);
+            }
+            grid.add(card, i % COLUMNS, i / COLUMNS);
+        }
+        return grid;
+    }
+
+    private static Label heading(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add(Styles.TEXT_BOLD);
+        VBox.setMargin(label, new Insets(6, 0, 0, 0));
+        return label;
     }
 
     private void show(EngineStatus s) {

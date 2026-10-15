@@ -433,6 +433,12 @@
     -fx-text-fill: -color-fg-muted;
 }
 
+/* The statistics tree reads as a list of figures: rows as dense as the logs'. */
+.stats-tree .tree-cell {
+    -fx-cell-size: 1.9em;
+    -fx-padding: 0 6 0 6;
+}
+
 .legend-down {
     -fx-background-color: -nj-graph-down;
     -fx-min-width: 14;
