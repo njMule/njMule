@@ -103,6 +103,45 @@
     -fx-icon-color: -nj-accent-strong;
 }
 
+/* Room around the icon for a count or a dot in its corner. */
+.nav-rail .rail-graphic {
+    -fx-min-width: 36;
+    -fx-min-height: 24;
+}
+
+/* A count on a place: running downloads, unread messages. The number is said too (accessible help). */
+.nav-rail .rail-badge {
+    -fx-background-color: -nj-brand-accent;
+    -fx-background-radius: 8;
+    -fx-text-fill: -nj-on-accent;
+    -fx-font-size: 0.72em;
+    -fx-font-weight: bold;
+    -fx-padding: 0 4 0 4;
+    -fx-min-width: 16;
+    -fx-alignment: center;
+}
+
+/* Whether a network is up, on the network's place; its tooltip says which. */
+.nav-rail .network-dot {
+    -fx-fill: -color-fg-subtle;
+    -fx-stroke: -color-bg-subtle;
+    -fx-stroke-width: 1.5;
+}
+
+.nav-rail .network-dot.connected {
+    -fx-fill: -color-success-emphasis;
+}
+
+.nav-rail .network-dot.connecting {
+    -fx-fill: -color-warning-emphasis;
+}
+
+.nav-rail .rail-separator {
+    -fx-min-height: 1;
+    -fx-max-height: 1;
+    -fx-background-color: -color-border-muted;
+}
+
 /* Bars at the top and the bottom. */
 .top-bar {
     -fx-background-color: -color-bg-default;
@@ -162,6 +201,15 @@
 .screen {
     -fx-padding: 12;
     -fx-spacing: 10;
+}
+
+/* A screen inside another (the servers and Kad in the network): the outer one gives the margins. */
+.screen-part {
+    -fx-spacing: 10;
+}
+
+.network-switch .toggle-button {
+    -fx-padding: 3 12 3 12;
 }
 
 .screen-title {

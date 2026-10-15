@@ -220,7 +220,8 @@ public final class ServersScreen implements Screen {
         split.setDividerPositions(0.62);
         VBox content = new VBox(8, this.listRow(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
-        return Fx.screen(this.title(), tools, content);
+        // Shown under the network, which gives the title.
+        return Fx.part(tools, content);
     }
 
     // What the servers said and what happened, in two tabs; Reset empties the one shown.

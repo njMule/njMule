@@ -241,6 +241,14 @@ public final class Fx {
         return box;
     }
 
+    /** A screen shown inside another, which gives the title and the margins: a tool row and a content. */
+    public static VBox part(HBox tools, Node content) {
+        VBox box = new VBox(tools, content);
+        box.getStyleClass().add("screen-part");
+        VBox.setVgrow(content, Priority.ALWAYS);
+        return box;
+    }
+
     /** A table over live rows, sortable by any column, with several rows selectable. */
     public static <V> TableView<LiveList.Row<V>> table(LiveList<?, V> rows, String empty) {
         return table(rows.rows(), empty);

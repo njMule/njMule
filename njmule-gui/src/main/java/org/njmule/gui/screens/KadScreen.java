@@ -124,7 +124,8 @@ public final class KadScreen implements Screen {
         TabPane lists = this.lists();
         VBox content = new VBox(16, this.nodesRow(), cards, hint, lists);
         VBox.setVgrow(lists, Priority.ALWAYS);
-        return Fx.screen(this.title(), tools, content);
+        // Shown under the network, which gives the title.
+        return Fx.part(tools, content);
     }
 
     // The contacts of the routing table and the lookups running, read again while the screen shows.

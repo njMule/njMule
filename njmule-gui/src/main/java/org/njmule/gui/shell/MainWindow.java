@@ -36,6 +36,7 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -43,11 +44,13 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Circle;
 import javafx.util.Duration;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleInfo;
@@ -84,12 +87,21 @@ public final class MainWindow {
             KeyCode.DIGIT4,
             KeyCode.DIGIT5,
             KeyCode.DIGIT6,
-            KeyCode.DIGIT7,
-            KeyCode.DIGIT8);
+            KeyCode.DIGIT7);
+    private static final String NETWORK = "network";
+    // The places of the rail, in its order: what one does first comes first, the network and the
+    // statistics after, the options at the bottom.
+    private static final List<String> PLACES =
+            List.of("transfers", "search", "shared", "messages", NETWORK, "statistics", "settings");
+    private static final int MAX_BADGE = 99;
 
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
     private final Map<String, ToggleButton> rail = new LinkedHashMap<>();
+    private final NetworkPane network;
+    private final Label activeBadge = badge();
+    private final Label unreadBadge = badge();
+    private final Circle networkDot = new Circle(4);
     private final StackPane content = new StackPane();
     private final VBox messages = new VBox(8);
     private final StackPane root;
@@ -102,21 +114,26 @@ public final class MainWindow {
     private final Label server = new Label();
     private final Label counts = new Label();
     private String current = "";
+    private String lastNetwork = "servers";
+    private int unread;
     private Consumer<String> elsewhere = text -> {};
 
     public MainWindow(Gui gui) {
         this.gui = gui;
+        ServersScreen servers = new ServersScreen(gui);
+        KadScreen kadScreen = new KadScreen(gui);
         for (Screen screen : List.of(
-                new ServersScreen(gui),
-                new KadScreen(gui),
                 new TransfersScreen(gui),
                 new SearchScreen(gui),
                 new SharedScreen(gui),
                 new MessagesScreen(gui),
+                servers,
+                kadScreen,
                 new StatisticsScreen(gui),
                 new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
         }
+        this.network = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
         BorderPane frame = new BorderPane(this.content, this.topBar(), null, this.statusStrip(), this.navRail());
         // Messages stack in the bottom corner, above the status strip: never over the tool rows.
         this.messages.setAlignment(Pos.BOTTOM_RIGHT);
@@ -128,12 +145,11 @@ public final class MainWindow {
         this.root = new StackPane(frame, this.messages);
         this.root.getStyleClass().add("njmule");
         this.root.setNodeOrientation(gui.orientation());
-        // Ctrl+1 ... Ctrl+8 (Cmd on macOS) open the screens in rail order.
+        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order.
         this.root.setOnKeyPressed(e -> {
             int index = DIGITS.indexOf(e.getCode());
-            List<String> ids = List.copyOf(this.screens.keySet());
-            if (e.isShortcutDown() && index >= 0 && index < ids.size()) {
-                this.show(ids.get(index));
+            if (e.isShortcutDown() && index >= 0 && index < PLACES.size()) {
+                this.open(PLACES.get(index));
                 e.consume();
             }
         });
@@ -146,8 +162,11 @@ public final class MainWindow {
             this.success(gui.f("nj.transfers.completed", d.name()));
             this.chime();
         });
+        gui.subscriptions().onListChange(model.downloads().rows(), c -> this.showActive());
         model.chats().onMessage(chat -> {
             if (!this.current.equals("messages")) {
+                this.unread++;
+                this.showUnread();
                 String who = chat.nickProperty().get().isEmpty()
                         ? chat.address()
                         : chat.nickProperty().get();
@@ -228,10 +247,32 @@ public final class MainWindow {
             return;
         }
         this.current = id;
-        this.content.getChildren().setAll(screen.view());
-        this.rail.get(id).setSelected(true);
+        this.content.getChildren().setAll(this.viewOf(id));
+        this.rail.get(this.placeOf(id)).setSelected(true);
+        if (this.network.holds(id)) {
+            this.lastNetwork = id;
+        }
+        if (id.equals("messages")) {
+            this.unread = 0;
+            this.showUnread();
+        }
         screen.shown();
         this.gui.settings().setScreen(id);
+    }
+
+    // A place of the rail: a screen, or the network at the part last shown.
+    private void open(String place) {
+        this.show(place.equals(NETWORK) ? this.lastNetwork : place);
+    }
+
+    private String placeOf(String id) {
+        return this.network.holds(id) ? NETWORK : id;
+    }
+
+    private Node viewOf(String id) {
+        return this.network.holds(id)
+                ? this.network.view(id)
+                : this.screens.get(id).view();
     }
 
     public String current() {
@@ -243,18 +284,17 @@ public final class MainWindow {
      * screen; FX thread, with the window shown.
      */
     public Dimension2D minimumSize() {
-        Screen shown = this.screens.get(this.current);
         double width = 0;
         double height = 0;
-        for (Screen screen : this.screens.values()) {
-            this.content.getChildren().setAll(screen.view());
+        for (String id : this.screens.keySet()) {
+            this.content.getChildren().setAll(this.viewOf(id));
             this.root.applyCss();
             this.root.layout();
             width = Math.max(width, this.root.minWidth(-1));
             height = Math.max(height, this.root.minHeight(-1));
         }
-        if (shown != null) {
-            this.content.getChildren().setAll(shown.view());
+        if (this.screens.containsKey(this.current)) {
+            this.content.getChildren().setAll(this.viewOf(this.current));
         }
         return new Dimension2D(Math.ceil(width), Math.ceil(height));
     }
@@ -303,18 +343,72 @@ public final class MainWindow {
         ToggleGroup group = new ToggleGroup();
         VBox box = new VBox();
         box.getStyleClass().add("nav-rail");
-        for (Screen screen : this.screens.values()) {
-            ToggleButton button = new ToggleButton(screen.title(), new FontIcon(screen.icon()));
+        for (String place : PLACES) {
+            if (place.equals(NETWORK)) {
+                Region line = new Region();
+                line.getStyleClass().add("rail-separator");
+                VBox.setMargin(line, new Insets(6, 10, 6, 10));
+                box.getChildren().add(line);
+            }
+            if (place.equals("settings")) {
+                // The options keep to the bottom, apart from the places of every day.
+                Region grow = new Region();
+                VBox.setVgrow(grow, Priority.ALWAYS);
+                box.getChildren().add(grow);
+            }
+            boolean isNetwork = place.equals(NETWORK);
+            String title = isNetwork
+                    ? this.gui.t("IDS_NETWORK")
+                    : this.screens.get(place).title();
+            Node icon = isNetwork
+                    ? NetworkPane.icon()
+                    : new FontIcon(this.screens.get(place).icon());
+            Node mark = switch (place) {
+                case "transfers" -> this.activeBadge;
+                case "messages" -> this.unreadBadge;
+                case NETWORK -> this.networkDot;
+                default -> null;
+            };
+            StackPane graphic = mark == null ? new StackPane(icon) : new StackPane(icon, mark);
+            graphic.getStyleClass().add("rail-graphic");
+            if (mark != null) {
+                StackPane.setAlignment(mark, Pos.TOP_RIGHT);
+            }
+            ToggleButton button = new ToggleButton(title, graphic);
             button.setToggleGroup(group);
-            button.setOnAction(e -> {
-                // A rail button stays selected while its screen shows.
-                this.show(screen.id());
-            });
+            button.setId("rail-" + place);
+            // A rail button stays selected while its place shows.
+            button.setOnAction(e -> this.open(place));
             button.setMaxWidth(Double.MAX_VALUE);
-            this.rail.put(screen.id(), button);
+            this.rail.put(place, button);
             box.getChildren().add(button);
         }
+        this.networkDot.getStyleClass().add("network-dot");
+        this.showActive();
+        this.showUnread();
         return box;
+    }
+
+    // The downloads that run now, on the transfers' place.
+    private void showActive() {
+        long active = this.gui.model().downloads().rows().stream()
+                .filter(r -> r.get().status() == DownloadInfo.Status.DOWNLOADING)
+                .count();
+        this.count(this.activeBadge, this.rail.get("transfers"), active, "nj.rail.active");
+    }
+
+    // The messages that came while the messages did not show, on their place.
+    private void showUnread() {
+        this.count(this.unreadBadge, this.rail.get("messages"), this.unread, "nj.rail.unread");
+    }
+
+    private void count(Label badge, ToggleButton button, long value, String key) {
+        badge.setText(value > MAX_BADGE ? MAX_BADGE + "+" : Long.toString(value));
+        badge.setVisible(value > 0);
+        if (button != null) {
+            // The number is said too, not only shown.
+            button.setAccessibleHelp(value > 0 ? this.gui.f(key, value) : null);
+        }
     }
 
     private Node statusStrip() {
@@ -378,6 +472,7 @@ public final class MainWindow {
                 "eD2K: " + text,
                 state == EngineModel.Connection.CONNECTED,
                 state == EngineModel.Connection.CONNECTING);
+        this.showNetwork();
     }
 
     private void showStatus(EngineStatus status) {
@@ -420,6 +515,28 @@ public final class MainWindow {
                 .orElse(""));
         this.counts.setText(this.gui.f(
                 "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
+        this.showNetwork();
+        this.showActive();
+    }
+
+    // The network's place tells at a glance whether either network is up; its tooltip says which.
+    private void showNetwork() {
+        EngineModel.Connection connection =
+                this.gui.model().connectionProperty().get();
+        Optional<KadInfo> kadInfo = this.gui.model().statusProperty().get().kad();
+        boolean kadUp = kadInfo.isPresent() && kadInfo.get().connected();
+        this.networkDot.getStyleClass().removeAll("connected", "connecting");
+        if (connection == EngineModel.Connection.CONNECTED || kadUp) {
+            this.networkDot.getStyleClass().add("connected");
+        } else if (connection == EngineModel.Connection.CONNECTING || kadInfo.isPresent()) {
+            this.networkDot.getStyleClass().add("connecting");
+        }
+        ToggleButton button = this.rail.get(NETWORK);
+        if (button != null) {
+            String state = this.ed2k.getText() + "\n" + this.kad.getText();
+            button.setTooltip(new Tooltip(state));
+            button.setAccessibleHelp(state);
+        }
     }
 
     private void state(Label chip, String text, boolean on, boolean partly) {
@@ -444,6 +561,13 @@ public final class MainWindow {
         Label label = new Label("", new FontIcon(Material2AL.FIBER_MANUAL_RECORD));
         label.getStyleClass().add("connection-chip");
         return label;
+    }
+
+    private static Label badge() {
+        Label badge = new Label();
+        badge.getStyleClass().add("rail-badge");
+        badge.setVisible(false);
+        return badge;
     }
 
     private static Label rate(Ikon arrow) {

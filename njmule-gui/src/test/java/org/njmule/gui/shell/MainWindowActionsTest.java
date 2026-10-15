@@ -139,14 +139,14 @@ class MainWindowActionsTest {
 
         FxTesting.onFx(() -> {
             window.root().fireEvent(FxTesting.key(KeyCode.DIGIT2, true));
-            assertThat(window.current()).isEqualTo("kad");
+            assertThat(window.current()).isEqualTo("search");
             window.root().fireEvent(FxTesting.key(KeyCode.DIGIT9, true));
             window.root().fireEvent(FxTesting.key(KeyCode.DIGIT1, false));
-            assertThat(window.current()).isEqualTo("kad");
-            window.show("no such screen");
-            assertThat(window.current()).isEqualTo("kad");
-            this.rail(window, "Search").fire();
             assertThat(window.current()).isEqualTo("search");
+            window.show("no such screen");
+            assertThat(window.current()).isEqualTo("search");
+            this.rail(window, "Statistics").fire();
+            assertThat(window.current()).isEqualTo("statistics");
         });
 
         boolean dark =
