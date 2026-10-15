@@ -33,6 +33,8 @@ import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.config.ObfuscationMode;
@@ -44,37 +46,52 @@ class PreferencesCodecTest {
     @TempDir
     Path dir;
 
-    @Test
-    void roundTripsThroughTheFile() throws IOException {
-        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Preferences p = Preferences.defaults().toBuilder()
-                .nick("Ünïcødé = : # nick")
-                .tcpPort(12_345)
-                .kadEnabled(false)
-                .obfuscation(ObfuscationMode.REQUIRED)
-                .incomingDir(Optional.of(this.dir.resolve("in dir")))
-                .logLevel("DEBUG")
-                .upnp(false)
-                .downloadCapacityKiBps(4096)
-                .uploadCapacityKiBps(512)
-                .minFreeSpaceMiB(2048)
-                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
-                .build();
+    private Path file;
+    private Preferences preferences;
+    private String text;
+    private Preferences loaded;
+    private HeldFile held;
+    private IOException exception;
+    private String firstOutput;
+    private String secondOutput;
+    private String propertyValue;
+    private String loadedValue;
 
-        PreferencesCodec.save(file, p);
+    @BeforeEach
+    void setUp() {
+        this.file = this.dir.resolve(PreferencesCodec.FILE_NAME);
+    }
 
-        assertThat(PreferencesCodec.load(file)).isEqualTo(p);
-        assertThat(Files.readString(file)).contains("net.tcpPort=12345").doesNotContain("#Mon");
+    @AfterEach
+    void releaseTheFile() throws IOException {
+        if (this.held != null) {
+            this.held.close();
+        }
     }
 
     @Test
-    void missingFileMeansDefaults() throws IOException {
-        assertThat(PreferencesCodec.load(this.dir.resolve("none"))).isEqualTo(Preferences.defaults());
+    void shouldRoundTripThroughTheFile() throws IOException {
+        givenPreferencesUnlikeTheDefaults();
+
+        whenThePreferencesAreSaved();
+
+        thenTheFileLoadsThePreferencesBack();
+        thenTheFileContains("net.tcpPort=12345");
+        thenTheFileDoesNotContain("#Mon");
     }
 
     @Test
-    void invalidValuesKeepTheirDefaultsAndValidOnesApply() throws IOException {
-        String text = """
+    void shouldGiveTheDefaultsForAMissingFile() throws IOException {
+        givenNoFileNamed("none");
+
+        whenTheFileIsLoaded();
+
+        thenTheLoadedPreferencesAre(Preferences.defaults());
+    }
+
+    @Test
+    void shouldKeepTheDefaultsOfInvalidValuesAndApplyTheValidOnes() throws IOException {
+        givenTheText("""
                 net.tcpPort=99999
                 net.udpPort=5000
                 net.kad.enabled=maybe
@@ -83,102 +100,101 @@ class PreferencesCodecTest {
                 log.level=nope
                 unknown.key=1
                 dirs.temp=
-                """;
+                """);
 
-        Preferences p = PreferencesCodec.parse(new StringReader(text));
+        whenTheTextIsParsed();
 
-        Preferences d = Preferences.defaults();
-        assertThat(p.tcpPort()).isEqualTo(d.tcpPort());
-        assertThat(p.udpPort()).isEqualTo(5000);
-        assertThat(p.kadEnabled()).isEqualTo(d.kadEnabled());
-        assertThat(p.ed2kEnabled()).isFalse();
-        assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.SUPPORTED);
-        assertThat(p.logLevel()).isEqualTo(d.logLevel());
-        assertThat(p.tempDir()).isEmpty();
+        thenTheTcpPortIs(Preferences.defaults().tcpPort());
+        thenTheUdpPortIs(5000);
+        thenKadKeepsItsDefault();
+        thenEd2kIsOff();
+        thenTheObfuscationIs(ObfuscationMode.SUPPORTED);
+        thenTheLogLevelKeepsItsDefault();
+        thenThereIsNoTempDirectory();
     }
 
     @Test
-    void aByteOrderMarkDoesNotHideTheFirstKey() throws IOException {
-        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Files.write(file, "﻿net.tcpPort=12345\nnet.udpPort=5000\n".getBytes(StandardCharsets.UTF_8));
+    void shouldNotLetAByteOrderMarkHideTheFirstKey() throws IOException {
+        givenTheFile("﻿net.tcpPort=12345\nnet.udpPort=5000\n");
 
-        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
+        whenTheFileIsLoaded();
+
+        thenTheTcpPortIs(12_345);
     }
 
     @Test
-    void aMalformedEscapeCostsOnlyItsLine() throws IOException {
-        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Files.writeString(file, "user.nick=bad\\u12\nnet.tcpPort=12345\nchat.filter=a\\\n  b\\u00e9\n");
+    void shouldLoseOnlyTheLineOfAMalformedEscape() throws IOException {
+        givenTheFile("user.nick=bad\\u12\nnet.tcpPort=12345\nchat.filter=a\\\n  b\\u00e9\n");
 
-        Preferences p = PreferencesCodec.load(file);
+        whenTheFileIsLoaded();
 
-        assertThat(p.nick()).isEqualTo(Preferences.defaults().nick());
-        assertThat(p.tcpPort()).isEqualTo(12_345);
-        assertThat(p.messageFilter()).isEqualTo("abé");
+        thenTheNickKeepsItsDefault();
+        thenTheTcpPortIs(12_345);
+        thenTheMessageFilterIs("abé");
     }
 
     @Test
-    void keysOfANewerVersionSurviveASave() throws IOException {
-        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        Files.writeString(file, "net.tcpPort=12345\nfuture.option=on: yes\n");
+    void shouldKeepTheKeysOfANewerVersionThroughASave() throws IOException {
+        givenTheFile("net.tcpPort=12345\nfuture.option=on: yes\n");
 
-        PreferencesCodec.save(
-                file, PreferencesCodec.load(file).toBuilder().udpPort(5000).build());
+        whenTheFileIsLoadedAndSavedWithTheUdpPort(5000);
 
-        Properties saved = new Properties();
-        try (Reader in = Files.newBufferedReader(file)) {
-            saved.load(in);
-        }
-        assertThat(saved).containsEntry("future.option", "on: yes").containsEntry("net.udpPort", "5000");
-        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(12_345);
+        thenTheFileHolds("future.option", "on: yes");
+        thenTheFileHolds("net.udpPort", "5000");
+        thenTheFileStillLoadsTheTcpPort(12_345);
     }
 
     @Test
-    void preferencesHeldByAnotherProgramAreNotTakenFromTheOlderBackup() throws Exception {
-        Path file = this.dir.resolve(PreferencesCodec.FILE_NAME);
-        PreferencesCodec.save(
-                file, Preferences.defaults().toBuilder().tcpPort(1111).build());
-        PreferencesCodec.save(
-                file, Preferences.defaults().toBuilder().tcpPort(2222).build());
+    void shouldNotTakeFromTheOlderBackupThePreferencesHeldByAnotherProgram() throws IOException {
+        givenPreferencesSavedWithTheTcpPort(1111);
+        givenPreferencesSavedWithTheTcpPort(2222);
+        givenTheFileIsHeldByAnotherProgram();
 
-        try (HeldFile _ = HeldFile.hold(file)) {
-            // Loaded from the backup, they would be saved over the newer file at the start.
-            assertThatThrownBy(() -> PreferencesCodec.load(file)).isInstanceOf(IOException.class);
-        }
+        whenTheFileIsLoaded();
 
-        assertThat(PreferencesCodec.load(file).tcpPort()).isEqualTo(2222);
+        // Loaded from the backup, they would be saved over the newer file at the start.
+        thenExceptionOccurred(IOException.class);
     }
 
     @Test
-    void outputIsSortedAndStable() throws IOException {
-        StringWriter a = new StringWriter();
-        StringWriter b = new StringWriter();
-        PreferencesCodec.format(Preferences.defaults(), a);
-        PreferencesCodec.format(Preferences.defaults(), b);
+    void shouldLoadTheNewerPreferencesOnceTheOtherProgramLetsThemGo() throws IOException {
+        givenPreferencesSavedWithTheTcpPort(1111);
+        givenPreferencesSavedWithTheTcpPort(2222);
+        givenALoadFailedWhileTheFileWasHeldByAnotherProgram();
 
-        assertThat(a.toString()).isEqualTo(b.toString());
-        assertThat(a.toString().lines().skip(1).toList()).isSorted();
+        whenTheFileIsLoaded();
+
+        thenTheTcpPortIs(2222);
     }
 
     @Test
-    void windowsLineEndsAndPaddedValuesAreRead() throws IOException {
-        Preferences p = PreferencesCodec.parse(new StringReader("net.tcpPort = 12345 \r\nnet.kad.enabled=false"));
+    void shouldWriteASortedAndStableOutput() throws IOException {
+        givenTheDefaultsFormattedOnce();
 
-        assertThat(p.tcpPort()).isEqualTo(12_345);
-        assertThat(p.kadEnabled()).isFalse();
+        whenTheDefaultsAreFormattedAgain();
+
+        thenBothOutputsAreEqual();
+        thenTheLinesAfterTheFirstAreSorted();
+    }
+
+    @Test
+    void shouldReadWindowsLineEndsAndPaddedValues() throws IOException {
+        givenTheText("net.tcpPort = 12345 \r\nnet.kad.enabled=false");
+
+        whenTheTextIsParsed();
+
+        thenTheTcpPortIs(12_345);
+        thenKadIsOff();
     }
 
     @Property
-    void proxyCredentialsSurviveTheFile(@ForAll("text") String user, @ForAll("text") String password)
+    void shouldKeepTheProxyCredentialsThroughTheFile(@ForAll("text") String user, @ForAll("text") String password)
             throws IOException {
-        Preferences p = Preferences.defaults().toBuilder()
-                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 1080, user, password))
-                .build();
-        StringWriter file = new StringWriter();
-        PreferencesCodec.format(p, file);
+        givenPreferencesWithTheProxyCredentials(user, password);
 
-        assertThat(PreferencesCodec.parse(new StringReader(file.toString())).proxy())
-                .isEqualTo(p.proxy());
+        whenThePreferencesAreFormattedAndParsed();
+
+        thenTheProxyIsKept();
     }
 
     // No lone surrogate: UTF-8 cannot keep one.
@@ -191,9 +207,195 @@ class PreferencesCodecTest {
     }
 
     @Property
-    void escapedValuesLoadBackUnchanged(@ForAll String value) throws IOException {
+    void shouldLoadEscapedValuesBackUnchanged(@ForAll String value) throws IOException {
+        whenTheEscapedValueIsLoadedAsAProperty(value);
+
+        thenTheValueIsLoadedUnchanged();
+    }
+
+    private void givenPreferencesUnlikeTheDefaults() {
+        this.preferences = Preferences.defaults().toBuilder()
+                .nick("Ünïcødé = : # nick")
+                .tcpPort(12_345)
+                .kadEnabled(false)
+                .obfuscation(ObfuscationMode.REQUIRED)
+                .incomingDir(Optional.of(this.dir.resolve("in dir")))
+                .logLevel("DEBUG")
+                .upnp(false)
+                .downloadCapacityKiBps(4096)
+                .uploadCapacityKiBps(512)
+                .minFreeSpaceMiB(2048)
+                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
+                .build();
+    }
+
+    private void givenPreferencesWithTheProxyCredentials(String user, String password) {
+        this.preferences = Preferences.defaults().toBuilder()
+                .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 1080, user, password))
+                .build();
+    }
+
+    private void givenPreferencesSavedWithTheTcpPort(int port) throws IOException {
+        PreferencesCodec.save(
+                this.file, Preferences.defaults().toBuilder().tcpPort(port).build());
+    }
+
+    private void givenNoFileNamed(String name) {
+        this.file = this.dir.resolve(name);
+    }
+
+    private void givenTheFile(String content) throws IOException {
+        Files.write(this.file, content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void givenTheText(String content) {
+        this.text = content;
+    }
+
+    private void givenTheFileIsHeldByAnotherProgram() throws IOException {
+        this.held = HeldFile.hold(this.file);
+    }
+
+    private void givenALoadFailedWhileTheFileWasHeldByAnotherProgram() throws IOException {
+        try (HeldFile _ = HeldFile.hold(this.file)) {
+            assertThatThrownBy(() -> PreferencesCodec.load(this.file)).isInstanceOf(IOException.class);
+        }
+    }
+
+    private void givenTheDefaultsFormattedOnce() throws IOException {
+        StringWriter out = new StringWriter();
+        PreferencesCodec.format(Preferences.defaults(), out);
+        this.firstOutput = out.toString();
+    }
+
+    private void whenThePreferencesAreSaved() throws IOException {
+        PreferencesCodec.save(this.file, this.preferences);
+    }
+
+    private void whenTheFileIsLoaded() {
+        try {
+            this.loaded = PreferencesCodec.load(this.file);
+        } catch (IOException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenTheTextIsParsed() throws IOException {
+        this.loaded = PreferencesCodec.parse(new StringReader(this.text));
+    }
+
+    private void whenTheFileIsLoadedAndSavedWithTheUdpPort(int port) throws IOException {
+        PreferencesCodec.save(
+                this.file,
+                PreferencesCodec.load(this.file).toBuilder().udpPort(port).build());
+    }
+
+    private void whenTheDefaultsAreFormattedAgain() throws IOException {
+        StringWriter out = new StringWriter();
+        PreferencesCodec.format(Preferences.defaults(), out);
+        this.secondOutput = out.toString();
+    }
+
+    private void whenThePreferencesAreFormattedAndParsed() throws IOException {
+        StringWriter out = new StringWriter();
+        PreferencesCodec.format(this.preferences, out);
+        this.loaded = PreferencesCodec.parse(new StringReader(out.toString()));
+    }
+
+    private void whenTheEscapedValueIsLoadedAsAProperty(String original) throws IOException {
+        this.propertyValue = original;
         Properties props = new Properties();
-        props.load(new StringReader("k=" + PreferencesCodec.escape(value)));
-        assertThat(props.getProperty("k")).isEqualTo(value);
+        props.load(new StringReader("k=" + PreferencesCodec.escape(original)));
+        this.loadedValue = props.getProperty("k");
+    }
+
+    private void thenTheFileLoadsThePreferencesBack() throws IOException {
+        assertThat(PreferencesCodec.load(this.file)).isEqualTo(this.preferences);
+    }
+
+    private void thenTheFileContains(String part) throws IOException {
+        assertThat(Files.readString(this.file)).contains(part);
+    }
+
+    private void thenTheFileDoesNotContain(String part) throws IOException {
+        assertThat(Files.readString(this.file)).doesNotContain(part);
+    }
+
+    private void thenTheFileHolds(String key, String value) throws IOException {
+        Properties saved = new Properties();
+        try (Reader in = Files.newBufferedReader(this.file)) {
+            saved.load(in);
+        }
+        assertThat(saved).containsEntry(key, value);
+    }
+
+    private void thenTheFileStillLoadsTheTcpPort(int port) throws IOException {
+        assertThat(PreferencesCodec.load(this.file).tcpPort()).isEqualTo(port);
+    }
+
+    private void thenTheLoadedPreferencesAre(Preferences expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.loaded).isEqualTo(expected);
+    }
+
+    private void thenTheTcpPortIs(int port) {
+        assertThat(this.exception).isNull();
+        assertThat(this.loaded.tcpPort()).isEqualTo(port);
+    }
+
+    private void thenTheUdpPortIs(int port) {
+        assertThat(this.loaded.udpPort()).isEqualTo(port);
+    }
+
+    private void thenKadKeepsItsDefault() {
+        assertThat(this.loaded.kadEnabled()).isEqualTo(Preferences.defaults().kadEnabled());
+    }
+
+    private void thenKadIsOff() {
+        assertThat(this.loaded.kadEnabled()).isFalse();
+    }
+
+    private void thenEd2kIsOff() {
+        assertThat(this.loaded.ed2kEnabled()).isFalse();
+    }
+
+    private void thenTheObfuscationIs(ObfuscationMode mode) {
+        assertThat(this.loaded.obfuscation()).isEqualTo(mode);
+    }
+
+    private void thenTheLogLevelKeepsItsDefault() {
+        assertThat(this.loaded.logLevel()).isEqualTo(Preferences.defaults().logLevel());
+    }
+
+    private void thenThereIsNoTempDirectory() {
+        assertThat(this.loaded.tempDir()).isEmpty();
+    }
+
+    private void thenTheNickKeepsItsDefault() {
+        assertThat(this.loaded.nick()).isEqualTo(Preferences.defaults().nick());
+    }
+
+    private void thenTheMessageFilterIs(String filter) {
+        assertThat(this.loaded.messageFilter()).isEqualTo(filter);
+    }
+
+    private void thenTheProxyIsKept() {
+        assertThat(this.loaded.proxy()).isEqualTo(this.preferences.proxy());
+    }
+
+    private void thenBothOutputsAreEqual() {
+        assertThat(this.firstOutput).isEqualTo(this.secondOutput);
+    }
+
+    private void thenTheLinesAfterTheFirstAreSorted() {
+        assertThat(this.firstOutput.lines().skip(1).toList()).isSorted();
+    }
+
+    private void thenTheValueIsLoadedUnchanged() {
+        assertThat(this.loadedValue).isEqualTo(this.propertyValue);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 }

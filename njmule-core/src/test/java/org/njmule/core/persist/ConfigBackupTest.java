@@ -17,7 +17,6 @@
 package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
@@ -31,8 +30,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ConfigBackupTest {
 
@@ -40,81 +42,78 @@ class ConfigBackupTest {
     Path dir;
 
     private Path config;
+    private Path folder;
+    private ZoneId zone = ZoneOffset.UTC;
+    private Path firstCopy;
+    private Path foreignFile;
     private Path copy;
+    private RuntimeException exception;
 
-    @Test
-    void copiesTheConfigurationAndKeepsTheLatestOnes() throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("config"));
-        Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=4662\n");
-        Files.write(config.resolve("server.met"), new byte[] {(byte) 0xE0, 0, 0, 0, 0});
-        for (String left : List.of("njmule.lock", "handoff", "known2_64.met", "server.met.bak", "known.met.tmp")) {
-            Files.writeString(config.resolve(left), "x");
-        }
-        Path folder = this.dir.resolve("data").resolve(ConfigBackup.FOLDER);
-
-        Path first = ConfigBackup.write(config, folder, 2, at("2026-10-13T20:00:00Z"));
-        ConfigBackup.write(config, folder, 2, at("2026-10-14T20:00:00Z"));
-        Path last = ConfigBackup.write(config, folder, 2, at("2026-10-15T20:00:00Z"));
-
-        assertThat(ConfigBackup.copies(folder)).hasSize(2).last().isEqualTo(last);
-        assertThat(first).doesNotExist();
-        assertThat(last.getFileName().toString()).isEqualTo("njmule-config-20261015-200000.zip");
-        List<String> names = new ArrayList<>();
-        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(last))) {
-            for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
-                names.add(e.getName());
-            }
-        }
-        assertThat(names).containsExactly("njmule.properties", "server.met");
+    @BeforeEach
+    void setUp() {
+        this.folder = this.dir.resolve(ConfigBackup.FOLDER);
     }
 
     @Test
-    void theCopyJustWrittenIsNeverPruned() throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("config"));
-        Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=4662\n");
-        Path folder = this.dir.resolve(ConfigBackup.FOLDER);
-        Path mine = Files.writeString(Files.createDirectories(folder).resolve("njmule-config-mine.zip"), "x");
+    void shouldCopyTheConfigurationAndKeepTheLatestOnes() throws Exception {
+        givenTheConfigurationFile("njmule.properties", "net.tcpPort=4662\n");
+        givenTheConfigurationFile("server.met", new byte[] {(byte) 0xE0, 0, 0, 0, 0});
+        givenAConfigurationWith("njmule.lock", "handoff", "known2_64.met", "server.met.bak", "known.met.tmp");
+        givenTheCopiesAreKeptUnder("data");
+        givenTheFirstCopyWrittenAt("2026-10-13T20:00:00Z", 2);
+        givenACopyWrittenAt("2026-10-14T20:00:00Z", 2);
 
-        ConfigBackup.write(config, folder, 1, at("2026-10-15T20:00:00Z"));
+        whenACopyIsWrittenAt("2026-10-15T20:00:00Z", 2);
+
+        thenTheCopiesAreSoManyAndEndWithTheNewOne(2);
+        thenTheFirstCopyIsGone();
+        thenTheCopyIsNamed("njmule-config-20261015-200000.zip");
+        thenTheCopyHolds("njmule.properties", "server.met");
+    }
+
+    @Test
+    void shouldNeverPruneTheCopyJustWritten() throws Exception {
+        givenTheConfigurationFile("njmule.properties", "net.tcpPort=4662\n");
+        givenAFileNotOfOursInTheBackupFolder("njmule-config-mine.zip");
+        givenACopyWrittenAt("2026-10-15T20:00:00Z", 1);
+
         // The clock went back.
-        Path last = ConfigBackup.write(config, folder, 1, at("2026-10-14T20:00:00Z"));
+        whenACopyIsWrittenAt("2026-10-14T20:00:00Z", 1);
 
-        assertThat(last).exists();
-        assertThat(ConfigBackup.copies(folder)).containsExactly(last);
-        assertThat(mine).as("not one of ours").exists();
+        thenTheCopyExists();
+        thenTheOnlyCopyIsTheNewOne();
+        thenTheFileNotOfOursIsStillThere();
     }
 
     @Test
-    void copiesAreNamedInUtc() throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("config"));
-        Clock rome = Clock.fixed(Instant.parse("2026-10-25T00:30:00Z"), ZoneId.of("Europe/Rome"));
+    void shouldNameTheCopiesInUtc() throws Exception {
+        givenAConfigurationWith();
+        givenTheTimeZone("Europe/Rome");
 
-        Path copy = ConfigBackup.write(config, this.dir.resolve(ConfigBackup.FOLDER), 3, rome);
+        whenACopyIsWrittenAt("2026-10-25T00:30:00Z", 3);
 
-        assertThat(copy.getFileName().toString()).isEqualTo("njmule-config-20261025-003000.zip");
+        thenTheCopyIsNamed("njmule-config-20261025-003000.zip");
     }
 
     @Test
-    void copiesAreForTheirOwnerOnly() throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("config"));
-        assumeTrue(config.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+    void shouldMakeTheCopiesForTheirOwnerOnly() throws Exception {
+        givenAConfigurationWith();
+        givenTheFileSystemHasPosixPermissions();
 
-        Path copy = ConfigBackup.write(config, this.dir.resolve(ConfigBackup.FOLDER), 1, at("2026-10-15T20:00:00Z"));
+        whenACopyIsWrittenAt("2026-10-15T20:00:00Z", 1);
 
-        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(copy)))
-                .isEqualTo("rw-------");
+        thenTheCopyHasThePermissions("rw-------");
     }
 
-    @Test
-    void atLeastOneCopyIsKept() throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("config"));
-        Path folder = this.dir.resolve(ConfigBackup.FOLDER);
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void shouldKeepAtLeastOneCopy(int kept) throws Exception {
+        givenAConfigurationWith();
 
-        for (int keep : new int[] {0, -1}) {
-            assertThatThrownBy(() -> ConfigBackup.write(config, folder, keep, at("2026-10-15T20:00:00Z")))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-        assertThat(ConfigBackup.copies(folder)).isEmpty();
+        whenACopyIsWrittenAt("2026-10-15T20:00:00Z", kept);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+        thenThereAreNoCopies();
     }
 
     @Test
@@ -133,9 +132,85 @@ class ConfigBackupTest {
         }
     }
 
+    private void givenTheConfigurationFile(String name, String content) throws Exception {
+        givenAConfigurationWith();
+        Files.writeString(this.config.resolve(name), content);
+    }
+
+    private void givenTheConfigurationFile(String name, byte[] content) throws Exception {
+        givenAConfigurationWith();
+        Files.write(this.config.resolve(name), content);
+    }
+
+    private void givenTheCopiesAreKeptUnder(String parent) {
+        this.folder = this.dir.resolve(parent).resolve(ConfigBackup.FOLDER);
+    }
+
+    private void givenAFileNotOfOursInTheBackupFolder(String name) throws Exception {
+        this.foreignFile =
+                Files.writeString(Files.createDirectories(this.folder).resolve(name), "x");
+    }
+
+    private void givenTheTimeZone(String zoneId) {
+        this.zone = ZoneId.of(zoneId);
+    }
+
+    private void givenTheFileSystemHasPosixPermissions() {
+        assumeTrue(this.config.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+    }
+
+    private void givenTheFirstCopyWrittenAt(String instant, int kept) throws Exception {
+        givenACopyWrittenAt(instant, kept);
+        this.firstCopy = this.copy;
+    }
+
+    private void givenACopyWrittenAt(String instant, int kept) throws Exception {
+        this.copy = ConfigBackup.write(this.config, this.folder, kept, clockAt(instant));
+    }
+
     private void whenACopyIsWritten() throws Exception {
-        this.copy =
-                ConfigBackup.write(this.config, this.dir.resolve(ConfigBackup.FOLDER), 1, at("2026-10-15T20:00:00Z"));
+        whenACopyIsWrittenAt("2026-10-15T20:00:00Z", 1);
+    }
+
+    private void whenACopyIsWrittenAt(String instant, int kept) throws Exception {
+        try {
+            this.copy = ConfigBackup.write(this.config, this.folder, kept, clockAt(instant));
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void thenTheCopiesAreSoManyAndEndWithTheNewOne(int count) throws Exception {
+        assertThat(ConfigBackup.copies(this.folder)).hasSize(count).last().isEqualTo(this.copy);
+    }
+
+    private void thenTheOnlyCopyIsTheNewOne() throws Exception {
+        assertThat(ConfigBackup.copies(this.folder)).containsExactly(this.copy);
+    }
+
+    private void thenThereAreNoCopies() throws Exception {
+        assertThat(ConfigBackup.copies(this.folder)).isEmpty();
+    }
+
+    private void thenTheFirstCopyIsGone() {
+        assertThat(this.firstCopy).doesNotExist();
+    }
+
+    private void thenTheCopyExists() {
+        assertThat(this.copy).exists();
+    }
+
+    private void thenTheFileNotOfOursIsStillThere() {
+        assertThat(this.foreignFile).as("not one of ours").exists();
+    }
+
+    private void thenTheCopyIsNamed(String name) {
+        assertThat(this.copy.getFileName().toString()).isEqualTo(name);
+    }
+
+    private void thenTheCopyHasThePermissions(String permissions) throws Exception {
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(this.copy)))
+                .isEqualTo(permissions);
     }
 
     private void thenTheCopyHolds(String... files) throws Exception {
@@ -148,7 +223,11 @@ class ConfigBackupTest {
         assertThat(names).containsExactly(files);
     }
 
-    private static Clock at(String instant) {
-        return Clock.fixed(Instant.parse(instant), ZoneOffset.UTC);
+    private void thenExceptionOccurred(Class<? extends RuntimeException> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private Clock clockAt(String instant) {
+        return Clock.fixed(Instant.parse(instant), this.zone);
     }
 }

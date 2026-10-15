@@ -17,7 +17,7 @@
 package org.njmule.core.persist.format;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.HexFormat;
 import java.util.List;
@@ -25,6 +25,9 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.persist.format.NodesDat.Contact;
@@ -39,108 +42,371 @@ class KadFilesTest {
     private static final UInt128 ID = UInt128.parseHex("00112233445566778899AABBCCDDEEFF");
     // The id on the wire: four little-endian words, most significant first.
     private static final String ID_WIRE = "33221100" + "77665544" + "BBAA9988" + "FFEEDDCC";
+    private static final String BOOTSTRAP_RECORD = ID_WIRE + "04030201" + "3612" + "3712" + "08";
+
+    private UInt128 id;
+    private UInt128 resultingId;
+    private String hex;
+    private int bit;
+    private long top32;
+    private int comparison;
+    private Contact contact;
+    private PreferencesKadDat.Contents kadPreferences;
+    private PreferencesKadDat.Contents kadPreferencesRead;
+    private byte[] file;
+    private Contents contents;
+    private Throwable exception;
 
     @Test
-    void idsUseLittleEndianWordsOnTheWireAndBigEndianForHashes() throws DecodeException {
-        assertThat(HEX.formatHex(ID.toWireBytes())).isEqualToIgnoringCase(ID_WIRE);
-        assertThat(UInt128.fromWireBytes(HEX.parseHex(ID_WIRE))).isEqualTo(ID);
-        assertThat(UInt128.of(Hash16.parseHex("00112233445566778899AABBCCDDEEFF")))
-                .isEqualTo(ID);
-        assertThat(ID.toHash16().toHex()).isEqualTo("00112233445566778899AABBCCDDEEFF");
+    void shouldWriteAnIdAsLittleEndianWordsOnTheWire() {
+        givenTheId(ID);
+
+        whenTheIdIsWrittenForTheWire();
+
+        thenTheHexIgnoringCaseIs(ID_WIRE);
     }
 
     @Test
-    void bitsCountFromTheMostSignificant() {
-        UInt128 top = UInt128.parseHex("80000000000000000000000000000001");
+    void shouldReadAnIdFromLittleEndianWordsOnTheWire() throws DecodeException {
+        givenTheFile(ID_WIRE);
 
-        assertThat(top.bit(0)).isOne();
-        assertThat(top.bit(1)).isZero();
-        assertThat(top.bit(127)).isOne();
-        assertThat(top.top32()).isEqualTo(0x8000_0000L);
-        assertThat(top).isGreaterThan(UInt128.parseHex("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
-        assertThat(top.xor(top)).isEqualTo(UInt128.ZERO);
+        whenAnIdIsReadFromTheWire();
+
+        thenTheResultingIdIs(ID);
     }
 
     @Test
-    void readsVersionZeroWithContactTypes() throws DecodeException {
-        byte[] file = HEX.parseHex("01000000" + ID_WIRE + "04030201" + "3612" + "3712" + "02");
+    void shouldTakeAnIdFromABigEndianHash() {
+        whenAnIdIsTakenFromTheHash("00112233445566778899AABBCCDDEEFF");
 
-        Contents contents = NodesDat.read(file);
-
-        assertThat(contents.fileVersion()).isZero();
-        Contact c = contents.contacts().getFirst();
-        assertThat(c.id()).isEqualTo(ID);
-        assertThat(Ipv4.format(c.ip())).isEqualTo("1.2.3.4");
-        assertThat(c.udpPort()).isEqualTo(4662);
-        assertThat(c.tcpPort()).isEqualTo(4663);
-        assertThat(c.type()).isEqualTo(2);
+        thenTheResultingIdIs(ID);
     }
 
     @Test
-    void readsVersionOneWithKadVersions() throws DecodeException {
-        byte[] file =
-                HEX.parseHex("00000000" + "01000000" + "01000000" + ID_WIRE + "04030201" + "3612" + "3712" + "08");
+    void shouldGiveAnIdAsABigEndianHash() {
+        givenTheId(ID);
 
-        Contact c = NodesDat.read(file).contacts().getFirst();
+        whenTheIdIsTurnedIntoAHash();
 
-        assertThat(c.version()).isEqualTo(8);
-        assertThat(c.verified()).isFalse();
+        thenTheHexIs("00112233445566778899AABBCCDDEEFF");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, 1", "1, 0", "127, 1"})
+    void shouldCountTheBitsFromTheMostSignificant(int index, int expected) {
+        givenTheId("80000000000000000000000000000001");
+
+        whenTheBitIsRead(index);
+
+        thenTheBitIs(expected);
     }
 
     @Test
-    void writesAndReadsVersionTwo() throws DecodeException {
-        Contact c = new Contact(
-                ID, Ipv4.of(5, 6, 7, 8), 4672, 4662, 10, 0, new UdpKey(0x12345678, Ipv4.of(9, 9, 9, 9)), true);
+    void shouldTakeTheTop32BitsFromTheMostSignificant() {
+        givenTheId("80000000000000000000000000000001");
 
-        byte[] file = NodesDat.write(List.of(c));
+        whenTheTop32BitsAreRead();
 
-        assertThat(file).hasSize(12 + 34);
-        assertThat(HEX.formatHex(file, 0, 12)).isEqualTo("00000000" + "02000000" + "01000000");
-        Contents contents = NodesDat.read(file);
-        assertThat(contents.fileVersion()).isEqualTo(2);
-        assertThat(contents.contacts()).containsExactly(c);
+        thenTheTop32BitsAre(0x8000_0000L);
     }
 
     @Test
-    void recognisesBootstrapLists() throws DecodeException {
-        String record = ID_WIRE + "04030201" + "3612" + "3712" + "08";
-        byte[] file = HEX.parseHex("00000000" + "03000000" + "01000000" + "02000000" + record + record);
+    void shouldCompareIdsFromTheMostSignificantBit() {
+        givenTheId("80000000000000000000000000000001");
 
-        Contents contents = NodesDat.read(file);
+        whenTheIdIsComparedWith("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
 
-        assertThat(contents.bootstrap()).isTrue();
-        assertThat(contents.contacts()).hasSize(2);
-        assertThatThrownBy(
-                        () -> NodesDat.read(HEX.parseHex("00000000" + "03000000" + "01000000" + "02000000" + record)))
-                .isInstanceOf(DecodeException.class);
+        thenTheIdIsTheGreater();
     }
 
     @Test
-    void ignoresUnknownVersionsAndRejectsImpossibleCounts() throws DecodeException {
-        assertThat(NodesDat.read(HEX.parseHex("00000000" + "09000000")).contacts())
-                .isEmpty();
-        assertThat(NodesDat.read(HEX.parseHex("00000000")).contacts()).isEmpty();
-        assertThatThrownBy(() -> NodesDat.read(HEX.parseHex("ffffff7f" + ID_WIRE)))
-                .isInstanceOf(DecodeException.class);
+    void shouldGiveZeroForAnIdXoredWithItself() {
+        givenTheId("80000000000000000000000000000001");
+
+        whenTheIdIsXoredWithItself();
+
+        thenTheResultingIdIs(UInt128.ZERO);
     }
 
     @Test
-    void preferencesKadRoundTrip() throws DecodeException {
-        PreferencesKadDat.Contents prefs = new PreferencesKadDat.Contents(Ipv4.of(10, 0, 0, 1), ID);
-        byte[] file = PreferencesKadDat.write(prefs);
+    void shouldReadVersionZeroWithContactTypes() {
+        givenTheFile("01000000" + ID_WIRE + "04030201" + "3612" + "3712" + "02");
 
-        assertThat(file).hasSize(23);
-        assertThat(HEX.formatHex(file)).isEqualToIgnoringCase("0100000a" + "0000" + ID_WIRE + "00");
-        assertThat(PreferencesKadDat.read(file)).isEqualTo(prefs);
+        whenTheNodesFileIsRead();
+
+        thenTheFileVersionIs(0);
+        thenTheFirstContactIs(ID, "1.2.3.4", 4662, 4663);
+        thenTheFirstContactHasTheType(2);
+    }
+
+    @Test
+    void shouldReadVersionOneWithKadVersions() {
+        givenTheFile("00000000" + "01000000" + "01000000" + ID_WIRE + "04030201" + "3612" + "3712" + "08");
+
+        whenTheNodesFileIsRead();
+
+        thenTheFirstContactHasTheKadVersion(8);
+        thenTheFirstContactIsNotVerified();
+    }
+
+    @Test
+    void shouldWriteVersionTwo() {
+        givenAVerifiedContactWithAUdpKey();
+
+        whenTheContactIsWritten();
+
+        thenTheFileHasTheSize(12 + 34);
+        thenTheFileStartsWith("00000000" + "02000000" + "01000000");
+    }
+
+    @Test
+    void shouldReadBackTheVersionTwoItWrites() {
+        givenAVerifiedContactWithAUdpKey();
+        givenTheContactWritten();
+
+        whenTheNodesFileIsRead();
+
+        thenTheFileVersionIs(2);
+        thenTheContactsAreOnlyTheOneWritten();
+    }
+
+    @Test
+    void shouldRecogniseABootstrapList() {
+        givenTheFile("00000000" + "03000000" + "01000000" + "02000000" + BOOTSTRAP_RECORD + BOOTSTRAP_RECORD);
+
+        whenTheNodesFileIsRead();
+
+        thenTheListIsABootstrapList();
+        thenTheNumberOfContactsIs(2);
+    }
+
+    @Test
+    void shouldRefuseABootstrapListShorterThanItsCount() {
+        givenTheFile("00000000" + "03000000" + "01000000" + "02000000" + BOOTSTRAP_RECORD);
+
+        whenTheNodesFileIsRead();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"00000000" + "09000000", "00000000"})
+    void shouldIgnoreUnknownVersions(String content) {
+        givenTheFile(content);
+
+        whenTheNodesFileIsRead();
+
+        thenTheNumberOfContactsIs(0);
+    }
+
+    @Test
+    void shouldRejectAnImpossibleCount() {
+        givenTheFile("ffffff7f" + ID_WIRE);
+
+        whenTheNodesFileIsRead();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @Test
+    void shouldWriteTheKadPreferences() {
+        givenTheKadPreferences(Ipv4.of(10, 0, 0, 1), ID);
+
+        whenTheKadPreferencesAreWritten();
+
+        thenTheFileHasTheSize(23);
+        thenTheHexIgnoringCaseIs("0100000a" + "0000" + ID_WIRE + "00");
+    }
+
+    @Test
+    void shouldReadBackTheKadPreferences() throws DecodeException {
+        givenTheKadPreferences(Ipv4.of(10, 0, 0, 1), ID);
+        givenTheKadPreferencesWritten();
+
+        whenTheKadPreferencesAreRead();
+
+        thenTheKadPreferencesReadAreTheOnesWritten();
     }
 
     @Property
-    void garbageOnlyFailsWithDecodeException(@ForAll @Size(max = 120) byte[] data) {
+    void shouldFailOnGarbageOnlyWithADecodeException(@ForAll @Size(max = 120) byte[] data) {
+        whenGarbageIsReadAsNodesAndKadPreferences(data);
+
+        thenNoExceptionButADecodeExceptionOccurred();
+    }
+
+    private void givenTheId(UInt128 value) {
+        this.id = value;
+    }
+
+    private void givenTheId(String value) {
+        this.id = UInt128.parseHex(value);
+    }
+
+    private void givenTheFile(String content) {
+        this.file = HEX.parseHex(content);
+    }
+
+    private void givenAVerifiedContactWithAUdpKey() {
+        this.contact = new Contact(
+                ID, Ipv4.of(5, 6, 7, 8), 4672, 4662, 10, 0, new UdpKey(0x12345678, Ipv4.of(9, 9, 9, 9)), true);
+    }
+
+    private void givenTheContactWritten() {
+        this.file = NodesDat.write(List.of(this.contact));
+    }
+
+    private void givenTheKadPreferences(int ip, UInt128 kadId) {
+        this.kadPreferences = new PreferencesKadDat.Contents(ip, kadId);
+    }
+
+    private void givenTheKadPreferencesWritten() {
+        this.file = PreferencesKadDat.write(this.kadPreferences);
+    }
+
+    private void whenTheIdIsWrittenForTheWire() {
+        this.hex = HEX.formatHex(this.id.toWireBytes());
+    }
+
+    private void whenAnIdIsReadFromTheWire() throws DecodeException {
+        this.resultingId = UInt128.fromWireBytes(this.file);
+    }
+
+    private void whenAnIdIsTakenFromTheHash(String hash) {
+        this.resultingId = UInt128.of(Hash16.parseHex(hash));
+    }
+
+    private void whenTheIdIsTurnedIntoAHash() {
+        this.hex = this.id.toHash16().toHex();
+    }
+
+    private void whenTheBitIsRead(int index) {
+        this.bit = this.id.bit(index);
+    }
+
+    private void whenTheTop32BitsAreRead() {
+        this.top32 = this.id.top32();
+    }
+
+    private void whenTheIdIsComparedWith(String other) {
+        this.comparison = this.id.compareTo(UInt128.parseHex(other));
+    }
+
+    private void whenTheIdIsXoredWithItself() {
+        this.resultingId = this.id.xor(this.id);
+    }
+
+    private void whenTheContactIsWritten() {
+        this.file = NodesDat.write(List.of(this.contact));
+    }
+
+    private void whenTheNodesFileIsRead() {
         try {
+            this.contents = NodesDat.read(this.file);
+        } catch (DecodeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenTheKadPreferencesAreWritten() {
+        this.file = PreferencesKadDat.write(this.kadPreferences);
+        this.hex = HEX.formatHex(this.file);
+    }
+
+    private void whenTheKadPreferencesAreRead() throws DecodeException {
+        this.kadPreferencesRead = PreferencesKadDat.read(this.file);
+    }
+
+    private void whenGarbageIsReadAsNodesAndKadPreferences(byte[] data) {
+        this.exception = catchThrowable(() -> {
             NodesDat.read(data);
             PreferencesKadDat.read(data);
-        } catch (DecodeException expected) {
-            // malformed file
+        });
+    }
+
+    private void thenTheHexIs(String expected) {
+        assertThat(this.hex).isEqualTo(expected);
+    }
+
+    private void thenTheHexIgnoringCaseIs(String expected) {
+        assertThat(this.hex).isEqualToIgnoringCase(expected);
+    }
+
+    private void thenTheResultingIdIs(UInt128 expected) {
+        assertThat(this.resultingId).isEqualTo(expected);
+    }
+
+    private void thenTheBitIs(int expected) {
+        assertThat(this.bit).isEqualTo(expected);
+    }
+
+    private void thenTheTop32BitsAre(long expected) {
+        assertThat(this.top32).isEqualTo(expected);
+    }
+
+    private void thenTheIdIsTheGreater() {
+        assertThat(this.comparison).isPositive();
+    }
+
+    private void thenTheFileVersionIs(int version) {
+        assertThat(this.exception).isNull();
+        assertThat(this.contents.fileVersion()).isEqualTo(version);
+    }
+
+    private void thenTheFirstContactIs(UInt128 contactId, String ip, int udpPort, int tcpPort) {
+        Contact first = this.contents.contacts().getFirst();
+        assertThat(first.id()).isEqualTo(contactId);
+        assertThat(Ipv4.format(first.ip())).isEqualTo(ip);
+        assertThat(first.udpPort()).isEqualTo(udpPort);
+        assertThat(first.tcpPort()).isEqualTo(tcpPort);
+    }
+
+    private void thenTheFirstContactHasTheType(int type) {
+        assertThat(this.contents.contacts().getFirst().type()).isEqualTo(type);
+    }
+
+    private void thenTheFirstContactHasTheKadVersion(int version) {
+        assertThat(this.exception).isNull();
+        assertThat(this.contents.contacts().getFirst().version()).isEqualTo(version);
+    }
+
+    private void thenTheFirstContactIsNotVerified() {
+        assertThat(this.contents.contacts().getFirst().verified()).isFalse();
+    }
+
+    private void thenTheFileHasTheSize(int size) {
+        assertThat(this.file).hasSize(size);
+    }
+
+    private void thenTheFileStartsWith(String header) {
+        assertThat(HEX.formatHex(this.file, 0, header.length() / 2)).isEqualTo(header);
+    }
+
+    private void thenTheContactsAreOnlyTheOneWritten() {
+        assertThat(this.contents.contacts()).containsExactly(this.contact);
+    }
+
+    private void thenTheListIsABootstrapList() {
+        assertThat(this.exception).isNull();
+        assertThat(this.contents.bootstrap()).isTrue();
+    }
+
+    private void thenTheNumberOfContactsIs(int count) {
+        assertThat(this.exception).isNull();
+        assertThat(this.contents.contacts()).hasSize(count);
+    }
+
+    private void thenTheKadPreferencesReadAreTheOnesWritten() {
+        assertThat(this.kadPreferencesRead).isEqualTo(this.kadPreferences);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenNoExceptionButADecodeExceptionOccurred() {
+        if (this.exception != null) {
+            assertThat(this.exception).isInstanceOf(DecodeException.class);
         }
     }
 }

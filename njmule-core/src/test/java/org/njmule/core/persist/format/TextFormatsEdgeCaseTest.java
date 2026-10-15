@@ -40,22 +40,77 @@ class TextFormatsEdgeCaseTest {
 
     private static final HexFormat HEX = HexFormat.of();
 
+    private byte[] file;
+    private List<String> lines;
+    private List<String> linesRead;
+    private List<StaticServer> staticServers;
+    private List<StaticServer> staticServersRead;
+    private List<Range> ranges;
+    private List<Range> rangesRead;
+    private IniFile ini;
+
     @Test
-    void linesEndInEveryStyle() {
-        assertThat(TextFiles.lines("a\r\nb\rc\nd".getBytes(US_ASCII))).containsExactly("a", "b", "c", "d");
-        assertThat(TextFiles.lines("a\n\nb\n".getBytes(US_ASCII))).containsExactly("a", "", "b");
-        assertThat(TextFiles.lines(new byte[0])).isEmpty();
-        assertThat(TextFiles.lines(HEX.parseHex("efbbbf78"))).containsExactly("x");
-        assertThat(TextFiles.lines(HEX.parseHex("fffe"))).isEmpty();
-        assertThat(TextFiles.lines(HEX.parseHex("fffe610062")))
-                .singleElement()
-                .asString()
-                .startsWith("a");
+    void shouldEndTheLinesInEveryStyle() {
+        givenTheAsciiFile("a\r\nb\rc\nd");
+
+        whenTheLinesAreRead();
+
+        thenTheLinesReadAre("a", "b", "c", "d");
+    }
+
+    @Test
+    void shouldKeepTheEmptyLinesBeforeTheLastLineEnd() {
+        givenTheAsciiFile("a\n\nb\n");
+
+        whenTheLinesAreRead();
+
+        thenTheLinesReadAre("a", "", "b");
+    }
+
+    @Test
+    void shouldReadNoLinesFromAnEmptyFile() {
+        givenTheFile(new byte[0]);
+
+        whenTheLinesAreRead();
+
+        thenNoLinesAreRead();
+    }
+
+    @Test
+    void shouldSkipTheUtf8ByteOrderMark() {
+        givenTheHexFile("efbbbf78");
+
+        whenTheLinesAreRead();
+
+        thenTheLinesReadAre("x");
+    }
+
+    @Test
+    void shouldReadNoLinesFromAUtf16ByteOrderMarkAlone() {
+        givenTheHexFile("fffe");
+
+        whenTheLinesAreRead();
+
+        thenNoLinesAreRead();
+    }
+
+    @Test
+    void shouldReadAUtf16FileOfAnOddLength() {
+        givenTheHexFile("fffe610062");
+
+        whenTheLinesAreRead();
+
+        thenTheOnlyLineReadStartsWith("a");
     }
 
     @Property
-    void writtenLinesReadBack(@ForAll("lines") List<String> lines) {
-        assertThat(TextFiles.lines(TextFiles.writeLines(lines))).isEqualTo(lines);
+    void shouldReadBackTheLinesItWrites(@ForAll("lines") List<String> written) {
+        givenTheLines(written);
+        givenTheLinesWritten();
+
+        whenTheLinesAreRead();
+
+        thenTheLinesReadAreTheOnesWritten();
     }
 
     @Provide
@@ -73,18 +128,22 @@ class TextFormatsEdgeCaseTest {
     }
 
     @Test
-    void staticServersWithoutAUsablePortAreLeftOut() {
-        byte[] file =
-                TextFiles.writeLines(List.of("a.org:0,1,zero", "b.org:65536,1,big", "c.org:65535,7,odd priority"));
+    void shouldLeaveOutTheStaticServersWithoutAUsablePort() {
+        givenATextFileWithTheLines("a.org:0,1,zero", "b.org:65536,1,big", "c.org:65535,7,odd priority");
 
-        assertThat(TextFiles.staticServers(file))
-                .containsExactly(new StaticServer("c.org", 65535, TextFiles.PRIORITY_HIGH, "odd priority"));
+        whenTheStaticServersAreRead();
+
+        thenTheStaticServersReadAre(new StaticServer("c.org", 65535, TextFiles.PRIORITY_HIGH, "odd priority"));
     }
 
     @Property
-    void staticServersReadBack(@ForAll("staticServers") List<StaticServer> servers) {
-        assertThat(TextFiles.staticServers(TextFiles.writeStaticServers(servers)))
-                .isEqualTo(servers);
+    void shouldReadBackTheStaticServersItWrites(@ForAll("staticServers") List<StaticServer> servers) {
+        givenTheStaticServers(servers);
+        givenTheStaticServersWritten();
+
+        whenTheStaticServersAreRead();
+
+        thenTheStaticServersReadAreTheOnesWritten();
     }
 
     @Provide
@@ -106,38 +165,44 @@ class TextFormatsEdgeCaseTest {
     }
 
     @Test
-    void iniValuesAsTheReferenceReaderTakesThem() {
-        byte[] file = String.join(
-                        "\r\n",
-                        "Key = value",
-                        "a=b=c",
-                        "k=1",
-                        "k=2",
-                        "[ eMule ]",
-                        "[]",
-                        "Empty=",
-                        "Plus=+5",
-                        "Hex=0x10",
-                        "Huge=99999999999999999999",
-                        "")
-                .getBytes(US_ASCII);
+    void shouldTakeTheIniValuesAsTheReferenceReaderDoes() {
+        givenTheAsciiFile(String.join(
+                "\r\n",
+                "Key = value",
+                "a=b=c",
+                "k=1",
+                "k=2",
+                "[ eMule ]",
+                "[]",
+                "Empty=",
+                "Plus=+5",
+                "Hex=0x10",
+                "Huge=99999999999999999999",
+                ""));
 
-        IniFile ini = IniFile.parse(file);
+        whenTheIniFileIsParsed();
 
-        assertThat(ini.get(IniFile.GLOBAL, "key")).contains("value");
-        assertThat(ini.get(IniFile.GLOBAL, "a")).contains("b=c");
-        assertThat(ini.get(IniFile.GLOBAL, "k")).contains("1");
-        assertThat(ini.get("eMule", "Empty")).contains("");
-        assertThat(ini.getLong("eMule", "Plus")).hasValue(5);
-        assertThat(ini.getLong("eMule", "Hex")).isEmpty();
-        assertThat(ini.getLong("eMule", "Huge")).isEmpty();
-        assertThat(IniFile.parse("﻿[x]\r\nk=é\r\n".getBytes(UTF_16LE)).get("x", "k"))
-                .contains("é");
+        thenTheIniValueIs(IniFile.GLOBAL, "key", "value");
+        thenTheIniValueIs(IniFile.GLOBAL, "a", "b=c");
+        thenTheIniValueIs(IniFile.GLOBAL, "k", "1");
+        thenTheIniValueIs("eMule", "Empty", "");
+        thenTheIniNumberIs("eMule", "Plus", 5);
+        thenThereIsNoIniNumber("eMule", "Hex");
+        thenThereIsNoIniNumber("eMule", "Huge");
     }
 
     @Test
-    void ipFilterLinesInTheirManySpellings() {
-        byte[] file = """
+    void shouldReadAUtf16IniFile() {
+        givenTheUtf16LeFile("﻿[x]\r\nk=é\r\n");
+
+        whenTheIniFileIsParsed();
+
+        thenTheIniValueIs("x", "k", "é");
+    }
+
+    @Test
+    void shouldReadIpFilterLinesInTheirManySpellings() {
+        givenTheAsciiFile("""
                 1.2.3.0-1.2.3.255,050,tight
                 4.0.0.0\t-\t4.0.0.255\t,\t60\t,\ttabs
                 010.000.000.008 - 010.000.000.009 , 0 , not octal
@@ -145,37 +210,61 @@ class TextFormatsEdgeCaseTest {
                 1000.0.0.0 - 1000.0.0.1 , 0 , four digits
                 // comment 9.9.9.9 - 9.9.9.9
                 255.255.255.0 - 255.255.255.255 , 7 , last
-                """.getBytes(US_ASCII);
+                """);
 
-        assertThat(IpFilterDat.read(file, "ipfilter.dat"))
-                .containsExactly(
-                        new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 50, "tight"),
-                        new Range(Ipv4.of(4, 0, 0, 0), Ipv4.of(4, 0, 0, 255), 60, "tabs"),
-                        new Range(Ipv4.of(10, 0, 0, 8), Ipv4.of(10, 0, 0, 9), 0, "not octal"),
-                        new Range(Ipv4.of(255, 255, 255, 0), Ipv4.of(255, 255, 255, 255), 7, "last"));
+        whenTheIpFilterIsRead("ipfilter.dat");
+
+        thenTheRangesReadAre(
+                new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 50, "tight"),
+                new Range(Ipv4.of(4, 0, 0, 0), Ipv4.of(4, 0, 0, 255), 60, "tabs"),
+                new Range(Ipv4.of(10, 0, 0, 8), Ipv4.of(10, 0, 0, 9), 0, "not octal"),
+                new Range(Ipv4.of(255, 255, 255, 0), Ipv4.of(255, 255, 255, 255), 7, "last"));
     }
 
     @Test
-    void peerGuardianListsInEveryForm() {
-        byte[] text = "Some: evil: corp:1.2.3.0-1.2.3.255\n".getBytes(UTF_8);
-        byte[] latin1 = HEX.parseHex("ffffffff503242" + "01" + "e900" + "05000000" + "050000ff");
-        byte[] truncated = HEX.parseHex("ffffffff503242" + "02" + "4100" + "05000000" + "050000ff" + "4200" + "0600");
-        byte[] version3 = HEX.parseHex("ffffffff503242" + "03" + "4100" + "05000000" + "050000ff");
+    void shouldReadAPeerGuardianTextListWithColonsInTheDescription() {
+        givenTheUtf8File("Some: evil: corp:1.2.3.0-1.2.3.255\n");
 
-        assertThat(IpFilterDat.read(text, "guarding.p2p"))
-                .containsExactly(new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 100, "Some: evil: corp"));
-        assertThat(IpFilterDat.read(latin1, "x.p2b"))
-                .extracting(Range::description)
-                .containsExactly("é");
-        assertThat(IpFilterDat.read(truncated, "x.p2b"))
-                .extracting(Range::description)
-                .containsExactly("A");
-        assertThat(IpFilterDat.read(version3, "x.p2b")).isEmpty();
+        whenTheIpFilterIsRead("guarding.p2p");
+
+        thenTheRangesReadAre(new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 100, "Some: evil: corp"));
+    }
+
+    @Test
+    void shouldReadALatin1PeerGuardianBinaryList() {
+        givenTheHexFile("ffffffff503242" + "01" + "e900" + "05000000" + "050000ff");
+
+        whenTheIpFilterIsRead("x.p2b");
+
+        thenTheDescriptionsReadAre("é");
+    }
+
+    @Test
+    void shouldReadATruncatedPeerGuardianBinaryListUpToItsLastWholeRange() {
+        givenTheHexFile("ffffffff503242" + "02" + "4100" + "05000000" + "050000ff" + "4200" + "0600");
+
+        whenTheIpFilterIsRead("x.p2b");
+
+        thenTheDescriptionsReadAre("A");
+    }
+
+    @Test
+    void shouldIgnoreAnUnknownVersionOfPeerGuardianBinaryList() {
+        givenTheHexFile("ffffffff503242" + "03" + "4100" + "05000000" + "050000ff");
+
+        whenTheIpFilterIsRead("x.p2b");
+
+        thenNoRangesAreRead();
     }
 
     @Property
-    void ipFilterRangesReadBack(@ForAll("ranges") List<Range> ranges) {
-        assertThat(IpFilterDat.read(IpFilterDat.write(ranges), "ipfilter.dat")).isEqualTo(ranges);
+    void shouldReadBackTheIpFilterRangesItWrites(@ForAll("ranges") List<Range> written) {
+        givenTheRanges(written);
+        givenTheRangesWritten();
+
+        whenTheIpFilterIsRead("ipfilter.dat");
+
+        thenTheRangesReadAreTheOnesWritten();
     }
 
     @Provide
@@ -212,21 +301,147 @@ class TextFormatsEdgeCaseTest {
     }
 
     @Test
-    void aSectionLineMayEndWithAComment() {
-        IniFile ini =
-                IniFile.parse("[eMule]\nNick=a\n[Proxy] ;the proxy\nProxyName=h\n[a]b]\nk=v\n".getBytes(US_ASCII));
+    void shouldLetASectionLineEndWithAComment() {
+        givenTheAsciiFile("[eMule]\nNick=a\n[Proxy] ;the proxy\nProxyName=h\n[a]b]\nk=v\n");
 
-        assertThat(ini.get("Proxy", "ProxyName")).contains("h");
-        assertThat(ini.get("eMule", "ProxyName")).isEmpty();
-        assertThat(ini.get("a]b", "k")).contains("v");
-        assertThat(ini.sections()).containsExactly("eMule", "Proxy", "a]b");
+        whenTheIniFileIsParsed();
+
+        thenTheIniValueIs("Proxy", "ProxyName", "h");
+        thenThereIsNoIniValue("eMule", "ProxyName");
+        thenTheIniValueIs("a]b", "k", "v");
+        thenTheIniSectionsAre("eMule", "Proxy", "a]b");
     }
 
     @Test
-    void aLevelOfMoreThanThreeDigitsUsesTheFirstThree() {
-        byte[] file = "001.002.003.000 - 001.002.003.255 , 0127 , Long level\n".getBytes(US_ASCII);
+    void shouldUseTheFirstThreeDigitsOfALongerLevel() {
+        givenTheAsciiFile("001.002.003.000 - 001.002.003.255 , 0127 , Long level\n");
 
-        assertThat(IpFilterDat.read(file, "ipfilter.dat"))
-                .containsExactly(new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 12, "Long level"));
+        whenTheIpFilterIsRead("ipfilter.dat");
+
+        thenTheRangesReadAre(new Range(Ipv4.of(1, 2, 3, 0), Ipv4.of(1, 2, 3, 255), 12, "Long level"));
+    }
+
+    private void givenTheFile(byte[] content) {
+        this.file = content;
+    }
+
+    private void givenTheHexFile(String hex) {
+        this.file = HEX.parseHex(hex);
+    }
+
+    private void givenTheAsciiFile(String text) {
+        this.file = text.getBytes(US_ASCII);
+    }
+
+    private void givenTheUtf8File(String text) {
+        this.file = text.getBytes(UTF_8);
+    }
+
+    private void givenTheUtf16LeFile(String text) {
+        this.file = text.getBytes(UTF_16LE);
+    }
+
+    private void givenTheLines(List<String> written) {
+        this.lines = written;
+    }
+
+    private void givenTheLinesWritten() {
+        this.file = TextFiles.writeLines(this.lines);
+    }
+
+    private void givenATextFileWithTheLines(String... written) {
+        this.file = TextFiles.writeLines(List.of(written));
+    }
+
+    private void givenTheStaticServers(List<StaticServer> written) {
+        this.staticServers = written;
+    }
+
+    private void givenTheStaticServersWritten() {
+        this.file = TextFiles.writeStaticServers(this.staticServers);
+    }
+
+    private void givenTheRanges(List<Range> written) {
+        this.ranges = written;
+    }
+
+    private void givenTheRangesWritten() {
+        this.file = IpFilterDat.write(this.ranges);
+    }
+
+    private void whenTheLinesAreRead() {
+        this.linesRead = TextFiles.lines(this.file);
+    }
+
+    private void whenTheStaticServersAreRead() {
+        this.staticServersRead = TextFiles.staticServers(this.file);
+    }
+
+    private void whenTheIpFilterIsRead(String name) {
+        this.rangesRead = IpFilterDat.read(this.file, name);
+    }
+
+    private void whenTheIniFileIsParsed() {
+        this.ini = IniFile.parse(this.file);
+    }
+
+    private void thenTheLinesReadAre(String... expected) {
+        assertThat(this.linesRead).containsExactly(expected);
+    }
+
+    private void thenNoLinesAreRead() {
+        assertThat(this.linesRead).isEmpty();
+    }
+
+    private void thenTheOnlyLineReadStartsWith(String start) {
+        assertThat(this.linesRead).singleElement().asString().startsWith(start);
+    }
+
+    private void thenTheLinesReadAreTheOnesWritten() {
+        assertThat(this.linesRead).isEqualTo(this.lines);
+    }
+
+    private void thenTheStaticServersReadAre(StaticServer... expected) {
+        assertThat(this.staticServersRead).containsExactly(expected);
+    }
+
+    private void thenTheStaticServersReadAreTheOnesWritten() {
+        assertThat(this.staticServersRead).isEqualTo(this.staticServers);
+    }
+
+    private void thenTheRangesReadAre(Range... expected) {
+        assertThat(this.rangesRead).containsExactly(expected);
+    }
+
+    private void thenTheDescriptionsReadAre(String... descriptions) {
+        assertThat(this.rangesRead).extracting(Range::description).containsExactly(descriptions);
+    }
+
+    private void thenNoRangesAreRead() {
+        assertThat(this.rangesRead).isEmpty();
+    }
+
+    private void thenTheRangesReadAreTheOnesWritten() {
+        assertThat(this.rangesRead).isEqualTo(this.ranges);
+    }
+
+    private void thenTheIniValueIs(String section, String key, String value) {
+        assertThat(this.ini.get(section, key)).contains(value);
+    }
+
+    private void thenThereIsNoIniValue(String section, String key) {
+        assertThat(this.ini.get(section, key)).isEmpty();
+    }
+
+    private void thenTheIniNumberIs(String section, String key, long value) {
+        assertThat(this.ini.getLong(section, key)).hasValue(value);
+    }
+
+    private void thenThereIsNoIniNumber(String section, String key) {
+        assertThat(this.ini.getLong(section, key)).isEmpty();
+    }
+
+    private void thenTheIniSectionsAre(String... sections) {
+        assertThat(this.ini.sections()).containsExactly(sections);
     }
 }

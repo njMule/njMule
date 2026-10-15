@@ -48,10 +48,29 @@ class EmuleImportDryRunTest {
     @TempDir
     Path ours;
 
+    private Path config;
+    private EmuleImporter.Target target;
+    private ImportReport report;
+    private Map<ImportReport.Outcome, Long> counts;
+
     @Test
-    void everyFileOfTheProfileIsReadable() throws Exception {
-        Path config = Path.of(System.getenv("NJMULE_EMULE_CONFIG"));
-        EmuleImporter.Target refusing = new EmuleImporter.Target() {
+    void shouldReadEveryFileOfTheProfile() throws Exception {
+        givenTheEmuleProfileOfTheEnvironment();
+        givenATargetThatRefusesEveryChange();
+
+        whenADryRunImportsEverything();
+
+        thenNoItemFailed();
+        thenSomeItemsWouldBeImported();
+        thenNothingIsWrittenIntoOurConfiguration();
+    }
+
+    private void givenTheEmuleProfileOfTheEnvironment() {
+        this.config = Path.of(System.getenv("NJMULE_EMULE_CONFIG"));
+    }
+
+    private void givenATargetThatRefusesEveryChange() {
+        this.target = new EmuleImporter.Target() {
             @Override
             public Path configDir() {
                 return EmuleImportDryRunTest.this.ours;
@@ -92,18 +111,28 @@ class EmuleImportDryRunTest {
                 return fail("a dry run changes nothing");
             }
         };
+    }
 
-        ImportReport report = new EmuleImporter(
-                        config, new ImportOptions(true, true, true), refusing, EmuleImporter::isEmuleRunning)
+    private void whenADryRunImportsEverything() throws Exception {
+        this.report = new EmuleImporter(
+                        this.config, new ImportOptions(true, true, true), this.target, EmuleImporter::isEmuleRunning)
                 .run();
-
-        Map<ImportReport.Outcome, Long> counts = report.items().stream()
+        this.counts = this.report.items().stream()
                 .collect(Collectors.groupingBy(ImportReport.Item::outcome, Collectors.counting()));
-        System.out.println("[private-fixtures] import dry run: " + counts);
-        assertThat(report.items())
+        System.out.println("[private-fixtures] import dry run: " + this.counts);
+    }
+
+    private void thenNoItemFailed() {
+        assertThat(this.report.items())
                 .filteredOn(i -> i.outcome() == ImportReport.Outcome.FAILED)
                 .isEmpty();
-        assertThat(counts).containsKey(ImportReport.Outcome.WOULD_IMPORT);
+    }
+
+    private void thenSomeItemsWouldBeImported() {
+        assertThat(this.counts).containsKey(ImportReport.Outcome.WOULD_IMPORT);
+    }
+
+    private void thenNothingIsWrittenIntoOurConfiguration() throws Exception {
         try (var files = Files.list(this.ours)) {
             assertThat(files.count()).isZero();
         }

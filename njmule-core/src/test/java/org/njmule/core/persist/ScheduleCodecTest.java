@@ -40,45 +40,74 @@ class ScheduleCodecTest {
     @TempDir
     Path dir;
 
-    @Test
-    void aMalformedEscapeCostsOnlyItsLine() throws Exception {
-        Path file = this.dir.resolve(ScheduleCodec.FILE_NAME);
-        Files.writeString(file, "rule.1.name=Night\\u00\nrule.1.start=01:00\nrule.2.name=Day\nrule.2.start=09:00\n");
+    private Path file;
+    private Schedule schedule;
+    private Schedule loaded;
 
-        assertThat(ScheduleCodec.load(file).rules())
-                .extracting(Schedule.Rule::name)
-                .containsExactly("", "Day");
+    @Test
+    void shouldLoseOnlyTheLineOfAMalformedEscape() throws Exception {
+        givenTheFile("rule.1.name=Night\\u00\nrule.1.start=01:00\nrule.2.name=Day\nrule.2.start=09:00\n");
+
+        whenTheFileIsLoaded();
+
+        thenTheRulesAreNamed("", "Day");
     }
 
     @Property(tries = 200)
-    void ruleNamesSurviveTheFile(@ForAll("names") List<String> names) throws IOException {
-        Path dir = Files.createTempDirectory("schedule");
+    void shouldKeepTheRuleNamesThroughTheFile(@ForAll("names") List<String> names) throws IOException {
+        givenAScheduleWithRulesNamed(names);
+
+        whenTheScheduleIsSavedAndLoadedBack();
+
+        thenTheLoadedScheduleIsTheSame();
+    }
+
+    private void givenTheFile(String content) throws IOException {
+        this.file = this.dir.resolve(ScheduleCodec.FILE_NAME);
+        Files.writeString(this.file, content);
+    }
+
+    private void givenAScheduleWithRulesNamed(List<String> names) {
+        this.schedule = new Schedule(names.stream()
+                .map(name -> new Schedule.Rule(
+                        name,
+                        true,
+                        Set.of(DayOfWeek.MONDAY),
+                        LocalTime.of(1, 0),
+                        LocalTime.of(2, 0),
+                        OptionalInt.of(10),
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OptionalInt.empty()))
+                .toList());
+    }
+
+    private void whenTheFileIsLoaded() throws IOException {
+        this.loaded = ScheduleCodec.load(this.file);
+    }
+
+    private void whenTheScheduleIsSavedAndLoadedBack() throws IOException {
+        Path folder = Files.createTempDirectory("schedule");
         try {
-            Path file = dir.resolve(ScheduleCodec.FILE_NAME);
-            Schedule schedule = new Schedule(names.stream()
-                    .map(name -> new Schedule.Rule(
-                            name,
-                            true,
-                            Set.of(DayOfWeek.MONDAY),
-                            LocalTime.of(1, 0),
-                            LocalTime.of(2, 0),
-                            OptionalInt.of(10),
-                            OptionalInt.empty(),
-                            OptionalInt.empty(),
-                            OptionalInt.empty(),
-                            OptionalInt.empty(),
-                            OptionalInt.empty()))
-                    .toList());
-
-            ScheduleCodec.save(file, schedule);
-
-            assertThat(ScheduleCodec.load(file)).isEqualTo(schedule);
+            Path saved = folder.resolve(ScheduleCodec.FILE_NAME);
+            ScheduleCodec.save(saved, this.schedule);
+            this.loaded = ScheduleCodec.load(saved);
         } finally {
             for (String name : List.of(ScheduleCodec.FILE_NAME, ScheduleCodec.FILE_NAME + AtomicFiles.BAK_SUFFIX)) {
-                Files.deleteIfExists(dir.resolve(name));
+                Files.deleteIfExists(folder.resolve(name));
             }
-            Files.delete(dir);
+            Files.delete(folder);
         }
+    }
+
+    private void thenTheRulesAreNamed(String... names) {
+        assertThat(this.loaded.rules()).extracting(Schedule.Rule::name).containsExactly(names);
+    }
+
+    private void thenTheLoadedScheduleIsTheSame() {
+        assertThat(this.loaded).isEqualTo(this.schedule);
     }
 
     // No lone surrogate: UTF-8 cannot keep one.

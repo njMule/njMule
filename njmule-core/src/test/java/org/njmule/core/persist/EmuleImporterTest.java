@@ -31,6 +31,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -40,6 +41,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
@@ -69,6 +73,16 @@ class EmuleImporterTest {
     private SyntheticEmuleProfile emule;
     private Path ours;
     private final Recorder target = new Recorder();
+    private Path missingProfile;
+    private boolean emuleRunning;
+    private SortedMap<String, String> emuleBefore;
+    private SortedMap<String, String> oursBefore;
+    private ImportReport report;
+    private String preferencesIni;
+    private Preferences preferences;
+    private int colour;
+    private int filesApplied;
+    private boolean identityApplied;
 
     /** Records what the importer asks for. */
     private final class Recorder implements EmuleImporter.Target {
@@ -156,93 +170,75 @@ class EmuleImporterTest {
     }
 
     @Test
-    void aDryRunReportsEverythingAndChangesNothing() throws IOException {
-        SortedMap<String, String> before = this.emule.fingerprint();
+    void shouldReportEverythingAndChangeNothingOnADryRun() throws IOException {
+        givenAFingerprintOfTheEmuleProfile();
 
-        ImportReport report = run(new ImportOptions(true, true, true), false);
+        whenTheProfileIsImported(new ImportOptions(true, true, true));
 
-        assertThat(report.dryRun()).isTrue();
-        Map<String, Outcome> outcomes = outcomes(report);
-        assertThat(outcomes)
-                .containsEntry("preferences.ini", Outcome.WOULD_IMPORT)
-                .containsEntry("server.met", Outcome.WOULD_IMPORT)
-                .containsEntry("nodes.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("known.met", Outcome.WOULD_IMPORT)
-                .containsEntry("shareddir.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("sharedfiles.dat", Outcome.SKIPPED)
-                .containsEntry("ipfilter.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("cancelled.met", Outcome.WOULD_IMPORT)
-                .containsEntry("emfriends.met", Outcome.MISSING)
-                .containsEntry("key_index.dat", Outcome.SKIPPED)
-                .containsEntry("preferences.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("cryptkey.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("clients.met", Outcome.WOULD_IMPORT)
-                .containsEntry("preferencesKad.dat", Outcome.WOULD_IMPORT)
-                .containsEntry("001.part.met", Outcome.WOULD_IMPORT)
-                .containsEntry("002.part.met", Outcome.WOULD_IMPORT);
-        assertThat(detail(report, "server.met")).isEqualTo("2 servers");
-        assertThat(detail(report, "nodes.dat")).isEqualTo("3 Kad contacts");
-        assertThat(this.target.untouched()).isTrue();
-        try (Stream<Path> left = Files.list(this.ours)) {
-            assertThat(left.count()).isZero();
-        }
-        assertThat(this.emule.fingerprint()).isEqualTo(before);
+        thenTheReportIsADryRun();
+        thenTheOutcomeOfIs("preferences.ini", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("server.met", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("nodes.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("known.met", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("shareddir.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("sharedfiles.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("ipfilter.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("cancelled.met", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("emfriends.met", Outcome.MISSING);
+        thenTheOutcomeOfIs("key_index.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("preferences.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("cryptkey.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("clients.met", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("preferencesKad.dat", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("001.part.met", Outcome.WOULD_IMPORT);
+        thenTheOutcomeOfIs("002.part.met", Outcome.WOULD_IMPORT);
+        thenTheDetailOfIs("server.met", "2 servers");
+        thenTheDetailOfIs("nodes.dat", "3 Kad contacts");
+        thenTheTargetIsUntouched();
+        thenNothingIsWrittenIntoOurDirectory();
+        thenTheEmuleProfileIsUnchanged();
     }
 
     @Test
-    void anImportTakesEverythingAndLeavesEmuleAlone() throws IOException {
-        SortedMap<String, String> before = this.emule.fingerprint();
+    void shouldTakeEverythingAndLeaveEmuleAlone() throws IOException {
+        givenAFingerprintOfTheEmuleProfile();
 
-        ImportReport report = run(new ImportOptions(false, true, true), false);
+        whenTheProfileIsImported(new ImportOptions(false, true, true));
 
-        Map<String, Outcome> outcomes = outcomes(report);
-        assertThat(outcomes)
-                .containsEntry("preferences.ini", Outcome.IMPORTED)
-                .containsEntry("server.met", Outcome.IMPORTED)
-                .containsEntry("preferences.dat", Outcome.IMPORTED)
-                .containsEntry("001.part.met", Outcome.IMPORTED);
-        assertThat(this.target.preferences.nick()).isEqualTo(SyntheticEmuleProfile.NICK);
-        assertThat(this.target.preferences.maxUploadKiBps()).isEqualTo(50);
-        assertThat(this.target.preferences.maxDownloadKiBps()).isZero();
-        assertThat(this.target.preferences.kadEnabled()).isFalse();
-        assertThat(this.target.preferences.rememberCancelledFiles()).isFalse();
-        assertThat(this.target.preferences.rememberDownloadedFiles()).isTrue();
-        assertThat(this.target.preferences.storeSearches()).isFalse();
-        assertThat(this.target.preferences.addDownloadsPaused()).isTrue();
-        assertThat(this.target.preferences.nextDownload()).isEqualTo(NextDownload.SAME_CATEGORY_FIRST);
-        assertThat(this.target.preferences.filterLanAddresses()).isFalse();
-        assertThat(this.target.preferences.messagesFromFriendsOnly()).isTrue();
-        assertThat(this.target.preferences.messageFilter()).isEqualTo("buy now|cheap");
-        assertThat(this.target.preferences.advancedSpamFilter())
-                .as("not in the profile")
-                .isTrue();
-        assertThat(this.target.preferences.newConnectionsPerFiveSeconds()).isEqualTo(35);
-        assertThat(this.target.preferences.uploadQueueSize()).isEqualTo(9000);
-        assertThat(this.target.preferences.tcpPort()).isEqualTo(Preferences.DEFAULT_TCP_PORT);
-        assertThat(this.target.servers).containsExactly(this.emule.config.resolve("server.met"));
-        assertThat(this.target.contacts).isEqualTo(3);
-        assertThat(this.target.known).isEqualTo(1);
-        assertThat(this.target.shared).containsExactly(this.emule.incoming, this.emule.shared);
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve("cancelled.met"))
-                .exists();
-        assertThat(this.ours.resolve("ipfilter.dat")).exists();
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        assertThat(pending.resolve("preferences.dat"))
-                .hasSameBinaryContentAs(this.emule.config.resolve("preferences.dat"));
-        assertThat(pending.resolve("cryptkey.dat")).exists();
-        assertThat(pending.resolve("clients.met")).exists();
-        assertThat(pending.resolve("preferencesKad.dat")).exists();
-        assertThat(PacketReader.of(Files.readAllBytes(pending.resolve("kadudpkey.dat")))
-                        .u32())
-                .isEqualTo(SyntheticEmuleProfile.KAD_UDP_KEY);
-        assertThat(this.emule.fingerprint()).isEqualTo(before);
+        thenTheOutcomeOfIs("preferences.ini", Outcome.IMPORTED);
+        thenTheOutcomeOfIs("server.met", Outcome.IMPORTED);
+        thenTheOutcomeOfIs("preferences.dat", Outcome.IMPORTED);
+        thenTheOutcomeOfIs("001.part.met", Outcome.IMPORTED);
+        thenTheNickIs(SyntheticEmuleProfile.NICK);
+        thenTheSpeedLimitsAre(50, 0);
+        thenKadIsOff();
+        thenOnlyTheDownloadedFilesAreRemembered();
+        thenSearchesAreNotStored();
+        thenDownloadsAreAddedPaused();
+        thenTheNextDownloadIs(NextDownload.SAME_CATEGORY_FIRST);
+        thenLanAddressesAreNotFiltered();
+        thenOnlyFriendsMaySendMessages();
+        thenTheMessageFilterIs("buy now|cheap");
+        thenTheAdvancedSpamFilterIsOnAsItIsNotInTheProfile();
+        thenTheConnectionLimitsAre(35, 9000);
+        thenTheTcpPortIs(Preferences.DEFAULT_TCP_PORT);
+        thenTheServersAreTakenFromTheEmuleFile("server.met");
+        thenTheKadContactsTakenAre(3);
+        thenTheKnownFilesTakenAre(1);
+        thenTheDirectoriesSharedAre(this.emule.incoming, this.emule.shared);
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
+        thenTheFileWaitsForTheNextStart("cancelled.met");
+        thenOurFileExists("ipfilter.dat");
+        thenThePendingIdentityHoldsTheEmuleFile("preferences.dat");
+        thenThePendingIdentityHolds("cryptkey.dat", "clients.met", "preferencesKad.dat");
+        thenThePendingKadUdpKeyIs(SyntheticEmuleProfile.KAD_UDP_KEY);
+        thenTheEmuleProfileIsUnchanged();
     }
 
     @Test
-    void categoriesKeepTheirNumbersPatternsAndAColourOfOurs() throws IOException {
-        Files.writeString(
-                this.emule.config.resolve("Category.ini"),
+    void shouldKeepTheNumbersAndPatternsOfTheCategoriesAndGiveThemAColourOfOurs() throws IOException {
+        givenTheEmuleFile(
+                "Category.ini",
                 String.join(
                         "\r\n",
                         "[General]",
@@ -263,27 +259,30 @@ class EmuleImporterTest {
                         "Color=16711680",
                         "AutoCat=ubuntu|debian"));
 
-        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
-        assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 3);
-        Category films = this.target.categories.getFirst();
-        assertThat(films.name()).isEqualTo("Films");
-        assertThat(films.incoming())
-                .as("eMule's incoming folder is not ours: our own takes its place")
-                .isEmpty();
-        assertThat(films.color()).as("red").isEqualTo(1);
-        assertThat(films.matches("Big Buck Bunny.MKV")).isTrue();
-        assertThat(this.target.categories.get(1).incoming()).contains(this.emule.shared);
-        assertThat(this.target.categories.get(1).color()).as("blue").isEqualTo(6);
-        assertThat(EmuleImporter.color(OptionalLong.of(0x808080))).as("grey").isZero();
-        assertThat(EmuleImporter.color(OptionalLong.of(0x00A5FF))).as("orange").isEqualTo(2);
+        thenTheOutcomeOfIs("Category.ini", Outcome.IMPORTED);
+        thenTheCategoryIdsTakenAre(1, 3);
+        thenTheCategoryIsNamed(0, "Films");
+        thenTheCategoryLeavesTheIncomingDirectoryOfEmuleOut(0);
+        thenTheCategoryHasTheColour(0, 1, "red");
+        thenTheCategoryMatches(0, "Big Buck Bunny.MKV");
+        thenTheCategoryHasTheIncomingDirectory(1, this.emule.shared);
+        thenTheCategoryHasTheColour(1, 6, "blue");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0x808080, 0, grey", "0x00A5FF, 2, orange"})
+    void shouldGiveAnEmuleColourOneOfOurs(String rgb, int expected, String name) {
+        whenTheEmuleColourIsMapped(rgb);
+
+        thenTheColourIs(expected, name);
     }
 
     @Test
-    void aCategoryWeCannotFullyRepresentIsShortenedNotLeftOut() throws IOException {
-        Files.writeString(
-                this.emule.config.resolve("Category.ini"),
+    void shouldShortenACategoryWeCannotFullyRepresentInsteadOfLeavingItOut() throws IOException {
+        givenTheEmuleFile(
+                "Category.ini",
                 String.join(
                         "\r\n",
                         "[Cat#1]",
@@ -296,315 +295,342 @@ class EmuleImporterTest {
                         "AutoCatAsRegularExpression=1",
                         ""));
 
-        ImportReport report = run(new ImportOptions(false, false, false), false);
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 2);
-        Category shortened = this.target.categories.getFirst();
-        assertThat(shortened.name()).hasSize(Category.MAX_NAME);
-        assertThat(shortened.comment()).hasSize(Category.MAX_COMMENT);
-        assertThat(shortened.patterns()).hasSize(Category.MAX_PATTERNS);
-        assertThat(this.target.categories.get(1).patterns()).isEmpty();
-        assertThat(detail(report, "Category.ini")).contains("2 categories", "Broken");
+        thenTheCategoryIdsTakenAre(1, 2);
+        thenTheNameCommentAndPatternsOfTheCategoryHaveTheLengths(
+                0, Category.MAX_NAME, Category.MAX_COMMENT, Category.MAX_PATTERNS);
+        thenTheCategoryHasNoPatterns(1);
+        thenTheDetailOfContains("Category.ini", "2 categories", "Broken");
     }
 
     @Test
-    void downloadsKeepOnlyTheCategoriesThatCameWithThem() throws IOException {
-        this.emule.putInCategory(1, 1);
-        this.emule.putInCategory(2, 2);
-        Files.writeString(this.emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
+    void shouldKeepOnlyTheCategoriesThatCameWithTheDownloads() throws IOException {
+        givenTheDownloadIsInCategory(1, 1);
+        givenTheDownloadIsInCategory(2, 2);
+        givenTheEmuleFile("Category.ini", "[Cat#1]\r\nTitle=Films\r\n");
 
-        run(new ImportOptions(false, false, true), false);
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
 
-        assertThat(this.target.adoptedCategories)
-                .containsEntry("001.part.met", 1)
-                .as("eMule's category 2 was not taken")
-                .containsEntry("002.part.met", Category.NONE);
-
-        this.target.ownCategories = true;
-        run(new ImportOptions(false, false, true), false);
-
-        assertThat(this.target.adoptedCategories).containsEntry("001.part.met", Category.NONE);
+        thenTheDownloadIsAdoptedInCategory("001.part.met", 1);
+        thenTheDownloadIsAdoptedInCategory("002.part.met", Category.NONE, "eMule's category 2 was not taken");
     }
 
     @Test
-    void onlyTheCanonicalSectionOfACategoryCounts() throws IOException {
-        Files.writeString(
-                this.emule.config.resolve("Category.ini"),
+    void shouldAdoptTheDownloadsWithoutCategoryWhenTheTargetKeepsItsOwnCategories() throws IOException {
+        givenTheDownloadIsInCategory(1, 1);
+        givenTheDownloadIsInCategory(2, 2);
+        givenTheEmuleFile("Category.ini", "[Cat#1]\r\nTitle=Films\r\n");
+        givenAPreviousImport(new ImportOptions(false, false, true));
+        givenTheTargetKeepsItsOwnCategories();
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheDownloadIsAdoptedInCategory("001.part.met", Category.NONE);
+    }
+
+    @Test
+    void shouldCountOnlyTheCanonicalSectionOfACategory() throws IOException {
+        givenTheEmuleFile(
+                "Category.ini",
                 String.join(
                         "\r\n", "[Cat#1]", "Title=Films", "[Cat#01]", "Title=Copy", "[Cat# 2]", "Title=Spaced", ""));
 
-        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
-        assertThat(this.target.categories).extracting(Category::name).containsExactly("Films");
+        thenTheOutcomeOfIs("Category.ini", Outcome.IMPORTED);
+        thenTheCategoryNamesTakenAre("Films");
     }
 
     @Test
-    void ourOwnFilesAreKept() throws IOException {
-        Files.writeString(this.ours.resolve("ipfilter.dat"), "");
-        Files.writeString(this.ours.resolve("cancelled.met"), "");
+    void shouldKeepOurOwnFiles() throws IOException {
+        givenOurFile("ipfilter.dat", "");
+        givenOurFile("cancelled.met", "");
 
-        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes)
-                .containsEntry("ipfilter.dat", Outcome.SKIPPED)
-                .containsEntry("cancelled.met", Outcome.SKIPPED);
-        assertThat(this.ours.resolve("ipfilter.dat")).isEmptyFile();
+        thenTheOutcomeOfIs("ipfilter.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("cancelled.met", Outcome.SKIPPED);
+        thenOurFileIsEmpty("ipfilter.dat");
     }
 
     @Test
-    void filesTheEngineRewritesTakeItsPlaceAtTheNextStart() throws IOException {
-        Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
-
-        ImportReport report = run(new ImportOptions(false, false, false), false);
-
-        assertThat(detail(report, "cancelled.met")).endsWith("from the next start");
-        assertThat(this.ours.resolve("cancelled.met")).doesNotExist();
+    void shouldPutTheFilesTheEngineRewritesInTheirPlaceAtTheNextStart() throws IOException {
+        givenTheEmuleFile("staticservers.dat", "10.1.2.3:4661,1,Static\r\n");
+        givenAPreviousImport(new ImportOptions(false, false, false));
+        givenTheImportPutOffTheFileToTheNextStart("cancelled.met");
         // What the engine writes before it stops.
-        Files.writeString(this.ours.resolve("staticservers.dat"), "");
+        givenOurFile("staticservers.dat", "");
 
-        assertThat(EmuleImporter.applyPendingFiles(this.ours)).isEqualTo(2);
+        whenThePendingFilesAreApplied();
 
-        assertThat(this.ours.resolve("cancelled.met"))
-                .hasSameBinaryContentAs(this.emule.config.resolve("cancelled.met"));
-        assertThat(this.ours.resolve("staticservers.dat"))
-                .hasSameBinaryContentAs(this.emule.config.resolve("staticservers.dat"));
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES)).doesNotExist();
-        assertThat(EmuleImporter.applyPendingFiles(this.ours)).isZero();
+        thenTheFilesAppliedAre(2);
+        thenOurFileIsTheEmuleOne("cancelled.met");
+        thenOurFileIsTheEmuleOne("staticservers.dat");
+        thenNoFileWaitsForTheNextStart();
     }
 
     @Test
-    void aSecondImportReplacesTheFilesWaitingAndKeepsOurOwn() throws IOException {
-        Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
-        Files.writeString(this.ours.resolve("staticservers.dat"), "");
-        run(new ImportOptions(false, false, false), false);
+    void shouldApplyThePendingFilesOnlyOnce() throws IOException {
+        givenTheEmuleFile("staticservers.dat", "10.1.2.3:4661,1,Static\r\n");
+        givenAPreviousImport(new ImportOptions(false, false, false));
+        givenOurFile("staticservers.dat", "");
+        givenThePendingFilesWereApplied();
+
+        whenThePendingFilesAreApplied();
+
+        thenTheFilesAppliedAre(0);
+    }
+
+    @Test
+    void shouldReplaceTheFilesWaitingAndKeepOurOwnOnASecondImport() throws IOException {
+        givenTheEmuleFile("staticservers.dat", "10.1.2.3:4661,1,Static\r\n");
+        givenOurFile("staticservers.dat", "");
+        givenAPreviousImport(new ImportOptions(false, false, false));
         // Written by the engine after the first import, so not of its own before it.
-        Files.writeString(this.ours.resolve("cancelled.met"), "");
+        givenOurFile("cancelled.met", "");
 
-        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes)
-                .containsEntry("cancelled.met", Outcome.IMPORTED)
-                .containsEntry("staticservers.dat", Outcome.SKIPPED);
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve("staticservers.dat"))
-                .doesNotExist();
+        thenTheOutcomeOfIs("cancelled.met", Outcome.IMPORTED);
+        thenTheOutcomeOfIs("staticservers.dat", Outcome.SKIPPED);
+        thenTheFileDoesNotWaitForTheNextStart("staticservers.dat");
     }
 
     @Test
-    void identityAndDownloadsNeedAsking() throws IOException {
-        ImportReport report = run(new ImportOptions(false, false, false), false);
+    void shouldTakeTheIdentityAndTheDownloadsOnlyWhenAsked() throws IOException {
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes(report))
-                .containsEntry("preferences.dat", Outcome.SKIPPED)
-                .containsEntry("cryptkey.dat", Outcome.SKIPPED)
-                .containsEntry("Temp", Outcome.SKIPPED)
-                .doesNotContainKey("001.part.met");
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-        assertThat(this.target.adopted).isEmpty();
+        thenTheOutcomeOfIs("preferences.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("cryptkey.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("Temp", Outcome.SKIPPED);
+        thenThereIsNoOutcomeFor("001.part.met");
+        thenNoIdentityWaits();
+        thenNoDownloadIsAdopted();
     }
 
     @Test
-    void aRunningEmuleKeepsItsIdentityAndActiveDownloads() throws IOException {
-        ImportReport report = run(new ImportOptions(false, true, true), true);
+    void shouldLeaveARunningEmuleItsIdentityAndActiveDownloads() throws IOException {
+        givenEmuleIsRunning();
 
-        assertThat(outcomes(report))
-                .containsEntry("preferences.dat", Outcome.SKIPPED)
-                .containsEntry("001.part.met", Outcome.IMPORTED)
-                .containsEntry("002.part.met", Outcome.SKIPPED);
-        assertThat(detail(report, "002.part.met")).contains("pause it in eMule");
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-        assertThat(this.target.adopted).containsExactly("001.part.met");
+        whenTheProfileIsImported(new ImportOptions(false, true, true));
+
+        thenTheOutcomeOfIs("preferences.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("001.part.met", Outcome.IMPORTED);
+        thenTheOutcomeOfIs("002.part.met", Outcome.SKIPPED);
+        thenTheDetailOfContains("002.part.met", "pause it in eMule");
+        thenNoIdentityWaits();
+        thenTheDownloadsAdoptedAre("001.part.met");
     }
 
     @Test
-    void theUserHashComesOnlyWithItsKey() throws IOException {
-        Files.writeString(this.emule.config.resolve("cryptkey.dat"), "not base64 at all!");
+    void shouldTakeTheUserHashOnlyWithItsKey() throws IOException {
+        givenTheEmuleFile("cryptkey.dat", "not base64 at all!");
 
-        ImportReport report = run(new ImportOptions(false, true, false), false);
+        whenTheProfileIsImported(new ImportOptions(false, true, false));
 
-        assertThat(outcomes(report)).containsEntry("cryptkey.dat", Outcome.FAILED);
-        assertThat(report.items()).anyMatch(i -> i.detail().contains("the user hash and the key are taken only"));
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+        thenTheOutcomeOfIs("cryptkey.dat", Outcome.FAILED);
+        thenADetailContains("the user hash and the key are taken only");
+        thenNoIdentityWaits();
     }
 
     @Test
-    void brokenFilesAreReportedAndTheRestGoesOn() throws IOException {
-        Files.write(this.emule.config.resolve("server.met"), new byte[] {(byte) 0xE0, 1});
-        Files.delete(this.emule.config.resolve("preferences.ini"));
+    void shouldReportBrokenFilesAndGoOnWithTheRest() throws IOException {
+        givenTheEmuleFile("server.met", new byte[] {(byte) 0xE0, 1});
+        givenTheEmuleFileIsDeleted("preferences.ini");
 
-        ImportReport report = run(new ImportOptions(false, false, false), false);
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
 
-        assertThat(outcomes(report))
-                .containsEntry("server.met", Outcome.FAILED)
-                .containsEntry("preferences.ini", Outcome.MISSING)
-                .containsEntry("nodes.dat", Outcome.IMPORTED);
-        assertThat(this.target.servers).isEmpty();
+        thenTheOutcomeOfIs("server.met", Outcome.FAILED);
+        thenTheOutcomeOfIs("preferences.ini", Outcome.MISSING);
+        thenTheOutcomeOfIs("nodes.dat", Outcome.IMPORTED);
+        thenNoServersAreTaken();
     }
 
     @Test
-    void aPendingIdentityWaitsUntilEmuleIsClosed() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
+    void shouldKeepThePendingIdentityWaitingWhileEmuleRuns() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenEmuleIsRunning();
 
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> true)).isFalse();
-        assertThat(pending).isDirectory();
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
+        whenThePendingIdentityIsApplied();
 
-        assertThat(pending).doesNotExist();
-        assertThat(this.ours.resolve("preferences.dat"))
-                .hasSameBinaryContentAs(this.emule.config.resolve("preferences.dat"));
-        assertThat(this.ours.resolve("kadudpkey.dat")).exists();
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isFalse();
+        thenThePendingIdentityIsNotApplied();
+        thenThePendingIdentityStillWaits();
     }
 
     @Test
-    void anIdentityImportedTwiceBeforeARestartIsStillTaken() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        run(new ImportOptions(false, true, false), false);
+    void shouldApplyThePendingIdentityOnceEmuleIsClosed() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenEmuleIsRunning();
+        givenAnAttemptToApplyThePendingIdentity();
+        givenEmuleIsClosed();
 
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
+        whenThePendingIdentityIsApplied();
 
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-        assertThat(this.ours.resolve("preferences.dat"))
-                .hasSameBinaryContentAs(this.emule.config.resolve("preferences.dat"));
+        thenThePendingIdentityIsApplied();
+        thenNoIdentityWaits();
+        thenOurFileIsTheEmuleOne("preferences.dat");
+        thenOurFileExists("kadudpkey.dat");
     }
 
     @Test
-    void leftoversInThePendingIdentityDoNotStopTheStart() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        Files.writeString(pending.resolve("preferences.dat.bak"), "older");
-        Files.writeString(pending.resolve("cryptkey.dat.tmp"), "interrupted");
+    void shouldApplyThePendingIdentityOnlyOnce() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenAnAttemptToApplyThePendingIdentity();
+
+        whenThePendingIdentityIsApplied();
+
+        thenThePendingIdentityIsNotApplied();
+    }
+
+    @Test
+    void shouldStillTakeAnIdentityImportedTwiceBeforeARestart() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenAPreviousImport(new ImportOptions(false, true, false));
+
+        whenThePendingIdentityIsApplied();
+
+        thenThePendingIdentityIsApplied();
+        thenNoIdentityWaits();
+        thenOurFileIsTheEmuleOne("preferences.dat");
+    }
+
+    @Test
+    void shouldNotLetLeftoversInThePendingIdentityStopTheStart() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenALeftoverInThePendingIdentity("preferences.dat.bak", "older");
+        givenALeftoverInThePendingIdentity("cryptkey.dat.tmp", "interrupted");
         // A folder among the leftovers must not stop the removal of the files listed after it.
-        Files.writeString(Files.createDirectories(pending.resolve("a folder")).resolve("x"), "x");
+        givenAFolderLeftInThePendingIdentity("a folder");
 
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
+        whenThePendingIdentityIsApplied();
 
-        assertThat(pending).doesNotExist();
-        assertThat(this.ours.resolve("cryptkey.dat")).hasSameBinaryContentAs(this.emule.config.resolve("cryptkey.dat"));
+        thenThePendingIdentityIsApplied();
+        thenNoIdentityWaits();
+        thenOurFileIsTheEmuleOne("cryptkey.dat");
     }
 
     @Test
-    void anotherProfileReplacesTheWholePendingIdentity() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        SyntheticEmuleProfile other = SyntheticEmuleProfile.create(this.dir.resolve("other"));
-        Files.delete(other.config.resolve("clients.met"));
-        Files.delete(other.config.resolve("preferencesKad.dat"));
-        Path ini = other.config.resolve("preferences.ini");
-        Files.writeString(
-                ini,
-                Files.readString(ini, StandardCharsets.ISO_8859_1).replace("KadUDPKey=", "Unused="),
-                StandardCharsets.ISO_8859_1);
+    void shouldReplaceTheWholePendingIdentityWithThatOfAnotherProfile() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenAnotherEmuleProfile();
+        givenTheEmuleFileIsDeleted("clients.met");
+        givenTheEmuleFileIsDeleted("preferencesKad.dat");
+        givenTheEmulePreferencesWithTextReplaced("KadUDPKey=", "Unused=");
 
-        new EmuleImporter(other.config, new ImportOptions(false, true, false), this.target, () -> false).run();
+        whenTheProfileIsImported(new ImportOptions(false, true, false));
 
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        assertThat(pending.resolve("preferences.dat")).hasSameBinaryContentAs(other.config.resolve("preferences.dat"));
-        assertThat(pending.resolve("clients.met")).doesNotExist();
-        assertThat(pending.resolve("preferencesKad.dat")).doesNotExist();
-        assertThat(pending.resolve("kadudpkey.dat")).doesNotExist();
+        thenThePendingIdentityHoldsTheEmuleFile("preferences.dat");
+        thenThePendingIdentityLacks("clients.met", "preferencesKad.dat", "kadudpkey.dat");
     }
 
     @Test
-    void aUserHashWithoutItsKeyIsNotApplied() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        Files.delete(pending.resolve("cryptkey.dat"));
+    void shouldNotApplyAUserHashWithoutItsKey() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenThePendingIdentityLosesItsFile("cryptkey.dat");
 
-        assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isFalse();
+        whenThePendingIdentityIsApplied();
 
-        assertThat(this.ours.resolve("preferences.dat")).doesNotExist();
-        assertThat(pending).doesNotExist();
+        thenThePendingIdentityIsNotApplied();
+        thenOurFileDoesNotExist("preferences.dat");
+        thenNoIdentityWaits();
     }
 
     @Test
-    void aDryRunKeepsThePendingIdentity() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        Files.delete(this.emule.config.resolve("cryptkey.dat"));
+    void shouldKeepThePendingIdentityOnADryRun() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenTheEmuleFileIsDeleted("cryptkey.dat");
 
-        run(new ImportOptions(true, true, false), false);
+        whenTheProfileIsImported(new ImportOptions(true, true, false));
 
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        assertThat(pending.resolve("preferences.dat")).exists();
-        assertThat(pending.resolve("cryptkey.dat")).exists();
+        thenThePendingIdentityHolds("preferences.dat", "cryptkey.dat");
     }
 
     @Test
-    void preferencesTakeOnlyUsableValues() {
-        IniFile ini = IniFile.parse(String.join(
-                        "\n",
-                        "[eMule]",
-                        "Nick=" + "x".repeat(Preferences.MAX_NICK_LENGTH + 1),
-                        "MaxUpload=-1",
-                        "MaxDownload=0",
-                        "MaxConnections=999999",
-                        "DownloadCapacity=2048",
-                        "UploadCapacityNew=-1",
-                        "CheckDiskspace=1",
-                        "MinFreeDiskSpace=1073741824",
-                        "CryptLayerRequired=1")
-                .getBytes(StandardCharsets.US_ASCII));
+    void shouldTakeOnlyUsableValuesOfThePreferences() {
+        givenAnEmulePreferencesIni(String.join(
+                "\n",
+                "[eMule]",
+                "Nick=" + "x".repeat(Preferences.MAX_NICK_LENGTH + 1),
+                "MaxUpload=-1",
+                "MaxDownload=0",
+                "MaxConnections=999999",
+                "DownloadCapacity=2048",
+                "UploadCapacityNew=-1",
+                "CheckDiskspace=1",
+                "MinFreeDiskSpace=1073741824",
+                "CryptLayerRequired=1"));
 
-        Preferences p = EmuleImporter.mapPreferences(ini, Preferences.defaults());
+        whenThePreferencesAreMapped();
 
-        assertThat(p.nick()).isEqualTo(Preferences.defaults().nick());
-        assertThat(p.maxUploadKiBps()).isZero();
-        assertThat(p.maxDownloadKiBps()).isZero();
-        assertThat(p.maxConnections()).isEqualTo(10_000);
-        assertThat(p.downloadCapacityKiBps()).isEqualTo(2048);
-        assertThat(p.uploadCapacityKiBps())
-                .as("an unknown capacity keeps ours")
-                .isEqualTo(Preferences.DEFAULT_UPLOAD_CAPACITY);
-        assertThat(p.minFreeSpaceMiB()).as("eMule keeps bytes").isEqualTo(1024);
-        assertThat(EmuleImporter.mapPreferences(
-                                IniFile.parse("[eMule]\nCheckDiskspace=0\nMinFreeDiskSpace=1"
-                                        .getBytes(StandardCharsets.US_ASCII)),
-                                Preferences.defaults())
-                        .minFreeSpaceMiB())
-                .as("eMule's minimum is used only while its check is on")
-                .isEqualTo(Preferences.DEFAULT_MIN_FREE_SPACE);
-        assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUIRED);
-        assertThat(EmuleImporter.mapPreferences(
-                                IniFile.parse("[eMule]\nCryptLayerSupported=0".getBytes(StandardCharsets.US_ASCII)),
-                                Preferences.defaults())
-                        .obfuscation())
-                .isEqualTo(ObfuscationMode.DISABLED);
-        assertThat(EmuleImporter.mapPreferences(IniFile.parse(new byte[0]), Preferences.defaults())
-                        .obfuscation())
-                .isEqualTo(Preferences.defaults().obfuscation());
+        thenTheNickIs(Preferences.defaults().nick());
+        thenTheSpeedLimitsAre(0, 0);
+        thenTheMaximumConnectionsAre(10_000);
+        thenTheDownloadCapacityIs(2048);
+        thenTheUploadCapacityIs(Preferences.DEFAULT_UPLOAD_CAPACITY, "an unknown capacity keeps ours");
+        thenTheMinimumFreeSpaceIs(1024, "eMule keeps bytes");
+        thenTheObfuscationIs(ObfuscationMode.REQUIRED);
     }
 
     @Test
-    void aFreeSpaceMinimumOfTwoGigabytesOrMoreKeepsItsSize() {
+    void shouldUseTheFreeSpaceMinimumOfEmuleOnlyWhileItsCheckIsOn() {
+        givenAnEmulePreferencesIni("[eMule]\nCheckDiskspace=0\nMinFreeDiskSpace=1");
+
+        whenThePreferencesAreMapped();
+
+        thenTheMinimumFreeSpaceIs(
+                Preferences.DEFAULT_MIN_FREE_SPACE, "eMule's minimum is used only while its check is on");
+    }
+
+    @Test
+    void shouldTurnObfuscationOffWhenEmuleDoesNotSupportIt() {
+        givenAnEmulePreferencesIni("[eMule]\nCryptLayerSupported=0");
+
+        whenThePreferencesAreMapped();
+
+        thenTheObfuscationIs(ObfuscationMode.DISABLED);
+    }
+
+    @Test
+    void shouldKeepOurObfuscationWithoutPreferences() {
+        givenAnEmulePreferencesIni("");
+
+        whenThePreferencesAreMapped();
+
+        thenTheObfuscationIs(Preferences.defaults().obfuscation());
+    }
+
+    @Test
+    void shouldKeepTheSizeOfAFreeSpaceMinimumOfTwoGigabytesOrMore() {
         // eMule writes the 32-bit byte count as a signed number: 3 GiB comes out negative.
-        IniFile ini = IniFile.parse(
-                "[eMule]\nCheckDiskspace=1\nMinFreeDiskSpace=-1073741824\n".getBytes(StandardCharsets.US_ASCII));
+        givenAnEmulePreferencesIni("[eMule]\nCheckDiskspace=1\nMinFreeDiskSpace=-1073741824\n");
 
-        assertThat(EmuleImporter.mapPreferences(ini, Preferences.defaults()).minFreeSpaceMiB())
-                .isEqualTo(3072);
+        whenThePreferencesAreMapped();
+
+        thenTheMinimumFreeSpaceIs(3072);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "-1, ANY",
+        "0, NONE",
+        "1, ANY",
+        "2, SAME_CATEGORY_FIRST",
+        "3, SAME_CATEGORY",
+        "4, SAME_CATEGORY_FIRST",
+        "9, SAME_CATEGORY_FIRST"
+    })
+    void shouldGiveEveryStartNextFileValueItsMeaning(int value, NextDownload next) {
+        givenAnEmulePreferencesIni("[eMule]\nStartNextFile=" + value);
+
+        whenThePreferencesAreMapped();
+
+        thenTheNextDownloadIs(next);
     }
 
     @Test
-    void everyStartNextFileValueHasItsMeaning() {
-        Map<Integer, NextDownload> expected = Map.of(
-                -1, NextDownload.ANY,
-                0, NextDownload.NONE,
-                1, NextDownload.ANY,
-                2, NextDownload.SAME_CATEGORY_FIRST,
-                3, NextDownload.SAME_CATEGORY,
-                4, NextDownload.SAME_CATEGORY_FIRST,
-                9, NextDownload.SAME_CATEGORY_FIRST);
-        expected.forEach((value, next) -> assertThat(EmuleImporter.mapPreferences(
-                                IniFile.parse(("[eMule]\nStartNextFile=" + value).getBytes(StandardCharsets.US_ASCII)),
-                                Preferences.defaults())
-                        .nextDownload())
-                .as("StartNextFile=%d", value)
-                .isEqualTo(next));
-    }
-
-    @Test
-    void theProxyIsTakenWhenEmuleUsesOne() {
-        String socks = """
+    void shouldTakeTheSocksProxyEmuleUses() {
+        givenAnEmulePreferencesIni("""
                 [eMule]
                 [Proxy]
                 ProxyEnableProxy=1
@@ -614,251 +640,714 @@ class EmuleImporterTest {
                 ProxyEnablePassword=1
                 ProxyUser=me
                 ProxyPassword=pw
-                """;
-        assertThat(proxyOf(socks))
-                .isEqualTo(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"));
-        String http = """
+                """);
+
+        whenThePreferencesAreMapped();
+
+        thenTheProxyIs(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"));
+    }
+
+    @Test
+    void shouldTakeTheHttpProxyEmuleUsesWithTheDefaultPortAndNoCredentials() {
+        givenAnEmulePreferencesIni("""
                 [eMule]
                 [Proxy]
                 ProxyEnableProxy=1
                 ProxyType=5
                 ProxyName=h
                 ProxyUser=x
-                """;
-        assertThat(proxyOf(http)).isEqualTo(new ProxySettings(ProxySettings.Type.HTTP, "h", 1080, "", ""));
-        for (String off : List.of(
+                """);
+
+        whenThePreferencesAreMapped();
+
+        thenTheProxyIs(new ProxySettings(ProxySettings.Type.HTTP, "h", 1080, "", ""));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
                 "[Proxy]\nProxyEnableProxy=0\nProxyType=3\nProxyName=h\n",
                 "[Proxy]\nProxyEnableProxy=1\nProxyType=9\nProxyName=h\n",
-                "[Proxy]\nProxyEnableProxy=1\nProxyType=3\nProxyName=\n")) {
-            assertThat(proxyOf("[eMule]\n" + off)).isEqualTo(ProxySettings.NONE);
-        }
-    }
+                "[Proxy]\nProxyEnableProxy=1\nProxyType=3\nProxyName=\n"
+            })
+    void shouldTakeNoProxyWhenEmuleUsesNoneOrAnUnusableOne(String proxy) {
+        givenAnEmulePreferencesIni("[eMule]\n" + proxy);
 
-    private static ProxySettings proxyOf(String ini) {
-        return EmuleImporter.mapPreferences(
-                        IniFile.parse(ini.getBytes(StandardCharsets.US_ASCII)), Preferences.defaults())
-                .proxy();
+        whenThePreferencesAreMapped();
+
+        thenTheProxyIs(ProxySettings.NONE);
     }
 
     @Test
-    void aProfileWithoutPreferencesSectionFails() throws IOException {
-        Files.writeString(this.emule.config.resolve("preferences.ini"), "[Other]\nA=1\n");
+    void shouldFailAProfileWithoutPreferencesSection() throws IOException {
+        givenTheEmuleFile("preferences.ini", "[Other]\nA=1\n");
 
-        ImportReport report = run(new ImportOptions(false, true, true), false);
+        whenTheProfileIsImported(new ImportOptions(false, true, true));
 
-        assertThat(outcomes(report)).containsEntry("preferences.ini", Outcome.FAILED);
-        assertThat(this.target.preferences).isEqualTo(Preferences.defaults());
+        thenTheOutcomeOfIs("preferences.ini", Outcome.FAILED);
+        thenThePreferencesAreOurDefaults();
         // Without preferences.ini the temp directory is looked for next to the config.
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
     }
 
     @Test
-    void downloadsComeFromEveryTempDirectory() throws IOException {
-        Path other = Files.createDirectories(this.dir.resolve("emule/Temp2"));
-        for (String name : List.of("002.part.met", "002.part")) {
-            Files.move(this.emule.temp.resolve(name), other.resolve(name));
+    void shouldTakeTheDownloadsFromEveryTempDirectory() throws IOException {
+        givenTheEmuleDownloadFilesMovedTo("emule/Temp2", "002.part.met", "002.part");
+        givenTheEmuleTempDirectories(
+                this.dir.resolve("gone").toString(),
+                this.dir.resolve("emule/Temp2").toString());
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void shouldReportAnEmptyTempDirectory() throws IOException {
+        givenAnEmptyEmuleTempDirectory();
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheOutcomeOfIs("Temp", Outcome.MISSING);
+        thenTheDetailOfIs("Temp", "no downloads in progress");
+    }
+
+    @Test
+    void shouldIgnoreTheRelativeDirectoriesOfTheProfile() throws IOException {
+        givenTheEmulePreferencesWithTextReplaced("IncomingDir=" + this.emule.incoming, "IncomingDir=.");
+        givenTheEmulePreferencesWithTextReplaced("TempDir=" + this.emule.temp, "TempDir=.");
+        givenTheEmuleFile("shareddir.dat", TextFiles.writeLines(List.of(".", "..")));
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenNoDirectoryIsShared();
+        thenTheOutcomeOfIs("shareddir.dat", Outcome.MISSING);
+        // Without a usable temp directory, the one next to the config.
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void shouldFailAHugeFileAloneInsteadOfExhaustingMemory() throws IOException {
+        givenAHugeSparseEmuleFile("known.met", 3L << 30);
+
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
+
+        thenTheOutcomeOfIs("known.met", Outcome.FAILED);
+        thenTheOutcomeOfIs("server.met", Outcome.IMPORTED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "njmule"})
+    void shouldImportNothingIntoTheOwnDirectoryOfEmule(String inside) throws IOException {
+        givenOurDirectoryInsideTheEmuleProfileAt(inside);
+        givenAFingerprintOfTheEmuleProfile();
+
+        whenTheProfileIsImported(new ImportOptions(false, true, true));
+
+        thenTheOnlyItemFailed();
+        thenTheTargetIsUntouched();
+        thenTheEmuleProfileIsUnchanged();
+    }
+
+    @Test
+    void shouldLeaveOnlyTheAichTreesOutWhenTheirFileIsBroken() throws IOException {
+        givenTheEmuleFile("known2_64.met", new byte[] {2, 1});
+
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
+
+        thenTheOutcomeOfIs("known.met", Outcome.IMPORTED);
+        thenTheDetailOfContains("known.met", "known2_64.met");
+        thenTheKnownFilesTakenAre(1);
+    }
+
+    @Test
+    void shouldChangeNeitherEmuleNorWhatItTookAlreadyOnASecondImport() throws IOException {
+        givenAFingerprintOfTheEmuleProfile();
+        givenAPreviousImport(new ImportOptions(false, true, false));
+
+        whenTheProfileIsImported(new ImportOptions(false, true, false));
+
+        thenTheOutcomeOfIs("ipfilter.dat", Outcome.SKIPPED);
+        thenTheOutcomeOfIs("preferences.dat", Outcome.IMPORTED);
+        thenTheEmuleProfileIsUnchanged();
+    }
+
+    @Test
+    void shouldLeaveOurFilesAsTheyWereOnADryRun() throws IOException {
+        givenAPreviousImport(new ImportOptions(false, true, false));
+        givenAFingerprintOfOurDirectory();
+
+        whenTheProfileIsImported(new ImportOptions(true, true, true));
+
+        thenOurDirectoryIsUnchanged();
+    }
+
+    @Test
+    void shouldReportAMissingProfileAndWriteNothing() throws IOException {
+        givenNoEmuleProfileAt("no such profile");
+
+        whenTheProfileIsImported(new ImportOptions(false, true, true));
+
+        thenEveryItemIsMissingOrSkipped();
+        thenTheTargetIsUntouched();
+        thenNothingIsWrittenIntoOurDirectory();
+    }
+
+    @Test
+    void shouldFailEmptyOrMisplacedFilesAloneAndGoOnWithTheRest() throws IOException {
+        givenEmptyEmuleFiles("server.met", "known.met", "nodes.dat");
+        givenADirectoryInPlaceOfTheEmuleFile("preferences.ini");
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheOutcomeOfIs("server.met", Outcome.FAILED);
+        thenTheOutcomeOfIs("known.met", Outcome.FAILED);
+        thenTheOutcomeOfIs("nodes.dat", Outcome.FAILED);
+        thenTheOutcomeOfIs("preferences.ini", Outcome.FAILED);
+        thenTheOutcomeOfIs("cancelled.met", Outcome.IMPORTED);
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void shouldLeaveADownloadNamedToClimbOutWhereItIs() throws IOException {
+        givenTheDownloadIsNamed(2, "../../evil.bin");
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenEveryDownloadIsAdoptedFromTheEmuleTempDirectory();
+        thenNoFileEscapedTo("evil.bin");
+    }
+
+    @Test
+    void shouldAdoptEachDownloadOnceFromATempDirectoryNamedTwice() throws IOException {
+        givenTheEmuleTempDirectories(this.emule.temp.resolve(".").toString(), this.emule.temp + File.separator);
+
+        whenTheProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheDownloadsAdoptedAre("001.part.met", "002.part.met");
+    }
+
+    @Test
+    void shouldLeaveNoIdentityWaitingForAnUnmarkedUserHash() throws IOException {
+        givenTheEmuleUserHash("0102030405060708090A0B0C0D0E0F10");
+
+        whenTheProfileIsImported(new ImportOptions(false, true, false));
+
+        thenTheOutcomeOfIs("preferences.dat", Outcome.FAILED);
+        thenNoIdentityWaits();
+    }
+
+    @Test
+    void shouldKeepTheRestOfTheIdentityWhenTheCreditsAreCorrupt() throws IOException {
+        givenTheEmuleFile("clients.met", new byte[] {0x12, 1, 0});
+
+        whenTheProfileIsImported(new ImportOptions(false, true, false));
+
+        thenTheOutcomeOfIs("clients.met", Outcome.FAILED);
+        thenThePendingIdentityHolds("preferences.dat", "cryptkey.dat");
+        thenThePendingIdentityLacks("clients.met");
+    }
+
+    @Test
+    void shouldShareTheOtherDirectoriesWhenOneIsRefused() throws IOException {
+        givenTheTargetRefusesToShare(this.emule.incoming);
+
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
+
+        thenTheOutcomeOfIs("shareddir.dat", Outcome.IMPORTED);
+        thenTheDetailOfContains("shareddir.dat", "1 directories", "1 not shared", "refusing");
+        thenTheDirectoriesSharedAre(this.emule.shared);
+    }
+
+    private void givenAFingerprintOfTheEmuleProfile() throws IOException {
+        this.emuleBefore = this.emule.fingerprint();
+    }
+
+    private void givenAFingerprintOfOurDirectory() throws IOException {
+        this.oursBefore = fingerprint(this.ours);
+    }
+
+    private void givenTheEmuleFile(String name, String content) throws IOException {
+        Files.writeString(this.emule.config.resolve(name), content);
+    }
+
+    private void givenTheEmuleFile(String name, byte[] content) throws IOException {
+        Files.write(this.emule.config.resolve(name), content);
+    }
+
+    private void givenEmptyEmuleFiles(String... names) throws IOException {
+        for (String name : names) {
+            givenTheEmuleFile(name, new byte[0]);
         }
+    }
+
+    private void givenTheEmuleFileIsDeleted(String name) throws IOException {
+        Files.delete(this.emule.config.resolve(name));
+    }
+
+    private void givenADirectoryInPlaceOfTheEmuleFile(String name) throws IOException {
+        givenTheEmuleFileIsDeleted(name);
+        Files.createDirectory(this.emule.config.resolve(name));
+    }
+
+    private void givenAHugeSparseEmuleFile(String name, long lastByte) throws IOException {
+        Path file = this.emule.config.resolve(name);
+        Files.delete(file);
+        try (SeekableByteChannel huge = Files.newByteChannel(
+                file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, StandardOpenOption.SPARSE)) {
+            huge.position(lastByte).write(ByteBuffer.wrap(new byte[] {1}));
+        }
+    }
+
+    private void givenTheEmuleUserHash(String hex) throws IOException {
+        givenTheEmuleFile(
+                "preferences.dat",
+                PreferencesDat.write(
+                        new PreferencesDat.Contents(PreferencesDat.VERSION, Hash16.parseHex(hex), Bytes.EMPTY)));
+    }
+
+    private void givenTheEmulePreferencesWithTextReplaced(String text, String replacement) throws IOException {
+        Path ini = this.emule.config.resolve("preferences.ini");
+        Files.writeString(
+                ini,
+                Files.readString(ini, StandardCharsets.ISO_8859_1).replace(text, replacement),
+                StandardCharsets.ISO_8859_1);
+    }
+
+    private void givenTheEmuleTempDirectories(String... directories) throws IOException {
         Path ini = this.emule.config.resolve("preferences.ini");
         Files.writeString(
                 ini,
                 Files.readString(ini, StandardCharsets.ISO_8859_1)
                         + "TempDirs="
-                        + this.dir.resolve("gone")
-                        + "|"
-                        + other
+                        + String.join("|", directories)
                         + "\r\n",
                 StandardCharsets.ISO_8859_1);
-
-        run(new ImportOptions(false, false, true), false);
-
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
     }
 
-    @Test
-    void anEmptyTempDirectoryIsReported() throws IOException {
+    private void givenTheEmuleDownloadFilesMovedTo(String directory, String... names) throws IOException {
+        Path other = Files.createDirectories(this.dir.resolve(directory));
+        for (String name : names) {
+            Files.move(this.emule.temp.resolve(name), other.resolve(name));
+        }
+    }
+
+    private void givenAnEmptyEmuleTempDirectory() throws IOException {
         try (var files = Files.list(this.emule.temp)) {
             for (Path file : files.toList()) {
                 Files.delete(file);
             }
         }
-
-        ImportReport report = run(new ImportOptions(false, false, true), false);
-
-        assertThat(outcomes(report)).containsEntry("Temp", Outcome.MISSING);
-        assertThat(detail(report, "Temp")).isEqualTo("no downloads in progress");
     }
 
-    @Test
-    void relativeDirectoriesOfTheProfileAreIgnored() throws IOException {
-        Path ini = this.emule.config.resolve("preferences.ini");
+    private void givenTheDownloadIsInCategory(int download, int category) throws IOException {
+        this.emule.putInCategory(download, category);
+    }
+
+    private void givenTheDownloadIsNamed(int download, String name) throws IOException {
+        this.emule.retag(download, new Tag.StringTag(TagName.id(FileTag.FILENAME), name));
+    }
+
+    private void givenAnotherEmuleProfile() throws IOException {
+        this.emule = SyntheticEmuleProfile.create(this.dir.resolve("other"));
+    }
+
+    private void givenNoEmuleProfileAt(String name) {
+        this.missingProfile = this.dir.resolve(name);
+    }
+
+    private void givenOurDirectoryInsideTheEmuleProfileAt(String inside) {
+        this.ours = this.emule.config.resolve(inside);
+    }
+
+    private void givenOurFile(String name, String content) throws IOException {
+        Files.writeString(this.ours.resolve(name), content);
+    }
+
+    private void givenEmuleIsRunning() {
+        this.emuleRunning = true;
+    }
+
+    private void givenEmuleIsClosed() {
+        this.emuleRunning = false;
+    }
+
+    private void givenTheTargetKeepsItsOwnCategories() {
+        this.target.ownCategories = true;
+    }
+
+    private void givenTheTargetRefusesToShare(Path directory) {
+        this.target.refused.add(directory);
+    }
+
+    private void givenAPreviousImport(ImportOptions options) {
+        this.report = run(options);
+    }
+
+    private void givenTheImportPutOffTheFileToTheNextStart(String name) {
+        assertThat(detail(this.report, name)).endsWith("from the next start");
+        assertThat(this.ours.resolve(name)).doesNotExist();
+    }
+
+    private void givenThePendingFilesWereApplied() {
+        EmuleImporter.applyPendingFiles(this.ours);
+    }
+
+    private void givenAnAttemptToApplyThePendingIdentity() throws IOException {
+        boolean running = this.emuleRunning;
+        EmuleImporter.applyPendingIdentity(this.ours, () -> running);
+    }
+
+    private void givenALeftoverInThePendingIdentity(String name, String content) throws IOException {
+        Files.writeString(pendingIdentity().resolve(name), content);
+    }
+
+    private void givenAFolderLeftInThePendingIdentity(String name) throws IOException {
         Files.writeString(
-                ini,
-                Files.readString(ini, StandardCharsets.ISO_8859_1)
-                        .replace("IncomingDir=" + this.emule.incoming, "IncomingDir=.")
-                        .replace("TempDir=" + this.emule.temp, "TempDir=."),
-                StandardCharsets.ISO_8859_1);
-        Files.write(this.emule.config.resolve("shareddir.dat"), TextFiles.writeLines(List.of(".", "..")));
-
-        ImportReport report = run(new ImportOptions(false, false, true), false);
-
-        assertThat(this.target.shared).isEmpty();
-        assertThat(outcomes(report)).containsEntry("shareddir.dat", Outcome.MISSING);
-        // Without a usable temp directory, the one next to the config.
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+                Files.createDirectories(pendingIdentity().resolve(name)).resolve("x"), "x");
     }
 
-    @Test
-    void aHugeFileFailsAloneInsteadOfExhaustingMemory() throws IOException {
-        Path known = this.emule.config.resolve("known.met");
-        Files.delete(known);
-        try (SeekableByteChannel huge = Files.newByteChannel(
-                known, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, StandardOpenOption.SPARSE)) {
-            huge.position(3L << 30).write(ByteBuffer.wrap(new byte[] {1}));
-        }
-
-        ImportReport report = run(new ImportOptions(false, false, false), false);
-
-        assertThat(outcomes(report))
-                .containsEntry("known.met", Outcome.FAILED)
-                .containsEntry("server.met", Outcome.IMPORTED);
+    private void givenThePendingIdentityLosesItsFile(String name) throws IOException {
+        Files.delete(pendingIdentity().resolve(name));
     }
 
-    @Test
-    void nothingIsImportedIntoEmulesOwnDirectory() throws IOException {
-        for (Path inside : List.of(this.emule.config, this.emule.config.resolve("njmule"))) {
-            this.ours = inside;
-            SortedMap<String, String> before = this.emule.fingerprint();
-
-            ImportReport report = run(new ImportOptions(false, true, true), false);
-
-            assertThat(report.items())
-                    .singleElement()
-                    .satisfies(i -> assertThat(i.outcome()).isEqualTo(Outcome.FAILED));
-            assertThat(this.target.untouched()).isTrue();
-            assertThat(this.emule.fingerprint()).isEqualTo(before);
-        }
+    private void givenAnEmulePreferencesIni(String text) {
+        this.preferencesIni = text;
     }
 
-    @Test
-    void aBrokenAichFileLeavesOnlyTheAichTreesOut() throws IOException {
-        Files.write(this.emule.config.resolve("known2_64.met"), new byte[] {2, 1});
-
-        ImportReport report = run(new ImportOptions(false, false, false), false);
-
-        assertThat(outcomes(report)).containsEntry("known.met", Outcome.IMPORTED);
-        assertThat(detail(report, "known.met")).contains("known2_64.met");
-        assertThat(this.target.known).isEqualTo(1);
+    private void whenTheProfileIsImported(ImportOptions options) {
+        this.report = run(options);
+        this.preferences = this.target.preferences;
     }
 
-    @Test
-    void aSecondImportChangesNeitherEmuleNorWhatItTookAlready() throws IOException {
-        SortedMap<String, String> before = this.emule.fingerprint();
-        run(new ImportOptions(false, true, false), false);
-
-        Map<String, Outcome> again = outcomes(run(new ImportOptions(false, true, false), false));
-
-        assertThat(again)
-                .containsEntry("ipfilter.dat", Outcome.SKIPPED)
-                .containsEntry("preferences.dat", Outcome.IMPORTED);
-        assertThat(this.emule.fingerprint()).isEqualTo(before);
+    private void whenThePendingFilesAreApplied() {
+        this.filesApplied = EmuleImporter.applyPendingFiles(this.ours);
     }
 
-    @Test
-    void aDryRunLeavesOurFilesAsTheyWere() throws IOException {
-        run(new ImportOptions(false, true, false), false);
-        SortedMap<String, String> ours = fingerprint(this.ours);
-
-        run(new ImportOptions(true, true, true), false);
-
-        assertThat(fingerprint(this.ours)).isEqualTo(ours);
+    private void whenThePendingIdentityIsApplied() throws IOException {
+        boolean running = this.emuleRunning;
+        this.identityApplied = EmuleImporter.applyPendingIdentity(this.ours, () -> running);
     }
 
-    @Test
-    void aMissingProfileIsReportedAndNothingIsWritten() throws IOException {
-        ImportReport report = new EmuleImporter(
-                        this.dir.resolve("no such profile"),
-                        new ImportOptions(false, true, true),
-                        this.target,
-                        () -> false)
-                .run();
+    private void whenThePreferencesAreMapped() {
+        this.preferences = EmuleImporter.mapPreferences(
+                IniFile.parse(this.preferencesIni.getBytes(StandardCharsets.US_ASCII)), Preferences.defaults());
+    }
 
-        assertThat(report.items())
+    private void whenTheEmuleColourIsMapped(String rgb) {
+        this.colour = EmuleImporter.color(OptionalLong.of(Long.decode(rgb)));
+    }
+
+    private void thenTheReportIsADryRun() {
+        assertThat(this.report.dryRun()).isTrue();
+    }
+
+    private void thenTheOutcomeOfIs(String file, Outcome outcome) {
+        assertThat(outcomes(this.report)).containsEntry(file, outcome);
+    }
+
+    private void thenThereIsNoOutcomeFor(String file) {
+        assertThat(outcomes(this.report)).doesNotContainKey(file);
+    }
+
+    private void thenTheOnlyItemFailed() {
+        assertThat(this.report.items())
+                .singleElement()
+                .satisfies(i -> assertThat(i.outcome()).isEqualTo(Outcome.FAILED));
+    }
+
+    private void thenEveryItemIsMissingOrSkipped() {
+        assertThat(this.report.items())
                 .isNotEmpty()
                 .allSatisfy(i -> assertThat(i.outcome()).isIn(Outcome.MISSING, Outcome.SKIPPED));
+    }
+
+    private void thenTheDetailOfIs(String file, String detail) {
+        assertThat(detail(this.report, file)).isEqualTo(detail);
+    }
+
+    private void thenTheDetailOfContains(String file, String... parts) {
+        assertThat(detail(this.report, file)).contains(parts);
+    }
+
+    private void thenADetailContains(String part) {
+        assertThat(this.report.items()).anyMatch(i -> i.detail().contains(part));
+    }
+
+    private void thenTheTargetIsUntouched() {
         assertThat(this.target.untouched()).isTrue();
+    }
+
+    private void thenNothingIsWrittenIntoOurDirectory() throws IOException {
         try (Stream<Path> left = Files.list(this.ours)) {
             assertThat(left.count()).isZero();
         }
     }
 
-    @Test
-    void emptyOrMisplacedFilesFailAloneAndTheRestGoesOn() throws IOException {
-        for (String name : List.of("server.met", "known.met", "nodes.dat")) {
-            Files.write(this.emule.config.resolve(name), new byte[0]);
-        }
-        Files.delete(this.emule.config.resolve("preferences.ini"));
-        Files.createDirectory(this.emule.config.resolve("preferences.ini"));
-
-        ImportReport report = run(new ImportOptions(false, false, true), false);
-
-        assertThat(outcomes(report))
-                .containsEntry("server.met", Outcome.FAILED)
-                .containsEntry("known.met", Outcome.FAILED)
-                .containsEntry("nodes.dat", Outcome.FAILED)
-                .containsEntry("preferences.ini", Outcome.FAILED)
-                .containsEntry("cancelled.met", Outcome.IMPORTED);
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    private void thenOurDirectoryIsUnchanged() throws IOException {
+        assertThat(fingerprint(this.ours)).isEqualTo(this.oursBefore);
     }
 
-    @Test
-    void aDownloadNamedToClimbOutStaysWhereItIs() throws IOException {
-        this.emule.retag(2, new Tag.StringTag(TagName.id(FileTag.FILENAME), "../../evil.bin"));
+    private void thenTheEmuleProfileIsUnchanged() throws IOException {
+        assertThat(this.emule.fingerprint()).isEqualTo(this.emuleBefore);
+    }
 
-        run(new ImportOptions(false, false, true), false);
+    private void thenTheNickIs(String nick) {
+        assertThat(this.preferences.nick()).isEqualTo(nick);
+    }
 
+    private void thenTheSpeedLimitsAre(int maxUploadKiBps, int maxDownloadKiBps) {
+        assertThat(this.preferences.maxUploadKiBps()).isEqualTo(maxUploadKiBps);
+        assertThat(this.preferences.maxDownloadKiBps()).isEqualTo(maxDownloadKiBps);
+    }
+
+    private void thenKadIsOff() {
+        assertThat(this.preferences.kadEnabled()).isFalse();
+    }
+
+    private void thenOnlyTheDownloadedFilesAreRemembered() {
+        assertThat(this.preferences.rememberCancelledFiles()).isFalse();
+        assertThat(this.preferences.rememberDownloadedFiles()).isTrue();
+    }
+
+    private void thenSearchesAreNotStored() {
+        assertThat(this.preferences.storeSearches()).isFalse();
+    }
+
+    private void thenDownloadsAreAddedPaused() {
+        assertThat(this.preferences.addDownloadsPaused()).isTrue();
+    }
+
+    private void thenTheNextDownloadIs(NextDownload next) {
+        assertThat(this.preferences.nextDownload()).isEqualTo(next);
+    }
+
+    private void thenLanAddressesAreNotFiltered() {
+        assertThat(this.preferences.filterLanAddresses()).isFalse();
+    }
+
+    private void thenOnlyFriendsMaySendMessages() {
+        assertThat(this.preferences.messagesFromFriendsOnly()).isTrue();
+    }
+
+    private void thenTheMessageFilterIs(String filter) {
+        assertThat(this.preferences.messageFilter()).isEqualTo(filter);
+    }
+
+    private void thenTheAdvancedSpamFilterIsOnAsItIsNotInTheProfile() {
+        assertThat(this.preferences.advancedSpamFilter())
+                .as("not in the profile")
+                .isTrue();
+    }
+
+    private void thenTheConnectionLimitsAre(int newConnectionsPerFiveSeconds, int uploadQueueSize) {
+        assertThat(this.preferences.newConnectionsPerFiveSeconds()).isEqualTo(newConnectionsPerFiveSeconds);
+        assertThat(this.preferences.uploadQueueSize()).isEqualTo(uploadQueueSize);
+    }
+
+    private void thenTheTcpPortIs(int port) {
+        assertThat(this.preferences.tcpPort()).isEqualTo(port);
+    }
+
+    private void thenTheMaximumConnectionsAre(int connections) {
+        assertThat(this.preferences.maxConnections()).isEqualTo(connections);
+    }
+
+    private void thenTheDownloadCapacityIs(int kibps) {
+        assertThat(this.preferences.downloadCapacityKiBps()).isEqualTo(kibps);
+    }
+
+    private void thenTheUploadCapacityIs(int kibps, String reason) {
+        assertThat(this.preferences.uploadCapacityKiBps()).as(reason).isEqualTo(kibps);
+    }
+
+    private void thenTheMinimumFreeSpaceIs(int mib) {
+        assertThat(this.preferences.minFreeSpaceMiB()).isEqualTo(mib);
+    }
+
+    private void thenTheMinimumFreeSpaceIs(int mib, String reason) {
+        assertThat(this.preferences.minFreeSpaceMiB()).as(reason).isEqualTo(mib);
+    }
+
+    private void thenTheObfuscationIs(ObfuscationMode mode) {
+        assertThat(this.preferences.obfuscation()).isEqualTo(mode);
+    }
+
+    private void thenTheProxyIs(ProxySettings proxy) {
+        assertThat(this.preferences.proxy()).isEqualTo(proxy);
+    }
+
+    private void thenThePreferencesAreOurDefaults() {
+        assertThat(this.preferences).isEqualTo(Preferences.defaults());
+    }
+
+    private void thenTheServersAreTakenFromTheEmuleFile(String name) {
+        assertThat(this.target.servers).containsExactly(this.emule.config.resolve(name));
+    }
+
+    private void thenNoServersAreTaken() {
+        assertThat(this.target.servers).isEmpty();
+    }
+
+    private void thenTheKadContactsTakenAre(int contacts) {
+        assertThat(this.target.contacts).isEqualTo(contacts);
+    }
+
+    private void thenTheKnownFilesTakenAre(int known) {
+        assertThat(this.target.known).isEqualTo(known);
+    }
+
+    private void thenTheDirectoriesSharedAre(Path... directories) {
+        assertThat(this.target.shared).containsExactly(directories);
+    }
+
+    private void thenNoDirectoryIsShared() {
+        assertThat(this.target.shared).isEmpty();
+    }
+
+    private void thenTheDownloadsAdoptedAre(String... downloads) {
+        assertThat(this.target.adopted).containsExactlyInAnyOrder(downloads);
+    }
+
+    private void thenNoDownloadIsAdopted() {
+        assertThat(this.target.adopted).isEmpty();
+    }
+
+    private void thenTheDownloadIsAdoptedInCategory(String download, int category) {
+        assertThat(this.target.adoptedCategories).containsEntry(download, category);
+    }
+
+    private void thenTheDownloadIsAdoptedInCategory(String download, int category, String reason) {
+        assertThat(this.target.adoptedCategories).as(reason).containsEntry(download, category);
+    }
+
+    private void thenEveryDownloadIsAdoptedFromTheEmuleTempDirectory() {
         assertThat(this.target.adoptedFrom)
                 .allSatisfy(p -> assertThat(p.getParent()).isEqualTo(this.emule.temp));
-        assertThat(this.dir.resolve("evil.bin")).doesNotExist();
     }
 
-    @Test
-    void aTempDirectoryNamedTwiceGivesEachDownloadOnce() throws IOException {
-        Path ini = this.emule.config.resolve("preferences.ini");
-        Files.writeString(
-                ini,
-                Files.readString(ini, StandardCharsets.ISO_8859_1) + "TempDirs=" + this.emule.temp.resolve(".") + "|"
-                        + this.emule.temp + File.separator + "\r\n",
-                StandardCharsets.ISO_8859_1);
-
-        run(new ImportOptions(false, false, true), false);
-
-        assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
+    private void thenNoFileEscapedTo(String name) {
+        assertThat(this.dir.resolve(name)).doesNotExist();
     }
 
-    @Test
-    void anUnmarkedUserHashLeavesNoIdentityWaiting() throws IOException {
-        Files.write(
-                this.emule.config.resolve("preferences.dat"),
-                PreferencesDat.write(new PreferencesDat.Contents(
-                        PreferencesDat.VERSION, Hash16.parseHex("0102030405060708090A0B0C0D0E0F10"), Bytes.EMPTY)));
-
-        ImportReport report = run(new ImportOptions(false, true, false), false);
-
-        assertThat(outcomes(report)).containsEntry("preferences.dat", Outcome.FAILED);
-        assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+    private void thenTheCategoryIdsTakenAre(Integer... ids) {
+        assertThat(this.target.categories).extracting(Category::id).containsExactly(ids);
     }
 
-    @Test
-    void corruptCreditsLeaveTheRestOfTheIdentity() throws IOException {
-        Files.write(this.emule.config.resolve("clients.met"), new byte[] {0x12, 1, 0});
+    private void thenTheCategoryNamesTakenAre(String... names) {
+        assertThat(this.target.categories).extracting(Category::name).containsExactly(names);
+    }
 
-        ImportReport report = run(new ImportOptions(false, true, false), false);
+    private void thenTheCategoryIsNamed(int index, String name) {
+        assertThat(this.target.categories.get(index).name()).isEqualTo(name);
+    }
 
-        Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
-        assertThat(outcomes(report)).containsEntry("clients.met", Outcome.FAILED);
-        assertThat(pending.resolve("preferences.dat")).exists();
-        assertThat(pending.resolve("cryptkey.dat")).exists();
-        assertThat(pending.resolve("clients.met")).doesNotExist();
+    private void thenTheCategoryLeavesTheIncomingDirectoryOfEmuleOut(int index) {
+        assertThat(this.target.categories.get(index).incoming())
+                .as("eMule's incoming folder is not ours: our own takes its place")
+                .isEmpty();
+    }
+
+    private void thenTheCategoryHasTheIncomingDirectory(int index, Path directory) {
+        assertThat(this.target.categories.get(index).incoming()).contains(directory);
+    }
+
+    private void thenTheCategoryHasTheColour(int index, int colour, String name) {
+        assertThat(this.target.categories.get(index).color()).as(name).isEqualTo(colour);
+    }
+
+    private void thenTheCategoryMatches(int index, String fileName) {
+        assertThat(this.target.categories.get(index).matches(fileName)).isTrue();
+    }
+
+    private void thenTheNameCommentAndPatternsOfTheCategoryHaveTheLengths(
+            int index, int name, int comment, int patterns) {
+        Category category = this.target.categories.get(index);
+        assertThat(category.name()).hasSize(name);
+        assertThat(category.comment()).hasSize(comment);
+        assertThat(category.patterns()).hasSize(patterns);
+    }
+
+    private void thenTheCategoryHasNoPatterns(int index) {
+        assertThat(this.target.categories.get(index).patterns()).isEmpty();
+    }
+
+    private void thenTheColourIs(int colour, String name) {
+        assertThat(this.colour).as(name).isEqualTo(colour);
+    }
+
+    private void thenOurFileExists(String name) {
+        assertThat(this.ours.resolve(name)).exists();
+    }
+
+    private void thenOurFileDoesNotExist(String name) {
+        assertThat(this.ours.resolve(name)).doesNotExist();
+    }
+
+    private void thenOurFileIsEmpty(String name) {
+        assertThat(this.ours.resolve(name)).isEmptyFile();
+    }
+
+    private void thenOurFileIsTheEmuleOne(String name) {
+        assertThat(this.ours.resolve(name)).hasSameBinaryContentAs(this.emule.config.resolve(name));
+    }
+
+    private void thenTheFilesAppliedAre(int files) {
+        assertThat(this.filesApplied).isEqualTo(files);
+    }
+
+    private void thenTheFileWaitsForTheNextStart(String name) {
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve(name)).exists();
+    }
+
+    private void thenTheFileDoesNotWaitForTheNextStart(String name) {
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES).resolve(name)).doesNotExist();
+    }
+
+    private void thenNoFileWaitsForTheNextStart() {
+        assertThat(this.ours.resolve(EmuleImporter.PENDING_FILES)).doesNotExist();
+    }
+
+    private void thenThePendingIdentityIsApplied() {
+        assertThat(this.identityApplied).isTrue();
+    }
+
+    private void thenThePendingIdentityIsNotApplied() {
+        assertThat(this.identityApplied).isFalse();
+    }
+
+    private void thenThePendingIdentityStillWaits() {
+        assertThat(pendingIdentity()).isDirectory();
+    }
+
+    private void thenNoIdentityWaits() {
+        assertThat(pendingIdentity()).doesNotExist();
+    }
+
+    private void thenThePendingIdentityHoldsTheEmuleFile(String name) {
+        assertThat(pendingIdentity().resolve(name)).hasSameBinaryContentAs(this.emule.config.resolve(name));
+    }
+
+    private void thenThePendingIdentityHolds(String... names) {
+        for (String name : names) {
+            assertThat(pendingIdentity().resolve(name)).exists();
+        }
+    }
+
+    private void thenThePendingIdentityLacks(String... names) {
+        for (String name : names) {
+            assertThat(pendingIdentity().resolve(name)).doesNotExist();
+        }
+    }
+
+    private void thenThePendingKadUdpKeyIs(long key) throws IOException {
+        assertThat(PacketReader.of(Files.readAllBytes(pendingIdentity().resolve("kadudpkey.dat")))
+                        .u32())
+                .isEqualTo(key);
+    }
+
+    private Path pendingIdentity() {
+        return this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
     }
 
     private static SortedMap<String, String> fingerprint(Path root) throws IOException {
@@ -874,23 +1363,10 @@ class EmuleImporterTest {
         return sums;
     }
 
-    @Test
-    void aRefusedSharedDirectoryDoesNotStopTheOthers() throws IOException {
-        this.target.refused.add(this.emule.incoming);
-
-        ImportReport report = run(new ImportOptions(false, false, false), false);
-
-        ImportReport.Item dirs = report.items().stream()
-                .filter(i -> i.file().equals("shareddir.dat"))
-                .findFirst()
-                .orElseThrow();
-        assertThat(dirs.outcome()).isEqualTo(Outcome.IMPORTED);
-        assertThat(dirs.detail()).contains("1 directories", "1 not shared", "refusing");
-        assertThat(this.target.shared).containsExactly(this.emule.shared);
-    }
-
-    private ImportReport run(ImportOptions options, boolean emuleRunning) {
-        return new EmuleImporter(this.emule.config, options, this.target, () -> emuleRunning).run();
+    private ImportReport run(ImportOptions options) {
+        boolean running = this.emuleRunning;
+        Path config = Objects.requireNonNullElse(this.missingProfile, this.emule.config);
+        return new EmuleImporter(config, options, this.target, () -> running).run();
     }
 
     private static Map<String, Outcome> outcomes(ImportReport report) {

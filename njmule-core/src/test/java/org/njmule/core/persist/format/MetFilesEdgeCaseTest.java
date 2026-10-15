@@ -17,19 +17,27 @@
 package org.njmule.core.persist.format;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.IntRange;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.files.hash.Ed2k;
@@ -49,6 +57,19 @@ class MetFilesEdgeCaseTest {
 
     private static final HexFormat HEX = HexFormat.of();
     private static final Hash16 H = Hash16.parseHex("000102030405060708090A0B0C0D0E0F");
+    // The key size byte follows the 16-byte hash, five u32 and one u16 of the first record.
+    private static final int KEY_SIZE_AT = 1 + 4 + 16 + 5 * 4 + 2;
+
+    private Sample sample;
+    private byte[] data;
+    private Map<String, Throwable> failures;
+    private Throwable exception;
+    private PartMet.Contents written;
+    private PartMet.Contents read;
+    private List<Gap> gapsWritten;
+    private List<Gap> gapsTaken;
+    private List<ClientsMet.Credit> credits;
+    private List<ClientsMet.Credit> creditsRead;
 
     /** Reads a file and uses what a caller would use of it; may only fail with a {@link DecodeException}. */
     @FunctionalInterface
@@ -146,82 +167,89 @@ class MetFilesEdgeCaseTest {
         return Arbitraries.of(samples());
     }
 
+    // known2_64.met has no count: a cut between two entries is a shorter valid file.
+    static Stream<Arguments> countedSamples() {
+        return samples().stream()
+                .filter(sample -> !sample.name().equals("known2_64.met"))
+                .map(sample -> Arguments.of(Named.of(sample.name(), sample)));
+    }
+
     @Property
-    void aChangedByteOnlyFailsCleanly(
-            @ForAll("sample") Sample sample, @ForAll @IntRange(min = 0, max = 100_000) int at, @ForAll byte value)
-            throws Exception {
-        byte[] data = sample.data().toByteArray();
-        data[at % data.length] = value;
-        try {
-            sample.use().use(data);
-        } catch (DecodeException expected) {
-            // malformed
-        }
+    void shouldOnlyFailCleanlyOnAChangedByte(
+            @ForAll("sample") Sample sample, @ForAll @IntRange(min = 0, max = 100_000) int at, @ForAll byte value) {
+        givenTheSampleWithAChangedByte(sample, at, value);
+
+        whenTheSampleUsesTheData();
+
+        thenNothingButDecodeExceptionsOccurred();
+    }
+
+    @ParameterizedTest
+    @MethodSource("countedSamples")
+    void shouldFailCleanlyOnEveryCutOfACountedFile(Sample sample) {
+        givenTheSample(sample);
+
+        whenTheSampleIsCutToEveryShorterLength();
+
+        thenEveryCutFailedWithADecodeException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"e0ffffffff", "0effffffff", "0e01ffff", "45ffffffff", "0f01ffff", "0fffffffff"})
+    void shouldFailCleanlyOnHugeCountsWithNoData(String file) {
+        givenTheData(file);
+
+        whenEverySampleUsesTheData();
+
+        thenNothingButDecodeExceptionsOccurred();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, Ed2k.MAX_FILE_SIZE + 1})
+    void shouldRefuseAPartMetWithoutAUsableSize(long size) {
+        givenAPartMetWith(new IntTag(TagName.id(FileTag.FILESIZE), size));
+
+        whenThePartMetIsRead();
+
+        thenExceptionOccurred(DecodeException.class);
     }
 
     @Test
-    void everyCutOfACountedFileFailsCleanly() throws Exception {
-        for (Sample sample : samples()) {
-            // known2_64.met has no count: a cut between two entries is a shorter valid file.
-            if (sample.name().equals("known2_64.met")) {
-                continue;
-            }
-            // preferencesKad.dat ends with a byte nobody reads.
-            int complete = sample.name().equals("preferencesKad.dat")
-                    ? 22
-                    : sample.data().length();
-            for (int length = 0; length < complete; length++) {
-                byte[] cut = Arrays.copyOf(sample.data().toByteArray(), length);
-                assertThatThrownBy(() -> sample.use().use(cut))
-                        .as("%s cut to %d bytes", sample.name(), length)
-                        .isInstanceOf(DecodeException.class);
-            }
-        }
-    }
-
-    @Test
-    void hugeCountsWithNoDataFailCleanly() {
-        for (String file : List.of("e0ffffffff", "0effffffff", "0e01ffff", "45ffffffff", "0f01ffff", "0fffffffff")) {
-            byte[] data = HEX.parseHex(file);
-            for (Sample sample : samples()) {
-                try {
-                    sample.use().use(data);
-                } catch (DecodeException expected) {
-                    // malformed
-                }
-            }
-        }
-    }
-
-    @Test
-    void partMetWithoutAUsableSizeIsRefused() throws DecodeException {
-        for (long size : new long[] {0, Ed2k.MAX_FILE_SIZE + 1}) {
-            byte[] data = PartMet.write(partMet(new IntTag(TagName.id(FileTag.FILESIZE), size)));
-            assertThatThrownBy(() -> PartMet.read(data)).as("size %d", size).isInstanceOf(DecodeException.class);
-        }
+    void shouldRefuseAPartMetWithoutSize() {
         // Header, mtime, file hash, no part hashes, no tags.
-        byte[] sizeless = HEX.parseHex("e0" + "00000000" + H.toHex() + "0000" + "00000000");
-        assertThatThrownBy(() -> PartMet.read(sizeless)).isInstanceOf(DecodeException.class);
-        assertThat(PartMet.read(PartMet.write(partMet(Tag.of(FileTag.FILESIZE, Ed2k.MAX_FILE_SIZE))))
-                        .version())
-                .isEqualTo(PartMet.VERSION_LARGE);
+        givenTheData("e0" + "00000000" + H.toHex() + "0000" + "00000000");
+
+        whenThePartMetIsRead();
+
+        thenExceptionOccurred(DecodeException.class);
     }
 
     @Test
-    void gapTagsPairByTheirNumberNotItsSpelling() {
-        PartMet.Contents contents = partMet(
+    void shouldWriteThePartMetOfTheLargestSizeInTheLargeVersion() {
+        givenAPartMetWith(Tag.of(FileTag.FILESIZE, Ed2k.MAX_FILE_SIZE));
+
+        whenThePartMetIsRead();
+
+        thenThePartMetVersionIs(PartMet.VERSION_LARGE);
+    }
+
+    @Test
+    void shouldPairTheGapTagsByTheirNumberNotItsSpelling() {
+        givenAPartMetWithTheTags(
                 Tag.of(FileTag.FILESIZE, 1000),
                 new IntTag(TagName.of("\t01"), 100),
                 new IntTag(TagName.of("\n1"), 200),
                 new IntTag(TagName.of("\t000"), 300),
                 new IntTag(TagName.of("\n0"), 400));
 
-        assertThat(contents.gaps()).containsExactly(new Gap(100, 200), new Gap(300, 400));
+        whenItsGapsAreTaken();
+
+        thenTheGapsAre(new Gap(100, 200), new Gap(300, 400));
     }
 
     @Test
-    void oddGapsAreDroppedOrClamped() {
-        PartMet.Contents contents = partMet(
+    void shouldDropOrClampOddGaps() {
+        givenAPartMetWithTheTags(
                 Tag.of(FileTag.FILESIZE, 1000),
                 // Inverted, empty, past the end, clamped, duplicate start, and a gap tag that is not a number.
                 new IntTag(TagName.of("\t1"), 50),
@@ -239,14 +267,18 @@ class MetFilesEdgeCaseTest {
                 new Tag.StringTag(TagName.of("\t7"), "300"),
                 new IntTag(TagName.of("\n7"), 400));
 
-        assertThat(contents.gaps()).containsExactly(new Gap(100, 200), new Gap(900, 1000));
+        whenItsGapsAreTaken();
+
+        thenTheGapsAre(new Gap(100, 200), new Gap(900, 1000));
     }
 
     @Property
-    void gapListsSurviveAWriteAndARead(@ForAll("gaps") List<Gap> gaps) throws DecodeException {
-        PartMet.Contents written = partMet(Tag.of(FileTag.FILESIZE, 1_000_000)).withGaps(gaps);
+    void shouldKeepTheGapListsThroughAWriteAndARead(@ForAll("gaps") List<Gap> gaps) {
+        givenAPartMetWithTheGaps(gaps);
 
-        assertThat(PartMet.read(PartMet.write(written)).gaps()).isEqualTo(gaps);
+        whenThePartMetIsRead();
+
+        thenTheGapsReadAreTheOnesWritten();
     }
 
     @Provide
@@ -263,23 +295,148 @@ class MetFilesEdgeCaseTest {
     }
 
     @Test
-    void aPublicKeyOfMoreThanEightyBytesIsRefused() {
-        byte[] data = ClientsMet.write(List.of(new ClientsMet.Credit(H, 0, 0, 0, Bytes.of(new byte[80]))));
-        // The key size byte follows the 16-byte hash, five u32 and one u16 of the first record.
-        int keySize = 1 + 4 + 16 + 5 * 4 + 2;
-        assertThat(data[keySize]).isEqualTo((byte) 80);
+    void shouldRefuseAPublicKeyOfMoreThanEightyBytes() {
+        givenCreditsWithAPublicKeyOf(80);
+        givenTheKeySizeByteSetTo(81);
 
-        data[keySize] = 81;
+        whenTheCreditsAreRead();
 
-        assertThatThrownBy(() -> ClientsMet.read(data)).isInstanceOf(DecodeException.class);
+        thenExceptionOccurred(DecodeException.class);
     }
 
     @Test
-    void creditsBeyondFourGigabytesSurviveAWriteAndARead() throws DecodeException {
-        List<ClientsMet.Credit> credits =
-                List.of(new ClientsMet.Credit(H, 5_000_000_000L, (1L << 40) + 7, 1_700_000_000L, Bytes.EMPTY));
+    void shouldKeepCreditsBeyondFourGigabytesThroughAWriteAndARead() {
+        givenTheCreditsWritten(new ClientsMet.Credit(H, 5_000_000_000L, (1L << 40) + 7, 1_700_000_000L, Bytes.EMPTY));
 
-        assertThat(ClientsMet.read(ClientsMet.write(credits))).isEqualTo(credits);
+        whenTheCreditsAreRead();
+
+        thenTheCreditsReadAreTheOnesWritten();
+    }
+
+    private void givenTheSample(Sample value) {
+        this.sample = value;
+        this.data = value.data().toByteArray();
+    }
+
+    private void givenTheSampleWithAChangedByte(Sample value, int at, byte changed) {
+        givenTheSample(value);
+        this.data[at % this.data.length] = changed;
+    }
+
+    private void givenTheData(String hex) {
+        this.data = HEX.parseHex(hex);
+    }
+
+    private void givenAPartMetWith(Tag sizeTag) {
+        this.written = partMet(sizeTag);
+        this.data = PartMet.write(this.written);
+    }
+
+    private void givenAPartMetWithTheGaps(List<Gap> gaps) {
+        this.gapsWritten = gaps;
+        this.written = partMet(Tag.of(FileTag.FILESIZE, 1_000_000)).withGaps(gaps);
+        this.data = PartMet.write(this.written);
+    }
+
+    private void givenAPartMetWithTheTags(Tag... tags) {
+        this.written = partMet(tags);
+    }
+
+    private void givenCreditsWithAPublicKeyOf(int bytes) {
+        this.data = ClientsMet.write(List.of(new ClientsMet.Credit(H, 0, 0, 0, Bytes.of(new byte[bytes]))));
+        assertThat(this.data[KEY_SIZE_AT]).isEqualTo((byte) bytes);
+    }
+
+    private void givenTheKeySizeByteSetTo(int size) {
+        this.data[KEY_SIZE_AT] = (byte) size;
+    }
+
+    private void givenTheCreditsWritten(ClientsMet.Credit... written) {
+        this.credits = List.of(written);
+        this.data = ClientsMet.write(this.credits);
+    }
+
+    private void whenTheSampleUsesTheData() {
+        byte[] used = this.data;
+        this.failures = new LinkedHashMap<>();
+        this.failures.put(
+                this.sample.name(), catchThrowable(() -> this.sample.use().use(used)));
+    }
+
+    private void whenTheSampleIsCutToEveryShorterLength() {
+        // preferencesKad.dat ends with a byte nobody reads.
+        int complete = this.sample.name().equals("preferencesKad.dat") ? 22 : this.data.length;
+        this.failures = new LinkedHashMap<>();
+        for (int length = 0; length < complete; length++) {
+            byte[] cut = Arrays.copyOf(this.data, length);
+            this.failures.put(
+                    String.format("%s cut to %d bytes", this.sample.name(), length),
+                    catchThrowable(() -> this.sample.use().use(cut)));
+        }
+    }
+
+    private void whenEverySampleUsesTheData() {
+        byte[] used = this.data;
+        this.failures = new LinkedHashMap<>();
+        for (Sample each : samples()) {
+            this.failures.put(each.name(), catchThrowable(() -> each.use().use(used)));
+        }
+    }
+
+    private void whenThePartMetIsRead() {
+        this.exception = null;
+        try {
+            this.read = PartMet.read(this.data);
+        } catch (DecodeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenItsGapsAreTaken() {
+        this.gapsTaken = this.written.gaps();
+    }
+
+    private void whenTheCreditsAreRead() {
+        try {
+            this.creditsRead = ClientsMet.read(this.data);
+        } catch (DecodeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void thenNothingButDecodeExceptionsOccurred() {
+        this.failures.forEach((name, failure) -> {
+            if (failure != null) {
+                assertThat(failure).as(name).isInstanceOf(DecodeException.class);
+            }
+        });
+    }
+
+    private void thenEveryCutFailedWithADecodeException() {
+        this.failures.forEach((cut, failure) -> assertThat(failure).as(cut).isInstanceOf(DecodeException.class));
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenThePartMetVersionIs(int version) {
+        assertThat(this.exception).isNull();
+        assertThat(this.read.version()).isEqualTo(version);
+    }
+
+    private void thenTheGapsAre(Gap... gaps) {
+        assertThat(this.gapsTaken).containsExactly(gaps);
+    }
+
+    private void thenTheGapsReadAreTheOnesWritten() {
+        assertThat(this.exception).isNull();
+        assertThat(this.read.gaps()).isEqualTo(this.gapsWritten);
+    }
+
+    private void thenTheCreditsReadAreTheOnesWritten() {
+        assertThat(this.exception).isNull();
+        assertThat(this.creditsRead).isEqualTo(this.credits);
     }
 
     private static PartMet.Contents partMet(Tag... tags) {

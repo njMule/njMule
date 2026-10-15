@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
@@ -37,83 +38,204 @@ class UserHashStoreTest {
     @TempDir
     Path dir;
 
-    @Test
-    void createsAMarkedHashOnceAndKeepsIt() throws Exception {
-        Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
-        Hash16 again = UserHashStore.loadOrCreate(this.dir, RANDOM);
+    private Hash16 expectedHash;
+    private byte[] fileContent;
+    private HeldFile held;
+    private Hash16 hash;
+    private IOException exception;
 
-        assertThat(again).isEqualTo(first);
-        assertThat(PreferencesDat.isMarkedUserHash(first)).isTrue();
-        byte[] file = Files.readAllBytes(this.dir.resolve(UserHashStore.FILE_NAME));
-        assertThat(PreferencesDat.read(file).userHash()).isEqualTo(first);
-        assertThat(file[0]).isEqualTo((byte) PreferencesDat.VERSION);
+    @AfterEach
+    void releaseTheFile() throws IOException {
+        if (this.held != null) {
+            this.held.close();
+        }
     }
 
     @Test
-    void replacesAnUnusableOrCorruptHash() throws Exception {
-        Path file = this.dir.resolve(UserHashStore.FILE_NAME);
+    void shouldCreateAMarkedHashOnceAndKeepIt() throws Exception {
+        givenTheUserHashLoadedOnce();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsKept();
+        thenTheHashIsMarked();
+        thenTheFileHoldsTheHash();
+        thenTheFileStartsWithTheVersion();
+    }
+
+    @Test
+    void shouldReplaceAnUnusableHash() throws Exception {
+        givenAFileWithAnUnusableHash();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsUsable();
+    }
+
+    @Test
+    void shouldReplaceACorruptHashWithoutBackup() throws Exception {
+        givenAFileWithAnUnusableHash();
+        givenTheUserHashLoadedOnce();
+        givenTheFileIsCorrupt();
+        givenTheBackupIsGone();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsUsable();
+    }
+
+    @Test
+    void shouldGiveWayToTheBackupOfACorruptFile() throws Exception {
+        givenTheUserHashLoadedOnce();
+        givenABackupOfTheFile();
+        givenTheFileIsCorrupt();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsKept();
+    }
+
+    @Test
+    void shouldKeepTheHashOfTheEmuleFileWithItsWindowPlacement() throws Exception {
+        givenAnEmuleFileWithItsWindowPlacement();
+        givenTheLeftoverOfAnInterruptedWrite();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsKept();
+        thenTheFileIsUnchanged();
+        thenTheLeftoverIsGone();
+    }
+
+    @Test
+    void shouldNotReplaceAUserHashHeldByAnotherProgram() throws Exception {
+        givenTheUserHashLoadedOnce();
+        givenTheFileIsHeldByAnotherProgram();
+
+        whenTheUserHashIsLoaded();
+
+        thenExceptionOccurred(IOException.class);
+    }
+
+    @Test
+    void shouldKeepTheUserHashOnceTheOtherProgramLetsItGo() throws Exception {
+        givenTheUserHashLoadedOnce();
+        givenALoadFailedWhileTheFileWasHeldByAnotherProgram();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheHashIsKept();
+    }
+
+    @Test
+    void shouldMakeTheUserHashForItsOwnerOnly() throws Exception {
+        givenTheFileSystemHasPosixPermissions();
+
+        whenTheUserHashIsLoaded();
+
+        thenTheFileHasThePermissions("rw-------");
+    }
+
+    private void givenTheUserHashLoadedOnce() throws IOException {
+        this.expectedHash = UserHashStore.loadOrCreate(this.dir, RANDOM);
+    }
+
+    private void givenAFileWithAnUnusableHash() throws IOException {
         byte[] zero = new byte[17];
         zero[0] = PreferencesDat.VERSION;
         zero[1 + 5] = 14;
         zero[1 + 14] = 111;
-        Files.write(file, zero);
-
-        Hash16 hash = UserHashStore.loadOrCreate(this.dir, RANDOM);
-        assertThat(UserHashStore.isUsable(hash)).isTrue();
-
-        Files.write(file, new byte[3]);
-        Files.deleteIfExists(AtomicFiles.bakPath(file));
-        assertThat(UserHashStore.isUsable(UserHashStore.loadOrCreate(this.dir, RANDOM)))
-                .isTrue();
+        Files.write(file(), zero);
     }
 
-    @Test
-    void aCorruptFileGivesWayToItsBackup() throws Exception {
-        Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
-        Path file = this.dir.resolve(UserHashStore.FILE_NAME);
-        Files.copy(file, AtomicFiles.bakPath(file));
-        Files.write(file, new byte[3]);
-
-        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(first);
+    private void givenTheFileIsCorrupt() throws IOException {
+        Files.write(file(), new byte[3]);
     }
 
-    @Test
-    void eMulesFileWithItsWindowPlacementKeepsItsHash() throws Exception {
-        Hash16 hash = UserHashStore.generate(RANDOM);
-        byte[] file = new byte[61];
-        file[0] = PreferencesDat.VERSION;
-        hash.copyTo(file, 1);
-        file[60] = 7;
-        Files.write(this.dir.resolve(UserHashStore.FILE_NAME), file);
-        Files.writeString(AtomicFiles.tmpPath(this.dir.resolve(UserHashStore.FILE_NAME)), "interrupted");
-
-        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(hash);
-        assertThat(this.dir.resolve(UserHashStore.FILE_NAME)).hasBinaryContent(file);
-        assertThat(AtomicFiles.tmpPath(this.dir.resolve(UserHashStore.FILE_NAME)))
-                .doesNotExist();
+    private void givenTheBackupIsGone() throws IOException {
+        Files.deleteIfExists(AtomicFiles.bakPath(file()));
     }
 
-    @Test
-    void aUserHashHeldByAnotherProgramIsNotReplaced() throws Exception {
-        Hash16 first = UserHashStore.loadOrCreate(this.dir, RANDOM);
-        Path file = this.dir.resolve(UserHashStore.FILE_NAME);
+    private void givenABackupOfTheFile() throws IOException {
+        Files.copy(file(), AtomicFiles.bakPath(file()));
+    }
 
-        try (HeldFile _ = HeldFile.hold(file)) {
+    private void givenAnEmuleFileWithItsWindowPlacement() throws IOException {
+        this.expectedHash = UserHashStore.generate(RANDOM);
+        this.fileContent = new byte[61];
+        this.fileContent[0] = PreferencesDat.VERSION;
+        this.expectedHash.copyTo(this.fileContent, 1);
+        this.fileContent[60] = 7;
+        Files.write(file(), this.fileContent);
+    }
+
+    private void givenTheLeftoverOfAnInterruptedWrite() throws IOException {
+        Files.writeString(AtomicFiles.tmpPath(file()), "interrupted");
+    }
+
+    private void givenTheFileIsHeldByAnotherProgram() throws IOException {
+        this.held = HeldFile.hold(file());
+    }
+
+    private void givenALoadFailedWhileTheFileWasHeldByAnotherProgram() throws IOException {
+        try (HeldFile _ = HeldFile.hold(file())) {
             assertThatThrownBy(() -> UserHashStore.loadOrCreate(this.dir, RANDOM))
                     .isInstanceOf(IOException.class);
         }
-
-        assertThat(UserHashStore.loadOrCreate(this.dir, RANDOM)).isEqualTo(first);
     }
 
-    @Test
-    void theUserHashIsForItsOwnerOnly() throws Exception {
+    private void givenTheFileSystemHasPosixPermissions() {
         assumeTrue(this.dir.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+    }
 
-        UserHashStore.loadOrCreate(this.dir, RANDOM);
+    private void whenTheUserHashIsLoaded() {
+        try {
+            this.hash = UserHashStore.loadOrCreate(this.dir, RANDOM);
+        } catch (IOException e) {
+            this.exception = e;
+        }
+    }
 
-        assertThat(PosixFilePermissions.toString(
-                        Files.getPosixFilePermissions(this.dir.resolve(UserHashStore.FILE_NAME))))
-                .isEqualTo("rw-------");
+    private void thenTheHashIsKept() {
+        assertThat(this.exception).isNull();
+        assertThat(this.hash).isEqualTo(this.expectedHash);
+    }
+
+    private void thenTheHashIsMarked() {
+        assertThat(PreferencesDat.isMarkedUserHash(this.expectedHash)).isTrue();
+    }
+
+    private void thenTheHashIsUsable() {
+        assertThat(this.exception).isNull();
+        assertThat(UserHashStore.isUsable(this.hash)).isTrue();
+    }
+
+    private void thenTheFileHoldsTheHash() throws IOException {
+        assertThat(PreferencesDat.read(Files.readAllBytes(file())).userHash()).isEqualTo(this.expectedHash);
+    }
+
+    private void thenTheFileStartsWithTheVersion() throws IOException {
+        assertThat(Files.readAllBytes(file())[0]).isEqualTo((byte) PreferencesDat.VERSION);
+    }
+
+    private void thenTheFileIsUnchanged() {
+        assertThat(file()).hasBinaryContent(this.fileContent);
+    }
+
+    private void thenTheLeftoverIsGone() {
+        assertThat(AtomicFiles.tmpPath(file())).doesNotExist();
+    }
+
+    private void thenTheFileHasThePermissions(String permissions) throws IOException {
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file())))
+                .isEqualTo(permissions);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private Path file() {
+        return this.dir.resolve(UserHashStore.FILE_NAME);
     }
 }
