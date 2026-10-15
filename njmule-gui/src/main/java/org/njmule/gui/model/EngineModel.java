@@ -137,6 +137,9 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Seconds of rate history kept for the graphs. */
     public static final int RATE_HISTORY = 3_600;
 
+    /** Minutes of mean rates kept, for the graph of the last day. */
+    public static final int RATE_MINUTES = 1_440;
+
     // Searches kept from before their id came back: a few, as those started elsewhere never open here.
     private static final int EARLY_SEARCHES = 4;
     private static final EngineStatus NO_STATUS = new EngineStatus(
@@ -160,6 +163,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     // One view for all: the list holds its views only weakly, so a view made per call loses its listeners in a GC.
     private final ObservableList<Category> categoriesView = FXCollections.unmodifiableObservableList(this.categories);
     private final ObservableList<RateSample> rates = FXCollections.observableArrayList();
+    private final ObservableList<RateSample> minuteRates = FXCollections.observableArrayList();
+    private long minuteDown;
+    private long minuteUp;
+    private int minuteSamples;
     private final LiveList<String, ServerInfo> servers = new LiveList<>(ServerInfo::address);
     private final LiveList<String, KadContactInfo> kadContacts = new LiveList<>(KadContactInfo::id);
     private final LiveList<String, KadSearchInfo> kadSearches = new LiveList<>(s -> s.kind() + ":" + s.target());
@@ -258,10 +265,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             this.status.set(s);
             this.maxDown = Math.max(this.maxDown, s.downloadBytesPerSecond());
             this.maxUp = Math.max(this.maxUp, s.uploadBytesPerSecond());
-            this.rates.add(new RateSample(Instant.now(), s.downloadBytesPerSecond(), s.uploadBytesPerSecond()));
+            RateSample sample = new RateSample(Instant.now(), s.downloadBytesPerSecond(), s.uploadBytesPerSecond());
+            this.rates.add(sample);
             if (this.rates.size() > RATE_HISTORY) {
                 this.rates.remove(0, this.rates.size() - RATE_HISTORY);
             }
+            addToMinute(sample);
         });
         later(this.engine.downloads(), this::showDownloads);
         if (this.ticks % 2 == 0) {
@@ -345,6 +354,27 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public long maxUploadRate() {
         return this.maxUp;
+    }
+
+    // Sixty samples, one a second, make the mean rates of a minute.
+    private void addToMinute(RateSample sample) {
+        this.minuteDown += sample.down();
+        this.minuteUp += sample.up();
+        if (++this.minuteSamples < 60) {
+            return;
+        }
+        this.minuteRates.add(new RateSample(sample.time(), this.minuteDown / 60, this.minuteUp / 60));
+        if (this.minuteRates.size() > RATE_MINUTES) {
+            this.minuteRates.remove(0, this.minuteRates.size() - RATE_MINUTES);
+        }
+        this.minuteDown = 0;
+        this.minuteUp = 0;
+        this.minuteSamples = 0;
+    }
+
+    /** The mean rates of each minute, the oldest first. */
+    public ObservableList<RateSample> minuteRates() {
+        return this.minuteRates;
     }
 
     public ObservableList<RateSample> rates() {

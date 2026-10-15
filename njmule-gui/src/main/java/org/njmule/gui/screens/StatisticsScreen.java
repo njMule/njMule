@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import atlantafx.base.theme.Styles;
+import java.util.List;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -34,11 +35,13 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.RateGraph;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.Segments;
 
 /** The rates of the last minutes and the totals of this session. */
 public final class StatisticsScreen implements Screen {
 
     private final Gui gui;
+    private Segments<RateGraph.Range> range;
     private Node view;
     private final Label downRate = value();
     private final Label upRate = value();
@@ -82,11 +85,32 @@ public final class StatisticsScreen implements Screen {
         return this.view;
     }
 
+    // In the units of the language: 10 mins, 1 h, 24 h.
+    private String rangeName(RateGraph.Range range) {
+        int seconds = range.seconds();
+        return seconds < 3_600
+                ? seconds / 60 + " " + this.gui.t("IDS_MINS")
+                : seconds / 3_600 + " " + this.gui.t("IDS_HOURS");
+    }
+
+    Segments<RateGraph.Range> range() {
+        return this.range;
+    }
+
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
         RateGraph graph = new RateGraph(
-                this.gui.model().rates(), downSwatch, upSwatch, this.gui.subscriptions(), this.gui.formats()::rate);
+                this.gui.model().rates(),
+                this.gui.model().minuteRates(),
+                downSwatch,
+                upSwatch,
+                this.gui.subscriptions(),
+                this.gui.formats()::rate,
+                this.gui.formats()::time);
+        this.range = new Segments<>(List.of(RateGraph.Range.values()), this::rangeName);
+        this.range.setValue(graph.range());
+        this.range.valueProperty().addListener((o, was, now) -> graph.setRange(now));
         HBox legend = new HBox(
                 8,
                 downSwatch,
@@ -94,7 +118,7 @@ public final class StatisticsScreen implements Screen {
                 upSwatch,
                 new Label(this.gui.t("IDS_PW_CON_UPLBL")),
                 Fx.spacer(),
-                new Label(this.gui.f("nj.stats.span", RateGraph.SPAN / 60)));
+                this.range.node());
         legend.setAlignment(Pos.CENTER_LEFT);
         // What happens now first, then the rates over time, then the session and all sessions.
         TilePane present = cards(

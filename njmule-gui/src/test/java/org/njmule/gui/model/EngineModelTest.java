@@ -210,6 +210,16 @@ class EngineModelTest {
     }
 
     @Test
+    void shouldKeepTheMeanRatesOfEachMinuteOfPolls() throws Exception {
+        givenAModel();
+        givenTheModelKeptRates(1);
+
+        whenTheModelPollsUntilItKeptRates(60);
+
+        thenTheModelKeepsMinutes(1);
+    }
+
+    @Test
     void shouldAddPauseResumeAndCancelADownload() throws Exception {
         givenAModel();
         givenTheDownloadAdded("a.bin", 5000);
@@ -581,6 +591,18 @@ class EngineModelTest {
         SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
         this.model.handle(new EngineEvent.SearchResults(id, List.of(result)));
         this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    }
+
+    private void whenTheModelPollsUntilItKeptRates(int count) throws Exception {
+        for (int i = this.model.rates().size(); i < count; i++) {
+            this.model.tick();
+        }
+        until(() -> this.model.rates().size() == count);
+    }
+
+    private void thenTheModelKeepsMinutes(int count) throws Exception {
+        until(() -> this.model.minuteRates().size() == count);
+        assertThat(this.model.minuteRates()).hasSize(count);
     }
 
     private void givenTheModelPolledAgain() {

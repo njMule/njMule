@@ -16,7 +16,11 @@
  */
 package org.njmule.gui.ui;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.ToLongFunction;
 import javafx.collections.ObservableList;
@@ -31,42 +35,75 @@ import javafx.scene.paint.Paint;
 import org.njmule.gui.model.EngineModel;
 
 /**
- * The download and upload rates of the last minutes as two filled lines, on a scale rounded up from the highest rate
- * shown and labelled at its top and middle. Its colours come from the theme tokens of the legend swatches, so it
- * follows the theme.
+ * The download and upload rates of the last ten minutes, hour or day as two filled lines, on a scale rounded up from
+ * the highest rate shown and labelled at its top and middle; under the pointer, the rates of that moment. Its colours
+ * come from the theme tokens of the legend swatches, so it follows the theme.
  */
 public final class RateGraph extends Region {
 
-    /** Seconds shown. */
-    public static final int SPAN = 600;
+    /** The time shown: the last ten minutes or hour second by second, or the last day minute by minute. */
+    public enum Range {
+        TEN_MINUTES(600, 1),
+        HOUR(3_600, 1),
+        DAY(86_400, 60);
+
+        private final int seconds;
+        private final int step;
+
+        Range(int seconds, int step) {
+            this.seconds = seconds;
+            this.step = step;
+        }
+
+        public int seconds() {
+            return this.seconds;
+        }
+
+        int slots() {
+            return this.seconds / this.step;
+        }
+    }
 
     private static final double FILL_OPACITY = 0.25;
     private static final long GIB = 1L << 30;
 
     private final Canvas canvas = new Canvas();
-    private final ObservableList<EngineModel.RateSample> samples;
+    private final ObservableList<EngineModel.RateSample> seconds;
+    private final ObservableList<EngineModel.RateSample> minutes;
     private final Region down;
     private final Region up;
     private final Region grid = swatch("graph-grid");
     private final LongFunction<String> rate;
+    private final Function<Instant, String> time;
     private final Label top = scaleLabel();
     private final Label middle = scaleLabel();
+    private final Label pointed = new Label();
+    private Range range = Range.TEN_MINUTES;
     private long highest;
+    // Where the pointer is over the graph, or below zero.
+    private double pointer = -1;
 
     /**
+     * @param seconds the rates of each second, the oldest first
+     * @param minutes the mean rates of each minute, the oldest first
      * @param down the legend swatch of the download line
      * @param up the legend swatch of the upload line
-     * @param subscriptions where the graph's following of {@code samples} is kept
+     * @param subscriptions where the graph's following of the rates is kept
      * @param rate writes a rate in bytes per second for the scale
+     * @param time writes the time of a rate under the pointer
      */
     public RateGraph(
-            ObservableList<EngineModel.RateSample> samples,
+            ObservableList<EngineModel.RateSample> seconds,
+            ObservableList<EngineModel.RateSample> minutes,
             Region down,
             Region up,
             Subscriptions subscriptions,
-            LongFunction<String> rate) {
-        this.samples = samples;
+            LongFunction<String> rate,
+            Function<Instant, String> time) {
+        this.seconds = seconds;
+        this.minutes = minutes;
         this.rate = rate;
+        this.time = time;
         this.down = down;
         this.up = up;
         getStyleClass().add("rate-graph");
@@ -74,13 +111,39 @@ public final class RateGraph extends Region {
         setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.grid.setManaged(false);
         this.grid.setVisible(false);
-        getChildren().addAll(this.canvas, this.grid, this.top, this.middle);
+        this.pointed.getStyleClass().addAll("graph-pointed", "elevated-1");
+        this.pointed.setManaged(false);
+        this.pointed.setVisible(false);
+        getChildren().addAll(this.canvas, this.grid, this.top, this.middle, this.pointed);
         setMinHeight(160);
         setPrefHeight(260);
-        subscriptions.onListChange(samples, c -> draw());
+        subscriptions.onListChange(seconds, c -> draw());
+        subscriptions.onListChange(minutes, c -> draw());
         for (Region r : List.of(down, up, this.grid)) {
             r.backgroundProperty().addListener((o, was, now) -> draw());
         }
+        setOnMouseMoved(e -> point(e.getX()));
+        setOnMouseExited(e -> point(-1));
+    }
+
+    /** Shows {@code range} from now on. */
+    public void setRange(Range range) {
+        this.range = Objects.requireNonNull(range, "range");
+        draw();
+    }
+
+    public Range range() {
+        return this.range;
+    }
+
+    /** What the rates under the pointer read, or empty while the pointer is elsewhere. */
+    public Optional<String> pointed() {
+        return this.pointed.isVisible() ? Optional.of(this.pointed.getText()) : Optional.empty();
+    }
+
+    void point(double x) {
+        this.pointer = x;
+        draw();
     }
 
     /** A small coloured box for a legend, styled by {@code styleClass}. */
@@ -144,10 +207,12 @@ public final class RateGraph extends Region {
         GraphicsContext g = this.canvas.getGraphicsContext2D();
         g.clearRect(0, 0, w, h);
         if (w < 2 || h < 2) {
+            this.pointed.setVisible(false);
             return;
         }
-        int from = Math.max(0, this.samples.size() - SPAN);
-        List<EngineModel.RateSample> shown = this.samples.subList(from, this.samples.size());
+        List<EngineModel.RateSample> all = this.range.step == 1 ? this.seconds : this.minutes;
+        int from = Math.max(0, all.size() - this.range.slots());
+        List<EngineModel.RateSample> shown = all.subList(from, all.size());
         long seen = 1024;
         for (EngineModel.RateSample s : shown) {
             seen = Math.max(seen, Math.max(s.down(), s.up()));
@@ -166,6 +231,35 @@ public final class RateGraph extends Region {
         }
         line(g, shown, EngineModel.RateSample::down, max, color(this.down, Color.STEELBLUE));
         line(g, shown, EngineModel.RateSample::up, max, color(this.up, Color.SEAGREEN));
+        showPointed(g, shown);
+    }
+
+    // The sample under the pointer, its time and rates beside a mark; nothing where no sample is.
+    private void showPointed(GraphicsContext g, List<EngineModel.RateSample> shown) {
+        double w = this.canvas.getWidth();
+        double h = this.canvas.getHeight();
+        int index = shown.size() - 1 - (int) Math.round((w - this.pointer) / step(w));
+        if (this.pointer < 0 || index < 0 || index >= shown.size()) {
+            this.pointed.setVisible(false);
+            return;
+        }
+        EngineModel.RateSample sample = shown.get(index);
+        double x = Math.round(w - (shown.size() - 1 - index) * step(w)) + 0.5;
+        g.setStroke(color(this.grid, Color.gray(0.5, 0.4)));
+        g.setLineWidth(1);
+        g.strokeLine(x, 0, x, h);
+        this.pointed.setText(this.time.apply(sample.time()) + "  \u2193 " + this.rate.apply(sample.down()) + "  \u2191 "
+                + this.rate.apply(sample.up()));
+        this.pointed.autosize();
+        double lw = this.pointed.getWidth();
+        // Beside the mark, on the side with room.
+        double lx = x + 8 + lw <= w ? x + 8 : Math.max(0, x - 8 - lw);
+        this.pointed.relocate(lx, 4);
+        this.pointed.setVisible(true);
+    }
+
+    private double step(double width) {
+        return width / Math.max(1, this.range.slots() - 1);
     }
 
     private void line(
@@ -179,14 +273,22 @@ public final class RateGraph extends Region {
         }
         double w = this.canvas.getWidth();
         double h = this.canvas.getHeight();
-        double step = w / (SPAN - 1);
+        double step = step(w);
         double x0 = w - (shown.size() - 1) * step;
-        int n = shown.size();
+        // Samples closer than a pixel are drawn as their mean, one point per pixel.
+        int perPoint = Math.max(1, (int) Math.ceil(1 / step));
+        int n = (shown.size() + perPoint - 1) / perPoint;
         double[] xs = new double[n + 2];
         double[] ys = new double[n + 2];
-        for (int i = 0; i < n; i++) {
-            xs[i] = x0 + i * step;
-            ys[i] = h - (double) rate.applyAsLong(shown.get(i)) / max * (h - 4);
+        for (int p = 0; p < n; p++) {
+            int first = p * perPoint;
+            int last = Math.min(shown.size(), first + perPoint);
+            long sum = 0;
+            for (int i = first; i < last; i++) {
+                sum += rate.applyAsLong(shown.get(i));
+            }
+            xs[p] = x0 + (last - 1) * step;
+            ys[p] = h - (double) sum / (last - first) / max * (h - 4);
         }
         xs[n] = xs[n - 1];
         ys[n] = h;
