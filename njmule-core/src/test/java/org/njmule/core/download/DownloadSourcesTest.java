@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import com.google.common.net.InetAddresses;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -88,6 +89,7 @@ class DownloadSourcesTest {
     private static final int BLOCKED_IP = Ipv4.of(203, 0, 113, 9);
     private static final Hash16 PEER = Hash16.parseHex("5e".repeat(16));
     private static final Duration WAIT = ScriptedSource.WAIT;
+    private static final Hash16 UNKNOWN = Hash16.parseHex("3a".repeat(16));
 
     @TempDir
     Path dir;
@@ -111,6 +113,28 @@ class DownloadSourcesTest {
     private ConnectionGuard guard;
     private ConnectionGuard.Permit held;
     private ScriptedSource waitingSource;
+    private final AtomicReference<Consumer<List<DownloadManager.KadSource>>> found = new AtomicReference<>();
+    private byte[] data;
+    private Hash16 hash;
+    private ScriptedSource source;
+    private ScriptedSource.Link link;
+    private Recovery recovery;
+    private ScriptedSource.Link second;
+    private Packet request;
+    private ScriptedSource missing;
+    private ScriptedSource odd;
+    private ScriptedSource useless;
+    private ScriptedSource silent;
+    private int closedPort;
+    private ScriptedSource.Link noFile;
+    private ScriptedSource.Link tooMany;
+    private ScriptedSource.Link nothing;
+    private DownloadInfo info;
+    private int callbacksBefore;
+    private int sourceCount;
+    private List<Boolean> results;
+    private boolean accepted;
+    private boolean passedOn;
 
     @AfterEach
     void stop() throws Exception {
@@ -128,30 +152,355 @@ class DownloadSourcesTest {
     }
 
     @Test
-    void aSourceTellsItsCommentAndOtherSourcesAndKeepsUsInItsQueue() throws Exception {
-        ScriptedSource source = source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("31".repeat(16));
-        onLoop(() -> manager.add(source.link("talk.bin", 5000, hash)));
+    void shouldHearTheCommentAndOtherSourcesOfASourceThatKeepsUsInItsQueue() throws Exception {
+        givenASource(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
+        givenTheManager();
+        givenADownloadFromTheSource("talk.bin", Hash16.parseHex("31".repeat(16)));
+        givenWeAskedTheSourceForTheAichHashAndOtherSources();
+        givenTheSourceShownAsAsked();
+        givenOnlySourcesKnownToTakeObfuscationAsked();
+        givenTheSourceToldItsCommentsAndOtherSourcesAndQueuedUsAt(3);
+        givenWeWereQueuedAt(3);
+        givenTheGoodCommentAndThePublicSourcesItToldOfTaken();
+        givenTheAichHashOfOneSourceNotTrusted();
+        givenTheSourceNotPassedOnYet();
+        givenTheConnectionClosedWhileQueued();
+        givenTheSourceCanBePassedOn();
+        givenPlainConnectionsAllowedAgain();
+        givenTimePassed(DownloadManager.REASK_INTERVAL);
+        givenTheSourceAskedAgainButNotForMoreSources();
 
-        ScriptedSource.Link link = source.accept();
-        assertThat(names(link.until(Opcodes.Extended.REQUESTSOURCES2)))
+        whenTheDownloadIsPaused();
+
+        thenTheConnectionCloses();
+    }
+
+    @Test
+    void shouldAskASourceThatEndsOurSlotForTheSameBlocksAndFailAFileThatCannotBeMovedUntilResumed() throws Exception {
+        givenTheData(random(5000, 3));
+        givenAFileWhereTheIncomingDirectoryShouldBe();
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadOfTheDataFromTheSource("data.bin");
+        givenTheSourceGaveUsASlot();
+        givenTheWholeFileAskedFor();
+        givenTheSourceShownAsDownloading();
+        givenTheSourceEndedOurSlot();
+        givenTheSourceGaveUsTheSlotAgain();
+        givenTheBlocksLetGoAskedForAgain();
+        givenTheSourceSentTheFileAmongDataThatDoesNotFit();
+        givenTheDownloadFailedWith("cannot move");
+        givenTheDownloadInError();
+        givenItsSessionsEnded();
+        givenTheIncomingDirectoryFreed();
+
+        whenTheDownloadIsResumed();
+
+        thenItIsAccepted();
+        thenTheDownloadCompletesWithTheData();
+        thenTheDownloadIsGone();
+    }
+
+    @Test
+    void shouldIgnoreWhatDoesNotFitFromASourceUntilItBreaksTheProtocol() throws Exception {
+        givenTheData(random(5000, 4));
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadOfTheDataFromTheSource("odd.bin");
+        givenWeAskedTheSourceForTheFile();
+        givenTheSourceSentWhatDoesNotFitBeforeQueuingUs();
+        givenWeWereQueuedWithNothingOfItTaken();
+        givenTheSourceEndedASlotNotGivenYetThenGaveUsOne();
+        givenTheSourceSentDataOfNoBlockAskedForThenTheFirstBytes();
+
+        whenTheSourceSendsAStatusThatDoesNotDecode();
+
+        thenTheConnectionCloses();
+        thenTheDownloadHasSources(0);
+        thenTheDownloadHasCompleted(1000);
+    }
+
+    @Test
+    void shouldRecoverACorruptBlockWithTheAichDataOfASourceThatComesLater() throws Exception {
+        givenADownloadWithACorruptPartHeldForItsRecoveryData(5);
+        givenTheSecondSourceAskedForRecoveryData();
+        givenTheRecoveryDataAskedForTheFile();
+        givenTheSecondSourceToldAnotherAichHash();
+        givenTheSecondSourceSentTheRecoveryDataOfThePart();
+        givenOnlyTheCorruptBlockAskedForAgain();
+
+        whenTheFirstSourceSendsTheBlockAgain();
+
+        thenTheDownloadCompletesWithTheData();
+        thenTheFileIsNoLongerFound();
+    }
+
+    @Test
+    void shouldDownloadThePartAgainWholeWithRecoveryDataThatProvesNothing() throws Exception {
+        givenADownloadWithACorruptPartHeldForItsRecoveryData(6);
+        givenTheSecondSourceAskedForRecoveryData();
+        givenTheSecondSourceSentRecoveryDataThatProvesNothing();
+        givenThePartAskedForAgainWhole();
+
+        whenTheFirstSourceSendsThePartCorruptAgain();
+
+        thenThePartIsAskedForAgainWhole();
+        thenTheDownloadCanBePaused();
+    }
+
+    @Test
+    void shouldDropSourcesWithoutTheFileOrOutOfReach() throws Exception {
+        givenSourcesWithoutTheFileAndOutOfReach();
+        givenTheManager();
+        givenADownloadFromAllOfThem(Hash16.parseHex("34".repeat(16)));
+        givenTheSourcesAnsweredWithoutAFileWeCanUse();
+        givenTheSilentSourceRefusedUs();
+        givenTheSourcesWithoutAFileWeCanUseHungUpOn();
+        givenTheUselessAndTheUnreachableSourcesKept();
+        givenTheUnreachableSourcesFailedTwice();
+
+        whenTheUnreachableSourcesAreAskedAgain();
+
+        thenOnlyTheUselessSourceIsLeft();
+        thenTheDownloadCanBePaused();
+    }
+
+    @Test
+    void shouldAskFirewalledSourcesThroughTheServerOneAtATimeAndNotForAPausedDownload() throws Exception {
+        givenTheManager();
+        givenADownload("lowid.bin", Hash16.parseHex("36".repeat(16)));
+        givenAFirewalledSourceTheServerCannotAsk(6000);
+        givenTheServerFoundFirewalledSources();
+        givenEachAskedForOnceOneATick();
+        givenOneTheServerCouldNotAskAskedAgainWhenNamedAgain();
+        givenOneThatDidNotCallBackInTimeAskedAgainWhenNamedAgain();
+        givenTheDownloadPaused();
+
+        whenTheServerFinds(new ServerMessages.Source(8000, PORT, 0, Optional.empty()));
+
+        thenNoMoreCallbacksAreAskedFor();
+    }
+
+    @Test
+    void shouldTakeNoMoreFirewalledSourcesIntoAFullSourceList() throws Exception {
+        givenAMaximumOfSources(1);
+        givenASource(0, Hello.MISC2_SOURCE_EXCHANGE2);
+        givenTheManager();
+        givenADownloadFromTheSource("full.bin", Hash16.parseHex("38".repeat(16)));
+        givenTheSourceAskedForNoMoreSources();
+
+        whenTheServerFinds(new ServerMessages.Source(5000, PORT, 0, Optional.empty()));
+
+        thenNoCallbackIsAskedFor();
+    }
+
+    @Test
+    void shouldTakeNoSourceByHandIntoAFullSourceList() throws Exception {
+        givenAMaximumOfSources(1);
+        givenASource(0, Hello.MISC2_SOURCE_EXCHANGE2);
+        givenTheManager();
+        givenADownloadFromTheSource("full.bin", Hash16.parseHex("38".repeat(16)));
+        givenTheSourceAskedForNoMoreSources();
+
+        whenSourcesAreAddedByHand(new InetSocketAddress(InetAddresses.forString("127.0.0.2"), PORT));
+
+        thenEveryOneIsRefused();
+    }
+
+    @Test
+    void shouldLookUpASourceNamedByItsHost() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+
+        whenADownloadNamesTheSourceBy("localhost");
+
+        thenTheSourceIsConnectedTo();
+        thenTheSourceIsKnownAt("127.0.0.1");
+        thenTheDownloadCanBePaused();
+    }
+
+    @Test
+    void shouldHoldEveryDownloadOnADiskShortOfSpaceFromTheStart() throws Exception {
+        givenAMinimumFreeSpaceOf(Long.MAX_VALUE);
+        givenAListenerThatDoesNotCareAboutTheDisk();
+        givenTheManager();
+
+        whenADownloadIsAdded("held.bin", Hash16.parseHex("3e".repeat(16)));
+
+        thenTheDownloadIsAddedAs(DownloadInfo.Status.NO_SPACE);
+    }
+
+    @Test
+    void shouldPassALanSourceOnToNoClientWithoutAnIpv4Address() {
+        whenASourceIsOfferedToAClient(Ipv4.of(10, 0, 0, 1), InetAddresses.forString("::1"));
+
+        thenItIsNotPassedOn();
+    }
+
+    @Test
+    void shouldLeaveOutTheKadSourcesOfAStoppedDownload() throws Exception {
+        givenKadThatLooksForSources();
+        givenTheManager();
+        givenADownload("kad.bin", Hash16.parseHex("39".repeat(16)));
+        givenKadLookedForItsSources();
+
+        whenKadFindsASourceOnceTheDownloadIsStopped();
+
+        thenTheDownloadGotNoSource();
+    }
+
+    @Test
+    void shouldChangeNothingForAnUnknownDownload() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
+
+        whenEveryChangeIsAskedForTheUnknownDownload();
+
+        thenEveryOneIsRefused();
+        thenTheUnknownDownloadHasNoComments();
+        thenTheUnknownDownloadHasNoSourceToPassOn();
+    }
+
+    @Test
+    void shouldRefuseSourcesByHandWithoutAnIpv4AddressOrAPort() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
+
+        whenSourcesAreAddedByHand(
+                new InetSocketAddress(InetAddresses.forString("::1"), PORT),
+                new InetSocketAddress(InetAddresses.forString("127.0.0.1"), 0));
+
+        thenEveryOneIsRefused();
+        thenThePausedDownloadHasNoSourceToPassOn();
+    }
+
+    @Test
+    void shouldSetAPausedDownloadToPreviewFirst() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
+
+        whenTheDownloadIsSetToPreviewFirst();
+
+        thenItIsAccepted();
+        thenTheDownloadIsPreviewedFirst();
+    }
+
+    @Test
+    void shouldAcceptAStopByScheduleOfADownloadStoppedAlready() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
+        givenTheDownloadStoppedBySchedule();
+
+        whenTheDownloadIsStoppedByScheduleAgain();
+
+        thenTheStopIsAcceptedAsStoppedAlready();
+        thenTheStatusOfTheDownloadIs(DownloadInfo.Status.STOPPED);
+    }
+
+    @Test
+    void shouldSetTheCategoryOfAStoppedDownload() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
+        givenTheDownloadStoppedBySchedule();
+
+        whenTheCategoryIsSet(Category.NONE);
+
+        thenItIsAccepted();
+    }
+
+    @Test
+    void shouldLetDownloadsWaitWhileTheDiskIsShortOfSpace() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("space.bin", Hash16.parseHex("3c".repeat(16)));
+        givenWeAskedTheSourceForAnUploadSlot();
+        givenAMinimumFreeSpaceOf(Long.MAX_VALUE);
+        givenTheDownloadsWaitForSpace();
+        givenAMinimumFreeSpaceOf(0);
+        givenTheDiskHasRoomAgain();
+
+        whenTimePasses(DownloadManager.EARLIEST_REASK);
+
+        thenTheSourceIsAskedAgain();
+        thenTheDownloadCanBePaused();
+    }
+
+    @Test
+    void shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit() throws Exception {
+        givenOurConnectionsAtTheirLimit();
+        givenADownloadWhoseSourceIsNotCalled();
+
+        whenAConnectionOfOursCloses();
+
+        thenTheSourceIsCalled();
+    }
+
+    private void givenTheData(byte[] bytes) {
+        this.data = bytes;
+    }
+
+    private void givenAFileWhereTheIncomingDirectoryShouldBe() throws IOException {
+        this.incoming = Files.writeString(this.dir.resolve("blocker"), "a file where the directory should be");
+    }
+
+    private void givenASource(int misc1, int misc2) throws Exception {
+        this.source = source(misc1, misc2);
+    }
+
+    private void givenTheManager() throws Exception {
+        manager();
+    }
+
+    private void givenADownloadFromTheSource(String name, Hash16 file) throws Exception {
+        this.hash = file;
+        onLoop(() -> this.manager.add(this.source.link(name, 5000, file)));
+    }
+
+    private void givenADownloadOfTheDataFromTheSource(String name) throws Exception {
+        this.hash = Ed2k.md4(this.data, 0, this.data.length);
+        onLoop(() -> this.manager.add(this.source.link(name, this.data.length, this.hash)));
+    }
+
+    private void givenADownload(String name, Hash16 file) throws Exception {
+        this.hash = file;
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, file)));
+    }
+
+    private void givenAPausedDownload(String name, Hash16 file) throws Exception {
+        this.hash = file;
+        onLoop(() -> {
+            this.manager.add(Ed2kLink.FileLink.of(name, 5000, file));
+            return this.manager.pause(file);
+        });
+    }
+
+    private void givenWeAskedTheSourceForTheAichHashAndOtherSources() throws Exception {
+        this.link = accept(this.source);
+        assertThat(names(this.link.until(Opcodes.Extended.REQUESTSOURCES2)))
                 .as("a source able to is asked for the AICH hash and for other sources")
                 .containsExactly("REQUESTFILENAME", "SETREQFILEID", "AICHFILEHASHREQ", "REQUESTSOURCES2");
-        SourceInfo asking = awaitSource(source, s -> s.state() == SourceInfo.State.ASKING);
-        assertThat(asking.nick()).contains("scripted");
-        assertThat(onLoop(manager::describe)).contains("talk.bin missing 5000:", "REQUESTING");
+    }
 
-        // From now on only sources known to take obfuscation are asked: none of those it tells of, nor this one.
+    private void givenTheSourceShownAsAsked() throws Exception {
+        SourceInfo asking = awaitSource(this.source, s -> s.state() == SourceInfo.State.ASKING);
+        assertThat(asking.nick()).contains("scripted");
+        assertThat(onLoop(this.manager::describe)).contains("talk.bin missing 5000:", "REQUESTING");
+    }
+
+    // From now on only sources known to take obfuscation are asked: none of those it tells of, nor this one.
+    private void givenOnlySourcesKnownToTakeObfuscationAsked() {
         this.settings = settings(ObfuscationMode.REQUIRED, 100, 0);
-        link.send(FileDescription.encode(FileComment.of("a fine copy", 4)));
-        link.send(FileDescription.encode(FileComment.of("free SPAM inside", 1)));
-        link.send(FileDescription.encode(FileComment.NONE));
-        link.send(aichHash(Hash16.parseHex("32".repeat(16)), Hash20.parseBase32("A".repeat(32))));
-        link.send(aichHash(hash, Hash20.parseBase32("A".repeat(32))));
-        link.send(new SourceExchange.Answer(
+    }
+
+    private void givenTheSourceToldItsCommentsAndOtherSourcesAndQueuedUsAt(int rank) throws Exception {
+        this.link.send(FileDescription.encode(FileComment.of("a fine copy", 4)));
+        this.link.send(FileDescription.encode(FileComment.of("free SPAM inside", 1)));
+        this.link.send(FileDescription.encode(FileComment.NONE));
+        this.link.send(aichHash(Hash16.parseHex("32".repeat(16)), Hash20.parseBase32("A".repeat(32))));
+        this.link.send(aichHash(this.hash, Hash20.parseBase32("A".repeat(32))));
+        this.link.send(new SourceExchange.Answer(
                         4,
-                        hash,
+                        this.hash,
                         List.of(
                                 new SourceExchange.Source(0, 1234, PORT, 0, 0, Optional.empty(), 0),
                                 exchanged(BLOCKED_IP),
@@ -159,191 +508,672 @@ class DownloadSourcesTest {
                                 exchanged(Ipv4.of(192, 0, 2, 50)),
                                 exchanged(Ipv4.of(192, 0, 2, 51))))
                 .encode());
-        link.send(new SourceExchange.Answer(4, hash, List.of(exchanged(Ipv4.of(192, 0, 2, 52)))).encode());
-        link.send(new ClientMessages.FileStatus(Hash16.parseHex("32".repeat(16)), 0, new BitSet()).encode());
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(3)));
+        this.link.send(new SourceExchange.Answer(4, this.hash, List.of(exchanged(Ipv4.of(192, 0, 2, 52)))).encode());
+        this.link.send(new ClientMessages.FileStatus(Hash16.parseHex("32".repeat(16)), 0, new BitSet()).encode());
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+        this.link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(rank)));
+    }
 
-        // Queued from the upload request on; the rank comes after.
-        SourceInfo queued = awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() != 0);
-        assertThat(queued.queueRank()).isEqualTo(3);
+    // Queued from the upload request on; the rank comes after.
+    private void givenWeWereQueuedAt(int rank) throws Exception {
+        SourceInfo queued = awaitSource(this.source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() != 0);
+        assertThat(queued.queueRank()).isEqualTo(rank);
         assertThat(queued.parts()).isEqualTo(1);
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().sources()))
+    }
+
+    private void givenTheGoodCommentAndThePublicSourcesItToldOfTaken() throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().sources()))
                 .as("the public sources it told of, not the LowID, the blocked or the LAN one, nor those of an answer"
                         + " not asked for")
                 .isEqualTo(3);
-        assertThat(onLoop(() -> manager.comments(hash))).singleElement().satisfies(c -> {
-            assertThat(c.user()).isEqualTo("scripted");
-            assertThat(c.comment()).isEqualTo(FileComment.of("a fine copy", 4));
-        });
-        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
+        assertThat(onLoop(() -> this.manager.comments(this.hash)))
+                .singleElement()
+                .satisfies(c -> {
+                    assertThat(c.user()).isEqualTo("scripted");
+                    assertThat(c.comment()).isEqualTo(FileComment.of("a fine copy", 4));
+                });
+    }
+
+    private void givenTheAichHashOfOneSourceNotTrusted() throws Exception {
+        assertThat(onLoop(
+                        () -> this.manager.find(this.hash).orElseThrow().file().aichHash()))
                 .as("one source alone is no reason to trust a hash")
                 .isEmpty();
-        assertThat(onLoop(() -> manager.exchangeable(hash)))
+    }
+
+    private void givenTheSourceNotPassedOnYet() throws Exception {
+        assertThat(onLoop(() -> this.manager.exchangeable(this.hash)))
                 .as("a source counts once it said which parts it has")
                 .isEmpty();
+    }
 
-        // The connection closes while queued: the place in the queue stays, and the source can be passed on.
-        link.close();
-        awaitSource(source, s -> s.state() == SourceInfo.State.WAITING);
-        assertThat(onLoop(() -> manager.exchangeable(hash))).singleElement().satisfies(s -> {
-            assertThat(s.port()).isEqualTo(source.port());
-            assertThat(s.userHash()).contains(PEER);
-        });
+    // The connection closes while queued: the place in the queue stays, and the source can be passed on.
+    private void givenTheConnectionClosedWhileQueued() throws Exception {
+        this.link.close();
+        awaitSource(this.source, s -> s.state() == SourceInfo.State.WAITING);
+    }
 
-        // Asked again in time, plain once allowed: not for more sources, asked for less than 40 minutes ago.
+    private void givenTheSourceCanBePassedOn() throws Exception {
+        assertThat(onLoop(() -> this.manager.exchangeable(this.hash)))
+                .singleElement()
+                .satisfies(s -> {
+                    assertThat(s.port()).isEqualTo(this.source.port());
+                    assertThat(s.userHash()).contains(PEER);
+                });
+    }
+
+    // Asked again in time, plain once allowed: not for more sources, asked for less than 40 minutes ago.
+    private void givenPlainConnectionsAllowedAgain() {
         this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
-        advance(DownloadManager.REASK_INTERVAL);
-        ScriptedSource.Link again = source.accept();
-        List<Packet> request = new ArrayList<>(again.until(Opcodes.Client.SETREQFILEID));
-        again.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        request.addAll(again.until(Opcodes.Client.STARTUPLOADREQ));
-        assertThat(names(request)).doesNotContain("REQUESTSOURCES2");
-        onLoop(() -> manager.pause(hash));
-        assertThat(again.closesWithin(WAIT)).isTrue();
     }
 
-    @Test
-    void aSourceThatEndsOurSlotIsAskedForTheSameBlocksAndAFileThatCannotBeMovedFailsUntilResumed() throws Exception {
-        byte[] data = random(5000, 3);
-        Hash16 hash = Ed2k.md4(data, 0, data.length);
-        Path blocker = Files.writeString(this.dir.resolve("blocker"), "a file where the directory should be");
-        this.incoming = blocker;
-        ScriptedSource source = source(0, 0);
-        DownloadManager manager = manager();
-        onLoop(() -> manager.add(source.link("data.bin", data.length, hash)));
+    private void givenTimePassed(Duration duration) {
+        advance(duration);
+    }
 
-        ScriptedSource.Link link = source.accept();
-        link.until(Opcodes.Client.SETREQFILEID);
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        assertThat(requested(link)).containsExactly(new ClientMessages.Range(0, data.length));
-        awaitSource(source, s -> s.state() == SourceInfo.State.DOWNLOADING);
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().transferring()))
+    private void givenTheSourceAskedAgainButNotForMoreSources() throws Exception {
+        assertThat(names(askForAnUploadSlot())).doesNotContain("REQUESTSOURCES2");
+    }
+
+    private void givenTheSourceGaveUsASlot() throws Exception {
+        askForAnUploadSlot();
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+    }
+
+    private void givenTheWholeFileAskedFor() throws Exception {
+        assertThat(requested(this.link)).containsExactly(new ClientMessages.Range(0, this.data.length));
+    }
+
+    private void givenTheSourceShownAsDownloading() throws Exception {
+        awaitSource(this.source, s -> s.state() == SourceInfo.State.DOWNLOADING);
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().transferring()))
                 .isEqualTo(1);
-        assertThat(onLoop(manager::describe)).contains("DOWNLOADING [0-5000 missing");
-
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-        awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED);
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        assertThat(requested(link))
-                .as("the blocks let go are asked for again")
-                .containsExactly(new ClientMessages.Range(0, data.length));
-
-        link.send(new ClientMessages.SendingPart(Hash16.parseHex("33".repeat(16)), 0, 10, new byte[10]).encode(false));
-        link.send(new ClientMessages.SendingPart(hash, 4990, 5010, new byte[20]).encode(false));
-        link.send(new ClientMessages.SendingPart(hash, 0, data.length, data).encode(true));
-
-        assertThat(await("failed")).contains("cannot move");
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.ERROR);
-        assertThat(link.closesWithin(WAIT)).as("its sessions end").isTrue();
-
-        Files.delete(blocker);
-        assertThat(onLoop(() -> manager.resume(hash))).isTrue();
-        Path done = Path.of(await("completed ").substring("completed ".length()));
-        assertThat(Files.readAllBytes(done)).isEqualTo(data);
-        assertThat(onLoop(() -> manager.download(hash))).isEmpty();
+        assertThat(onLoop(this.manager::describe)).contains("DOWNLOADING [0-5000 missing");
     }
 
-    @Test
-    void aSourceIgnoresWhatDoesNotFitUntilItBreaksTheProtocol() throws Exception {
-        byte[] data = random(5000, 4);
-        Hash16 hash = Ed2k.md4(data, 0, data.length);
-        ScriptedSource source = source(0, 0);
-        DownloadManager manager = manager();
-        onLoop(() -> manager.add(source.link("odd.bin", data.length, hash)));
-        ScriptedSource.Link link = source.accept();
-        link.until(Opcodes.Client.SETREQFILEID);
+    private void givenTheSourceEndedOurSlot() throws Exception {
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+        awaitSource(this.source, s -> s.state() == SourceInfo.State.QUEUED);
+    }
 
-        // Nothing of this changes anything: a rank before the queue, an answer not asked for, a hash set not needed.
-        link.send(Packet.of(
+    private void givenTheSourceGaveUsTheSlotAgain() throws Exception {
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+    }
+
+    private void givenTheBlocksLetGoAskedForAgain() throws Exception {
+        assertThat(requested(this.link))
+                .as("the blocks let go are asked for again")
+                .containsExactly(new ClientMessages.Range(0, this.data.length));
+    }
+
+    private void givenTheSourceSentTheFileAmongDataThatDoesNotFit() throws Exception {
+        this.link.send(
+                new ClientMessages.SendingPart(Hash16.parseHex("33".repeat(16)), 0, 10, new byte[10]).encode(false));
+        this.link.send(new ClientMessages.SendingPart(this.hash, 4990, 5010, new byte[20]).encode(false));
+        this.link.send(new ClientMessages.SendingPart(this.hash, 0, this.data.length, this.data).encode(true));
+    }
+
+    private void givenTheDownloadFailedWith(String reason) throws InterruptedException {
+        assertThat(await("failed")).contains(reason);
+    }
+
+    private void givenTheDownloadInError() throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().status()))
+                .isEqualTo(DownloadInfo.Status.ERROR);
+    }
+
+    private void givenItsSessionsEnded() throws Exception {
+        assertThat(this.link.closesWithin(WAIT)).as("its sessions end").isTrue();
+    }
+
+    private void givenTheIncomingDirectoryFreed() throws IOException {
+        Files.delete(this.incoming);
+    }
+
+    private void givenWeAskedTheSourceForTheFile() throws Exception {
+        this.link = accept(this.source);
+        this.link.until(Opcodes.Client.SETREQFILEID);
+    }
+
+    // Nothing of this changes anything: a rank before the queue, an answer not asked for, a hash set not needed.
+    private void givenTheSourceSentWhatDoesNotFitBeforeQueuingUs() throws Exception {
+        this.link.send(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.QUEUERANKING.code(),
                 new PacketWriter().u16(9).bytes(new byte[10])));
-        link.send(Packet.of(
+        this.link.send(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.AICHANSWER.code(),
-                new PacketWriter().hash16(hash).u16(0).hash20(Hash20.parseBase32("B".repeat(32)))));
-        link.send(new ClientMessages.HashSet(hash, List.of(Hash16.parseHex("36".repeat(16)))).encode());
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        assertThat(awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED)
+                new PacketWriter().hash16(this.hash).u16(0).hash20(Hash20.parseBase32("B".repeat(32)))));
+        this.link.send(new ClientMessages.HashSet(this.hash, List.of(Hash16.parseHex("36".repeat(16)))).encode());
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+    }
+
+    private void givenWeWereQueuedWithNothingOfItTaken() throws Exception {
+        assertThat(awaitSource(this.source, s -> s.state() == SourceInfo.State.QUEUED)
                         .queueRank())
                 .isZero();
-        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().partHashes()))
+        assertThat(onLoop(
+                        () -> this.manager.find(this.hash).orElseThrow().file().partHashes()))
                 .isEmpty();
+    }
 
-        // Neither does the end of a slot not given yet, nor data of no block asked for.
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        assertThat(requested(link)).containsExactly(new ClientMessages.Range(0, data.length));
-        link.send(new ClientMessages.CompressedPart(hash, 7, 10, new byte[10]).encode(false));
-        link.send(
+    // Neither does the end of a slot not given yet, nor data of no block asked for.
+    private void givenTheSourceEndedASlotNotGivenYetThenGaveUsOne() throws Exception {
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        assertThat(requested(this.link)).containsExactly(new ClientMessages.Range(0, this.data.length));
+    }
+
+    private void givenTheSourceSentDataOfNoBlockAskedForThenTheFirstBytes() throws Exception {
+        this.link.send(new ClientMessages.CompressedPart(this.hash, 7, 10, new byte[10]).encode(false));
+        this.link.send(
                 new ClientMessages.CompressedPart(Hash16.parseHex("37".repeat(16)), 0, 10, new byte[10]).encode(false));
-        link.send(new ClientMessages.SendingPart(hash, 0, 0, new byte[0]).encode(false));
-        link.send(new ClientMessages.SendingPart(hash, 0, 1000, Arrays.copyOf(data, 1000)).encode(false));
+        this.link.send(new ClientMessages.SendingPart(this.hash, 0, 0, new byte[0]).encode(false));
+        this.link.send(
+                new ClientMessages.SendingPart(this.hash, 0, 1000, Arrays.copyOf(this.data, 1000)).encode(false));
         await(
                 "the first bytes written",
-                () -> manager.download(hash).orElseThrow().completed() == 1000);
+                () -> this.manager.download(this.hash).orElseThrow().completed() == 1000);
+    }
 
-        // A status that does not decode ends it for good.
-        link.send(Packet.of(
+    private void givenADownloadWithACorruptPartHeldForItsRecoveryData(long seed) throws Exception {
+        this.recovery = recovery(seed);
+        this.hash = this.recovery.link.hash();
+        this.data = this.recovery.data;
+    }
+
+    private void givenTheSecondSourceAskedForRecoveryData() throws Exception {
+        this.second = accept(this.recovery.helper);
+        this.second.until(Opcodes.Client.SETREQFILEID);
+        this.second.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.request = this.second.until(Opcodes.Extended.AICHREQUEST).getLast();
+    }
+
+    private void givenTheRecoveryDataAskedForTheFile() throws Exception {
+        assertThat(this.request.reader().hash16()).isEqualTo(this.hash);
+    }
+
+    private void givenTheSecondSourceToldAnotherAichHash() throws Exception {
+        this.second.send(aichHash(this.hash, Hash20.parseBase32("F".repeat(32))));
+    }
+
+    private void givenTheSecondSourceSentTheRecoveryDataOfThePart() throws Exception {
+        this.second.send(
+                aichAnswer(this.hash, this.recovery.tree.masterHash(), AichRecovery.create(this.recovery.tree, 0)));
+    }
+
+    private void givenOnlyTheCorruptBlockAskedForAgain() throws Exception {
+        assertThat(requested(this.recovery.first))
+                .as("only the corrupt block is downloaded again")
+                .containsExactly(new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, this.data.length));
+    }
+
+    private void givenTheSecondSourceSentRecoveryDataThatProvesNothing() throws Exception {
+        this.second.send(aichAnswer(this.hash, this.recovery.tree.masterHash(), random(200, 7)));
+    }
+
+    private void givenThePartAskedForAgainWhole() throws Exception {
+        assertThat(requested(this.recovery.first)).containsExactlyElementsOf(wholePart());
+    }
+
+    private void givenSourcesWithoutTheFileAndOutOfReach() throws Exception {
+        this.missing = source(0, 0);
+        this.odd = source(0, 0);
+        this.useless = source(0, 0);
+        this.silent = source(0, 0);
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            this.closedPort = probe.getLocalPort();
+        }
+    }
+
+    private void givenADownloadFromAllOfThem(Hash16 file) throws Exception {
+        this.hash = file;
+        Ed2kLink.FileLink gone = new Ed2kLink.FileLink(
+                "gone.bin",
+                5000,
+                file,
+                Optional.empty(),
+                List.of(),
+                List.of(
+                        new Ed2kLink.Source("127.0.0.1", this.missing.port()),
+                        new Ed2kLink.Source("127.0.0.1", this.odd.port()),
+                        new Ed2kLink.Source("127.0.0.1", this.useless.port()),
+                        new Ed2kLink.Source("127.0.0.1", this.silent.port()),
+                        new Ed2kLink.Source("127.0.0.1", this.closedPort)),
+                List.of());
+        onLoop(() -> this.manager.add(gone));
+    }
+
+    private void givenTheSourcesAnsweredWithoutAFileWeCanUse() throws Exception {
+        this.noFile = accept(this.missing);
+        this.noFile.until(Opcodes.Client.SETREQFILEID);
+        this.noFile.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, Hash16.parseHex("35".repeat(16))));
+        this.noFile.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, this.hash));
+        this.tooMany = accept(this.odd);
+        this.tooMany.until(Opcodes.Client.SETREQFILEID);
+        BitSet five = new BitSet();
+        five.set(0, 5);
+        this.tooMany.send(new ClientMessages.FileStatus(this.hash, 5, five).encode());
+        this.nothing = accept(this.useless);
+        this.nothing.until(Opcodes.Client.SETREQFILEID);
+        this.nothing.send(new ClientMessages.FileStatus(this.hash, 1, new BitSet()).encode());
+    }
+
+    private void givenTheSilentSourceRefusedUs() throws Exception {
+        this.silent.refuseNext();
+    }
+
+    private void givenTheSourcesWithoutAFileWeCanUseHungUpOn() throws Exception {
+        assertThat(this.noFile.closesWithin(WAIT)).isTrue();
+        assertThat(this.tooMany.closesWithin(WAIT)).isTrue();
+        assertThat(this.nothing.closesWithin(WAIT)).as("it has no part we need").isTrue();
+    }
+
+    private void givenTheUselessAndTheUnreachableSourcesKept() throws Exception {
+        awaitSources(this.hash, 3);
+        assertThat(onLoop(() ->
+                        this.manager.sources().stream().map(SourceInfo::address).toList()))
+                .containsExactlyInAnyOrder(
+                        "127.0.0.1:" + this.useless.port(),
+                        "127.0.0.1:" + this.silent.port(),
+                        "127.0.0.1:" + this.closedPort);
+    }
+
+    // Three failures in a row drop a source; the one without parts we need waits its time. Each round waits for
+    // both failures: a refused connection takes Windows a couple of seconds.
+    private void givenTheUnreachableSourcesFailedTwice() throws Exception {
+        awaitFailures(this.manager, 1, this.silent.port(), this.closedPort);
+        advance(DownloadManager.MIN_REASK);
+        this.silent.refuseNext();
+        awaitFailures(this.manager, 2, this.silent.port(), this.closedPort);
+    }
+
+    private void givenAFirewalledSourceTheServerCannotAsk(long lowId) {
+        this.server.refused.add(lowId);
+    }
+
+    private void givenTheServerFoundFirewalledSources() throws Exception {
+        onLoop(() -> {
+            this.manager.foundSources(new ServerMessages.FoundSources(
+                    this.hash,
+                    List.of(
+                            new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)),
+                            new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)),
+                            new ServerMessages.Source(6000, PORT, 0, Optional.empty()),
+                            new ServerMessages.Source(0, PORT, 0, Optional.empty()),
+                            new ServerMessages.Source(Ipv4.toEd2k(BLOCKED_IP), PORT, 0, Optional.empty()))));
+            this.manager.foundSources(new ServerMessages.FoundSources(
+                    Hash16.parseHex("37".repeat(16)),
+                    List.of(new ServerMessages.Source(7000, PORT, 0, Optional.empty()))));
+            return null;
+        });
+    }
+
+    private void givenEachAskedForOnceOneATick() throws Exception {
+        await("both asked for", () -> this.server.callbacks.size() >= 2);
+        assertThat(this.server.callbacks).as("one a tick, each once").containsExactly(5000L, 6000L);
+    }
+
+    // One the server could not ask is forgotten, and may be asked for again.
+    private void givenOneTheServerCouldNotAskAskedAgainWhenNamedAgain() throws Exception {
+        onLoop(() -> {
+            this.manager.foundSources(new ServerMessages.FoundSources(
+                    this.hash, List.of(new ServerMessages.Source(6000, PORT, 0, Optional.empty()))));
+            return null;
+        });
+        await("asked again", () -> this.server.callbacks.size() >= 3);
+    }
+
+    // One that does not call back in time is forgotten too: the server names it again, and it is asked again.
+    private void givenOneThatDidNotCallBackInTimeAskedAgainWhenNamedAgain() throws Exception {
+        advance(DownloadManager.CALLBACK_WAIT);
+        await("asked once more", () -> {
+            this.manager.foundSources(new ServerMessages.FoundSources(
+                    this.hash, List.of(new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)))));
+            return this.server.callbacks.lastIndexOf(5000L) > 0;
+        });
+    }
+
+    private void givenTheDownloadPaused() throws Exception {
+        onLoop(() -> this.manager.pause(this.hash));
+    }
+
+    private void givenAMaximumOfSources(int maxSources) {
+        this.settings = settings(ObfuscationMode.SUPPORTED, maxSources, 0);
+    }
+
+    private void givenTheSourceAskedForNoMoreSources() throws Exception {
+        assertThat(names(askForAnUploadSlot()))
+                .as("a full list wants no more sources")
+                .doesNotContain("REQUESTSOURCES2");
+    }
+
+    private void givenAMinimumFreeSpaceOf(long minFree) {
+        this.settings = settings(ObfuscationMode.SUPPORTED, 100, minFree);
+    }
+
+    // A listener that does not care about the disk.
+    private void givenAListenerThatDoesNotCareAboutTheDisk() {
+        this.listener = new DownloadManager.Listener() {
+            @Override
+            public void added(DownloadInfo download) {}
+
+            @Override
+            public void progress(DownloadInfo download) {}
+
+            @Override
+            public void completed(DownloadInfo download, Path file, PartFile part) {}
+
+            @Override
+            public void failed(DownloadInfo download, String reason) {}
+
+            @Override
+            public void removed(Hash16 hash) {}
+        };
+    }
+
+    private void givenKadThatLooksForSources() {
+        this.kad = Optional.of((file, size, sources) -> {
+            this.found.compareAndSet(null, sources);
+            return true;
+        });
+    }
+
+    private void givenKadLookedForItsSources() throws Exception {
+        await("Kad searched", () -> this.found.get() != null);
+    }
+
+    private void givenTheDownloadStoppedBySchedule() throws Exception {
+        assertThat(onLoop(() -> this.manager.stopBySchedule(this.hash))).isTrue();
+    }
+
+    private void givenWeAskedTheSourceForAnUploadSlot() throws Exception {
+        askForAnUploadSlot();
+    }
+
+    private void givenTheDownloadsWaitForSpace() throws Exception {
+        assertThat(await("space ")).isEqualTo("space short");
+        assertThat(this.link.closesWithin(WAIT)).as("the sessions end").isTrue();
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().status()))
+                .isEqualTo(DownloadInfo.Status.NO_SPACE);
+    }
+
+    private void givenTheDiskHasRoomAgain() throws InterruptedException {
+        assertThat(await("space ")).isEqualTo("space enough");
+    }
+
+    private void givenOurConnectionsAtTheirLimit() {
+        this.guard = new ConnectionGuard(
+                IpFilter::empty, new ConnectionGuard.Limits(1, 5, 20, Duration.ofSeconds(5)), this.ticker);
+        this.held = this.guard.outgoing();
+    }
+
+    private void givenADownloadWhoseSourceIsNotCalled() throws Exception {
+        this.waitingSource = source(0, 0);
+        DownloadManager downloads = manager();
+        onLoop(() -> downloads.add(this.waitingSource.link("waits.bin", 5000, Hash16.parseHex("36".repeat(16)))));
+        assertThat(this.waitingSource.calledWithin(Duration.ofSeconds(2))).isFalse();
+    }
+
+    private void whenTheDownloadIsPaused() throws Exception {
+        onLoop(() -> this.manager.pause(this.hash));
+    }
+
+    private void whenTheDownloadIsResumed() throws Exception {
+        this.accepted = onLoop(() -> this.manager.resume(this.hash));
+    }
+
+    // A status that does not decode ends it for good.
+    private void whenTheSourceSendsAStatusThatDoesNotDecode() throws Exception {
+        this.link.send(Packet.of(
                 Protocol.EDONKEY,
                 Opcodes.Client.FILESTATUS.code(),
-                new PacketWriter().hash16(hash).u16(5)));
-        assertThat(link.closesWithin(WAIT)).isTrue();
-        awaitSources(hash, 0);
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().completed()))
-                .isEqualTo(1000);
+                new PacketWriter().hash16(this.hash).u16(5)));
     }
 
-    @Test
-    void aCorruptBlockIsRecoveredWithTheAichDataOfASourceThatComesLater() throws Exception {
-        Recovery recovery = recovery(5);
-        ScriptedSource.Link second = recovery.helper.accept();
-        second.until(Opcodes.Client.SETREQFILEID);
-        second.send(new ClientMessages.FileStatus(recovery.link.hash(), 0, new BitSet()).encode());
-        Packet request = second.until(Opcodes.Extended.AICHREQUEST).getLast();
-        assertThat(request.reader().hash16()).isEqualTo(recovery.link.hash());
-        second.send(aichHash(recovery.link.hash(), Hash20.parseBase32("F".repeat(32))));
+    private void whenTheFirstSourceSendsTheBlockAgain() throws Exception {
+        sendBlocks(this.recovery.first, this.hash, this.data, 2L * Ed2k.EMBLOCKSIZE, this.data.length);
+    }
 
-        second.send(
-                aichAnswer(recovery.link.hash(), recovery.tree.masterHash(), AichRecovery.create(recovery.tree, 0)));
+    // Corrupt once more: its recovery was tried, so it comes again whole at once.
+    private void whenTheFirstSourceSendsThePartCorruptAgain() throws Exception {
+        byte[] corrupt = this.data.clone();
+        corrupt[0] ^= 0x55;
+        sendBlocks(this.recovery.first, this.hash, corrupt, 0, this.data.length);
+    }
 
-        assertThat(requested(recovery.first))
-                .as("only the corrupt block is downloaded again")
-                .containsExactly(new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, recovery.data.length));
-        sendBlocks(recovery.first, recovery.link.hash(), recovery.data, 2L * Ed2k.EMBLOCKSIZE, recovery.data.length);
+    private void whenTheUnreachableSourcesAreAskedAgain() throws Exception {
+        advance(DownloadManager.MIN_REASK);
+        this.silent.refuseNext();
+    }
+
+    private void whenTheServerFinds(ServerMessages.Source firewalled) throws Exception {
+        this.callbacksBefore = this.server.callbacks.size();
+        onLoop(() -> {
+            this.manager.foundSources(new ServerMessages.FoundSources(this.hash, List.of(firewalled)));
+            return null;
+        });
+    }
+
+    private void whenSourcesAreAddedByHand(InetSocketAddress... addresses) throws Exception {
+        this.results = onLoop(() -> {
+            List<Boolean> added = new ArrayList<>();
+            for (InetSocketAddress address : addresses) {
+                added.add(this.manager.addSourceByHand(this.hash, address));
+            }
+            return added;
+        });
+    }
+
+    private void whenADownloadNamesTheSourceBy(String host) throws Exception {
+        this.hash = Hash16.parseHex("3d".repeat(16));
+        Ed2kLink.FileLink named = new Ed2kLink.FileLink(
+                "named.bin",
+                5000,
+                this.hash,
+                Optional.empty(),
+                List.of(),
+                List.of(new Ed2kLink.Source(host, this.source.port())),
+                List.of());
+        onLoop(() -> this.manager.add(named));
+    }
+
+    private void whenADownloadIsAdded(String name, Hash16 file) throws Exception {
+        this.hash = file;
+        this.info = onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, file)));
+    }
+
+    private void whenASourceIsOfferedToAClient(int sourceIp, InetAddress client) {
+        this.passedOn = DownloadManager.passesOn(sourceIp, client);
+    }
+
+    private void whenKadFindsASourceOnceTheDownloadIsStopped() throws Exception {
+        this.sourceCount = onLoop(() -> {
+            this.manager.stop(this.hash);
+            this.found
+                    .get()
+                    .accept(List.of(DownloadManager.KadSource.direct(
+                            new InetSocketAddress(Ipv4.format(Ipv4.of(192, 0, 2, 60)), PORT))));
+            return this.manager.download(this.hash).orElseThrow().sources();
+        });
+    }
+
+    private void whenEveryChangeIsAskedForTheUnknownDownload() throws Exception {
+        this.results = onLoop(() -> List.of(
+                this.manager.stopBySchedule(UNKNOWN),
+                this.manager.setPriority(UNKNOWN, DownloadPriority.HIGH),
+                this.manager.cancel(UNKNOWN),
+                this.manager.resume(UNKNOWN),
+                this.manager.setPreviewFirst(UNKNOWN, true),
+                this.manager.setCategory(UNKNOWN, Category.NONE),
+                this.manager.addSourceByHand(
+                        UNKNOWN, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), PORT))));
+    }
+
+    private void whenTheDownloadIsSetToPreviewFirst() throws Exception {
+        this.accepted = onLoop(() -> this.manager.setPreviewFirst(this.hash, true));
+    }
+
+    private void whenTheDownloadIsStoppedByScheduleAgain() throws Exception {
+        this.accepted = onLoop(() -> this.manager.stopBySchedule(this.hash));
+    }
+
+    private void whenTheCategoryIsSet(int category) throws Exception {
+        this.accepted = onLoop(() -> this.manager.setCategory(this.hash, category));
+    }
+
+    private void whenTimePasses(Duration duration) {
+        advance(duration);
+    }
+
+    private void whenAConnectionOfOursCloses() {
+        this.held.close();
+    }
+
+    private void thenTheConnectionCloses() throws Exception {
+        assertThat(this.link.closesWithin(WAIT)).isTrue();
+    }
+
+    private void thenItIsAccepted() {
+        assertThat(this.accepted).isTrue();
+    }
+
+    private void thenTheDownloadCompletesWithTheData() throws Exception {
         Path done = Path.of(await("completed ").substring("completed ".length()));
-        assertThat(Files.readAllBytes(done)).isEqualTo(recovery.data);
-        assertThat(onLoop(() -> this.manager.find(recovery.link.hash()))).isEmpty();
+        assertThat(Files.readAllBytes(done)).isEqualTo(this.data);
     }
 
-    @Test
-    void recoveryDataThatProvesNothingHasThePartDownloadedAgainWhole() throws Exception {
-        Recovery recovery = recovery(6);
-        ScriptedSource.Link second = recovery.helper.accept();
-        second.until(Opcodes.Client.SETREQFILEID);
-        second.send(new ClientMessages.FileStatus(recovery.link.hash(), 0, new BitSet()).encode());
-        second.until(Opcodes.Extended.AICHREQUEST);
+    private void thenTheDownloadIsGone() throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash))).isEmpty();
+    }
 
-        second.send(aichAnswer(recovery.link.hash(), recovery.tree.masterHash(), random(200, 7)));
+    private void thenTheFileIsNoLongerFound() throws Exception {
+        assertThat(onLoop(() -> this.manager.find(this.hash))).isEmpty();
+    }
 
-        List<ClientMessages.Range> whole = List.of(
+    private void thenTheDownloadHasSources(int count) throws Exception {
+        awaitSources(this.hash, count);
+    }
+
+    private void thenTheDownloadHasCompleted(long bytes) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().completed()))
+                .isEqualTo(bytes);
+    }
+
+    private void thenThePartIsAskedForAgainWhole() throws Exception {
+        assertThat(requested(this.recovery.first)).containsExactlyElementsOf(wholePart());
+    }
+
+    // Ends its sessions before the manager closes.
+    private void thenTheDownloadCanBePaused() throws Exception {
+        assertThat(onLoop(() -> this.manager.pause(this.hash))).isTrue();
+    }
+
+    private void thenOnlyTheUselessSourceIsLeft() throws Exception {
+        awaitSources(this.hash, 1);
+        assertThat(onLoop(() -> this.manager.sources().getFirst().address()))
+                .isEqualTo("127.0.0.1:" + this.useless.port());
+    }
+
+    private void thenNoMoreCallbacksAreAskedFor() throws InterruptedException {
+        Thread.sleep(1500);
+        assertThat(this.server.callbacks).as("not for a paused download").hasSize(this.callbacksBefore);
+    }
+
+    private void thenNoCallbackIsAskedFor() throws InterruptedException {
+        Thread.sleep(1500);
+        assertThat(this.server.callbacks).isEmpty();
+    }
+
+    private void thenEveryOneIsRefused() {
+        assertThat(this.results).containsOnly(false);
+    }
+
+    private void thenTheSourceIsConnectedTo() throws Exception {
+        assertThat(this.source.accept()).isNotNull();
+    }
+
+    private void thenTheSourceIsKnownAt(String ip) throws Exception {
+        assertThat(onLoop(() -> this.manager.sources().getFirst().address())).isEqualTo(ip + ":" + this.source.port());
+    }
+
+    private void thenTheDownloadIsAddedAs(DownloadInfo.Status status) {
+        assertThat(this.info.status()).isEqualTo(status);
+    }
+
+    private void thenItIsNotPassedOn() {
+        assertThat(this.passedOn)
+                .as("a LAN source goes to no client without an IPv4 address")
+                .isFalse();
+    }
+
+    private void thenTheDownloadGotNoSource() {
+        assertThat(this.sourceCount).isZero();
+    }
+
+    private void thenTheUnknownDownloadHasNoComments() throws Exception {
+        assertThat(onLoop(() -> this.manager.comments(UNKNOWN))).isEmpty();
+    }
+
+    private void thenTheUnknownDownloadHasNoSourceToPassOn() throws Exception {
+        assertThat(onLoop(() -> this.manager.exchangeable(UNKNOWN))).isEmpty();
+    }
+
+    private void thenThePausedDownloadHasNoSourceToPassOn() throws Exception {
+        assertThat(onLoop(() -> this.manager.exchangeable(this.hash)))
+                .as("paused")
+                .isEmpty();
+    }
+
+    private void thenTheDownloadIsPreviewedFirst() throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().previewFirst()))
+                .isTrue();
+    }
+
+    private void thenTheStopIsAcceptedAsStoppedAlready() {
+        assertThat(this.accepted).as("stopped already").isTrue();
+    }
+
+    private void thenTheStatusOfTheDownloadIs(DownloadInfo.Status status) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().status()))
+                .isEqualTo(status);
+    }
+
+    private void thenTheSourceIsAskedAgain() throws Exception {
+        accept(this.source).until(Opcodes.Client.SETREQFILEID);
+    }
+
+    private void thenTheSourceIsCalled() throws Exception {
+        assertThat(this.waitingSource.calledWithin(WAIT)).isTrue();
+        this.waitingSource.accept().until(Opcodes.Client.SETREQFILEID);
+        assertThat(this.guard.openConnections()).isEqualTo(1);
+    }
+
+    // The next connection of the source, closed with the test.
+    private ScriptedSource.Link accept(ScriptedSource from) throws Exception {
+        ScriptedSource.Link next = from.accept();
+        this.resources.add(next);
+        return next;
+    }
+
+    // Asks for the file and for an upload slot; the packets read.
+    private List<Packet> askForAnUploadSlot() throws Exception {
+        this.link = accept(this.source);
+        List<Packet> asked = new ArrayList<>(this.link.until(Opcodes.Client.SETREQFILEID));
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        asked.addAll(this.link.until(Opcodes.Client.STARTUPLOADREQ));
+        return asked;
+    }
+
+    private List<ClientMessages.Range> wholePart() {
+        return List.of(
                 new ClientMessages.Range(0, Ed2k.EMBLOCKSIZE),
                 new ClientMessages.Range(Ed2k.EMBLOCKSIZE, 2L * Ed2k.EMBLOCKSIZE),
-                new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, recovery.data.length));
-        assertThat(requested(recovery.first)).containsExactlyElementsOf(whole);
-
-        // Corrupt once more: its recovery was tried, so it comes again whole at once.
-        byte[] corrupt = recovery.data.clone();
-        corrupt[0] ^= 0x55;
-        sendBlocks(recovery.first, recovery.link.hash(), corrupt, 0, recovery.data.length);
-        assertThat(requested(recovery.first)).containsExactlyElementsOf(whole);
-        onLoop(() -> this.manager.pause(recovery.link.hash()));
+                new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, this.data.length));
     }
 
     /**
@@ -418,283 +1248,6 @@ class DownloadSourcesTest {
         }
     }
 
-    @Test
-    void sourcesWithoutTheFileOrOutOfReachAreDropped() throws Exception {
-        ScriptedSource missing = source(0, 0);
-        ScriptedSource odd = source(0, 0);
-        ScriptedSource useless = source(0, 0);
-        ScriptedSource silent = source(0, 0);
-        int closed;
-        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closed = probe.getLocalPort();
-        }
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("34".repeat(16));
-        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
-                "gone.bin",
-                5000,
-                hash,
-                Optional.empty(),
-                List.of(),
-                List.of(
-                        new Ed2kLink.Source("127.0.0.1", missing.port()),
-                        new Ed2kLink.Source("127.0.0.1", odd.port()),
-                        new Ed2kLink.Source("127.0.0.1", useless.port()),
-                        new Ed2kLink.Source("127.0.0.1", silent.port()),
-                        new Ed2kLink.Source("127.0.0.1", closed)),
-                List.of());
-        onLoop(() -> manager.add(link));
-
-        ScriptedSource.Link noFile = missing.accept();
-        noFile.until(Opcodes.Client.SETREQFILEID);
-        noFile.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, Hash16.parseHex("35".repeat(16))));
-        noFile.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, hash));
-        ScriptedSource.Link tooMany = odd.accept();
-        tooMany.until(Opcodes.Client.SETREQFILEID);
-        BitSet five = new BitSet();
-        five.set(0, 5);
-        tooMany.send(new ClientMessages.FileStatus(hash, 5, five).encode());
-        ScriptedSource.Link nothing = useless.accept();
-        nothing.until(Opcodes.Client.SETREQFILEID);
-        nothing.send(new ClientMessages.FileStatus(hash, 1, new BitSet()).encode());
-        silent.refuseNext();
-
-        assertThat(noFile.closesWithin(WAIT)).isTrue();
-        assertThat(tooMany.closesWithin(WAIT)).isTrue();
-        assertThat(nothing.closesWithin(WAIT)).as("it has no part we need").isTrue();
-        awaitSources(hash, 3);
-        assertThat(onLoop(() ->
-                        manager.sources().stream().map(SourceInfo::address).toList()))
-                .containsExactlyInAnyOrder(
-                        "127.0.0.1:" + useless.port(), "127.0.0.1:" + silent.port(), "127.0.0.1:" + closed);
-
-        // Three failures in a row drop a source; the one without parts we need waits its time. Each round waits for
-        // both failures: a refused connection takes Windows a couple of seconds.
-        awaitFailures(manager, 1, silent.port(), closed);
-        advance(DownloadManager.MIN_REASK);
-        silent.refuseNext();
-        awaitFailures(manager, 2, silent.port(), closed);
-        advance(DownloadManager.MIN_REASK);
-        silent.refuseNext();
-        awaitSources(hash, 1);
-        assertThat(onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + useless.port());
-        onLoop(() -> manager.pause(hash));
-    }
-
-    @Test
-    void firewalledSourcesAreAskedThroughTheServerOneAtATime() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("36".repeat(16));
-        onLoop(() -> manager.add(Ed2kLink.FileLink.of("lowid.bin", 5000, hash)));
-        this.server.refused.add(6000L);
-
-        onLoop(() -> {
-            manager.foundSources(new ServerMessages.FoundSources(
-                    hash,
-                    List.of(
-                            new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)),
-                            new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)),
-                            new ServerMessages.Source(6000, PORT, 0, Optional.empty()),
-                            new ServerMessages.Source(0, PORT, 0, Optional.empty()),
-                            new ServerMessages.Source(Ipv4.toEd2k(BLOCKED_IP), PORT, 0, Optional.empty()))));
-            manager.foundSources(new ServerMessages.FoundSources(
-                    Hash16.parseHex("37".repeat(16)),
-                    List.of(new ServerMessages.Source(7000, PORT, 0, Optional.empty()))));
-            return null;
-        });
-
-        await("both asked for", () -> this.server.callbacks.size() >= 2);
-        assertThat(this.server.callbacks).as("one a tick, each once").containsExactly(5000L, 6000L);
-        // One the server could not ask is forgotten, and may be asked for again.
-        onLoop(() -> {
-            manager.foundSources(new ServerMessages.FoundSources(
-                    hash, List.of(new ServerMessages.Source(6000, PORT, 0, Optional.empty()))));
-            return null;
-        });
-        await("asked again", () -> this.server.callbacks.size() >= 3);
-        // One that does not call back in time is forgotten too: the server names it again, and it is asked again.
-        advance(DownloadManager.CALLBACK_WAIT);
-        await("asked once more", () -> {
-            manager.foundSources(new ServerMessages.FoundSources(
-                    hash, List.of(new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)))));
-            return this.server.callbacks.lastIndexOf(5000L) > 0;
-        });
-
-        onLoop(() -> manager.pause(hash));
-        int asked = this.server.callbacks.size();
-        onLoop(() -> {
-            manager.foundSources(new ServerMessages.FoundSources(
-                    hash, List.of(new ServerMessages.Source(8000, PORT, 0, Optional.empty()))));
-            return null;
-        });
-        Thread.sleep(1500);
-        assertThat(this.server.callbacks).as("not for a paused download").hasSize(asked);
-    }
-
-    @Test
-    void aFullSourceListTakesNoMoreFirewalledSources() throws Exception {
-        this.settings = settings(ObfuscationMode.SUPPORTED, 1, 0);
-        ScriptedSource source = source(0, Hello.MISC2_SOURCE_EXCHANGE2);
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("38".repeat(16));
-        onLoop(() -> manager.add(source.link("full.bin", 5000, hash)));
-        ScriptedSource.Link link = source.accept();
-        List<Packet> asked = new ArrayList<>(link.until(Opcodes.Client.SETREQFILEID));
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        asked.addAll(link.until(Opcodes.Client.STARTUPLOADREQ));
-        assertThat(names(asked)).as("a full list wants no more sources").doesNotContain("REQUESTSOURCES2");
-
-        onLoop(() -> {
-            manager.foundSources(new ServerMessages.FoundSources(
-                    hash, List.of(new ServerMessages.Source(5000, PORT, 0, Optional.empty()))));
-            return null;
-        });
-        Thread.sleep(1500);
-
-        assertThat(this.server.callbacks).isEmpty();
-        assertThat(onLoop(() -> manager.addSourceByHand(
-                        hash, new InetSocketAddress(InetAddresses.forString("127.0.0.2"), PORT))))
-                .isFalse();
-        link.close();
-    }
-
-    @Test
-    void aSourceNamedByItsHostIsLookedUp() throws Exception {
-        ScriptedSource source = source(0, 0);
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("3d".repeat(16));
-        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
-                "named.bin",
-                5000,
-                hash,
-                Optional.empty(),
-                List.of(),
-                List.of(new Ed2kLink.Source("localhost", source.port())),
-                List.of());
-
-        onLoop(() -> manager.add(link));
-
-        assertThat(source.accept()).isNotNull();
-        assertThat(onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + source.port());
-        onLoop(() -> manager.pause(hash));
-    }
-
-    @Test
-    void aDiskShortOfSpaceFromTheStartHoldsEveryDownload() throws Exception {
-        this.settings = settings(ObfuscationMode.SUPPORTED, 100, Long.MAX_VALUE);
-        // A listener that does not care about the disk.
-        this.listener = new DownloadManager.Listener() {
-            @Override
-            public void added(DownloadInfo download) {}
-
-            @Override
-            public void progress(DownloadInfo download) {}
-
-            @Override
-            public void completed(DownloadInfo download, Path file, PartFile part) {}
-
-            @Override
-            public void failed(DownloadInfo download, String reason) {}
-
-            @Override
-            public void removed(Hash16 hash) {}
-        };
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("3e".repeat(16));
-
-        DownloadInfo info = onLoop(() -> manager.add(Ed2kLink.FileLink.of("held.bin", 5000, hash)));
-
-        assertThat(info.status()).isEqualTo(DownloadInfo.Status.NO_SPACE);
-        assertThat(DownloadManager.passesOn(Ipv4.of(10, 0, 0, 1), InetAddresses.forString("::1")))
-                .as("a LAN source goes to no client without an IPv4 address")
-                .isFalse();
-    }
-
-    @Test
-    void kadSourcesOfAStoppedDownloadAreLeftOut() throws Exception {
-        AtomicReference<Consumer<List<DownloadManager.KadSource>>> found = new AtomicReference<>();
-        this.kad = Optional.of((file, size, sources) -> {
-            found.compareAndSet(null, sources);
-            return true;
-        });
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("39".repeat(16));
-        onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
-        await("Kad searched", () -> found.get() != null);
-
-        int sources = onLoop(() -> {
-            manager.stop(hash);
-            found.get()
-                    .accept(List.of(DownloadManager.KadSource.direct(
-                            new InetSocketAddress(Ipv4.format(Ipv4.of(192, 0, 2, 60)), PORT))));
-            return manager.download(hash).orElseThrow().sources();
-        });
-
-        assertThat(sources).isZero();
-    }
-
-    @Test
-    void unknownDownloadsChangeNothing() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 unknown = Hash16.parseHex("3a".repeat(16));
-        Hash16 hash = Hash16.parseHex("3b".repeat(16));
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("known.bin", 5000, hash));
-            return manager.pause(hash);
-        });
-
-        assertThat(onLoop(() -> List.of(
-                        manager.stopBySchedule(unknown),
-                        manager.setPriority(unknown, DownloadPriority.HIGH),
-                        manager.cancel(unknown),
-                        manager.resume(unknown),
-                        manager.setPreviewFirst(unknown, true),
-                        manager.setCategory(unknown, Category.NONE),
-                        manager.addSourceByHand(
-                                unknown, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), PORT)),
-                        manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("::1"), PORT)),
-                        manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), 0)))))
-                .containsOnly(false);
-        assertThat(onLoop(() -> manager.comments(unknown))).isEmpty();
-        assertThat(onLoop(() -> manager.exchangeable(unknown))).isEmpty();
-        assertThat(onLoop(() -> manager.exchangeable(hash))).as("paused").isEmpty();
-
-        assertThat(onLoop(() -> manager.setPreviewFirst(hash, true))).isTrue();
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().previewFirst()))
-                .isTrue();
-        assertThat(onLoop(() -> manager.stopBySchedule(hash))).isTrue();
-        assertThat(onLoop(() -> manager.stopBySchedule(hash)))
-                .as("stopped already")
-                .isTrue();
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.STOPPED);
-        assertThat(onLoop(() -> manager.setCategory(hash, Category.NONE))).isTrue();
-    }
-
-    @Test
-    void downloadsWaitWhileTheDiskIsShortOfSpace() throws Exception {
-        ScriptedSource source = source(0, 0);
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("3c".repeat(16));
-        onLoop(() -> manager.add(source.link("space.bin", 5000, hash)));
-        ScriptedSource.Link link = source.accept();
-        link.until(Opcodes.Client.SETREQFILEID);
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-
-        this.settings = settings(ObfuscationMode.SUPPORTED, 100, Long.MAX_VALUE);
-        assertThat(await("space ")).isEqualTo("space short");
-        assertThat(link.closesWithin(WAIT)).as("the sessions end").isTrue();
-        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.NO_SPACE);
-
-        this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
-        assertThat(await("space ")).isEqualTo("space enough");
-        // With room again, the source is asked as soon as it allows, not after the whole wait of a queued one.
-        advance(DownloadManager.EARLIEST_REASK);
-        ScriptedSource.Link again = source.accept();
-        again.until(Opcodes.Client.SETREQFILEID);
-        onLoop(() -> manager.pause(hash));
-    }
-
     private static SourceExchange.Source exchanged(int ip) {
         return new SourceExchange.Source(ip, 0, PORT, 0, 0, Optional.empty(), 0);
     }
@@ -724,39 +1277,6 @@ class DownloadSourcesTest {
                             : Opcodes.Client.of(packet.opcode()).map(Enum::name).orElse("?"));
         }
         return names;
-    }
-
-    @Test
-    void aSourceWaitsWhileOurConnectionsAreAtTheirLimit() throws Exception {
-        givenOurConnectionsAtTheirLimit();
-        givenADownloadWhoseSourceIsNotCalled();
-
-        whenAConnectionOfOursCloses();
-
-        thenTheSourceIsCalled();
-    }
-
-    private void givenOurConnectionsAtTheirLimit() {
-        this.guard = new ConnectionGuard(
-                IpFilter::empty, new ConnectionGuard.Limits(1, 5, 20, Duration.ofSeconds(5)), this.ticker);
-        this.held = this.guard.outgoing();
-    }
-
-    private void givenADownloadWhoseSourceIsNotCalled() throws Exception {
-        this.waitingSource = source(0, 0);
-        DownloadManager downloads = manager();
-        onLoop(() -> downloads.add(this.waitingSource.link("waits.bin", 5000, Hash16.parseHex("36".repeat(16)))));
-        assertThat(this.waitingSource.calledWithin(Duration.ofSeconds(2))).isFalse();
-    }
-
-    private void whenAConnectionOfOursCloses() {
-        this.held.close();
-    }
-
-    private void thenTheSourceIsCalled() throws Exception {
-        assertThat(this.waitingSource.calledWithin(WAIT)).isTrue();
-        this.waitingSource.accept().until(Opcodes.Client.SETREQFILEID);
-        assertThat(this.guard.openConnections()).isEqualTo(1);
     }
 
     private static DownloadManager.Settings settings(ObfuscationMode obfuscation, int maxSources, long minFree) {

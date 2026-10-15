@@ -114,8 +114,8 @@ class DownloadSlotTest {
     @Test
     void shouldKeepASlotWhoseBlocksBringDataInTime() throws Exception {
         givenASourceThatGaveUsASlot();
+        givenTheSourceSentSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
 
-        whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
         whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
 
         thenTheSlotIsKept();
@@ -154,9 +154,9 @@ class DownloadSlotTest {
     @Test
     void shouldDropASourceWhoseCompressedDataDoesNotInflateAgainAndAgain() throws Exception {
         givenASourceThatGaveUsASlot();
+        givenTheSourceSentACompressedBlockThatDoesNotInflate(0, 1);
+        givenTheSourceSentACompressedBlockThatDoesNotInflate(1, 1);
 
-        whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 1);
-        whenTheSourceSendsACompressedBlockThatDoesNotInflate(1, 1);
         whenTheSourceSendsACompressedBlockThatDoesNotInflate(2, 1);
 
         thenTheConnectionCloses();
@@ -178,6 +178,14 @@ class DownloadSlotTest {
         assertThat(this.requested).allMatch(r -> !r.isEmpty() && r.end() <= 3L * Ed2k.EMBLOCKSIZE);
     }
 
+    private void givenTheSourceSentSomeDataAfter(Duration wait) throws Exception {
+        sendSomeDataAfter(wait);
+    }
+
+    private void givenTheSourceSentACompressedBlockThatDoesNotInflate(int block, int chunks) throws Exception {
+        sendACompressedBlockThatDoesNotInflate(block, chunks);
+    }
+
     private void whenTheSourceTalksWithoutSendingDataFor(Duration silence) throws Exception {
         this.link.send(Packet.of(
                 Protocol.EMULE,
@@ -187,8 +195,29 @@ class DownloadSlotTest {
         this.link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(1)));
     }
 
-    // The next chunk of the first block asked for, once the clock moved on.
     private void whenTheSourceSendsSomeDataAfter(Duration wait) throws Exception {
+        sendSomeDataAfter(wait);
+    }
+
+    private void whenTheSourceSendsDataWeDidNotAskFor(int times) throws Exception {
+        sendDataWeDidNotAskFor(times);
+    }
+
+    private void whenTheSourceSendsDataWeDidNotAskForEvery(Duration gap, int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            sendDataWeDidNotAskFor(1);
+            // Data asked for, behind it, tells when it was read.
+            sendSomeDataAfter(Duration.ZERO);
+            this.now.addAndGet(gap.toNanos());
+        }
+    }
+
+    private void whenTheSourceSendsACompressedBlockThatDoesNotInflate(int block, int chunks) throws Exception {
+        sendACompressedBlockThatDoesNotInflate(block, chunks);
+    }
+
+    // The next chunk of the first block asked for, once the clock moved on.
+    private void sendSomeDataAfter(Duration wait) throws Exception {
         this.now.addAndGet(wait.toNanos());
         long start = this.requested.getFirst().start() + this.sent;
         this.link.send(new ClientMessages.SendingPart(
@@ -202,7 +231,7 @@ class DownloadSlotTest {
     }
 
     // A chunk of the last block, which is not asked for while the first three are.
-    private void whenTheSourceSendsDataWeDidNotAskFor(int times) throws Exception {
+    private void sendDataWeDidNotAskFor(int times) throws Exception {
         int start = 4 * Ed2k.EMBLOCKSIZE;
         for (int i = 0; i < times; i++) {
             this.link.send(new ClientMessages.SendingPart(
@@ -211,17 +240,8 @@ class DownloadSlotTest {
         }
     }
 
-    private void whenTheSourceSendsDataWeDidNotAskForEvery(Duration gap, int times) throws Exception {
-        for (int i = 0; i < times; i++) {
-            whenTheSourceSendsDataWeDidNotAskFor(1);
-            // Data asked for, behind it, tells when it was read.
-            whenTheSourceSendsSomeDataAfter(Duration.ZERO);
-            this.now.addAndGet(gap.toNanos());
-        }
-    }
-
     // A stream of {@code chunks} chunks for the block, whose first one is no zlib data.
-    private void whenTheSourceSendsACompressedBlockThatDoesNotInflate(int block, int chunks) throws Exception {
+    private void sendACompressedBlockThatDoesNotInflate(int block, int chunks) throws Exception {
         long start = this.requested.get(block).start();
         for (int i = 0; i < chunks; i++) {
             byte[] chunk = new byte[64];

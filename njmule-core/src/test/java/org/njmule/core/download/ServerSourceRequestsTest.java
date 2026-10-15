@@ -73,7 +73,7 @@ class ServerSourceRequestsTest {
     }
 
     @Test
-    void theServerIsAskedForFifteenFilesAtOnceThenNoMore() throws Exception {
+    void shouldAskTheServerForFifteenFilesAtOnceThenNoMore() throws Exception {
         givenAServerThatTakesSourceRequests();
         givenDownloads(20);
 
@@ -83,13 +83,13 @@ class ServerSourceRequestsTest {
     }
 
     @Test
-    void oneMoreFileIsAskedForEveryTwentySeconds() throws Exception {
+    void shouldAskForOneMoreFileEveryTwentySeconds() throws Exception {
         givenAServerThatTakesSourceRequests();
         givenDownloads(20);
         givenTheDownloadsHaveAskedFor(15);
+        givenTimePassed(DownloadManager.SERVER_REQUEST_CREDIT.minusSeconds(1));
+        givenNoMoreIsAskedForAWhile();
 
-        whenTimePasses(DownloadManager.SERVER_REQUEST_CREDIT.minusSeconds(1));
-        thenNoMoreIsAskedForAWhile();
         whenTimePasses(Duration.ofSeconds(1));
 
         thenTheDownloadsHaveAskedFor(16);
@@ -133,15 +133,19 @@ class ServerSourceRequestsTest {
     }
 
     private void givenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
-        whenTheDownloadsHaveAskedFor(files);
+        awaitRequestsFor(files);
+    }
+
+    private void givenTimePassed(Duration time) {
+        this.ticker.advance(time);
+    }
+
+    private void givenNoMoreIsAskedForAWhile() throws InterruptedException {
+        checkNoMoreIsAskedForAWhile();
     }
 
     private void whenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (this.asked.size() < files && System.nanoTime() < deadline) {
-            Thread.sleep(50);
-        }
-        assertThat(this.asked).hasSize(files);
+        awaitRequestsFor(files);
     }
 
     private void whenTimePasses(Duration time) {
@@ -149,14 +153,26 @@ class ServerSourceRequestsTest {
     }
 
     private void thenNoMoreIsAskedForAWhile() throws InterruptedException {
+        checkNoMoreIsAskedForAWhile();
+    }
+
+    private void thenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
+        awaitRequestsFor(files);
+        assertThat(this.asked).doesNotHaveDuplicates();
+    }
+
+    private void checkNoMoreIsAskedForAWhile() throws InterruptedException {
         int before = this.asked.size();
         Thread.sleep(SETTLE.toMillis());
         assertThat(this.asked).hasSize(before);
     }
 
-    private void thenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
-        whenTheDownloadsHaveAskedFor(files);
-        assertThat(this.asked).doesNotHaveDuplicates();
+    private void awaitRequestsFor(int files) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (this.asked.size() < files && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        assertThat(this.asked).hasSize(files);
     }
 
     private <T> T onLoop(Callable<T> task) throws Exception {

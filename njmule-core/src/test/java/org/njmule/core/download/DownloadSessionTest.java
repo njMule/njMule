@@ -19,6 +19,7 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -26,6 +27,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
@@ -72,6 +74,11 @@ class DownloadSessionTest {
     private final List<AutoCloseable> resources = new ArrayList<>();
     private DownloadQueue queue;
     private DownloadQueue.Download download;
+    private ScriptedSource source;
+    private ScriptedSource.Link link;
+    private DownloadSession session;
+    private Hash16 hash;
+    private int closedPort;
 
     @AfterEach
     void stop() throws Exception {
@@ -89,123 +96,205 @@ class DownloadSessionTest {
     }
 
     @Test
-    void aListenerThatHearsOnlyTheEssentialsMissesNothingElse() throws Exception {
-        ScriptedSource source = source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
-        Hash16 hash = Hash16.parseHex("6b".repeat(16));
-        DownloadSession session = session(source, hash);
+    void shouldMissNothingWithAListenerThatHearsOnlyTheEssentials() throws Exception {
+        givenASource(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
+        givenASessionForTheFile(Hash16.parseHex("6b".repeat(16)));
+        givenTheSessionConnected();
+        givenTheSourceDescribedTheFile();
+        givenTheSourceTookBackTheSlotItGaveUs();
+        givenTheSourceHadNoRecoveryDataAtFirst();
+        givenTheSourceSentRecoveryDataWhenAskedAgain();
+        givenTheSourceRankedUs(4);
+        givenTheDownloadPaused();
+
+        whenTheSourceGivesUsTheSlot();
+
+        thenTheEventIs("ended LATER the download is not active");
+        thenTheConnectionCloses();
+    }
+
+    @Test
+    void shouldCloseTheConnectionOfASessionEndedBeforeItOpens() throws Exception {
+        givenASource(0, 0);
+        givenASessionForTheFile(Hash16.parseHex("6c".repeat(16)));
+
+        whenTheSessionConnectsAndEnds("changed our mind");
+
+        thenTheEventIs("ended LATER changed our mind");
+        thenTheSourceIsHungUpOnWithoutAHello();
+        thenNoOtherEventComesWithin(Duration.ofMillis(300));
+    }
+
+    @Test
+    void shouldChangeNothingWhenAConnectionFailsAfterTheSessionEnded() throws Exception {
+        givenAClosedPort();
+        givenASessionToTheClosedPortForTheFile(Hash16.parseHex("6d".repeat(16)));
+
+        whenTheSessionConnectsAndEnds("given up");
+
+        thenTheEventIs("ended LATER given up");
+        thenTheFailureComesTooLate();
+    }
+
+    @Test
+    void shouldEndTheSessionToBeAskedAgainLaterOnAFaultInTheQueue() throws Exception {
+        givenASource(0, 0);
+        givenASessionForTheFile(Hash16.parseHex("6e".repeat(16)));
+        givenTheSessionConnected();
+        givenTheSourceGaveUsASlot();
+        givenTheDownloadCancelledBehindTheSessionsBack();
+
+        whenTheSourceSendsData(0, 100);
+
+        thenTheEventStartsWith("ended LATER internal error");
+        thenTheConnectionCloses();
+    }
+
+    private void givenASource(int misc1, int misc2) throws Exception {
+        this.source = source(misc1, misc2);
+    }
+
+    private void givenASessionForTheFile(Hash16 file) throws Exception {
+        this.hash = file;
+        this.session = session(this.source, file);
+    }
+
+    private void givenAClosedPort() throws IOException {
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            this.closedPort = probe.getLocalPort();
+        }
+    }
+
+    private void givenASessionToTheClosedPortForTheFile(Hash16 file) throws Exception {
+        this.hash = file;
+        queue();
+        this.session = session(new InetSocketAddress(InetAddress.getLoopbackAddress(), this.closedPort), file);
+    }
+
+    private void givenTheSessionConnected() throws Exception {
         onLoop(() -> {
-            session.connect(Optional.empty(), new SecureRandom());
+            this.session.connect(Optional.empty(), new SecureRandom());
             return null;
         });
+        this.link = this.source.accept();
+    }
 
-        ScriptedSource.Link link = source.accept();
-        link.until(Opcodes.Extended.REQUESTSOURCES2);
-        link.send(FileDescription.encode(FileComment.of("fine", 3)));
-        link.send(Packet.of(
+    private void givenTheSourceDescribedTheFile() throws Exception {
+        this.link.until(Opcodes.Extended.REQUESTSOURCES2);
+        this.link.send(FileDescription.encode(FileComment.of("fine", 3)));
+        this.link.send(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.AICHFILEHASHANS.code(),
-                new PacketWriter().hash16(hash).hash20(MASTER)));
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        link.until(Opcodes.Client.REQUESTPARTS);
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-        await("back in the queue", () -> session.state() == DownloadSession.State.QUEUED);
+                new PacketWriter().hash16(this.hash).hash20(MASTER)));
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+    }
 
-        // Asked for recovery data, it has none; asked again, it sends some.
-        assertThat(onLoop(() -> session.mayRecover(0))).isTrue();
+    private void givenTheSourceTookBackTheSlotItGaveUs() throws Exception {
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        this.link.until(Opcodes.Client.REQUESTPARTS);
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+        await("back in the queue", () -> this.session.state() == DownloadSession.State.QUEUED);
+    }
+
+    // Asked for recovery data, it has none; asked again, it sends some.
+    private void givenTheSourceHadNoRecoveryDataAtFirst() throws Exception {
+        assertThat(onLoop(() -> this.session.mayRecover(0))).isTrue();
         onLoop(() -> {
-            session.requestAich(0, MASTER);
+            this.session.requestAich(0, MASTER);
             return null;
         });
-        assertThat(link.until(Opcodes.Extended.AICHREQUEST).getLast().reader().hash16())
-                .isEqualTo(hash);
-        link.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), new PacketWriter().hash16(hash)));
+        assertThat(this.link
+                        .until(Opcodes.Extended.AICHREQUEST)
+                        .getLast()
+                        .reader()
+                        .hash16())
+                .isEqualTo(this.hash);
+        this.link.send(
+                Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), new PacketWriter().hash16(this.hash)));
+    }
+
+    private void givenTheSourceSentRecoveryDataWhenAskedAgain() throws Exception {
         onLoop(() -> {
-            session.requestAich(0, MASTER);
+            this.session.requestAich(0, MASTER);
             return null;
         });
-        link.until(Opcodes.Extended.AICHREQUEST);
-        link.send(Packet.of(
+        this.link.until(Opcodes.Extended.AICHREQUEST);
+        this.link.send(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.AICHANSWER.code(),
-                new PacketWriter().hash16(hash).u16(0).hash20(MASTER).bytes(new byte[40])));
-        link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(4)));
-        await("the rank", () -> session.queueRank() == 4);
+                new PacketWriter().hash16(this.hash).u16(0).hash20(MASTER).bytes(new byte[40])));
+    }
 
-        // The download pauses under it: given the slot, it leaves.
+    private void givenTheSourceRankedUs(int rank) throws Exception {
+        this.link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(rank)));
+        await("the rank", () -> this.session.queueRank() == rank);
+    }
+
+    // The download pauses under it: given the slot, it leaves.
+    private void givenTheDownloadPaused() throws Exception {
         onLoop(() -> {
             this.queue.pause(this.download);
             return null;
         });
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("ended LATER the download is not active");
-        assertThat(link.closesWithin(ScriptedSource.WAIT)).isTrue();
     }
 
-    @Test
-    void aSessionEndedBeforeItsConnectionOpensClosesIt() throws Exception {
-        ScriptedSource source = source(0, 0);
-        DownloadSession session = session(source, Hash16.parseHex("6c".repeat(16)));
+    private void givenTheSourceGaveUsASlot() throws Exception {
+        this.link.until(Opcodes.Client.SETREQFILEID);
+        this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.link.until(Opcodes.Client.STARTUPLOADREQ);
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        this.link.until(Opcodes.Client.REQUESTPARTS);
+    }
 
+    // Cancelled behind the session's back: its data file takes no more writes.
+    private void givenTheDownloadCancelledBehindTheSessionsBack() throws Exception {
+        onLoop(() -> this.queue.cancel(this.download));
+    }
+
+    private void whenTheSourceGivesUsTheSlot() throws Exception {
+        this.link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+    }
+
+    private void whenTheSessionConnectsAndEnds(String reason) throws Exception {
         onLoop(() -> {
-            session.connect(Optional.empty(), new SecureRandom());
-            session.close("changed our mind");
+            this.session.connect(Optional.empty(), new SecureRandom());
+            this.session.close(reason);
             return null;
         });
+    }
 
-        assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("ended LATER changed our mind");
-        try (Socket socket = source.acceptSilently();
+    private void whenTheSourceSendsData(int start, int end) throws Exception {
+        this.link.send(new ClientMessages.SendingPart(this.hash, start, end, new byte[end - start]).encode(false));
+    }
+
+    private void thenTheEventIs(String event) throws InterruptedException {
+        assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo(event);
+    }
+
+    private void thenTheEventStartsWith(String event) throws InterruptedException {
+        assertThat(this.events.poll(10, TimeUnit.SECONDS)).startsWith(event);
+    }
+
+    private void thenTheConnectionCloses() throws IOException {
+        assertThat(this.link.closesWithin(ScriptedSource.WAIT)).isTrue();
+    }
+
+    private void thenTheSourceIsHungUpOnWithoutAHello() throws Exception {
+        try (Socket socket = this.source.acceptSilently();
                 InputStream in = socket.getInputStream()) {
             assertThat(in.read()).as("closed without a hello").isEqualTo(-1);
         }
-        assertThat(this.events.poll(300, TimeUnit.MILLISECONDS)).isNull();
     }
 
-    @Test
-    void aConnectionThatFailsAfterTheSessionEndedChangesNothing() throws Exception {
-        int closed;
-        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closed = probe.getLocalPort();
-        }
-        queue();
-        DownloadSession session = session(
-                new InetSocketAddress(InetAddress.getLoopbackAddress(), closed), Hash16.parseHex("6d".repeat(16)));
+    private void thenNoOtherEventComesWithin(Duration wait) throws InterruptedException {
+        assertThat(this.events.poll(wait.toMillis(), TimeUnit.MILLISECONDS)).isNull();
+    }
 
-        onLoop(() -> {
-            session.connect(Optional.empty(), new SecureRandom());
-            session.close("given up");
-            return null;
-        });
-
-        assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("ended LATER given up");
+    private void thenTheFailureComesTooLate() throws InterruptedException {
         assertThat(this.events.poll(5, TimeUnit.SECONDS))
                 .as("the failure comes too late")
                 .isNull();
-    }
-
-    @Test
-    void aFaultInTheQueueEndsTheSessionToBeAskedAgainLater() throws Exception {
-        ScriptedSource source = source(0, 0);
-        Hash16 hash = Hash16.parseHex("6e".repeat(16));
-        DownloadSession session = session(source, hash);
-        onLoop(() -> {
-            session.connect(Optional.empty(), new SecureRandom());
-            return null;
-        });
-        ScriptedSource.Link link = source.accept();
-        link.until(Opcodes.Client.SETREQFILEID);
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        link.until(Opcodes.Client.REQUESTPARTS);
-
-        // Cancelled behind the session's back: its data file takes no more writes.
-        onLoop(() -> this.queue.cancel(this.download));
-        link.send(new ClientMessages.SendingPart(hash, 0, 100, new byte[100]).encode(false));
-
-        assertThat(this.events.poll(10, TimeUnit.SECONDS)).startsWith("ended LATER internal error");
-        assertThat(link.closesWithin(ScriptedSource.WAIT)).isTrue();
     }
 
     private ScriptedSource source(int misc1, int misc2) throws Exception {

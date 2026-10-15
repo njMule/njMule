@@ -17,6 +17,7 @@
 package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -61,11 +62,27 @@ import org.njmule.core.protocol.packet.TcpFraming;
 class ChatTest {
 
     private static final Duration WAIT = Duration.ofSeconds(20);
+    private static final Hash16 PAL = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
+    private static final Hello ASKER =
+            Hello.of(Hash16.parseHex("11223344556677889900AABBCCDDEEFF"), 0, 4999, "asker", 0, 0, 0, 0, 0, 0);
 
     @TempDir
     Path dir;
 
     private final List<AutoCloseable> resources = new ArrayList<>();
+    private NjMuleEngine engine;
+    private Events seen;
+    private NjMuleEngine alice;
+    private NjMuleEngine bob;
+    private Events aliceSees;
+    private Events bobSees;
+    private EngineEvent.MessageReceived toBob;
+    private Socket client;
+    private ServerSocket peer;
+    private int closedPort;
+    private Hello claimed;
+    private boolean removed;
+    private Throwable exception;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -76,80 +93,276 @@ class ChatTest {
     }
 
     @Test
-    void twoClientsChatOverOneConnection() throws Exception {
-        NjMuleEngine alice = engine("alice");
-        NjMuleEngine bob = engine("bob");
-        Events aliceSees = new Events(alice);
-        Events bobSees = new Events(bob);
+    void shouldLetTwoClientsChatOverOneConnection() throws Exception {
+        givenTheEnginesOfAliceAndBob();
+        givenAliceWroteToBob("hello bob, ça va?");
+        givenBobGotFromAlice("hello bob, ça va?");
+        givenBobAnsweredAlice("hi alice");
+        givenAliceGotFromBob("hi alice");
+        givenAliceWroteToBob("again");
+        givenBobGot("again");
 
-        alice.sendMessage(local(bob), "hello bob, ça va?").get(5, TimeUnit.SECONDS);
-        EngineEvent.MessageReceived toBob = bobSees.next(EngineEvent.MessageReceived.class);
-        assertThat(toBob.text()).isEqualTo("hello bob, ça va?");
-        assertThat(toBob.nick()).contains("alice");
-        assertThat(toBob.address()).endsWith(":" + alice.preferences().tcpPort());
+        whenAliceWritesToBob("  ");
 
-        bob.sendMessage(ServerAddress.parse(toBob.address()), "hi alice").get(5, TimeUnit.SECONDS);
-        EngineEvent.MessageReceived toAlice = aliceSees.next(EngineEvent.MessageReceived.class);
-        assertThat(toAlice.text()).isEqualTo("hi alice");
-        assertThat(toAlice.nick()).contains("bob");
-
-        alice.sendMessage(local(bob), "again").get(5, TimeUnit.SECONDS);
-        assertThat(bobSees.next(EngineEvent.MessageReceived.class).text()).isEqualTo("again");
-        alice.sendMessage(local(bob), "  ").get(5, TimeUnit.SECONDS);
+        thenNoExceptionOccurred();
     }
 
     @Test
-    void aClientWeWroteToAsksForACaptchaAndTellsTheResult() throws Exception {
-        NjMuleEngine engine = engine("me");
-        Events seen = new Events(engine);
-        Hello asker = Hello.of(Hash16.parseHex("11223344556677889900AABBCCDDEEFF"), 0, 4999, "asker", 0, 0, 0, 0, 0, 0);
+    void shouldIgnoreACaptchaNobodyAskedFor() throws Exception {
+        givenAnEngine("me");
+        givenAClientThatCalledUs();
 
-        // A CAPTCHA nobody asked for, on a connection the other side opened, is ignored.
-        try (Socket socket = new Socket(
-                InetAddress.getLoopbackAddress(), engine.preferences().tcpPort())) {
-            socket.setSoTimeout((int) WAIT.toMillis());
-            InputStream in = new BufferedInputStream(socket.getInputStream());
-            socket.getOutputStream().write(TcpFraming.encode(asker.encode(false)));
-            assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
-                    .isEqualTo(Opcodes.Client.HELLOANSWER.code());
-            socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(40, 24))));
-            socket.getOutputStream().write(TcpFraming.encode(ChatMessages.message("unasked", true)));
-            assertThat(seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo("unasked");
+        whenTheClientSends(ChatMessages.captchaRequest(bmp(40, 24)), ChatMessages.message("unasked", true));
+
+        thenTheNextMessageShownIs("unasked");
+    }
+
+    @Test
+    void shouldShowTheCaptchaOfAClientWeWroteToAndTellItsResult() throws Exception {
+        givenAnEngine("me");
+        givenWeWroteToAClient("may I write?");
+
+        // A picture declaring a huge size is refused; a plausible one is shown.
+        whenTheClientSends(
+                ChatMessages.captchaRequest(bmp(30_000, 24)),
+                ChatMessages.captchaRequest(bmp(40, 24)),
+                ChatMessages.captchaResult(ChatMessages.SOLVED),
+                ChatMessages.message("x".repeat(500), true));
+
+        thenTheCaptchaShownIs(bmp(40, 24));
+        thenTheCaptchaIsSolved();
+        thenTheNextMessageShownHasTheLength(ChatMessages.MAX_LENGTH);
+    }
+
+    @Test
+    void shouldReportAnUnreachableClient() throws Exception {
+        givenAnEngine("me");
+        givenAClosedPort();
+
+        whenWeWriteToTheClosedPort("anyone?");
+
+        thenTheMessageToTheClosedPortFails();
+    }
+
+    @Test
+    void shouldLetOnlyAFriendThatProvesItsKeyGetPastFriendsOnly() throws Exception {
+        givenAnEngine("me", "chat.friendsOnly=true\n");
+        givenAFriend(PAL, "pal");
+        givenAnImpostorOfTheFriendWrote("from an impostor");
+
+        whenTheFriendWritesAndProvesItsKey("from the friend");
+
+        thenTheNextMessageShownIs("from the friend");
+    }
+
+    @Test
+    void shouldKeepTheFriendsAcrossARestart() throws Exception {
+        givenAnEngine("me");
+        givenAFriendAdded(PAL, "pal", new ServerAddress("10.0.0.7", 4662));
+        givenAFriendAdded(PAL, "pal again", new ServerAddress("pal.example", 1));
+
+        whenTheEngineRestarts();
+
+        thenTheFriendsAre(new Friend(PAL, "pal again", Optional.empty()));
+    }
+
+    @Test
+    void shouldRemoveAKeptFriendOnlyOnce() throws Exception {
+        givenAnEngine("me");
+        givenAFriendAdded(PAL, "pal", new ServerAddress("10.0.0.7", 4662));
+        givenAFriendAdded(PAL, "pal again", new ServerAddress("pal.example", 1));
+        givenTheEngineRestarted();
+        givenTheFriendRemoved(PAL);
+
+        whenTheFriendIsRemoved(PAL);
+
+        thenNoFriendWasRemoved();
+        thenThereAreNoFriends();
+    }
+
+    private void givenTheEnginesOfAliceAndBob() throws IOException {
+        this.alice = engine("alice");
+        this.bob = engine("bob");
+        this.aliceSees = new Events(this.alice);
+        this.bobSees = new Events(this.bob);
+    }
+
+    private void givenAliceWroteToBob(String text) throws Exception {
+        this.alice.sendMessage(local(this.bob), text).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenBobGotFromAlice(String text) throws InterruptedException {
+        this.toBob = this.bobSees.next(EngineEvent.MessageReceived.class);
+        assertThat(this.toBob.text()).isEqualTo(text);
+        assertThat(this.toBob.nick()).contains("alice");
+        assertThat(this.toBob.address()).endsWith(":" + this.alice.preferences().tcpPort());
+    }
+
+    private void givenBobAnsweredAlice(String text) throws Exception {
+        this.bob.sendMessage(ServerAddress.parse(this.toBob.address()), text).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenAliceGotFromBob(String text) throws InterruptedException {
+        EngineEvent.MessageReceived toAlice = this.aliceSees.next(EngineEvent.MessageReceived.class);
+        assertThat(toAlice.text()).isEqualTo(text);
+        assertThat(toAlice.nick()).contains("bob");
+    }
+
+    private void givenBobGot(String text) throws InterruptedException {
+        assertThat(this.bobSees.next(EngineEvent.MessageReceived.class).text()).isEqualTo(text);
+    }
+
+    private void givenAnEngine(String nick) throws IOException {
+        givenAnEngine(nick, "");
+    }
+
+    private void givenAnEngine(String nick, String extra) throws IOException {
+        this.engine = engine(nick, extra);
+        this.seen = new Events(this.engine);
+    }
+
+    private void givenAClientThatCalledUs() throws IOException {
+        this.client = new Socket(
+                InetAddress.getLoopbackAddress(), this.engine.preferences().tcpPort());
+        this.resources.add(this.client);
+        this.client.setSoTimeout((int) WAIT.toMillis());
+        InputStream in = new BufferedInputStream(this.client.getInputStream());
+        this.client.getOutputStream().write(TcpFraming.encode(ASKER.encode(false)));
+        assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
+                .isEqualTo(Opcodes.Client.HELLOANSWER.code());
+    }
+
+    private void givenWeWroteToAClient(String text) throws Exception {
+        this.peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        this.resources.add(this.peer);
+        this.peer.setSoTimeout((int) WAIT.toMillis());
+        this.engine
+                .sendMessage(new ServerAddress("127.0.0.1", this.peer.getLocalPort()), text)
+                .get(5, TimeUnit.SECONDS);
+        this.client = this.peer.accept();
+        this.resources.add(this.client);
+        this.client.setSoTimeout((int) WAIT.toMillis());
+        InputStream in = new BufferedInputStream(this.client.getInputStream());
+        assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode()).isEqualTo(Opcodes.Client.HELLO.code());
+        this.client.getOutputStream().write(TcpFraming.encode(ASKER.encode(true)));
+        assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode()).isEqualTo(Opcodes.Client.MESSAGE.code());
+    }
+
+    private void givenAClosedPort() throws IOException {
+        try (ServerSocket probe = new ServerSocket(0)) {
+            this.closedPort = probe.getLocalPort();
         }
+    }
 
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            peer.setSoTimeout((int) WAIT.toMillis());
-            engine.sendMessage(new ServerAddress("127.0.0.1", peer.getLocalPort()), "may I write?")
-                    .get(5, TimeUnit.SECONDS);
-            try (Socket socket = peer.accept()) {
-                socket.setSoTimeout((int) WAIT.toMillis());
-                InputStream in = new BufferedInputStream(socket.getInputStream());
-                assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
-                        .isEqualTo(Opcodes.Client.HELLO.code());
-                socket.getOutputStream().write(TcpFraming.encode(asker.encode(true)));
-                assertThat(TcpFraming.read(in, FrameLimit.fixed(1 << 20)).opcode())
-                        .isEqualTo(Opcodes.Client.MESSAGE.code());
+    private void givenAFriend(Hash16 hash, String nick) throws Exception {
+        this.engine.addFriend(new Friend(hash, nick, Optional.empty())).get(5, TimeUnit.SECONDS);
+        this.claimed = Hello.of(hash, 0, 4999, nick, 0, 0, IdentityProof.MISC1, 0, 0, 0);
+    }
 
-                // A picture declaring a huge size is refused; a plausible one is shown.
-                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(bmp(30_000, 24))));
-                byte[] image = bmp(40, 24);
-                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaRequest(image)));
-                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.captchaResult(ChatMessages.SOLVED)));
-                socket.getOutputStream().write(TcpFraming.encode(ChatMessages.message("x".repeat(500), true)));
-
-                EngineEvent.CaptchaRequested asked = seen.next(EngineEvent.CaptchaRequested.class);
-                assertThat(asked.image()).isEqualTo(image);
-                assertThat(asked.address()).endsWith(":" + peer.getLocalPort());
-                assertThat(asked).isEqualTo(new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image));
-                assertThat(asked.hashCode())
-                        .isEqualTo(
-                                new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image).hashCode());
-                assertThat(asked.toString()).contains("300 bytes");
-                assertThat(seen.next(EngineEvent.CaptchaAnswered.class).solved())
-                        .isTrue();
-                assertThat(seen.next(EngineEvent.MessageReceived.class).text()).hasSize(ChatMessages.MAX_LENGTH);
-            }
+    // Anyone can send the friend's user hash: a failed proof shows nothing.
+    private void givenAnImpostorOfTheFriendWrote(String text) throws IOException {
+        try (Socket impostor = connect(this.engine, this.claimed)) {
+            InputStream in = new BufferedInputStream(impostor.getInputStream());
+            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
+            OutputStream out = impostor.getOutputStream();
+            out.write(TcpFraming.encode(ChatMessages.message(text, true)));
+            IdentityProof.fake(out);
+            out.write(TcpFraming.encode(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code())));
+            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
         }
+    }
+
+    private void givenAFriendAdded(Hash16 hash, String nick, ServerAddress address) throws Exception {
+        this.engine.addFriend(new Friend(hash, nick, Optional.of(address))).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheEngineRestarted() throws Exception {
+        restartTheEngine();
+    }
+
+    private void givenTheFriendRemoved(Hash16 hash) throws Exception {
+        assertThat(this.engine.removeFriend(hash).get(5, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void whenAliceWritesToBob(String text) {
+        this.exception = catchThrowable(
+                () -> this.alice.sendMessage(local(this.bob), text).get(5, TimeUnit.SECONDS));
+    }
+
+    private void whenTheClientSends(Packet... packets) throws IOException {
+        for (Packet packet : packets) {
+            this.client.getOutputStream().write(TcpFraming.encode(packet));
+        }
+    }
+
+    private void whenWeWriteToTheClosedPort(String text) throws Exception {
+        this.engine
+                .sendMessage(new ServerAddress("127.0.0.1", this.closedPort), text)
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheFriendWritesAndProvesItsKey(String text) throws IOException {
+        Socket friend = connect(this.engine, this.claimed);
+        this.resources.add(friend);
+        InputStream in = new BufferedInputStream(friend.getInputStream());
+        Hello us = Hello.decode(nextOf(in));
+        friend.getOutputStream().write(TcpFraming.encode(ChatMessages.message(text, true)));
+        IdentityProof.prove(us, in, friend.getOutputStream());
+    }
+
+    private void whenTheEngineRestarts() throws Exception {
+        restartTheEngine();
+    }
+
+    private void whenTheFriendIsRemoved(Hash16 hash) throws Exception {
+        this.removed = this.engine.removeFriend(hash).get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheNextMessageShownIs(String text) throws InterruptedException {
+        assertThat(this.seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo(text);
+    }
+
+    private void thenTheCaptchaShownIs(byte[] image) throws InterruptedException {
+        EngineEvent.CaptchaRequested asked = this.seen.next(EngineEvent.CaptchaRequested.class);
+        assertThat(asked.image()).isEqualTo(image);
+        assertThat(asked.address()).endsWith(":" + this.peer.getLocalPort());
+        assertThat(asked).isEqualTo(new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image));
+        assertThat(asked.hashCode())
+                .isEqualTo(new EngineEvent.CaptchaRequested(asked.address(), asked.userHash(), image).hashCode());
+        assertThat(asked.toString()).contains("300 bytes");
+    }
+
+    private void thenTheCaptchaIsSolved() throws InterruptedException {
+        assertThat(this.seen.next(EngineEvent.CaptchaAnswered.class).solved()).isTrue();
+    }
+
+    private void thenTheNextMessageShownHasTheLength(int length) throws InterruptedException {
+        assertThat(this.seen.next(EngineEvent.MessageReceived.class).text()).hasSize(length);
+    }
+
+    private void thenTheMessageToTheClosedPortFails() throws InterruptedException {
+        assertThat(this.seen.next(EngineEvent.MessageFailed.class).address()).isEqualTo("127.0.0.1:" + this.closedPort);
+    }
+
+    private void thenTheFriendsAre(Friend... expected) throws Exception {
+        assertThat(this.engine.friends().get(5, TimeUnit.SECONDS)).containsExactly(expected);
+    }
+
+    private void thenNoFriendWasRemoved() {
+        assertThat(this.removed).isFalse();
+    }
+
+    private void thenThereAreNoFriends() throws Exception {
+        assertThat(this.engine.friends().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void restartTheEngine() throws Exception {
+        this.engine.close();
+        this.engine = engine("me");
     }
 
     // The start of a BMP file of the given size; the pixels do not matter here.
@@ -158,47 +371,6 @@ class ChatTest {
         file.put((byte) 'B').put((byte) 'M');
         file.putInt(18, width).putInt(22, height);
         return file.array();
-    }
-
-    @Test
-    void anUnreachableClientIsReported() throws Exception {
-        NjMuleEngine engine = engine("me");
-        Events seen = new Events(engine);
-        int closed;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            closed = probe.getLocalPort();
-        }
-        engine.sendMessage(new ServerAddress("127.0.0.1", closed), "anyone?").get(5, TimeUnit.SECONDS);
-
-        assertThat(seen.next(EngineEvent.MessageFailed.class).address()).isEqualTo("127.0.0.1:" + closed);
-    }
-
-    @Test
-    void onlyAFriendThatProvesItsKeyGetsPastFriendsOnly() throws Exception {
-        NjMuleEngine engine = engine("me", "chat.friendsOnly=true\n");
-        Events seen = new Events(engine);
-        Hash16 pal = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
-        engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
-        Hello claimed = Hello.of(pal, 0, 4999, "pal", 0, 0, IdentityProof.MISC1, 0, 0, 0);
-
-        // Anyone can send the friend's user hash: a failed proof shows nothing.
-        try (Socket impostor = connect(engine, claimed)) {
-            InputStream in = new BufferedInputStream(impostor.getInputStream());
-            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
-            OutputStream out = impostor.getOutputStream();
-            out.write(TcpFraming.encode(ChatMessages.message("from an impostor", true)));
-            IdentityProof.fake(out);
-            out.write(TcpFraming.encode(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code())));
-            assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
-        }
-        try (Socket friend = connect(engine, claimed)) {
-            InputStream in = new BufferedInputStream(friend.getInputStream());
-            Hello us = Hello.decode(nextOf(in));
-            friend.getOutputStream().write(TcpFraming.encode(ChatMessages.message("from the friend", true)));
-            IdentityProof.prove(us, in, friend.getOutputStream());
-
-            assertThat(seen.next(EngineEvent.MessageReceived.class).text()).isEqualTo("from the friend");
-        }
     }
 
     // A connection to the engine, greeted with {@code hello}; the hello answer is left to read.
@@ -218,24 +390,6 @@ class ChatTest {
                 return packet;
             }
         }
-    }
-
-    @Test
-    void friendsAreKept() throws Exception {
-        Hash16 hash = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
-        NjMuleEngine engine = engine("me");
-        engine.addFriend(new Friend(hash, "pal", Optional.of(new ServerAddress("10.0.0.7", 4662))))
-                .get(5, TimeUnit.SECONDS);
-        engine.addFriend(new Friend(hash, "pal again", Optional.of(new ServerAddress("pal.example", 1))))
-                .get(5, TimeUnit.SECONDS);
-        engine.close();
-
-        NjMuleEngine again = engine("me");
-        List<Friend> friends = again.friends().get(5, TimeUnit.SECONDS);
-        assertThat(friends).containsExactly(new Friend(hash, "pal again", Optional.empty()));
-        assertThat(again.removeFriend(hash).get(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(again.removeFriend(hash).get(5, TimeUnit.SECONDS)).isFalse();
-        assertThat(again.friends().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 
     private static ServerAddress local(NjMuleEngine engine) {
