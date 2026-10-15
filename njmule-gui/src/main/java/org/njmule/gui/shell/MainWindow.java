@@ -17,6 +17,7 @@
 package org.njmule.gui.shell;
 
 import atlantafx.base.controls.Notification;
+import atlantafx.base.controls.Popover;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -104,6 +105,8 @@ public final class MainWindow {
     private final NetworkPane network;
     private final ServersScreen servers;
     private final Banner banner;
+    private SpeedLimits limits;
+    private Popover limitsPopover;
     private final Label activeBadge = badge();
     private final Label unreadBadge = badge();
     private final Circle networkDot = new Circle(4);
@@ -352,13 +355,20 @@ public final class MainWindow {
                 new SeparatorMenuItem(),
                 importer,
                 about);
-        for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, tools)) {
+        // The rates open the limits: what one wants to change on seeing them.
+        Button rates = new Button(null, new HBox(10, this.down, this.up));
+        rates.setId("rates");
+        rates.getStyleClass().addAll(Styles.FLAT, "rates");
+        rates.setTooltip(new Tooltip(this.gui.t("nj.tray.speed")));
+        rates.setAccessibleText(this.gui.t("nj.tray.speed"));
+        rates.setOnAction(e -> this.showLimits(rates));
+        for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, rates, tools)) {
             Fx.whole(whole);
         }
         // The chips open the network, at the part they tell of.
         this.opens(this.ed2k, "servers");
         this.opens(this.kad, "kad");
-        HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), this.down, this.up, tools, theme);
+        HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), rates, tools, theme);
         bar.getStyleClass().add("top-bar");
         return bar;
     }
@@ -610,6 +620,27 @@ public final class MainWindow {
         Label label = new Label("", new FontIcon(Material2AL.FIBER_MANUAL_RECORD));
         label.getStyleClass().add("connection-chip");
         return label;
+    }
+
+    // The limits under the rates, as in the notification area's menu, with the same two presets.
+    private void showLimits(Node anchor) {
+        if (this.limitsPopover == null) {
+            this.limits = new SpeedLimits(this.gui);
+            Button full = Fx.button(
+                    this.gui.t("IDS_PW_UA"),
+                    Material2MZ.SPEED,
+                    () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps()));
+            Button slow = Fx.button(
+                    this.gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1));
+            VBox box = new VBox(10, this.limits.view(), new HBox(8, full, slow));
+            box.getStyleClass().add("limits-popover");
+            this.limitsPopover = new Popover(box);
+            this.limitsPopover.setTitle(this.gui.t("nj.tray.speed"));
+            this.limitsPopover.setHeaderAlwaysVisible(true);
+            this.limitsPopover.setArrowLocation(Popover.ArrowLocation.TOP_CENTER);
+        }
+        this.limits.load();
+        this.limitsPopover.show(anchor);
     }
 
     private void opens(Label chip, String screen) {

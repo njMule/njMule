@@ -87,10 +87,37 @@ class TopBarTest {
         this.thenTheScreenIs("settings");
     }
 
+    @Test
+    void theRatesOpenTheLimitsAsTheyAre() throws Exception {
+        this.givenTheWindow();
+        this.whenTheRatesArePressed();
+        this.thenTheLimitsShow(
+                this.test.engine.preferences().maxDownloadKiBps(),
+                this.test.engine.preferences().maxUploadKiBps());
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
         this.test.show(this.window.root());
+    }
+
+    private void whenTheRatesArePressed() throws Exception {
+        FxTesting.onFx(() -> ((javafx.scene.control.Button) this.window.root().lookup("#rates")).fire());
+    }
+
+    private void thenTheLimitsShow(int down, int up) throws Exception {
+        FxTesting.await(
+                "the limits",
+                () -> javafx.stage.Window.getWindows().stream()
+                        .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
+                        .anyMatch(w -> w.getScene().getRoot().lookup(".tray-speeds") != null));
+        List<String> values = FxTesting.onFx(() -> javafx.stage.Window.getWindows().stream()
+                .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
+                .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .text-field").stream())
+                .map(n -> ((javafx.scene.control.TextField) n).getText())
+                .toList());
+        assertThat(values).containsExactly(String.valueOf(down), String.valueOf(up));
     }
 
     private void whenTheServerIsTried() throws Exception {

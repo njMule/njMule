@@ -336,6 +336,9 @@ class CaptureTour {
         this.fx(() -> this.window.show("transfers"));
         this.menus("topbar", this.stage.getScene().getRoot());
         this.tooltips("topbar", this.stage.getScene().getRoot());
+        this.fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#rates")).fire());
+        this.shot("topbar-limits", "The limits under the rates of the top bar");
+        this.fx(CaptureTour::closePopups);
         this.textFieldMenu();
         this.settingsPage();
         this.liveSearch();

@@ -17,8 +17,6 @@
 package org.njmule.gui.shell;
 
 import java.util.Optional;
-import java.util.function.BiFunction;
-import java.util.function.ToIntFunction;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Group;
@@ -27,10 +25,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
-import javafx.scene.control.Slider;
-import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -44,12 +39,9 @@ import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.NjMuleInfo;
-import org.njmule.core.config.Preferences;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
-import org.njmule.gui.ui.Input;
-import org.njmule.gui.ui.Inputs;
 
 /**
  * The menu of the notification area icon: the speed limits with their sliders, connecting and disconnecting, the
@@ -69,21 +61,13 @@ public final class TrayMenu {
 
     private final Gui gui;
     private final Stage stage;
-    private final Slider down = new Slider();
-    private final Slider up = new Slider();
-    private final TextField downText = new TextField();
-    private final TextField upText = new TextField();
-    private final Inputs inputs;
+    private final SpeedLimits limits;
     private final Button connect;
     private final Button disconnect;
-    private Input<Integer> downInput;
-    private Input<Integer> upInput;
-    // Set while the menu shows the preferences: moving the sliders then is no change of the user's.
-    private boolean loading;
 
     public TrayMenu(Gui gui, Window owner, Actions actions) {
         this.gui = gui;
-        this.inputs = new Inputs(gui);
+        this.limits = new SpeedLimits(gui);
         this.stage = new Stage(StageStyle.UNDECORATED);
         this.stage.initOwner(owner);
         this.stage.setAlwaysOnTop(true);
@@ -100,12 +84,12 @@ public final class TrayMenu {
         restore.getStyleClass().add("tray-default");
         VBox items = new VBox(
                 this.title(),
-                this.speeds(),
+                this.limits.view(),
                 this.item(
                         gui.t("IDS_PW_UA"),
                         Material2MZ.SPEED,
-                        () -> this.setLimits(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps())),
-                this.item(gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.setLimits(p -> 1, p -> 1)),
+                        () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps())),
+                this.item(gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1)),
                 new Separator(),
                 this.connect,
                 this.disconnect,
@@ -135,7 +119,7 @@ public final class TrayMenu {
 
     /** Opens the menu with a corner at {@code (x, y)}, on the side of it that fits the screen. */
     public void show(double x, double y) {
-        this.load(this.gui.model().preferencesProperty().get());
+        this.limits.load();
         EngineModel.Connection state = this.gui.model().connectionProperty().get();
         this.connect.setDisable(state != EngineModel.Connection.DISCONNECTED);
         this.disconnect.setDisable(state == EngineModel.Connection.DISCONNECTED);
@@ -182,116 +166,6 @@ public final class TrayMenu {
         Label title = new Label(this.gui.t("nj.tray.speed"), new FontIcon(Material2MZ.SPEED));
         title.getStyleClass().add("tray-title");
         return title;
-    }
-
-    // Each limit as a slider over the line's capacity and as a number; 0 is no limit.
-    private Node speeds() {
-        GridPane grid = new GridPane();
-        grid.getStyleClass().add("tray-speeds");
-        this.downInput = this.speed(
-                grid,
-                0,
-                Material2AL.ARROW_DOWNWARD,
-                this.gui.t("IDS_PW_CON_DOWNLBL"),
-                this.down,
-                this.downText,
-                (p, v) -> p.toBuilder().maxDownloadKiBps(v).build());
-        this.upInput = this.speed(
-                grid,
-                1,
-                Material2AL.ARROW_UPWARD,
-                this.gui.t("IDS_PW_CON_UPLBL"),
-                this.up,
-                this.upText,
-                (p, v) -> p.toBuilder().maxUploadKiBps(v).build());
-        return grid;
-    }
-
-    private Input<Integer> speed(
-            GridPane grid,
-            int row,
-            Ikon icon,
-            String name,
-            Slider slider,
-            TextField text,
-            BiFunction<Preferences, Integer, Preferences> change) {
-        FontIcon arrow = new FontIcon(icon);
-        arrow.getStyleClass().add(row == 0 ? "tray-down" : "tray-up");
-        // A typed limit stays within the slider, whose top is the line's capacity or the limit set past it.
-        Input<Integer> input =
-                this.inputs.number(text, name, 0, () -> (int) slider.getMax(), Preferences.MAX_RATE_KIBPS);
-        text.setPrefColumnCount(4);
-        text.setAlignment(Pos.CENTER_RIGHT);
-        slider.setPrefWidth(108);
-        slider.valueChangingProperty().addListener((o, was, now) -> {
-            if (!now && !this.loading) {
-                this.apply(change, (int) Math.round(slider.getValue()));
-            }
-        });
-        slider.valueProperty().addListener((o, was, now) -> {
-            text.setText(String.valueOf(Math.round(now.doubleValue())));
-            if (!slider.isValueChanging() && !this.loading) {
-                this.apply(change, (int) Math.round(now.doubleValue()));
-            }
-        });
-        text.setOnAction(e -> this.typed(slider, input));
-        text.focusedProperty().addListener((o, was, now) -> {
-            if (!now) {
-                this.typed(slider, input);
-            }
-        });
-        grid.addRow(row, arrow, new Label(name), slider, text, new Label(this.gui.t("IDS_KBYTESPERSEC")));
-        return input;
-    }
-
-    private void typed(Slider slider, Input<Integer> input) {
-        if (input.isValid()) {
-            slider.setValue(input.value());
-        } else {
-            input.field().setText(String.valueOf(Math.round(slider.getValue())));
-        }
-    }
-
-    private void apply(BiFunction<Preferences, Integer, Preferences> change, int value) {
-        Preferences current = this.gui.model().preferencesProperty().get();
-        if (change.apply(current, value).equals(current)) {
-            return;
-        }
-        this.gui.model().updatePreferences(p -> change.apply(p, value), p -> {});
-    }
-
-    private void setLimits(ToIntFunction<Preferences> download, ToIntFunction<Preferences> upload) {
-        this.gui
-                .model()
-                .updatePreferences(
-                        p -> p.toBuilder()
-                                .maxDownloadKiBps(download.applyAsInt(p))
-                                .maxUploadKiBps(upload.applyAsInt(p))
-                                .build(),
-                        this::load);
-    }
-
-    // A new top first clamps the old position, which must not be taken for a choice.
-    private void load(Preferences p) {
-        this.loading = true;
-        try {
-            this.down.setMax(Math.max(p.downloadCapacityKiBps(), p.maxDownloadKiBps()));
-            this.up.setMax(Math.max(p.uploadCapacityKiBps(), p.maxUploadKiBps()));
-            this.down.setValue(p.maxDownloadKiBps());
-            this.up.setValue(p.maxUploadKiBps());
-            this.downText.setText(String.valueOf(p.maxDownloadKiBps()));
-            this.upText.setText(String.valueOf(p.maxUploadKiBps()));
-        } finally {
-            this.loading = false;
-        }
-        this.bound(this.downInput, this.down);
-        this.bound(this.upInput, this.up);
-    }
-
-    // The typed limit is checked against the slider's new top, which its hint tells.
-    private void bound(Input<Integer> input, Slider slider) {
-        input.check();
-        input.field().getTooltip().setText(this.gui.f("nj.input.number", 0, (int) slider.getMax()));
     }
 
     private Button item(String text, Ikon icon, Runnable action) {
