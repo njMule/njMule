@@ -19,6 +19,7 @@ package org.njmule.core.kad;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.SecureRandom;
+import java.util.HexFormat;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -30,6 +31,8 @@ import org.njmule.core.protocol.io.PacketWriter;
  * ({@link #fromBigEndian}).
  */
 public record UInt128(long high, long low) implements Comparable<UInt128> {
+
+    private static final HexFormat HEX = HexFormat.of().withUpperCase();
 
     public static final UInt128 ZERO = new UInt128(0, 0);
     public static final int BITS = 128;
@@ -128,15 +131,14 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
 
     /** 32 hex digits, most significant first. */
     public String toHex() {
-        return String.format("%016X%016X", this.high, this.low);
+        return HEX.toHexDigits(this.high) + HEX.toHexDigits(this.low);
     }
 
     public static UInt128 parseHex(String hex) {
         if (hex.length() != 32) {
             throw new IllegalArgumentException("a 128-bit id has 32 hex digits");
         }
-        return new UInt128(
-                Long.parseUnsignedLong(hex.substring(0, 16), 16), Long.parseUnsignedLong(hex.substring(16), 16));
+        return new UInt128(HexFormat.fromHexDigitsToLong(hex, 0, 16), HexFormat.fromHexDigitsToLong(hex, 16, 32));
     }
 
     @Override

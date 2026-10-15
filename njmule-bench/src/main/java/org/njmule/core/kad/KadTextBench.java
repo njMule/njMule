@@ -22,7 +22,6 @@ import com.google.common.base.Utf8;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -54,7 +53,6 @@ public class KadTextBench {
             Splitter.on(CharMatcher.anyOf(Keywords.DELIMITERS).precomputed()).omitEmptyStrings();
     private static final CharMatcher DELIMITER =
             CharMatcher.anyOf(Keywords.DELIMITERS).precomputed();
-    private static final HexFormat HEX = HexFormat.of().withUpperCase();
 
     private final UInt128 id = UInt128.parseHex("0123456789ABCDEFFEDCBA9876543210");
     private final int ip = Ipv4.of(81, 2, 133, 47);
@@ -107,15 +105,16 @@ public class KadTextBench {
         return out;
     }
 
-    /** Today's code: {@code String.format}. */
+    /** The replaced code: {@code String.format}. */
     @Benchmark
     public String idHexFormatString() {
-        return this.id.toHex();
+        return String.format("%016X%016X", this.id.high(), this.id.low());
     }
 
+    /** Today's code, on the JDK's HexFormat. */
     @Benchmark
     public String idHexFormatJdk() {
-        return HEX.toHexDigits(this.id.high()) + HEX.toHexDigits(this.id.low());
+        return this.id.toHex();
     }
 
     /** The replaced code: the address formatted to a string, then parsed back. */

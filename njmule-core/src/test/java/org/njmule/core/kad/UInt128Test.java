@@ -45,6 +45,7 @@ class UInt128Test {
     private int bit;
     private int[] bits;
     private long top32;
+    private String hex;
     private Exception exception;
 
     @Test
@@ -88,6 +89,22 @@ class UInt128Test {
         givenTheBytes(new byte[17]);
 
         whenTheBytesAreReadBigEndian();
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldWriteTheHexInUpperCaseMostSignificantFirst() {
+        givenTheId(new UInt128(0x0011_2233_4455_6677L, 0x8899_AABB_CCDD_EEFFL));
+
+        whenItIsWrittenAsHex();
+
+        thenTheHexIs("00112233445566778899AABBCCDDEEFF");
+    }
+
+    @Test
+    void shouldRefuseHexWithASign() {
+        whenTheHexIsParsed("+0112233445566778899AABBCCDDEEFF");
 
         thenExceptionOccurred(IllegalArgumentException.class);
     }
@@ -283,6 +300,10 @@ class UInt128Test {
         }
     }
 
+    private void whenItIsWrittenAsHex() {
+        this.hex = this.id.toHex();
+    }
+
     private void whenTheyAreCompared() {
         this.comparison = this.id.compareTo(this.other);
     }
@@ -333,6 +354,10 @@ class UInt128Test {
 
     private void whenItGoesThroughAHash() {
         this.result = UInt128.of(this.id.toHash16());
+    }
+
+    private void thenTheHexIs(String expected) {
+        assertThat(this.hex).isEqualTo(expected);
     }
 
     private void thenTheBytesAre(String hex) {
