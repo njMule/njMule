@@ -1,0 +1,215 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.gui.screens;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.api.PartMap;
+import org.njmule.core.api.SourceInfo;
+import org.njmule.gui.Engines;
+import org.njmule.gui.FxTesting;
+import org.njmule.gui.TestGui;
+
+@Timeout(60)
+class TransfersViewTest {
+
+    private static final Hash16 FIRST = Hash16.parseHex("00000000000000000000000000000001");
+    private static final Hash16 SECOND = Hash16.parseHex("00000000000000000000000000000002");
+
+    @TempDir
+    Path dir;
+
+    private TestGui test;
+    private TransfersScreen screen;
+    private TransfersScreen.Shown shown;
+
+    @AfterEach
+    void close() {
+        if (this.test != null) {
+            this.test.close();
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "DOWNLOADING, 5, 2, DOWNLOADING",
+        "DOWNLOADING, 5, 0, WAITING",
+        "DOWNLOADING, 0, 0, NO_SOURCES",
+        "PAUSED, 0, 0, PAUSED",
+        "NO_SPACE, 9, 0, NO_SPACE",
+        "COMPLETE, 0, 0, COMPLETE"
+    })
+    void aRunningDownloadTellsWhetherDataComesOrNoSourceIsKnown(
+            DownloadInfo.Status status, int sources, int transferring, TransfersScreen.Shown expected) {
+        this.whenADownloadIs(status, sources, transferring);
+        this.thenItShowsAs(expected);
+    }
+
+    @Test
+    void theFilterKeepsTheDownloadsWhoseNameHoldsEveryWord() throws Exception {
+        this.givenTheDownloads("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
+        this.whenTheFilterReads("DEBIAN iso");
+        this.thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso");
+        this.whenTheFilterReads("dvd debian");
+        this.thenTheDownloadsShownAre("Debian 13 DVD.iso");
+        this.whenTheFilterReads("");
+        this.thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
+    }
+
+    @Test
+    void theSourcesBelowAreThoseOfTheDownloadChosen() throws Exception {
+        this.givenTheDownloads("first.bin", "second.bin");
+        this.thenTheSourcesShownAre(3);
+        this.whenTheDownloadIsChosen(1);
+        this.thenTheSourcesShownAre(1);
+        this.whenTheDownloadIsChosen(0);
+        this.thenTheSourcesShownAre(2);
+    }
+
+    @Test
+    void ctrlFPutsTheCursorInTheFilter() throws Exception {
+        this.givenTheDownloads("first.bin");
+        this.whenCtrlFIsPressed();
+        this.thenTheFilterHasTheCursor();
+    }
+
+    private void givenTheDownloads(String... names) throws Exception {
+        List<DownloadInfo> downloads = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            downloads.add(download(
+                    i == 0 ? FIRST : i == 1 ? SECOND : Hash16.parseHex(String.format("%032X", i + 1)),
+                    names[i],
+                    DownloadInfo.Status.DOWNLOADING,
+                    1,
+                    0));
+        }
+        List<SourceInfo> sources = List.of(source(FIRST, 1), source(FIRST, 2), source(SECOND, 3));
+        Map<String, Engines.Command> commands = Map.of(
+                "downloads", a -> CompletableFuture.completedFuture(List.copyOf(downloads)),
+                "sources", a -> CompletableFuture.completedFuture(sources));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
+        this.screen = new TransfersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(this.screen::view));
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await(
+                "the downloads", () -> this.screen.downloads().getItems().size() == names.length);
+        FxTesting.await("the sources", () -> this.test.model.sources().rows().size() == sources.size());
+    }
+
+    private void whenADownloadIs(DownloadInfo.Status status, int sources, int transferring) {
+        this.shown = TransfersScreen.shown(download(FIRST, "x.bin", status, sources, transferring));
+    }
+
+    private void whenTheFilterReads(String text) throws Exception {
+        FxTesting.onFx(() -> this.filter().setText(text));
+    }
+
+    private void whenTheDownloadIsChosen(int index) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.downloads().getSelectionModel().clearSelection();
+            this.screen.downloads().getItems().stream()
+                    .filter(r -> r.get().hash().equals(index == 0 ? FIRST : SECOND))
+                    .findFirst()
+                    .ifPresent(r -> this.screen.downloads().getSelectionModel().select(r));
+        });
+    }
+
+    private void whenCtrlFIsPressed() throws Exception {
+        FxTesting.onFx(() -> this.screen.downloads().fireEvent(FxTesting.key(KeyCode.F, true)));
+    }
+
+    private void thenItShowsAs(TransfersScreen.Shown expected) {
+        assertThat(this.shown).isEqualTo(expected);
+    }
+
+    private void thenTheDownloadsShownAre(String... names) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.downloads().getItems().stream()
+                        .map(r -> r.get().name())
+                        .toList()))
+                .containsExactlyInAnyOrder(names);
+    }
+
+    private void thenTheSourcesShownAre(int count) throws Exception {
+        FxTesting.await(
+                "the sources shown", () -> this.screen.sources().getItems().size() == count);
+    }
+
+    private void thenTheFilterHasTheCursor() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.filter().getScene().getFocusOwner() == this.filter()))
+                .isTrue();
+    }
+
+    private TextField filter() {
+        return this.screen.view().lookupAll(".text-field").stream()
+                .map(TextField.class::cast)
+                .filter(f -> this.test.gui.t("nj.transfers.filter").equals(f.getPromptText()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static DownloadInfo download(
+            Hash16 hash, String name, DownloadInfo.Status status, int sources, int transferring) {
+        return new DownloadInfo(
+                hash,
+                name,
+                1000,
+                100,
+                status,
+                DownloadPriority.AUTO,
+                0,
+                sources,
+                transferring,
+                0,
+                PartMap.EMPTY,
+                false,
+                false);
+    }
+
+    private static SourceInfo source(Hash16 file, int n) {
+        return new SourceInfo(
+                file,
+                "file.bin",
+                "10.0.0." + n + ":4662",
+                Optional.empty(),
+                "eMule",
+                SourceInfo.State.QUEUED,
+                n,
+                0,
+                1,
+                2,
+                Optional.empty(),
+                "");
+    }
+}

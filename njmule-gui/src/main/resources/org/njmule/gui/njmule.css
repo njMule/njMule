@@ -559,6 +559,26 @@
     -fx-text-fill: -color-fg-default;
 }
 
+/* What a download does, told by an icon beside its words: green while data comes, amber when no source is
+   known, red for a problem, muted otherwise. */
+.download-state {
+    -fx-icon-color: -color-fg-muted;
+}
+
+.download-state.downloading,
+.download-state.complete {
+    -fx-icon-color: -color-success-fg;
+}
+
+.download-state.no-sources {
+    -fx-icon-color: -color-warning-fg;
+}
+
+.download-state.no-space,
+.download-state.error {
+    -fx-icon-color: -color-danger-fg;
+}
+
 /* What a source does, told by an icon of its own beside its words. */
 .source-state {
     -fx-icon-color: -color-fg-muted;

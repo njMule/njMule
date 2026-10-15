@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +51,8 @@ import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -63,6 +66,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
@@ -99,6 +103,8 @@ public final class TransfersScreen implements Screen {
     private final TextField link = new TextField();
     private final HBox categoryBar = new HBox();
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
+    private final ObjectProperty<Predicate<SourceInfo>> shownSources = new SimpleObjectProperty<>(s -> true);
+    private final TextField filter = new TextField();
     private int shownCategory = SHOW_ALL;
     private Input<List<Ed2kLink.FileLink>> linkInput;
 
@@ -151,7 +157,7 @@ public final class TransfersScreen implements Screen {
                                 Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
-                        Fx.column(this.gui.t("nj.transfers.status"), 110, DownloadInfo::status, this::status),
+                        this.statusColumn(),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
                         Fx.ownDirection(
                                 Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
@@ -268,12 +274,34 @@ public final class TransfersScreen implements Screen {
         });
         this.categoryBar.getStyleClass().add("category-bar");
         this.showCategories();
-        VBox upper = new VBox(this.categoryBar, this.downloads);
+        this.filter.setPromptText(this.gui.t("nj.transfers.filter"));
+        this.filter.setPrefColumnCount(16);
+        this.filter.textProperty().addListener((o, was, now) -> this.showCategory(this.shownCategory));
+        this.filter.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                this.filter.clear();
+            }
+        });
+        HBox head = new HBox(8, this.categoryBar, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
+        head.setAlignment(Pos.CENTER_LEFT);
+        // The sources below are those of the download chosen, or of all when none or several are.
+        this.downloads.getSelectionModel().getSelectedItems().addListener((ListChangeListener<
+                        LiveList.Row<DownloadInfo>>)
+                c -> this.showSourcesOfSelected());
+        VBox upper = new VBox(head, this.downloads);
         VBox.setVgrow(this.downloads, Priority.ALWAYS);
         SplitPane split = new SplitPane(upper, lower);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.6);
-        return Fx.screen(this.title(), tools, split);
+        VBox screen = Fx.screen(this.title(), tools, split);
+        // Ctrl+F (Cmd+F) narrows the downloads by name.
+        screen.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
+            if (e.isShortcutDown() && e.getCode() == KeyCode.F) {
+                this.filter.requestFocus();
+                e.consume();
+            }
+        });
+        return screen;
     }
 
     // All downloads, then one button per category; the chosen one filters the list.
@@ -312,7 +340,8 @@ public final class TransfersScreen implements Screen {
 
     void showCategory(int id) {
         this.shownCategory = id;
-        this.shown.set(id == SHOW_ALL ? d -> true : d -> d.category() == id);
+        Predicate<DownloadInfo> named = named(this.filter.getText());
+        this.shown.set(id == SHOW_ALL ? named : d -> d.category() == id && named.test(d));
         for (Node node : this.categoryBar.getChildren()) {
             if (node instanceof ToggleButton button) {
                 button.setSelected(Integer.valueOf(id).equals(button.getUserData()));
@@ -411,6 +440,100 @@ public final class TransfersScreen implements Screen {
             case HIGH -> this.gui.t("IDS_PRIOAUTOHIGH");
             default -> this.gui.t("IDS_PRIOAUTONORMAL");
         };
+    }
+
+    /** How a download shows: a running one waits while no source sends, and says so when none is known. */
+    enum Shown {
+        DOWNLOADING,
+        WAITING,
+        NO_SOURCES,
+        PAUSED,
+        STOPPED,
+        NO_SPACE,
+        ERROR,
+        COMPLETE
+    }
+
+    static Shown shown(DownloadInfo d) {
+        return switch (d.status()) {
+            case DOWNLOADING ->
+                d.transferring() > 0 ? Shown.DOWNLOADING : d.sources() > 0 ? Shown.WAITING : Shown.NO_SOURCES;
+            case PAUSED -> Shown.PAUSED;
+            case STOPPED -> Shown.STOPPED;
+            case NO_SPACE -> Shown.NO_SPACE;
+            case ERROR -> Shown.ERROR;
+            case COMPLETE -> Shown.COMPLETE;
+        };
+    }
+
+    /** Downloads whose name holds every word of {@code text}, in any case. */
+    static Predicate<DownloadInfo> named(String text) {
+        List<String> words = Arrays.stream(text.strip().toLowerCase(Locale.ROOT).split("\\s+"))
+                .filter(w -> !w.isEmpty())
+                .toList();
+        return d -> words.stream().allMatch(d.name().toLowerCase(Locale.ROOT)::contains);
+    }
+
+    private void showSourcesOfSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (selected.size() == 1) {
+            Hash16 file = selected.getFirst().hash();
+            this.shownSources.set(s -> s.file().equals(file));
+        } else {
+            this.shownSources.set(s -> true);
+        }
+    }
+
+    private TableColumn<LiveList.Row<DownloadInfo>, Shown> statusColumn() {
+        TableColumn<LiveList.Row<DownloadInfo>, Shown> column =
+                Fx.column(this.gui.t("nj.transfers.status"), 150, TransfersScreen::shown, this::shownText);
+        column.setCellFactory(c -> new StatusCell());
+        return column;
+    }
+
+    private String shownText(Shown shown) {
+        return switch (shown) {
+            case DOWNLOADING -> this.gui.t("IDS_DOWNLOADING");
+            case WAITING -> this.gui.t("IDS_WAITING");
+            case NO_SOURCES -> this.gui.t("nj.transfers.stateNoSources");
+            case PAUSED -> this.status(DownloadInfo.Status.PAUSED);
+            case STOPPED -> this.status(DownloadInfo.Status.STOPPED);
+            case NO_SPACE -> this.status(DownloadInfo.Status.NO_SPACE);
+            case ERROR -> this.status(DownloadInfo.Status.ERROR);
+            case COMPLETE -> this.status(DownloadInfo.Status.COMPLETE);
+        };
+    }
+
+    private static Ikon shownIcon(Shown shown) {
+        return switch (shown) {
+            case DOWNLOADING -> Material2AL.ARROW_DOWNWARD;
+            case WAITING -> Material2MZ.SCHEDULE;
+            case NO_SOURCES -> Material2MZ.SEARCH_OFF;
+            case PAUSED -> Material2MZ.PAUSE;
+            case STOPPED -> Material2MZ.STOP;
+            case NO_SPACE, ERROR -> Material2AL.ERROR_OUTLINE;
+            case COMPLETE -> Material2AL.CHECK_CIRCLE_OUTLINE;
+        };
+    }
+
+    /** A download's state in words, with an icon of its own: the colour is never the only cue. */
+    private final class StatusCell extends TableCell<LiveList.Row<DownloadInfo>, Shown> {
+        @Override
+        protected void updateItem(Shown shown, boolean empty) {
+            super.updateItem(shown, empty);
+            if (empty || shown == null) {
+                this.setText(null);
+                this.setGraphic(null);
+                return;
+            }
+            this.setText(TransfersScreen.this.shownText(shown));
+            FontIcon icon = Fx.icon(shownIcon(shown));
+            icon.getStyleClass()
+                    .addAll(
+                            "download-state",
+                            shown.name().toLowerCase(Locale.ROOT).replace('_', '-'));
+            this.setGraphic(icon);
+        }
     }
 
     private String status(DownloadInfo.Status status) {
@@ -667,7 +790,7 @@ public final class TransfersScreen implements Screen {
     private TableView<LiveList.Row<SourceInfo>> sourceTable() {
         var formats = this.gui.formats();
         TableView<LiveList.Row<SourceInfo>> table =
-                Fx.table(this.gui.model().sources(), this.gui.t("nj.transfers.noSources"));
+                Fx.table(this.gui.model().sources(), this.gui.t("nj.transfers.noSources"), this.shownSources);
         TableColumn<LiveList.Row<SourceInfo>, SourceInfo.State> state =
                 Fx.column(this.gui.t("IDS_STATUS"), 180, SourceInfo::state, this::sourceState);
         state.setCellFactory(c -> new SourceStateCell());
