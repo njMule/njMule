@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Gradle multi-module build (`njmule-core`, `njmule-testkit`, `njmule-app`, `njmule-gui`) with the
-  Gradle Wrapper, Java 25 and JPMS modules; incremental, with the build and configuration caches.
+  Gradle Wrapper, Java 25 and JPMS modules; incremental, with the build and configuration caches;
+  locked dependency versions and SHA-256 verification of every downloaded artifact.
 - Engine skeleton: single-threaded engine loop with timers, monotonic clock, crash-safe atomic
   file writes with backup fallback, OS-specific data directories (Windows Known Folders, macOS
   Library, XDG) with portable mode, typed preferences stored in `njmule.properties`.

@@ -271,6 +271,15 @@ tests, JaCoCo coverage (at least 70% of the lines of `njmule-core`) and SpotBugs
 Builds are incremental and use Gradle's build cache: tasks whose inputs did not change are not run
 again, so a build with nothing changed takes about a second.
 
+Every dependency version is locked (`gradle.lockfile` in each project) and every downloaded
+artifact is checked against its SHA-256 in `gradle/verification-metadata.xml`. After changing a
+version, rewrite both and review the new checksums:
+
+```bash
+./gradlew --no-configuration-cache --write-verification-metadata sha256 --write-locks \
+    spotlessCheck :njmule-app:collectReachabilityMetadata :njmule-gui:generateLicenseReport cyclonedxBom
+```
+
 <details>
 <summary><strong>Running from the build</strong></summary>
 

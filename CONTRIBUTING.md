@@ -33,7 +33,8 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 3. Commit with [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
    messages: `<type>[scope][!]: <description>` — types `feat`, `fix`, `build`, `ci`, `docs`,
    `perf`, `refactor`, `style`, `test`, `chore`, `revert`.
-4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs).
+4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs). A new
+   or updated dependency also needs its lock files and checksums rewritten (see the README).
 5. Open a pull request whose **title** is a Conventional Commits header; fill in the template.
    PRs are squash-merged.
 

@@ -97,6 +97,17 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Builds are incremental and cached (build cache and configuration cache, `gradle.properties`): with
   nothing changed `./gradlew build` takes about a second, a change re-runs only what depends on it,
   and worktrees share the build cache in `~/.gradle`. `clean` is never needed for a correct build.
+- Dependencies are locked and verified: every resolved version is in the `gradle.lockfile` of each
+  project (and `buildscript-`/`settings-gradle.lockfile`), every downloaded artifact is checked
+  against its SHA-256 in `gradle/verification-metadata.xml` (the OpenJFX jars of all five platforms
+  included), and any difference fails the build. After changing a version (`libs.versions.toml`, a
+  plugin, Gradle itself) rewrite both, then delete the entries of the versions no longer used and
+  review the new checksums; Dependabot's pull requests need the same step:
+
+  ```bash
+  ./gradlew --no-configuration-cache --write-verification-metadata sha256 --write-locks \
+      spotlessCheck :njmule-app:collectReachabilityMetadata :njmule-gui:generateLicenseReport cyclonedxBom
+  ```
 - Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
   `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g: Gradle's own 512 MiB slows
   the window tests to a time-out) and `test.parallelModules=1` (one module's tests at a time, for
