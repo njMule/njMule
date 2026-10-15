@@ -33,7 +33,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 
-/** The folders shared besides the incoming one, to stop sharing some of them. */
+/** The folders shared besides the incoming one, to share another or stop sharing some of them. */
 public final class SharedFoldersDialog {
 
     private final Gui gui;
@@ -41,6 +41,11 @@ public final class SharedFoldersDialog {
     private final ListView<SharedDirectory> list = new ListView<>();
 
     public SharedFoldersDialog(Gui gui, Window owner) {
+        this(gui, owner, null);
+    }
+
+    /** With {@code share}, which asks for a folder and shares it, behind a button of its own. */
+    public SharedFoldersDialog(Gui gui, Window owner, Runnable share) {
         this.gui = gui;
         this.stage.initOwner(owner);
         this.stage.initModality(Modality.WINDOW_MODAL);
@@ -64,11 +69,18 @@ public final class SharedFoldersDialog {
         Button unshare = Fx.button(gui.t("IDS_UNSHAREDIR"), Material2MZ.REMOVE_CIRCLE_OUTLINE, this::unshareSelected);
         unshare.disableProperty()
                 .bind(this.list.getSelectionModel().selectedItemProperty().isNull());
-        VBox root = new VBox(
-                10,
-                this.list,
-                Fx.toolRow(
-                        unshare, Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
+        var tools = Fx.toolRow(
+                unshare, Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+        if (share != null) {
+            tools.getChildren().addFirst(Fx.button(gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, share));
+            // The folder chooser and the question take the focus; back here, the list may have grown.
+            this.stage.focusedProperty().addListener((o, was, now) -> {
+                if (now) {
+                    this.load();
+                }
+            });
+        }
+        VBox root = new VBox(10, this.list, tools);
         VBox.setVgrow(this.list, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 620, 360);

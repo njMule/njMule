@@ -184,7 +184,7 @@ public final class SharedScreen implements Screen {
     }
 
     private void showFolders() {
-        new SharedFoldersDialog(this.gui, this.view.getScene().getWindow()).show();
+        new SharedFoldersDialog(this.gui, this.view.getScene().getWindow(), this::chooseDirectory).show();
     }
 
     // Each level, for every selected file.
