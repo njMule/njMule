@@ -16337,7 +16337,15 @@
     },
     {
       "module": "javafx.graphics",
+      "glob": "com/sun/scenario/effect/impl/es2/glsl/Blend_SRC_IN.frag"
+    },
+    {
+      "module": "javafx.graphics",
       "glob": "com/sun/scenario/effect/impl/es2/glsl/LinearConvolveShadow_16.frag"
+    },
+    {
+      "module": "javafx.graphics",
+      "glob": "com/sun/scenario/effect/impl/es2/glsl/LinearConvolveShadow_20.frag"
     },
     {
       "module": "javafx.graphics",
