@@ -650,8 +650,7 @@ class CaptureTour {
     private void dialogs() throws Exception {
         this.window("dialog-about", "About njMule", () -> new AboutDialog(this.gui, this.stage).show(), w -> {});
         Path emule = Files.createDirectories(this.dir.resolve("eMule").resolve("config"));
-        // The first start, page by page, with an eMule on the default ports.
-        Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nPort=4662\r\nUDPPort=4672\r\n");
+        // The first start, page by page, with an eMule found.
         for (int page = 0; page < 5; page++) {
             int nexts = page;
             this.window(

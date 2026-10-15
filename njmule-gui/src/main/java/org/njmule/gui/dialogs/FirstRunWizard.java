@@ -20,7 +20,6 @@ import atlantafx.base.theme.Styles;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -55,7 +54,6 @@ import javafx.stage.Window;
 import javafx.util.StringConverter;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
-import org.njmule.core.api.EmulePorts;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
@@ -101,7 +99,6 @@ public final class FirstRunWizard {
     private final Window owner;
     private final Preferences preferences;
     private final Optional<Path> emule;
-    private final Optional<EmulePorts> emulePorts;
     private final Consumer<Outcome> done;
     private final Stage stage = new Stage();
     private final List<Page> pages = new ArrayList<>();
@@ -143,7 +140,6 @@ public final class FirstRunWizard {
         this.owner = owner;
         this.preferences = preferences;
         this.emule = emule;
-        this.emulePorts = emule.flatMap(EmulePorts::read);
         this.done = done;
         this.modeBefore = gui.themes().mode();
         Inputs inputs = new Inputs(gui);
@@ -187,10 +183,8 @@ public final class FirstRunWizard {
         this.nick.setText(this.preferences.nick());
         this.incoming.setText(
                 this.preferences.effectiveIncomingDir(this.gui.directories()).toString());
-        PortPlan ports = PortPlan.of(
-                this.preferences.tcpPort(), this.preferences.udpPort(), this.emulePorts, new SecureRandom());
-        this.tcp.setText(Integer.toString(ports.tcp()));
-        this.udp.setText(Integer.toString(ports.udp()));
+        this.tcp.setText(Integer.toString(this.preferences.tcpPort()));
+        this.udp.setText(Integer.toString(this.preferences.udpPort()));
         this.upnp.setText(this.gui.t("nj.settings.upnp"));
         this.upnp.setSelected(this.preferences.upnp());
         this.down.show(this.preferences.downloadCapacityKiBps());

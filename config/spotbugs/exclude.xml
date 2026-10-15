@@ -114,13 +114,6 @@
         <Class name="org.njmule.app.LinkHandoff"/>
     </Match>
 
-    <!-- The first start binds a port only to learn whether it is free, and closes it at once:
-         nothing is sent or received. -->
-    <Match>
-        <Bug pattern="UNENCRYPTED_SERVER_SOCKET"/>
-        <Class name="org.njmule.gui.dialogs.PortPlan"/>
-    </Match>
-
     <!-- The link association and the folder opener run fixed system tools (reg, xdg-mime, the file
          manager) with arguments built from our own paths and constants, never from the network; the
          preview runs the player the user chose in the settings on one of our own data files. The

@@ -84,11 +84,19 @@ class FirstRunWizardTest {
     }
 
     @Test
-    void anEmuleOnThisComputerAddsItsPageAndMovesThePorts() throws Exception {
-        this.givenAnEmuleOnPorts(4662, 4672);
+    void anEmuleOnThisComputerAddsItsPage() throws Exception {
+        this.givenAnEmule();
         this.givenTheWizard();
         this.thenThePagesAre(5);
-        this.thenThePortsAreNot(4662, 4672);
+    }
+
+    @Test
+    void thePortsAreThoseOfTheSettings() throws Exception {
+        this.givenAnEmule();
+        this.givenTheWizard();
+        this.thenThePortsAre(
+                this.test.engine.preferences().tcpPort(),
+                this.test.engine.preferences().udpPort());
     }
 
     @Test
@@ -107,10 +115,8 @@ class FirstRunWizardTest {
         this.thenTheSharedFoldersInclude(music);
     }
 
-    private void givenAnEmuleOnPorts(int tcp, int udp) throws Exception {
-        Path config = Files.createDirectories(this.dir.resolve("emule-config"));
-        Files.writeString(config.resolve("preferences.ini"), "[eMule]\r\nPort=" + tcp + "\r\nUDPPort=" + udp + "\r\n");
-        this.emule = Optional.of(config);
+    private void givenAnEmule() throws Exception {
+        this.emule = Optional.of(Files.createDirectories(this.dir.resolve("emule-config")));
     }
 
     private void givenTheWizard() throws Exception {
@@ -183,9 +189,9 @@ class FirstRunWizardTest {
         assertThat(FxTesting.onFx(this.wizard::pages)).isEqualTo(pages);
     }
 
-    private void thenThePortsAreNot(int tcp, int udp) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.wizard.tcpField().getText())).isNotEqualTo(Integer.toString(tcp));
-        assertThat(FxTesting.onFx(() -> this.wizard.udpField().getText())).isNotEqualTo(Integer.toString(udp));
+    private void thenThePortsAre(int tcp, int udp) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.wizard.tcpField().getText())).isEqualTo(Integer.toString(tcp));
+        assertThat(FxTesting.onFx(() -> this.wizard.udpField().getText())).isEqualTo(Integer.toString(udp));
     }
 
     private void thenTheCapacitiesAre(String down, String up) throws Exception {
