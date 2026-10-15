@@ -417,3 +417,9 @@ license identifier (or is listed in [REUSE.toml](REUSE.toml)); license texts are
 njMule is an independent re-implementation inspired by and derived from
 [eMule](https://www.emule-project.net) (GPL-2.0-or-later). It is not affiliated with or endorsed
 by the eMule project.
+
+## Acknowledgements
+
+Many thanks to the eMule team and to everyone who has contributed to
+[eMule](https://www.emule-project.net) over more than twenty years: their client keeps the eD2K
+and Kad networks alive, and its open source code made njMule possible.
