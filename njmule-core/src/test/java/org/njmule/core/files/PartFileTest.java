@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.random.RandomGenerator;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.IntRange;
@@ -68,6 +69,7 @@ class PartFileTest {
     Path dir;
 
     private PartFile file;
+    private RandomGenerator ties = new FixedTies(Integer.MAX_VALUE);
     private BitSet sourceParts;
     private List<Block> handedOut;
     private List<Block> blocks;
@@ -234,6 +236,17 @@ class PartFileTest {
         whenBlocksAreAskedFor(1);
 
         thenTheBlocksAre(new Block(P, P + B));
+    }
+
+    @Test
+    void shouldStartWithAnyOfTheEquallyRareParts() {
+        givenAFileWithTheHashSet(1, "big.bin", 2 * P + 100, hash(1), hash(2), hash(3));
+        givenTiesGoToTheLastEqualPartSeen();
+        givenASourceWithTheParts(0, 1, 2);
+
+        whenBlocksAreAskedFor(1);
+
+        thenTheFirstBlockStartsAt(2 * P, "the last of the equally rare parts, by the chance given");
     }
 
     @Test
@@ -556,29 +569,29 @@ class PartFileTest {
     }
 
     private void givenTheBlocksHandedOutAre(int count, Block... expected) {
-        this.handedOut = this.file.nextBlocks(this.sourceParts, count);
+        this.handedOut = nextBlocks(this.file, this.sourceParts, count);
         assertThat(this.handedOut).containsExactly(expected);
     }
 
     private void givenBlocksAreHandedOut(int count) {
-        this.handedOut = this.file.nextBlocks(this.sourceParts, count);
+        this.handedOut = nextBlocks(this.file, this.sourceParts, count);
         assertThat(this.handedOut).hasSize(count);
     }
 
     private void givenNoBlockIsLeftWhenAskingFor(int count) {
-        assertThat(this.file.nextBlocks(this.sourceParts, count)).isEmpty();
+        assertThat(nextBlocks(this.file, this.sourceParts, count)).isEmpty();
     }
 
     private void givenTheBlocksHandedOutInThePartOfAre(long offset, int count, Block... expected) {
         BitSet part = new BitSet();
         part.set((int) (offset / P));
-        assertThat(this.file.nextBlocks(part, count)).containsExactly(expected);
+        assertThat(nextBlocks(this.file, part, count)).containsExactly(expected);
     }
 
     private void givenTheBlocksHandedOutInTheLastPartAre(int count, Block... expected) {
         BitSet last = new BitSet();
         last.set(Ed2k.partCount(this.file.size()) - 1);
-        assertThat(this.file.nextBlocks(last, count)).containsExactly(expected);
+        assertThat(nextBlocks(this.file, last, count)).containsExactly(expected);
     }
 
     private void givenTheBytesAreWritten(long start, long end) {
@@ -595,6 +608,10 @@ class PartFileTest {
 
     private void givenTheSourcesOfThePartsChangeBy(int delta, int... parts) {
         this.file.addAvailability(bits(parts), delta);
+    }
+
+    private void givenTiesGoToTheLastEqualPartSeen() {
+        this.ties = new FixedTies(0);
     }
 
     private void givenASourceWithTheParts(int... parts) {
@@ -688,7 +705,7 @@ class PartFileTest {
     }
 
     private void whenBlocksAreAskedFor(int count) {
-        this.blocks = this.file.nextBlocks(this.sourceParts, count);
+        this.blocks = nextBlocks(this.file, this.sourceParts, count);
     }
 
     private void whenAllBlocksAreDrained(int perCall) {
@@ -991,16 +1008,22 @@ class PartFileTest {
         return this.dir.resolve("incoming");
     }
 
+    // The expectations here follow the parts in order: ties go to the lowest, unless a test says otherwise.
+    private List<Block> nextBlocks(PartFile file, BitSet parts, int count) {
+        file.breakTiesWith(this.ties);
+        return file.nextBlocks(parts, count);
+    }
+
     private PartFile small(long size) {
         return PartFile.create(1, this.dir, "small.bin", size, hash(9), Optional.empty(), List.of());
     }
 
     // Draws blocks until none is left, as sources asking in turn would.
-    private static List<Block> drain(PartFile file, BitSet parts, int perCall) {
+    private List<Block> drain(PartFile file, BitSet parts, int perCall) {
         List<Block> all = new ArrayList<>();
-        for (List<Block> next = file.nextBlocks(parts, perCall);
+        for (List<Block> next = nextBlocks(file, parts, perCall);
                 !next.isEmpty();
-                next = file.nextBlocks(parts, perCall)) {
+                next = nextBlocks(file, parts, perCall)) {
             assertThat(next.size()).isLessThanOrEqualTo(perCall);
             all.addAll(next);
         }
@@ -1037,5 +1060,18 @@ class PartFileTest {
         byte[] bytes = new byte[16];
         bytes[0] = (byte) seed;
         return Hash16.of(bytes);
+    }
+
+    // Ties broken as told: 0 takes each equal part seen, anything else keeps the first one.
+    private record FixedTies(int draw) implements RandomGenerator {
+        @Override
+        public long nextLong() {
+            return this.draw;
+        }
+
+        @Override
+        public int nextInt(int bound) {
+            return Math.min(this.draw, bound - 1);
+        }
     }
 }

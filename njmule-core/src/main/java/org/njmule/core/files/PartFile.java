@@ -29,6 +29,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.SplittableRandom;
+import java.util.random.RandomGenerator;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
@@ -103,6 +105,9 @@ public final class PartFile {
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
+    // Breaks ties between equally good parts, so that clients spread over the parts of a file instead of all starting
+    // with the first.
+    private RandomGenerator ties = new SplittableRandom();
     private String name;
     private List<Hash16> partHashes;
     private Status status = Status.DOWNLOADING;
@@ -405,6 +410,11 @@ public final class PartFile {
         return this.missing.subRangeSet(partRange(this.size, part)).isEmpty();
     }
 
+    /** Breaks ties between equally good parts with {@code random}. */
+    public void breakTiesWith(RandomGenerator random) {
+        this.ties = Objects.requireNonNull(random, "random");
+    }
+
     /** The parts a source has, as it reports them, update the rarity of each part. */
     public void addAvailability(BitSet parts, int delta) {
         for (int part = parts.nextSetBit(0);
@@ -596,12 +606,13 @@ public final class PartFile {
     }
 
     // The parts for a preview first; then the rarest; among equally rare parts, one begun already, so that parts
-    // complete, are checked and can be shared sooner; then the lowest.
+    // complete, are checked and can be shared sooner; then any of the equal ones, by chance.
     private int pickPart(BitSet sourceParts) {
         BitSet preview = previewParts(this.previewAlways);
         int best = -1;
         boolean bestBegun = false;
         boolean bestPreview = false;
+        int equal = 0;
         for (int part = sourceParts.nextSetBit(0);
                 part >= 0 && part < partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
@@ -627,6 +638,13 @@ public final class PartFile {
                 best = part;
                 bestBegun = begun;
                 bestPreview = forPreview;
+                equal = 1;
+            } else if (this.availability[part] == this.availability[best]
+                    && begun == bestBegun
+                    && forPreview == bestPreview
+                    // Each of the equal parts seen so far is kept with the same chance.
+                    && this.ties.nextInt(++equal) == 0) {
+                best = part;
             }
         }
         return best;
