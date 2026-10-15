@@ -361,6 +361,8 @@ All notable changes to this project are documented here. The format follows
 - Every entry of the transfer and shared file menus has an icon, as in the other menus; the log
   rows are one line tall, with an icon for warnings, errors and successes.
 - Durations use the units of the interface language ("2 g 1 h", "59:22 min" in Italian).
+- The rates in the top bar use the interface's font (they were in Courier New on Windows) at a
+  steady width.
 - A main button that cannot run yet is greyed out instead of a faded orange; the parts of a
   download that no source has show in a soft rose instead of a solid red.
 - The log names each port the router refuses to forward over UPnP, with the router's reason.
