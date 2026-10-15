@@ -6,8 +6,7 @@
 # Enable with: git config core.hooksPath .githooks
 root="$(git rev-parse --show-toplevel)" || exit 1
 cd "$root" || exit 1
-if [ -f ./mvnw ]; then mvn_cmd=./mvnw; else mvn_cmd=mvn; fi
-if ! "$mvn_cmd" -q -B spotless:check; then
-    echo "Formatting check failed: run '$mvn_cmd spotless:apply' and stage the changes." >&2
+if ! ./gradlew -q spotlessCheck; then
+    echo "Formatting check failed: run './gradlew spotlessApply' and stage the changes." >&2
     exit 1
 fi
