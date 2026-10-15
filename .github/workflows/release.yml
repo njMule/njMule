@@ -28,15 +28,10 @@ jobs:
             numeric: ${{ steps.version.outputs.numeric }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-              with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache: maven
             - id: version
               name: Read the project version
               run: |
-                  version="$(./mvnw -B -ntp -q help:evaluate -Dexpression=revision -DforceStdout)"
+                  version="$(sed -n 's/^version=//p' gradle.properties)"
                   if [[ "${GITHUB_REF_TYPE}" == tag && "v${version}" != "${GITHUB_REF_NAME}" ]]; then
                       echo "Tag ${GITHUB_REF_NAME} does not match the version ${version}" >&2
                       exit 1
@@ -58,7 +53,9 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-                  cache: maven
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             - name: Install GraalVM and WiX
               shell: pwsh
               run: |
@@ -71,14 +68,14 @@ jobs:
                   dotnet tool install --global wix --version 5.0.2
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
+              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui -Pnative.optimization=-O2
             - name: Smoke test
               shell: pwsh
               run: |
-                  njmule-app/target/njmule.exe --version
+                  njmule-app/build/native/nativeCompile/njmule.exe --version
                   $tour = "$env:RUNNER_TEMP\tour"
                   Copy-Item -Recurse njmule-gui/native/tour $tour
-                  $gui = Start-Process njmule-gui/target/native/njmule-gui.exe -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
+                  $gui = Start-Process njmule-gui/build/native/njmule-gui.exe -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
                   if (-not $gui.WaitForExit(180000)) { $gui.Kill(); throw "the GUI tour did not finish" }
                   if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
             - name: Pack
@@ -86,7 +83,7 @@ jobs:
               run: |
                   $name = "njmule-$env:VERSION-windows-x64"
                   New-Item -ItemType Directory -Force "stage\$name", dist | Out-Null
-                  Copy-Item njmule-app/target/njmule.exe, njmule-gui/target/native/* "stage\$name"
+                  Copy-Item njmule-app/build/native/nativeCompile/njmule.exe, njmule-gui/build/native/* "stage\$name"
                   # Absolute paths: WiX resolves relative ones from the .wxs file's directory.
                   $bin = (Resolve-Path "stage\$name").Path
                   $docs = (Resolve-Path .).Path
@@ -148,22 +145,25 @@ jobs:
                   curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
                   echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
+              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui -Pnative.optimization=-O2
             - name: Smoke test
               run: |
-                  njmule-app/target/njmule --version
+                  njmule-app/build/native/nativeCompile/njmule --version
                   tour="$RUNNER_TEMP/tour"
                   cp -r njmule-gui/native/tour "$tour"
-                  timeout 180 xvfb-run -a njmule-gui/target/native/njmule-gui -Dnjmule.gui.tour=true --config-dir "$tour"
+                  timeout 180 xvfb-run -a njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true --config-dir "$tour"
                   grep -q "Tour finished" "$tour"/logs/*.log
             - name: Pack
               run: |
                   name="njmule-${VERSION}-linux-${{ matrix.arch }}"
                   mkdir -p stage/gui stage/doc dist "archive/${name}/share"
-                  install -m 755 njmule-app/target/njmule stage/njmule
-                  cp -r njmule-gui/target/native/. stage/gui/
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule stage/njmule
+                  cp -r njmule-gui/build/native/. stage/gui/
                   cp README.md CHANGELOG.md NOTICE stage/doc/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p deb -t dist/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p rpm -t dist/
@@ -244,18 +244,21 @@ jobs:
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             # The committed metadata comes from Windows and Linux: the tour adds macOS's first.
             - name: Trace the GUI tour
-              run: ./mvnw -B -ntp -Pnative-tour -pl njmule-gui -am package -DskipTests
+              run: ./gradlew :njmule-gui:nativeTour
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executables
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app,njmule-gui -am package -DskipTests '-Dnative.optimization=-O2'
+              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui -Pnative.optimization=-O2
             - name: Smoke test
               run: |
-                  njmule-app/target/njmule --version
+                  njmule-app/build/native/nativeCompile/njmule --version
                   tour="$RUNNER_TEMP/tour"
                   cp -r njmule-gui/native/tour "$tour"
-                  njmule-gui/target/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true \
+                  njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true \
                       --config-dir "$tour" > "$RUNNER_TEMP/gui.out" 2>&1 &
                   gui=$!
                   ( sleep 180 && kill -QUIT "$gui" && sleep 5 && kill "$gui" ) 2>/dev/null &
@@ -269,8 +272,8 @@ jobs:
               run: |
                   app=stage/njMule.app/Contents
                   mkdir -p "$app/MacOS" "$app/Resources" dist
-                  cp -R njmule-gui/target/native/. "$app/MacOS/"
-                  cp njmule-app/target/njmule "$app/MacOS/"
+                  cp -R njmule-gui/build/native/. "$app/MacOS/"
+                  cp njmule-app/build/native/nativeCompile/njmule "$app/MacOS/"
                   cp branding/generated/njmule.icns "$app/Resources/"
                   sed "s/@VERSION@/${VERSION%%-*}/g" packaging/macos/Info.plist > "$app/Info.plist"
                   plutil -lint "$app/Info.plist"
@@ -299,9 +302,11 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-                  cache: maven
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             - name: Software bill of materials
-              run: ./mvnw -B -ntp -Plicenses package -DskipTests
+              run: ./gradlew cyclonedxBom
             - name: Collect the packages
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -309,7 +314,7 @@ jobs:
                   gh run download "${GITHUB_RUN_ID}" --dir packages
                   mkdir -p dist
                   find packages -type f -exec cp {} dist/ \;
-                  cp target/bom.json "dist/njmule-${VERSION}-sbom.cdx.json"
+                  cp build/reports/cyclonedx/bom.json "dist/njmule-${VERSION}-sbom.cdx.json"
                   (cd dist && sha256sum -- * > SHA256SUMS)
             - name: Create the draft release
               env:

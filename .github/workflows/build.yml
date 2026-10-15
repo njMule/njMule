@@ -63,16 +63,22 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-                  cache: maven
+            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
+            # wrapper jar against the published checksums.
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             - name: Build and test
               shell: bash
-              run: ./mvnw -B -ntp verify
+              run: ./gradlew build
             - name: Upload test reports
               if: failure()
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: test-reports-${{ matrix.os }}
-                  path: "**/target/surefire-reports/"
+                  path: |
+                      **/build/test-results/
+                      **/build/reports/tests/
 
     actionlint:
         name: actionlint
@@ -103,16 +109,21 @@ jobs:
         container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
+            # wrapper jar against the published checksums.
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             - name: Build the native executable
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests '-Dnative.optimization=-Ob'
+              run: ./gradlew :njmule-app:nativeCompile -Pnative.optimization=-Ob
             - name: Smoke test
               run: |
-                  njmule-app/target/njmule --version
-                  njmule-app/target/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+                  njmule-app/build/native/nativeCompile/njmule --version
+                  njmule-app/build/native/nativeCompile/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: njmule-linux-x64
-                  path: njmule-app/target/njmule
+                  path: njmule-app/build/native/nativeCompile/njmule
 
     native-windows:
         name: native image (windows-x64)
@@ -130,7 +141,11 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-                  cache: maven
+            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
+            # wrapper jar against the published checksums.
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
             - name: Install GraalVM
               shell: pwsh
               run: |
@@ -141,18 +156,18 @@ jobs:
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
             - name: Build the native executable
-              run: ./mvnw -B -ntp -Pnative -pl njmule-app -am package -DskipTests '-Dnative.optimization=-Ob'
+              run: ./gradlew :njmule-app:nativeCompile -Pnative.optimization=-Ob
             - name: Smoke test
               shell: pwsh
               run: |
-                  njmule-app/target/njmule.exe --version
-                  if (-not ((njmule-app/target/njmule.exe --license) -match "GNU GENERAL PUBLIC LICENSE")) {
+                  njmule-app/build/native/nativeCompile/njmule.exe --version
+                  if (-not ((njmule-app/build/native/nativeCompile/njmule.exe --license) -match "GNU GENERAL PUBLIC LICENSE")) {
                       throw "license text missing"
                   }
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: njmule-windows-x64
-                  path: njmule-app/target/njmule.exe
+                  path: njmule-app/build/native/nativeCompile/njmule.exe
 
     sonar:
         name: SonarQube Cloud
@@ -172,10 +187,13 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-                  cache: maven
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              if: env.SONAR_TOKEN != ''
+              with:
+                  cache-provider: basic
             - name: Build and analyse
               if: env.SONAR_TOKEN != ''
-              run: ./mvnw -B -ntp verify sonar:sonar
+              run: ./gradlew build sonar
 
     # The one check to require on pull requests: it passes when every job passed or was skipped
     # because the change does not need a build.
