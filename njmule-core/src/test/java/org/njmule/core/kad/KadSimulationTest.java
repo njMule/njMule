@@ -19,6 +19,7 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
@@ -69,6 +70,9 @@ class KadSimulationTest {
     private final List<Integer> ips = new ArrayList<>();
     private final Deque<Runnable> wire = new ArrayDeque<>();
     private final List<int[]> reachabilityChecks = new ArrayList<>();
+    private String word;
+    private Hash16 file;
+    private KadNode restarted;
 
     private static SecureRandom seeded() {
         try {
@@ -81,11 +85,31 @@ class KadSimulationTest {
     }
 
     @Test
-    void nodesFindEachOtherPublishAndSearch() throws Exception {
-        for (int i = 0; i < NODES; i++) {
+    void shouldLetNodesFindEachOtherPublishAndSearch() throws Exception {
+        givenNodesThatBootstrappedFromEachOther(NODES);
+        // All nodes start together, so their first self lookups (after 3 minutes) see a young
+        // network; the second one, after 4 hours, finds the nearest nodes as joining a mature
+        // network does.
+        givenTheNetworkRanForSeconds(4 * 60 * 60 + 5 * 60);
+        givenEveryNodeIsConnectedToEnoughContacts();
+        givenAKeywordPublishedByNode(17);
+        givenTheKeywordFoundByNode(150);
+        givenASourcePublishedByNode(42);
+        givenTheSourceFoundByNode(99, 42);
+        givenMostNodesKnowTheyAreReachableAndWhereOthersSeeThem();
+        givenANodeSavedItsContacts(5);
+
+        whenTheNodeRestartsFromItsNodesDat(5);
+
+        thenTheRestartedNodeHasMoreContactsThan(10);
+        thenTheRestartedNodeKeepsTheIdOfNode(5);
+    }
+
+    private void givenNodesThatBootstrappedFromEachOther(int count) throws Exception {
+        for (int i = 0; i < count; i++) {
             node(i);
         }
-        for (int i = 1; i < NODES; i++) {
+        for (int i = 1; i < count; i++) {
             this.nodes.get(i).bootstrap(this.ips.get(0), PORT);
             if (i > 1) {
                 this.nodes.get(i).bootstrap(this.ips.get(this.random.nextInt(i)), PORT);
@@ -94,11 +118,13 @@ class KadSimulationTest {
         }
         // The first node only seeded the others; like any node it bootstraps too.
         this.nodes.get(0).bootstrap(this.ips.get(1), PORT);
-        // All nodes start together, so their first self lookups (after 3 minutes) see a young
-        // network; the second one, after 4 hours, finds the nearest nodes as joining a mature
-        // network does.
-        run(4 * 60 * 60 + 5 * 60);
+    }
 
+    private void givenTheNetworkRanForSeconds(int seconds) {
+        run(seconds);
+    }
+
+    private void givenEveryNodeIsConnectedToEnoughContacts() {
         int connected = 0;
         long verified = 0;
         long total = 0;
@@ -128,51 +154,63 @@ class KadSimulationTest {
         assertThat(this.nodes.stream().filter(KadNode::isReady).count())
                 .as("self lookups done")
                 .isGreaterThan(NODES * 9 / 10);
+    }
 
-        // A keyword published by one node is found by another; with few nodes, the keyword is
-        // picked so that some node is close enough to store it.
-        String word = wordNearSomeNode("pictures");
-        Hash16 file = hashNearSomeNode();
+    // A keyword published by one node is found by another; with few nodes, the keyword is
+    // picked so that some node is close enough to store it.
+    private void givenAKeywordPublishedByNode(int index) {
+        this.word = wordNearSomeNode("pictures");
+        this.file = hashNearSomeNode();
         List<Tag> tags = List.of(
-                new Tag.StringTag(TagName.id(FileTag.FILENAME), "Night Sky " + word + ".zip"),
+                new Tag.StringTag(TagName.id(FileTag.FILENAME), "Night Sky " + this.word + ".zip"),
                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), 123_456),
                 new Tag.IntTag(TagName.id(FileTag.SOURCES), 3));
-        KadNode publisher = this.nodes.get(17);
-        assertThat(publisher.publishKeyword(word, List.of(new KadMessages.Entry(UInt128.of(file), tags))))
+        KadNode publisher = this.nodes.get(index);
+        assertThat(publisher.publishKeyword(this.word, List.of(new KadMessages.Entry(UInt128.of(this.file), tags))))
                 .isTrue();
         run(PUBLISH_WAIT);
         assertThat(this.nodes.stream().filter(n -> n.indexed()[0] > 0).count())
                 .as("nodes that store the keyword")
                 .isPositive();
-        // A lookup may miss the one node near the key in so small a network: like a user, the
-        // searcher tries again.
+    }
+
+    // A lookup may miss the one node near the key in so small a network: like a user, the
+    // searcher tries again.
+    private void givenTheKeywordFoundByNode(int index) {
         List<KadNode.FileResult> found = new ArrayList<>();
         for (int attempt = 0; attempt < SEARCHES && found.isEmpty(); attempt++) {
-            assertThat(this.nodes.get(150).searchKeyword(word, Optional.empty(), found::addAll))
+            assertThat(this.nodes.get(index).searchKeyword(this.word, Optional.empty(), found::addAll))
                     .isPresent();
             run(60);
         }
         assertThat(found).isNotEmpty();
-        assertThat(found.getFirst().name()).isEqualTo("Night Sky " + word + ".zip");
-        assertThat(found.getFirst().hash()).isEqualTo(file);
+        assertThat(found.getFirst().name()).isEqualTo("Night Sky " + this.word + ".zip");
+        assertThat(found.getFirst().hash()).isEqualTo(this.file);
         assertThat(found.getFirst().size()).isEqualTo(123_456);
+    }
 
-        // A source published by one node is found by another.
-        KadNode source = this.nodes.get(42);
-        assertThat(source.publishSource(file, 123_456)).isTrue();
+    // A source published by one node is found by another.
+    private void givenASourcePublishedByNode(int index) {
+        KadNode source = this.nodes.get(index);
+        assertThat(source.publishSource(this.file, 123_456)).isTrue();
         run(PUBLISH_WAIT);
+    }
+
+    private void givenTheSourceFoundByNode(int index, int source) {
         List<KadNode.Source> sources = new ArrayList<>();
         for (int attempt = 0; attempt < SEARCHES && sources.isEmpty(); attempt++) {
-            assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll))
+            assertThat(this.nodes.get(index).findSources(this.file, 123_456, sources::addAll))
                     .isTrue();
             run(60);
         }
         assertThat(sources).isNotEmpty();
-        assertThat(sources.getFirst().ip()).isEqualTo(this.ips.get(42));
+        assertThat(sources.getFirst().ip()).isEqualTo(this.ips.get(source));
         assertThat(sources.getFirst().tcpPort()).isEqualTo(4662);
+    }
 
-        // Nodes asked to check our TCP port connected back: most nodes know they are reachable
-        // and where other nodes see them.
+    // Nodes asked to check our TCP port connected back: most nodes know they are reachable
+    // and where other nodes see them.
+    private void givenMostNodesKnowTheyAreReachableAndWhereOthersSeeThem() {
         assertThat(this.reachabilityChecks).isNotEmpty();
         long open = this.nodes.stream().filter(n -> !n.isFirewalled()).count();
         assertThat(open).isGreaterThan(NODES * 9 / 10);
@@ -181,13 +219,17 @@ class KadSimulationTest {
                 assertThat(this.nodes.get(i).publicIp()).isEqualTo(this.ips.get(i));
             }
         }
+    }
 
-        // The contacts survive a restart through nodes.dat.
-        KadNode first = this.nodes.get(5);
-        first.saveNodes();
-        Path config = this.dir.resolve("node5");
-        assertThat(config.resolve(KadNode.NODES_FILE)).exists();
-        KadNode again = new KadNode(
+    private void givenANodeSavedItsContacts(int index) {
+        this.nodes.get(index).saveNodes();
+        assertThat(this.dir.resolve("node" + index).resolve(KadNode.NODES_FILE)).exists();
+    }
+
+    // The contacts survive a restart through nodes.dat.
+    private void whenTheNodeRestartsFromItsNodesDat(int index) throws IOException {
+        Path config = this.dir.resolve("node" + index);
+        this.restarted = new KadNode(
                 KadIdentity.loadOrCreate(config, this.random),
                 (ip, port, packet, id, rk, sk) -> {},
                 (ip, port, hash, options) -> {},
@@ -195,9 +237,15 @@ class KadSimulationTest {
                 config,
                 this.random,
                 this.ticker);
-        again.loadNodes();
-        assertThat(again.contacts()).isGreaterThan(10);
-        assertThat(again.id()).isEqualTo(first.id());
+        this.restarted.loadNodes();
+    }
+
+    private void thenTheRestartedNodeHasMoreContactsThan(int count) {
+        assertThat(this.restarted.contacts()).isGreaterThan(count);
+    }
+
+    private void thenTheRestartedNodeKeepsTheIdOfNode(int index) {
+        assertThat(this.restarted.id()).isEqualTo(this.nodes.get(index).id());
     }
 
     private String wordNearSomeNode(String base) {

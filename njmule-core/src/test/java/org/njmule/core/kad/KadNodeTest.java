@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
@@ -63,219 +64,485 @@ class KadNodeTest {
     };
     private final List<Packet> sentToPeer = new ArrayList<>();
     private final Set<Integer> blocked = new HashSet<>();
+    private final List<Runnable> stops = new ArrayList<>();
+    private final List<KadNode.FileResult> found = new ArrayList<>();
+    private KadNode node;
+    private UInt128 target;
+    private Optional<Runnable> search;
+    private List<KadContactInfo> contactInfos;
+    private List<KadSearchInfo> lookupInfos;
+
+    @BeforeEach
+    void create() throws IOException {
+        this.node = node();
+    }
 
     @Test
-    void learnsContactsOnlyFromAnAnswerToOneOfItsLookups() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
-        int blockedIp = Ipv4.of(50, 1, 1, 1);
-        this.blocked.add(blockedIp);
+    void shouldLearnNoContactsFromAnAnswerForAnotherTarget() {
+        givenContactsAt(PEER);
+        givenAKeywordSearchStarted("ubuntu");
 
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isPresent();
-        answer(node, UInt128.random(this.random), contact(Ipv4.of(30, 1, 1, 1)), contact(Ipv4.of(40, 1, 1, 1)));
-        assertThat(node.contacts()).as("an answer for another target").isEqualTo(1);
+        whenTheContactAnswersForAnotherTarget(Ipv4.of(30, 1, 1, 1), Ipv4.of(40, 1, 1, 1));
 
-        assertThat(node.findSources(hash(), 1000, sources -> {})).isTrue();
+        thenTheContactsAre(1, "an answer for another target");
+    }
+
+    @Test
+    void shouldLearnNoContactsFromAnAnswerWithMoreThanAskedFor() throws Exception {
+        givenContactsAt(PEER);
+        givenASourceSearchStarted();
+
+        whenTheContactAnswersWithOneContactMoreThanAskedFor();
+
+        thenTheContactsAre(1, "more contacts than asked for");
+    }
+
+    @Test
+    void shouldLeaveOutAFilteredAddressOfAnAnswer() throws Exception {
+        givenContactsAt(PEER);
+        givenTheAddressIsFiltered(Ipv4.of(50, 1, 1, 1));
+        givenASourceSearchStarted();
+
+        whenTheContactAnswersTheLastRequestWith(Ipv4.of(30, 1, 1, 1), Ipv4.of(50, 1, 1, 1));
+
+        thenTheContactsAre(2, "the filtered address is left out");
+    }
+
+    @Test
+    void shouldListItsContactsClosestFirst() {
+        givenContactsAt(PEER, Ipv4.of(70, 1, 1, 1), Ipv4.of(71, 1, 1, 1));
+        givenAKeywordSearchStarted("ubuntu");
+
+        whenTheContactsAreListed();
+
+        thenTheContactsListedAre(3);
+        thenTheContactsAreListedClosestFirst();
+        thenTheDistanceOfAContactIsItsIdXorOurs();
+    }
+
+    @Test
+    void shouldListItsLookups() {
+        givenContactsAt(PEER, Ipv4.of(70, 1, 1, 1), Ipv4.of(71, 1, 1, 1));
+        givenAKeywordSearchStarted("ubuntu");
+
+        whenTheLookupsAreListed();
+
+        thenTheOnlyLookupIs(KadSearchInfo.Kind.KEYWORD);
+    }
+
+    @Test
+    void shouldNotStartAKeywordSearchAlreadyRunning() {
+        givenContactsAt(PEER);
+        givenAKeywordSearchStarted("ubuntu");
+
+        whenAKeywordSearchStarts("ubuntu");
+
+        thenTheSearchDidNotStart();
+    }
+
+    @Test
+    void shouldStartAStoppedKeywordSearchAgainAtOnce() {
+        givenContactsAt(PEER);
+        givenAKeywordSearchStarted("ubuntu");
+        givenAKeywordSearchWasRefused("ubuntu");
+        givenTheFirstSearchStopped();
+
+        whenAKeywordSearchStarts("ubuntu");
+
+        thenTheSearchStarted();
+    }
+
+    // The first search's own end comes later.
+    @Test
+    void shouldLeaveANewerSearchForTheSameKeywordWhenAnOldOneStops() {
+        givenContactsAt(PEER);
+        givenAKeywordSearchStarted("ubuntu");
+        givenTheFirstSearchStopped();
+        givenAKeywordSearchStarted("ubuntu iso");
+
+        whenTheFirstSearchStopsAgain();
+
+        thenTheLookupsAre(1, "the newer search goes on");
+    }
+
+    @Test
+    void shouldDropContactsAFilterNowRefuses() {
+        givenContactsAt(PEER, Ipv4.of(70, 1, 1, 1));
+        givenTheAddressIsFiltered(PEER);
+
+        whenTheFiltersChange();
+
+        thenTheContactAddressesAre("70.1.1.1:" + PORT);
+    }
+
+    @Test
+    void shouldAwaitANodeAskedToConnectToUs() {
+        whenANodeSaysHello(PEER);
+
+        thenAConnectionIsAwaitedFrom(PEER);
+        thenNoConnectionIsAwaitedFrom(Ipv4.of(21, 1, 1, 1));
+    }
+
+    @Test
+    void shouldNoLongerAwaitANodeThatConnectedToUs() {
+        givenANodeSaidHello(PEER);
+
+        whenItsConnectionIsConfirmed(PEER);
+
+        thenNoConnectionIsAwaitedFrom(PEER);
+    }
+
+    @Test
+    void shouldStayOpenWhileAFirewallCheckRuns() {
+        givenNodesConnectedToUs(PEER, Ipv4.of(21, 1, 1, 1));
+
+        whenTheFirewallIsRechecked();
+
+        thenWeAreNotFirewalled("while the check runs");
+    }
+
+    @Test
+    void shouldKeepTheLastOutcomeOfACheckStartedDuringAnother() {
+        givenNodesConnectedToUs(PEER, Ipv4.of(21, 1, 1, 1));
+        givenAFirewallCheckRuns();
+        givenNodesConnectedToUs(Ipv4.of(22, 1, 1, 1));
+
+        whenTheFirewallIsRechecked();
+
+        thenWeAreNotFirewalled("a check started before the last one ended");
+    }
+
+    @Test
+    void shouldStillPassAnAnswerThatComesAfterTheLastRequestToTheSearch() {
+        givenAContactAtTheKeyword("ubuntu");
+        givenAKeywordSearchStarted("ubuntu");
+        givenTheContactAnsweredTheLookup();
+        givenSecondsPassed(4);
+        givenSecondsPassed(4);
+
+        whenTheContactAnswersTheSearchWithAFile("ubuntu.iso", 1000);
+
+        thenTheFilesFoundAre("ubuntu.iso");
+    }
+
+    @Test
+    void shouldGoOnSearchingAKeywordAfterUnusableResults() {
+        givenAContactAtTheKeyword("ubuntu");
+        givenAKeywordSearchStarted("ubuntu");
+        givenTheLookupReachedTheContact();
+        givenUnusableResultsCame(300);
+
+        whenAKeywordSearchStarts("ubuntu");
+
+        thenTheSearchDidNotStart("the search still runs");
+    }
+
+    // With no node left to ask, it ends after waiting a little for late answers.
+    @Test
+    void shouldEndAKeywordSearchWithNoNodeLeftToAsk() {
+        givenAContactAtTheKeyword("ubuntu");
+        givenAKeywordSearchStarted("ubuntu");
+        givenTheLookupReachedTheContact();
+        givenUnusableResultsCame(300);
+        givenAKeywordSearchWasRefused("ubuntu");
+        givenSecondsPassedWithTwoTicks(16);
+
+        whenAKeywordSearchStarts("ubuntu");
+
+        thenTheSearchStarted();
+    }
+
+    @Test
+    void shouldSaveItsContactsToNodesDat() throws Exception {
+        givenContactsAt(PEER);
+
+        whenTheContactsAreSaved();
+
+        thenTheSavedContactsAre(1);
+    }
+
+    @Test
+    void shouldNotReplaceASavedNodesDatWithAFewContacts() throws Exception {
+        givenContactsAt(PEER);
+        givenTheContactsWereSaved(1);
+        givenANodesDatWithContacts(KadNode.MIN_SAVED_CONTACTS);
+
+        whenTheContactsAreSaved();
+
+        thenTheSavedContactsAre(KadNode.MIN_SAVED_CONTACTS);
+    }
+
+    @Test
+    void shouldNoLongerBeConnectedWhenNothingArrivesForTwentyMinutes() {
+        givenContactsAt(PEER);
+        givenANodePingedUs(PEER);
+
+        whenMinutesPassInStepsOfTenSeconds(21);
+
+        thenTheNodeIsNotConnected();
+    }
+
+    // Steps.
+
+    private void givenContactsAt(int... ips) {
+        List<NodesDat.Contact> contacts = new ArrayList<>();
+        for (int ip : ips) {
+            contacts.add(record(ip));
+        }
+        this.node.addContacts(new NodesDat.Contents(2, false, contacts));
+    }
+
+    private void givenAContactAtTheKeyword(String word) {
+        this.target = Keywords.id(word);
+        this.node.addContacts(new NodesDat.Contents(
+                2,
+                false,
+                List.of(new NodesDat.Contact(this.target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
+    }
+
+    private void givenTheAddressIsFiltered(int ip) {
+        this.blocked.add(ip);
+    }
+
+    private void givenAKeywordSearchStarted(String text) {
+        whenAKeywordSearchStarts(text);
+        thenTheSearchStarted();
+        this.stops.add(this.search.orElseThrow());
+    }
+
+    private void givenAKeywordSearchWasRefused(String text) {
+        whenAKeywordSearchStarts(text);
+        thenTheSearchDidNotStart();
+    }
+
+    private void givenTheFirstSearchStopped() {
+        this.stops.getFirst().run();
+    }
+
+    private void givenASourceSearchStarted() {
+        assertThat(this.node.findSources(hash(), 1000, sources -> {})).isTrue();
+    }
+
+    private void givenANodeSaidHello(int ip) {
+        whenANodeSaysHello(ip);
+        thenAConnectionIsAwaitedFrom(ip);
+    }
+
+    private void givenNodesConnectedToUs(int... ips) {
+        for (int ip : ips) {
+            hello(ip);
+            this.node.reachableConfirmed(ip);
+        }
+        thenWeAreNotFirewalled();
+    }
+
+    private void givenAFirewallCheckRuns() {
+        whenTheFirewallIsRechecked();
+        thenWeAreNotFirewalled("while the check runs");
+    }
+
+    private void givenTheContactAnsweredTheLookup() {
+        answer(this.target);
+    }
+
+    private void givenSecondsPassed(int seconds) {
+        this.time.addAndGet(seconds * SECOND);
+        this.node.tick();
+    }
+
+    private void givenSecondsPassedWithTwoTicks(int seconds) {
+        this.time.addAndGet(seconds * SECOND);
+        this.node.tick();
+        this.node.tick();
+    }
+
+    private void givenTheLookupReachedTheContact() {
+        givenTheContactAnsweredTheLookup();
+        givenSecondsPassed(4);
+        assertThat(this.sentToPeer).extracting(Packet::opcode).contains(Opcodes.Kad.SEARCH_KEY_REQ.code());
+    }
+
+    private void givenUnusableResultsCame(int count) {
+        List<KadMessages.Entry> junk = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            junk.add(new KadMessages.Entry(UInt128.random(this.random), List.of()));
+        }
+        this.node.received(
+                PEER, PORT, new KadMessages.SearchAnswer(this.target, this.target, junk).encode(), false, 0, 0);
+        this.node.tick();
+    }
+
+    private void givenTheContactsWereSaved(int count) throws IOException {
+        whenTheContactsAreSaved();
+        thenTheSavedContactsAre(count);
+    }
+
+    private void givenANodesDatWithContacts(int count) throws IOException {
+        List<NodesDat.Contact> many = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            many.add(record(Ipv4.of(70 + i, 1, 1, 1)));
+        }
+        Files.write(nodesFile(), NodesDat.write(many));
+    }
+
+    private void givenANodePingedUs(int ip) {
+        this.node.received(ip, PORT, Packet.of(Protocol.KAD, Opcodes.Kad.PING.code(), new byte[0]), false, 0, 0);
+        assertThat(this.node.isConnected()).isTrue();
+    }
+
+    private void whenTheContactAnswersForAnotherTarget(int... ips) {
+        answer(UInt128.random(this.random), contacts(ips));
+    }
+
+    private void whenTheContactAnswersWithOneContactMoreThanAskedFor() throws Exception {
         KadMessages.Request request = lastRequest();
         List<KadMessages.Contact> tooMany = new ArrayList<>();
         for (int i = 0; i <= request.count(); i++) {
             tooMany.add(contact(Ipv4.of(60 + i, 1, 1, 1)));
         }
-        answer(node, request.target(), tooMany.toArray(KadMessages.Contact[]::new));
-        assertThat(node.contacts()).as("more contacts than asked for").isEqualTo(1);
-
-        assertThat(node.findSources(hash(), 1000, sources -> {})).isTrue();
-        answer(node, lastRequest().target(), contact(Ipv4.of(30, 1, 1, 1)), contact(blockedIp));
-        assertThat(node.contacts()).as("the filtered address is left out").isEqualTo(2);
+        answer(request.target(), tooMany.toArray(KadMessages.Contact[]::new));
     }
 
-    @Test
-    void listsItsContactsClosestFirstAndItsLookups() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(
-                2, false, List.of(record(PEER), record(Ipv4.of(70, 1, 1, 1)), record(Ipv4.of(71, 1, 1, 1)))));
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isPresent();
-
-        List<KadContactInfo> contacts = node.contactInfos();
-        assertThat(contacts).hasSize(3);
-        assertThat(contacts)
-                .extracting(KadContactInfo::distance)
-                .as("closest first")
-                .isSorted();
-        assertThat(contacts.getFirst().distance())
-                .isEqualTo(UInt128.parseHex(contacts.getFirst().id())
-                        .xor(node.id())
-                        .toHex());
-        assertThat(node.lookupInfos())
-                .singleElement()
-                .satisfies(l -> assertThat(l.kind()).isEqualTo(KadSearchInfo.Kind.KEYWORD));
+    private void whenTheContactAnswersTheLastRequestWith(int... ips) throws Exception {
+        answer(lastRequest().target(), contacts(ips));
     }
 
-    @Test
-    void aStoppedKeywordSearchCanStartAgainAtOnce() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
-
-        Optional<Runnable> search = node.searchKeyword("ubuntu", Optional.empty(), results -> {});
-        assertThat(search).isPresent();
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isEmpty();
-        search.orElseThrow().run();
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isPresent();
+    private void whenTheContactsAreListed() {
+        this.contactInfos = this.node.contactInfos();
     }
 
-    @Test
-    void stoppingAnOldSearchLeavesANewerOneForTheSameKeyword() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
-        Runnable first =
-                node.searchKeyword("ubuntu", Optional.empty(), results -> {}).orElseThrow();
-        first.run();
-        assertThat(node.searchKeyword("ubuntu iso", Optional.empty(), results -> {}))
-                .isPresent();
-
-        // The first search's own end comes later.
-        first.run();
-
-        assertThat(node.lookupInfos()).as("the newer search goes on").hasSize(1);
+    private void whenTheLookupsAreListed() {
+        this.lookupInfos = this.node.lookupInfos();
     }
 
-    @Test
-    void contactsAFilterNowRefusesAreDropped() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER), record(Ipv4.of(70, 1, 1, 1)))));
-        this.blocked.add(PEER);
-
-        node.filtersChanged();
-
-        assertThat(node.contactInfos()).extracting(KadContactInfo::address).containsExactly("70.1.1.1:" + PORT);
+    private void whenAKeywordSearchStarts(String text) {
+        this.search = this.node.searchKeyword(text, Optional.empty(), this.found::addAll);
     }
 
-    @Test
-    void aNodeAskedToConnectToUsIsAwaitedUntilItDid() throws Exception {
-        KadNode node = node();
-        hello(node, PEER);
-
-        assertThat(node.awaitsConnectionFrom(PEER)).isTrue();
-        assertThat(node.awaitsConnectionFrom(Ipv4.of(21, 1, 1, 1))).isFalse();
-        node.reachableConfirmed(PEER);
-        assertThat(node.awaitsConnectionFrom(PEER)).isFalse();
+    private void whenTheFirstSearchStopsAgain() {
+        this.stops.getFirst().run();
     }
 
-    @Test
-    void aRecheckDuringAnotherKeepsTheLastOutcome() throws Exception {
-        KadNode node = node();
-        for (int ip : new int[] {PEER, Ipv4.of(21, 1, 1, 1)}) {
-            hello(node, ip);
-            node.reachableConfirmed(ip);
-        }
-        assertThat(node.isFirewalled()).isFalse();
-
-        node.recheckFirewall();
-        node.tick();
-        assertThat(node.isFirewalled()).as("while the check runs").isFalse();
-        hello(node, Ipv4.of(22, 1, 1, 1));
-        node.reachableConfirmed(Ipv4.of(22, 1, 1, 1));
-        node.recheckFirewall();
-        node.tick();
-
-        assertThat(node.isFirewalled())
-                .as("a check started before the last one ended")
-                .isFalse();
+    private void whenTheFiltersChange() {
+        this.node.filtersChanged();
     }
 
-    @Test
-    void anAnswerThatComesAfterTheLastRequestStillReachesTheSearch() throws Exception {
-        KadNode node = node();
-        UInt128 target = Keywords.id("ubuntu");
-        node.addContacts(new NodesDat.Contents(
-                2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
-        List<KadNode.FileResult> found = new ArrayList<>();
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), found::addAll))
-                .isPresent();
-        answer(node, target);
-        this.time.addAndGet(4 * SECOND);
-        node.tick();
-        this.time.addAndGet(4 * SECOND);
-        node.tick();
+    private void whenANodeSaysHello(int ip) {
+        hello(ip);
+    }
 
+    private void whenItsConnectionIsConfirmed(int ip) {
+        this.node.reachableConfirmed(ip);
+    }
+
+    private void whenTheFirewallIsRechecked() {
+        this.node.recheckFirewall();
+        this.node.tick();
+    }
+
+    private void whenTheContactAnswersTheSearchWithAFile(String name, long size) {
         KadMessages.Entry file = new KadMessages.Entry(
                 UInt128.random(this.random),
                 List.of(
-                        new Tag.StringTag(TagName.id(FileTag.FILENAME), "ubuntu.iso"),
-                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 1000)));
-        node.received(PEER, PORT, new KadMessages.SearchAnswer(target, target, List.of(file)).encode(), false, 0, 0);
-
-        assertThat(found).extracting(KadNode.FileResult::name).containsExactly("ubuntu.iso");
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), size)));
+        this.node.received(
+                PEER,
+                PORT,
+                new KadMessages.SearchAnswer(this.target, this.target, List.of(file)).encode(),
+                false,
+                0,
+                0);
     }
 
-    @Test
-    void unusableResultsDoNotEndAKeywordSearch() throws Exception {
-        KadNode node = node();
-        UInt128 target = Keywords.id("ubuntu");
-        node.addContacts(new NodesDat.Contents(
-                2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isPresent();
-        answer(node, target);
-        this.time.addAndGet(4 * SECOND);
-        node.tick();
-        assertThat(this.sentToPeer).extracting(Packet::opcode).contains(Opcodes.Kad.SEARCH_KEY_REQ.code());
-
-        List<KadMessages.Entry> junk = new ArrayList<>();
-        for (int i = 0; i < 300; i++) {
-            junk.add(new KadMessages.Entry(UInt128.random(this.random), List.of()));
-        }
-        node.received(PEER, PORT, new KadMessages.SearchAnswer(target, target, junk).encode(), false, 0, 0);
-        node.tick();
-
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .as("the search still runs")
-                .isEmpty();
-
-        // With no node left to ask, it ends after waiting a little for late answers.
-        this.time.addAndGet(16 * SECOND);
-        node.tick();
-        node.tick();
-        assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
-                .isPresent();
+    private void whenTheContactsAreSaved() {
+        this.node.saveNodes();
     }
 
-    @Test
-    void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
-        Path file = this.dir.resolve(KadNode.NODES_FILE);
-
-        node.saveNodes();
-        assertThat(NodesDat.read(Files.readAllBytes(file)).contacts()).hasSize(1);
-
-        List<NodesDat.Contact> many = new ArrayList<>();
-        for (int i = 0; i < KadNode.MIN_SAVED_CONTACTS; i++) {
-            many.add(record(Ipv4.of(70 + i, 1, 1, 1)));
-        }
-        Files.write(file, NodesDat.write(many));
-        node.saveNodes();
-        assertThat(NodesDat.read(Files.readAllBytes(file)).contacts()).hasSize(KadNode.MIN_SAVED_CONTACTS);
-    }
-
-    @Test
-    void isNoLongerConnectedWhenNothingArrivesForTwentyMinutes() throws Exception {
-        KadNode node = node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
-        node.received(PEER, PORT, Packet.of(Protocol.KAD, Opcodes.Kad.PING.code(), new byte[0]), false, 0, 0);
-        assertThat(node.isConnected()).isTrue();
-
-        for (int s = 0; s < 21 * 60; s += 10) {
+    private void whenMinutesPassInStepsOfTenSeconds(int minutes) {
+        for (int s = 0; s < minutes * 60; s += 10) {
             this.time.addAndGet(10 * SECOND);
-            node.tick();
+            this.node.tick();
         }
-
-        assertThat(node.isConnected()).isFalse();
     }
+
+    private void thenTheContactsAre(int count, String because) {
+        assertThat(this.node.contacts()).as(because).isEqualTo(count);
+    }
+
+    private void thenTheContactsListedAre(int count) {
+        assertThat(this.contactInfos).hasSize(count);
+    }
+
+    private void thenTheContactsAreListedClosestFirst() {
+        assertThat(this.contactInfos)
+                .extracting(KadContactInfo::distance)
+                .as("closest first")
+                .isSorted();
+    }
+
+    private void thenTheDistanceOfAContactIsItsIdXorOurs() {
+        assertThat(this.contactInfos.getFirst().distance())
+                .isEqualTo(UInt128.parseHex(this.contactInfos.getFirst().id())
+                        .xor(this.node.id())
+                        .toHex());
+    }
+
+    private void thenTheOnlyLookupIs(KadSearchInfo.Kind kind) {
+        assertThat(this.lookupInfos)
+                .singleElement()
+                .satisfies(l -> assertThat(l.kind()).isEqualTo(kind));
+    }
+
+    private void thenTheSearchStarted() {
+        assertThat(this.search).isPresent();
+    }
+
+    private void thenTheSearchDidNotStart() {
+        assertThat(this.search).isEmpty();
+    }
+
+    private void thenTheSearchDidNotStart(String because) {
+        assertThat(this.search).as(because).isEmpty();
+    }
+
+    private void thenTheLookupsAre(int count, String because) {
+        assertThat(this.node.lookupInfos()).as(because).hasSize(count);
+    }
+
+    private void thenTheContactAddressesAre(String... addresses) {
+        assertThat(this.node.contactInfos()).extracting(KadContactInfo::address).containsExactly(addresses);
+    }
+
+    private void thenAConnectionIsAwaitedFrom(int ip) {
+        assertThat(this.node.awaitsConnectionFrom(ip)).isTrue();
+    }
+
+    private void thenNoConnectionIsAwaitedFrom(int ip) {
+        assertThat(this.node.awaitsConnectionFrom(ip)).isFalse();
+    }
+
+    private void thenWeAreNotFirewalled() {
+        assertThat(this.node.isFirewalled()).isFalse();
+    }
+
+    private void thenWeAreNotFirewalled(String because) {
+        assertThat(this.node.isFirewalled()).as(because).isFalse();
+    }
+
+    private void thenTheFilesFoundAre(String... names) {
+        assertThat(this.found).extracting(KadNode.FileResult::name).containsExactly(names);
+    }
+
+    private void thenTheSavedContactsAre(int count) throws IOException {
+        assertThat(NodesDat.read(Files.readAllBytes(nodesFile())).contacts()).hasSize(count);
+    }
+
+    private void thenTheNodeIsNotConnected() {
+        assertThat(this.node.isConnected()).isFalse();
+    }
+
+    // Helpers.
 
     private KadNode node() throws IOException {
         return new KadNode(
@@ -293,13 +560,25 @@ class KadNodeTest {
     }
 
     // A hello from a node recent enough to check our TCP port.
-    private void hello(KadNode node, int ip) {
+    private void hello(int ip) {
         KadMessages.Self sender = new KadMessages.Self(UInt128.random(this.random), 4662, 8);
-        node.received(ip, PORT, new KadMessages.Hello(sender, List.of()).encode(false), false, 0, 0);
+        this.node.received(ip, PORT, new KadMessages.Hello(sender, List.of()).encode(false), false, 0, 0);
     }
 
-    private void answer(KadNode node, UInt128 target, KadMessages.Contact... contacts) {
-        node.received(PEER, PORT, new KadMessages.Answer(target, List.of(contacts)).encode(), false, 0, 0);
+    private void answer(UInt128 lookup, KadMessages.Contact... contacts) {
+        this.node.received(PEER, PORT, new KadMessages.Answer(lookup, List.of(contacts)).encode(), false, 0, 0);
+    }
+
+    private Path nodesFile() {
+        return this.dir.resolve(KadNode.NODES_FILE);
+    }
+
+    private KadMessages.Contact[] contacts(int... ips) {
+        KadMessages.Contact[] contacts = new KadMessages.Contact[ips.length];
+        for (int i = 0; i < ips.length; i++) {
+            contacts[i] = contact(ips[i]);
+        }
+        return contacts;
     }
 
     private KadMessages.Request lastRequest() throws Exception {

@@ -122,78 +122,164 @@ class KadPublisherTest {
             new KadPublisher.Shared(SONG, "great song.mp3", 5_000_000L, true),
             new KadPublisher.Shared(PARTIAL, "half done.iso", 9_000_000L, false));
     private final KadPublisher publisher = new KadPublisher(this.node, () -> this.shared, this.ticker);
+    private List<KadPublisher.Shared> many;
 
     @Test
-    void keywordsOfCompleteFilesAndAllSourcesArePublishedInTurn() {
-        for (int i = 0; i < 20; i++) {
-            this.publisher.tick();
-            this.ticker.advance(Duration.ofSeconds(1));
-        }
+    void shouldPublishTheKeywordsOfCompleteFilesAndAllSourcesInTurn() {
+        whenSecondsPassWithATickEach(20);
 
-        assertThat(this.node.keywords).containsOnlyKeys("great", "movie", "song");
-        List<KadMessages.Entry> great = this.node.keywords.get("great");
-        assertThat(great).hasSize(2);
-        assertThat(Tags.stringValue(great.getFirst().tags(), FileTag.FILENAME)).contains("Great Movie.avi");
-        assertThat(Tags.intValue(great.getFirst().tags(), FileTag.FILESIZE)).hasValue(700_000_000L);
-        assertThat(Tags.stringValue(great.getFirst().tags(), FileTag.FILETYPE)).isPresent();
-        assertThat(this.node.sources).containsExactly(MOVIE, SONG, PARTIAL);
+        thenTheKeywordsPublishedAre("great", "movie", "song");
+        thenTheKeywordCarriesTheFirstFileFirst("great", 2, "Great Movie.avi", 700_000_000L);
+        thenTheSourcesPublishedAre(MOVIE, SONG, PARTIAL);
     }
 
     @Test
-    void publishesComeAgainOnlyAfterTheirInterval() {
-        for (int i = 0; i < 20; i++) {
-            this.publisher.tick();
-            this.ticker.advance(Duration.ofSeconds(1));
-        }
+    void shouldPublishTheSourcesAgainOnlyAfterTheirInterval() {
+        givenTheFirstPublishesWereMadeAndForgotten();
+        givenTimePassed(KadPublisher.SOURCE_EVERY);
+
+        whenSecondsPassWithATickEach(20);
+
+        thenNoKeywordIsPublished();
+        thenTheSourcesPublishedAre(MOVIE, SONG, PARTIAL);
+    }
+
+    @Test
+    void shouldPublishTheKeywordsAgainOnlyAfterTheirInterval() {
+        givenTheFirstPublishesWereMadeAndForgotten();
+        givenTimePassed(KadPublisher.SOURCE_EVERY);
+        givenOnlyTheSourcesWerePublishedAgain();
+        givenTimePassed(KadPublisher.KEYWORD_EVERY);
+
+        whenThePublisherTicks();
+
+        thenTheKeywordsPublishedAre("great");
+    }
+
+    @Test
+    void shouldPublishNothingWhileTheNodeIsFirewalled() {
+        givenTheNodeIsFirewalled();
+
+        whenTwoTurnsPass();
+
+        thenNothingIsPublished();
+    }
+
+    @Test
+    void shouldPublishNothingWhileTheNodeIsNotConnected() {
+        givenTheNodeIsNotConnected();
+
+        whenTwoTurnsPass();
+
+        thenNothingIsPublished();
+    }
+
+    @Test
+    void shouldPublishNothingWhileTheNodeIsNotReady() {
+        givenTheNodeIsNotReady();
+
+        whenTwoTurnsPass();
+
+        thenNothingIsPublished();
+    }
+
+    @Test
+    void shouldPublishAKeywordWithAtMostItsShareOfFiles() {
+        givenSharedFilesWithOneKeyword(KadPublisher.FILES_PER_KEYWORD + 10);
+
+        whenAPublisherOfThoseFilesTicks();
+
+        thenTheKeywordCarriesFiles("common", KadPublisher.FILES_PER_KEYWORD);
+    }
+
+    private void givenTheFirstPublishesWereMadeAndForgotten() {
+        whenSecondsPassWithATickEach(20);
         this.node.keywords.clear();
         this.node.sources.clear();
+    }
 
-        this.ticker.advance(KadPublisher.SOURCE_EVERY);
-        for (int i = 0; i < 20; i++) {
+    private void givenTimePassed(Duration time) {
+        this.ticker.advance(time);
+    }
+
+    private void givenOnlyTheSourcesWerePublishedAgain() {
+        whenSecondsPassWithATickEach(20);
+        thenNoKeywordIsPublished();
+        thenTheSourcesPublishedAre(MOVIE, SONG, PARTIAL);
+    }
+
+    private void givenTheNodeIsFirewalled() {
+        this.node.firewalled = true;
+    }
+
+    private void givenTheNodeIsNotConnected() {
+        this.node.connected = false;
+    }
+
+    private void givenTheNodeIsNotReady() {
+        this.node.ready = false;
+    }
+
+    private void givenSharedFilesWithOneKeyword(int count) {
+        this.many = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            byte[] hash = new byte[Hash16.LENGTH];
+            hash[0] = (byte) i;
+            hash[1] = (byte) (i >> 8);
+            this.many.add(new KadPublisher.Shared(Hash16.of(hash), "common " + i + ".txt", 10, true));
+        }
+    }
+
+    private void whenSecondsPassWithATickEach(int seconds) {
+        for (int i = 0; i < seconds; i++) {
             this.publisher.tick();
             this.ticker.advance(Duration.ofSeconds(1));
         }
-        assertThat(this.node.keywords).isEmpty();
-        assertThat(this.node.sources).containsExactly(MOVIE, SONG, PARTIAL);
-
-        this.ticker.advance(KadPublisher.KEYWORD_EVERY);
-        this.publisher.tick();
-        assertThat(this.node.keywords).containsOnlyKeys("great");
     }
 
-    @Test
-    void nothingIsPublishedUnlessTheNodeIsReadyAndReachable() {
-        this.node.firewalled = true;
-        tickTwice();
-        this.node.firewalled = false;
-        this.node.connected = false;
-        tickTwice();
-        this.node.connected = true;
-        this.node.ready = false;
-        tickTwice();
+    private void whenThePublisherTicks() {
+        this.publisher.tick();
+    }
 
+    private void whenTwoTurnsPass() {
+        this.publisher.tick();
+        this.ticker.advance(Duration.ofSeconds(2));
+        this.publisher.tick();
+        this.ticker.advance(Duration.ofSeconds(2));
+    }
+
+    private void whenAPublisherOfThoseFilesTicks() {
+        new KadPublisher(this.node, () -> this.many, this.ticker).tick();
+    }
+
+    private void thenTheKeywordsPublishedAre(String... words) {
+        assertThat(this.node.keywords).containsOnlyKeys(words);
+    }
+
+    private void thenTheKeywordCarriesTheFirstFileFirst(String word, int files, String name, long size) {
+        List<KadMessages.Entry> entries = this.node.keywords.get(word);
+        assertThat(entries).hasSize(files);
+        assertThat(Tags.stringValue(entries.getFirst().tags(), FileTag.FILENAME))
+                .contains(name);
+        assertThat(Tags.intValue(entries.getFirst().tags(), FileTag.FILESIZE)).hasValue(size);
+        assertThat(Tags.stringValue(entries.getFirst().tags(), FileTag.FILETYPE))
+                .isPresent();
+    }
+
+    private void thenTheSourcesPublishedAre(Hash16... hashes) {
+        assertThat(this.node.sources).containsExactly(hashes);
+    }
+
+    private void thenNoKeywordIsPublished() {
+        assertThat(this.node.keywords).isEmpty();
+    }
+
+    private void thenNothingIsPublished() {
         assertThat(this.node.keywords).isEmpty();
         assertThat(this.node.sources).isEmpty();
     }
 
-    @Test
-    void aKeywordCarriesAtMostItsShareOfFiles() {
-        List<KadPublisher.Shared> many = new ArrayList<>();
-        for (int i = 0; i < KadPublisher.FILES_PER_KEYWORD + 10; i++) {
-            byte[] hash = new byte[Hash16.LENGTH];
-            hash[0] = (byte) i;
-            hash[1] = (byte) (i >> 8);
-            many.add(new KadPublisher.Shared(Hash16.of(hash), "common " + i + ".txt", 10, true));
-        }
-        new KadPublisher(this.node, () -> many, this.ticker).tick();
-
-        assertThat(this.node.keywords.get("common")).hasSize(KadPublisher.FILES_PER_KEYWORD);
-    }
-
-    private void tickTwice() {
-        this.publisher.tick();
-        this.ticker.advance(Duration.ofSeconds(2));
-        this.publisher.tick();
-        this.ticker.advance(Duration.ofSeconds(2));
+    private void thenTheKeywordCarriesFiles(String word, int count) {
+        assertThat(this.node.keywords.get(word)).hasSize(count);
     }
 }

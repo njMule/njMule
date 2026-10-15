@@ -85,11 +85,17 @@ class KadNodeLowIdTest {
     private final List<BuddyCall> asks = new ArrayList<>();
     private final List<Relay> relays = new ArrayList<>();
     private final List<KadNode.Source> found = new ArrayList<>();
+    private final List<KadMessages.Entry> results = new ArrayList<>();
+    private final UInt128 buddyId = UInt128.random(this.random);
+    private final UInt128 callbackFile = UInt128.random(this.random);
+    private final UInt128 viaBuddy = UInt128.random(this.random);
+    private final UInt128 direct = UInt128.random(this.random);
     private KadNode.Buddies.State buddyState = KadNode.Buddies.State.NONE;
     private boolean acceptsBuddies = true;
     private KadIdentity identity;
     private KadNode node;
     private boolean published;
+    private boolean callbackRequested;
 
     @BeforeEach
     void create() throws IOException {
@@ -116,7 +122,7 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void helpersFoundByALookupAreAskedOnceOurPortIsKnownAndOneDatagramProvesUdpOpen() throws Exception {
+    void shouldAskTheHelpersFoundByALookupOnceOurPortIsKnown() throws Exception {
         givenAConnectedNode();
         givenTheNodesSeeOurUdpPortAs(PORT);
 
@@ -124,14 +130,21 @@ class KadNodeLowIdTest {
 
         thenHelpersAreAsked(2);
         thenTheHelpersAreAskedForOurPortsWithOurKey();
+    }
 
-        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+    @Test
+    void shouldTakeOneDatagramOfAHelperAsProofThatUdpIsOpen() throws Exception {
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
+
+        whenTheFirstHelperSendsItsDatagram(true);
 
         thenUdpIs(false, true);
     }
 
     @Test
-    void twoHelpersWhoseDatagramsNeverCameMakeUdpFirewalled() throws Exception {
+    void shouldBeUdpFirewalledWhenTheDatagramsOfTwoHelpersNeverCame() throws Exception {
         givenAConnectedNode();
         givenTheNodesSeeOurUdpPortAs(PORT);
         givenALookupFoundHelpers();
@@ -143,31 +156,41 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void aDatagramFromANodeNotAskedOrWithoutOurKeyProvesNothing() throws Exception {
+    void shouldTakeNoProofFromADatagramOfANodeNotAsked() throws Exception {
         givenAConnectedNode();
         givenTheNodesSeeOurUdpPortAs(PORT);
         givenALookupFoundHelpers();
 
         whenAHelperSendsItsDatagram(Ipv4.of(70, 1, 1, 1), PORT, true);
-        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, false);
 
         thenUdpIs(false, false);
     }
 
     @Test
-    void aHelperThatCouldNotBeAskedIsReplacedByAnother() throws Exception {
+    void shouldTakeNoProofFromADatagramWithoutOurKey() throws Exception {
         givenAConnectedNode();
         givenTheNodesSeeOurUdpPortAs(PORT);
         givenALookupFoundHelpers();
 
-        whenAHelperCouldNotBeAsked(this.udpChecks.getFirst().ip());
+        whenTheFirstHelperSendsItsDatagram(false);
+
+        thenUdpIs(false, false);
+    }
+
+    @Test
+    void shouldReplaceAHelperThatCouldNotBeAsked() throws Exception {
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
+
+        whenTheFirstHelperCouldNotBeAsked();
 
         thenHelpersAreAsked(3);
         thenUdpIs(false, false);
     }
 
     @Test
-    void aTcpFirewalledNodeWithoutAnOutcomeCountsAsUdpFirewalledAfterSixMinutes() throws Exception {
+    void shouldCountATcpFirewalledNodeWithoutAnOutcomeAsUdpFirewalledAfterSixMinutes() {
         givenAConnectedNode();
 
         whenMinutesPass(7);
@@ -176,127 +199,129 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void aClientsUdpTestGetsOneDatagramPerPortAndOnlyOnceInAWhile() throws Exception {
-        int client = Ipv4.of(80, 1, 1, 1);
+    void shouldSendTheUdpTestOfAClientOneDatagramPerPortAndOnlyOnceInAWhile() throws Exception {
+        givenAClientAskedForItsUdpTest(Ipv4.of(80, 1, 1, 1), 4673, 5000, 77);
 
-        whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
-        whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
+        whenAClientAsksForItsUdpTest(Ipv4.of(80, 1, 1, 1), 4673, 5000, 77);
 
-        thenDatagramsForTheUdpTestWentTo(client, List.of(4673, 5000), 0, 77);
+        thenDatagramsForTheUdpTestWentTo(Ipv4.of(80, 1, 1, 1), List.of(4673, 5000), 0, 77);
     }
 
     @Test
-    void aClientOfOursIsToldItsUdpTestIsWorthless() throws Exception {
+    void shouldTellAClientOfOursThatItsUdpTestIsWorthless() throws Exception {
         givenAConnectedNode();
-        int contact = CONTACTS.getFirst();
 
-        whenAClientAsksForItsUdpTest(contact, 4673, 0, 77);
+        whenAClientAsksForItsUdpTest(CONTACTS.getFirst(), 4673, 0, 77);
 
-        thenDatagramsForTheUdpTestWentTo(contact, List.of(4673), 1, 77);
+        thenDatagramsForTheUdpTestWentTo(CONTACTS.getFirst(), List.of(4673), 1, 77);
     }
 
     @Test
-    void aNodeFirewalledOnBothPortsAsksTheNodesNearItsComplementToBeItsBuddy() throws Exception {
+    void shouldAskTheNodesNearItsComplementToBeItsBuddyWhenFirewalledOnBothPorts() throws Exception {
         givenAConnectedNode();
-        int near = Ipv4.of(30, 1, 1, 1);
-        givenAContactAt(near, complement());
+        givenAContactNearOurComplementAt(Ipv4.of(30, 1, 1, 1));
         givenUdpIsFirewalled();
 
-        whenTheBuddySearchAsks(near);
+        whenTheBuddySearchAsks(Ipv4.of(30, 1, 1, 1));
 
-        thenABuddyRequestWentTo(near);
-
-        whenTheNodeOffersToBeOurBuddy(near, complement());
-
-        thenTheOfferIsTakenFrom(near);
+        thenABuddyRequestWentTo(Ipv4.of(30, 1, 1, 1));
     }
 
     @Test
-    void anOfferForAnotherIdOrNotAskedForIsLeftOut() throws Exception {
+    void shouldTakeTheBuddyOfferOfANodeItAsked() throws Exception {
         givenAConnectedNode();
-        int near = Ipv4.of(30, 1, 1, 1);
-        givenAContactAt(near, complement());
+        givenAContactNearOurComplementAt(Ipv4.of(30, 1, 1, 1));
         givenUdpIsFirewalled();
-        givenTheBuddySearchAsked(near);
+        givenTheBuddySearchAsked(Ipv4.of(30, 1, 1, 1));
 
-        whenTheNodeOffersToBeOurBuddy(near, UInt128.random(this.random));
-        whenTheNodeOffersToBeOurBuddy(Ipv4.of(31, 1, 1, 1), complement());
+        whenTheNodeOffersToBeTheBuddyOfOurComplement(Ipv4.of(30, 1, 1, 1));
+
+        thenTheOfferIsTakenFrom(Ipv4.of(30, 1, 1, 1));
+    }
+
+    @Test
+    void shouldLeaveOutABuddyOfferForAnotherId() throws Exception {
+        givenAConnectedNode();
+        givenAContactNearOurComplementAt(Ipv4.of(30, 1, 1, 1));
+        givenUdpIsFirewalled();
+        givenTheBuddySearchAsked(Ipv4.of(30, 1, 1, 1));
+
+        whenTheNodeOffersToBeTheBuddyOfAnotherId(Ipv4.of(30, 1, 1, 1));
 
         thenNoOfferIsTaken();
     }
 
     @Test
-    void anOpenNodeOffersToBeTheBuddyOfAFirewalledNode() throws Exception {
-        givenAnOpenNodeOnBothPorts();
-        int firewalled = Ipv4.of(40, 1, 1, 1);
-        UInt128 buddyId = UInt128.random(this.random);
-
-        whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, buddyId, 55);
-
-        thenWeAreAsked(firewalled, buddyId);
-        thenOurOfferWentTo(firewalled, buddyId, OptionalInt.of(3));
-    }
-
-    @Test
-    void aFirewalledNodeOrOneServingAlreadyIsNoBuddy() throws Exception {
+    void shouldLeaveOutABuddyOfferNotAskedFor() throws Exception {
         givenAConnectedNode();
-        int firewalled = Ipv4.of(40, 1, 1, 1);
+        givenAContactNearOurComplementAt(Ipv4.of(30, 1, 1, 1));
+        givenUdpIsFirewalled();
+        givenTheBuddySearchAsked(Ipv4.of(30, 1, 1, 1));
 
-        whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, UInt128.random(this.random), 55);
+        whenTheNodeOffersToBeTheBuddyOfOurComplement(Ipv4.of(31, 1, 1, 1));
 
-        thenNoOfferWentTo(firewalled);
+        thenNoOfferIsTaken();
     }
 
     @Test
-    void aCallbackRequestIsRelayedToTheNodeWeServe() throws Exception {
+    void shouldOfferToBeTheBuddyOfAFirewalledNodeWhenOpen() throws Exception {
+        givenAnOpenNodeOnBothPorts();
+
+        whenAFirewalledNodeAsksUsToBeItsBuddy(Ipv4.of(40, 1, 1, 1), 55);
+
+        thenWeAreAskedToBeTheBuddyOf(Ipv4.of(40, 1, 1, 1));
+        thenOurOfferWentTo(Ipv4.of(40, 1, 1, 1), OptionalInt.of(3));
+    }
+
+    @Test
+    void shouldOfferNoBuddyLinkWhenFirewalledOrServingAlready() {
+        givenAConnectedNode();
+
+        whenAFirewalledNodeAsksUsToBeItsBuddy(Ipv4.of(40, 1, 1, 1), 55);
+
+        thenNoOfferWentTo(Ipv4.of(40, 1, 1, 1));
+    }
+
+    @Test
+    void shouldRelayACallbackRequestToTheNodeWeServe() {
         givenWeServeABuddy();
-        int requester = Ipv4.of(50, 1, 1, 1);
-        UInt128 buddyId = UInt128.random(this.random);
-        UInt128 file = UInt128.random(this.random);
 
-        whenACallbackRequestComes(requester, buddyId, file, 4711);
+        whenACallbackRequestComes(Ipv4.of(50, 1, 1, 1), 4711);
 
-        thenTheCallbackIsRelayed(new Relay(buddyId, file, requester, 4711));
+        thenTheCallbackIsRelayedFrom(Ipv4.of(50, 1, 1, 1), 4711);
     }
 
     @Test
-    void theBuddyOfAFirewalledSourceIsAskedPlainForACallback() throws Exception {
-        int buddyIp = Ipv4.of(45, 1, 1, 1);
-        UInt128 buddyId = UInt128.random(this.random);
-        Hash16 file = Hash16.parseHex("aa".repeat(16));
+    void shouldAskTheBuddyOfAFirewalledSourcePlainForACallback() throws Exception {
+        whenTheBuddyOfASourceIsAskedForACallback(Ipv4.of(45, 1, 1, 1), 4673, Hash16.parseHex("aa".repeat(16)));
 
-        whenTheBuddyOfASourceIsAskedForACallback(new KadNode.Buddy(buddyIp, 4673, buddyId), file);
-
-        thenAPlainCallbackRequestWentTo(buddyIp, 4673, buddyId, file);
+        thenAPlainCallbackRequestWentTo(Ipv4.of(45, 1, 1, 1), 4673, Hash16.parseHex("aa".repeat(16)));
     }
 
     @Test
-    void firewalledSourcesAreFoundWithTheirBuddyOrTheirDirectCallback() throws Exception {
-        UInt128 buddyId = UInt128.random(this.random);
-        UInt128 viaBuddy = UInt128.random(this.random);
-        UInt128 direct = UInt128.random(this.random);
+    void shouldFindFirewalledSourcesWithTheirBuddyOrTheirDirectCallback() {
+        givenASearchResultReachedThroughABuddy(this.viaBuddy, 5, Ipv4.of(91, 1, 1, 1), Ipv4.of(92, 1, 1, 1));
+        givenASearchResultForDirectCallbacks(this.direct, 0x08 | 0x01);
+        givenASearchResultForDirectCallbacks(UInt128.random(this.random), 0x01);
+        givenASearchResultOfSourceTypeOnly(UInt128.random(this.random), 3);
 
-        whenASearchFinds(List.of(
-                new KadMessages.Entry(viaBuddy, buddySource(5, Ipv4.of(91, 1, 1, 1), Ipv4.of(92, 1, 1, 1), buddyId)),
-                new KadMessages.Entry(direct, directCallbackSource(0x08 | 0x01)),
-                new KadMessages.Entry(UInt128.random(this.random), directCallbackSource(0x01)),
-                new KadMessages.Entry(
-                        UInt128.random(this.random), List.of(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), 3)))));
+        whenTheSearchResultsAreRead();
 
         thenTheSourcesFoundAre(
                 new KadNode.Source(
-                        viaBuddy.toHash16(),
+                        this.viaBuddy.toHash16(),
                         Ipv4.of(91, 1, 1, 1),
                         TCP,
                         0,
                         PORT,
-                        Optional.of(new KadNode.Buddy(Ipv4.of(92, 1, 1, 1), 4673, buddyId)),
+                        Optional.of(new KadNode.Buddy(Ipv4.of(92, 1, 1, 1), 4673, this.buddyId)),
                         false),
-                new KadNode.Source(direct.toHash16(), Ipv4.of(93, 1, 1, 1), TCP, 0x09, PORT, Optional.empty(), true));
+                new KadNode.Source(
+                        this.direct.toHash16(), Ipv4.of(93, 1, 1, 1), TCP, 0x09, PORT, Optional.empty(), true));
     }
 
     @Test
-    void aFirewalledNodeWithABuddyIsPublishedAsASourceReachedThroughIt() throws Exception {
+    void shouldPublishAFirewalledNodeWithABuddyAsASourceReachedThroughIt() throws Exception {
         givenAConnectedNode();
         givenUdpIsFirewalled();
         givenOurBuddyIsAt(Ipv4.of(44, 1, 1, 1), 4673);
@@ -308,11 +333,11 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void aFirewalledNodeWithAnOpenUdpPortIsPublishedForDirectCallbacks() throws Exception {
+    void shouldPublishAFirewalledNodeWithAnOpenUdpPortForDirectCallbacks() throws Exception {
         givenAConnectedNode();
         givenTheNodesSeeOurUdpPortAs(PORT);
         givenALookupFoundHelpers();
-        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+        givenTheFirstHelperSentItsDatagram();
 
         whenWeArePublishedAsASource(1000);
 
@@ -322,7 +347,7 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void aNodeFirewalledOnUdpKeepsNoNoteOfOthers() throws Exception {
+    void shouldKeepNoNoteOfOthersWhenFirewalledOnUdp() {
         givenAConnectedNode();
         givenUdpIsFirewalled();
 
@@ -332,7 +357,7 @@ class KadNodeLowIdTest {
     }
 
     @Test
-    void aFirewalledNodeNobodyCanReachIsNotPublishedAsASource() throws Exception {
+    void shouldNotPublishAFirewalledNodeNobodyCanReachAsASource() throws Exception {
         givenAConnectedNode();
         givenUdpIsFirewalled();
 
@@ -397,9 +422,21 @@ class KadNodeLowIdTest {
         }
         givenTheNodesSeeOurUdpPortAs(PORT);
         givenALookupFoundHelpers();
-        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+        givenTheFirstHelperSentItsDatagram();
         assertThat(this.node.isFirewalled()).isFalse();
         thenUdpIs(false, true);
+    }
+
+    private void givenTheFirstHelperSentItsDatagram() {
+        whenTheFirstHelperSendsItsDatagram(true);
+    }
+
+    private void givenAClientAskedForItsUdpTest(int ip, int internal, int external, int key) {
+        whenAClientAsksForItsUdpTest(ip, internal, external, key);
+    }
+
+    private void givenAContactNearOurComplementAt(int ip) {
+        givenAContactAt(ip, complement());
     }
 
     private void givenTheBuddySearchAsked(int near) throws Exception {
@@ -415,6 +452,18 @@ class KadNodeLowIdTest {
     private void givenOurBuddyIsAt(int ip, int port) {
         this.buddyState = KadNode.Buddies.State.CONNECTED;
         this.offers.add(new BuddyCall(ip, TCP, port, USER, Optional.empty()));
+    }
+
+    private void givenASearchResultReachedThroughABuddy(UInt128 id, int type, int ip, int buddyIp) {
+        this.results.add(new KadMessages.Entry(id, buddySource(type, ip, buddyIp, this.buddyId)));
+    }
+
+    private void givenASearchResultForDirectCallbacks(UInt128 id, int options) {
+        this.results.add(new KadMessages.Entry(id, directCallbackSource(options)));
+    }
+
+    private void givenASearchResultOfSourceTypeOnly(UInt128 id, int type) {
+        this.results.add(new KadMessages.Entry(id, List.of(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), type))));
     }
 
     private void whenALookupFindsHelpers() throws Exception {
@@ -437,6 +486,10 @@ class KadNodeLowIdTest {
         this.node.received(request.ip(), PORT, new KadMessages.Answer(target, helpers).encode(), false, 0, 0);
     }
 
+    private void whenTheFirstHelperSendsItsDatagram(boolean withOurKey) {
+        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, withOurKey);
+    }
+
     private void whenAHelperSendsItsDatagram(int ip, int port, boolean withOurKey) {
         int key = withOurKey ? this.identity.verifyKey(ip) : 0;
         this.node.received(ip, PORT, new KadMessages.FirewallUdp(0, port).encode(), true, key, 0);
@@ -448,8 +501,8 @@ class KadNodeLowIdTest {
         }
     }
 
-    private void whenAHelperCouldNotBeAsked(int ip) {
-        this.node.udpCheckEnded(ip, false);
+    private void whenTheFirstHelperCouldNotBeAsked() {
+        this.node.udpCheckEnded(this.udpChecks.getFirst().ip(), false);
     }
 
     private void whenMinutesPass(int minutes) {
@@ -479,6 +532,14 @@ class KadNodeLowIdTest {
         tick(4);
     }
 
+    private void whenTheNodeOffersToBeTheBuddyOfOurComplement(int ip) {
+        whenTheNodeOffersToBeOurBuddy(ip, complement());
+    }
+
+    private void whenTheNodeOffersToBeTheBuddyOfAnotherId(int ip) {
+        whenTheNodeOffersToBeOurBuddy(ip, UInt128.random(this.random));
+    }
+
     private void whenTheNodeOffersToBeOurBuddy(int ip, UInt128 buddyId) {
         this.node.received(
                 ip,
@@ -491,26 +552,27 @@ class KadNodeLowIdTest {
                 0);
     }
 
-    private void whenAFirewalledNodeAsksUsToBeItsBuddy(int ip, UInt128 buddyId, int senderKey) {
+    private void whenAFirewalledNodeAsksUsToBeItsBuddy(int ip, int senderKey) {
         this.node.received(
                 ip,
                 PORT,
-                new KadMessages.FindBuddy(buddyId, UInt128.of(Hash16.parseHex("cc".repeat(16))), 4664).encode(),
+                new KadMessages.FindBuddy(this.buddyId, UInt128.of(Hash16.parseHex("cc".repeat(16))), 4664).encode(),
                 false,
                 0,
                 senderKey);
     }
 
-    private void whenACallbackRequestComes(int ip, UInt128 buddyId, UInt128 file, int port) {
-        this.node.received(ip, PORT, new KadMessages.CallbackRequest(buddyId, file, port).encode(), false, 0, 0);
+    private void whenACallbackRequestComes(int ip, int port) {
+        this.node.received(
+                ip, PORT, new KadMessages.CallbackRequest(this.buddyId, this.callbackFile, port).encode(), false, 0, 0);
     }
 
-    private void whenTheBuddyOfASourceIsAskedForACallback(KadNode.Buddy buddy, Hash16 file) {
-        assertThat(this.node.requestCallback(buddy, file)).isTrue();
+    private void whenTheBuddyOfASourceIsAskedForACallback(int ip, int port, Hash16 file) {
+        this.callbackRequested = this.node.requestCallback(new KadNode.Buddy(ip, port, this.buddyId), file);
     }
 
-    private void whenASearchFinds(List<KadMessages.Entry> entries) {
-        this.found.addAll(KadNode.sourceResults(entries));
+    private void whenTheSearchResultsAreRead() {
+        this.found.addAll(KadNode.sourceResults(this.results));
     }
 
     private void whenANoteOnAFileNearUsIsPublished() {
@@ -600,17 +662,18 @@ class KadNodeLowIdTest {
         assertThat(this.offers).isEmpty();
     }
 
-    private void thenWeAreAsked(int ip, UInt128 buddyId) {
+    private void thenWeAreAskedToBeTheBuddyOf(int ip) {
         assertThat(this.asks)
-                .containsExactly(new BuddyCall(ip, 4664, PORT, Hash16.parseHex("cc".repeat(16)), Optional.of(buddyId)));
+                .containsExactly(
+                        new BuddyCall(ip, 4664, PORT, Hash16.parseHex("cc".repeat(16)), Optional.of(this.buddyId)));
     }
 
-    private void thenOurOfferWentTo(int ip, UInt128 buddyId, OptionalInt options) throws Exception {
+    private void thenOurOfferWentTo(int ip, OptionalInt options) throws Exception {
         Sent answer = lastSent(Opcodes.Kad.FINDBUDDY_RES);
         assertThat(answer).isNotNull();
         assertThat(answer.ip()).isEqualTo(ip);
         KadMessages.BuddyOffer offer = KadMessages.BuddyOffer.decode(answer.packet());
-        assertThat(offer).isEqualTo(new KadMessages.BuddyOffer(buddyId, UInt128.of(USER), TCP, options));
+        assertThat(offer).isEqualTo(new KadMessages.BuddyOffer(this.buddyId, UInt128.of(USER), TCP, options));
     }
 
     private void thenNoOfferWentTo(int ip) {
@@ -618,11 +681,12 @@ class KadNodeLowIdTest {
         assertThat(this.sent).noneMatch(s -> s.ip() == ip && s.packet().opcode() == Opcodes.Kad.FINDBUDDY_RES.code());
     }
 
-    private void thenTheCallbackIsRelayed(Relay relay) {
-        assertThat(this.relays).containsExactly(relay);
+    private void thenTheCallbackIsRelayedFrom(int ip, int port) {
+        assertThat(this.relays).containsExactly(new Relay(this.buddyId, this.callbackFile, ip, port));
     }
 
-    private void thenAPlainCallbackRequestWentTo(int ip, int port, UInt128 buddyId, Hash16 file) throws Exception {
+    private void thenAPlainCallbackRequestWentTo(int ip, int port, Hash16 file) throws Exception {
+        assertThat(this.callbackRequested).isTrue();
         Sent request = lastSent(Opcodes.Kad.CALLBACK_REQ);
         assertThat(request).isNotNull();
         assertThat(request.ip()).isEqualTo(ip);
@@ -630,7 +694,7 @@ class KadNodeLowIdTest {
         assertThat(request.receiverId()).isEmpty();
         assertThat(request.receiverKey()).isZero();
         assertThat(KadMessages.CallbackRequest.decode(request.packet()))
-                .isEqualTo(new KadMessages.CallbackRequest(buddyId, UInt128.of(file), TCP));
+                .isEqualTo(new KadMessages.CallbackRequest(this.buddyId, UInt128.of(file), TCP));
     }
 
     private void thenNoNoteIsKept() {

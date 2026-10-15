@@ -79,11 +79,19 @@ class LookupReferrersTest {
     void shouldSendTheSearchFirstToANodeTwoOthersVouchFor() {
         givenANodeTells(FIRST, contact(NEAR, ip(NEAR)), contact(NEARER, ip(NEARER)));
         givenANodeTells(SECOND_NODE, contact(NEAR, ip(NEAR)));
+        givenTheseNodesAnswered(NEAR, NEARER);
 
-        whenTheseNodesAnswer(NEAR, NEARER);
         whenSecondsPass(3);
 
         thenTheSearchWentTo(ip(NEAR));
+    }
+
+    @Test
+    void shouldSendTheSearchToANodeASingleOtherKnowsOfOnlyAtTheEnd() {
+        givenANodeTells(FIRST, contact(NEAR, ip(NEAR)), contact(NEARER, ip(NEARER)));
+        givenANodeTells(SECOND_NODE, contact(NEAR, ip(NEAR)));
+        givenTheseNodesAnswered(NEAR, NEARER);
+        givenTheSearchWentAfterSecondsOnlyTo(3, ip(NEAR));
 
         whenSecondsPass(2);
 
@@ -94,8 +102,8 @@ class LookupReferrersTest {
     void shouldNeverSendTheSearchToANodeTwoOthersPlaceAtDifferentAddresses() {
         givenANodeTells(FIRST, contact(NEAR, ip(NEAR)));
         givenANodeTells(SECOND_NODE, contact(NEAR, ELSEWHERE));
+        givenTheseNodesAnswered(NEAR);
 
-        whenTheseNodesAnswer(NEAR);
         whenSecondsPass(30);
 
         thenTheSearchNeverWentTo(ip(NEAR));
@@ -105,8 +113,8 @@ class LookupReferrersTest {
     @Test
     void shouldKeepTheAddressOfOurOwnContact() {
         givenANodeTells(FIRST, contact(OURS_NEAR, ELSEWHERE));
+        givenTheseNodesAnswered(OURS_NEAR);
 
-        whenTheseNodesAnswer(OURS_NEAR);
         whenSecondsPass(4);
 
         thenTheSearchWentTo(ip(OURS_NEAR));
@@ -117,10 +125,15 @@ class LookupReferrersTest {
         this.lookup.answered(ip(responder), PORT, List.of(contacts), this.clock);
     }
 
-    private void whenTheseNodesAnswer(int... nodes) {
+    private void givenTheseNodesAnswered(int... nodes) {
         for (int node : nodes) {
             this.lookup.answered(ip(node), PORT, List.of(), this.clock);
         }
+    }
+
+    private void givenTheSearchWentAfterSecondsOnlyTo(int seconds, Integer... ips) {
+        whenSecondsPass(seconds);
+        thenTheSearchWentTo(ips);
     }
 
     private void whenSecondsPass(int seconds) {

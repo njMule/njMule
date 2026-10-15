@@ -19,80 +19,215 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.stream.Stream;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class KeywordsTest {
 
-    @Test
-    void textWithoutWordsHasNoKeyword() {
-        assertThat(Keywords.of("")).isEmpty();
-        assertThat(Keywords.of(Keywords.DELIMITERS)).isEmpty();
-        assertThat(Keywords.of("ab cd")).as("words under three bytes").isEmpty();
+    private List<String> keywords;
+    private char[] lowered;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", Keywords.DELIMITERS})
+    void shouldFindNoKeywordInTextWithoutWords(String text) {
+        whenTheKeywordsAreTakenFrom(text);
+
+        thenThereIsNoKeyword();
     }
 
     @Test
-    void everyDelimiterSplitsAndOtherSignsDoNot() {
-        for (char d : Keywords.DELIMITERS.toCharArray()) {
-            assertThat(Keywords.of("alpha" + d + "beta" + d)).as("%s", d).containsExactly("alpha", "beta");
-        }
-        assertThat(Keywords.of("rock&roll mp3+ost it's #one.")).containsExactly("rock&roll", "mp3+ost", "it's", "#one");
+    void shouldFindNoKeywordInWordsUnderThreeBytes() {
+        whenTheKeywordsAreTakenFrom("ab cd");
+
+        thenThereIsNoKeyword("words under three bytes");
+    }
+
+    @ParameterizedTest
+    @MethodSource("delimiters")
+    void shouldSplitTheWordsAtEveryDelimiter(char delimiter) {
+        whenTheKeywordsAreTakenFrom("alpha" + delimiter + "beta" + delimiter);
+
+        thenTheKeywordsAre(List.of("alpha", "beta"), String.valueOf(delimiter));
     }
 
     @Test
-    void shortWordsCountTheirBytesNotTheirCharacters() {
-        assertThat(Keywords.of("日 x")).as("one CJK character is three bytes").containsExactly("日");
-        assertThat(Keywords.of("éa")).as("two characters, three bytes").containsExactly("éa");
-        assertThat(Keywords.of("abc éa")).as("not taken for an extension").containsExactly("abc", "éa");
+    void shouldKeepOtherSignsInsideTheWords() {
+        whenTheKeywordsAreTakenFrom("rock&roll mp3+ost it's #one.");
+
+        thenTheKeywordsAre(List.of("rock&roll", "mp3+ost", "it's", "#one"));
     }
 
     @Test
-    void theExtensionRuleLooksAtTheLastPartOnly() {
-        assertThat(Keywords.of("abc def abc"))
-                .as("the repeated last word moves to the end, then goes as the extension")
-                .containsExactly("def");
-        assertThat(Keywords.of("Movie MOVIE movie")).containsExactly("movie");
-        assertThat(Keywords.of("film.mkv")).containsExactly("film");
-        assertThat(Keywords.of("film.mpeg")).as("four letters stay").containsExactly("film", "mpeg");
-        assertThat(Keywords.of("film.avi.")).containsExactly("film", "avi");
+    void shouldTakeOneCjkCharacterAsAWordOfThreeBytes() {
+        whenTheKeywordsAreTakenFrom("日 x");
+
+        thenTheKeywordsAre(List.of("日"), "one CJK character is three bytes");
     }
 
     @Test
-    void theNetworkLowerCaseIsKeptAsItIs() {
-        assertThat(Keywords.of("STRASSE Straße")).containsExactly("strasse", "straße");
-        assertThat(Keywords.of("İSTANBUL")).as("dotted capital I unchanged").containsExactly("İstanbul");
-        assertThat(Keywords.of("Ünïcode")).containsExactly("ünïcode");
-        assertThat(Keywords.of("école")).as("combining marks are not composed").containsExactly("école");
-        assertThat(Keywords.of("🎵music")).containsExactly("🎵music");
+    void shouldTakeTwoCharactersOfThreeBytesAsAWord() {
+        whenTheKeywordsAreTakenFrom("éa");
+
+        thenTheKeywordsAre(List.of("éa"), "two characters, three bytes");
     }
 
     @Test
-    void theLowerCaseTableIsWholeAndStable() {
-        int mapped = 0;
-        for (int c = 0; c <= 0xFFFF; c++) {
-            char lower = KadLowerCase.toLowerCase((char) c);
-            if (lower != c) {
-                mapped++;
-            }
-            assertThat(KadLowerCase.toLowerCase(lower)).as("U+%04X", c).isEqualTo(lower);
-        }
-        assertThat(mapped).as("every unit of the table is found").isEqualTo(873);
-        for (char c = 'A'; c <= 'Z'; c++) {
-            assertThat(KadLowerCase.toLowerCase(c)).isEqualTo(Character.toLowerCase(c));
-        }
+    void shouldNotTakeALastWordOfTwoCharactersAndThreeBytesForAnExtension() {
+        whenTheKeywordsAreTakenFrom("abc éa");
+
+        thenTheKeywordsAre(List.of("abc", "éa"), "not taken for an extension");
+    }
+
+    @Test
+    void shouldMoveARepeatedLastWordToTheEndThenDropItAsTheExtension() {
+        whenTheKeywordsAreTakenFrom("abc def abc");
+
+        thenTheKeywordsAre(List.of("def"), "the repeated last word moves to the end, then goes as the extension");
+    }
+
+    @ParameterizedTest
+    @MethodSource("lastParts")
+    void shouldApplyTheExtensionRuleToTheLastPartOnly(String text, List<String> expected) {
+        whenTheKeywordsAreTakenFrom(text);
+
+        thenTheKeywordsAre(expected);
+    }
+
+    @Test
+    void shouldKeepALastPartOfFourLetters() {
+        whenTheKeywordsAreTakenFrom("film.mpeg");
+
+        thenTheKeywordsAre(List.of("film", "mpeg"), "four letters stay");
+    }
+
+    @ParameterizedTest
+    @MethodSource("networkLowerCase")
+    void shouldTurnTheWordsToTheNetworkLowerCase(String text, List<String> expected) {
+        whenTheKeywordsAreTakenFrom(text);
+
+        thenTheKeywordsAre(expected);
+    }
+
+    @Test
+    void shouldLeaveTheDottedCapitalIUnchanged() {
+        whenTheKeywordsAreTakenFrom("İSTANBUL");
+
+        thenTheKeywordsAre(List.of("İstanbul"), "dotted capital I unchanged");
+    }
+
+    @Test
+    void shouldNotComposeCombiningMarks() {
+        whenTheKeywordsAreTakenFrom("école");
+
+        thenTheKeywordsAre(List.of("école"), "combining marks are not composed");
+    }
+
+    @Test
+    void shouldKeepTheLowerCaseTableWholeAndStable() {
+        whenEveryCodeUnitIsLowered();
+
+        thenLoweringAgainChangesNothing();
+        thenTheUnitsTheTableChangesAre(873);
+        thenTheAsciiLettersAreLoweredAsUsual();
     }
 
     @Property
-    void keywordsAreLowerCaseLongEnoughAndDistinct(@ForAll String text) {
-        var words = Keywords.of(text);
+    void shouldTakeKeywordsThatAreLowerCaseLongEnoughAndDistinct(@ForAll String text) {
+        whenTheKeywordsAreTakenFrom(text);
 
-        assertThat(words).doesNotHaveDuplicates();
-        for (String w : words) {
+        thenTheKeywordsAreDistinct();
+        thenEveryKeywordIsLowerCaseLongEnoughAndFreeOfDelimiters();
+        thenTheKeywordsOfTheKeywordsAreTheSame();
+    }
+
+    static Stream<Character> delimiters() {
+        return Keywords.DELIMITERS.chars().mapToObj(c -> (char) c);
+    }
+
+    static Stream<Arguments> lastParts() {
+        return Stream.of(
+                Arguments.of("Movie MOVIE movie", List.of("movie")),
+                Arguments.of("film.mkv", List.of("film")),
+                Arguments.of("film.avi.", List.of("film", "avi")));
+    }
+
+    static Stream<Arguments> networkLowerCase() {
+        return Stream.of(
+                Arguments.of("STRASSE Straße", List.of("strasse", "straße")),
+                Arguments.of("Ünïcode", List.of("ünïcode")),
+                Arguments.of("🎵music", List.of("🎵music")));
+    }
+
+    private void whenTheKeywordsAreTakenFrom(String text) {
+        this.keywords = Keywords.of(text);
+    }
+
+    private void whenEveryCodeUnitIsLowered() {
+        this.lowered = new char[0x10000];
+        for (int c = 0; c <= 0xFFFF; c++) {
+            this.lowered[c] = KadLowerCase.toLowerCase((char) c);
+        }
+    }
+
+    private void thenThereIsNoKeyword() {
+        assertThat(this.keywords).isEmpty();
+    }
+
+    private void thenThereIsNoKeyword(String because) {
+        assertThat(this.keywords).as(because).isEmpty();
+    }
+
+    private void thenTheKeywordsAre(List<String> expected) {
+        assertThat(this.keywords).containsExactlyElementsOf(expected);
+    }
+
+    private void thenTheKeywordsAre(List<String> expected, String because) {
+        assertThat(this.keywords).as(because).containsExactlyElementsOf(expected);
+    }
+
+    private void thenLoweringAgainChangesNothing() {
+        for (int c = 0; c <= 0xFFFF; c++) {
+            char lower = this.lowered[c];
+            assertThat(KadLowerCase.toLowerCase(lower)).as("U+%04X", c).isEqualTo(lower);
+        }
+    }
+
+    private void thenTheUnitsTheTableChangesAre(int count) {
+        int mapped = 0;
+        for (int c = 0; c <= 0xFFFF; c++) {
+            if (this.lowered[c] != c) {
+                mapped++;
+            }
+        }
+        assertThat(mapped).as("every unit of the table is found").isEqualTo(count);
+    }
+
+    private void thenTheAsciiLettersAreLoweredAsUsual() {
+        for (char c = 'A'; c <= 'Z'; c++) {
+            assertThat(this.lowered[c]).isEqualTo(Character.toLowerCase(c));
+        }
+    }
+
+    private void thenTheKeywordsAreDistinct() {
+        assertThat(this.keywords).doesNotHaveDuplicates();
+    }
+
+    private void thenEveryKeywordIsLowerCaseLongEnoughAndFreeOfDelimiters() {
+        for (String w : this.keywords) {
             assertThat(w.getBytes(StandardCharsets.UTF_8).length).isGreaterThanOrEqualTo(3);
             assertThat(w).isEqualTo(KadLowerCase.toLowerCase(w));
             assertThat(w.chars()).noneMatch(c -> Keywords.DELIMITERS.indexOf(c) >= 0);
         }
-        assertThat(Keywords.of(String.join(" ", words) + " ")).containsExactlyElementsOf(words);
+    }
+
+    private void thenTheKeywordsOfTheKeywordsAreTheSame() {
+        assertThat(Keywords.of(String.join(" ", this.keywords) + " ")).containsExactlyElementsOf(this.keywords);
     }
 }

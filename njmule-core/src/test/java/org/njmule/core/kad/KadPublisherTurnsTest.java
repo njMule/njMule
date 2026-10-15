@@ -121,9 +121,9 @@ class KadPublisherTurnsTest {
     @Test
     void shouldGiveTheNextPublishesTheirTurnWhenTheNodeRefusesOne() {
         givenTheNodeRefusesPublishes();
+        givenTheTurnsPassed(1);
+        givenTheNodeTakesPublishesAgain();
 
-        whenTheTurnsPass(1);
-        whenTheNodeTakesPublishesAgain();
         whenTheTurnsPass(3);
 
         thenTheNodeWasAskedFor(
@@ -153,9 +153,9 @@ class KadPublisherTurnsTest {
     @Test
     void shouldRotateTheFilesOfAKeywordWithMoreThanItsShare() {
         givenFilesWithOneKeyword(KadPublisher.FILES_PER_KEYWORD + 10);
+        givenTheTurnsPassed(1);
+        givenADayPassed();
 
-        whenTheTurnsPass(1);
-        whenADayPasses();
         whenTheTurnsPass(1);
 
         thenTheKeywordCarriedTheFiles(0, 0, KadPublisher.FILES_PER_KEYWORD);
@@ -178,8 +178,16 @@ class KadPublisherTurnsTest {
         this.shared = many;
     }
 
-    private void whenTheNodeTakesPublishesAgain() {
+    private void givenTheTurnsPassed(int turns) {
+        whenTheTurnsPass(turns);
+    }
+
+    private void givenTheNodeTakesPublishesAgain() {
         this.node.accepting = true;
+    }
+
+    private void givenADayPassed() {
+        this.ticker.now += KadPublisher.KEYWORD_EVERY.toNanos();
     }
 
     // A turn starts a publish of each kind, two seconds apart.
@@ -188,10 +196,6 @@ class KadPublisherTurnsTest {
             this.publisher.tick();
             this.ticker.now += Duration.ofSeconds(2).toNanos();
         }
-    }
-
-    private void whenADayPasses() {
-        this.ticker.now += KadPublisher.KEYWORD_EVERY.toNanos();
     }
 
     private void thenTheNodeWasAskedFor(Asked... asked) {

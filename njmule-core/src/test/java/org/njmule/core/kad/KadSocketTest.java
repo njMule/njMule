@@ -46,44 +46,52 @@ class KadSocketTest {
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final SecureRandom random = new SecureRandom();
     private int busy;
+    private KadSocket socketA;
+    private KadSocket socketB;
+    private KadNode nodeA;
+    private KadNode nodeB;
 
     @AfterEach
     void stop() {
+        for (KadSocket socket : new KadSocket[] {this.socketA, this.socketB}) {
+            if (socket != null) {
+                socket.close();
+            }
+        }
         this.loop.close();
     }
 
     @Test
-    void twoNodesTalkOverObfuscatedDatagrams() throws Exception {
-        KadSocket socketA = socket("a");
-        KadSocket socketB = socket("b");
-        try (socketA;
-                socketB) {
-            KadNode a = node("a", socketA);
-            KadNode b = node("b", socketB);
-            int loopback = Ipv4.of(127, 0, 0, 1);
+    void shouldLetTwoNodesTalkOverObfuscatedDatagrams() throws Exception {
+        givenTwoNodesOnTheirOwnSockets();
 
-            onLoop(() -> {
-                a.bootstrap(loopback, socketB.port());
-                return null;
-            });
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-            while (onLoop(a::contacts) == 0) {
-                assertThat(System.nanoTime()).isLessThan(deadline);
-                Thread.sleep(20);
-            }
-            // The answer came back obfuscated with the key A gave B: B is a verified contact.
-            assertThat(onLoop(a::verifiedContacts)).isEqualTo(1);
-            assertThat(onLoop(a::isConnected)).isTrue();
-            assertThat(onLoop(b::contacts))
-                    .as("a bootstrap request adds nobody")
-                    .isZero();
-        }
+        whenTheFirstNodeBootstrapsFromTheSecond();
+
+        thenTheFirstNodeLearnsAContactWithinSeconds(20);
+        thenTheSecondNodeIsAVerifiedContactOfTheFirst();
+        thenTheFirstNodeIsConnected();
+        thenTheSecondNodeAddsNobody();
     }
 
     @Test
-    void aClosedSocketLeavesItsPortFreeAtOnce() throws Exception {
+    void shouldLeaveThePortOfAClosedSocketFreeAtOnce() throws Exception {
         whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
+
         thenThePortWasBusyTimes(0);
+    }
+
+    private void givenTwoNodesOnTheirOwnSockets() throws Exception {
+        this.socketA = socket("a");
+        this.socketB = socket("b");
+        this.nodeA = node("a", this.socketA);
+        this.nodeB = node("b", this.socketB);
+    }
+
+    private void whenTheFirstNodeBootstrapsFromTheSecond() throws Exception {
+        onLoop(() -> {
+            this.nodeA.bootstrap(Ipv4.of(127, 0, 0, 1), this.socketB.port());
+            return null;
+        });
     }
 
     // Each socket receives (its reader waits on it) when it closes, as a running Kad does.
@@ -99,6 +107,29 @@ class KadSocketTest {
                 this.busy++;
             }
         }
+    }
+
+    private void thenTheFirstNodeLearnsAContactWithinSeconds(int seconds) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        while (onLoop(this.nodeA::contacts) == 0) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(20);
+        }
+    }
+
+    // The answer came back obfuscated with the key A gave B: B is a verified contact.
+    private void thenTheSecondNodeIsAVerifiedContactOfTheFirst() throws Exception {
+        assertThat(onLoop(this.nodeA::verifiedContacts)).isEqualTo(1);
+    }
+
+    private void thenTheFirstNodeIsConnected() throws Exception {
+        assertThat(onLoop(this.nodeA::isConnected)).isTrue();
+    }
+
+    private void thenTheSecondNodeAddsNobody() throws Exception {
+        assertThat(onLoop(this.nodeB::contacts))
+                .as("a bootstrap request adds nobody")
+                .isZero();
     }
 
     private void thenThePortWasBusyTimes(int times) {

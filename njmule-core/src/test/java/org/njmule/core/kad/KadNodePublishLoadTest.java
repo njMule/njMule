@@ -85,6 +85,12 @@ class KadNodePublishLoadTest {
         whenTheKeywordIsPublishedAgainAfter(Duration.ofDays(4));
 
         thenThePublishStarted(false);
+    }
+
+    @Test
+    void shouldPublishAHeavilyLoadedKeywordAgainOnceItsDaysOfRestAreOver() {
+        givenAKeywordPublishWhoseNodeReportsTheLoad(60);
+        givenThePublishWasRefusedAfter(Duration.ofDays(4));
 
         whenTheKeywordIsPublishedAgainAfter(Duration.ofHours(5));
 
@@ -111,6 +117,11 @@ class KadNodePublishLoadTest {
         this.node.received(PEER, PORT, new KadMessages.PublishAnswer(target, load).encode(), false, 0, 0);
         seconds(30);
         assertThat(this.node.runningKeywordPublishes()).as("the publish ended").isZero();
+    }
+
+    private void givenThePublishWasRefusedAfter(Duration wait) {
+        whenTheKeywordIsPublishedAgainAfter(wait);
+        thenThePublishStarted(false);
     }
 
     private void whenTheKeywordIsPublishedAgainAfter(Duration wait) {
