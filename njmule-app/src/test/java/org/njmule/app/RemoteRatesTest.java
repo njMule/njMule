@@ -35,7 +35,7 @@ class RemoteRatesTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"-5", "1.5", "fast", "M", "2X"})
+    @CsvSource({"-5", "1.5", "fast", "M", "2X", "''"})
     void anythingElseIsNoRate(String typed) {
         this.whenTyped(typed);
         this.thenItWasRefused();
@@ -66,7 +66,7 @@ class RemoteRatesTest {
     }
 
     private void thenItWasRefused() {
-        assertThat(this.failure).isNotNull();
+        assertThat(this.failure).isInstanceOf(RemoteControl.Usage.class);
     }
 
     private void thenItReads(String text) {

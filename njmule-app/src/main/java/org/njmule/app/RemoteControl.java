@@ -370,15 +370,15 @@ final class RemoteControl {
     /** A rate in KiB/s, or with a unit: 500K, 1.5M, 1G (binary units). */
     static long rate(String text) throws Usage {
         String typed = text.strip();
-        long unit = 1;
-        if (!typed.isEmpty()) {
-            switch (Character.toUpperCase(typed.charAt(typed.length() - 1))) {
-                case 'K' -> unit = 1;
-                case 'M' -> unit = 1024;
-                case 'G' -> unit = 1024 * 1024;
-                default -> unit = 0;
-            }
-        }
+        // 0: no unit typed.
+        long unit = typed.isEmpty()
+                ? 0
+                : switch (Character.toUpperCase(typed.charAt(typed.length() - 1))) {
+                    case 'K' -> 1;
+                    case 'M' -> 1024;
+                    case 'G' -> 1024 * 1024;
+                    default -> 0;
+                };
         String number = unit == 0 ? typed : typed.substring(0, typed.length() - 1);
         try {
             BigDecimal value = new BigDecimal(number).multiply(BigDecimal.valueOf(Math.max(1, unit)));
