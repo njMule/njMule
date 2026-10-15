@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -697,7 +698,7 @@ class ScreensTest {
     void shouldTakePastedLinksWithSpacesInTheirNames() throws Exception {
         givenTheTransfersScreen();
 
-        whenTheLinksAreAdded("ed2k://|file|my holiday video.mkv|5000|"
+        whenTheLinksAreAddedAsShown("ed2k://|file|my holiday video.mkv|5000|"
                 + "00112233445566778899AABBCCDDEEFF|/\n"
                 + "  ed2k://|file|notes.txt|10|"
                 + "FFEEDDCCBBAA99887766554433221100|/");
@@ -1076,6 +1077,15 @@ class ScreensTest {
             this.scheduler.save();
         });
         FxTesting.await("no rule", () -> this.test.engine.activeRule().isEmpty());
+    }
+
+    // Several links are shown first: they are added as the dialog shows them.
+    private void whenTheLinksAreAddedAsShown(String text) throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
+            this.transfers.linkField().setText(text);
+            this.transfers.addLink();
+        });
     }
 
     private void whenTheLinksAreAdded(String text) throws Exception {

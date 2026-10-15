@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
@@ -69,6 +70,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.gui.dialogs.AddLinksDialog;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ClientFilesDialog;
 import org.njmule.gui.dialogs.CommentDialog;
@@ -652,7 +654,18 @@ public final class TransfersScreen implements Screen {
             this.gui.warn().accept(this.gui.t("nj.transfers.badLink"));
             return;
         }
-        this.linkInput.value().forEach(file -> this.gui.model().addDownload(file));
+        List<Ed2kLink.FileLink> links = this.linkInput.value();
+        // A single file never seen goes at once; several, or one known already, are shown first.
+        if (links.size() == 1 && AddLinksDialog.note(this.gui, links.getFirst()).isEmpty()) {
+            this.gui.model().addDownload(links.getFirst());
+        } else {
+            new AddLinksDialog(
+                            this.gui,
+                            this.view.getScene().getWindow(),
+                            links,
+                            this.shownCategory == SHOW_ALL ? OptionalInt.empty() : OptionalInt.of(this.shownCategory))
+                    .showAndAdd();
+        }
         this.link.clear();
     }
 

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -539,6 +540,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public void addDownload(Ed2kLink.FileLink link) {
         addDownload(link, added -> {});
+    }
+
+    /** Adds a download in {@code category}, or in that of its name when empty, and paused when told. */
+    public void addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) {
+        later(this.engine.addDownload(link, category, paused), this.downloads::put);
     }
 
     /** Adds a download; {@code added} learns of it on the FX thread once the engine took it. */
