@@ -28,8 +28,9 @@ class RequestTrackerTest {
     private static final Duration MIN_ASK = Duration.ofMinutes(10);
     private static final Duration WINDOW = Duration.ofHours(4);
     private static final Hash16 FILE = Hash16.parseHex("11".repeat(16));
-    private static final RequestTracker.Key CLIENT =
-            new RequestTracker.Key(InetAddress.getLoopbackAddress(), Hash16.parseHex("22".repeat(16)));
+    private static final RequestTracker.Key CLIENT = new RequestTracker.Key(InetAddress.getLoopbackAddress(), 4662);
+    private static final RequestTracker.Key OTHER_PROGRAM =
+            new RequestTracker.Key(InetAddress.getLoopbackAddress(), 4663);
 
     private final RequestTracker tracker = new RequestTracker(MIN_ASK, WINDOW);
     private long now = 1_000_000_000L;
@@ -42,6 +43,17 @@ class RequestTrackerTest {
         whenItAsksAgainAfter(MIN_ASK.minusSeconds(5));
 
         thenTheCountIs(0);
+    }
+
+    @Test
+    void shouldCountTheAsksOfAnotherProgramOnTheSameAddressApart() {
+        givenTheClientAskedForTheFile();
+        givenItAskedAgainTooSoonTimes(2);
+        givenTheOtherProgramAskedForTheFile();
+
+        whenTheOtherProgramAsksAgainAfter(MIN_ASK.dividedBy(2));
+
+        thenTheCountIs(1);
     }
 
     @Test
@@ -66,6 +78,17 @@ class RequestTrackerTest {
         this.tracker.asked(CLIENT, FILE, this.now);
     }
 
+    private void givenItAskedAgainTooSoonTimes(int times) {
+        for (int i = 0; i < times; i++) {
+            this.now += MIN_ASK.dividedBy(2).toNanos();
+            this.tracker.asked(CLIENT, FILE, this.now);
+        }
+    }
+
+    private void givenTheOtherProgramAskedForTheFile() {
+        this.tracker.asked(OTHER_PROGRAM, FILE, this.now);
+    }
+
     private void givenIdleSlots(int slots) {
         for (int i = 0; i < slots; i++) {
             this.now += Duration.ofMinutes(1).toNanos();
@@ -76,6 +99,11 @@ class RequestTrackerTest {
     private void whenItAsksAgainAfter(Duration wait) {
         this.now += wait.toNanos();
         this.count = this.tracker.asked(CLIENT, FILE, this.now);
+    }
+
+    private void whenTheOtherProgramAsksAgainAfter(Duration wait) {
+        this.now += wait.toNanos();
+        this.count = this.tracker.asked(OTHER_PROGRAM, FILE, this.now);
     }
 
     private void whenItLeavesASlotIdleAfter(Duration wait) {

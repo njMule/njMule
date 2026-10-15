@@ -24,14 +24,14 @@ import java.util.Map;
 import org.njmule.core.api.Hash16;
 
 /**
- * How each client, by address and user hash, used our queue lately: how soon it asked again for each file and how many
- * slots it left idle. Kept while the client is out of the queue too, so leaving and coming back clears nothing. Engine
- * thread only.
+ * How each client program, by address and listening port, used our queue lately: how soon it asked again for each file
+ * and how many slots it left idle. Kept while the client is out of the queue too, and whatever user hash it shows, so
+ * neither leaving and coming back nor showing another hash clears anything. Engine thread only.
  */
 final class RequestTracker {
 
-    /** A client: its address and user hash. */
-    record Key(InetAddress ip, Hash16 userHash) {}
+    /** A client program: its address and the port it listens on. */
+    record Key(InetAddress ip, int port) {}
 
     // Clients re-asking on a timer of exactly the shortest time come a little early now and then.
     private static final Duration TOLERANCE = Duration.ofSeconds(10);

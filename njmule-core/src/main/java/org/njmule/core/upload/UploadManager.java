@@ -520,7 +520,7 @@ public final class UploadManager implements AutoCloseable {
     // Taking slots and asking for nothing, over and over, keeps others from them: the client is banned.
     private void idleSlot(Slot slot, long now) {
         InetAddress ip = slot.session.address().getAddress();
-        if (this.requests.idleSlot(new RequestTracker.Key(ip, slot.client.userHash), now) >= IDLE_SLOTS_LIMIT
+        if (this.requests.idleSlot(new RequestTracker.Key(ip, slot.client.port), now) >= IDLE_SLOTS_LIMIT
                 && !hasFriendSlot(slot.client.userHash, slot.session.trust().credits())) {
             ban(ip, now, "took slots and asked for nothing");
         }
@@ -530,7 +530,7 @@ public final class UploadManager implements AutoCloseable {
     private void slotEnded(Slot slot) {
         if (slot.sent > 0) {
             this.requests.productive(
-                    new RequestTracker.Key(slot.session.address().getAddress(), slot.client.userHash));
+                    new RequestTracker.Key(slot.session.address().getAddress(), slot.client.port));
         }
     }
 
@@ -782,7 +782,7 @@ public final class UploadManager implements AutoCloseable {
     // which is ours, do not count. A slot it holds runs on.
     private boolean askedTooOften(UploadSession session, Uploadable file, long now) {
         InetAddress ip = session.address().getAddress();
-        int bad = this.requests.asked(new RequestTracker.Key(ip, session.userHash()), file.hash(), now);
+        int bad = this.requests.asked(new RequestTracker.Key(ip, session.peer().tcpPort()), file.hash(), now);
         if (bad < BAD_LIMIT || hasFriendSlot(session.userHash(), session.trust().credits())) {
             return false;
         }
@@ -954,7 +954,7 @@ public final class UploadManager implements AutoCloseable {
             sources.addAll(this.downloadSources.apply(request.file()));
         }
         boolean rare = download.isPresent() && sources.size() <= SX_RARE_SOURCES;
-        RequestTracker.Key asker = new RequestTracker.Key(ip, session.userHash());
+        RequestTracker.Key asker = new RequestTracker.Key(ip, session.peer().tcpPort());
         Long last = this.sourcesAnswered.get(asker);
         long wait = (rare ? SX_RARE_INTERVAL : SX_INTERVAL).toNanos();
         if (last != null && now - last < wait) {

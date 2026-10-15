@@ -1371,6 +1371,17 @@ class UploadManagerTest {
     }
 
     @Test
+    void shouldStillCountAskingTooOftenWhenTheClientComesBackWithAnotherUserHash() throws Exception {
+        givenTwoSlotsBusyUnderALimit();
+        givenAClientThatAskedTooOftenAlmostToABanAndCannotBeCalled();
+        givenItLeftTheQueueWhenItCouldNotBeCalled();
+
+        whenItComesBackWithTheUserHashOfAndAsksRightAway(9);
+
+        thenItIsBanned();
+    }
+
+    @Test
     void shouldBanAClientThatKeepsTakingSlotsWithoutAskingForData() throws Exception {
         givenASlotForAClientWhileAnotherWaits();
 
@@ -1438,7 +1449,15 @@ class UploadManagerTest {
     }
 
     private void whenItComesBackAndAsksRightAway() throws Exception {
-        this.client = client(this.eager);
+        comeBackAndAskRightAway(this.eager);
+    }
+
+    private void whenItComesBackWithTheUserHashOfAndAsksRightAway(int seed) throws Exception {
+        comeBackAndAskRightAway(hello(seed, 0, this.eager.tcpPort()));
+    }
+
+    private void comeBackAndAskRightAway(Hello hello) throws Exception {
+        this.client = client(hello);
         this.client.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, this.file.hash()));
         this.client.until(Opcodes.Client.FILESTATUS);
         this.client.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.file.hash()));
