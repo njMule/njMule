@@ -344,9 +344,25 @@ All notable changes to this project are documented here. The format follows
   (Ko and Ko/s in French, Кб in Russian).
 - The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one
   being tried is in italics, whether njMule chose it or the user did.
+- A capture tour of the desktop interface for design reviews (`CaptureTour`, run on demand with
+  `-Dtest=CaptureTour -Dnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
+  drop-down list, column menu, dialog and message kind, with example data, in light, dark, English
+  and right-to-left sets.
 
 ### Changed
 
+- Messages come in three kinds: news, successes (a finished download) and problems, which carry a
+  colour and an icon of their own and stay until closed. They stack in the bottom corner above the
+  status strip, at most four at a time, instead of covering the tool rows.
+- Risky questions name their outcome on the buttons ("Cancel and delete" / "Keep downloading",
+  "Share anyway", "Remove all servers") and the safe answer is the default.
+- Apply in the options stays enabled: with a wrong value it scrolls to the field, puts the cursor in
+  it and tells which option it is and what it takes.
+- Every entry of the transfer and shared file menus has an icon, as in the other menus; the log
+  rows are one line tall, with an icon for warnings, errors and successes.
+- Durations use the units of the interface language ("2 g 1 h", "59:22 min" in Italian).
+- A main button that cannot run yet is greyed out instead of a faded orange; the parts of a
+  download that no source has show in a soft rose instead of a solid red.
 - The log names each port the router refuses to forward over UPnP, with the router's reason.
 - The server list has eMule's columns (ping, soft and hard file limits, version, LowID users,
   obfuscation, static) and server menu: connect, priority, static list, copy and paste of ed2k
@@ -380,6 +396,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The friends list is titled "Friends" (it used the text meaning "visible to friends"), and a
+  CAPTCHA request in a chat is no longer cut short.
 - The native desktop app plays its notification sounds: the sound system no longer stops for want of
   a JDK around it.
 - Results that a server sends at once are no longer lost before their search shows.
