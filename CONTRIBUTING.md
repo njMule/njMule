@@ -57,7 +57,10 @@ data: copies of a real eMule profile, captures or screenshots belong in the git-
 Tests follow the given/when/then form of Gherkin inside plain JUnit classes (no Cucumber):
 
 - each test method has a meaningful name that states the expected behaviour, and its body only
-  calls step methods: one or more `given...()`, then `when...()`, then one or more `then...()`;
+  calls step methods: the `given...()` steps, if any, then one `when...()`, then one or more
+  `then...()`;
+- a scenario has one action: a test of several independent cases becomes several tests (or a
+  parameterized one), and the earlier stages of a longer flow become `given...()` steps;
 - the steps are private methods of the test class, named as sentences in lowerCamelCase and taking
   parameters when a step is reused with other values; the state they share lives in fields;
 - a `when...()` step that can fail keeps the exception in a field, and `thenExceptionOccurred(...)`
@@ -96,6 +99,3 @@ class PathSanitizerTest {
     }
 }
 ```
-
-Existing tests that are not written this way yet will be migrated later; every new or rewritten
-test follows it.

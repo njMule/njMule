@@ -214,11 +214,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Tests
 
-- Tests follow the given/when/then form of Gherkin in plain JUnit (no Cucumber): each test method
-  has a meaningful name stating the expected behaviour and its body only calls private step
-  methods `given...()`, `when...()` and `then...()`, named as lowerCamelCase sentences and taking
-  parameters when reused; shared state lives in fields, and a failing `when...()` keeps its
-  exception for `thenExceptionOccurred(...)` / `thenNoExceptionOccurred()`. Example in
-  `CONTRIBUTING.md`.
-- Existing tests not written this way yet stay as they are until the planned migration; every new
-  or rewritten test follows the rule.
+- Every test follows the given/when/then form of Gherkin in plain JUnit (no Cucumber): each test
+  method has a meaningful name stating the expected behaviour and its body only calls private step
+  methods, in order: the `given...()` steps (optional), one `when...()`, then the `then...()`
+  steps. Steps are named as lowerCamelCase sentences and take parameters when reused; shared state
+  lives in fields, and a failing `when...()` keeps its exception for `thenExceptionOccurred(...)` /
+  `thenNoExceptionOccurred()`. A scenario has one action: independent cases become separate (or
+  parameterized) tests, earlier stages of a flow become given steps. Example in `CONTRIBUTING.md`.
