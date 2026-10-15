@@ -19,6 +19,7 @@ package org.njmule.core.protocol.ed2k;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -48,6 +49,11 @@ public final class ServerDatagrams {
 
     /** Bytes of a status answer up to the file counts, the shortest one accepted. */
     public static final int MIN_STATUS = 12;
+
+    /** Bytes of file ids at most in one source request. */
+    public static final int MAX_SOURCE_REQUEST = 510;
+
+    private static final long MAX_32_BIT_SIZE = 0xFFFF_FFFFL;
 
     // Prefix of the third search request: one tag announcing that new tags and 64-bit sizes are
     // understood in the answer.
@@ -117,6 +123,81 @@ public final class ServerDatagrams {
             }
             return new Status(challenge, users, files, maxUsers, soft, hard, flags, lowId, udpPort, tcpPort, key);
         }
+    }
+
+    /** A file whose sources a server is asked for. */
+    public record SourceQuery(Hash16 file, long size) {}
+
+    /**
+     * The source requests for {@code files} to a server with {@code udpFlags}, one datagram each: several files per
+     * request and their sizes only where the server takes them, files above 4 GB only for a server that takes those.
+     * Each request holds at most {@link #MAX_SOURCE_REQUEST} bytes of file ids, so that it fits a 576-byte datagram.
+     */
+    public static List<Packet> sourceRequests(List<SourceQuery> files, int udpFlags) {
+        boolean several = (udpFlags & UDP_EXT_GETSOURCES) != 0;
+        boolean sized = (udpFlags & UDP_EXT_GETSOURCES2) != 0;
+        boolean takesLarge = sized && (udpFlags & UDP_LARGEFILES) != 0;
+        int opcode = (sized ? Opcodes.ServerUdp.GLOBGETSOURCES2 : Opcodes.ServerUdp.GLOBGETSOURCES).code();
+        List<Packet> requests = new ArrayList<>();
+        PacketWriter out = new PacketWriter();
+        for (SourceQuery query : files) {
+            boolean large = query.size() > MAX_32_BIT_SIZE;
+            if (large && !takesLarge) {
+                continue;
+            }
+            int bytes = Hash16.LENGTH + (sized ? 4 : 0) + (large ? 8 : 0);
+            if (out.size() > 0 && (!several || out.size() + bytes > MAX_SOURCE_REQUEST)) {
+                requests.add(Packet.of(Protocol.EDONKEY, opcode, out));
+                out = new PacketWriter();
+            }
+            out.hash16(query.file());
+            if (large) {
+                out.u32(0).u64(query.size());
+            } else if (sized) {
+                out.u32(query.size());
+            }
+        }
+        if (out.size() > 0) {
+            requests.add(Packet.of(Protocol.EDONKEY, opcode, out));
+        }
+        return requests;
+    }
+
+    /**
+     * The sources of a source answer. One datagram may carry the sources of several files, each after its own {@code E3
+     * 9B} header; parsing stops at anything else, and a file cut short is dropped with what follows it. Only a first
+     * file that cannot be read fails the whole answer.
+     */
+    public static List<ServerMessages.FoundSources> decodeFoundSources(Packet packet) throws DecodeException {
+        PacketReader in = packet.reader();
+        List<ServerMessages.FoundSources> found = new ArrayList<>();
+        found.add(ServerMessages.FoundSources.read(in, false));
+        while (in.remaining() >= 2 + Hash16.LENGTH + 1) {
+            int protocol = in.u8();
+            int opcode = in.u8();
+            if (protocol != Protocol.EDONKEY || opcode != Opcodes.ServerUdp.GLOBFOUNDSOURCES.code()) {
+                break;
+            }
+            try {
+                found.add(ServerMessages.FoundSources.read(in, false));
+            } catch (DecodeException e) {
+                break;
+            }
+        }
+        return found;
+    }
+
+    /** A source answer carrying the sources of {@code found} (at least one file) in one datagram. */
+    public static Packet foundSources(List<ServerMessages.FoundSources> found) {
+        if (found.isEmpty()) {
+            throw new IllegalArgumentException("a source answer carries at least one file");
+        }
+        PacketWriter out = found.getFirst().write(new PacketWriter(), false);
+        for (ServerMessages.FoundSources file : found.subList(1, found.size())) {
+            out.u8(Protocol.EDONKEY).u8(Opcodes.ServerUdp.GLOBFOUNDSOURCES.code());
+            file.write(out, false);
+        }
+        return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBFOUNDSOURCES.code(), out);
     }
 
     public static Packet statusRequest(long challenge) {

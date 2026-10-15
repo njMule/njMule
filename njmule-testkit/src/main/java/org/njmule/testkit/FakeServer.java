@@ -100,6 +100,7 @@ public final class FakeServer implements AutoCloseable {
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> obfuscatedUdpSearches = new CopyOnWriteArrayList<>();
+    private final List<Hash16> udpSourceRequests = new CopyOnWriteArrayList<>();
     // Set once obfuscated datagrams are taken: their socket and the key the status gives for them.
     private volatile DatagramSocket obfuscatedUdp;
     private volatile int udpKey;
@@ -198,6 +199,11 @@ public final class FakeServer implements AutoCloseable {
 
     public List<SearchExpr> udpSearches() {
         return List.copyOf(this.udpSearches);
+    }
+
+    /** The files whose sources were asked for over UDP, in order. */
+    public List<Hash16> udpSourceRequests() {
+        return List.copyOf(this.udpSourceRequests);
     }
 
     /** Searches that came obfuscated, on the obfuscated UDP port. */
@@ -427,7 +433,9 @@ public final class FakeServer implements AutoCloseable {
                             100,
                             1000,
                             2000,
-                            key == 0 ? 0 : ServerDatagrams.UDP_OBFUSCATION,
+                            ServerDatagrams.UDP_EXT_GETSOURCES
+                                    | ServerDatagrams.UDP_EXT_GETSOURCES2
+                                    | (key == 0 ? 0 : ServerDatagrams.UDP_OBFUSCATION),
                             0,
                             obfuscatedUdpPort(),
                             0,
@@ -435,6 +443,9 @@ public final class FakeServer implements AutoCloseable {
                     .encode();
         }
         PacketReader in = request.reader();
+        if (opcode == Opcodes.ServerUdp.GLOBGETSOURCES.code() || opcode == Opcodes.ServerUdp.GLOBGETSOURCES2.code()) {
+            return answerSources(in, opcode == Opcodes.ServerUdp.GLOBGETSOURCES2.code());
+        }
         if (opcode == Opcodes.ServerUdp.GLOBSEARCHREQ3.code()) {
             TagCodec.readEd2kList(in, in.u32(), 16);
         } else if (opcode != Opcodes.ServerUdp.GLOBSEARCHREQ.code()
@@ -443,6 +454,25 @@ public final class FakeServer implements AutoCloseable {
         }
         searches.add(SearchTreeCodec.read(in));
         return this.config.results().isEmpty() ? null : ServerDatagrams.searchResults(this.config.results());
+    }
+
+    // The HighID sources of the files asked for that have some, in one answer.
+    private Packet answerSources(PacketReader in, boolean sized) throws DecodeException {
+        List<ServerMessages.FoundSources> found = new ArrayList<>();
+        while (in.remaining() > 0) {
+            Hash16 file = in.hash16();
+            if (sized && in.u32() == 0) {
+                in.u64();
+            }
+            this.udpSourceRequests.add(file);
+            List<ServerMessages.Source> known = this.sources.getOrDefault(file, List.of()).stream()
+                    .filter(source -> !source.isLowId())
+                    .toList();
+            if (!known.isEmpty()) {
+                found.add(new ServerMessages.FoundSources(file, known));
+            }
+        }
+        return found.isEmpty() ? null : ServerDatagrams.foundSources(found);
     }
 
     private static Hash16 hashOf(String name) {

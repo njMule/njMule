@@ -134,6 +134,7 @@ import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.IpFilter;
 import org.njmule.core.security.IpWhitelist;
 import org.njmule.core.server.FilePublisher;
+import org.njmule.core.server.GlobalSources;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
 import org.njmule.core.server.ServerRoute;
@@ -216,6 +217,7 @@ final class Network {
     private final ServerSession session;
     private final SearchManager searches;
     private final ServerPinger pinger;
+    private final GlobalSources globalSources;
     // What the interface of the preferences binds to now; read on connection threads too.
     private volatile BindInterface.Binding binding = new BindInterface.Binding.Any();
     // The UDP keys of the servers we sent obfuscated datagrams to, by address and port, which they answer from: read
@@ -413,6 +415,28 @@ final class Network {
                 () -> Optional.ofNullable(this.kad).map(k -> kadSources(k)),
                 () -> this.categories,
                 new DownloadEvents());
+        this.globalSources = new GlobalSources(
+                loop,
+                this.servers,
+                () -> Optional.ofNullable(this.udp),
+                this::routeTo,
+                this.session::server,
+                () -> this.preferences.get().deadServerRetries(),
+                // Sources found so come without a user hash: no use when every connection must be obfuscated.
+                () -> this.preferences.get().obfuscation() != ObfuscationMode.REQUIRED,
+                new GlobalSources.Downloads() {
+                    @Override
+                    public List<ServerDatagrams.SourceQuery> wanting() {
+                        return Network.this.downloads.wantingSources();
+                    }
+
+                    @Override
+                    public void found(ServerMessages.FoundSources sources) {
+                        Network.this.downloads.foundSources(sources);
+                    }
+                },
+                random,
+                Ticker.systemTicker());
         this.kadNotes = new KadNotes(
                 () -> Optional.ofNullable(this.kad).filter(KadNode::isConnected).map(k -> k),
                 this::runningDownloads,
@@ -2172,6 +2196,10 @@ final class Network {
             this.pinger.received(from, packet);
             return;
         }
+        if (packet.opcode() == Opcodes.ServerUdp.GLOBFOUNDSOURCES.code()) {
+            this.globalSources.received(from, packet);
+            return;
+        }
         if (packet.opcode() != Opcodes.ServerUdp.GLOBSEARCHRES.code()) {
             return;
         }
@@ -2392,6 +2420,7 @@ final class Network {
             Network.this.publish.accept(new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
             Network.this.saveServers();
             Network.this.pinger.start();
+            Network.this.globalSources.start();
             Network.this.downloads.serverConnected();
             Network.this.publisher.connected();
             Network.this.removeDeadServers();
@@ -2438,6 +2467,7 @@ final class Network {
             Network.this.publisher.disconnected();
             Network.this.searches.serverLost();
             Network.this.pinger.stop();
+            Network.this.globalSources.stop();
             Optional<ServerInfo> info = server.map(Network.this::info);
             Network.this.userLog.log(
                     LogLine.Level.INFO,

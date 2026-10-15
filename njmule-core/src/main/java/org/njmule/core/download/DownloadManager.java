@@ -65,6 +65,7 @@ import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
 import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.protocol.ed2k.Hello;
+import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.ed2k.SourceExchange;
 import org.njmule.core.security.PathSanitizer;
@@ -567,6 +568,22 @@ public final class DownloadManager implements AutoCloseable {
             all.add(info(entry));
         }
         return all;
+    }
+
+    /**
+     * The active downloads to ask other servers about, the highest priority first: those below three quarters of the
+     * source limit, which leaves room for the sources other ways bring.
+     */
+    public List<ServerDatagrams.SourceQuery> wantingSources() {
+        int enough = this.settings.get().maxSourcesPerFile() * 3 / 4;
+        List<ServerDatagrams.SourceQuery> wanting = new ArrayList<>();
+        for (Entry entry : byPriority()) {
+            if (entry.download.isActive() && entry.sources.size() < enough) {
+                wanting.add(new ServerDatagrams.SourceQuery(
+                        entry.download.hash(), entry.download.file().size()));
+            }
+        }
+        return wanting;
     }
 
     /**

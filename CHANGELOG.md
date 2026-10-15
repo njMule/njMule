@@ -347,6 +347,10 @@ All notable changes to this project are documented here. The format follows
 - A network interface to bind to (by name, or an IPv4 address, also taken from eMule's BindAddr):
   every connection and web list goes through it only, and while it is gone, as when a VPN drops,
   njMule stays offline with a banner saying why, and comes back by itself once it is there again.
+- Sources from the other servers: while connected, njMule asks the other live servers over UDP
+  for the sources of the downloads that need more (up to 35 files per server, one request a
+  second, then a pause of half an hour), and takes only the answers of a server it asked, for the
+  files it asked about.
 - Obfuscated UDP with servers: a global search goes encrypted, to the server's obfuscated UDP
   port, to every server that takes it and gave a UDP key for our current address, and its
   answers are decrypted; with obfuscation required, servers that cannot take it are not asked.

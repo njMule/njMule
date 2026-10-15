@@ -51,6 +51,11 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.ed2k.ServerDatagrams;
+import org.njmule.core.protocol.tag.ServerTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(120)
@@ -66,6 +71,7 @@ class DownloadFlowTest {
     private byte[] data;
     private FakePeer peer;
     private FakeServer server;
+    private FakeServer other;
     private NjMuleEngine engine;
     private Events events;
     private DownloadInfo added;
@@ -178,6 +184,21 @@ class DownloadFlowTest {
     }
 
     @Test
+    void shouldDownloadFromTheSourcesAnotherServerKnows() throws Exception {
+        givenAPeerOnTheLanSharing("elsewhere", "elsewhere.bin", 700_000, 7);
+        givenAServerOnTheLan();
+        givenAnotherServerOnTheLanKnowingThePeerAsSource();
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheOtherServer();
+        givenNjMuleConnectedToTheServer();
+
+        whenTheFileIsDownloadedWithoutSources("elsewhere.bin");
+
+        thenTheFileHoldsTheData();
+        thenTheOtherServerWasAskedForTheFileOverUdp();
+    }
+
+    @Test
     void shouldAskAFirewalledSourceTheServerKnowsToCallUs() throws Exception {
         givenAPeerOnTheLanSharing("lowid", "firewalled.bin", 800_000, 6);
         givenAServerOnTheLan();
@@ -268,6 +289,25 @@ class DownloadFlowTest {
     private void givenTheServerKnowsThePeerAsSource() throws SocketException {
         this.server.addSource(
                 this.peer.link().hash(), new InetSocketAddress(ServerFlowTest.lanAddress(), this.peer.port()));
+    }
+
+    private void givenAnotherServerOnTheLanKnowingThePeerAsSource() throws IOException {
+        InetAddress lan = ServerFlowTest.lanAddress();
+        this.other = FakeServer.start(lan, new FakeServer.Config(1, "", List.of()));
+        this.resources.add(this.other);
+        this.other.addSource(this.peer.link().hash(), new InetSocketAddress(lan, this.peer.port()));
+    }
+
+    private void givenNjMuleKnowsTheOtherServer() throws Exception {
+        Tag flags = new Tag.IntTag(
+                TagName.id(ServerTag.UDPFLAGS),
+                ServerDatagrams.UDP_EXT_GETSOURCES | ServerDatagrams.UDP_EXT_GETSOURCES2);
+        Path serverMet = Files.createTempFile(this.dir, "other", ".met");
+        Files.write(
+                serverMet,
+                ServerMet.write(List.of(new ServerMet.Server(
+                        Ipv4.fromBytes(ServerFlowTest.lanAddress().getAddress()), this.other.port(), List.of(flags)))));
+        assertThat(this.engine.addServers(serverMet).get(10, TimeUnit.SECONDS)).isEqualTo(1);
     }
 
     private void givenTheServerKnowsThePeerAsLowIdSource(long lowId) {
@@ -377,6 +417,10 @@ class DownloadFlowTest {
             assertThat(System.nanoTime()).as("no slot for the peer").isLessThan(deadline);
             Thread.sleep(50);
         }
+    }
+
+    private void thenTheOtherServerWasAskedForTheFileOverUdp() {
+        assertThat(this.other.udpSourceRequests()).contains(this.peer.link().hash());
     }
 
     private void thenTheServerWasAskedToHaveCalledBack(long lowId) {

@@ -269,8 +269,11 @@ public final class ServerMessages {
 
         /** Decodes OP_FOUNDSOURCES, or with {@code obfuscated} OP_FOUNDSOURCES_OBFU. */
         public static FoundSources decode(Packet packet) throws DecodeException {
-            boolean obfuscated = packet.opcode() == Opcodes.Server.FOUNDSOURCES_OBFU.code();
-            PacketReader in = packet.reader();
+            return read(packet.reader(), packet.opcode() == Opcodes.Server.FOUNDSOURCES_OBFU.code());
+        }
+
+        /** Reads one file's sources; {@code obfuscated} sources carry crypt options and maybe a user hash. */
+        static FoundSources read(PacketReader in, boolean obfuscated) throws DecodeException {
             Hash16 file = in.hash16();
             int count = in.count(in.u8(), obfuscated ? 7 : 6, MAX_SOURCES);
             List<Source> sources = new ArrayList<>(count);
@@ -292,12 +295,20 @@ public final class ServerMessages {
 
         /** OP_FOUNDSOURCES_OBFU, as servers answer clients that support obfuscation. */
         public Packet encode() {
-            PacketWriter out = new PacketWriter().hash16(this.file).count8(this.sources.size());
+            return Packet.of(
+                    Protocol.EDONKEY, Opcodes.Server.FOUNDSOURCES_OBFU.code(), write(new PacketWriter(), true));
+        }
+
+        PacketWriter write(PacketWriter out, boolean obfuscated) {
+            out.hash16(this.file).count8(this.sources.size());
             for (Source source : this.sources) {
-                out.u32(source.clientId()).u16(source.port()).u8(source.cryptOptions());
-                source.userHash().ifPresent(out::hash16);
+                out.u32(source.clientId()).u16(source.port());
+                if (obfuscated) {
+                    out.u8(source.cryptOptions());
+                    source.userHash().ifPresent(out::hash16);
+                }
             }
-            return Packet.of(Protocol.EDONKEY, Opcodes.Server.FOUNDSOURCES_OBFU.code(), out);
+            return out;
         }
     }
 
