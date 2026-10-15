@@ -125,7 +125,8 @@ class CaptureTour {
     /**
      * The sets pictured unless {@code njmule.capture.sets} lists others: language, then light, dark or contrast (a dark
      * high contrast scheme of the system), then {@code full} for everything or {@code screens} for the screens and
-     * their tabs, or {@code empty} for a disconnected profile without data.
+     * their tabs, {@code empty} for a disconnected profile without data, or {@code readme} for the transfers alone once
+     * the messages of the start have gone.
      */
     static final String SETS = "it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty";
 
@@ -142,6 +143,8 @@ class CaptureTour {
             "Windows.SysColor.COLOR_HOTLIGHT", javafx.scene.paint.Color.web("#ffff00"));
 
     private static final long SETTLE = 160;
+    // Longer than the window shows a message for.
+    private static final Duration MESSAGES_GONE = Duration.ofSeconds(7);
     private static final int TOOLTIPS_PER_SCREEN = 12;
 
     @TempDir
@@ -184,6 +187,8 @@ class CaptureTour {
             open(language, mode, "contrast".equals(parts[1]), !"empty".equals(depth), name.strip());
             if ("full".equals(depth)) {
                 everything();
+            } else if ("readme".equals(depth)) {
+                readme();
             } else {
                 screens("screens".equals(depth));
             }
@@ -343,6 +348,13 @@ class CaptureTour {
                 tabs(id, screenRoot(), false);
             }
         }
+    }
+
+    // The picture of the README: no message over the lists.
+    private void readme() throws Exception {
+        Thread.sleep(MESSAGES_GONE.toMillis());
+        fx(() -> this.window.show("transfers"));
+        shot("transfers", "The transfers, for the README");
     }
 
     private void everything() throws Exception {

@@ -29,6 +29,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+<p align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/njmule-transfers-dark.png">
+        <img alt="The transfers of the njMule desktop app: downloads with their part bars, and the uploads below" src=".github/assets/njmule-transfers-light.png" width="880">
+    </picture>
+</p>
+
 > [!WARNING]
 > **Pre-alpha (`0.0.1-alpha.1`).** No release has been published yet: the packages described
 > below are produced by the release workflow and will be attached to the first
@@ -52,7 +59,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | 🌐 **eD2K** | Server connections with optional protocol obfuscation, static servers, a starting server list shipped with njMule and `server.met` updates from a URL. Searches on the connected server, on all known servers over UDP or on Kad, filtered by file type, size, availability and extension. Downloads verified part by part, with corrupt parts repaired from AICH recovery data. Uploads through a credit-scored queue, with secure identification and source exchange. |
 | 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, bootstrap from the contacts shipped with njMule or from a `nodes.dat` URL. |
 | 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
-| 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
+| 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system, and the system colours under Windows high contrast), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
 | 🌍 **Web interface** | Status, transfers, searches and servers, protected by a password. |
 | 🔧 **Networking** | SOCKS 4/5 and HTTP CONNECT proxies, binding to one network interface (such as a VPN) that keeps njMule offline while it is gone, UPnP port forwarding, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
 | 💬 **Messaging** | Chat with CAPTCHA verification, a friends list and spam filters. |

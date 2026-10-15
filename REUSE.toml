@@ -14,6 +14,7 @@ path = [
     "**/META-INF/native-image/**",
     "**/src/test/resources/**",
     "branding/**",
+    ".github/assets/**",
     "packaging/**/*.png",
     "packaging/**/*.ico",
     "packaging/**/*.icns",
