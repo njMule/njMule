@@ -63,6 +63,25 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <compilerArgs combine.children="append">
+                                <!-- The tests reach the web interface with the JDK HTTP client, which the
+                                     modules themselves no longer read. -->
+                                <arg>--add-modules</arg>
+                                <arg>java.net.http</arg>
+                                <arg>--add-reads</arg>
+                                <arg>org.njmule.app=java.net.http</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Runtime module path for development runs: target/lib + the app jar. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

@@ -20,7 +20,7 @@ module org.njmule.webui {
     requires transitive org.njmule.core;
     requires jdk.httpserver;
     requires org.slf4j;
-    requires java.net.http;
+    requires org.eclipse.jetty.client;
     requires tools.jackson.core;
 
     exports org.njmule.webui;

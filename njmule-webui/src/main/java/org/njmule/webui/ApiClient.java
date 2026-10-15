@@ -21,12 +21,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +31,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.eclipse.jetty.client.BytesRequestContent;
+import org.eclipse.jetty.client.CompletableResponseListener;
+import org.eclipse.jetty.client.ContentResponse;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.InputStreamResponseListener;
+import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.client.Response;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
@@ -47,7 +56,7 @@ import tools.jackson.core.json.JsonFactory;
 
 /**
  * A caller of the remote-control API, for the command line: answers come back as maps, lists, strings, numbers,
- * booleans and nulls.
+ * booleans and nulls. Each call has an HTTP client of its own, as the command line makes only a few.
  */
 public final class ApiClient {
 
@@ -61,19 +70,17 @@ public final class ApiClient {
                     .build())
             .build();
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    // A stream sends a comment at each heartbeat: one silent for several is gone.
+    private static final Duration STREAM_IDLE = EventStreams.HEARTBEAT.multipliedBy(4);
+
     private final URI base;
     private final String token;
-    private final HttpClient http;
 
     /** @param base the address of the API, as {@code http://127.0.0.1:4711/api/v1} */
     public ApiClient(URI base, String token) {
         this.base = base;
         this.token = token;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .proxy(ProxySelector.of(null))
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
     }
 
     /** The API of the njMule using {@code configDir} on this computer, when its settings let it answer. */
@@ -123,27 +130,41 @@ public final class ApiClient {
      * ends.
      */
     public void events(String types, EventSink each) throws IOException, InterruptedException {
-        HttpRequest request = this.request("/events?types=" + URLEncoder.encode(types, StandardCharsets.UTF_8))
-                .GET()
-                .build();
-        HttpResponse<InputStream> answer = this.http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (answer.statusCode() != 200) {
-            try (InputStream in = answer.body()) {
-                throw failure(answer.statusCode(), in.readNBytes(64 * 1024));
+        HttpClient http = start();
+        try {
+            // No deadline for the whole answer: the stream lasts until either side ends it.
+            Request request = this.request(http, "/events?types=" + URLEncoder.encode(types, StandardCharsets.UTF_8))
+                    .idleTimeout(STREAM_IDLE.toMillis(), TimeUnit.MILLISECONDS);
+            InputStreamResponseListener listener = new InputStreamResponseListener();
+            request.send(listener);
+            Response answer;
+            try {
+                answer = listener.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                var _ = request.abort(e);
+                throw new IOException("No answer from " + this.base.getHost() + " in time.", e);
+            } catch (ExecutionException e) {
+                throw failure(e.getCause());
             }
-        }
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(answer.body(), StandardCharsets.UTF_8))) {
-            String name = "message";
-            for (String line = in.readLine(); line != null; line = in.readLine()) {
-                if (line.startsWith("event: ")) {
-                    name = line.substring(7);
-                } else if (line.startsWith("data: ")) {
-                    if (!each.event(name, parse(line.substring(6).getBytes(StandardCharsets.UTF_8)))) {
-                        return;
+            try (InputStream body = listener.getInputStream()) {
+                if (answer.getStatus() != 200) {
+                    throw failure(answer.getStatus(), body.readNBytes(64 * 1024));
+                }
+                BufferedReader in = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
+                String name = "message";
+                for (String line = in.readLine(); line != null; line = in.readLine()) {
+                    if (line.startsWith("event: ")) {
+                        name = line.substring(7);
+                    } else if (line.startsWith("data: ")) {
+                        if (!each.event(name, parse(line.substring(6).getBytes(StandardCharsets.UTF_8)))) {
+                            return;
+                        }
+                        name = "message";
                     }
-                    name = "message";
                 }
             }
+        } finally {
+            stop(http);
         }
     }
 
@@ -155,31 +176,72 @@ public final class ApiClient {
     }
 
     private Object call(String method, String path, Map<String, ?> body) throws IOException, InterruptedException {
-        HttpRequest.BodyPublisher content = body == null
-                ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofByteArray(write(body));
-        HttpRequest.Builder request = this.request(path).method(method, content);
-        if (body != null) {
-            request.header("Content-Type", "application/json; charset=utf-8");
+        HttpClient http = start();
+        try {
+            Request request =
+                    this.request(http, path).method(method).timeout(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (body != null) {
+                request.body(new BytesRequestContent("application/json; charset=utf-8", write(body)));
+            }
+            CompletableFuture<ContentResponse> sent = new CompletableResponseListener(request, MAX_ANSWER).send();
+            ContentResponse answer;
+            try {
+                answer = sent.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                sent.cancel(true);
+                throw e;
+            } catch (TimeoutException e) {
+                sent.cancel(true);
+                throw new IOException("No answer from " + this.base.getHost() + " in time.", e);
+            } catch (ExecutionException e) {
+                throw failure(e.getCause());
+            }
+            if (answer.getStatus() / 100 != 2) {
+                throw failure(answer.getStatus(), answer.getContent());
+            }
+            return parse(answer.getContent());
+        } finally {
+            stop(http);
         }
-        HttpResponse<InputStream> answer = this.http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
-        byte[] data;
-        try (InputStream in = answer.body()) {
-            data = in.readNBytes(MAX_ANSWER + 1);
-        }
-        if (data.length > MAX_ANSWER) {
-            throw new IOException("The answer is too large.");
-        }
-        if (answer.statusCode() / 100 != 2) {
-            throw failure(answer.statusCode(), data);
-        }
-        return parse(data);
     }
 
-    private HttpRequest.Builder request(String path) {
-        return HttpRequest.newBuilder(URI.create(this.base + path))
-                .timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + this.token);
+    private Request request(HttpClient http, String path) {
+        return http.newRequest(URI.create(this.base + path))
+                .headers(h -> h.put(HttpHeader.AUTHORIZATION, "Bearer " + this.token));
+    }
+
+    // Our own njMule, on this computer or at an address given: never through a proxy, no redirects.
+    private static HttpClient start() throws IOException {
+        HttpClient http = new HttpClient();
+        http.setExecutor(new VirtualThreadPool());
+        http.setConnectTimeout(CONNECT_TIMEOUT.toMillis());
+        http.setFollowRedirects(false);
+        try {
+            http.start();
+        } catch (Exception e) {
+            throw new IOException("Cannot start the HTTP client.", e);
+        }
+        return http;
+    }
+
+    private static void stop(HttpClient http) {
+        try {
+            http.stop();
+        } catch (Exception e) {
+            // The answer came, or the failure that matters is already on its way.
+        }
+    }
+
+    // A failed exchange: the buffer's refusal of a larger answer, a timeout, or the cause itself.
+    private static IOException failure(Throwable cause) {
+        if (cause instanceof IllegalArgumentException
+                && String.valueOf(cause.getMessage()).contains("capacity")) {
+            return new IOException("The answer is too large.", cause);
+        }
+        if (cause instanceof TimeoutException) {
+            return new IOException("No answer in time.", cause);
+        }
+        return cause instanceof IOException io ? io : new IOException(cause.getMessage(), cause);
     }
 
     private static Failure failure(int status, byte[] body) {
