@@ -366,6 +366,9 @@ All notable changes to this project are documented here. The format follows
   in a category and paused at once.
 - The lists below the downloads (uploading, waiting, downloading from, banned) are segments with
   their counts, one list shown at a time.
+- Windows high contrast: while it is on, the desktop interface takes the system's colours (window,
+  text, selection, links, disabled text) for every surface, text, selection, part bar and graph of
+  the theme, alerts included, and follows the system when the scheme changes or is turned off.
 - The rates graph of the statistics shows the last ten minutes, hour or day (one point a minute,
   the mean of its seconds), and under the pointer the time and rates of that moment.
 - Statistics of each shared file: how often it was asked for, how many asks got a slot and how many
@@ -395,8 +398,8 @@ All notable changes to this project are documented here. The format follows
   and the command palette.
 - A capture tour of the desktop interface for design reviews (`CaptureTour`, run on demand with
   `--tests CaptureTour -Pnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
-  drop-down list, column menu, dialog and message kind, with example data, in light, dark, English
-  and right-to-left sets.
+  drop-down list, column menu, dialog and message kind, with example data, in light, dark, high
+  contrast, English and right-to-left sets.
 
 ### Changed
 

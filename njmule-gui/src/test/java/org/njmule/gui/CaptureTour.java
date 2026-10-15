@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
 import javafx.geometry.Bounds;
 import javafx.scene.Node;
 import javafx.scene.Parent;
@@ -121,11 +123,23 @@ import org.njmule.gui.ui.Subscriptions;
 class CaptureTour {
 
     /**
-     * The sets pictured unless {@code njmule.capture.sets} lists others: language, then light or dark, then
-     * {@code full} for everything or {@code screens} for the screens and their tabs, or {@code empty} for a
-     * disconnected profile without data.
+     * The sets pictured unless {@code njmule.capture.sets} lists others: language, then light, dark or contrast (a dark
+     * high contrast scheme of the system), then {@code full} for everything or {@code screens} for the screens and
+     * their tabs, or {@code empty} for a disconnected profile without data.
      */
     static final String SETS = "it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty";
+
+    // Windows' black high contrast scheme.
+    private static final Map<String, Object> HIGH_CONTRAST = Map.of(
+            "Windows.SPI.HighContrast", true,
+            "Windows.SysColor.COLOR_WINDOW", javafx.scene.paint.Color.web("#000000"),
+            "Windows.SysColor.COLOR_WINDOWTEXT", javafx.scene.paint.Color.web("#ffffff"),
+            "Windows.SysColor.COLOR_3DFACE", javafx.scene.paint.Color.web("#000000"),
+            "Windows.SysColor.COLOR_BTNTEXT", javafx.scene.paint.Color.web("#ffffff"),
+            "Windows.SysColor.COLOR_GRAYTEXT", javafx.scene.paint.Color.web("#3ff23f"),
+            "Windows.SysColor.COLOR_HIGHLIGHT", javafx.scene.paint.Color.web("#1aebff"),
+            "Windows.SysColor.COLOR_HIGHLIGHTTEXT", javafx.scene.paint.Color.web("#000000"),
+            "Windows.SysColor.COLOR_HOTLIGHT", javafx.scene.paint.Color.web("#ffff00"));
 
     private static final long SETTLE = 160;
     private static final int TOOLTIPS_PER_SCREEN = 12;
@@ -167,7 +181,7 @@ class CaptureTour {
             Locale language = Locale.forLanguageTag(parts[0]);
             GuiSettings.Mode mode = "dark".equals(parts[1]) ? GuiSettings.Mode.DARK : GuiSettings.Mode.LIGHT;
             String depth = parts.length > 2 ? parts[2] : "screens";
-            open(language, mode, !"empty".equals(depth), name.strip());
+            open(language, mode, "contrast".equals(parts[1]), !"empty".equals(depth), name.strip());
             if ("full".equals(depth)) {
                 everything();
             } else {
@@ -185,7 +199,8 @@ class CaptureTour {
 
     // ---------------------------------------------------------------- sessions
 
-    private void open(Locale language, GuiSettings.Mode mode, boolean demo, String name) throws Exception {
+    private void open(Locale language, GuiSettings.Mode mode, boolean contrast, boolean demo, String name)
+            throws Exception {
         this.set = name;
         this.counter = 0;
         this.seen.clear();
@@ -229,7 +244,10 @@ class CaptureTour {
                 i18n,
                 Formats.of(i18n),
                 this.model,
-                new Themes(Themes.Family.NORD, mode),
+                new Themes(
+                        Themes.Family.NORD,
+                        mode,
+                        contrast ? FXCollections.observableMap(HIGH_CONTRAST) : Platform.getPreferences()),
                 GuiSettings.load(dirs.gui()),
                 dirs,
                 toWindow,
@@ -694,10 +712,6 @@ class CaptureTour {
         fx(() -> this.window.show("transfers"));
         Parent transfers = screenRoot();
         TableView<?> downloads = select(transfers, 0, 1);
-        waiting(
-                "dialog-transfers-cancel",
-                "Cancel a download",
-                () -> item(downloads.getContextMenu(), "IDS_CANCEL").fire());
         waiting(
                 "dialog-transfers-add-source",
                 "Add a source by hand",

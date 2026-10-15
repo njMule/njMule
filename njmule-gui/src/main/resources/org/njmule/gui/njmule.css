@@ -68,6 +68,154 @@
     -nj-scrim: rgba(0, 0, 0, 0.35);
 }
 
+/* The system's high contrast scheme: while it is on, its colours (-nj-sys-*, set from the system) replace the
+   theme's and njMule's; the tokens of the theme's scales are surfaces or selections. */
+.root.high-contrast {
+    -color-dark: -nj-sys-text;
+    -color-light: -nj-sys-window;
+    -color-fg-default: -nj-sys-text;
+    -color-fg-muted: -nj-sys-text;
+    -color-fg-subtle: -nj-sys-gray;
+    -color-fg-emphasis: -nj-sys-highlight-text;
+    -color-bg-default: -nj-sys-window;
+    -color-bg-overlay: -nj-sys-window;
+    -color-bg-subtle: -nj-sys-face;
+    -color-bg-inset: -nj-sys-window;
+    -color-border-default: -nj-sys-text;
+    -color-border-muted: -nj-sys-text;
+    -color-border-subtle: -nj-sys-gray;
+    -color-shadow-default: transparent;
+    -color-neutral-emphasis-plus: -nj-sys-text;
+    -color-neutral-emphasis: -nj-sys-text;
+    -color-neutral-muted: -nj-sys-face;
+    -color-neutral-subtle: -nj-sys-window;
+    -color-accent-fg: -nj-sys-link;
+    -color-accent-emphasis: -nj-sys-highlight;
+    -color-accent-muted: -nj-sys-face;
+    -color-accent-subtle: -nj-sys-window;
+    -color-success-fg: -nj-sys-text;
+    -color-success-emphasis: -nj-sys-highlight;
+    -color-success-muted: -nj-sys-face;
+    -color-success-subtle: -nj-sys-window;
+    -color-warning-fg: -nj-sys-text;
+    -color-warning-emphasis: -nj-sys-highlight;
+    -color-warning-muted: -nj-sys-face;
+    -color-warning-subtle: -nj-sys-window;
+    -color-danger-fg: -nj-sys-text;
+    -color-danger-emphasis: -nj-sys-highlight;
+    -color-danger-muted: -nj-sys-face;
+    -color-danger-subtle: -nj-sys-window;
+    -color-base-0: -nj-sys-face;
+    -color-base-1: -nj-sys-face;
+    -color-base-2: -nj-sys-face;
+    -color-base-3: -nj-sys-face;
+    -color-base-4: -nj-sys-face;
+    -color-base-5: -nj-sys-face;
+    -color-base-6: -nj-sys-face;
+    -color-base-7: -nj-sys-face;
+    -color-base-8: -nj-sys-face;
+    -color-base-9: -nj-sys-face;
+    -color-accent-0: -nj-sys-highlight;
+    -color-accent-1: -nj-sys-highlight;
+    -color-accent-2: -nj-sys-highlight;
+    -color-accent-3: -nj-sys-highlight;
+    -color-accent-4: -nj-sys-highlight;
+    -color-accent-5: -nj-sys-highlight;
+    -color-accent-6: -nj-sys-highlight;
+    -color-accent-7: -nj-sys-highlight;
+    -color-accent-8: -nj-sys-highlight;
+    -color-accent-9: -nj-sys-highlight;
+    -color-success-0: -nj-sys-highlight;
+    -color-success-1: -nj-sys-highlight;
+    -color-success-2: -nj-sys-highlight;
+    -color-success-3: -nj-sys-highlight;
+    -color-success-4: -nj-sys-highlight;
+    -color-success-5: -nj-sys-highlight;
+    -color-success-6: -nj-sys-highlight;
+    -color-success-7: -nj-sys-highlight;
+    -color-success-8: -nj-sys-highlight;
+    -color-success-9: -nj-sys-highlight;
+    -color-warning-0: -nj-sys-highlight;
+    -color-warning-1: -nj-sys-highlight;
+    -color-warning-2: -nj-sys-highlight;
+    -color-warning-3: -nj-sys-highlight;
+    -color-warning-4: -nj-sys-highlight;
+    -color-warning-5: -nj-sys-highlight;
+    -color-warning-6: -nj-sys-highlight;
+    -color-warning-7: -nj-sys-highlight;
+    -color-warning-8: -nj-sys-highlight;
+    -color-warning-9: -nj-sys-highlight;
+    -color-danger-0: -nj-sys-highlight;
+    -color-danger-1: -nj-sys-highlight;
+    -color-danger-2: -nj-sys-highlight;
+    -color-danger-3: -nj-sys-highlight;
+    -color-danger-4: -nj-sys-highlight;
+    -color-danger-5: -nj-sys-highlight;
+    -color-danger-6: -nj-sys-highlight;
+    -color-danger-7: -nj-sys-highlight;
+    -color-danger-8: -nj-sys-highlight;
+    -color-danger-9: -nj-sys-highlight;
+    -nj-brand: -nj-sys-face;
+    -nj-brand-mark: -nj-sys-face-text;
+    -nj-brand-accent: -nj-sys-link;
+    -nj-accent-strong: -nj-sys-link;
+    -nj-accent-soft: -nj-sys-window;
+    -nj-accent-hover: -nj-sys-link;
+    -nj-accent-pressed: -nj-sys-link;
+    -nj-on-accent: -nj-sys-window;
+    -nj-bar-bg: -nj-sys-window;
+    -nj-bar-have: -nj-sys-text;
+    -nj-bar-missing: -nj-sys-gray;
+    -nj-bar-sources-min: -nj-sys-link;
+    -nj-bar-sources-max: -nj-sys-link;
+    -nj-bar-requested: -nj-sys-highlight;
+    -nj-bar-complete: -nj-sys-highlight;
+    -nj-bar-client: -nj-sys-link;
+    -nj-bar-error: -nj-sys-highlight;
+    -nj-cat-1: -nj-sys-text;
+    -nj-cat-2: -nj-sys-text;
+    -nj-cat-3: -nj-sys-text;
+    -nj-cat-4: -nj-sys-text;
+    -nj-cat-5: -nj-sys-text;
+    -nj-cat-6: -nj-sys-text;
+    -nj-cat-7: -nj-sys-text;
+    -nj-cat-8: -nj-sys-text;
+    -nj-graph-down: -nj-sys-link;
+    -nj-graph-up: -nj-sys-highlight;
+    -nj-graph-grid: -nj-sys-gray;
+}
+
+/* Selected rows in the system's selection colours. */
+.root.high-contrast .list-view,
+.root.high-contrast .table-view,
+.root.high-contrast .tree-view,
+.root.high-contrast .tree-table-view {
+    -color-cell-bg-selected: -nj-sys-highlight;
+    -color-cell-fg-selected: -nj-sys-highlight-text;
+    -color-cell-bg-selected-focused: -nj-sys-highlight;
+    -color-cell-fg-selected-focused: -nj-sys-highlight-text;
+    -color-cell-bg-odd: -nj-sys-window;
+}
+
+.root.high-contrast .nav-rail .toggle-button:selected {
+    -fx-background-color: -nj-sys-highlight;
+    -fx-text-fill: -nj-sys-highlight-text;
+}
+
+.root.high-contrast .nav-rail .toggle-button:selected .ikonli-font-icon {
+    -fx-icon-color: -nj-sys-highlight-text;
+}
+
+/* The chat bubbles' tints are gone: an outline keeps their shape. */
+.root.high-contrast .chat-bubble {
+    -fx-border-color: -nj-sys-text;
+    -fx-border-radius: 10;
+}
+
+.root.high-contrast .chat-notice .chat-bubble {
+    -fx-border-color: transparent;
+}
+
 /* Navigation rail on the left. */
 .nav-rail {
     -fx-background-color: -color-bg-subtle;

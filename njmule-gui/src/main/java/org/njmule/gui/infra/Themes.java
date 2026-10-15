@@ -25,7 +25,9 @@ import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
 import atlantafx.base.theme.Theme;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 import javafx.application.Application;
@@ -33,11 +35,13 @@ import javafx.application.ColorScheme;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
+import javafx.collections.MapChangeListener;
+import javafx.collections.ObservableMap;
 import javafx.scene.Scene;
 
 /**
  * The AtlantaFX theme of the interface, light or dark (by default as the system is), with njMule's own colour tokens in
- * {@code njmule.css}. FX thread only.
+ * {@code njmule.css}; while the system's high contrast is on, its colours replace the theme's. FX thread only.
  */
 public final class Themes {
 
@@ -51,17 +55,32 @@ public final class Themes {
 
     private static final String STYLESHEET = "/org/njmule/gui/njmule.css";
     private static final String DARK_CLASS = "dark";
+    private static final String CONTRAST_CLASS = "high-contrast";
 
     private Family family;
     private GuiSettings.Mode mode;
     private final ReadOnlyBooleanWrapper dark = new ReadOnlyBooleanWrapper();
+    private final ObservableMap<String, Object> system;
+    // The stylesheet with the high contrast colours, empty while it is off.
+    private String contrastSheet = "";
     // Weakly held: closed dialogs go away.
     private final Set<Scene> scenes = Collections.newSetFromMap(new WeakHashMap<>());
 
     public Themes(Family family, GuiSettings.Mode mode) {
+        this(family, mode, Platform.getPreferences());
+    }
+
+    /** Follows {@code system} instead of the platform's preferences for high contrast, as tests and pictures do. */
+    public Themes(Family family, GuiSettings.Mode mode, ObservableMap<String, Object> system) {
         this.family = Objects.requireNonNull(family, "family");
         this.mode = Objects.requireNonNull(mode, "mode");
+        this.system = Objects.requireNonNull(system, "system");
         Platform.getPreferences().colorSchemeProperty().addListener((o, was, now) -> apply());
+        system.addListener((MapChangeListener<String, Object>) change -> {
+            if (HighContrast.concerns(change.getKey())) {
+                apply();
+            }
+        });
     }
 
     /** The theme of a family, light or dark; Dracula has only a dark one. */
@@ -105,24 +124,38 @@ public final class Themes {
     }
 
     private void apply() {
-        boolean wantsDark = switch (this.mode) {
+        Optional<HighContrast> contrast = HighContrast.of(this.system);
+        // A high contrast scheme is light or dark whatever the mode; the mode comes back when it is off.
+        boolean wantsDark = contrast.map(HighContrast::dark).orElseGet(() -> switch (this.mode) {
             case DARK -> true;
             case LIGHT -> false;
             case SYSTEM -> Platform.getPreferences().getColorScheme() == ColorScheme.DARK;
-        };
+        });
         Theme theme = theme(this.family, wantsDark);
         Application.setUserAgentStylesheet(theme.getUserAgentStylesheet());
         this.dark.set(theme.isDarkMode());
+        String before = this.contrastSheet;
+        this.contrastSheet = contrast.map(HighContrast::stylesheet).orElse("");
         for (Scene scene : this.scenes) {
-            if (scene.getRoot() == null) {
-                continue;
+            List<String> sheets = scene.getStylesheets();
+            if (!before.equals(this.contrastSheet)) {
+                sheets.remove(before);
             }
-            var classes = scene.getRoot().getStyleClass();
-            if (theme.isDarkMode() && !classes.contains(DARK_CLASS)) {
-                classes.add(DARK_CLASS);
-            } else if (!theme.isDarkMode()) {
-                classes.remove(DARK_CLASS);
+            if (!this.contrastSheet.isEmpty() && !sheets.contains(this.contrastSheet)) {
+                sheets.add(this.contrastSheet);
             }
+            if (scene.getRoot() != null) {
+                mark(scene.getRoot().getStyleClass(), DARK_CLASS, theme.isDarkMode());
+                mark(scene.getRoot().getStyleClass(), CONTRAST_CLASS, contrast.isPresent());
+            }
+        }
+    }
+
+    private static void mark(List<String> classes, String name, boolean on) {
+        if (on && !classes.contains(name)) {
+            classes.add(name);
+        } else if (!on) {
+            classes.remove(name);
         }
     }
 }

@@ -133,10 +133,12 @@ public record Gui(
 
     /**
      * Lays {@code dialog} out in the direction of the interface (it would follow its owner's, but the windows of the
-     * notification area have none to give) and in the house style: no question-mark picture, the question is in the
-     * words, and no header repeating the kind of alert. A header or picture set afterwards stays.
+     * notification area have none to give) and in the house style: the theme of the other windows, no question-mark
+     * picture, the question is in the words, and no header repeating the kind of alert. A header or picture set
+     * afterwards stays.
      */
     public <D extends Dialog<?>> D dialog(D dialog) {
+        this.themes.attach(dialog.getDialogPane().getScene());
         dialog.getDialogPane().setNodeOrientation(orientation());
         if (dialog instanceof TextInputDialog
                 || (dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION)) {
