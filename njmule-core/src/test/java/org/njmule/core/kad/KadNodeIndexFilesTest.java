@@ -90,6 +90,13 @@ class KadNodeIndexFilesTest {
     }
 
     @Test
+    void shouldSaveItsIndexEveryHalfHourWithoutStopping() {
+        givenAKeywordASourceAndANotePublishedToTheNode();
+        whenHalfAnHourPasses();
+        thenTheIndexIsOnDisk();
+    }
+
+    @Test
     void shouldNotLoadSourcesExpiredMeanwhile() throws IOException, DecodeException {
         givenAKeywordASourceAndANotePublishedToTheNode();
         givenTheNodeSavesItsIndex();
@@ -245,6 +252,17 @@ class KadNodeIndexFilesTest {
     }
 
     // The index is saved by the steps before, at the time the test sets, and is not saved again here.
+    private void whenHalfAnHourPasses() {
+        this.time.addAndGet(KadNode.SAVE_EVERY.toNanos());
+        this.node.tick();
+    }
+
+    private void thenTheIndexIsOnDisk() {
+        assertThat(this.dir.resolve(KadNode.KEYWORD_INDEX_FILE)).exists();
+        assertThat(this.dir.resolve(KadNode.SOURCE_INDEX_FILE)).exists();
+        assertThat(this.dir.resolve(KadNode.NOTE_INDEX_FILE)).exists();
+    }
+
     private void whenTheNodeStartsAgainAfter(Duration pause) throws IOException {
         this.node.saveNodes();
         this.time.addAndGet(pause.toNanos());

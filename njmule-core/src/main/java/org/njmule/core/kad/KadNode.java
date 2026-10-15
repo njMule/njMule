@@ -246,6 +246,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final long HOUR = 60 * MINUTE;
     private static final Duration SELF_LOOKUP_FIRST = Duration.ofMinutes(3);
     private static final Duration SELF_LOOKUP_EVERY = Duration.ofHours(4);
+    // The contacts and the index are saved this often too, not only when Kad stops: a crash loses no more.
+    static final Duration SAVE_EVERY = Duration.ofMinutes(30);
     // Above this load the nodes of a keyword are spared: for up to a week, in proportion to the load.
     private static final int HIGH_LOAD = 20;
     private static final Duration LOADED_FOR = Duration.ofDays(7);
@@ -331,6 +333,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private long nextSmallTimer;
     private long nextBigTimer;
     private long nextConsolidate;
+    private long nextSave;
     private long nextSelfLookup;
     private long nextFirewallCheck;
     private long nextClean;
@@ -358,6 +361,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.nextSmallTimer = now + MINUTE;
         this.nextBigTimer = now + 10 * SECOND;
         this.nextConsolidate = now + 45 * MINUTE;
+        this.nextSave = now + SAVE_EVERY.toNanos();
         this.nextSelfLookup = now + SELF_LOOKUP_FIRST.toNanos();
         this.nextFirewallCheck = now;
         this.nextClean = now + 12 * MINUTE;
@@ -998,6 +1002,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (now - this.nextConsolidate >= 0) {
             this.nextConsolidate = now + 45 * MINUTE;
             this.table.consolidate();
+        }
+        if (now - this.nextSave >= 0) {
+            this.nextSave = now + SAVE_EVERY.toNanos();
+            saveNodes();
+            saveIndex();
         }
         if (now - this.nextSelfLookup >= 0 && this.table.size() > 0) {
             this.nextSelfLookup = now + SELF_LOOKUP_EVERY.toNanos();
