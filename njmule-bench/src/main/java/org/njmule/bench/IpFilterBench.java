@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
-import org.njmule.bench.alternatives.ArrayIpFilter;
+import org.njmule.bench.alternatives.GuavaIpFilter;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.security.IpFilter;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -49,8 +49,8 @@ public class IpFilterBench {
 
     private final List<IpFilterDat.Range> ranges = new ArrayList<>(RANGES);
     private final int[] addresses = new int[LOOKUPS];
-    private IpFilter guava;
-    private ArrayIpFilter arrays;
+    private GuavaIpFilter guava;
+    private IpFilter arrays;
 
     @Setup
     public void setUp() {
@@ -65,11 +65,11 @@ public class IpFilterBench {
         for (int i = 0; i < LOOKUPS; i++) {
             this.addresses[i] = random.nextInt();
         }
-        this.guava = IpFilter.of(this.ranges, IpFilter.DEFAULT_LEVEL);
-        this.arrays = ArrayIpFilter.of(this.ranges, ArrayIpFilter.DEFAULT_LEVEL);
+        this.guava = GuavaIpFilter.of(this.ranges, GuavaIpFilter.DEFAULT_LEVEL);
+        this.arrays = IpFilter.of(this.ranges, IpFilter.DEFAULT_LEVEL);
     }
 
-    /** Today's code: Guava's ImmutableRangeMap keyed by boxed longs. */
+    /** The replaced code: Guava's ImmutableRangeMap keyed by boxed longs. */
     @Benchmark
     @OperationsPerInvocation(LOOKUPS)
     public int lookupGuavaRangeMap() {
@@ -80,7 +80,7 @@ public class IpFilterBench {
         return blocked;
     }
 
-    /** The replaced binary search over primitive arrays. */
+    /** Today's code: a binary search over primitive arrays. */
     @Benchmark
     @OperationsPerInvocation(LOOKUPS)
     public int lookupPrimitiveArrays() {
@@ -93,13 +93,13 @@ public class IpFilterBench {
 
     @Benchmark
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
-    public IpFilter buildGuavaRangeMap() {
-        return IpFilter.of(this.ranges, IpFilter.DEFAULT_LEVEL);
+    public GuavaIpFilter buildGuavaRangeMap() {
+        return GuavaIpFilter.of(this.ranges, GuavaIpFilter.DEFAULT_LEVEL);
     }
 
     @Benchmark
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
-    public ArrayIpFilter buildPrimitiveArrays() {
-        return ArrayIpFilter.of(this.ranges, ArrayIpFilter.DEFAULT_LEVEL);
+    public IpFilter buildPrimitiveArrays() {
+        return IpFilter.of(this.ranges, IpFilter.DEFAULT_LEVEL);
     }
 }

@@ -20,12 +20,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.persist.format.IpFilterDat.Range;
 import org.njmule.core.util.Ipv4;
 
 class IpFilterTest {
+
+    // Addresses 0.0.0.1 to 0.0.0.200, few enough to check every one.
+    private static final int LAST_SMALL_ADDRESS = 200;
 
     private List<Range> ranges;
     private byte[] dat;
@@ -65,6 +75,16 @@ class IpFilterTest {
         thenItMatches("1.0.0.30", "c");
         thenItLetsThrough("1.0.0.35");
         thenItMatches("1.0.0.45", "d");
+    }
+
+    @Property
+    void shouldGiveEveryAddressTheLastListedBlockingRangeThatCoversIt(@ForAll("smallRanges") List<Range> ranges) {
+        givenTheRanges(ranges);
+
+        whenTheFilterIsMadeAtTheLevel(IpFilter.DEFAULT_LEVEL);
+
+        thenEveryAddressMatchesTheLastBlockingRangeCoveringIt();
+        thenItHoldsOneRangePerRunOfAddressesWonByTheSameRange();
     }
 
     @Test
@@ -127,6 +147,10 @@ class IpFilterTest {
         this.ranges = List.of(list);
     }
 
+    private void givenTheRanges(List<Range> list) {
+        this.ranges = list;
+    }
+
     private void givenTheIpFilterDat(String text) {
         this.dat = text.getBytes(StandardCharsets.US_ASCII);
     }
@@ -161,6 +185,53 @@ class IpFilterTest {
 
     private void thenItHoldsRanges(int count) {
         assertThat(this.filter.rangeCount()).isEqualTo(count);
+    }
+
+    private void thenEveryAddressMatchesTheLastBlockingRangeCoveringIt() {
+        for (int address = 1; address <= LAST_SMALL_ADDRESS; address++) {
+            int winner = lastBlockingRangeCovering(address);
+            assertThat(this.filter.match(address))
+                    .as("address %d", address)
+                    .isEqualTo(
+                            winner < 0
+                                    ? Optional.empty()
+                                    : Optional.of(this.ranges.get(winner).description()));
+        }
+    }
+
+    private void thenItHoldsOneRangePerRunOfAddressesWonByTheSameRange() {
+        int runs = 0;
+        int previous = -1;
+        for (int address = 1; address <= LAST_SMALL_ADDRESS; address++) {
+            int winner = lastBlockingRangeCovering(address);
+            if (winner >= 0 && winner != previous) {
+                runs++;
+            }
+            previous = winner;
+        }
+        assertThat(this.filter.rangeCount()).isEqualTo(runs);
+    }
+
+    private int lastBlockingRangeCovering(int address) {
+        for (int i = this.ranges.size() - 1; i >= 0; i--) {
+            Range r = this.ranges.get(i);
+            if (r.level() < IpFilter.DEFAULT_LEVEL && r.contains(address)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @Provide
+    Arbitrary<List<Range>> smallRanges() {
+        return Combinators.combine(
+                        Arbitraries.integers().between(1, LAST_SMALL_ADDRESS),
+                        Arbitraries.integers().between(0, 40),
+                        Arbitraries.of(0, IpFilter.DEFAULT_LEVEL))
+                .as((start, length, level) -> new Range(
+                        start, Math.min(LAST_SMALL_ADDRESS, start + length), level, start + "+" + length + "@" + level))
+                .list()
+                .ofMaxSize(12);
     }
 
     private static Range range(String start, String end, int level, String description) {
