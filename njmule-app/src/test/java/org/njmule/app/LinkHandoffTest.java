@@ -17,7 +17,7 @@
 package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -35,248 +35,541 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @Timeout(30)
 class LinkHandoffTest {
 
     private static final String LINK = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/";
+    private static final String ANY_SECRET = "ab".repeat(32);
+    // One character too many, and no more: nothing is left unread to reset the connection.
+    private static final String TOO_LONG = "ed2k://" + "a".repeat(LinkHandoff.MAX_LINE - 6);
 
     @TempDir
     Path dir;
 
     private final BlockingQueue<List<String>> received = new LinkedBlockingQueue<>();
+    private LinkHandoff handoff;
+    private Path notADirectory;
+    private Socket slow;
+    private Thread trickle;
+    private long start;
+    private FileChannel lockChannel;
+    private FileLock lock;
+    private boolean delivered;
+    private boolean gone;
+    private boolean stillInterrupted;
+    private String answer;
+    private Throwable exception;
 
-    @Test
-    void aLaterStartHandsItsLinksToTheRunningOne() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK, "http://example.org/not-a-link")))
-                    .isTrue();
-            assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
-
-            assertThat(LinkHandoff.deliver(this.dir, List.of()))
-                    .as("a start that only wants the window")
-                    .isTrue();
-            assertThat(this.received.poll(5, TimeUnit.SECONDS)).isEmpty();
+    @AfterEach
+    void closeWhatIsStillOpen() throws IOException {
+        if (this.trickle != null) {
+            this.trickle.interrupt();
         }
-        assertThat(this.dir.resolve(LinkHandoff.FILE_NAME)).doesNotExist();
-        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
-                .as("nobody listens")
-                .isFalse();
+        if (this.slow != null) {
+            this.slow.close();
+        }
+        if (this.handoff != null) {
+            this.handoff.close();
+        }
+        releaseTheLock();
     }
 
     @Test
-    void onlyWhoKnowsTheSecretHandsOverLinks() throws Exception {
-        Path file = this.dir.resolve(LinkHandoff.FILE_NAME);
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
-                assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
-                        .isEqualTo("rw-------");
-            }
-            String port = Files.readString(file, StandardCharsets.US_ASCII).split(" ", -1)[0];
-            Files.writeString(file, port + " " + "00".repeat(32) + "\n", StandardCharsets.US_ASCII);
+    void shouldHandTheLinksOfALaterStartToTheRunningOne() throws Exception {
+        givenARunningInstance();
 
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
-            assertThat(this.received.poll(500, TimeUnit.MILLISECONDS)).isNull();
-        }
-        assertThat(file).as("the file another instance wrote stays").exists();
+        whenALaterStartDelivers(LINK, "http://example.org/not-a-link");
+
+        thenTheLinksWereDelivered();
+        thenTheRunningInstanceReceives(LINK);
     }
 
     @Test
-    void aReceiverThatFailsStillTakesTheLinks() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, links -> {
+    void shouldHandAStartThatOnlyWantsTheWindowToTheRunningOne() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartDelivers();
+
+        thenTheLinksWereDelivered();
+        thenTheRunningInstanceReceives();
+    }
+
+    @Test
+    void shouldRemoveTheHandoffFileWhenTheRunningOneCloses() throws Exception {
+        givenARunningInstance();
+
+        whenTheRunningInstanceCloses();
+
+        thenThereIsNoHandoffFile();
+    }
+
+    @Test
+    void shouldFindNobodyListeningOnceTheRunningOneClosed() throws Exception {
+        givenARunningInstance();
+        givenTheRunningInstanceClosed();
+
+        whenALaterStartDelivers(LINK);
+
+        thenNobodyListens();
+    }
+
+    @Test
+    void shouldKeepTheHandoffFileToItsOwner() throws Exception {
+        whenTheInstanceStartsListening();
+
+        thenOnlyTheOwnerCanReadTheHandoffFile();
+    }
+
+    @Test
+    void shouldLetOnlyWhoKnowsTheSecretHandOverLinks() throws Exception {
+        givenARunningInstance();
+        givenAnotherSecretInTheHandoffFile();
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+        thenTheRunningInstanceReceivesNothingWithin(Duration.ofMillis(500));
+    }
+
+    @Test
+    void shouldLeaveTheHandoffFileAnotherInstanceWrote() throws Exception {
+        givenARunningInstance();
+        givenAnotherSecretInTheHandoffFile();
+
+        whenTheRunningInstanceCloses();
+
+        thenTheHandoffFileStays();
+    }
+
+    @Test
+    void shouldTakeTheLinksEvenIfTheReceiverFails() throws Exception {
+        givenARunningInstanceThatCannotFollowLinks();
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLaterStartDoesNotRunBesideIt();
+        thenTheRunningInstanceReceives(LINK);
+    }
+
+    @Test
+    void shouldNotLetALinkSmuggleInAnotherLineOrAnEmptyOneEndTheList() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartDelivers("ed2k://|server|x|1|/\n" + LinkHandoff.EXIT, "", "a\rb", LINK);
+
+        thenTheLinksWereDelivered();
+        thenTheRunningInstanceReceives(LINK);
+    }
+
+    @Test
+    void shouldTakeTheExitRequestOnlyAlone() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartSendsTheSecretAnd(LINK + "\n" + LinkHandoff.EXIT + "\n\n");
+
+        thenTheAnswerStartsWith("OK");
+        thenTheRunningInstanceReceives(LINK);
+    }
+
+    @Test
+    void shouldNotLetASlowLocalProgramHoldAnybodyUp() throws Exception {
+        givenARunningInstance();
+        givenASlowLocalProgram();
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereDelivered();
+        thenTheRunningInstanceReceives(LINK);
+        thenTheSlowProgramIsDropped();
+        thenItAllTookLessThan(LinkHandoff.DEADLINE.plusSeconds(5));
+    }
+
+    @Test
+    void shouldTakeAFileLeftByACrashForNoRunningInstance() throws Exception {
+        givenTheHandoffFile("1 " + ANY_SECRET + "\n");
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"70000", "65536", "-1", "0"})
+    void shouldTakeAFileWithAnInvalidPortForNoRunningInstance(String port) throws Exception {
+        givenTheHandoffFile(port + " " + ANY_SECRET + "\n");
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+    }
+
+    @ParameterizedTest
+    @MethodSource("damagedContents")
+    void shouldTakeADamagedFileForNoRunningInstance(String content) throws Exception {
+        givenTheHandoffFile(content + "\n");
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+    }
+
+    @Test
+    void shouldTakeAnUnreadableFileForNoRunningInstance() throws Exception {
+        givenTheHandoffFileIsADirectory();
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+    }
+
+    @Test
+    void shouldNeedAPlaceForTheFileToListen() throws Exception {
+        givenAFileInPlaceOfTheConfigurationDirectory();
+
+        whenTryingToListen();
+
+        thenExceptionOccurred(IOException.class);
+    }
+
+    @Test
+    void shouldCopeWithAFileAlreadyGoneWhenClosing() throws Exception {
+        givenARunningInstance();
+        givenTheHandoffFileWasDeleted();
+        givenTheRunningInstanceClosed();
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheLinksWereNotDelivered();
+    }
+
+    // Only the first line, which ends the exchange: nothing is left unread to reset the connection.
+    @ParameterizedTest
+    @ValueSource(strings = {"", "not hex\n", "ab\n"})
+    void shouldGiveNoAnswerToAProgramWithoutTheSecret(String sent) throws Exception {
+        givenARunningInstance();
+
+        whenAProgramSends(sent);
+
+        thenThereIsNoAnswer();
+        thenTheRunningInstanceReceivesNothingWithin(Duration.ofMillis(300));
+    }
+
+    @Test
+    void shouldTakeAtMostSoManyLinks() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartSendsTheSecretAnd(fileLinks(LinkHandoff.MAX_LINKS + 10));
+
+        thenTheAnswerStartsWith("OK");
+        thenTheRunningInstanceReceivesSoManyLinksStartingWith(LinkHandoff.MAX_LINKS, "|0.iso|");
+    }
+
+    @Test
+    void shouldTakeTheLastLinkWithoutItsLineEnd() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartSendsTheSecretAnd(LINK);
+
+        thenTheAnswerStartsWith("OK");
+        thenTheRunningInstanceReceives(LINK);
+    }
+
+    @Test
+    void shouldEndTheExchangeAtALineTooLong() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartSendsTheSecretAnd(TOO_LONG);
+
+        thenThereIsNoAnswer();
+        thenTheRunningInstanceReceivesNothingWithin(Duration.ofMillis(300));
+    }
+
+    @Test
+    void shouldStillListenAfterALineTooLong() throws Exception {
+        givenARunningInstance();
+        givenALaterStartSentTheSecretAnd(TOO_LONG);
+
+        whenALaterStartDelivers(LINK);
+
+        thenTheRunningInstanceStillListens();
+    }
+
+    @Test
+    void shouldNotTakeAnInstanceHoldingItsLockForGoneInAnInterruptedWait() throws Exception {
+        givenAnInstanceHoldingItsLock();
+
+        whenItIsAwaitedToGoWhileInterrupted(Duration.ofSeconds(5));
+
+        thenItHasNotGone();
+        thenTheThreadIsStillInterrupted();
+    }
+
+    @Test
+    void shouldTakeAnInstanceForGoneOnceNobodyHoldsItsLock() throws Exception {
+        givenAnInstanceHoldingItsLock();
+        givenItReleasedItsLock();
+
+        whenItIsAwaitedToGo(Duration.ofSeconds(5));
+
+        thenItHasGone();
+    }
+
+    @Test
+    void shouldTakeAnInstanceForGoneWhenItsLockCannotBeOpenedAndItsHandoffFileIsGone() throws Exception {
+        givenALockThatCannotBeOpened();
+
+        whenItIsAwaitedToGo(Duration.ofMillis(300));
+
+        thenItHasGone();
+    }
+
+    @Test
+    void shouldNotTakeAnInstanceForGoneWhenItsLockCannotBeOpenedAndItsHandoffFileStays() throws Exception {
+        givenALockThatCannotBeOpened();
+        givenTheHandoffFile("1 " + ANY_SECRET + "\n");
+
+        whenItIsAwaitedToGo(Duration.ofMillis(300));
+
+        thenItHasNotGone();
+    }
+
+    static Stream<String> damagedContents() {
+        return Stream.of("4711", "port " + ANY_SECRET, "1 2 3");
+    }
+
+    private void givenARunningInstance() throws IOException {
+        this.handoff = LinkHandoff.listen(this.dir, this.received::add);
+    }
+
+    private void givenARunningInstanceThatCannotFollowLinks() throws IOException {
+        this.handoff = LinkHandoff.listen(this.dir, links -> {
             this.received.add(links);
             throw new IllegalArgumentException("cannot follow");
-        })) {
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
-                    .as("the later start must not try to run beside it")
-                    .isTrue();
-            assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
-        }
+        });
     }
 
-    @Test
-    void aLinkCannotSmuggleInAnotherLine() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            assertThat(LinkHandoff.deliver(
-                            this.dir, List.of("ed2k://|server|x|1|/\n" + LinkHandoff.EXIT, "", "a\rb", LINK)))
-                    .isTrue();
-            assertThat(this.received.poll(5, TimeUnit.SECONDS))
-                    .as("no exit request, and an empty link does not end the list")
-                    .containsExactly(LINK);
-
-            String[] fields = Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
-                    .strip()
-                    .split(" ", -1);
-            try (Socket client = new Socket(InetAddress.getLoopbackAddress(), Integer.parseInt(fields[0]))) {
-                client.getOutputStream()
-                        .write((fields[1] + "\n" + LINK + "\n" + LinkHandoff.EXIT + "\n\n")
-                                .getBytes(StandardCharsets.UTF_8));
-                assertThat(new String(client.getInputStream().readAllBytes(), StandardCharsets.UTF_8))
-                        .startsWith("OK");
-            }
-            assertThat(this.received.poll(5, TimeUnit.SECONDS))
-                    .as("the exit request counts only alone")
-                    .containsExactly(LINK);
-        }
+    private void givenTheRunningInstanceClosed() {
+        whenTheRunningInstanceCloses();
     }
 
-    @Test
-    void aSlowLocalProgramHoldsNobodyUp() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            String port = Files.readString(this.dir.resolve(LinkHandoff.FILE_NAME), StandardCharsets.US_ASCII)
-                    .split(" ", -1)[0];
-            try (Socket slow = new Socket(InetAddress.getLoopbackAddress(), Integer.parseInt(port))) {
-                // A byte now and then, never a whole line.
-                Thread trickle = Thread.ofVirtual().start(() -> {
-                    try {
-                        while (true) {
-                            slow.getOutputStream().write('a');
-                            Thread.sleep(200);
-                        }
-                    } catch (IOException | InterruptedException e) {
-                        // Closed.
-                    }
-                });
-                long start = System.nanoTime();
-                assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isTrue();
-                assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
-
-                slow.setSoTimeout(
-                        Math.toIntExact(LinkHandoff.DEADLINE.plusSeconds(5).toMillis()));
-                assertThat(slow.getInputStream().read()).as("dropped").isEqualTo(-1);
-                assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(LinkHandoff.DEADLINE.plusSeconds(5));
-                trickle.interrupt();
-            }
-        }
+    private void givenAnotherSecretInTheHandoffFile() throws IOException {
+        Files.writeString(
+                this.dir.resolve(LinkHandoff.FILE_NAME),
+                port() + " " + "00".repeat(32) + "\n",
+                StandardCharsets.US_ASCII);
     }
 
-    @Test
-    void aFileLeftByACrashIsNoRunningInstance() throws Exception {
-        Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), "1 " + "ab".repeat(32) + "\n");
-
-        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
-    }
-
-    @Test
-    void aDamagedFileIsNoRunningInstance() throws Exception {
-        for (String port : new String[] {"70000", "65536", "-1", "0"}) {
-            Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), port + " " + "ab".repeat(32) + "\n");
-
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).as(port).isFalse();
-        }
-        for (String content : new String[] {"4711", "port " + "ab".repeat(32), "1 2 3"}) {
-            Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), content + "\n");
-
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).as(content).isFalse();
-        }
-    }
-
-    @Test
-    void anUnreadableFileIsNoRunningInstance() throws Exception {
-        Files.createDirectories(this.dir.resolve(LinkHandoff.FILE_NAME));
-
-        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
-    }
-
-    @Test
-    void listeningNeedsAPlaceForTheFile() throws Exception {
-        Path notADirectory = Files.writeString(this.dir.resolve("config"), "a file");
-
-        assertThatThrownBy(() -> LinkHandoff.listen(notADirectory, this.received::add))
-                .isInstanceOf(IOException.class);
-    }
-
-    @Test
-    void closingCopesWithAFileAlreadyGone() throws Exception {
-        LinkHandoff handoff = LinkHandoff.listen(this.dir, this.received::add);
-        Files.delete(this.dir.resolve(LinkHandoff.FILE_NAME));
-
-        handoff.close();
-
-        assertThat(LinkHandoff.deliver(this.dir, List.of(LINK))).isFalse();
-    }
-
-    @Test
-    void aProgramWithoutTheSecretGetsNoAnswer() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            int port = port();
-            // Only the first line, which ends the exchange: nothing is left unread to reset the connection.
-            for (String sent : new String[] {"", "not hex\n", "ab\n"}) {
-                try (Socket client = new Socket(InetAddress.getLoopbackAddress(), port)) {
-                    client.getOutputStream().write(sent.getBytes(StandardCharsets.UTF_8));
-                    client.shutdownOutput();
-                    assertThat(client.getInputStream().readAllBytes()).as(sent).isEmpty();
-                }
-            }
-            assertThat(this.received.poll(300, TimeUnit.MILLISECONDS)).isNull();
-        }
-    }
-
-    @Test
-    void takesAtMostSoManyLinksAndTheLastOneWithoutItsLineEnd() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            StringBuilder sent = new StringBuilder(secret()).append('\n');
-            for (int i = 0; i < LinkHandoff.MAX_LINKS + 10; i++) {
-                sent.append("ed2k://|file|")
-                        .append(i)
-                        .append(".iso|10|")
-                        .append("ab".repeat(16))
-                        .append("|/\n");
-            }
-            assertThat(exchange(sent.toString())).startsWith("OK");
-            List<String> links = this.received.poll(5, TimeUnit.SECONDS);
-            assertThat(links).hasSize(LinkHandoff.MAX_LINKS);
-            assertThat(links.getFirst()).contains("|0.iso|");
-
-            assertThat(exchange(secret() + "\n" + LINK)).startsWith("OK");
-            assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
-        }
-    }
-
-    @Test
-    void aLineTooLongEndsTheExchange() throws Exception {
-        try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            // One character too many, and no more: nothing is left unread to reset the connection.
-            String tooLong = "ed2k://" + "a".repeat(LinkHandoff.MAX_LINE - 6);
-
-            assertThat(exchange(secret() + "\n" + tooLong)).isEmpty();
-            assertThat(this.received.poll(300, TimeUnit.MILLISECONDS)).isNull();
-            assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
-                    .as("still listening")
-                    .isTrue();
-        }
-    }
-
-    @Test
-    void anInstanceHoldingItsLockHasNotGone() throws Exception {
-        Path lock = this.dir.resolve("njmule.lock");
-        try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                FileLock _ = channel.lock()) {
-            Thread.currentThread().interrupt();
+    private void givenASlowLocalProgram() throws IOException {
+        this.slow = new Socket(InetAddress.getLoopbackAddress(), port());
+        Socket socket = this.slow;
+        // A byte now and then, never a whole line.
+        this.trickle = Thread.ofVirtual().start(() -> {
             try {
-                assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofSeconds(5)))
-                        .as("an interrupted wait")
-                        .isFalse();
-                assertThat(Thread.currentThread().isInterrupted()).isTrue();
-            } finally {
-                Thread.interrupted();
+                while (true) {
+                    socket.getOutputStream().write('a');
+                    Thread.sleep(200);
+                }
+            } catch (IOException | InterruptedException e) {
+                // Closed.
             }
+        });
+        this.start = System.nanoTime();
+    }
+
+    private void givenTheHandoffFile(String content) throws IOException {
+        Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), content);
+    }
+
+    private void givenTheHandoffFileIsADirectory() throws IOException {
+        Files.createDirectories(this.dir.resolve(LinkHandoff.FILE_NAME));
+    }
+
+    private void givenTheHandoffFileWasDeleted() throws IOException {
+        Files.delete(this.dir.resolve(LinkHandoff.FILE_NAME));
+    }
+
+    private void givenAFileInPlaceOfTheConfigurationDirectory() throws IOException {
+        this.notADirectory = Files.writeString(this.dir.resolve("config"), "a file");
+    }
+
+    private void givenALaterStartSentTheSecretAnd(String lines) throws IOException {
+        exchange(secret() + "\n" + lines);
+    }
+
+    private void givenAnInstanceHoldingItsLock() throws IOException {
+        this.lockChannel =
+                FileChannel.open(this.dir.resolve("njmule.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        this.lock = this.lockChannel.lock();
+    }
+
+    private void givenItReleasedItsLock() throws IOException {
+        releaseTheLock();
+    }
+
+    private void givenALockThatCannotBeOpened() throws IOException {
+        Files.createDirectories(this.dir.resolve("njmule.lock"));
+    }
+
+    private void whenTheInstanceStartsListening() throws IOException {
+        givenARunningInstance();
+    }
+
+    private void whenTryingToListen() {
+        this.exception =
+                catchThrowable(() -> this.handoff = LinkHandoff.listen(this.notADirectory, this.received::add));
+    }
+
+    private void whenALaterStartDelivers(String... links) {
+        this.delivered = LinkHandoff.deliver(this.dir, List.of(links));
+    }
+
+    private void whenALaterStartSendsTheSecretAnd(String lines) throws IOException {
+        this.answer = exchange(secret() + "\n" + lines);
+    }
+
+    private void whenAProgramSends(String text) throws IOException {
+        this.answer = exchange(text);
+    }
+
+    private void whenTheRunningInstanceCloses() {
+        this.handoff.close();
+        this.handoff = null;
+    }
+
+    private void whenItIsAwaitedToGo(Duration timeout) {
+        this.gone = LinkHandoff.awaitGone(this.dir, timeout);
+    }
+
+    private void whenItIsAwaitedToGoWhileInterrupted(Duration timeout) {
+        Thread.currentThread().interrupt();
+        try {
+            this.gone = LinkHandoff.awaitGone(this.dir, timeout);
+            this.stillInterrupted = Thread.currentThread().isInterrupted();
+        } finally {
+            Thread.interrupted();
         }
-        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofSeconds(5)))
-                .as("a lock nobody holds")
+    }
+
+    private void thenTheLinksWereDelivered() {
+        assertThat(this.delivered).isTrue();
+    }
+
+    private void thenTheLinksWereNotDelivered() {
+        assertThat(this.delivered).isFalse();
+    }
+
+    private void thenNobodyListens() {
+        assertThat(this.delivered).as("nobody listens").isFalse();
+    }
+
+    private void thenTheLaterStartDoesNotRunBesideIt() {
+        assertThat(this.delivered)
+                .as("the later start must not try to run beside it")
                 .isTrue();
     }
 
-    @Test
-    void aLockThatCannotBeOpenedGoesByTheHandoffFile() throws Exception {
-        Files.createDirectories(this.dir.resolve("njmule.lock"));
-        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofMillis(300))).isTrue();
+    private void thenTheRunningInstanceStillListens() {
+        assertThat(this.delivered).as("still listening").isTrue();
+    }
 
-        Files.writeString(this.dir.resolve(LinkHandoff.FILE_NAME), "1 " + "ab".repeat(32) + "\n");
-        assertThat(LinkHandoff.awaitGone(this.dir, Duration.ofMillis(300))).isFalse();
+    private void thenTheRunningInstanceReceives(String... links) throws InterruptedException {
+        assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(links);
+    }
+
+    private void thenTheRunningInstanceReceivesSoManyLinksStartingWith(int count, String firstPart)
+            throws InterruptedException {
+        List<String> links = this.received.poll(5, TimeUnit.SECONDS);
+        assertThat(links).hasSize(count);
+        assertThat(links.getFirst()).contains(firstPart);
+    }
+
+    private void thenTheRunningInstanceReceivesNothingWithin(Duration timeout) throws InterruptedException {
+        assertThat(this.received.poll(timeout.toMillis(), TimeUnit.MILLISECONDS))
+                .isNull();
+    }
+
+    private void thenTheAnswerStartsWith(String start) {
+        assertThat(this.answer).startsWith(start);
+    }
+
+    private void thenThereIsNoAnswer() {
+        assertThat(this.answer).isEmpty();
+    }
+
+    private void thenThereIsNoHandoffFile() {
+        assertThat(this.dir.resolve(LinkHandoff.FILE_NAME)).doesNotExist();
+    }
+
+    private void thenTheHandoffFileStays() {
+        assertThat(this.dir.resolve(LinkHandoff.FILE_NAME))
+                .as("the file another instance wrote stays")
+                .exists();
+    }
+
+    private void thenOnlyTheOwnerCanReadTheHandoffFile() throws IOException {
+        if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            assertThat(PosixFilePermissions.toString(
+                            Files.getPosixFilePermissions(this.dir.resolve(LinkHandoff.FILE_NAME))))
+                    .isEqualTo("rw-------");
+        }
+    }
+
+    private void thenTheSlowProgramIsDropped() throws IOException {
+        this.slow.setSoTimeout(
+                Math.toIntExact(LinkHandoff.DEADLINE.plusSeconds(5).toMillis()));
+        assertThat(this.slow.getInputStream().read()).as("dropped").isEqualTo(-1);
+    }
+
+    private void thenItAllTookLessThan(Duration limit) {
+        assertThat(Duration.ofNanos(System.nanoTime() - this.start)).isLessThan(limit);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenItHasGone() {
+        assertThat(this.gone).isTrue();
+    }
+
+    private void thenItHasNotGone() {
+        assertThat(this.gone).isFalse();
+    }
+
+    private void thenTheThreadIsStillInterrupted() {
+        assertThat(this.stillInterrupted).isTrue();
+    }
+
+    private void releaseTheLock() throws IOException {
+        if (this.lock != null) {
+            this.lock.close();
+            this.lock = null;
+        }
+        if (this.lockChannel != null) {
+            this.lockChannel.close();
+            this.lockChannel = null;
+        }
+    }
+
+    private static String fileLinks(int count) {
+        StringBuilder links = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            links.append("ed2k://|file|")
+                    .append(i)
+                    .append(".iso|10|")
+                    .append("ab".repeat(16))
+                    .append("|/\n");
+        }
+        return links.toString();
     }
 
     private int port() throws IOException {

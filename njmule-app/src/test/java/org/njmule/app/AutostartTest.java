@@ -17,6 +17,7 @@
 package org.njmule.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,8 +26,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /** The start at login against a pretend registry and temp folders: nothing here touches the real system. */
 class AutostartTest {
@@ -50,6 +55,7 @@ class AutostartTest {
     private final List<String> imported = new ArrayList<>();
     private Optional<Autostart> autostart;
     private boolean on;
+    private String execArgument;
 
     @Test
     void shouldOfferNothingToAJavaLauncher() {
@@ -195,13 +201,12 @@ class AutostartTest {
         thenItIsOn(false);
     }
 
-    @Test
-    void shouldEscapeTheReservedCharactersOfAnExecLine() {
-        thenTheExecArgumentOfIs("plain", "plain");
-        thenTheExecArgumentOfIs("a b", "\"a b\"");
-        thenTheExecArgumentOfIs("say \"$hi\"", "\"say \\\\\"\\\\$hi\\\\\"\"");
-        thenTheExecArgumentOfIs("C:\\x", "\"C:\\\\\\\\x\"");
-        thenTheExecArgumentOfIs("", "\"\"");
+    @ParameterizedTest
+    @MethodSource("execArguments")
+    void shouldEscapeTheReservedCharactersOfAnExecLine(String argument, String expected) {
+        whenTheExecArgumentIsWrittenFor(argument);
+
+        thenTheExecArgumentIs(expected);
     }
 
     @Test
@@ -300,6 +305,10 @@ class AutostartTest {
         this.on = this.autostart.orElseThrow().isOn();
     }
 
+    private void whenTheExecArgumentIsWrittenFor(String argument) {
+        this.execArgument = SystemAutostart.Linux.execArgument(argument);
+    }
+
     private void thenThereIsNone() {
         assertThat(this.autostart).isEmpty();
     }
@@ -339,13 +348,22 @@ class AutostartTest {
         assertThat(file).isRegularFile();
     }
 
-    private void thenTheExecArgumentOfIs(String argument, String expected) {
-        assertThat(SystemAutostart.Linux.execArgument(argument)).isEqualTo(expected);
+    private void thenTheExecArgumentIs(String expected) {
+        assertThat(this.execArgument).isEqualTo(expected);
     }
 
     private void thenTheLaunchAgentContains(String text) throws IOException {
         Path agent = this.dir.resolve("home/Library/LaunchAgents/org.njmule.njMule.plist");
         assertThat(Files.readString(agent, StandardCharsets.UTF_8)).contains(text);
+    }
+
+    static Stream<Arguments> execArguments() {
+        return Stream.of(
+                arguments("plain", "plain"),
+                arguments("a b", "\"a b\""),
+                arguments("say \"$hi\"", "\"say \\\\\"\\\\$hi\\\\\"\""),
+                arguments("C:\\x", "\"C:\\\\\\\\x\""),
+                arguments("", "\"\""));
     }
 
     private Path linuxEntry() {
