@@ -200,7 +200,7 @@ class ConnectionGuardTest {
     }
 
     @Test
-    void anAddressOpeningConnectionsInARowLeavesTheAcceptRateToOthers() {
+    void shouldLeaveTheAcceptRateToOthersWhenAnAddressOpensConnectionsInARow() {
         givenAGuard(new Limits(100, 2, 8, Duration.ofSeconds(5)));
         givenAnAddressThatOpenedAndClosedConnectionsInARow(PEER, 8);
 
@@ -211,7 +211,7 @@ class ConnectionGuardTest {
     }
 
     @Test
-    void ourConnectionsCountInTheTotalTheIncomingOnesShare() {
+    void shouldCountOurConnectionsInTheTotalTheIncomingOnesShare() {
         givenAGuard(new Limits(2, 5, 100, Duration.ofSeconds(5)));
         givenConnectionsOfOurs(2);
 

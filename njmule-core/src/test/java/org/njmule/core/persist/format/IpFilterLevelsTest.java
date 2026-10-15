@@ -31,7 +31,7 @@ class IpFilterLevelsTest {
     private List<Range> ranges;
 
     @Test
-    void aBlockedRangeInsideAnAllowedOneStaysBlocked() {
+    void shouldKeepBlockedARangeInsideAnAllowedOne() {
         givenAFilterList("""
                 10.0.0.0 - 10.0.0.255 , 200 , allowed
                 10.0.0.100 - 10.0.1.255 , 000 , blocked
@@ -44,7 +44,7 @@ class IpFilterLevelsTest {
     }
 
     @Test
-    void aBlockedRangeDoesNotGrowOverAnAllowedOne() {
+    void shouldNotGrowABlockedRangeOverAnAllowedOne() {
         givenAFilterList("""
                 10.0.0.0 - 10.0.0.255 , 000 , blocked
                 10.0.0.200 - 10.0.3.255 , 200 , allowed
@@ -57,7 +57,7 @@ class IpFilterLevelsTest {
     }
 
     @Test
-    void overlappingRangesOfOneLevelBecomeOne() {
+    void shouldMergeTheOverlappingRangesOfOneLevel() {
         givenAFilterList("""
                 10.0.0.100 - 10.0.1.255 , 000 , second
                 10.0.0.0 - 10.0.0.255 , 000 , first

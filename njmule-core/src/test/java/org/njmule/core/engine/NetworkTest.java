@@ -826,7 +826,7 @@ class NetworkTest {
     }
 
     @Test
-    void aNewIdFromTheServerIsTheIdOurHelloTells() throws Exception {
+    void shouldTellInOurHelloTheNewIdFromTheServer() throws Exception {
         givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
 
         whenTheServerGivesUsTheId(OTHER_HIGH_ID);
@@ -861,7 +861,7 @@ class NetworkTest {
     }
 
     @Test
-    void kadGetsItsPortEvenWhenTheServerSocketHoldsIt() throws Exception {
+    void shouldGiveKadItsPortEvenWhenTheServerSocketHoldsIt() throws Exception {
         givenARunningNetworkWithoutKad();
 
         whenKadIsTurnedOnAtThePortOfTheServerSocket();
@@ -892,7 +892,7 @@ class NetworkTest {
     }
 
     @Test
-    void aRunForTheUserConnectsAtStartWhenThePreferencesSaySo() throws Exception {
+    void shouldConnectAtTheStartOfARunForTheUserWhenThePreferencesSaySo() throws Exception {
         givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         givenConnectingAtStart(true);
 
@@ -902,7 +902,7 @@ class NetworkTest {
     }
 
     @Test
-    void aRunForTheUserStaysDisconnectedWhenThePreferencesSaySo() throws Exception {
+    void shouldStayDisconnectedInARunForTheUserWhenThePreferencesSaySo() throws Exception {
         givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         givenConnectingAtStart(false);
 

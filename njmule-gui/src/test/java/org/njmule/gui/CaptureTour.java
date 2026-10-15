@@ -149,7 +149,7 @@ class CaptureTour {
     private final AtomicReference<MainWindow> forMessages = new AtomicReference<>();
 
     @Test
-    void everyStateOfTheInterfaceIsPictured() throws Exception {
+    void shouldPictureEveryStateOfTheInterface() throws Exception {
         givenTheSetsAsked();
         whenEachSetIsPictured();
         thenEveryPictureIsListedAndNothingFailedToOpen();

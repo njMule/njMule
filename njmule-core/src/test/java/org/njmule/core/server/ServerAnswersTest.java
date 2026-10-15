@@ -76,7 +76,7 @@ class ServerAnswersTest {
     }
 
     @Test
-    void aSearchAnswerThatCannotBeReadStillAnswersTheSearch() throws Exception {
+    void shouldStillAnswerTheSearchWhenItsAnswerCannotBeRead() throws Exception {
         givenALoggedInSession();
 
         // One result announcing five tags, and one byte for them.
@@ -89,7 +89,7 @@ class ServerAnswersTest {
     }
 
     @Test
-    void aPacketThatDoesNotInflateIsDroppedAndTheSessionGoesOn() throws Exception {
+    void shouldDropAPacketThatDoesNotInflateAndGoOnWithTheSession() throws Exception {
         givenALoggedInSession();
 
         whenTheServerSends(

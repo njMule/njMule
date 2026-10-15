@@ -32,7 +32,7 @@ class ServerUdpTest {
     private int busy;
 
     @Test
-    void aClosedSocketLeavesItsPortFreeAtOnce() throws Exception {
+    void shouldLeaveThePortOfAClosedSocketFreeAtOnce() throws Exception {
         whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
         thenThePortWasBusyTimes(0);
     }

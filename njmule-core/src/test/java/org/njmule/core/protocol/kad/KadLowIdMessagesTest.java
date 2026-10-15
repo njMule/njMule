@@ -40,7 +40,7 @@ class KadLowIdMessagesTest {
     private Exception failure;
 
     @Test
-    void aBuddyRequestGivesTheBuddyIdTheUserHashAndThePort() throws Exception {
+    void shouldGiveTheBuddyIdTheUserHashAndThePortInABuddyRequest() throws Exception {
         whenSent(new KadMessages.FindBuddy(ID, HASH, 4662).encode());
 
         thenThePacketIs(Opcodes.Kad.FINDBUDDY_REQ, ID_WIRE + HASH_WIRE + "3612");
@@ -48,7 +48,7 @@ class KadLowIdMessagesTest {
     }
 
     @Test
-    void aBuddyOfferCarriesTheConnectOptionsWhenGiven() throws Exception {
+    void shouldCarryTheConnectOptionsInABuddyOfferWhenGiven() throws Exception {
         whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.of(3)).encode());
 
         thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612" + "03");
@@ -57,7 +57,7 @@ class KadLowIdMessagesTest {
     }
 
     @Test
-    void aBuddyOfferOfAnOlderNodeHasNoConnectOptions() throws Exception {
+    void shouldLeaveTheConnectOptionsOutOfABuddyOfferOfAnOlderNode() throws Exception {
         whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.empty()).encode());
 
         thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612");
@@ -66,7 +66,7 @@ class KadLowIdMessagesTest {
     }
 
     @Test
-    void aCallbackRequestGivesTheBuddyIdTheFileAndOurPort() throws Exception {
+    void shouldGiveTheBuddyIdTheFileAndOurPortInACallbackRequest() throws Exception {
         whenSent(new KadMessages.CallbackRequest(ID, HASH, 4662).encode());
 
         thenThePacketIs(Opcodes.Kad.CALLBACK_REQ, ID_WIRE + HASH_WIRE + "3612");
@@ -74,7 +74,7 @@ class KadLowIdMessagesTest {
     }
 
     @Test
-    void theUdpTestDatagramGivesTheErrorAndThePort() throws Exception {
+    void shouldGiveTheErrorAndThePortInTheUdpTestDatagram() throws Exception {
         whenSent(new KadMessages.FirewallUdp(1, 4672).encode());
 
         thenThePacketIs(Opcodes.Kad.FIREWALLUDP, "01" + "4012");
@@ -82,14 +82,14 @@ class KadLowIdMessagesTest {
     }
 
     @Test
-    void aCallbackRequestTooShortIsRefused() {
+    void shouldRefuseACallbackRequestTooShort() {
         whenACallbackRequestIsRead(new byte[33]);
 
         thenExceptionOccurred(DecodeException.class);
     }
 
     @Test
-    void aBuddyRequestTooShortIsRefused() {
+    void shouldRefuseABuddyRequestTooShort() {
         whenABuddyRequestIsRead(new byte[33]);
 
         thenExceptionOccurred(DecodeException.class);

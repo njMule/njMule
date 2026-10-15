@@ -71,7 +71,7 @@ class DownloadDiskSpaceTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void aWriteThatFailsOnADiskOutOfSpaceMakesTheDownloadsWaitInsteadOfFailing() throws Exception {
+    void shouldMakeTheDownloadsWaitInsteadOfFailingWhenAWriteFindsTheDiskFull() throws Exception {
         givenADownload();
         givenItsDataCannotBeWritten();
 
@@ -82,7 +82,7 @@ class DownloadDiskSpaceTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void aDownloadThatWaitsForRoomAfterAFailedWriteGoesOnByItself() throws Exception {
+    void shouldGoOnByItselfWithADownloadWaitingForRoomAfterAFailedWrite() throws Exception {
         givenADownload();
         givenItsDataCannotBeWritten();
         givenDataArrivedWhileTheDiskWasOutOfSpace();

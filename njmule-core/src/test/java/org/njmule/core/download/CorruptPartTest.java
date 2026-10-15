@@ -70,7 +70,7 @@ class CorruptPartTest {
     }
 
     @Test
-    void aCorruptPartIsWholeAgainOnceItsBadBlockIsDownloadedAgain() throws Exception {
+    void shouldMakeACorruptPartWholeOnceItsBadBlockIsDownloadedAgain() throws Exception {
         givenADownloadOfTwoParts();
         givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
 
@@ -80,7 +80,7 @@ class CorruptPartTest {
     }
 
     @Test
-    void dataForAPartThatIsWholeAgainIsNotWrittenOverIt() throws Exception {
+    void shouldNotWriteDataOverAPartThatIsWholeAgain() throws Exception {
         givenADownloadOfTwoParts();
         givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
         givenTheBlockArrivedAgainAt(BAD_BLOCK);
@@ -91,7 +91,7 @@ class CorruptPartTest {
     }
 
     @Test
-    void theSourceThatAloneSentACorruptPartThreeTimesIsReported() throws Exception {
+    void shouldReportTheSourceThatAloneSentACorruptPartThreeTimes() throws Exception {
         givenADownloadOfTwoParts();
         givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
         givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);

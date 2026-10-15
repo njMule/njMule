@@ -158,7 +158,7 @@ class ServerPingerTest {
     }
 
     @Test
-    void aServerLastPingedInTheFutureIsCheckedAgain() {
+    void shouldCheckAgainAServerLastPingedInTheFuture() {
         givenAServerThatFailedOftenAndWasLastPingedIn(Duration.ofDays(30));
 
         whenTheNextServerIsPinged();

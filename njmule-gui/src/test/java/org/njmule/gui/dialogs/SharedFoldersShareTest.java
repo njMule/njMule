@@ -49,7 +49,7 @@ class SharedFoldersShareTest {
     }
 
     @Test
-    void theFoldersCanGrowFromTheirOwnWindow() throws Exception {
+    void shouldLetTheFoldersGrowFromTheirOwnWindow() throws Exception {
         givenTheSharedFoldersWithAWayToShare();
         whenTheButtonIsPressed("Share Directory");
         thenAFolderWasAskedFor();

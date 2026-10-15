@@ -73,7 +73,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aDamagedKnown2IsReadFromItsBackup() throws Exception {
+    void shouldReadADamagedKnown2FromItsBackup() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin");
         givenKnownMetRecords("a.bin");
         givenTheBackupOfKnown2HoldsTheTreeOf("a.bin");
@@ -85,7 +85,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aKnown2CutShortKeepsTheTreesBeforeTheCut() throws Exception {
+    void shouldKeepTheTreesBeforeTheCutOfAKnown2CutShort() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin", "b.bin");
         givenKnownMetRecords("a.bin", "b.bin");
         givenKnown2HoldsTheTreesOfCutShort("a.bin", "b.bin");
@@ -96,7 +96,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aKnownMetCutShortKeepsTheRecordsBeforeTheCut() throws Exception {
+    void shouldKeepTheRecordsBeforeTheCutOfAKnownMetCutShort() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin", "b.bin");
         givenKnownMetCutShortRecords("a.bin", "b.bin");
 
@@ -106,7 +106,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aFileWhoseDateChangesKeepsOneRecord() throws Exception {
+    void shouldKeepOneRecordForAFileWhoseDateChanges() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin");
         givenTheFilesAreSharedAndRecorded();
 
@@ -116,7 +116,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aTreeNoRecordNeedsIsDropped() throws Exception {
+    void shouldDropATreeNoRecordNeeds() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin");
         givenKnownMetRecords("a.bin");
         givenKnown2HoldsTheTreesOf("a.bin");
@@ -128,7 +128,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aFileUnsharedForOverAMonthKeepsItsRecordButNotItsTree() throws Exception {
+    void shouldKeepTheRecordButNotTheTreeOfAFileUnsharedForOverAMonth() throws Exception {
         givenTheIncomingDirectoryHolds();
         givenKnownMetRecordsAFileLastSharedDaysAgo("old.bin", 40);
         givenKnownMetRecordsAFileLastSharedDaysAgo("recent.bin", 10);
@@ -140,7 +140,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aKnownFileSharedWithoutItsTreeIsHashedForIt() throws Exception {
+    void shouldHashForItsTreeAKnownFileSharedWithoutIt() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin");
         givenKnownMetRecords("a.bin");
 
@@ -150,7 +150,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void theTreesAreWrittenOnlyWhenTheyChange() throws Exception {
+    void shouldWriteTheTreesOnlyWhenTheyChange() throws Exception {
         givenTheIncomingDirectoryHolds("a.bin");
         givenTheFilesAreSharedAndRecorded();
         givenKnown2WasLastWrittenLongAgo();
@@ -161,7 +161,7 @@ class KnownFilesTest {
     }
 
     @Test
-    void aFinishedDownloadIsNotRecordedWithTheAichHashOfItsLinkBeforeItsOwnTreeIsBuilt() throws Exception {
+    void shouldNotRecordAFinishedDownloadWithTheAichHashOfItsLinkBeforeItsOwnTreeIsBuilt() throws Exception {
         givenTheIncomingDirectoryHolds("done.bin");
         givenADownloadOfWhoseLinkGaveAnotherAichHash("done.bin");
 

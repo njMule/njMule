@@ -30,14 +30,14 @@ class DefaultListsTest {
     private NodesDat.Contents nodes;
 
     @Test
-    void theShippedServersAreServersOnPublicAddresses() {
+    void shouldShipOnlyServersOnPublicAddresses() {
         whenTheShippedServersAreRead();
         thenThereAreServers();
         thenEveryServerHasAPublicAddressAndAPort();
     }
 
     @Test
-    void theShippedContactsAreOnlyToBootstrapFrom() {
+    void shouldShipContactsOnlyToBootstrapFrom() {
         whenTheShippedContactsAreRead();
         thenTheyAreOnlyToBootstrapFrom();
         thenEveryContactHasAPublicAddressAndAPort();

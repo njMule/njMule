@@ -36,7 +36,7 @@ class RequestTrackerTest {
     private int count;
 
     @Test
-    void aReAskJustShortOfTheShortestTimeIsNotCounted() {
+    void shouldNotCountAReAskJustShortOfTheShortestTime() {
         givenTheClientAskedForTheFile();
 
         whenItAsksAgainAfter(MIN_ASK.minusSeconds(5));
@@ -45,7 +45,7 @@ class RequestTrackerTest {
     }
 
     @Test
-    void idleSlotsOutsideTheWindowNoLongerCount() {
+    void shouldNoLongerCountIdleSlotsOutsideTheWindow() {
         givenIdleSlots(3);
 
         whenItLeavesASlotIdleAfter(WINDOW);
@@ -54,7 +54,7 @@ class RequestTrackerTest {
     }
 
     @Test
-    void aClientNotHeardOfWithinTheWindowIsForgotten() {
+    void shouldForgetAClientNotHeardOfWithinTheWindow() {
         givenIdleSlots(2);
 
         whenTheTrackerIsPurgedAfter(WINDOW);

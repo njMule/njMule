@@ -38,7 +38,7 @@ class AnswersTest {
     }
 
     @Test
-    void aRiskyAnswerIsMarkedAndKeepingThingsIsTheDefault() throws Exception {
+    void shouldMarkARiskyAnswerAndMakeKeepingThingsTheDefault() throws Exception {
         givenAQuestion();
         whenItIsAnswered("Cancel and delete", "Keep downloading", true);
         thenTheButtonsRead("Cancel and delete", "Keep downloading");
@@ -47,7 +47,7 @@ class AnswersTest {
     }
 
     @Test
-    void aSafeAnswerIsTheDefaultAndNothingIsMarked() throws Exception {
+    void shouldMakeASafeAnswerTheDefaultAndMarkNothing() throws Exception {
         givenAQuestion();
         whenItIsAnswered("Share", "Cancel", false);
         thenTheButtonsRead("Share", "Cancel");

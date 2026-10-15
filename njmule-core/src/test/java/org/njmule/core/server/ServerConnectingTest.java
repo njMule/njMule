@@ -81,7 +81,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerNeverPingedIsTriedObfuscatedOnceThenPlainly() throws Exception {
+    void shouldTryAServerNeverPingedObfuscatedOnceThenPlainly() throws Exception {
         givenObfuscation(ObfuscationMode.REQUESTED);
         givenANeverPingedServer(plainServer());
 
@@ -92,7 +92,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerTriedObfuscatedOnceIsNotTriedSoAgain() throws Exception {
+    void shouldNotTryObfuscatedAgainAServerAlreadyTriedSo() throws Exception {
         givenObfuscation(ObfuscationMode.REQUESTED);
         givenANeverPingedServer(plainServer());
         givenTheSessionConnectedAndLeft();
@@ -104,7 +104,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerNeverPingedThatTakesObfuscationIsLoggedInObfuscatedAndKnownToTakeIt() throws Exception {
+    void shouldLogInObfuscatedToAServerNeverPingedThatTakesObfuscationAndRememberIt() throws Exception {
         givenObfuscation(ObfuscationMode.REQUESTED);
         givenANeverPingedServer(obfuscatingServer());
 
@@ -115,7 +115,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerNeverPingedIsTriedObfuscatedWhenObfuscationIsRequired() throws Exception {
+    void shouldTryAServerNeverPingedObfuscatedWhenObfuscationIsRequired() throws Exception {
         givenObfuscation(ObfuscationMode.REQUIRED);
         givenANeverPingedServer(plainServer());
 
@@ -136,7 +136,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aLostSessionIsReplacedWhenThePreferencesSaySo() throws Exception {
+    void shouldReplaceALostSessionWhenThePreferencesSaySo() throws Exception {
         givenTheSessionKeepsConnected(true);
         givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         givenTheSessionLoggedInToAnyServer();
@@ -148,7 +148,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aSessionLostAgainSoonAfterAReconnectWaitsBeforeTheNext() throws Exception {
+    void shouldWaitBeforeTheNextReconnectWhenASessionIsLostAgainSoon() throws Exception {
         givenTheSessionKeepsConnected(true);
         givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         givenTheSessionLoggedInToAnyServer();
@@ -162,7 +162,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void whenEveryServerFailsTheyAreTriedAgainLater() throws Exception {
+    void shouldTryTheServersAgainLaterWhenEveryOneFails() throws Exception {
         givenTheSessionKeepsConnected(true);
         givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), 0, 0));
         givenTheServerIsGone();
@@ -174,7 +174,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void withoutAServerToTryTheSessionGivesUpAtOnce() throws Exception {
+    void shouldGiveUpTheSessionAtOnceWithoutAServerToTry() throws Exception {
         givenTheSessionKeepsConnected(true);
 
         whenTheSessionLooksForAnyServer();
@@ -183,7 +183,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aLostSessionIsNotReplacedUnlessThePreferencesSaySo() throws Exception {
+    void shouldNotReplaceALostSessionUnlessThePreferencesSaySo() throws Exception {
         givenTheSessionKeepsConnected(false);
         givenTheKnownServers(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
         givenTheSessionLoggedInToAnyServer();
@@ -195,7 +195,7 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerKnownToBePlainIsTriedPlainlyAtOnce() throws Exception {
+    void shouldTryPlainlyAtOnceAServerKnownToBePlain() throws Exception {
         givenObfuscation(ObfuscationMode.REQUESTED);
         givenAPlainServerPingedBefore(plainServer());
 

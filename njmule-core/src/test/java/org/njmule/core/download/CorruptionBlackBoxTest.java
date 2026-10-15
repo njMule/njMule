@@ -36,7 +36,7 @@ class CorruptionBlackBoxTest {
     private Set<Integer> guilty;
 
     @Test
-    void aSourceThatAloneSentOnePartThatFailedIsForgiven() {
+    void shouldForgiveASourceThatAloneSentOnePartThatFailed() {
         givenSent(A, 0, PART);
 
         whenThePartFails(0, PART);
@@ -45,7 +45,7 @@ class CorruptionBlackBoxTest {
     }
 
     @Test
-    void aSourceThatAloneSentAPartThatFailedThreeTimesIsGuilty() {
+    void shouldBlameASourceThatAloneSentAPartThatFailedThreeTimes() {
         givenSentAPartThatFailed(A, 0);
         givenSentAPartThatFailed(A, 0);
         givenSent(A, 0, PART);
@@ -56,7 +56,7 @@ class CorruptionBlackBoxTest {
     }
 
     @Test
-    void aSourceWhoseOtherPartsPassedIsNotGuiltyOfThreeThatFailed() {
+    void shouldNotBlameForThreeFailuresASourceWhoseOtherPartsPassed() {
         givenSentPartsThatPassed(A, 0, 7);
         givenSentAPartThatFailed(A, 7);
         givenSentAPartThatFailed(A, 8);
@@ -68,7 +68,7 @@ class CorruptionBlackBoxTest {
     }
 
     @Test
-    void aPartThatFailedBlamesNoneOfTheSeveralSourcesThatSentIt() {
+    void shouldBlameNoneOfTheSeveralSourcesThatSentAFailedPart() {
         givenSent(A, 0, PART / 2);
         givenSent(B, PART / 2, PART);
 
@@ -78,7 +78,7 @@ class CorruptionBlackBoxTest {
     }
 
     @Test
-    void aPartOfWhichSomeDataCameFromNoKnownSourceBlamesNone() {
+    void shouldBlameNoSourceForAPartWithDataFromNoKnownSource() {
         givenSent(A, BLOCK, PART);
 
         whenThePartFails(0, PART);
@@ -87,7 +87,7 @@ class CorruptionBlackBoxTest {
     }
 
     @Test
-    void recoveryDataBlamesTheSourceOfTheBadBlockOnly() {
+    void shouldBlameOnlyTheSourceOfTheBadBlockThroughRecoveryData() {
         givenSent(A, 0, 2 * BLOCK);
         givenSent(B, 2 * BLOCK, 3 * BLOCK);
         givenThePartFailed(0, 3 * BLOCK);

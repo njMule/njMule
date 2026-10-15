@@ -56,14 +56,14 @@ class FirstStartTest {
     }
 
     @Test
-    void theFirstStartAsksTheQuestionsOfTheWizard() throws Exception {
+    void shouldAskTheQuestionsOfTheWizardAtTheFirstStart() throws Exception {
         givenAProfile(false);
         whenTheAppShows();
         thenTheWizardShows(true);
     }
 
     @Test
-    void aLaterStartAsksNothing() throws Exception {
+    void shouldAskNothingAtALaterStart() throws Exception {
         givenAProfile(true);
         whenTheAppShows();
         thenTheWizardShows(false);

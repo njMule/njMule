@@ -80,7 +80,7 @@ class SharedFilesScanTest {
     }
 
     @Test
-    void filesOtherProgramsLeaveBehindOrAreStillWritingAreNeverShared() throws Exception {
+    void shouldNeverShareFilesOtherProgramsLeaveBehindOrAreStillWriting() throws Exception {
         givenTheIncomingDirectoryHolds(
                 "real.bin",
                 "~$report.docx",
@@ -104,7 +104,7 @@ class SharedFilesScanTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void aFileAnotherProgramLocksForAMomentIsSharedOnceItIsFree() throws Exception {
+    void shouldShareAFileAnotherProgramLocksForAMomentOnceItIsFree() throws Exception {
         givenTheIncomingDirectoryHolds("locked.bin");
         givenAnotherProgramLocksItFor("locked.bin", Duration.ofMillis(1500));
 
@@ -123,7 +123,7 @@ class SharedFilesScanTest {
     }
 
     @Test
-    void aFileThatChangesWhileItIsHashedIsSharedWithItsNewContent() throws Exception {
+    void shouldShareWithItsNewContentAFileThatChangesWhileItIsHashed() throws Exception {
         givenTheIncomingDirectoryHolds();
         givenALargeFileKeepsTheHashingBusy();
         givenAnotherDirectoryHolds("changing.bin", bytes(3000, 7));

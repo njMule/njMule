@@ -59,14 +59,14 @@ class DefaultListsEngineTest {
     }
 
     @Test
-    void aNewProfileStartsWithTheShippedServers() throws Exception {
+    void shouldStartANewProfileWithTheShippedServers() throws Exception {
         givenANewProfileWithoutNetworks();
         whenTheEngineStarts();
         thenItKnowsTheShippedServers();
     }
 
     @Test
-    void aProfileWhoseServerListWasEmptiedKeepsItEmpty() throws Exception {
+    void shouldKeepEmptyTheServerListAProfileEmptied() throws Exception {
         givenANewProfileWithoutNetworks();
         givenAnEmptyServerList();
         whenTheEngineStarts();

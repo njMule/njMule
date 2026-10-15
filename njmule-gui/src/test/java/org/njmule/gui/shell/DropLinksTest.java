@@ -50,7 +50,7 @@ class DropLinksTest {
     }
 
     @Test
-    void theFileLinksDroppedOnTheWindowBecomeDownloads() throws Exception {
+    void shouldTurnTheFileLinksDroppedOnTheWindowIntoDownloads() throws Exception {
         givenTheWindow();
         whenDropped(TWO_LINKS);
         thenTheLinksFoundAre(2);
@@ -58,7 +58,7 @@ class DropLinksTest {
     }
 
     @Test
-    void aTextWithoutLinksIsNotTaken() throws Exception {
+    void shouldNotTakeATextWithoutLinks() throws Exception {
         givenTheWindow();
         whenDropped("just some words");
         thenTheLinksFoundAre(0);

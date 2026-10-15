@@ -1058,7 +1058,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aClientsUdpTestRequestGoesToKadWithItsAddress() throws Exception {
+    void shouldPassAClientsUdpTestRequestToKadWithItsAddress() throws Exception {
         givenTheUploadsTellKadOfUdpTests();
         givenAClientConnected();
 
@@ -1091,7 +1091,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aFirewalledClientWhoseTurnCameWhileItWasAwayGetsASlotWhenItAsksAgain() throws Exception {
+    void shouldGiveASlotWhenItAsksAgainToAFirewalledClientWhoseTurnCameWhileItWasAway() throws Exception {
         givenTwoSlotsBusyUnderALimit();
         givenAFirewalledClientThatWaitedAndLeft();
         givenASlotFreedWhileItWasAway();
@@ -1136,7 +1136,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aClientThatReadsNothingGetsLittleQueuedAndOurAnswersPassItsData() throws Exception {
+    void shouldQueueLittleForAClientThatReadsNothingAndLetOurAnswersPassItsData() throws Exception {
         givenAClientWithASlotThatAsksForManyBlocksAndReadsNothing();
 
         whenItAsksForTheFileNameAndReads();
@@ -1198,7 +1198,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void sourcesAreToldOnlyForAFileTheClientAskedForOnItsConnection() throws Exception {
+    void shouldTellSourcesOnlyForAFileTheClientAskedForOnItsConnection() throws Exception {
         givenAFileWithAWaitingClient();
         givenAClientThatAskedForAnotherFile();
 
@@ -1209,7 +1209,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aClientAtABannedAddressHearsNoSources() throws Exception {
+    void shouldTellNoSourcesToAClientAtABannedAddress() throws Exception {
         givenTwoSlotsBusyUnderALimit();
         givenTheirAddressBannedForAClientThatAskedTooOften();
 
@@ -1219,7 +1219,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void theSourceAnswersGivenAreForgottenOnceTheyCanBeAskedAgain() throws Exception {
+    void shouldForgetTheSourceAnswersGivenOnceTheyCanBeAskedAgain() throws Exception {
         givenAFileWithAWaitingClient();
         givenAClientToldItsSources();
 
@@ -1292,7 +1292,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void asksForOtherFilesDoNotCountAsAskingTooOften() throws Exception {
+    void shouldNotCountAsksForOtherFilesAsAskingTooOften() throws Exception {
         givenTwoSlotsBusyUnderALimit();
         givenOtherFilesShared(UploadManager.BAD_LIMIT);
         givenAClientWaiting();
@@ -1303,7 +1303,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void theEndOfASlotDoesNotCountAsAnAskOfTheClient() throws Exception {
+    void shouldNotCountTheEndOfASlotAsAnAskOfTheClient() throws Exception {
         givenTwoSlotsBusyUnderALimit();
         givenAClientWaiting();
         givenItAskedAgainRightAway(UploadManager.BAD_LIMIT - 1);
@@ -1360,7 +1360,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void askingTooOftenStillCountsAfterTheClientLeftTheQueue() throws Exception {
+    void shouldStillCountAskingTooOftenAfterTheClientLeftTheQueue() throws Exception {
         givenTwoSlotsBusyUnderALimit();
         givenAClientThatAskedTooOftenAlmostToABanAndCannotBeCalled();
         givenItLeftTheQueueWhenItCouldNotBeCalled();
@@ -1371,7 +1371,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aClientThatKeepsTakingSlotsWithoutAskingForDataIsBanned() throws Exception {
+    void shouldBanAClientThatKeepsTakingSlotsWithoutAskingForData() throws Exception {
         givenASlotForAClientWhileAnotherWaits();
 
         whenItLeavesItsSlotIdle(UploadManager.IDLE_SLOTS_LIMIT);
@@ -1380,7 +1380,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aSlotThatSentDataForgivesTheIdleOnes() throws Exception {
+    void shouldForgiveTheIdleSlotsOnceASlotSentData() throws Exception {
         givenASlotForAClientWhileAnotherWaits();
         givenItLeftItsSlotIdle(UploadManager.IDLE_SLOTS_LIMIT - 1);
         givenItThenDownloadedFromItsSlot();
@@ -1464,7 +1464,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void aClientAskingForManyFilesWeDoNotHaveIsDroppedAndBannedTheSecondTime() throws Exception {
+    void shouldDropAClientAskingForManyFilesWeDoNotHaveAndBanItTheSecondTime() throws Exception {
         givenAClientThatWasDroppedForAskingForFilesWeDoNotHave();
 
         whenAnotherConnectionFromItsAddressAsksForThem(UploadSession.UNKNOWN_FILES_LIMIT);
@@ -1473,7 +1473,7 @@ class UploadManagerTest {
     }
 
     @Test
-    void filesWeDownloadDoNotCountAsUnknown() throws Exception {
+    void shouldNotCountFilesWeDownloadAsUnknown() throws Exception {
         givenADownloadWithNothingToShareYet();
 
         whenAClientAsksForItAndForUnknownFiles(UploadSession.UNKNOWN_FILES_LIMIT - 1);

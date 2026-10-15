@@ -35,13 +35,13 @@ class GuiTourStepsTest {
     private Throwable failure;
 
     @Test
-    void theSoundOfTheTourIsAShortSilenceForThePlayer() throws Exception {
+    void shouldGiveThePlayerAShortSilenceAsTheSoundOfTheTour() throws Exception {
         whenTheTourPlaysItsSound();
         thenThePlayerGotAWaveFileOfATenthOfASecond();
     }
 
     @Test
-    void aTourWithoutWebInterfaceGoesOn() {
+    void shouldGoOnWithATourWithoutWebInterface() {
         whenTheTourAsksTheWebInterfaceOf(this.dir);
         thenNoExceptionOccurred();
     }

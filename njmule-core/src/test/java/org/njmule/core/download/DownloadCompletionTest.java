@@ -72,7 +72,7 @@ class DownloadCompletionTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void aFinishedFileAnotherProgramHoldsForAWhileIsMovedOnceItIsFree() throws Exception {
+    void shouldMoveAFinishedFileAnotherProgramHoldsOnceItIsFree() throws Exception {
         givenADownload();
         givenAnotherProgramHoldsItsDataFor(Duration.ofMillis(2500));
 

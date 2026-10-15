@@ -65,7 +65,7 @@ class PartMetSavingTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void aPartMetThatIsSlowToReplaceDoesNotHoldUpTheEngine() throws Exception {
+    void shouldNotHoldUpTheEngineWhileAPartMetIsSlowToReplace() throws Exception {
         givenADownload();
         givenAnotherProgramHoldsItsPartMet();
 

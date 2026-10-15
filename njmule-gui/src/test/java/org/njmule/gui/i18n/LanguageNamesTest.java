@@ -34,7 +34,7 @@ class LanguageNamesTest {
 
     @ParameterizedTest
     @MethodSource("languages")
-    void theNameOfALanguageIsTheOneItsTextsGive(Locale language) {
+    void shouldNameALanguageAsItsTextsDo(Locale language) {
         whenTheLanguageIsNamed(language);
         thenTheNameIs(I18n.of(language).name());
     }

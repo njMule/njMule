@@ -49,7 +49,7 @@ class MessageKindsTest {
     }
 
     @Test
-    void aProblemLooksLikeOneAndASuccessLikeOne() throws Exception {
+    void shouldMakeAProblemLookLikeOneAndASuccessLikeOne() throws Exception {
         givenTheWindow();
         whenShown(List.of("saved"), List.of("finished"), List.of("refused"));
         thenTheMessagesAre("saved", "finished", "refused");
@@ -59,7 +59,7 @@ class MessageKindsTest {
     }
 
     @Test
-    void theMessagesStackInTheBottomCornerAndTheOldestMakeRoom() throws Exception {
+    void shouldStackTheMessagesInTheBottomCornerAndLetTheOldestMakeRoom() throws Exception {
         givenTheWindow();
         whenShown(List.of("one", "two", "three"), List.of(), List.of("four", "five"));
         thenTheMessagesAre("two", "three", "four", "five");

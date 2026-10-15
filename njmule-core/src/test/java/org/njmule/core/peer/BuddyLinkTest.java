@@ -179,7 +179,7 @@ class BuddyLinkTest {
     }
 
     @Test
-    void ourBuddyRelaysTheCallbacksOfOtherClients() throws Exception {
+    void shouldLetOurBuddyRelayTheCallbacksOfOtherClients() throws Exception {
         givenABuddyListening();
         givenItIsOurBuddy();
 
@@ -220,7 +220,7 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aCallbackForAnotherIdIsNotRelayed() throws Exception {
+    void shouldNotRelayACallbackForAnotherId() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
         givenItConnectedAs(FIREWALLED);
 
@@ -230,7 +230,7 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aClientWeDidNotAgreeToServeIsNotTaken() throws Exception {
+    void shouldNotTakeAClientWeDidNotAgreeToServe() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
 
         whenItConnectsAs(BUDDY);
@@ -253,7 +253,7 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aReleasedLinkCloses() throws Exception {
+    void shouldCloseAReleasedLink() throws Exception {
         givenABuddyListening();
         givenItIsOurBuddy();
 

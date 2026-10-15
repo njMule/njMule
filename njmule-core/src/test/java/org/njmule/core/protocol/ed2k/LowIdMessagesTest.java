@@ -48,7 +48,7 @@ class LowIdMessagesTest {
     private Hello hello;
 
     @Test
-    void aRelayedCallbackNamesTheBuddyTheFileAndTheRequesterInKadLayout() throws Exception {
+    void shouldNameTheBuddyTheFileAndTheRequesterOfARelayedCallbackInKadLayout() throws Exception {
         whenEncoded(new LowIdMessages.Callback(BUDDY, FILE, Ipv4.of(1, 2, 3, 4), 4662));
 
         thenThePacketIs(
@@ -60,7 +60,7 @@ class LowIdMessagesTest {
     }
 
     @Test
-    void aDirectCallbackRequestGivesOurPortHashAndConnectOptions() throws Exception {
+    void shouldGiveOurPortHashAndConnectOptionsInADirectCallbackRequest() throws Exception {
         whenEncoded(new LowIdMessages.DirectCallbackRequest(4662, USER, 0x03));
 
         thenThePacketIs(
@@ -72,7 +72,7 @@ class LowIdMessagesTest {
     }
 
     @Test
-    void aUdpCheckRequestGivesBothPortsAndTheKey() throws Exception {
+    void shouldGiveBothPortsAndTheKeyInAUdpCheckRequest() throws Exception {
         whenEncoded(new LowIdMessages.UdpCheckRequest(4672, 5000, 0x01020304));
 
         thenThePacketIs(Protocol.EMULE, Opcodes.Extended.FWCHECKUDPREQ.code(), "4012" + "8813" + "04030201");
@@ -81,21 +81,21 @@ class LowIdMessagesTest {
     }
 
     @Test
-    void aBuddyPingCarriesNothing() {
+    void shouldCarryNothingInABuddyPing() {
         whenEncoded(LowIdMessages.buddyPing());
 
         thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPING.code(), "");
     }
 
     @Test
-    void aBuddyPongCarriesNothing() {
+    void shouldCarryNothingInABuddyPong() {
         whenEncoded(LowIdMessages.buddyPong());
 
         thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPONG.code(), "");
     }
 
     @Test
-    void aHelloWithABuddyNamesItRightAfterTheUdpPorts() throws Exception {
+    void shouldNameTheBuddyRightAfterTheUdpPortsInAHello() throws Exception {
         givenOurHello(Hello.MISC2_DIRECT_UDP_CALLBACK);
 
         whenOurBuddyIsAdded(Ipv4.of(1, 2, 3, 4), 4672);
@@ -114,7 +114,7 @@ class LowIdMessagesTest {
     }
 
     @Test
-    void aHelloWithoutABuddyNamesNone() throws Exception {
+    void shouldNameNoBuddyInAHelloWithoutOne() throws Exception {
         givenOurHello(0);
 
         whenTheHelloTravels();

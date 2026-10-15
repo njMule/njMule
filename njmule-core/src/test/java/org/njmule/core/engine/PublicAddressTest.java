@@ -35,7 +35,7 @@ class PublicAddressTest {
     private Optional<Inet4Address> address;
 
     @Test
-    void aHighIdIsOurAddress() {
+    void shouldTakeAHighIdAsOurAddress() {
         givenAServerThatGaveUs(new ServerMessages.IdChange(Ipv4.toEd2k(OURS), 0, 0));
 
         whenOurPublicAddressIsWanted();
@@ -44,7 +44,7 @@ class PublicAddressTest {
     }
 
     @Test
-    void withALowIdOurAddressIsTheOneTheServerSaw() {
+    void shouldTakeTheAddressTheServerSawAsOursWithALowId() {
         givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, OURS));
         givenKadSawUsAt(SEEN_BY_KAD);
 
@@ -54,7 +54,7 @@ class PublicAddressTest {
     }
 
     @Test
-    void withoutAServerKadTellsOurAddress() {
+    void shouldLetKadTellOurAddressWithoutAServer() {
         givenKadSawUsAt(SEEN_BY_KAD);
 
         whenOurPublicAddressIsWanted();
@@ -63,7 +63,7 @@ class PublicAddressTest {
     }
 
     @Test
-    void aLowIdFromAServerThatDoesNotSayOurAddressLeavesItUnknown() {
+    void shouldLeaveOurAddressUnknownWithALowIdFromAServerThatDoesNotSayIt() {
         givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, 0));
 
         whenOurPublicAddressIsWanted();

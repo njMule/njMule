@@ -43,14 +43,14 @@ class RightToLeftTextsTest {
 
     @ParameterizedTest
     @MethodSource("languages")
-    void onlyArabicPersianAndHebrewAreWrittenRightToLeft(Locale language) {
+    void shouldWriteOnlyArabicPersianAndHebrewRightToLeft(Locale language) {
         whenTheTextsOfALanguageAreLoaded(language);
 
         thenTheyAreWrittenRightToLeft(WRITTEN_RIGHT_TO_LEFT.contains(language.getLanguage()));
     }
 
     @Test
-    void aFileNameInAnArabicSentenceKeepsItsOwnDirection() {
+    void shouldKeepTheOwnDirectionOfAFileNameInAnArabicSentence() {
         givenTheTextsOf(Locale.of("ar"));
 
         whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track (live).mp3");
@@ -59,7 +59,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void aNameInHebrewLettersKeepsItsOwnDirectionToo() {
+    void shouldKeepTheOwnDirectionOfANameInHebrewLettersToo() {
         givenTheTextsOf(Locale.of("he"));
 
         whenTheTextIsFilledIn("nj.chat.from", "דני 2");
@@ -68,7 +68,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void eachLineKeepsTheDirectionOfItsOwnFirstLetters() {
+    void shouldGiveEachLineTheDirectionOfItsOwnFirstLetters() {
         givenTheTextsOf(Locale.of("ar"));
 
         whenTheTextIsEmbedded("movie.mkv\nفيلم 2\n");
@@ -77,7 +77,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void aNumberIsFilledInAsItIs() {
+    void shouldFillInANumberAsItIs() {
         givenTheTextsOf(Locale.of("ar"));
 
         whenTheTextIsFilledIn("nj.a4af.swapped", 12);
@@ -87,7 +87,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void anEnglishSentenceTakesTheFileNameUnchanged() {
+    void shouldTakeTheFileNameUnchangedInAnEnglishSentence() {
         givenTheTextsOf(Locale.ENGLISH);
 
         whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track.mp3");
@@ -96,7 +96,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void persianWritesNumbersWithLatinDigits() {
+    void shouldWriteNumbersWithLatinDigitsInPersian() {
         givenTheTextsOf(Locale.of("fa"));
 
         whenTheTextIsFilledIn("nj.input.number", 1, 65535);
@@ -105,7 +105,7 @@ class RightToLeftTextsTest {
     }
 
     @Test
-    void persianSizesHaveLatinDigits() {
+    void shouldWriteSizesWithLatinDigitsInPersian() {
         givenTheTextsOf(Locale.of("fa"));
 
         whenASizeIsShown(1_234_567);

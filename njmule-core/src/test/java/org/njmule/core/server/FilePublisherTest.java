@@ -121,7 +121,7 @@ class FilePublisherTest {
     }
 
     @Test
-    void noMoreFilesAreOfferedThanTheServerTakes() throws Exception {
+    void shouldOfferNoMoreFilesThanTheServerTakes() throws Exception {
         givenSharedFiles(5);
         givenALoginToAServerTakingFiles(3);
 

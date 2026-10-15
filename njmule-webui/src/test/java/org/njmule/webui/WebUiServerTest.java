@@ -58,7 +58,7 @@ class WebUiServerTest {
     }
 
     @Test
-    void anAnswerNamesNoServerSoftware() throws Exception {
+    void shouldNameNoServerSoftwareInAnAnswer() throws Exception {
         givenTheWebInterface();
         whenAsked("GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         thenTheAnswerIs("200");
@@ -66,7 +66,7 @@ class WebUiServerTest {
     }
 
     @Test
-    void aBadRequestGetsNoStackTrace() throws Exception {
+    void shouldAnswerABadRequestWithoutAStackTrace() throws Exception {
         givenTheWebInterface();
         whenAsked("GET /%2e%2e/%2e%2e/secret HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         thenTheAnswerIs("400");

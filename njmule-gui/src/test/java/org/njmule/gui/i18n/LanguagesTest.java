@@ -105,7 +105,7 @@ class LanguagesTest {
     }
 
     @Test
-    void theInterfaceOffersEnglishFirstThenEveryTranslation() {
+    void shouldOfferEnglishFirstThenEveryTranslation() {
         whenTheLanguagesOfTheInterfaceAreListed();
 
         thenTheLanguagesAre(
@@ -149,7 +149,7 @@ class LanguagesTest {
 
     @ParameterizedTest
     @MethodSource("languages")
-    void everyLanguageLoadsWithItsOwnNameAndEmulesTexts(Locale language, String name, String languageWord) {
+    void shouldLoadEveryLanguageWithItsOwnNameAndEmulesTexts(Locale language, String name, String languageWord) {
         whenTheTextsOfALanguageAreLoaded(language);
 
         thenTheTextsAreIn(language);
@@ -247,7 +247,7 @@ class LanguagesTest {
     }
 
     @Test
-    void nynorskInTheOldJavaFormOfNorwegianGetsBokmal() {
+    void shouldGiveBokmalForNynorskInTheOldJavaFormOfNorwegian() {
         givenTheSystemLocale(Locale.of("no", "NO", "NY"));
 
         whenTheTextsOfTheSystemLanguageAreLoaded();
@@ -258,7 +258,7 @@ class LanguagesTest {
 
     @ParameterizedTest
     @MethodSource("translations")
-    void aTranslationHasEveryNjmuleTextWithTheSamePlaceholders(Locale language) throws IOException {
+    void shouldHaveEveryNjmuleTextWithTheSamePlaceholdersInATranslation(Locale language) throws IOException {
         givenTheEnglishTexts();
 
         whenTheTranslationIsRead(language);
@@ -270,7 +270,7 @@ class LanguagesTest {
 
     @ParameterizedTest
     @MethodSource("translations")
-    void theEmuleTextsTheInterfaceUsesKeepTheirPlaceholders(Locale language) throws IOException {
+    void shouldKeepThePlaceholdersOfTheEmuleTextsTheInterfaceUses(Locale language) throws IOException {
         givenTheEnglishTexts();
         givenTheEmuleTextsTheInterfaceUses();
 

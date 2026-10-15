@@ -426,7 +426,7 @@ class NetworkCommandsTest {
     }
 
     @Test
-    void theKadLineTellsTheTestedUdpStateAndTheBuddy() {
+    void shouldTellTheTestedUdpStateAndTheBuddyInTheKadLine() {
         givenKadFirewalledOnBothPortsWithABuddy();
 
         whenTheKadLineIsWritten();
