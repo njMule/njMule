@@ -85,6 +85,19 @@ public final class Segments<T> {
         this.value.set(choice);
     }
 
+    /** Names {@code choice} anew, as when a count in its name changes. */
+    public void rename(T choice, String text) {
+        ToggleButton button = this.buttons.get(choice);
+        if (button != null) {
+            button.setText(text);
+        }
+    }
+
+    /** The names of the choices, in order. */
+    public List<String> names() {
+        return this.buttons.values().stream().map(ToggleButton::getText).toList();
+    }
+
     /** The button of {@code choice}, for tests. */
     ToggleButton button(T choice) {
         return this.buttons.get(choice);

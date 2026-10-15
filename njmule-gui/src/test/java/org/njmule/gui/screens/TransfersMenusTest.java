@@ -287,10 +287,7 @@ class TransfersMenusTest {
     }
 
     private void givenTheTabsBelowRead(String... titles) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.transfers.lowerTabs().getTabs().stream()
-                        .map(t -> t.getText())
-                        .toList()))
-                .containsExactly(titles);
+        assertThat(FxTesting.onFx(this.transfers::lowerNames)).containsExactly(titles);
     }
 
     private void givenTheListBelowShows(int tab, String... texts) throws Exception {
@@ -861,7 +858,7 @@ class TransfersMenusTest {
     }
 
     private void showTab(TransfersScreen screen, int index) throws Exception {
-        FxTesting.onFx(() -> screen.lowerTabs().getSelectionModel().select(index));
+        FxTesting.onFx(() -> screen.showLower(index));
     }
 
     private void type(Node pane, String text) {

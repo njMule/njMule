@@ -707,10 +707,7 @@ class CaptureTour {
                 "Comments of a download",
                 () -> item(downloads.getContextMenu(), "IDS_CMT_ADD").fire(),
                 w -> {});
-        TabPane lower = FxTesting.onFx(() -> find(transfers, TabPane.class).getFirst());
-        fx(() -> lower.getSelectionModel().select(0));
-        TableView<?> uploads =
-                FxTesting.onFx(() -> (TableView<?>) lower.getTabs().getFirst().getContent());
+        TableView<?> uploads = FxTesting.onFx(() -> (TableView<?>) transfers.lookup("#uploads"));
         fx(() -> uploads.getSelectionModel().select(0));
         window(
                 "dialog-client-files",

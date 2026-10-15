@@ -20,8 +20,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.Function;
@@ -41,8 +43,6 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -56,6 +56,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -84,6 +85,7 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.PartBar;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.Segments;
 import org.njmule.gui.ui.TableLayout;
 
 /** Downloads with their progress, and below the clients we upload to or that wait for us. */
@@ -94,6 +96,22 @@ public final class TransfersScreen implements Screen {
 
     // Pasted links are separated by white space, which file names may contain too.
 
+    // The lists below the downloads: the clients we upload to, those waiting, those we download from, the banned.
+    private enum Lower {
+        UPLOADING("IDS_UPLOADING", "uploads"),
+        QUEUE("IDS_ONQUEUE", "queue"),
+        DOWNLOADING("IDS_DOWNLOADING", "sources"),
+        BANNED("IDS_BANNED", "bans");
+
+        private final String title;
+        private final String id;
+
+        Lower(String title, String id) {
+            this.title = title;
+            this.id = id;
+        }
+    }
+
     private final Gui gui;
     private Node view;
     private TableView<LiveList.Row<DownloadInfo>> downloads;
@@ -101,7 +119,7 @@ public final class TransfersScreen implements Screen {
     private TableView<LiveList.Row<UploadInfo>> queue;
     private TableView<LiveList.Row<SourceInfo>> sources;
     private TableView<LiveList.Row<BanInfo>> bans;
-    private TabPane lowerTabs;
+    private Segments<Lower> lower;
     private final TextField link = new TextField();
     private final HBox categoryBar = new HBox();
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
@@ -271,15 +289,22 @@ public final class TransfersScreen implements Screen {
         this.queue = uploadTable(UploadInfo.State.QUEUED, "queue");
         this.sources = sourceTable();
         this.bans = banTable();
-        TabPane lowerTabs = new TabPane(
-                counted(this.gui.t("IDS_UPLOADING"), this.uploads),
-                counted(this.gui.t("IDS_ONQUEUE"), this.queue),
-                counted(this.gui.t("IDS_DOWNLOADING"), this.sources),
-                counted(this.gui.t("IDS_BANNED"), this.bans));
-        lowerTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        this.lowerTabs = lowerTabs;
-        VBox lower = new VBox(4, lowerTabs);
-        VBox.setVgrow(lowerTabs, Priority.ALWAYS);
+        Map<Lower, TableView<?>> tables = new EnumMap<>(Lower.class);
+        tables.put(Lower.UPLOADING, this.uploads);
+        tables.put(Lower.QUEUE, this.queue);
+        tables.put(Lower.DOWNLOADING, this.sources);
+        tables.put(Lower.BANNED, this.bans);
+        tables.forEach((which, table) -> table.setId(which.id));
+        // One list at a time, chosen by segments that tell how many rows each has.
+        this.lower = new Segments<>(List.of(Lower.values()), which -> lowerName(which, tables.get(which)));
+        StackPane lowerList = new StackPane(this.uploads);
+        this.lower
+                .valueProperty()
+                .addListener((o, was, now) -> lowerList.getChildren().setAll(tables.get(now)));
+        tables.forEach((which, table) -> table.getItems()
+                .addListener((ListChangeListener<Object>) c -> this.lower.rename(which, lowerName(which, table))));
+        VBox lower = new VBox(6, this.lower.node(), lowerList);
+        VBox.setVgrow(lowerList, Priority.ALWAYS);
         this.downloads.getContextMenu().setOnShowing(e -> {
             category.getItems().setAll(categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
@@ -829,17 +854,18 @@ public final class TransfersScreen implements Screen {
         return this.bans;
     }
 
-    TabPane lowerTabs() {
-        return this.lowerTabs;
+    /** The names of the lower lists, in order, with their counts. */
+    List<String> lowerNames() {
+        return this.lower.names();
     }
 
-    // A tab whose title tells how many rows its list has.
-    private <T> Tab counted(String title, TableView<T> table) {
-        Tab tab = new Tab(title, table);
-        Runnable count = () -> tab.setText(title + " (" + table.getItems().size() + ")");
-        table.getItems().addListener((ListChangeListener<T>) c -> count.run());
-        count.run();
-        return tab;
+    /** Shows the lower list at {@code index}. */
+    void showLower(int index) {
+        this.lower.setValue(Lower.values()[index]);
+    }
+
+    private String lowerName(Lower which, TableView<?> table) {
+        return this.gui.t(which.title) + " (" + table.getItems().size() + ")";
     }
 
     private TableView<LiveList.Row<UploadInfo>> uploadTable(UploadInfo.State state, String layout) {
@@ -877,7 +903,7 @@ public final class TransfersScreen implements Screen {
             List<T> selected = Fx.selected(table);
             if (selected.size() == 1) {
                 T client = selected.getFirst();
-                new ClientFilesDialog(this.gui, table.getScene().getWindow(), name.apply(client))
+                new ClientFilesDialog(this.gui, this.view.getScene().getWindow(), name.apply(client))
                         .show(ServerAddress.parse(address.apply(client)));
             }
         });

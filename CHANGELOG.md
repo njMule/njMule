@@ -360,6 +360,12 @@ All notable changes to this project are documented here. The format follows
   longer has the file) spares the connection until the next time; without one it is asked over TCP
   as before. Clients in our queue are answered the same way, found by address and UDP port, and
   the hello announces the UDP version while Kad runs.
+- Pasted eD2K links are shown before they are downloaded when there are several or one is known
+  already (downloading, shared, downloaded or cancelled before): each can be left out, and all go
+  in the category chosen (or that of their names), paused if asked; the engine API adds a download
+  in a category and paused at once.
+- The lists below the downloads (uploading, waiting, downloading from, banned) are segments with
+  their counts, one list shown at a time.
 - The rates graph of the statistics shows the last ten minutes, hour or day (one point a minute,
   the mean of its seconds), and under the pointer the time and rates of that moment.
 - Statistics of each shared file: how often it was asked for, how many asks got a slot and how many
