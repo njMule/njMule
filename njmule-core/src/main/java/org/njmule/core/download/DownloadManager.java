@@ -925,10 +925,7 @@ public final class DownloadManager implements AutoCloseable {
             ack.parts()
                     .map(p -> new ClientMessages.FileStatus(entry.download.hash(), p.partCount(), p.parts()))
                     .filter(status -> status.fits(size))
-                    .ifPresent(status -> {
-                        source.parts = status.dataParts(size);
-                        source.partsAt = now;
-                    });
+                    .ifPresent(status -> setParts(source, status.dataParts(size), now));
         }
         // Still queued, a full queue included: asked again a whole interval from now.
         source.rank = rank;
@@ -1635,8 +1632,23 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     // Takes the source off its download and its client; a client asked for that download is asked for another.
+    // What a source has of a file counts in the rarity of its parts for as long as the source is known, in a session or
+    // not.
+    private static void setParts(Source source, BitSet parts, long now) {
+        PartFile file = source.entry.download.file();
+        if (source.parts != null) {
+            file.addAvailability(source.parts, -1);
+        }
+        source.parts = parts;
+        source.partsAt = now;
+        if (parts != null) {
+            file.addAvailability(parts, 1);
+        }
+    }
+
     private void detach(Source source, long now) {
         Client client = source.client;
+        setParts(source, null, now);
         source.entry.sources.remove(client.address);
         source.entry.changed = true;
         DownloadSession session = client.session(source);
@@ -2151,10 +2163,7 @@ public final class DownloadManager implements AutoCloseable {
         }
         long now = this.ticker.read();
         Source from = client.current;
-        session.sourceParts().ifPresent(parts -> {
-            from.parts = parts;
-            from.partsAt = now;
-        });
+        session.sourceParts().ifPresent(parts -> setParts(from, parts, now));
         client.tried.add(from);
         Source next = best(client, now, client.tried);
         if (next == null || hasNothing(next, now) || isAway(next, now)) {
@@ -2317,6 +2326,11 @@ public final class DownloadManager implements AutoCloseable {
 
         @Override
         public void partsKnown(DownloadSession session) {
+            Entry entry = DownloadManager.this.entries.get(session.download().hash());
+            Source source = entry == null ? null : entry.sources.get(session.address());
+            if (source != null) {
+                session.sourceParts().ifPresent(parts -> setParts(source, parts, DownloadManager.this.ticker.read()));
+            }
             DownloadManager.this.mayRecoverFrom(session);
         }
 
@@ -2368,10 +2382,7 @@ public final class DownloadManager implements AutoCloseable {
                 DownloadManager.this.drop(client);
                 return;
             }
-            session.sourceParts().ifPresent(parts -> {
-                source.parts = parts;
-                source.partsAt = now;
-            });
+            session.sourceParts().ifPresent(parts -> setParts(source, parts, now));
             if (session.uploadAsked()) {
                 source.rank = session.queueRank();
             }

@@ -132,6 +132,7 @@ class DownloadCallbackTest {
         whenTheSecondSourceGivesUsASlotOverItsCall();
 
         thenWeRequestPartsWithoutAskingForTheSlotItGave();
+        thenWeDoNotAskForTheFileAgain();
     }
 
     @Test
@@ -314,9 +315,8 @@ class DownloadCallbackTest {
         Thread.sleep(1200);
     }
 
+    // Its parts known from the queued connection, the slot comes at once.
     private void whenTheSecondSourceGivesUsASlotOverItsCall() throws Exception {
-        this.call.until(Opcodes.Client.SETREQFILEID);
-        this.call.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
         this.call.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
         this.request = this.call.until(Opcodes.Client.REQUESTPARTS);
     }
@@ -333,6 +333,12 @@ class DownloadCallbackTest {
     private void whenTheDownloadIsPausedBeforeTheSourceAnswers() throws Exception {
         onLoop(() -> this.manager.pause(this.hash));
         this.silent.close();
+    }
+
+    private void thenWeDoNotAskForTheFileAgain() {
+        assertThat(this.request)
+                .as("no request again for the file whose parts it told")
+                .noneMatch(p -> p.opcode() == Opcodes.Client.SETREQFILEID.code());
     }
 
     private void thenWeRequestPartsWithoutAskingForTheSlotItGave() {

@@ -228,6 +228,19 @@ class DownloadSourcesTest {
         whenTheSourceAnswersOverUdp(ClientReasks.fileNotFound());
 
         thenTheDownloadHasSources(0);
+        thenEachPartIsKnownAtSources(0);
+    }
+
+    @Test
+    void shouldCountThePartsOfASourceThatKeepsUsQueuedInTheirRarity() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("rare.bin", Hash16.parseHex("43".repeat(16)));
+        givenTheSourceQueuedUsAt(5);
+
+        whenTheConnectionClosesWhileQueued();
+
+        thenEachPartIsKnownAtSources(1);
     }
 
     @Test
@@ -552,6 +565,16 @@ class DownloadSourcesTest {
             this.manager.reaskAnswered(Ipv4.parse("127.0.0.1"), SOURCE_UDP_PORT, answer);
             return null;
         });
+    }
+
+    private void whenTheConnectionClosesWhileQueued() throws Exception {
+        givenTheConnectionClosedWhileQueued();
+    }
+
+    private void thenEachPartIsKnownAtSources(int sources) throws Exception {
+        assertThat(onLoop(() ->
+                        this.manager.download(this.hash).orElseThrow().parts().sources()))
+                .containsOnly(sources);
     }
 
     private void thenTheSourceIsAskedAgainOverUdpForTheFile(int udpPort) throws Exception {

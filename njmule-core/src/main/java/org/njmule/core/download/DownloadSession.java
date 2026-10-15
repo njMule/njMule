@@ -570,10 +570,7 @@ final class DownloadSession implements PeerLink.Role {
         if (next.isEmpty()) {
             return false;
         }
-        if (this.sourceParts != null) {
-            this.download.file().addAvailability(this.sourceParts, -1);
-            this.sourceParts = null;
-        }
+        this.sourceParts = null;
         logger.debug(
                 "Asking {} for {} instead of {}",
                 this.address,
@@ -585,12 +582,7 @@ final class DownloadSession implements PeerLink.Role {
     }
 
     private void setParts(BitSet parts) {
-        PartFile file = this.download.file();
-        if (this.sourceParts != null) {
-            file.addAvailability(this.sourceParts, -1);
-        }
         this.sourceParts = parts;
-        file.addAvailability(parts, 1);
         this.listener.partsKnown(this);
         if (!hasNeededParts()) {
             if (!askForAnother(true)) {
@@ -857,9 +849,6 @@ final class DownloadSession implements PeerLink.Role {
         this.state = State.ENDED;
         stopIdle();
         releaseBlocks();
-        if (this.sourceParts != null) {
-            this.download.file().addAvailability(this.sourceParts, -1);
-        }
         if (this.connection != null) {
             this.connection.close();
         }
