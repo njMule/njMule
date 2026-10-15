@@ -534,9 +534,16 @@ public final class DownloadManager implements AutoCloseable {
         return info(entry);
     }
 
-    /** Takes over another client's download copied into {@link #tempDir}. */
-    public DownloadInfo adopt(Path met, Path data) throws IOException {
-        DownloadQueue.Download download = this.queue.adopt(met, data);
+    /**
+     * Takes over another client's download copied into {@link #tempDir}, in {@code category} when it is one of ours.
+     */
+    public DownloadInfo adopt(Path met, Path data, int category) throws IOException {
+        int ours = category(category).isPresent() ? category : Category.NONE;
+        DownloadQueue.Download download = this.queue.adopt(met, data, ours);
+        if (ours != Category.NONE) {
+            // Takes the category's priority too.
+            setCategory(download.hash(), ours);
+        }
         return info(this.entries.get(download.hash()));
     }
 

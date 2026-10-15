@@ -301,10 +301,10 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     /**
-     * Takes over a download another client left in {@code met} and {@code data}, both already in our temp directory:
-     * they get the next free number and the complete parts are checked again.
+     * Takes over a download another client left in {@code met} and {@code data}, both already in our temp directory, in
+     * {@code category}: they get the next free number and the complete parts are checked again.
      */
-    public Download adopt(Path met, Path data) throws IOException {
+    public Download adopt(Path met, Path data, int category) throws IOException {
         PartMet.Contents contents = PartMet.read(Files.readAllBytes(met));
         if (this.downloads.containsKey(contents.fileHash())) {
             throw new FileAlreadyExistsException(
@@ -324,6 +324,8 @@ public final class DownloadQueue implements AutoCloseable {
             throw e;
         }
         file.rename(PathSanitizer.fileName(file.name()));
+        // The other client's category number means nothing here: the download is announced in ours.
+        file.setCategory(category);
         file.setAdded(nextAdded());
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.dirty = true;

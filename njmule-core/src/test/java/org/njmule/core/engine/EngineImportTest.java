@@ -25,6 +25,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.SortedMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.NjMuleEngine;
@@ -59,6 +62,7 @@ class EngineImportTest {
     private int port;
     private AppDirectories dirs;
     private NjMuleEngine engine;
+    private final List<EngineEvent> events = new CopyOnWriteArrayList<>();
     private ImportReport report;
 
     @AfterEach
@@ -132,6 +136,21 @@ class EngineImportTest {
         whenTheEmuleProfileIsImported(new ImportOptions(false, false, true));
 
         thenTheHalfDownloadIsInCategory(Category.NONE);
+    }
+
+    @Test
+    void shouldAnnounceAnImportedDownloadInTheCategoryItEndsIn() throws Exception {
+        givenAnEmuleProfile();
+        givenTheEmuleProfileHasTheCategory("Films");
+        givenTheHalfDownloadOfEmuleIsInCategory(1);
+        givenAProfileOfOurs();
+        givenARunningEngine();
+        givenOurCategory(1, "Mine");
+        givenTheEventsAreWatched();
+
+        whenTheEmuleProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheHalfDownloadWasAnnouncedInCategory(Category.NONE);
     }
 
     @Test
@@ -282,6 +301,36 @@ class EngineImportTest {
         assertThat(this.engine.savedSearches().get(5, TimeUnit.SECONDS))
                 .extracting(SavedSearch::title)
                 .containsExactly(titles);
+    }
+
+    private void givenTheEventsAreWatched() {
+        this.engine.events().subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(EngineEvent event) {
+                EngineImportTest.this.events.add(event);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {}
+
+            @Override
+            public void onComplete() {}
+        });
+    }
+
+    private void thenTheHalfDownloadWasAnnouncedInCategory(int category) {
+        assertThat(this.events)
+                .filteredOn(EngineEvent.DownloadAdded.class::isInstance)
+                .map(e -> ((EngineEvent.DownloadAdded) e).download())
+                .filteredOn(d -> d.hash().equals(this.emule.halfHash))
+                .singleElement()
+                .extracting(DownloadInfo::category)
+                .isEqualTo(category);
     }
 
     private void thenTheHalfDownloadIsInCategory(int category) throws Exception {

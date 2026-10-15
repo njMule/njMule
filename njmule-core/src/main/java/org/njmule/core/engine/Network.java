@@ -1225,8 +1225,8 @@ final class Network {
         return this.downloads.tempDir();
     }
 
-    DownloadInfo adoptDownload(Path met, Path data) throws IOException {
-        DownloadInfo info = this.downloads.adopt(met, data);
+    DownloadInfo adoptDownload(Path met, Path data, int category) throws IOException {
+        DownloadInfo info = this.downloads.adopt(met, data, category);
         this.userLog.log(LogLine.Level.INFO, "Downloading " + info.name() + ", taken from eMule");
         return info;
     }

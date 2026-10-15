@@ -1114,9 +1114,7 @@ public final class Engine implements NjMuleEngine {
                 return Engine.this
                         .loop
                         .submit(() -> {
-                            DownloadInfo adopted = Engine.this.network.adoptDownload(stagedMet, stagedData);
-                            Engine.this.network.setDownloadCategory(adopted.hash(), category);
-                            return adopted;
+                            return Engine.this.network.adoptDownload(stagedMet, stagedData, category);
                         })
                         .join()
                         .name();
