@@ -373,6 +373,8 @@ All notable changes to this project are documented here. The format follows
 - Kad tells its state in plain words with what to do about it, and the two ways to join it (a list
   of nodes from the web, or a client one knows) sit together, explained, in a section that is open
   while Kad is not connected.
+- The commands that act on the chosen downloads, shared files or search results are off while none
+  is chosen, and More and Stop while no search is open.
 - Messages come in three kinds: news, successes (a finished download) and problems, which carry a
   colour and an icon of their own and stay until closed. They stack in the bottom corner above the
   status strip, at most four at a time, instead of covering the tool rows.

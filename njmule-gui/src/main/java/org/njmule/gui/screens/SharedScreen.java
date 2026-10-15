@@ -25,6 +25,7 @@ import java.util.function.Function;
 import javafx.beans.binding.Bindings;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
@@ -135,10 +136,12 @@ public final class SharedScreen implements Screen {
                                 "IDS_SHAREDFILESCOUNT",
                                 this.gui.model().sharedFiles().size()),
                         this.gui.model().sharedFiles().rows()));
+        Button copyButton = Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
+        Fx.needSelection(this.table, copyButton, priorities);
         var tools = Fx.toolRow(
                 Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
                 Fx.button(this.gui.t("IDS_SHAREDFOLDERS"), Material2AL.FOLDER_SHARED, this::showFolders),
-                Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                copyButton,
                 priorities,
                 Fx.spacer(),
                 count);

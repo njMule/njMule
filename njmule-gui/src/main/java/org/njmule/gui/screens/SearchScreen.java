@@ -32,7 +32,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Pos;
@@ -154,6 +157,7 @@ public final class SearchScreen implements Screen {
     private Input<String> extensionInput;
     private final TabPane tabs = new TabPane();
     private final ToggleButton parametersButton = new ToggleButton();
+    private final BooleanProperty noneChosen = new SimpleBooleanProperty(true);
     private final VBox content = new VBox(8);
     private Node parameters;
     private final Map<Tab, Results> results = new HashMap<>();
@@ -206,15 +210,16 @@ public final class SearchScreen implements Screen {
         this.method.setValue(Method.AUTOMATIC);
         this.method.setCellFactory(l -> new MethodCell());
         this.method.setButtonCell(new MethodCell());
-        var tools = Fx.toolRow(
-                this.query,
-                this.method,
-                start,
-                Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
-                Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
-                this.parametersButton,
-                Fx.spacer(),
-                Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected));
+        // More and Stop act on the search shown, Download on the results chosen in it.
+        Button more = Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more);
+        Button stop = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop);
+        more.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
+        stop.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
+        Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
+        download.disableProperty().bind(this.noneChosen);
+        this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.followChoice());
+        var tools =
+                Fx.toolRow(this.query, this.method, start, more, stop, this.parametersButton, Fx.spacer(), download);
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded, shared or marked since shows so in every list.
         this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> this.refreshAll());
@@ -599,6 +604,8 @@ public final class SearchScreen implements Screen {
         tab.setGraphic(running);
         tab.setOnClosed(e -> this.closed(tab));
         this.results.put(tab, new Results(search, table, ownTitle));
+        table.getSelectionModel().getSelectedItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>)
+                c -> this.followChoice());
         this.tabs.getTabs().add(tab);
         this.tabs.getSelectionModel().select(tab);
     }
@@ -660,6 +667,12 @@ public final class SearchScreen implements Screen {
 
     private Results current() {
         return this.results.get(this.tabs.getSelectionModel().getSelectedItem());
+    }
+
+    private void followChoice() {
+        Results current = this.current();
+        this.noneChosen.set(
+                current == null || current.table().getSelectionModel().isEmpty());
     }
 
     void more() {

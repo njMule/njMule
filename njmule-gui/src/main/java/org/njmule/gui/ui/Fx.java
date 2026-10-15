@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -319,6 +320,14 @@ public final class Fx {
             }
         });
         return column;
+    }
+
+    /** Disables {@code controls}, which act on the selected rows, while {@code table} has none selected. */
+    public static void needSelection(TableView<?> table, Node... controls) {
+        BooleanBinding none = Bindings.isEmpty(table.getSelectionModel().getSelectedItems());
+        for (Node control : controls) {
+            control.disableProperty().bind(none);
+        }
     }
 
     /** The values of the selected rows. */

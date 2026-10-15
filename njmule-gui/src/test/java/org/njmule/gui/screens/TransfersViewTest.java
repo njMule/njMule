@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import org.junit.jupiter.api.AfterEach;
@@ -98,6 +100,14 @@ class TransfersViewTest {
     }
 
     @Test
+    void theCommandsOnDownloadsWaitForOneChosen() throws Exception {
+        this.givenTheDownloads("first.bin", "second.bin");
+        this.thenTheCommandsOnTheChosenAreOff(true);
+        this.whenTheDownloadIsChosen(1);
+        this.thenTheCommandsOnTheChosenAreOff(false);
+    }
+
+    @Test
     void ctrlFPutsTheCursorInTheFilter() throws Exception {
         this.givenTheDownloads("first.bin");
         this.whenCtrlFIsPressed();
@@ -164,6 +174,16 @@ class TransfersViewTest {
     private void thenTheSourcesShownAre(int count) throws Exception {
         FxTesting.await(
                 "the sources shown", () -> this.screen.sources().getItems().size() == count);
+    }
+
+    private void thenTheCommandsOnTheChosenAreOff(boolean off) throws Exception {
+        List<String> names = List.of("Pause", "Resume", "Stop", "Cancel");
+        assertThat(FxTesting.onFx(() -> this.screen.view().lookupAll(".button").stream()
+                        .filter(n -> n instanceof Button b && b.getText() != null && names.contains(b.getText()))
+                        .map(Node::isDisabled)
+                        .toList()))
+                .hasSize(names.size())
+                .containsOnly(off);
     }
 
     private void thenTheFilterHasTheCursor() throws Exception {

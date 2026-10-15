@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.event.Event;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
@@ -81,6 +84,8 @@ class SearchResultsTest {
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final AtomicLong ids = new AtomicLong();
     private final AtomicReference<EngineStatus> status = new AtomicReference<>();
+    private SearchScreen shownScreen;
+    private Tab shownTab;
     // Commands a test replaces beside those of every test.
     private final Map<String, Engines.Command> extra = new HashMap<>();
 
@@ -334,6 +339,47 @@ class SearchResultsTest {
 
         // The exit goes on when the open searches cannot be kept.
         FxTesting.onFx(screen::closing);
+    }
+
+    @Test
+    void downloadWaitsForAResultChosenAndMoreAndStopForASearch() throws Exception {
+        this.givenTheSearchScreen();
+        this.thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        this.whenSearchedFor("film", FILM_DVD, FILM_HD);
+        this.thenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
+        this.thenTheButtonsAreOff(true, "IDS_DOWNLOAD");
+        this.whenTheResultIsChosen(FILM_HD);
+        this.thenTheButtonsAreOff(false, "IDS_DOWNLOAD");
+        this.whenTheSearchIsClosed();
+        this.thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+    }
+
+    private void givenTheSearchScreen() throws Exception {
+        this.shownScreen = this.screen();
+    }
+
+    private void whenSearchedFor(String words, SearchResult... results) throws Exception {
+        this.shownTab = this.search(this.shownScreen, words, SearchScreen.Method.SERVER);
+        FxTesting.onFx(() ->
+                this.test.model.handle(new EngineEvent.SearchResults(new SearchId(this.ids.get()), List.of(results))));
+    }
+
+    private void whenTheResultIsChosen(SearchResult result) throws Exception {
+        FxTesting.onFx(() -> this.select(this.shownScreen.table(this.shownTab), result));
+    }
+
+    private void whenTheSearchIsClosed() throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.tabs().getTabs().remove(this.shownTab));
+    }
+
+    private void thenTheButtonsAreOff(boolean off, String... keys) throws Exception {
+        List<String> names = Arrays.stream(keys).map(this.test.gui::t).toList();
+        assertThat(FxTesting.onFx(() -> this.shownScreen.view().lookupAll(".button").stream()
+                        .filter(n -> n instanceof Button b && b.getText() != null && names.contains(b.getText()))
+                        .map(Node::isDisabled)
+                        .toList()))
+                .hasSize(names.size())
+                .containsOnly(off);
     }
 
     @Test

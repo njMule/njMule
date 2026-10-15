@@ -243,13 +243,21 @@ public final class TransfersScreen implements Screen {
                 .quietWhenEmpty();
         Button add = Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink));
         add.disableProperty().bind(this.linkInput.validProperty().not());
+        Button pauseButton = Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected);
+        Button resumeButton = Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected);
+        Button stopButton = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected);
+        Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected);
+        MenuButton priorityButton = this.priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY)));
+        Button copyButton = Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
+        Fx.needSelection(
+                this.downloads, pauseButton, resumeButton, stopButton, cancelButton, priorityButton, copyButton);
         var tools = Fx.toolRow(
-                Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected),
-                Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected),
-                Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected),
-                Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected),
-                this.priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY))),
-                Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
+                pauseButton,
+                resumeButton,
+                stopButton,
+                cancelButton,
+                priorityButton,
+                copyButton,
                 Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
                 Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
                 this.detailsButton,
