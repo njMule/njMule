@@ -54,27 +54,27 @@ class KadSocketTest {
 
     @Test
     void twoNodesTalkOverObfuscatedDatagrams() throws Exception {
-        KadSocket socketA = this.socket("a");
-        KadSocket socketB = this.socket("b");
+        KadSocket socketA = socket("a");
+        KadSocket socketB = socket("b");
         try (socketA;
                 socketB) {
-            KadNode a = this.node("a", socketA);
-            KadNode b = this.node("b", socketB);
+            KadNode a = node("a", socketA);
+            KadNode b = node("b", socketB);
             int loopback = Ipv4.of(127, 0, 0, 1);
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 a.bootstrap(loopback, socketB.port());
                 return null;
             });
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-            while (this.onLoop(a::contacts) == 0) {
+            while (onLoop(a::contacts) == 0) {
                 assertThat(System.nanoTime()).isLessThan(deadline);
                 Thread.sleep(20);
             }
             // The answer came back obfuscated with the key A gave B: B is a verified contact.
-            assertThat(this.onLoop(a::verifiedContacts)).isEqualTo(1);
-            assertThat(this.onLoop(a::isConnected)).isTrue();
-            assertThat(this.onLoop(b::contacts))
+            assertThat(onLoop(a::verifiedContacts)).isEqualTo(1);
+            assertThat(onLoop(a::isConnected)).isTrue();
+            assertThat(onLoop(b::contacts))
                     .as("a bootstrap request adds nobody")
                     .isZero();
         }
@@ -82,14 +82,14 @@ class KadSocketTest {
 
     @Test
     void aClosedSocketLeavesItsPortFreeAtOnce() throws Exception {
-        this.whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
-        this.thenThePortWasBusyTimes(0);
+        whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
+        thenThePortWasBusyTimes(0);
     }
 
     // Each socket receives (its reader waits on it) when it closes, as a running Kad does.
     private void whenSocketsAreClosedAndTheirPortsBoundAgain(int rounds) throws Exception {
         for (int i = 0; i < rounds; i++) {
-            KadSocket socket = this.socket("reuse");
+            KadSocket socket = socket("reuse");
             int port = socket.port();
             Thread.sleep(5);
             socket.close();

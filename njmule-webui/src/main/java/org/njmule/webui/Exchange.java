@@ -50,7 +50,7 @@ final class Exchange {
     }
 
     boolean isHead() {
-        return this.method().equals("HEAD");
+        return method().equals("HEAD");
     }
 
     /** The path, decoded. */
@@ -105,7 +105,7 @@ final class Exchange {
         this.response.setStatus(status);
         if (length > 0) {
             this.response.getHeaders().put(HttpHeader.CONTENT_LENGTH, length);
-        } else if (length < 0 && !this.isHead()) {
+        } else if (length < 0 && !isHead()) {
             this.response.getHeaders().put(HttpHeader.CONTENT_LENGTH, 0);
         }
     }

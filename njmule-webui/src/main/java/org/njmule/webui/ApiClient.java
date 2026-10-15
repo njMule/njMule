@@ -110,19 +110,19 @@ public final class ApiClient {
     }
 
     public Object get(String path) throws IOException, InterruptedException {
-        return this.call("GET", path, null);
+        return call("GET", path, null);
     }
 
     public Object post(String path, Map<String, ?> body) throws IOException, InterruptedException {
-        return this.call("POST", path, body);
+        return call("POST", path, body);
     }
 
     public Object put(String path, Map<String, ?> body) throws IOException, InterruptedException {
-        return this.call("PUT", path, body);
+        return call("PUT", path, body);
     }
 
     public Object delete(String path) throws IOException, InterruptedException {
-        return this.call("DELETE", path, null);
+        return call("DELETE", path, null);
     }
 
     /**
@@ -135,7 +135,7 @@ public final class ApiClient {
         HttpClient http = start();
         try {
             // No deadline for the whole answer: the stream lasts until either side ends it.
-            Request request = this.request(http, "/events?types=" + URLEncoder.encode(types, StandardCharsets.UTF_8))
+            Request request = request(http, "/events?types=" + URLEncoder.encode(types, StandardCharsets.UTF_8))
                     .idleTimeout(STREAM_IDLE.toMillis(), TimeUnit.MILLISECONDS);
             InputStreamResponseListener listener = new InputStreamResponseListener();
             request.send(listener);
@@ -180,8 +180,7 @@ public final class ApiClient {
     private Object call(String method, String path, Map<String, ?> body) throws IOException, InterruptedException {
         HttpClient http = start();
         try {
-            Request request =
-                    this.request(http, path).method(method).timeout(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            Request request = request(http, path).method(method).timeout(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             if (body != null) {
                 request.body(new BytesRequestContent("application/json; charset=utf-8", write(body)));
             }

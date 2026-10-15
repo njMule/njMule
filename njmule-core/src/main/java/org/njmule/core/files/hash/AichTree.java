@@ -115,8 +115,8 @@ public final class AichTree {
             long blocks = (dataSize + base - 1) / base;
             long leftSize = (blocks + (left ? 1 : 0)) / 2 * base;
             long rightSize = dataSize - leftSize;
-            Hash20 l = this.child(leftSize, true, base);
-            Hash20 r = this.child(rightSize, false, base);
+            Hash20 l = child(leftSize, true, base);
+            Hash20 r = child(rightSize, false, base);
             byte[] both = new byte[2 * Hash20.LENGTH];
             l.copyTo(both, 0);
             r.copyTo(both, Hash20.LENGTH);
@@ -125,7 +125,7 @@ public final class AichTree {
 
         private Hash20 child(long dataSize, boolean left, long parentBase) {
             long base = baseSize(dataSize);
-            Hash20 hash = this.node(dataSize, left, base);
+            Hash20 hash = node(dataSize, left, base);
             if (this.parts != null && parentBase == Ed2k.PARTSIZE && base == Ed2k.EMBLOCKSIZE) {
                 this.parts.add(hash);
             }

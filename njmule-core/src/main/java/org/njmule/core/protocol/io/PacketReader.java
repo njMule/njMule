@@ -59,34 +59,34 @@ public final class PacketReader {
     }
 
     public int u8() throws DecodeException {
-        this.need(1);
+        need(1);
         return this.buffer.get() & 0xFF;
     }
 
     public int u16() throws DecodeException {
-        this.need(2);
+        need(2);
         return this.buffer.getShort() & 0xFFFF;
     }
 
     public long u32() throws DecodeException {
-        this.need(4);
+        need(4);
         return this.buffer.getInt() & 0xFFFF_FFFFL;
     }
 
     /** The raw 32 bits, for values compared as bit patterns (magic numbers, IP addresses). */
     public int i32() throws DecodeException {
-        this.need(4);
+        need(4);
         return this.buffer.getInt();
     }
 
     /** The raw 64 bits; callers range-check values that must not exceed {@code Long.MAX_VALUE}. */
     public long u64() throws DecodeException {
-        this.need(8);
+        need(8);
         return this.buffer.getLong();
     }
 
     public float f32() throws DecodeException {
-        this.need(4);
+        need(4);
         return this.buffer.getFloat();
     }
 
@@ -94,25 +94,25 @@ public final class PacketReader {
         if (length < 0) {
             throw new DecodeException("negative length " + length);
         }
-        this.need(length);
+        need(length);
         byte[] out = new byte[length];
         this.buffer.get(out);
         return out;
     }
 
     public Hash16 hash16() throws DecodeException {
-        return Hash16.of(this.bytes(Hash16.LENGTH));
+        return Hash16.of(bytes(Hash16.LENGTH));
     }
 
     public Hash20 hash20() throws DecodeException {
-        return Hash20.of(this.bytes(Hash20.LENGTH));
+        return Hash20.of(bytes(Hash20.LENGTH));
     }
 
     public void skip(int length) throws DecodeException {
         if (length < 0) {
             throw new DecodeException("negative length " + length);
         }
-        this.need(length);
+        need(length);
         this.buffer.position(this.buffer.position() + length);
     }
 
@@ -121,7 +121,7 @@ public final class PacketReader {
         if (length < 0) {
             throw new DecodeException("negative length " + length);
         }
-        this.need(length);
+        need(length);
         ByteBuffer view = this.buffer.slice(this.buffer.position(), length);
         this.buffer.position(this.buffer.position() + length);
         return new PacketReader(view);
@@ -135,7 +135,7 @@ public final class PacketReader {
 
     /** A {@code <u16 length><bytes>} string decoded with the network's rules ({@link Ed2kStrings}). */
     public String string16() throws DecodeException {
-        return Ed2kStrings.decode(this.bytes(this.u16()));
+        return Ed2kStrings.decode(bytes(u16()));
     }
 
     /** Checks that a count field is plausible for the bytes left (each item ≥ {@code minSize}). */

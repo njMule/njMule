@@ -77,7 +77,7 @@ public final class LiveList<K, V> {
             if (!seen.add(k)) {
                 continue;
             }
-            this.put(k, value);
+            put(k, value);
         }
         if (seen.size() != this.byKey.size()) {
             this.rows.removeIf(row -> !seen.contains(this.key.apply(row.get())));
@@ -87,7 +87,7 @@ public final class LiveList<K, V> {
 
     /** Updates or adds one row. */
     public void put(V value) {
-        this.put(this.key.apply(value), value);
+        put(this.key.apply(value), value);
     }
 
     public void remove(K k) {

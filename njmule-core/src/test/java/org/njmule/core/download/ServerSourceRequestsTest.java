@@ -64,7 +64,7 @@ class ServerSourceRequestsTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -74,26 +74,26 @@ class ServerSourceRequestsTest {
 
     @Test
     void theServerIsAskedForFifteenFilesAtOnceThenNoMore() throws Exception {
-        this.givenAServerThatTakesSourceRequests();
-        this.givenDownloads(20);
+        givenAServerThatTakesSourceRequests();
+        givenDownloads(20);
 
-        this.whenTheDownloadsHaveAskedFor(15);
+        whenTheDownloadsHaveAskedFor(15);
 
-        this.thenNoMoreIsAskedForAWhile();
+        thenNoMoreIsAskedForAWhile();
     }
 
     @Test
     void oneMoreFileIsAskedForEveryTwentySeconds() throws Exception {
-        this.givenAServerThatTakesSourceRequests();
-        this.givenDownloads(20);
-        this.givenTheDownloadsHaveAskedFor(15);
+        givenAServerThatTakesSourceRequests();
+        givenDownloads(20);
+        givenTheDownloadsHaveAskedFor(15);
 
-        this.whenTimePasses(DownloadManager.SERVER_REQUEST_CREDIT.minusSeconds(1));
-        this.thenNoMoreIsAskedForAWhile();
-        this.whenTimePasses(Duration.ofSeconds(1));
+        whenTimePasses(DownloadManager.SERVER_REQUEST_CREDIT.minusSeconds(1));
+        thenNoMoreIsAskedForAWhile();
+        whenTimePasses(Duration.ofSeconds(1));
 
-        this.thenTheDownloadsHaveAskedFor(16);
-        this.thenNoMoreIsAskedForAWhile();
+        thenTheDownloadsHaveAskedFor(16);
+        thenNoMoreIsAskedForAWhile();
     }
 
     private void givenAServerThatTakesSourceRequests() throws Exception {
@@ -105,7 +105,7 @@ class ServerSourceRequestsTest {
                 Optional::empty,
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
-        this.manager = this.onLoop(() -> DownloadManager.open(
+        this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -123,7 +123,7 @@ class ServerSourceRequestsTest {
     }
 
     private void givenDownloads(int count) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             for (int i = 0; i < count; i++) {
                 Hash16 hash = Hash16.parseHex(HexFormat.of().toHexDigits(i + 1L).repeat(2));
                 this.manager.add(Ed2kLink.FileLink.of("file" + i + ".bin", 5000, hash));
@@ -133,7 +133,7 @@ class ServerSourceRequestsTest {
     }
 
     private void givenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
-        this.whenTheDownloadsHaveAskedFor(files);
+        whenTheDownloadsHaveAskedFor(files);
     }
 
     private void whenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
@@ -155,7 +155,7 @@ class ServerSourceRequestsTest {
     }
 
     private void thenTheDownloadsHaveAskedFor(int files) throws InterruptedException {
-        this.whenTheDownloadsHaveAskedFor(files);
+        whenTheDownloadsHaveAskedFor(files);
         assertThat(this.asked).doesNotHaveDuplicates();
     }
 

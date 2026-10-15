@@ -60,42 +60,42 @@ class NavigationTest {
 
     @Test
     void theRailPutsTheEverydayPlacesFirstAndTheOptionsLast() throws Exception {
-        this.givenTheWindow();
-        this.thenTheRailReads("Transfers", "Search", "Shared Files", "Messages", "Network", "Statistics", "Options");
+        givenTheWindow();
+        thenTheRailReads("Transfers", "Search", "Shared Files", "Messages", "Network", "Statistics", "Options");
     }
 
     @Test
     void theNetworkHoldsTheServersAndKadAndRemembersTheLastOne() throws Exception {
-        this.givenTheWindow();
-        this.whenTheRailOpens("Network");
-        this.thenTheScreenIs("servers");
-        this.whenTheNetworkSwitchesTo("kad");
-        this.thenTheScreenIs("kad");
-        this.thenTheRailShows("Network");
-        this.whenTheRailOpens("Transfers");
-        this.whenTheShortcutIsPressed(KeyCode.DIGIT5);
-        this.thenTheScreenIs("kad");
+        givenTheWindow();
+        whenTheRailOpens("Network");
+        thenTheScreenIs("servers");
+        whenTheNetworkSwitchesTo("kad");
+        thenTheScreenIs("kad");
+        thenTheRailShows("Network");
+        whenTheRailOpens("Transfers");
+        whenTheShortcutIsPressed(KeyCode.DIGIT5);
+        thenTheScreenIs("kad");
     }
 
     @Test
     void theMessagesPlaceCountsWhatCameWhileItDidNotShow() throws Exception {
-        this.givenTheWindow();
-        this.whenMessagesArrive(2);
-        this.thenTheBadgeOf("Messages", "2");
-        this.whenTheRailOpens("Messages");
-        this.thenTheBadgeOf("Messages", null);
+        givenTheWindow();
+        whenMessagesArrive(2);
+        thenTheBadgeOf("Messages", "2");
+        whenTheRailOpens("Messages");
+        thenTheBadgeOf("Messages", null);
     }
 
     @Test
     void theTransfersPlaceCountsTheRunningDownloads() throws Exception {
-        this.givenTheWindowWithDownloads(
+        givenTheWindowWithDownloads(
                 DownloadInfo.Status.DOWNLOADING, DownloadInfo.Status.DOWNLOADING, DownloadInfo.Status.PAUSED);
-        this.thenTheBadgeOf("Transfers", "2");
+        thenTheBadgeOf("Transfers", "2");
     }
 
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.show();
+        show();
     }
 
     private void givenTheWindowWithDownloads(DownloadInfo.Status... statuses) throws Exception {
@@ -119,7 +119,7 @@ class NavigationTest {
         Map<String, Engines.Command> commands =
                 Map.of("downloads", a -> CompletableFuture.completedFuture(List.copyOf(downloads)));
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
-        this.show();
+        show();
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await(
                 "the downloads", () -> this.test.model.downloads().rows().size() == statuses.length);
@@ -131,7 +131,7 @@ class NavigationTest {
     }
 
     private void whenTheRailOpens(String title) throws Exception {
-        FxTesting.onFx(() -> this.rail(title).fire());
+        FxTesting.onFx(() -> rail(title).fire());
     }
 
     private void whenTheNetworkSwitchesTo(String part) throws Exception {
@@ -163,18 +163,17 @@ class NavigationTest {
     }
 
     private void thenTheRailShows(String title) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.rail(title).isSelected())).isTrue();
+        assertThat(FxTesting.onFx(() -> rail(title).isSelected())).isTrue();
     }
 
     private void thenTheBadgeOf(String title, String count) throws Exception {
         Optional<String> shown = FxTesting.onFx(() -> {
-            Node badge = this.rail(title).getGraphic().lookup(".rail-badge");
+            Node badge = rail(title).getGraphic().lookup(".rail-badge");
             return badge != null && badge.isVisible() ? Optional.of(((Label) badge).getText()) : Optional.empty();
         });
         assertThat(shown).isEqualTo(Optional.ofNullable(count));
         if (count != null) {
-            assertThat(FxTesting.onFx(() -> this.rail(title).getAccessibleHelp()))
-                    .endsWith(count);
+            assertThat(FxTesting.onFx(() -> rail(title).getAccessibleHelp())).endsWith(count);
         }
     }
 

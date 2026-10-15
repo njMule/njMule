@@ -101,7 +101,7 @@ public final class IniFile {
 
     /** A decimal integer, signed; values that do not parse are absent. */
     public OptionalLong getLong(String section, String key) {
-        Optional<String> value = this.get(section, key);
+        Optional<String> value = get(section, key);
         if (value.isEmpty()) {
             return OptionalLong.empty();
         }
@@ -113,7 +113,7 @@ public final class IniFile {
     }
 
     public Optional<Boolean> getBoolean(String section, String key) {
-        OptionalLong value = this.getLong(section, key);
+        OptionalLong value = getLong(section, key);
         return value.isPresent() ? Optional.of(value.getAsLong() != 0) : Optional.empty();
     }
 }

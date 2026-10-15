@@ -51,14 +51,14 @@ class LookupTest {
 
     @Test
     void aSearchWhoseNodesAllStaySilentEndsAfterTheLateAnswerWait() {
-        Lookup lookup = this.lookup(Lookup.Kind.KEYWORD, 1, 2, 3);
+        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 1, 2, 3);
         assertThat(this.asks).hasSize(3);
 
-        this.tickUntil(lookup, 3);
+        tickUntil(lookup, 3);
         assertThat(lookup.isStopped()).as("waiting for late answers").isFalse();
-        this.tickUntil(lookup, 17);
+        tickUntil(lookup, 17);
         assertThat(lookup.isStopped()).isFalse();
-        this.tickUntil(lookup, 18);
+        tickUntil(lookup, 18);
         assertThat(lookup.isStopped())
                 .as("15 s after the stall, not at the end of its 45 s")
                 .isTrue();
@@ -66,20 +66,20 @@ class LookupTest {
 
     @Test
     void aNodeLookupWhoseNodesAllStaySilentEndsAtTheStall() {
-        Lookup lookup = this.lookup(Lookup.Kind.NODE_COMPLETE, 1, 2);
+        Lookup lookup = lookup(Lookup.Kind.NODE_COMPLETE, 1, 2);
 
-        this.tickUntil(lookup, 2);
+        tickUntil(lookup, 2);
         assertThat(lookup.isStopped()).isFalse();
-        this.tickUntil(lookup, 3);
+        tickUntil(lookup, 3);
         assertThat(lookup.isStopped()).isTrue();
     }
 
     @Test
     void aSearchAsksTheClosestNodeThatAnsweredForMoreWhenTheTwoClosestAreSilent() {
-        Lookup lookup = this.lookup(Lookup.Kind.KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
+        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
         // The third closest answers, the two closest stay silent.
         lookup.answered(ip(3), PORT, List.of(), T0);
-        this.tickUntil(lookup, 10);
+        tickUntil(lookup, 10);
 
         assertThat(this.asks).contains(Ipv4.format(ip(3)) + "/11");
         assertThat(this.requested).extracting(KadMessages.Contact::ip).contains(ip(3));
@@ -89,100 +89,100 @@ class LookupTest {
                 ip(4),
                 PORT,
                 List.of(
-                        this.contactAt(new UInt128(2L << 32 | 1, 0), closer),
-                        this.contactAt(new UInt128(2L << 32 | 2, 0), Ipv4.of(31, 0, 0, 1)),
-                        this.contactAt(new UInt128(2L << 32 | 3, 0), Ipv4.of(32, 0, 0, 1))),
+                        contactAt(new UInt128(2L << 32 | 1, 0), closer),
+                        contactAt(new UInt128(2L << 32 | 2, 0), Ipv4.of(31, 0, 0, 1)),
+                        contactAt(new UInt128(2L << 32 | 3, 0), Ipv4.of(32, 0, 0, 1))),
                 this.clock);
         assertThat(this.asks).noneMatch(a -> a.startsWith(Ipv4.format(closer)));
     }
 
     @Test
     void aPublishNeverAsksANodeAgainForMore() {
-        Lookup lookup = this.lookup(Lookup.Kind.STORE_KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
+        Lookup lookup = lookup(Lookup.Kind.STORE_KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
         // Six nodes asked, then the sixth answers while it still waits for its publish.
         while (this.asks.size() < 6) {
-            this.tickUntil(lookup, (this.clock - T0) / SECOND + 1);
+            tickUntil(lookup, (this.clock - T0) / SECOND + 1);
         }
         lookup.answered(ip(6), PORT, List.of(), this.clock);
-        this.tickUntil(lookup, (this.clock - T0) / SECOND + 10);
+        tickUntil(lookup, (this.clock - T0) / SECOND + 10);
 
         assertThat(this.asks).noneMatch(a -> a.endsWith("/11"));
     }
 
     @Test
     void anAnswerMayNotFillTheRespondersOwnSubnetButLanAddressesAreExempt() {
-        Lookup lookup = this.lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
+        Lookup lookup = lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
         int responder = ip(100);
         int sameSubnet = responder & 0xFFFF_FF00;
 
         lookup.answered(
                 responder,
                 PORT,
-                List.of(this.contactAt(distance(1), sameSubnet | 0x10), this.contactAt(distance(2), sameSubnet | 0x11)),
+                List.of(contactAt(distance(1), sameSubnet | 0x10), contactAt(distance(2), sameSubnet | 0x11)),
                 T0);
         assertThat(this.asks).as("one more of the responder's /24 at most").hasSize(4);
 
-        Lookup lan = this.lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
+        Lookup lan = lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
         this.asks.clear();
         lan.answered(
                 responder,
                 PORT,
                 List.of(
-                        this.contactAt(distance(1), Ipv4.of(192, 168, 1, 1)),
-                        this.contactAt(distance(2), Ipv4.of(192, 168, 1, 2)),
-                        this.contactAt(distance(3), Ipv4.of(192, 168, 1, 3))),
+                        contactAt(distance(1), Ipv4.of(192, 168, 1, 1)),
+                        contactAt(distance(2), Ipv4.of(192, 168, 1, 2)),
+                        contactAt(distance(3), Ipv4.of(192, 168, 1, 3))),
                 T0);
         assertThat(this.asks).as("LAN contacts are not held to the /24 rule").hasSize(3);
     }
 
     @Test
     void withoutContactsALookupEndsAtOnce() {
-        assertThat(this.lookup(Lookup.Kind.KEYWORD).isStopped()).isTrue();
+        assertThat(lookup(Lookup.Kind.KEYWORD).isStopped()).isTrue();
         assertThat(this.asks).isEmpty();
     }
 
     @Test
     void aNodeLookupAsksOneNodeAndEndsWithItsAnswer() {
-        Lookup lookup = this.lookup(Lookup.Kind.NODE, 1, 2, 3);
+        Lookup lookup = lookup(Lookup.Kind.NODE, 1, 2, 3);
         assertThat(this.asks).containsExactly(Ipv4.format(ip(1)) + "/11");
 
-        lookup.answered(ip(1), PORT, List.of(this.contactAt(distance(0), Ipv4.of(30, 0, 0, 1))), T0);
+        lookup.answered(ip(1), PORT, List.of(contactAt(distance(0), Ipv4.of(30, 0, 0, 1))), T0);
 
         assertThat(lookup.isStopped()).isTrue();
     }
 
     @Test
     void onlyAskedNodesSendingWhatWasAskedAreHeard() {
-        Lookup lookup = this.lookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 100, 101, 102);
         int closer = Ipv4.of(30, 0, 0, 1);
 
-        lookup.answered(ip(100), PORT + 1, List.of(this.contactAt(distance(1), closer)), T0);
-        lookup.answered(Ipv4.of(40, 0, 0, 1), PORT, List.of(this.contactAt(distance(1), closer)), T0);
+        lookup.answered(ip(100), PORT + 1, List.of(contactAt(distance(1), closer)), T0);
+        lookup.answered(Ipv4.of(40, 0, 0, 1), PORT, List.of(contactAt(distance(1), closer)), T0);
         lookup.answered(
                 ip(100),
                 PORT,
                 List.of(
-                        this.contactAt(distance(1), closer),
-                        this.contactAt(distance(2), Ipv4.of(31, 0, 0, 1)),
-                        this.contactAt(distance(3), Ipv4.of(32, 0, 0, 1))),
+                        contactAt(distance(1), closer),
+                        contactAt(distance(2), Ipv4.of(31, 0, 0, 1)),
+                        contactAt(distance(3), Ipv4.of(32, 0, 0, 1))),
                 T0);
         assertThat(this.asks).as("a stranger, another port, too many contacts").hasSize(3);
 
         lookup.answered(
                 ip(100),
                 PORT,
-                List.of(this.contactAt(distance(1), closer), this.contactAt(distance(1), Ipv4.of(31, 0, 0, 1))),
+                List.of(contactAt(distance(1), closer), contactAt(distance(1), Ipv4.of(31, 0, 0, 1))),
                 T0);
         assertThat(this.asks).as("the same contact twice is asked once").hasSize(4);
     }
 
     @Test
     void onlyNodesWithinTheToleranceGetTheRequest() {
-        Lookup lookup = this.lookup(Lookup.Kind.KEYWORD, Lookup.TOLERANCE, Lookup.TOLERANCE + 1);
+        Lookup lookup = lookup(Lookup.Kind.KEYWORD, Lookup.TOLERANCE, Lookup.TOLERANCE + 1);
         lookup.answered(ip(Lookup.TOLERANCE), PORT, List.of(), T0);
         lookup.answered(ip(Lookup.TOLERANCE + 1), PORT, List.of(), T0);
 
-        this.tickUntil(lookup, 4);
+        tickUntil(lookup, 4);
 
         assertThat(this.requested).extracting(KadMessages.Contact::ip).containsExactly(ip(Lookup.TOLERANCE));
     }

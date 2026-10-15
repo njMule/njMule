@@ -30,66 +30,66 @@ class EventCommandsTest {
 
     @Test
     void shouldSplitACommandLineAtSpaces() {
-        this.givenTheCommandLine("notify-send  njMule\t%NAME");
+        givenTheCommandLine("notify-send  njMule\t%NAME");
 
-        this.whenTheCommandLineIsSplit();
+        whenTheCommandLineIsSplit();
 
-        this.thenTheArgumentsAre("notify-send", "njMule", "%NAME");
+        thenTheArgumentsAre("notify-send", "njMule", "%NAME");
     }
 
     @Test
     void shouldKeepSpacesAndBackslashesInsideDoubleQuotes() {
-        this.givenTheCommandLine("\"C:\\Program Files\\Tools\\tell.exe\" --title \"Download done\"");
+        givenTheCommandLine("\"C:\\Program Files\\Tools\\tell.exe\" --title \"Download done\"");
 
-        this.whenTheCommandLineIsSplit();
+        whenTheCommandLineIsSplit();
 
-        this.thenTheArgumentsAre("C:\\Program Files\\Tools\\tell.exe", "--title", "Download done");
+        thenTheArgumentsAre("C:\\Program Files\\Tools\\tell.exe", "--title", "Download done");
     }
 
     @Test
     void shouldReadSingleQuotesAndDoubledQuotes() {
-        this.givenTheCommandLine("echo 'it''s' \"say \"\"hi\"\"\" a\"b c\"d \"\"");
+        givenTheCommandLine("echo 'it''s' \"say \"\"hi\"\"\" a\"b c\"d \"\"");
 
-        this.whenTheCommandLineIsSplit();
+        whenTheCommandLineIsSplit();
 
-        this.thenTheArgumentsAre("echo", "it's", "say \"hi\"", "ab cd", "");
+        thenTheArgumentsAre("echo", "it's", "say \"hi\"", "ab cd", "");
     }
 
     @Test
     void shouldRefuseAQuoteLeftOpen() {
-        this.givenTheCommandLine("player \"my file");
+        givenTheCommandLine("player \"my file");
 
-        this.whenTheCommandLineIsSplit();
+        whenTheCommandLineIsSplit();
 
-        this.thenExceptionOccurred(IllegalArgumentException.class);
+        thenExceptionOccurred(IllegalArgumentException.class);
     }
 
     @Test
     void shouldGiveNoArgumentsForAnEmptyCommandLine() {
-        this.givenTheCommandLine("   ");
+        givenTheCommandLine("   ");
 
-        this.whenTheCommandLineIsSplit();
+        whenTheCommandLineIsSplit();
 
-        this.thenTheArgumentsAre();
+        thenTheArgumentsAre();
     }
 
     @Test
     void shouldRefuseACommandLineOfSeveralLines() {
-        this.whenACommandIsMadeOf("first\nsecond");
+        whenACommandIsMadeOf("first\nsecond");
 
-        this.thenExceptionOccurred(IllegalArgumentException.class);
+        thenExceptionOccurred(IllegalArgumentException.class);
     }
 
     @Test
     void shouldReplaceTheCommandOfOneEventOnly() {
-        this.givenNoCommands();
+        givenNoCommands();
 
-        this.whenTheCommandOfAnEventIsSet(EventCommands.Event.CHAT_MESSAGE, new EventCommands.Command(true, "beep"));
+        whenTheCommandOfAnEventIsSet(EventCommands.Event.CHAT_MESSAGE, new EventCommands.Command(true, "beep"));
 
-        this.thenTheCommandOfIs(EventCommands.Event.CHAT_MESSAGE, new EventCommands.Command(true, "beep"));
-        this.thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_COMPLETED, EventCommands.Command.NONE);
-        this.thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_FAILED, EventCommands.Command.NONE);
-        this.thenTheCommandOfIs(EventCommands.Event.DISK_SPACE_SHORT, EventCommands.Command.NONE);
+        thenTheCommandOfIs(EventCommands.Event.CHAT_MESSAGE, new EventCommands.Command(true, "beep"));
+        thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_COMPLETED, EventCommands.Command.NONE);
+        thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_FAILED, EventCommands.Command.NONE);
+        thenTheCommandOfIs(EventCommands.Event.DISK_SPACE_SHORT, EventCommands.Command.NONE);
     }
 
     private void givenTheCommandLine(String line) {

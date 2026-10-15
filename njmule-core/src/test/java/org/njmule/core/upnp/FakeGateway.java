@@ -78,7 +78,7 @@ public final class FakeGateway implements AutoCloseable {
         this.ssdp = new DatagramSocket(0, LOOPBACK);
         this.http = new ServerSocket(0, 50, LOOPBACK);
         Thread.ofVirtual().start(this::answerDiscovery);
-        this.acceptor = this.serve(this.http);
+        this.acceptor = serve(this.http);
     }
 
     /** A gateway with one WAN connection service of {@code type} at {@code control}. */
@@ -168,7 +168,7 @@ public final class FakeGateway implements AutoCloseable {
         old.close();
         // A socket closed while a thread accepts on it keeps listening until that accept returns.
         this.acceptor.join();
-        this.acceptor = this.serve(this.http);
+        this.acceptor = serve(this.http);
     }
 
     @Override
@@ -187,9 +187,9 @@ public final class FakeGateway implements AutoCloseable {
                 DatagramPacket search = new DatagramPacket(buffer, buffer.length);
                 this.ssdp.receive(search);
                 for (String location : this.otherLocations) {
-                    this.announce(search, location);
+                    announce(search, location);
                 }
-                this.announce(search, "http://" + this.locationHost + ":" + this.http.getLocalPort() + "/desc.xml");
+                announce(search, "http://" + this.locationHost + ":" + this.http.getLocalPort() + "/desc.xml");
             } catch (IOException e) {
                 return;
             }
@@ -208,7 +208,7 @@ public final class FakeGateway implements AutoCloseable {
                 try {
                     Socket client = server.accept();
                     this.open.add(client);
-                    Thread.ofVirtual().start(() -> this.answer(client));
+                    Thread.ofVirtual().start(() -> answer(client));
                 } catch (IOException e) {
                     return;
                 }
@@ -241,7 +241,7 @@ public final class FakeGateway implements AutoCloseable {
             String text = new String(in.readNBytes(length), StandardCharsets.UTF_8);
             OutputStream out = client.getOutputStream();
             if (request.startsWith("GET")) {
-                this.describe(out);
+                describe(out);
                 return;
             }
             String control = request.substring(request.indexOf(' ') + 1, request.indexOf(" HTTP/"));

@@ -176,7 +176,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final Map<SearchId, Early> early = new LinkedHashMap<>() {
         @Override
         protected boolean removeEldestEntry(Map.Entry<SearchId, Early> eldest) {
-            return this.size() > EARLY_SEARCHES;
+            return size() > EARLY_SEARCHES;
         }
     };
     private final Chats chats = new Chats();
@@ -204,13 +204,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Subscribes to the engine's events and reads the state a first time. */
     public void start() {
-        this.later(this.engine.spamMarks(), this.spamMarks::set);
+        later(this.engine.spamMarks(), this.spamMarks::set);
         this.engine.events().subscribe(this);
-        this.refreshServers();
-        this.refreshShared();
-        this.refreshFriends();
-        this.refreshCategories();
-        this.tick();
+        refreshServers();
+        refreshShared();
+        refreshFriends();
+        refreshCategories();
+        tick();
     }
 
     /** The download categories, in the order of their ids. */
@@ -220,20 +220,20 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Replaces the categories, then runs {@code done}; a refusal shows as an error. */
     public void setCategories(List<Category> categories, Runnable done) {
-        this.later(this.engine.setCategories(categories).thenCompose(ok -> this.engine.categories()), now -> {
+        later(this.engine.setCategories(categories).thenCompose(ok -> this.engine.categories()), now -> {
             this.categories.setAll(now);
-            this.refreshDownloads();
+            refreshDownloads();
             done.run();
         });
     }
 
     /** Puts a download in a category; {@link Category#NONE} takes it out of any. */
     public void setDownloadCategory(Hash16 file, int category) {
-        this.later(this.engine.setDownloadCategory(file, category), ok -> this.refreshDownloads());
+        later(this.engine.setDownloadCategory(file, category), ok -> refreshDownloads());
     }
 
     private void refreshCategories() {
-        this.later(this.engine.categories(), this.categories::setAll);
+        later(this.engine.categories(), this.categories::setAll);
     }
 
     /** Where failed commands are told; called on the FX thread. */
@@ -249,7 +249,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Runs once a second on the FX thread: polls what events do not tell. */
     public void tick() {
         long poll = ++this.ticks;
-        this.later(this.engine.status(), s -> {
+        later(this.engine.status(), s -> {
             // A slow answer to an earlier poll must not hide the newer state already shown.
             if (poll < this.statusPoll) {
                 return;
@@ -263,17 +263,17 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 this.rates.remove(0, this.rates.size() - RATE_HISTORY);
             }
         });
-        this.later(this.engine.downloads(), this::showDownloads);
+        later(this.engine.downloads(), this::showDownloads);
         if (this.ticks % 2 == 0) {
-            this.later(this.engine.uploads(), this.uploads::update);
-            this.later(this.engine.sources(), this.sources::update);
-            this.later(this.engine.bans(), this.bans::update);
+            later(this.engine.uploads(), this.uploads::update);
+            later(this.engine.sources(), this.sources::update);
+            later(this.engine.bans(), this.bans::update);
         }
         if (this.ticks % 10 == 0) {
-            this.refreshServers();
+            refreshServers();
         }
         if (this.ticks % 15 == 0) {
-            this.refreshShared();
+            refreshShared();
         }
     }
 
@@ -314,11 +314,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Starts Kad from the known contacts, or looks for contacts at once when it runs. */
     public void connectKad() {
-        this.later(this.engine.connectKad(), ok -> this.tick());
+        later(this.engine.connectKad(), ok -> tick());
     }
 
     public void disconnectKad() {
-        this.later(this.engine.disconnectKad(), ok -> this.tick());
+        later(this.engine.disconnectKad(), ok -> tick());
     }
 
     /** The server being connected to or connected to; empty when none. */
@@ -387,7 +387,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void markSpam(List<SearchResult> results, boolean isSpam) {
-        this.later(this.engine.markSpam(results, isSpam), this.spamMarks::set);
+        later(this.engine.markSpam(results, isSpam), this.spamMarks::set);
     }
 
     public LiveList<String, SourceInfo> sources() {
@@ -399,7 +399,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void unban(String ip) {
-        this.later(this.engine.unban(ip), lifted -> this.later(this.engine.bans(), this.bans::update));
+        later(this.engine.unban(ip), lifted -> later(this.engine.bans(), this.bans::update));
     }
 
     public LiveList<String, UploadInfo> uploads() {
@@ -431,15 +431,15 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             return;
         }
         this.chats.sent(address, text);
-        this.later(this.engine.sendMessage(to, text), done -> {});
+        later(this.engine.sendMessage(to, text), done -> {});
     }
 
     public void addFriend(Friend friend) {
-        this.later(this.engine.addFriend(friend), done -> this.refreshFriends());
+        later(this.engine.addFriend(friend), done -> refreshFriends());
     }
 
     public void removeFriend(Hash16 userHash) {
-        this.later(this.engine.removeFriend(userHash), done -> this.refreshFriends());
+        later(this.engine.removeFriend(userHash), done -> refreshFriends());
     }
 
     /** The friend with the friend slot, as last read. */
@@ -449,12 +449,12 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Gives the friend slot to {@code friend}, or to nobody. */
     public void setFriendSlot(Optional<Hash16> friend) {
-        this.later(this.engine.setFriendSlot(friend), done -> this.refreshFriends());
+        later(this.engine.setFriendSlot(friend), done -> refreshFriends());
     }
 
     private void refreshFriends() {
-        this.later(this.engine.friends(), this.friends::update);
-        this.later(this.engine.friendSlot(), this.friendSlot::set);
+        later(this.engine.friends(), this.friends::update);
+        later(this.engine.friendSlot(), this.friendSlot::set);
     }
 
     // Commands: errors go to the error sink, results come back on the FX thread.
@@ -462,7 +462,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public void connect(Optional<ServerAddress> server) {
         Connection before = this.connection.get();
         this.connection.set(Connection.CONNECTING);
-        this.later(this.engine.connect(server), done -> {}, failure -> {
+        later(this.engine.connect(server), done -> {}, failure -> {
             this.errors.accept(failure);
             // The engine started nothing and kept the connection it had, which the events then still tell.
             if (this.connection.get() == Connection.CONNECTING) {
@@ -472,68 +472,68 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void disconnect() {
-        this.run(this.engine.disconnect());
+        run(this.engine.disconnect());
     }
 
     public void addServers(Path serverMet) {
-        this.later(this.engine.addServers(serverMet), added -> this.refreshServers());
+        later(this.engine.addServers(serverMet), added -> refreshServers());
     }
 
     public void removeServer(ServerAddress server) {
-        this.later(this.engine.removeServer(server), removed -> this.refreshServers());
+        later(this.engine.removeServer(server), removed -> refreshServers());
     }
 
     public void serverListAddresses(Consumer<List<URI>> done) {
-        this.later(this.engine.serverListAddresses(), done);
+        later(this.engine.serverListAddresses(), done);
     }
 
     public void setServerListAddresses(List<URI> addresses) {
-        this.run(this.engine.setServerListAddresses(addresses));
+        run(this.engine.setServerListAddresses(addresses));
     }
 
     public void removeServers(List<ServerAddress> servers) {
-        this.later(this.engine.removeServers(servers), removed -> this.refreshServers());
+        later(this.engine.removeServers(servers), removed -> refreshServers());
     }
 
     public void addServer(ServerAddress server) {
-        this.later(this.engine.addServer(server), added -> this.refreshServers());
+        later(this.engine.addServer(server), added -> refreshServers());
     }
 
     public void setServerPriority(ServerAddress server, ServerInfo.Priority priority) {
-        this.later(this.engine.setServerPriority(server, priority), done -> this.refreshServers());
+        later(this.engine.setServerPriority(server, priority), done -> refreshServers());
     }
 
     public void setStaticServer(ServerAddress server, boolean isStatic) {
-        this.later(this.engine.setStaticServer(server, isStatic), done -> this.refreshServers());
+        later(this.engine.setStaticServer(server, isStatic), done -> refreshServers());
     }
 
     public void addDownload(Ed2kLink.FileLink link) {
-        this.addDownload(link, added -> {});
+        addDownload(link, added -> {});
     }
 
     /** Adds a download; {@code added} learns of it on the FX thread once the engine took it. */
     public void addDownload(Ed2kLink.FileLink link, Consumer<DownloadInfo> added) {
-        this.later(this.engine.addDownload(link), download -> {
+        later(this.engine.addDownload(link), download -> {
             this.downloads.put(download);
             added.accept(download);
         });
     }
 
     public void pause(Hash16 file) {
-        this.later(this.engine.pauseDownload(file), ok -> this.refreshDownloads());
+        later(this.engine.pauseDownload(file), ok -> refreshDownloads());
     }
 
     public void resume(Hash16 file) {
-        this.later(this.engine.resumeDownload(file), ok -> this.refreshDownloads());
+        later(this.engine.resumeDownload(file), ok -> refreshDownloads());
     }
 
     /** Pauses the download and lets it forget its sources. */
     public void stop(Hash16 file) {
-        this.later(this.engine.stopDownload(file), ok -> this.refreshDownloads());
+        later(this.engine.stopDownload(file), ok -> refreshDownloads());
     }
 
     public void setPriority(Hash16 file, DownloadPriority priority) {
-        this.later(this.engine.setDownloadPriority(file, priority), ok -> this.refreshDownloads());
+        later(this.engine.setDownloadPriority(file, priority), ok -> refreshDownloads());
     }
 
     /** Takes the finished downloads off the list. */
@@ -547,31 +547,31 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void cancel(Hash16 file) {
-        this.later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
+        later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
     }
 
     /** Renames a shared file; a name taken already is told through the errors. */
     public void renameShared(Hash16 file, String name) {
-        this.later(this.engine.renameSharedFile(file, name), ok -> this.refreshShared());
+        later(this.engine.renameSharedFile(file, name), ok -> refreshShared());
     }
 
     /** Our comment on a file; {@code then} gets it on the FX thread when there is one. */
     public void fileComment(Hash16 file, Consumer<FileComment> then) {
-        this.later(this.engine.fileComment(file), c -> c.ifPresent(then));
+        later(this.engine.fileComment(file), c -> c.ifPresent(then));
     }
 
     public void setFileComment(Hash16 file, FileComment comment, Runnable done) {
-        this.later(this.engine.setFileComment(file, comment), ok -> done.run());
+        later(this.engine.setFileComment(file, comment), ok -> done.run());
     }
 
     /** What the sources of a download said of the file; {@code then} gets it on the FX thread. */
     public void peerComments(Hash16 download, Consumer<List<PeerComment>> then) {
-        this.later(this.engine.peerComments(download), then);
+        later(this.engine.peerComments(download), then);
     }
 
     /** What Kad nodes said of a file, as far as found; {@code then} gets it on the FX thread. */
     public void kadNotes(Hash16 file, Consumer<List<KadNote>> then) {
-        this.later(this.engine.kadNotes(file), then);
+        later(this.engine.kadNotes(file), then);
     }
 
     /**
@@ -579,53 +579,53 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
      * {@code failed} why it could not run, on the FX thread.
      */
     public void searchKadNotes(Hash16 file, Consumer<List<KadNote>> found, Consumer<String> failed) {
-        this.later(this.engine.searchKadNotes(file), found, failed);
+        later(this.engine.searchKadNotes(file), found, failed);
     }
 
     /** Adds a source by hand; {@code added} tells on the FX thread whether it was new. */
     public void addSource(Hash16 download, ServerAddress source, Consumer<Boolean> added) {
-        this.later(this.engine.addSource(download, source), added);
+        later(this.engine.addSource(download, source), added);
     }
 
     /** Fetches the first and last parts of a download first, for a preview, or stops. */
     public void setPreviewFirst(Hash16 file, boolean value) {
-        this.later(this.engine.setDownloadPreview(file, value), ok -> this.refreshDownloads());
+        later(this.engine.setDownloadPreview(file, value), ok -> refreshDownloads());
     }
 
     /** Swaps the A4AF sources of a download to it; {@code swapped} tells on the FX thread how many moved. */
     public void swapSourcesHere(Hash16 file, Consumer<Integer> swapped) {
-        this.later(this.engine.swapSourcesToDownload(file), count -> {
-            this.refreshSources();
+        later(this.engine.swapSourcesToDownload(file), count -> {
+            refreshSources();
             swapped.accept(count);
         });
     }
 
     /** Swaps the sources asked for a download to other downloads; {@code swapped} tells how many moved. */
     public void swapSourcesAway(Hash16 file, Consumer<Integer> swapped) {
-        this.later(this.engine.swapSourcesFromDownload(file), count -> {
-            this.refreshSources();
+        later(this.engine.swapSourcesFromDownload(file), count -> {
+            refreshSources();
             swapped.accept(count);
         });
     }
 
     /** Has a download take its A4AF sources whenever they are free to move, or stops. */
     public void setAutoSwap(Hash16 file, boolean value) {
-        this.later(this.engine.setDownloadAutoSwap(file, value), ok -> {
-            this.refreshDownloads();
-            this.refreshSources();
+        later(this.engine.setDownloadAutoSwap(file, value), ok -> {
+            refreshDownloads();
+            refreshSources();
         });
     }
 
     /** Swaps one A4AF source of a download to it; {@code swapped} tells on the FX thread whether it moved. */
     public void swapSource(Hash16 file, ServerAddress source, Consumer<Boolean> swapped) {
-        this.later(this.engine.swapSourceToDownload(file, source), moved -> {
-            this.refreshSources();
+        later(this.engine.swapSourceToDownload(file, source), moved -> {
+            refreshSources();
             swapped.accept(moved);
         });
     }
 
     private void refreshSources() {
-        this.later(this.engine.sources(), this.sources::update);
+        later(this.engine.sources(), this.sources::update);
     }
 
     /**
@@ -633,51 +633,51 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
      * and until the start of the file has come.
      */
     public void downloadData(Hash16 file, Consumer<Optional<Path>> then) {
-        this.later(this.engine.downloadData(file), then);
+        later(this.engine.downloadData(file), then);
     }
 
     public void setUploadPriority(Hash16 file, UploadPriority priority) {
-        this.later(this.engine.setUploadPriority(file, priority), ok -> this.refreshShared());
+        later(this.engine.setUploadPriority(file, priority), ok -> refreshShared());
     }
 
     public void shareDirectory(Path directory) {
-        this.shareDirectory(directory, false);
+        shareDirectory(directory, false);
     }
 
     /** Shares {@code directory} with its subdirectories or alone. */
     public void shareDirectory(Path directory, boolean subdirectories) {
-        this.later(this.engine.shareDirectory(directory, subdirectories), ok -> this.refreshShared());
+        later(this.engine.shareDirectory(directory, subdirectories), ok -> refreshShared());
     }
 
     /** Stops sharing {@code directory}, then runs {@code done}. */
     public void unshareDirectory(Path directory, Runnable done) {
-        this.later(this.engine.unshareDirectory(directory), ok -> {
-            this.refreshShared();
+        later(this.engine.unshareDirectory(directory), ok -> {
+            refreshShared();
             done.run();
         });
     }
 
     /** Hands the shared directories to {@code sink}, on the FX thread. */
     public void sharedDirectories(Consumer<List<SharedDirectory>> sink) {
-        this.later(this.engine.sharedDirectories(), sink);
+        later(this.engine.sharedDirectories(), sink);
     }
 
     /** Adds the servers of the server.met at {@code url}, then hands {@code done} how many were new. */
     public void addServers(URI url, IntConsumer done) {
-        this.later(this.engine.addServers(url), added -> {
-            this.refreshServers();
+        later(this.engine.addServers(url), added -> {
+            refreshServers();
             done.accept(added);
         });
     }
 
     /** Replaces the IP filter with the list at {@code url}, then hands {@code done} how many ranges it has. */
     public void updateIpFilter(URI url, IntConsumer done) {
-        this.later(this.engine.updateIpFilter(url), done::accept);
+        later(this.engine.updateIpFilter(url), done::accept);
     }
 
     /** Adds the Kad contacts of the nodes.dat at {@code url}, then hands {@code done} how many were new. */
     public void addKadContacts(URI url, IntConsumer done) {
-        this.later(this.engine.addKadContacts(url), done::accept);
+        later(this.engine.addKadContacts(url), done::accept);
     }
 
     /** Asks a client for its shared files; {@code found} or {@code failed} gets the outcome on the FX thread. */
@@ -706,21 +706,21 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** Reads the Kad contacts and lookups again; the Kad screen asks while it shows. */
     public void refreshKadLists() {
-        this.later(this.engine.kadContacts(), this.kadContacts::update);
-        this.later(this.engine.kadSearches(), this.kadSearches::update);
+        later(this.engine.kadContacts(), this.kadContacts::update);
+        later(this.engine.kadSearches(), this.kadSearches::update);
     }
 
     public void recheckKadFirewall() {
-        this.run(this.engine.recheckKadFirewall());
+        run(this.engine.recheckKadFirewall());
     }
 
     public void kadBootstrap(ServerAddress node) {
-        this.run(this.engine.kadBootstrap(node));
+        run(this.engine.kadBootstrap(node));
     }
 
     /** Starts a search; {@code started} gets it on the FX thread. */
     public void search(SearchRequest request, Consumer<Search> started) {
-        this.later(this.engine.search(request), id -> started.accept(this.open(id, request)));
+        later(this.engine.search(request), id -> started.accept(open(id, request)));
     }
 
     /** Follows the results of a search the engine started. */
@@ -746,7 +746,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     /** The searches kept from the last run; {@code then} gets them on the FX thread. */
     public void savedSearches(Consumer<List<SavedSearch>> then) {
-        this.later(this.engine.savedSearches(), then);
+        later(this.engine.savedSearches(), then);
     }
 
     public CompletableFuture<Void> saveSearches(List<SavedSearch> searches) {
@@ -754,7 +754,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     public void moreResults(Search search) {
-        this.later(this.engine.moreResults(search.id()), more -> {
+        later(this.engine.moreResults(search.id()), more -> {
             if (more) {
                 search.running.set(true);
             }
@@ -764,29 +764,29 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     public void stopSearch(Search search) {
         search.running.set(false);
         this.searches.remove(search.id());
-        this.run(this.engine.stopSearch(search.id()));
+        run(this.engine.stopSearch(search.id()));
     }
 
     public void updatePreferences(UnaryOperator<Preferences> change, Consumer<Preferences> done) {
-        this.later(this.engine.updatePreferences(change), p -> {
+        later(this.engine.updatePreferences(change), p -> {
             this.preferences.set(p);
             done.accept(p);
         });
     }
 
     public void updateSchedule(Schedule schedule, Consumer<Schedule> done) {
-        this.later(this.engine.updateSchedule(schedule), done);
+        later(this.engine.updateSchedule(schedule), done);
     }
 
     /** Imports an eMule profile; {@code done} gets the report, or {@code failed} the error, on the FX thread. */
     public void importFromEmule(Path dir, ImportOptions options, Consumer<ImportReport> done, Consumer<String> failed) {
-        this.later(
+        later(
                 this.engine.importFromEmule(dir, options),
                 report -> {
                     done.accept(report);
                     this.preferences.set(this.engine.preferences());
-                    this.refreshServers();
-                    this.refreshShared();
+                    refreshServers();
+                    refreshShared();
                 },
                 failed);
     }
@@ -799,7 +799,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     @Override
     public void onNext(EngineEvent event) {
-        this.fx.execute(() -> this.handle(event));
+        this.fx.execute(() -> handle(event));
     }
 
     @Override
@@ -822,8 +822,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Applies one engine event; FX thread. Events normally arrive through the subscription. */
     public void handle(EngineEvent event) {
         switch (event) {
-            case EngineEvent.Log e -> this.addLog(e.line());
-            case EngineEvent.ServerMessage e -> this.addServerNote(ServerNote.Kind.MESSAGE, e.text());
+            case EngineEvent.Log e -> addLog(e.line());
+            case EngineEvent.ServerMessage e -> addServerNote(ServerNote.Kind.MESSAGE, e.text());
             case EngineEvent.ServerConnecting e -> {
                 this.serverAddress.set(e.server().address());
                 this.connection.set(Connection.CONNECTING);
@@ -831,13 +831,13 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             }
             case EngineEvent.ServerConnected e -> {
                 this.serverAddress.set(e.server().address());
-                this.addServerNote(ServerNote.Kind.GAP, "");
-                this.addServerNote(
+                addServerNote(ServerNote.Kind.GAP, "");
+                addServerNote(
                         e.obfuscated() ? ServerNote.Kind.CONNECTED_OBFUSCATED : ServerNote.Kind.CONNECTED,
                         e.server().name() + " (" + e.server().address() + ")");
                 this.connection.set(Connection.CONNECTED);
                 this.serverName.set(e.server().name());
-                this.refreshServers();
+                refreshServers();
             }
             case EngineEvent.ServerDisconnected e -> {
                 this.serverAddress.set("");
@@ -845,7 +845,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
                 this.serverName.set("");
             }
             case EngineEvent.ServerUpdated e -> this.servers.put(e.server());
-            case EngineEvent.ServersChanged e -> this.refreshServers();
+            case EngineEvent.ServersChanged e -> refreshServers();
             case EngineEvent.SearchResults e -> {
                 Search search = this.searches.get(e.search());
                 if (search != null) {
@@ -869,18 +869,18 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadProgress e -> this.downloads.put(e.download());
             case EngineEvent.DownloadCompleted e -> {
                 this.downloads.put(e.download());
-                this.refreshShared();
+                refreshShared();
                 this.completedCount.set(this.completedCount.get() + 1);
                 this.completed.accept(e.download());
             }
             case EngineEvent.DownloadFailed e -> this.downloads.put(e.download());
             case EngineEvent.DownloadRemoved e -> {
                 this.downloads.remove(e.hash());
-                this.refreshHistory();
+                refreshHistory();
             }
             case EngineEvent.PreferencesChanged e -> {
                 this.preferences.set(e.preferences());
-                this.refreshHistory();
+                refreshHistory();
             }
             case EngineEvent.MessageReceived e -> this.chats.received(e.address(), e.userHash(), e.nick(), e.text());
             case EngineEvent.CaptchaRequested e -> this.chats.captcha(e.address(), e.userHash(), e.image());
@@ -926,21 +926,21 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     private void refreshServers() {
-        this.later(this.engine.servers(), this.servers::update);
+        later(this.engine.servers(), this.servers::update);
     }
 
     // Shared files are known files: the history may have grown too.
     private void refreshShared() {
-        this.later(this.engine.sharedFiles(), this.shared::update);
-        this.refreshHistory();
+        later(this.engine.sharedFiles(), this.shared::update);
+        refreshHistory();
     }
 
     private void refreshHistory() {
-        this.later(this.engine.fileHistory(), this.history::set);
+        later(this.engine.fileHistory(), this.history::set);
     }
 
     private void refreshDownloads() {
-        this.later(this.engine.downloads(), this::showDownloads);
+        later(this.engine.downloads(), this::showDownloads);
     }
 
     // The engine forgets finished downloads; they stay listed until cleared.
@@ -955,11 +955,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     private void run(CompletableFuture<?> work) {
-        this.later(work, done -> {});
+        later(work, done -> {});
     }
 
     private <T> void later(CompletableFuture<T> work, Consumer<T> then) {
-        this.later(work, then, message -> this.errors.accept(message));
+        later(work, then, message -> this.errors.accept(message));
     }
 
     // The follow-up only hands the outcome to the FX thread, where failed gets the failure's message.

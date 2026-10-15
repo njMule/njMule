@@ -47,16 +47,16 @@ class SearchParametersFoldTest {
 
     @Test
     void theParametersFoldAwayUntilWantedAndTheButtonCountsThoseInUse() throws Exception {
-        this.givenTheSearchScreen();
-        this.thenTheParametersShow(false);
-        this.thenTheButtonReads("Search Parameters");
-        this.whenTheButtonIsPressed();
-        this.thenTheParametersShow(true);
-        this.whenTheMinimumSizeIs("100");
-        this.whenTheExtensionIs("mkv");
-        this.thenTheButtonReads("Search Parameters (2)");
-        this.whenTheButtonIsPressed();
-        this.thenTheParametersShow(false);
+        givenTheSearchScreen();
+        thenTheParametersShow(false);
+        thenTheButtonReads("Search Parameters");
+        whenTheButtonIsPressed();
+        thenTheParametersShow(true);
+        whenTheMinimumSizeIs("100");
+        whenTheExtensionIs("mkv");
+        thenTheButtonReads("Search Parameters (2)");
+        whenTheButtonIsPressed();
+        thenTheParametersShow(false);
     }
 
     private void givenTheSearchScreen() throws Exception {
@@ -67,7 +67,7 @@ class SearchParametersFoldTest {
     }
 
     private void whenTheButtonIsPressed() throws Exception {
-        FxTesting.onFx(() -> this.button().fire());
+        FxTesting.onFx(() -> button().fire());
     }
 
     private void whenTheMinimumSizeIs(String text) throws Exception {
@@ -81,11 +81,11 @@ class SearchParametersFoldTest {
     private void thenTheParametersShow(boolean shown) throws Exception {
         assertThat(FxTesting.onFx(() -> this.view.lookup(".search-parameters") != null))
                 .isEqualTo(shown);
-        assertThat(FxTesting.onFx(() -> this.button().isSelected())).isEqualTo(shown);
+        assertThat(FxTesting.onFx(() -> button().isSelected())).isEqualTo(shown);
     }
 
     private void thenTheButtonReads(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.button().getText())).isEqualTo(text);
+        assertThat(FxTesting.onFx(() -> button().getText())).isEqualTo(text);
     }
 
     private ToggleButton button() {

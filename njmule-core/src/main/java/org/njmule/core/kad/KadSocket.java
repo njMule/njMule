@@ -119,7 +119,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             datagram = DatagramObfuscation.encryptForClient(
                     datagram, receiverUserHash.get(), Ipv4.toBytes(ourIp), this.random);
         }
-        this.transmit(ip, port, datagram);
+        transmit(ip, port, datagram);
     }
 
     public int port() {
@@ -134,7 +134,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             datagram = DatagramObfuscation.encryptForKad(
                     datagram, receiverId.map(id -> Hash16.of(id.toWireBytes())), receiverKey, senderKey, this.random);
         }
-        this.transmit(ip, port, datagram);
+        transmit(ip, port, datagram);
     }
 
     private void transmit(int ip, int port, byte[] datagram) {
@@ -171,7 +171,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             try {
                 datagram.setLength(buffer.length);
                 this.socket.receive(datagram);
-                this.received(datagram);
+                received(datagram);
             } catch (IOException e) {
                 if (!this.socket.isClosed()) {
                     logger.debug("Kad UDP: {}", e.getMessage());

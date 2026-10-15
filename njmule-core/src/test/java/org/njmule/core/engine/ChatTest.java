@@ -77,8 +77,8 @@ class ChatTest {
 
     @Test
     void twoClientsChatOverOneConnection() throws Exception {
-        NjMuleEngine alice = this.engine("alice");
-        NjMuleEngine bob = this.engine("bob");
+        NjMuleEngine alice = engine("alice");
+        NjMuleEngine bob = engine("bob");
         Events aliceSees = new Events(alice);
         Events bobSees = new Events(bob);
 
@@ -100,7 +100,7 @@ class ChatTest {
 
     @Test
     void aClientWeWroteToAsksForACaptchaAndTellsTheResult() throws Exception {
-        NjMuleEngine engine = this.engine("me");
+        NjMuleEngine engine = engine("me");
         Events seen = new Events(engine);
         Hello asker = Hello.of(Hash16.parseHex("11223344556677889900AABBCCDDEEFF"), 0, 4999, "asker", 0, 0, 0, 0, 0, 0);
 
@@ -162,7 +162,7 @@ class ChatTest {
 
     @Test
     void anUnreachableClientIsReported() throws Exception {
-        NjMuleEngine engine = this.engine("me");
+        NjMuleEngine engine = engine("me");
         Events seen = new Events(engine);
         int closed;
         try (ServerSocket probe = new ServerSocket(0)) {
@@ -175,14 +175,14 @@ class ChatTest {
 
     @Test
     void onlyAFriendThatProvesItsKeyGetsPastFriendsOnly() throws Exception {
-        NjMuleEngine engine = this.engine("me", "chat.friendsOnly=true\n");
+        NjMuleEngine engine = engine("me", "chat.friendsOnly=true\n");
         Events seen = new Events(engine);
         Hash16 pal = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
         engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
         Hello claimed = Hello.of(pal, 0, 4999, "pal", 0, 0, IdentityProof.MISC1, 0, 0, 0);
 
         // Anyone can send the friend's user hash: a failed proof shows nothing.
-        try (Socket impostor = this.connect(engine, claimed)) {
+        try (Socket impostor = connect(engine, claimed)) {
             InputStream in = new BufferedInputStream(impostor.getInputStream());
             assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
             OutputStream out = impostor.getOutputStream();
@@ -191,7 +191,7 @@ class ChatTest {
             out.write(TcpFraming.encode(Packet.empty(Protocol.EMULE, Opcodes.Extended.PUBLICIP_REQ.code())));
             assertThat(nextOf(in).opcode()).isEqualTo(Opcodes.Extended.PUBLICIP_ANSWER.code());
         }
-        try (Socket friend = this.connect(engine, claimed)) {
+        try (Socket friend = connect(engine, claimed)) {
             InputStream in = new BufferedInputStream(friend.getInputStream());
             Hello us = Hello.decode(nextOf(in));
             friend.getOutputStream().write(TcpFraming.encode(ChatMessages.message("from the friend", true)));
@@ -223,14 +223,14 @@ class ChatTest {
     @Test
     void friendsAreKept() throws Exception {
         Hash16 hash = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
-        NjMuleEngine engine = this.engine("me");
+        NjMuleEngine engine = engine("me");
         engine.addFriend(new Friend(hash, "pal", Optional.of(new ServerAddress("10.0.0.7", 4662))))
                 .get(5, TimeUnit.SECONDS);
         engine.addFriend(new Friend(hash, "pal again", Optional.of(new ServerAddress("pal.example", 1))))
                 .get(5, TimeUnit.SECONDS);
         engine.close();
 
-        NjMuleEngine again = this.engine("me");
+        NjMuleEngine again = engine("me");
         List<Friend> friends = again.friends().get(5, TimeUnit.SECONDS);
         assertThat(friends).containsExactly(new Friend(hash, "pal again", Optional.empty()));
         assertThat(again.removeFriend(hash).get(5, TimeUnit.SECONDS)).isTrue();
@@ -243,7 +243,7 @@ class ChatTest {
     }
 
     private NjMuleEngine engine(String nick) throws IOException {
-        return this.engine(nick, "");
+        return engine(nick, "");
     }
 
     private NjMuleEngine engine(String nick, String extra) throws IOException {

@@ -47,7 +47,7 @@ class ClipboardWatchTest {
         AtomicInteger reads = new AtomicInteger();
         AtomicReference<String> clipboard = new AtomicReference<>("a password");
         List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
-        ClipboardWatch watch = this.watch(
+        ClipboardWatch watch = watch(
                 on::get,
                 () -> {
                     reads.incrementAndGet();
@@ -75,7 +75,7 @@ class ClipboardWatchTest {
     void ourOwnTextIsLeftOnlyUntilTheClipboardChanges() throws Exception {
         AtomicReference<String> clipboard = new AtomicReference<>("");
         List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
-        ClipboardWatch watch = this.watch(() -> true, clipboard::get, found);
+        ClipboardWatch watch = watch(() -> true, clipboard::get, found);
         FxTesting.onFx(watch::tick);
 
         ClipboardWatch.ours(FILM);

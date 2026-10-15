@@ -106,9 +106,9 @@ class LanguagesTest {
 
     @Test
     void theInterfaceOffersEnglishFirstThenEveryTranslation() {
-        this.whenTheLanguagesOfTheInterfaceAreListed();
+        whenTheLanguagesOfTheInterfaceAreListed();
 
-        this.thenTheLanguagesAre(
+        thenTheLanguagesAre(
                 Locale.ENGLISH,
                 Locale.of("ca"),
                 Locale.of("cs"),
@@ -150,11 +150,11 @@ class LanguagesTest {
     @ParameterizedTest
     @MethodSource("languages")
     void everyLanguageLoadsWithItsOwnNameAndEmulesTexts(Locale language, String name, String languageWord) {
-        this.whenTheTextsOfALanguageAreLoaded(language);
+        whenTheTextsOfALanguageAreLoaded(language);
 
-        this.thenTheTextsAreIn(language);
-        this.thenTheLanguageIsNamed(name);
-        this.thenTheTextOfIs("IDS_PW_LANG", languageWord);
+        thenTheTextsAreIn(language);
+        thenTheLanguageIsNamed(name);
+        thenTheTextOfIs("IDS_PW_LANG", languageWord);
     }
 
     @ParameterizedTest
@@ -168,9 +168,9 @@ class LanguagesTest {
         "ko, IDS_DL_PREVIEW, 미리 보기"
     })
     void aMnemonicWrittenInBracketsIsDropped(String language, String key, String text) {
-        this.whenTheTextsOfALanguageAreLoaded(Locale.forLanguageTag(language));
+        whenTheTextsOfALanguageAreLoaded(Locale.forLanguageTag(language));
 
-        this.thenTheTextOfIs(key, text);
+        thenTheTextOfIs(key, text);
     }
 
     @ParameterizedTest
@@ -239,44 +239,44 @@ class LanguagesTest {
         "hi-IN, en"
     })
     void theSystemLanguagePicksItsTranslationOrEnglish(String systemLanguage, String chosen) {
-        this.givenTheSystemLanguage(systemLanguage);
+        givenTheSystemLanguage(systemLanguage);
 
-        this.whenTheTextsOfTheSystemLanguageAreLoaded();
+        whenTheTextsOfTheSystemLanguageAreLoaded();
 
-        this.thenTheTextsAreIn(Locale.forLanguageTag(chosen));
+        thenTheTextsAreIn(Locale.forLanguageTag(chosen));
     }
 
     @Test
     void nynorskInTheOldJavaFormOfNorwegianGetsBokmal() {
-        this.givenTheSystemLocale(Locale.of("no", "NO", "NY"));
+        givenTheSystemLocale(Locale.of("no", "NO", "NY"));
 
-        this.whenTheTextsOfTheSystemLanguageAreLoaded();
+        whenTheTextsOfTheSystemLanguageAreLoaded();
 
-        this.thenTheTextsAreIn(Locale.of("nb"));
-        this.thenTheLanguageIsNamed("Norsk bokmål");
+        thenTheTextsAreIn(Locale.of("nb"));
+        thenTheLanguageIsNamed("Norsk bokmål");
     }
 
     @ParameterizedTest
     @MethodSource("translations")
     void aTranslationHasEveryNjmuleTextWithTheSamePlaceholders(Locale language) throws IOException {
-        this.givenTheEnglishTexts();
+        givenTheEnglishTexts();
 
-        this.whenTheTranslationIsRead(language);
+        whenTheTranslationIsRead(language);
 
-        this.thenItHasEveryNjmuleTextAndNoOther();
-        this.thenEveryTextKeepsTheEnglishPlaceholders();
-        this.thenTheEmuleTextsItRewordsExist();
+        thenItHasEveryNjmuleTextAndNoOther();
+        thenEveryTextKeepsTheEnglishPlaceholders();
+        thenTheEmuleTextsItRewordsExist();
     }
 
     @ParameterizedTest
     @MethodSource("translations")
     void theEmuleTextsTheInterfaceUsesKeepTheirPlaceholders(Locale language) throws IOException {
-        this.givenTheEnglishTexts();
-        this.givenTheEmuleTextsTheInterfaceUses();
+        givenTheEnglishTexts();
+        givenTheEmuleTextsTheInterfaceUses();
 
-        this.whenTheTranslationIsRead(language);
+        whenTheTranslationIsRead(language);
 
-        this.thenTheUsedEmuleTextsKeepTheEnglishPlaceholders();
+        thenTheUsedEmuleTextsKeepTheEnglishPlaceholders();
     }
 
     private void givenTheSystemLanguage(String tag) {

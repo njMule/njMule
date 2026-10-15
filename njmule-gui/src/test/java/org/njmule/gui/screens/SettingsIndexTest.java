@@ -45,25 +45,25 @@ class SettingsIndexTest {
 
     @Test
     void theIndexListsTheSectionsInTheOrderOfThePage() throws Exception {
-        this.givenTheOptions();
-        this.thenTheIndexStartsWith("General", "Notifications", "Connection");
-        this.thenTheIndexHoldsOnlySections();
+        givenTheOptions();
+        thenTheIndexStartsWith("General", "Notifications", "Connection");
+        thenTheIndexHoldsOnlySections();
     }
 
     @Test
     void findingAnOptionLeadsToItsField() throws Exception {
-        this.givenTheOptions();
-        this.whenFound("client port");
-        this.thenTheIndexHolds("Client Port (TCP)");
-        this.whenTheFirstFoundIsChosen();
-        this.thenTheCursorIsIn(this.screen.tcpPortField());
+        givenTheOptions();
+        whenFound("client port");
+        thenTheIndexHolds("Client Port (TCP)");
+        whenTheFirstFoundIsChosen();
+        thenTheCursorIsIn(this.screen.tcpPortField());
     }
 
     @Test
     void scrollingToTheEndChoosesTheLastSection() throws Exception {
-        this.givenTheOptions();
-        this.whenThePageIsScrolledTo(1.0);
-        this.thenTheChosenSectionIsTheLast();
+        givenTheOptions();
+        whenThePageIsScrolledTo(1.0);
+        thenTheChosenSectionIsTheLast();
     }
 
     private void givenTheOptions() throws Exception {

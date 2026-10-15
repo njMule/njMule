@@ -49,30 +49,30 @@ public final class PartBar extends Region {
     private long done;
 
     public PartBar() {
-        this.getStyleClass().add("part-bar");
+        getStyleClass().add("part-bar");
         // The start of the file stays on the left in every language.
-        this.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
-        this.getChildren().add(this.canvas);
-        for (Region r : this.swatches()) {
-            this.getChildren().add(r);
-            r.backgroundProperty().addListener((o, was, now) -> this.draw());
+        setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
+        getChildren().add(this.canvas);
+        for (Region r : swatches()) {
+            getChildren().add(r);
+            r.backgroundProperty().addListener((o, was, now) -> draw());
         }
-        this.setMinHeight(12);
-        this.setPrefHeight(16);
+        setMinHeight(12);
+        setPrefHeight(16);
     }
 
     /** Shows {@code map}, of which {@code completed} bytes are done. */
     public void set(PartMap map, long completed) {
         this.map = map;
         this.done = completed;
-        this.draw();
+        draw();
     }
 
     @Override
     protected void layoutChildren() {
-        this.canvas.setWidth(this.getWidth());
-        this.canvas.setHeight(this.getHeight());
-        this.draw();
+        this.canvas.setWidth(getWidth());
+        this.canvas.setHeight(getHeight());
+        draw();
     }
 
     private List<Region> swatches() {

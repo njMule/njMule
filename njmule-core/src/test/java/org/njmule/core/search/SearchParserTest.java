@@ -281,13 +281,13 @@ class SearchParserTest {
 
     @Test
     void shouldAskServersForArchivesAndDiscImagesAsPrograms() throws DecodeException {
-        this.givenTheSearch("linux @type=arc");
-        this.whenItIsSentToAServer();
-        this.thenTheServerIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
+        givenTheSearch("linux @type=arc");
+        whenItIsSentToAServer();
+        thenTheServerIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
 
-        this.givenTheSearch("@type=iso linux");
-        this.whenItIsSentToAServer();
-        this.thenTheServerIsAskedFor(new And(new StringAttr(FileTag.FILETYPE, "Pro"), kw("linux")));
+        givenTheSearch("@type=iso linux");
+        whenItIsSentToAServer();
+        thenTheServerIsAskedFor(new And(new StringAttr(FileTag.FILETYPE, "Pro"), kw("linux")));
     }
 
     private void givenTheSearch(String expression) {

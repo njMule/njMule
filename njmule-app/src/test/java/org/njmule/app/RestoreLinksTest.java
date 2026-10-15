@@ -51,97 +51,97 @@ class RestoreLinksTest {
 
     @Test
     void shouldGiveTheLinksBackToTheHandlerSavedBefore() throws Exception {
-        this.givenTheConfigurationDirectory();
-        this.givenTheLinksOpenIn(OURS);
-        this.givenTheSavedHandlerIs(EMULE);
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
+        givenTheSavedHandlerIs(EMULE);
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenTheLinksOpenIn(EMULE);
-        this.thenTheSavedHandlerIsGone();
-        this.thenTheExitCodeIs(Main.EXIT_OK);
+        thenTheLinksOpenIn(EMULE);
+        thenTheSavedHandlerIsGone();
+        thenTheExitCodeIs(Main.EXIT_OK);
     }
 
     @Test
     void shouldRemoveOurHandlerWhenNoneWasSaved() throws Exception {
-        this.givenTheConfigurationDirectory();
-        this.givenTheLinksOpenIn(OURS);
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenNoProgramOpensTheLinks();
-        this.thenTheExitCodeIs(Main.EXIT_OK);
+        thenNoProgramOpensTheLinks();
+        thenTheExitCodeIs(Main.EXIT_OK);
     }
 
     @Test
     void shouldLeaveTheLinksOfAnotherProgram() throws Exception {
-        this.givenTheConfigurationDirectory();
-        this.givenTheLinksOpenIn(EMULE);
-        this.givenTheSavedHandlerIs("\"C:\\old\\client.exe\" \"%1\"");
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(EMULE);
+        givenTheSavedHandlerIs("\"C:\\old\\client.exe\" \"%1\"");
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenTheLinksOpenIn(EMULE);
-        this.thenNothingWasImported();
-        this.thenTheOutputSays("left as they are");
+        thenTheLinksOpenIn(EMULE);
+        thenNothingWasImported();
+        thenTheOutputSays("left as they are");
     }
 
     @Test
     void shouldRemoveOurHandlerWithoutAConfigurationDirectory() throws Exception {
-        this.givenNoConfigurationDirectory();
-        this.givenTheLinksOpenIn(OURS);
+        givenNoConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenNoProgramOpensTheLinks();
-        this.thenTheConfigurationDirectoryStillDoesNotExist();
-        this.thenTheExitCodeIs(Main.EXIT_OK);
+        thenNoProgramOpensTheLinks();
+        thenTheConfigurationDirectoryStillDoesNotExist();
+        thenTheExitCodeIs(Main.EXIT_OK);
     }
 
     @Test
     void shouldDoNothingWhereThisProgramCannotOpenLinks() throws Exception {
-        this.givenTheConfigurationDirectory();
-        this.givenTheLinksOpenIn(OURS);
-        this.givenAProgramThatCannotOpenLinks();
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
+        givenAProgramThatCannotOpenLinks();
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenTheLinksOpenIn(OURS);
-        this.thenTheOutputSays("nothing to give back");
-        this.thenTheExitCodeIs(Main.EXIT_OK);
+        thenTheLinksOpenIn(OURS);
+        thenTheOutputSays("nothing to give back");
+        thenTheExitCodeIs(Main.EXIT_OK);
     }
 
     @Test
     void shouldTellWhenTheRegistryRefusesTheChange() throws Exception {
-        this.givenTheConfigurationDirectory();
-        this.givenTheLinksOpenIn(OURS);
-        this.givenTheRegistryRefusesImports();
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
+        givenTheRegistryRefusesImports();
 
-        this.whenTheLinksAreRestored();
+        whenTheLinksAreRestored();
 
-        this.thenTheExitCodeIs(Main.EXIT_FAILURE);
-        this.thenTheErrorsSay("Cannot give the ed2k links back");
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenTheErrorsSay("Cannot give the ed2k links back");
     }
 
     @Test
     void shouldReadTheOptionWithAConfigurationDirectory() throws Exception {
-        this.whenTheCommandLineIs("--restore-links", "--config-dir", this.dir.toString());
+        whenTheCommandLineIs("--restore-links", "--config-dir", this.dir.toString());
 
-        this.thenTheActionIs(LaunchOptions.Action.RESTORE_LINKS);
+        thenTheActionIs(LaunchOptions.Action.RESTORE_LINKS);
     }
 
     @Test
     void shouldRefuseTheOptionBesideAnotherAction() throws Exception {
-        this.whenTheCommandLineIs("--restore-links", "--exit");
+        whenTheCommandLineIs("--restore-links", "--exit");
 
-        this.thenTheCommandLineIsRefused("cannot be combined");
+        thenTheCommandLineIsRefused("cannot be combined");
     }
 
     @Test
     void shouldRefuseTheOptionBesideLinks() throws Exception {
-        this.whenTheCommandLineIs("--restore-links", "ed2k://|server|1.2.3.4|4661|/");
+        whenTheCommandLineIs("--restore-links", "ed2k://|server|1.2.3.4|4661|/");
 
-        this.thenTheCommandLineIsRefused("cannot be combined with links");
+        thenTheCommandLineIsRefused("cannot be combined with links");
     }
 
     private void givenTheConfigurationDirectory() throws IOException {
@@ -239,8 +239,8 @@ class RestoreLinksTest {
         public LinkAssociation.Result run(List<String> args) throws IOException {
             return switch (args.get(1)) {
                 case "query" -> new LinkAssociation.Result(this.command == null ? 1 : 0, "");
-                case "export" -> this.export(Path.of(args.get(3)));
-                case "import" -> this.importFile(Path.of(args.get(2)));
+                case "export" -> export(Path.of(args.get(3)));
+                case "import" -> importFile(Path.of(args.get(2)));
                 default -> throw new IOException("unexpected " + args);
             };
         }

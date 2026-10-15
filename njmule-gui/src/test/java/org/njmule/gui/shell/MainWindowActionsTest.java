@@ -80,7 +80,7 @@ class MainWindowActionsTest {
 
     @Test
     void connectActsOnBothNetworksAsTheyAre() throws Exception {
-        MainWindow window = this.window();
+        MainWindow window = window();
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(
                 this.test.engine.preferences().toBuilder().kadEnabled(true).build())));
 
@@ -91,7 +91,7 @@ class MainWindowActionsTest {
         assertThat(this.calls).endsWith("disconnect");
 
         // On a server with Kad running, Disconnect leaves both.
-        this.status(Statuses.of(Optional.of(BIG), 5, false, Optional.of(Statuses.kad(true, false, "")), false));
+        status(Statuses.of(Optional.of(BIG), 5, false, Optional.of(Statuses.kad(true, false, "")), false));
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 5, false, false)));
         assertThat(FxTesting.onFx(() -> window.connectButton().getText())).isEqualTo("Disconnect");
         FxTesting.onFx(() -> window.connectButton().fire());
@@ -106,21 +106,21 @@ class MainWindowActionsTest {
 
     @Test
     void theChipsTellTheStateOfEachNetwork() throws Exception {
-        MainWindow window = this.window();
+        MainWindow window = window();
         assertThat(FxTesting.onFx(() -> window.kadChip().getText())).isEqualTo("Kad: Off");
 
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 5, true, false)));
-        this.status(Statuses.of(Optional.of(BIG), 5, true, Optional.of(Statuses.kad(false, false, "")), false));
+        status(Statuses.of(Optional.of(BIG), 5, true, Optional.of(Statuses.kad(false, false, "")), false));
         assertThat(FxTesting.onFx(() -> window.ed2kChip().getText())).isEqualTo("eD2K: Big (LowID)");
         assertThat(FxTesting.onFx(() -> window.kadChip().getText())).isEqualTo("Kad: Not Connected");
         assertThat(FxTesting.onFx(() -> window.kadChip().getStyleClass())).contains("connecting");
 
-        this.status(Statuses.of(
+        status(Statuses.of(
                 Optional.of(BIG), 5_000_000, false, Optional.of(Statuses.kad(true, true, "1.2.3.4")), false));
         assertThat(FxTesting.onFx(() -> window.ed2kChip().getText())).isEqualTo("eD2K: Big (HighID)");
         assertThat(FxTesting.onFx(() -> window.kadChip().getText())).isEqualTo("Kad: Firewalled");
 
-        this.status(Statuses.of(Optional.of(BIG), 0, false, Optional.of(Statuses.kad(true, false, "1.2.3.4")), false));
+        status(Statuses.of(Optional.of(BIG), 0, false, Optional.of(Statuses.kad(true, false, "1.2.3.4")), false));
         assertThat(FxTesting.onFx(() -> window.ed2kChip().getText())).isEqualTo("eD2K: Big");
         assertThat(FxTesting.onFx(() -> window.kadChip().getText())).isEqualTo("Kad: Open");
         assertThat(FxTesting.onFx(() -> window.kadChip().getStyleClass())).contains("connected");
@@ -132,9 +132,9 @@ class MainWindowActionsTest {
 
     @Test
     void keysTheRailAndTheToolsOpenWhatTheyName() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands()));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands()));
         this.test.gui.settings().setScreen("no such screen");
-        MainWindow window = this.show();
+        MainWindow window = show();
         assertThat(FxTesting.onFx(window::current)).as("an unknown screen").isEqualTo("transfers");
 
         FxTesting.onFx(() -> {
@@ -145,7 +145,7 @@ class MainWindowActionsTest {
             assertThat(window.current()).isEqualTo("search");
             window.show("no such screen");
             assertThat(window.current()).isEqualTo("search");
-            this.rail(window, "Statistics").fire();
+            rail(window, "Statistics").fire();
             assertThat(window.current()).isEqualTo("statistics");
         });
 
@@ -169,13 +169,13 @@ class MainWindowActionsTest {
         });
         FxTesting.await(
                 "the import and about windows",
-                () -> this.titles()
-                        .containsAll(List.of(this.test.gui.t("nj.import.title"), this.test.gui.t("nj.about.title"))));
+                () -> titles().containsAll(
+                                List.of(this.test.gui.t("nj.import.title"), this.test.gui.t("nj.about.title"))));
     }
 
     @Test
     void messagesTellOfFinishedDownloadsAndChatsElsewhere() throws Exception {
-        MainWindow window = this.window();
+        MainWindow window = window();
         List<String> elsewhere = new CopyOnWriteArrayList<>();
         FxTesting.onFx(() -> {
             window.whileHidden(elsewhere::add);
@@ -210,8 +210,8 @@ class MainWindowActionsTest {
     }
 
     private MainWindow window() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.commands()));
-        return this.show();
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands()));
+        return show();
     }
 
     private MainWindow show() throws Exception {
@@ -234,23 +234,23 @@ class MainWindowActionsTest {
 
     @Test
     void theKadChipTellsTheTestedUdpStateBehindAFirewall() throws Exception {
-        this.givenTheMainWindow();
+        givenTheMainWindow();
 
-        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, false, true, KadInfo.Buddy.NONE));
+        whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, false, true, KadInfo.Buddy.NONE));
 
-        this.thenTheKadChipSays("Kad: Firewalled, UDP open");
+        thenTheKadChipSays("Kad: Firewalled, UDP open");
 
-        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, true, true, KadInfo.Buddy.CONNECTED));
+        whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, true, true, KadInfo.Buddy.CONNECTED));
 
-        this.thenTheKadChipSays("Kad: Firewalled, UDP firewalled");
+        thenTheKadChipSays("Kad: Firewalled, UDP firewalled");
     }
 
     private void givenTheMainWindow() throws Exception {
-        this.shown = this.window();
+        this.shown = window();
     }
 
     private void whenKadIs(KadInfo kad) throws Exception {
-        this.status(Statuses.of(Optional.empty(), 0, false, Optional.of(kad), false));
+        status(Statuses.of(Optional.empty(), 0, false, Optional.of(kad), false));
     }
 
     private void thenTheKadChipSays(String text) throws Exception {

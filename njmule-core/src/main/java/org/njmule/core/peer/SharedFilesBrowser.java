@@ -69,7 +69,7 @@ public final class SharedFilesBrowser {
         Thread.ofVirtual().name("njmule-browse").start(() -> {
             try {
                 TcpConnection connection = TcpConnector.connectToClient(to, Optional.empty(), TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.connected(connection, files))) {
+                if (!this.loop.postOutcome(() -> connected(connection, files))) {
                     connection.close();
                     files.completeExceptionally(new IOException("njMule is stopping"));
                 }

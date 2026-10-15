@@ -57,7 +57,7 @@ public record TagName(String raw) {
     }
 
     public int id() {
-        if (!this.isId()) {
+        if (!isId()) {
             throw new IllegalStateException("not a numeric tag id: " + this);
         }
         return this.raw.charAt(0);
@@ -69,7 +69,7 @@ public record TagName(String raw) {
 
     @Override
     public String toString() {
-        if (this.isId()) {
+        if (isId()) {
             return String.format("0x%02X", (int) this.raw.charAt(0));
         }
         StringBuilder out = new StringBuilder(this.raw.length());

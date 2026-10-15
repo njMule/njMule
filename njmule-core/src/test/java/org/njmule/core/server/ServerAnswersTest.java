@@ -65,7 +65,7 @@ class ServerAnswersTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.disconnect();
             return null;
         });
@@ -77,27 +77,27 @@ class ServerAnswersTest {
 
     @Test
     void aSearchAnswerThatCannotBeReadStillAnswersTheSearch() throws Exception {
-        this.givenALoggedInSession();
+        givenALoggedInSession();
 
         // One result announcing five tags, and one byte for them.
-        this.whenTheServerSends(Packet.of(
+        whenTheServerSends(Packet.of(
                 Protocol.EDONKEY,
                 Opcodes.Server.SEARCHRESULT.code(),
                 new PacketWriter().u32(1).bytes(new byte[16 + 4 + 2]).u32(5).u8(0x02)));
 
-        this.thenTheSearchIsAnsweredWith(0);
+        thenTheSearchIsAnsweredWith(0);
     }
 
     @Test
     void aPacketThatDoesNotInflateIsDroppedAndTheSessionGoesOn() throws Exception {
-        this.givenALoggedInSession();
+        givenALoggedInSession();
 
-        this.whenTheServerSends(
+        whenTheServerSends(
                 Packet.of(Protocol.PACKED, Opcodes.Server.SERVERMESSAGE.code(), new byte[] {1, 2, 3, 4}),
                 ServerMessages.message("still here"));
 
-        this.thenTheServerSays("still here");
-        this.thenTheSessionIsOpen();
+        thenTheServerSays("still here");
+        thenTheSessionIsOpen();
     }
 
     private void givenALoggedInSession() throws Exception {
@@ -105,11 +105,11 @@ class ServerAnswersTest {
         // A server known to be plain: no obfuscation is tried first.
         ServerMet.Server target = new ServerMet.Server(this.server.ip(), this.server.port(), List.of())
                 .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0));
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(target));
             return null;
         });
-        assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
+        assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
     }
 
     private void whenTheServerSends(Packet... packets) throws Exception {
@@ -117,15 +117,15 @@ class ServerAnswersTest {
     }
 
     private void thenTheSearchIsAnsweredWith(int results) throws InterruptedException {
-        assertThat(this.next("results")).isEqualTo("results " + results);
+        assertThat(next("results")).isEqualTo("results " + results);
     }
 
     private void thenTheServerSays(String line) throws InterruptedException {
-        assertThat(this.next("message")).isEqualTo("message " + line);
+        assertThat(next("message")).isEqualTo("message " + line);
     }
 
     private void thenTheSessionIsOpen() throws Exception {
-        assertThat(this.onLoop(this.session::isConnected)).isTrue();
+        assertThat(onLoop(this.session::isConnected)).isTrue();
         assertThat(this.seen).noneMatch(e -> e.startsWith("disconnected"));
     }
 
@@ -152,22 +152,22 @@ class ServerAnswersTest {
 
         @Override
         public void connecting(ServerMet.Server server) {
-            this.add("connecting " + Ipv4.format(server.ip()));
+            add("connecting " + Ipv4.format(server.ip()));
         }
 
         @Override
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
-            this.add("connected " + id.clientId());
+            add("connected " + id.clientId());
         }
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
-            this.add("disconnected " + reason);
+            add("disconnected " + reason);
         }
 
         @Override
         public void message(ServerMet.Server server, String line) {
-            this.add("message " + line);
+            add("message " + line);
         }
 
         @Override
@@ -175,7 +175,7 @@ class ServerAnswersTest {
 
         @Override
         public void searchResults(ServerMet.Server server, ServerMessages.SearchResults results) {
-            this.add("results " + results.files().size());
+            add("results " + results.files().size());
         }
 
         @Override

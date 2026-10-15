@@ -45,7 +45,7 @@ final class ResponseTimes {
         if (this.times.size() > NODES) {
             this.times.remove(this.times.keySet().iterator().next());
         }
-        this.wait = this.estimate();
+        this.wait = estimate();
     }
 
     /** Answers timed, for tests. */

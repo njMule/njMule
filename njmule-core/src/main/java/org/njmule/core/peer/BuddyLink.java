@@ -201,7 +201,7 @@ public final class BuddyLink implements KadNode.Buddies {
             }
         }
         this.offers.addLast(new Offer(ip, tcpPort, udpPort, userHash, connectOptions));
-        this.connectNext();
+        connectNext();
     }
 
     @Override
@@ -231,7 +231,7 @@ public final class BuddyLink implements KadNode.Buddies {
             if (e.ip() == at && e.userHash().equals(peer.userHash())) {
                 this.expected.clear();
                 this.offers.clear();
-                this.attach(link);
+                attach(link);
                 this.state = State.SERVING;
                 this.servedId = e.buddyId();
                 // The first ping is answered once the node has waited as long as between two pongs.
@@ -257,7 +257,7 @@ public final class BuddyLink implements KadNode.Buddies {
         this.expected.clear();
         this.connecting = null;
         PeerChannel open = this.channel;
-        this.drop();
+        drop();
         if (open != null) {
             logger.info("Kad: buddy link to {} released", open.remoteAddress());
             open.close();
@@ -272,7 +272,7 @@ public final class BuddyLink implements KadNode.Buddies {
             this.nextPing.set(now + PING_EVERY.toNanos());
             this.channel.send(LowIdMessages.buddyPing());
         }
-        this.connectNext();
+        connectNext();
     }
 
     private void connectNext() {
@@ -285,7 +285,7 @@ public final class BuddyLink implements KadNode.Buddies {
         InetSocketAddress address = new InetSocketAddress(Ipv4.format(offer.ip()), offer.tcpPort());
         Optional<Hash16> obfuscateFor =
                 this.obfuscate.test(offer.connectOptions()) ? Optional.of(offer.userHash()) : Optional.empty();
-        dial(this.loop, address, obfuscateFor, this.random, c -> this.opened(offer, c), why -> this.failed(offer, why));
+        dial(this.loop, address, obfuscateFor, this.random, c -> opened(offer, c), why -> failed(offer, why));
     }
 
     // Connects off the engine thread; the outcome comes back on it.
@@ -335,13 +335,13 @@ public final class BuddyLink implements KadNode.Buddies {
         if (this.connecting != offer || !peer.userHash().equals(offer.userHash())) {
             link.disconnect();
             if (this.connecting == offer) {
-                this.failed(offer, "another client answered");
+                failed(offer, "another client answered");
             }
             return;
         }
         this.connecting = null;
         this.offers.clear();
-        this.attach(link);
+        attach(link);
         this.buddy.set(new Address(offer.ip(), peer.udpPort() != 0 ? peer.udpPort() : offer.udpPort()));
         this.state = State.CONNECTED;
         this.nextPing.set(this.ticker.read() + PING_EVERY.toNanos());
@@ -355,7 +355,7 @@ public final class BuddyLink implements KadNode.Buddies {
         logger.debug("Kad: no buddy link to {}: {}", Ipv4.format(offer.ip()), reason);
         this.connecting = null;
         this.state = State.NONE;
-        this.connectNext();
+        connectNext();
     }
 
     private void attach(PeerLink link) {
@@ -407,7 +407,7 @@ public final class BuddyLink implements KadNode.Buddies {
                 }
                 case CALLBACK -> {
                     if (buddies.state == State.CONNECTED) {
-                        this.callback(packet);
+                        callback(packet);
                     }
                 }
                 default -> {

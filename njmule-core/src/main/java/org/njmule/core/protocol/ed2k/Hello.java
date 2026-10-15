@@ -166,12 +166,12 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     /** Whether the client, firewalled, takes a direct UDP callback on its Kad port. */
     public boolean supportsDirectCallback() {
-        return (this.miscOptions2() & MISC2_DIRECT_UDP_CALLBACK) != 0;
+        return (miscOptions2() & MISC2_DIRECT_UDP_CALLBACK) != 0;
     }
 
     /** Whether the client exchanges AICH hashes and recovery data. */
     public boolean supportsAich() {
-        return (this.miscOptions1() >>> MISC1_AICH_SHIFT & 7) > 0;
+        return (miscOptions1() >>> MISC1_AICH_SHIFT & 7) > 0;
     }
 
     public int miscOptions1() {

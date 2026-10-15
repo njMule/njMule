@@ -195,7 +195,7 @@ final class Lookup {
             if (this.tried.size() >= first) {
                 break;
             }
-            this.ask(c, this.kind.count(), this.started);
+            ask(c, this.kind.count(), this.started);
         }
         if (this.tried.isEmpty()) {
             this.stopped = true;
@@ -240,7 +240,7 @@ final class Lookup {
         if (responder == null || this.stopped) {
             return;
         }
-        if (contacts.size() > this.expectedContacts(ip, port)) {
+        if (contacts.size() > expectedContacts(ip, port)) {
             return;
         }
         this.lastAnswer = now;
@@ -268,7 +268,7 @@ final class Lookup {
                     this.tried.containsKey(distance) ? this.tried.get(distance) : this.possible.get(distance);
             if (known != null || this.disputed.contains(distance) || distance.equals(responderDistance)) {
                 if (known != null && !distance.equals(responderDistance)) {
-                    this.referred(distance, known, c, responder.ip());
+                    referred(distance, known, c, responder.ip());
                 }
                 continue;
             }
@@ -278,8 +278,8 @@ final class Lookup {
             }
             this.possible.put(distance, c);
             this.referrers.computeIfAbsent(distance, d -> new HashSet<>()).add(responder.ip());
-            if (distance.compareTo(responderDistance) < 0 && this.isAmongBest(distance)) {
-                this.ask(c, this.kind.count(), now);
+            if (distance.compareTo(responderDistance) < 0 && isAmongBest(distance)) {
+                ask(c, this.kind.count(), now);
             }
         }
     }
@@ -299,7 +299,7 @@ final class Lookup {
     void valueReceived(int count, long now) {
         this.answers += count;
         if (this.kind.maxAnswers > 0 && this.answers >= this.kind.maxAnswers) {
-            this.prepareToStop(now);
+            prepareToStop(now);
         }
     }
 
@@ -322,8 +322,8 @@ final class Lookup {
         if (this.kind.value
                 && !this.stopping
                 && now - this.started >= this.kind.lifetime.toNanos() - LAST_SENDING_NANOS) {
-            this.requestWaiting();
-            this.prepareToStop(now);
+            requestWaiting();
+            prepareToStop(now);
         }
         if (this.stopping) {
             this.stopped = now - this.stopAt >= 0;
@@ -332,30 +332,30 @@ final class Lookup {
         if (now - this.lastAnswer < (this.kind.stores() ? STALL_NANOS : this.times.waitNanos())) {
             return;
         }
-        if (this.nothingLeftToAsk()) {
+        if (nothingLeftToAsk()) {
             if (this.kind.value) {
-                this.requestWaiting();
-                this.prepareToStop(now);
+                requestWaiting();
+                prepareToStop(now);
             } else {
                 this.stopped = true;
             }
             return;
         }
         if (this.kind.count() == FIND_VALUE && this.reAsked == null && this.tried.size() >= 3 * FIND_VALUE) {
-            this.reAskIfClosestSilent();
+            reAskIfClosestSilent();
         }
         for (Map.Entry<UInt128, KadMessages.Contact> e : List.copyOf(this.possible.entrySet())) {
             KadMessages.Contact c = e.getValue();
             if (!this.tried.containsKey(e.getKey())) {
-                this.ask(c, this.kind.count(), now);
+                ask(c, this.kind.count(), now);
                 return;
             }
             if (this.responded.contains(c.id())) {
-                if (this.isWaiting(e.getKey(), c)) {
+                if (isWaiting(e.getKey(), c)) {
                     continue;
                 }
                 if (this.kind.value && e.getKey().top32() <= TOLERANCE && !this.requested.contains(c.id())) {
-                    this.request(c);
+                    request(c);
                     if (this.stopped) {
                         return;
                     }
@@ -364,7 +364,7 @@ final class Lookup {
             }
         }
         if (!this.kind.value) {
-            this.stopped = this.nothingLeftToAsk();
+            this.stopped = nothingLeftToAsk();
         }
     }
 
@@ -373,7 +373,7 @@ final class Lookup {
     private boolean nothingLeftToAsk() {
         for (Map.Entry<UInt128, KadMessages.Contact> e : this.possible.entrySet()) {
             if (!this.tried.containsKey(e.getKey())
-                    || (this.responded.contains(e.getValue().id()) && !this.isWaiting(e.getKey(), e.getValue()))) {
+                    || (this.responded.contains(e.getValue().id()) && !isWaiting(e.getKey(), e.getValue()))) {
                 return false;
             }
         }
@@ -394,8 +394,8 @@ final class Lookup {
     private void requestWaiting() {
         for (Map.Entry<UInt128, KadMessages.Contact> e : List.copyOf(this.possible.entrySet())) {
             KadMessages.Contact c = e.getValue();
-            if (this.responded.contains(c.id()) && this.isWaiting(e.getKey(), c)) {
-                this.request(c);
+            if (this.responded.contains(c.id()) && isWaiting(e.getKey(), c)) {
+                request(c);
                 if (this.stopped) {
                     return;
                 }

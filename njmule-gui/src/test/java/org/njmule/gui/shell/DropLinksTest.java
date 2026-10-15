@@ -51,17 +51,17 @@ class DropLinksTest {
 
     @Test
     void theFileLinksDroppedOnTheWindowBecomeDownloads() throws Exception {
-        this.givenTheWindow();
-        this.whenDropped(TWO_LINKS);
-        this.thenTheLinksFoundAre(2);
-        this.thenTheDownloadsAre("first file.bin", "second.bin");
+        givenTheWindow();
+        whenDropped(TWO_LINKS);
+        thenTheLinksFoundAre(2);
+        thenTheDownloadsAre("first file.bin", "second.bin");
     }
 
     @Test
     void aTextWithoutLinksIsNotTaken() throws Exception {
-        this.givenTheWindow();
-        this.whenDropped("just some words");
-        this.thenTheLinksFoundAre(0);
+        givenTheWindow();
+        whenDropped("just some words");
+        thenTheLinksFoundAre(0);
     }
 
     private void givenTheWindow() throws Exception {

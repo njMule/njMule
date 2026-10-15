@@ -123,7 +123,7 @@ class NetworkTest {
     @AfterEach
     void close() throws Exception {
         if (this.network != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.network.close();
                 return null;
             });
@@ -136,86 +136,84 @@ class NetworkTest {
 
     @Test
     void spamMarksStayWhenTheyCannotBeSaved() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Hash16 hash = Hash16.parseHex("b1".repeat(16));
         SearchResult result = new SearchResult(hash, "free movie installer.exe", 100, 1, 0, Optional.empty());
 
-        SpamMarks marked = this.onLoop(() -> network.markSpam(List.of(result), true));
+        SpamMarks marked = onLoop(() -> network.markSpam(List.of(result), true));
         assertThat(marked.spam()).containsExactly(hash);
         assertThat(this.dirs.config().resolve(SpamFilter.FILE_NAME)).exists();
 
         blockWrites(this.dirs.config().resolve(SpamFilter.FILE_NAME));
-        SpamMarks unmarked = this.onLoop(() -> network.markSpam(List.of(result), false));
+        SpamMarks unmarked = onLoop(() -> network.markSpam(List.of(result), false));
 
         assertThat(unmarked.spam()).isEmpty();
         assertThat(unmarked.notSpam()).containsExactly(hash);
-        assertThat(this.onLoop(network::spamMarks)).isEqualTo(unmarked);
+        assertThat(onLoop(network::spamMarks)).isEqualTo(unmarked);
     }
 
     @Test
     void sharingNeedsTheNetworkStarted() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Path folder = Files.createDirectories(this.dir.resolve("films"));
 
-        assertThatThrownBy(() -> this.onLoop(() -> {
+        assertThatThrownBy(() -> onLoop(() -> {
                     network.shareDirectory(folder, false);
                     return null;
                 }))
                 .hasCauseInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> this.onLoop(() -> {
+        assertThatThrownBy(() -> onLoop(() -> {
                     network.unshareDirectory(folder);
                     return null;
                 }))
                 .hasCauseInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> this.onLoop(() -> network.addKnownFiles(List.of(), List.of())))
+        assertThatThrownBy(() -> onLoop(() -> network.addKnownFiles(List.of(), List.of())))
                 .hasCauseInstanceOf(IllegalStateException.class);
-        assertThat(this.onLoop(() -> network.renameSharedFile(USER, "other.iso")))
+        assertThat(onLoop(() -> network.renameSharedFile(USER, "other.iso"))).isFalse();
+        assertThat(onLoop(() -> network.setUploadPriority(USER, UploadPriority.HIGH)))
                 .isFalse();
-        assertThat(this.onLoop(() -> network.setUploadPriority(USER, UploadPriority.HIGH)))
-                .isFalse();
-        assertThat(this.onLoop(network::sharedFiles)).isEmpty();
-        assertThat(this.onLoop(network::sharedDirectories)).isEmpty();
-        assertThat(this.onLoop(network::status).sharedFiles()).isZero();
-        assertThat(this.onLoop(network::history).downloaded(USER)).isFalse();
+        assertThat(onLoop(network::sharedFiles)).isEmpty();
+        assertThat(onLoop(network::sharedDirectories)).isEmpty();
+        assertThat(onLoop(network::status).sharedFiles()).isZero();
+        assertThat(onLoop(network::history).downloaded(USER)).isFalse();
     }
 
     @Test
     void aStartedNetworkSharesAndUnsharesFolders() throws Exception {
-        Network network = this.started();
+        Network network = started();
         Path folder = Files.createDirectories(this.dir.resolve("films"));
         Path tree = Files.createDirectories(this.dir.resolve("music"));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.shareDirectory(folder, false);
             network.shareDirectory(tree, true);
             return null;
         });
-        assertThat(this.onLoop(network::sharedDirectories))
+        assertThat(onLoop(network::sharedDirectories))
                 .extracting(d -> d.path().getFileName().toString() + (d.subdirectories() ? "/**" : ""))
                 .containsExactlyInAnyOrder("films", "music/**");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.unshareDirectory(folder);
             return null;
         });
-        assertThat(this.onLoop(network::sharedDirectories)).hasSize(1);
-        assertThat(this.onLoop(network::describe)).startsWith("downloads:").contains("uploads: ");
+        assertThat(onLoop(network::sharedDirectories)).hasSize(1);
+        assertThat(onLoop(network::describe)).startsWith("downloads:").contains("uploads: ");
     }
 
     @Test
     void anIpFilterIsReplacedByAListButNeverByNothing() throws Exception {
-        Network network = this.create();
+        Network network = create();
         int blocked = Ipv4.of(203, 0, 113, 7);
 
-        assertThatThrownBy(() -> this.onLoop(() -> network.setIpFilter(List.of())))
-                .hasCauseInstanceOf(IOException.class);
-        int ranges = this.onLoop(() -> network.setIpFilter(
+        assertThatThrownBy(() -> onLoop(() -> network.setIpFilter(List.of()))).hasCauseInstanceOf(IOException.class);
+        int ranges = onLoop(() -> network.setIpFilter(
                 List.of(new IpFilterDat.Range(blocked, blocked, 0, "test"), new IpFilterDat.Range(1, 2, 0, "low"))));
 
         assertThat(ranges).isEqualTo(2);
         assertThat(this.dirs.config().resolve(Network.IPFILTER_FILE)).exists();
         assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "2 IP filter ranges"));
-        assertThatThrownBy(() -> this.onLoop(() -> {
+        assertThatThrownBy(() -> onLoop(() -> {
                     network.connect(Optional.of(new ServerList.Address(blocked, 4661)));
                     return null;
                 }))
@@ -225,15 +223,15 @@ class NetworkTest {
 
     @Test
     void categoriesNeedTheirOwnIds() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Category films = new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false);
 
-        assertThatThrownBy(() -> this.onLoop(() -> {
+        assertThatThrownBy(() -> onLoop(() -> {
                     network.setCategories(List.of(films, films));
                     return null;
                 }))
                 .hasCauseInstanceOf(IllegalArgumentException.class);
-        assertThat(this.onLoop(network::categories)).isEmpty();
+        assertThat(onLoop(network::categories)).isEmpty();
     }
 
     @Test
@@ -241,47 +239,46 @@ class NetworkTest {
         Files.write(this.dirs.config().resolve(StoredSearches.FILE_NAME), new byte[] {9, 9, 9});
         Files.write(this.dirs.config().resolve(CancelledFiles.FILE_NAME), new byte[] {9, 9, 9});
 
-        Network network = this.create();
+        Network network = create();
 
-        assertThat(this.onLoop(network::savedSearches)).isEmpty();
-        assertThat(this.onLoop(network::history).cancelled(USER)).isFalse();
+        assertThat(onLoop(network::savedSearches)).isEmpty();
+        assertThat(onLoop(network::history).cancelled(USER)).isFalse();
     }
 
     @Test
     void serversChangeEvenWhenTheirFilesCannotBeSaved() throws Exception {
         this.preferences =
                 this.preferences.toBuilder().manualServersHighPriority(true).build();
-        Network network = this.create();
+        Network network = create();
         // Documentation addresses: the network is not started, nothing is sent to them.
         ServerList.Address first = new ServerList.Address(Ipv4.of(198, 51, 100, 7), 4661);
         ServerList.Address unknown = new ServerList.Address(Ipv4.of(198, 51, 100, 8), 4661);
         blockWrites(this.dirs.config().resolve(ServerList.FILE_NAME));
         blockWrites(this.dirs.config().resolve(ServerList.STATIC_FILE_NAME));
 
-        assertThat(this.onLoop(() -> network.addServer(first))).isTrue();
-        assertThat(this.onLoop(() -> network.addServer(first))).as("known").isFalse();
-        assertThat(this.onLoop(network::servers))
+        assertThat(onLoop(() -> network.addServer(first))).isTrue();
+        assertThat(onLoop(() -> network.addServer(first))).as("known").isFalse();
+        assertThat(onLoop(network::servers))
                 .singleElement()
                 .satisfies(s -> assertThat(s.priority()).isEqualTo(ServerInfo.Priority.HIGH));
-        assertThat(this.onLoop(() -> network.setStaticServer(first, true))).isTrue();
-        assertThat(this.onLoop(() -> network.setServerPriority(first, ServerInfo.Priority.LOW)))
+        assertThat(onLoop(() -> network.setStaticServer(first, true))).isTrue();
+        assertThat(onLoop(() -> network.setServerPriority(first, ServerInfo.Priority.LOW)))
                 .isTrue();
-        assertThat(this.onLoop(() -> network.setStaticServer(unknown, true))).isFalse();
-        assertThat(this.onLoop(() -> network.setServerPriority(unknown, ServerInfo.Priority.LOW)))
+        assertThat(onLoop(() -> network.setStaticServer(unknown, true))).isFalse();
+        assertThat(onLoop(() -> network.setServerPriority(unknown, ServerInfo.Priority.LOW)))
                 .isFalse();
-        assertThat(this.next(EngineEvent.ServerUpdated.class).server().isStatic())
-                .isTrue();
+        assertThat(next(EngineEvent.ServerUpdated.class).server().isStatic()).isTrue();
 
-        assertThat(this.onLoop(() -> network.removeServer(first))).isTrue();
-        assertThat(this.onLoop(network::servers)).isEmpty();
+        assertThat(onLoop(() -> network.removeServer(first))).isTrue();
+        assertThat(onLoop(network::servers)).isEmpty();
     }
 
     @Test
     void datagramsThatAreNoAnswerOrCannotBeReadAreDropped() throws Exception {
-        Network network = this.create();
+        Network network = create();
         InetSocketAddress from = new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.datagram(from, Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHREQ.code(), new byte[4]));
             network.datagram(from, Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHRES.code(), new byte[3]));
             return null;
@@ -292,19 +289,19 @@ class NetworkTest {
 
     @Test
     void settingsChangedBeforeTheStartOrAfterTheEndAreIgnored() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Preferences was = this.preferences;
         Preferences now = was.toBuilder().tcpPort(freeTcpPort()).build();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.reconfigure(was, now);
             return null;
         });
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.close();
             return null;
         });
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.reconfigure(was, now);
             return null;
         });
@@ -315,80 +312,80 @@ class NetworkTest {
     @Test
     void aPortTakenByAnotherProgramLeavesUsUnreachable() throws Exception {
         try (ServerSocket taken = new ServerSocket(this.preferences.tcpPort())) {
-            Network network = this.started();
+            Network network = started();
 
             assertThat(this.log)
                     .anySatisfy(
                             l -> assertThat(l.text()).startsWith("Cannot listen on TCP port " + taken.getLocalPort()));
-            assertThat(this.onLoop(network::status).tcpPort()).isEqualTo(taken.getLocalPort());
+            assertThat(onLoop(network::status).tcpPort()).isEqualTo(taken.getLocalPort());
         }
     }
 
     @Test
     void kadIsCheckedBootstrappedAndListedOnlyWhileItRuns() throws Exception {
-        Network network = this.started();
+        Network network = started();
 
-        assertThat(this.onLoop(network::recheckKadFirewall)).isFalse();
-        assertThatThrownBy(() -> this.onLoop(() -> {
+        assertThat(onLoop(network::recheckKadFirewall)).isFalse();
+        assertThatThrownBy(() -> onLoop(() -> {
                     network.kadBootstrap(Ipv4.of(127, 0, 0, 1), 9);
                     return null;
                 }))
                 .hasCauseInstanceOf(IllegalStateException.class);
-        assertThat(this.onLoop(network::kadContacts)).isEmpty();
-        assertThat(this.onLoop(network::kadSearches)).isEmpty();
+        assertThat(onLoop(network::kadContacts)).isEmpty();
+        assertThat(onLoop(network::kadSearches)).isEmpty();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.connectKad();
             network.connectKad();
             return null;
         });
-        assertThat(this.onLoop(network::kadInfo)).isPresent();
-        assertThat(this.onLoop(network::recheckKadFirewall)).isTrue();
+        assertThat(onLoop(network::kadInfo)).isPresent();
+        assertThat(onLoop(network::recheckKadFirewall)).isTrue();
         assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "Kad: checking the firewall again"));
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.kadBootstrap(Ipv4.of(127, 0, 0, 1), freeUdpPort());
             return null;
         });
         // A LAN address the preferences filter: a running node never sends anything beyond this machine.
         NodesDat.Contact lan = new NodesDat.Contact(
                 UInt128.parseHex("c3".repeat(16)), Ipv4.of(10, 0, 0, 7), 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
-        assertThat(this.onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(lan)))))
+        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(lan)))))
                 .isZero();
-        assertThat(this.onLoop(network::kadContacts)).isEmpty();
-        assertThat(this.onLoop(network::kadSearches)).isEmpty();
+        assertThat(onLoop(network::kadContacts)).isEmpty();
+        assertThat(onLoop(network::kadSearches)).isEmpty();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.disconnectKad();
             network.disconnectKad();
             return null;
         });
-        assertThat(this.onLoop(network::kadInfo)).isEmpty();
+        assertThat(onLoop(network::kadInfo)).isEmpty();
         assertThat(this.log).filteredOn(l -> l.text().equals("Kad stopped")).hasSize(1);
     }
 
     @Test
     void kadSearchesNeedKadAndContacts() throws Exception {
-        Network network = this.started();
+        Network network = started();
         SearchRequest kad = new SearchRequest("ubuntu", SearchRequest.Scope.KAD);
-        assertThatThrownBy(() -> this.onLoop(() -> network.search(kad)))
+        assertThatThrownBy(() -> onLoop(() -> network.search(kad)))
                 .hasCauseInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not running");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.connectKad();
             return null;
         });
 
-        assertThatThrownBy(() -> this.onLoop(() -> network.search(kad)))
+        assertThatThrownBy(() -> onLoop(() -> network.search(kad)))
                 .as("no contact to ask")
                 .hasCauseInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("now");
-        assertThat(this.onLoop(network::kadSearches)).isEmpty();
+        assertThat(onLoop(network::kadSearches)).isEmpty();
     }
 
     @Test
     void ourHelloSaysHowMuchObfuscationWeWant() throws Exception {
-        Network network = this.create();
+        Network network = create();
         int crypt = Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT | Hello.MISC2_REQUIRES_CRYPT;
         Map<ObfuscationMode, Integer> wanted = Map.of(
                 ObfuscationMode.DISABLED,
@@ -418,20 +415,20 @@ class NetworkTest {
     void kadThatCannotTakeItsPortIsReportedAndTurnedOffQuietly() throws Exception {
         try (DatagramSocket taken = new DatagramSocket(this.preferences.udpPort())) {
             this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
-            Network network = this.started();
+            Network network = started();
             assertThat(this.log)
                     .anySatisfy(l ->
                             assertThat(l.text()).startsWith("Cannot start Kad on UDP port " + taken.getLocalPort()));
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 network.connectKad();
                 return null;
             });
-            assertThat(this.onLoop(network::kadInfo)).as("still no port").isEmpty();
+            assertThat(onLoop(network::kadInfo)).as("still no port").isEmpty();
 
-            this.reconfigure(network, p -> p.kadEnabled(false));
+            reconfigure(network, p -> p.kadEnabled(false));
 
-            assertThat(this.onLoop(network::kadInfo)).isEmpty();
+            assertThat(onLoop(network::kadInfo)).isEmpty();
             assertThat(this.log).noneMatch(l -> l.text().equals("Kad stopped"));
         }
     }
@@ -439,10 +436,10 @@ class NetworkTest {
     @Test
     void cancelledFilesThatCannotBeForgottenStayOnDisk() throws Exception {
         Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f4".repeat(16)));
-        Network first = this.create();
-        this.onLoop(() -> first.addDownload(film) != null && first.cancelDownload(film.hash()));
-        assertThat(this.onLoop(first::history).cancelled(film.hash())).isTrue();
-        this.onLoop(() -> {
+        Network first = create();
+        onLoop(() -> first.addDownload(film) != null && first.cancelDownload(film.hash()));
+        assertThat(onLoop(first::history).cancelled(film.hash())).isTrue();
+        onLoop(() -> {
             first.close();
             return null;
         });
@@ -452,15 +449,15 @@ class NetworkTest {
         this.preferences =
                 this.preferences.toBuilder().rememberCancelledFiles(false).build();
 
-        Network forgetting = this.create();
+        Network forgetting = create();
 
-        assertThat(this.onLoop(forgetting::history).cancelled(film.hash())).isFalse();
+        assertThat(onLoop(forgetting::history).cancelled(film.hash())).isFalse();
         assertThat(Files.readAllBytes(file)).as("left as it was").isEqualTo(remembered);
     }
 
     @Test
     void kadContactsGoToNodesDatWhileKadIsOff() throws Exception {
-        Network network = this.create();
+        Network network = create();
         NodesDat.Contact first = new NodesDat.Contact(
                 UInt128.parseHex("c1".repeat(16)),
                 Ipv4.of(198, 51, 100, 11),
@@ -483,9 +480,9 @@ class NetworkTest {
         // A bootstrap list keeps nothing of its own.
         Files.write(file, NodesDat.write(List.of(first)));
 
-        assertThat(this.onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, true, List.of(second)))))
+        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, true, List.of(second)))))
                 .isZero();
-        assertThat(this.onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(first, second)))))
+        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(first, second)))))
                 .isEqualTo(1);
 
         assertThat(NodesDat.read(Files.readAllBytes(file)).contacts())
@@ -496,39 +493,39 @@ class NetworkTest {
     @Test
     void newSettingsMoveTheServerAndKadAndTurnTheNetworksOff() throws Exception {
         this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
-        Network network = this.started();
+        Network network = started();
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
-            this.connect(network, server);
+            connect(network, server);
             assertThat(server.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10)))
                     .isPresent();
-            this.next(EngineEvent.ServerConnected.class);
-            int kadPort = this.onLoop(network::kadInfo).orElseThrow().udpPort();
+            next(EngineEvent.ServerConnected.class);
+            int kadPort = onLoop(network::kadInfo).orElseThrow().udpPort();
 
             int tcp = freeTcpPort();
             int udp = freeUdpPort();
-            this.reconfigure(network, p -> p.tcpPort(tcp).udpPort(udp));
+            reconfigure(network, p -> p.tcpPort(tcp).udpPort(udp));
 
             Packet login = server.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10))
                     .orElseThrow();
             assertThat(ServerMessages.Login.decode(login).tcpPort())
                     .as("logged in again with the new port")
                     .isEqualTo(tcp);
-            assertThat(this.onLoop(network::kadInfo).orElseThrow().udpPort())
+            assertThat(onLoop(network::kadInfo).orElseThrow().udpPort())
                     .as("Kad moved too")
                     .isEqualTo(udp)
                     .isNotEqualTo(kadPort);
-            this.next(EngineEvent.ServerConnected.class);
+            next(EngineEvent.ServerConnected.class);
             // Not asked for: not taken.
             server.send(
                     ServerMessages.serverList(List.of(new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 31), 65_534))));
             server.send(ServerMessages.message("after the list"));
-            this.next(EngineEvent.ServerMessage.class);
-            assertThat(this.onLoop(network::servers)).isEmpty();
+            next(EngineEvent.ServerMessage.class);
+            assertThat(onLoop(network::servers)).isEmpty();
 
-            this.reconfigure(network, p -> p.ed2kEnabled(false).rememberCancelledFiles(false));
+            reconfigure(network, p -> p.ed2kEnabled(false).rememberCancelledFiles(false));
 
-            this.next(EngineEvent.ServerDisconnected.class);
-            assertThat(this.onLoop(network::status).server()).isEmpty();
+            next(EngineEvent.ServerDisconnected.class);
+            assertThat(onLoop(network::status).server()).isEmpty();
         }
     }
 
@@ -542,19 +539,19 @@ class NetworkTest {
         Files.write(
                 this.dirs.config().resolve(Network.IPFILTER_FILE),
                 IpFilterDat.write(List.of(new IpFilterDat.Range(blocked, blocked, 0, "test"))));
-        Network network = this.started();
+        Network network = started();
         // Failed too often: gone once logged in, before any could be pinged.
         List<ServerMet.Server> dead = List.of(
                 new ServerMet.Server(
                         Ipv4.of(198, 51, 100, 21), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))),
                 new ServerMet.Server(
                         Ipv4.of(198, 51, 100, 22), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))));
-        assertThat(this.onLoop(() -> network.addServers(dead))).isEqualTo(2);
+        assertThat(onLoop(() -> network.addServers(dead))).isEqualTo(2);
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH)) {
-            this.connect(network, server);
-            EngineEvent.ServerConnected connected = this.next(EngineEvent.ServerConnected.class);
+            connect(network, server);
+            EngineEvent.ServerConnected connected = next(EngineEvent.ServerConnected.class);
             assertThat(connected.clientId()).isEqualTo(HIGH_ID);
-            assertThat(this.onLoop(network::status).relatedSearch()).isTrue();
+            assertThat(onLoop(network::status).relatedSearch()).isTrue();
             assertThat(server.next(Opcodes.Server.GETSERVERLIST.code(), Duration.ofSeconds(10)))
                     .isPresent();
 
@@ -572,15 +569,14 @@ class NetworkTest {
                     Packet.of(Protocol.EDONKEY, 0xEE, new byte[2]),
                     new ServerMessages.ServerStatus(500, 600).encode());
 
-            assertThat(this.next(EngineEvent.ServerUpdated.class).server().users())
-                    .isEqualTo(500);
+            assertThat(next(EngineEvent.ServerUpdated.class).server().users()).isEqualTo(500);
             assertThat(this.log)
                     .contains(
                             new Logged(LogLine.Level.ERROR, "ERROR: no more room"),
                             new Logged(LogLine.Level.WARNING, "WARNING: low id"),
                             new Logged(LogLine.Level.INFO, "2 dead servers removed"),
                             new Logged(LogLine.Level.INFO, "2 new servers from 127.0.0.1:" + server.port()));
-            assertThat(this.onLoop(network::servers)).hasSize(2);
+            assertThat(onLoop(network::servers)).hasSize(2);
             server.send(new ServerMessages.ServerIdent(
                             Hash16.parseHex("33".repeat(16)),
                             server.ip(),
@@ -588,14 +584,13 @@ class NetworkTest {
                             Optional.of("Scripted"),
                             Optional.empty())
                     .encode());
-            assertThat(this.next(EngineEvent.ServerUpdated.class).server().name())
-                    .isEqualTo("Scripted");
+            assertThat(next(EngineEvent.ServerUpdated.class).server().name()).isEqualTo("Scripted");
 
             server.hangUp();
 
-            EngineEvent.ServerDisconnected gone = this.next(EngineEvent.ServerDisconnected.class);
+            EngineEvent.ServerDisconnected gone = next(EngineEvent.ServerDisconnected.class);
             assertThat(gone.server()).isPresent();
-            assertThat(this.onLoop(network::status).clientId()).isZero();
+            assertThat(onLoop(network::status).clientId()).isZero();
             assertThat(this.log)
                     .anySatisfy(l -> assertThat(l.text())
                             .startsWith("Disconnected from Scripted (127.0.0.1:" + server.port() + ")"));
@@ -605,19 +600,19 @@ class NetworkTest {
     @Test
     void largeFilesAreAskedForOnlyFromServersThatTakeThem() throws Exception {
         this.preferences = this.preferences.toBuilder().addDownloadsPaused(true).build();
-        Network network = this.started();
+        Network network = started();
         Ed2kLink.FileLink large = Ed2kLink.FileLink.of("large.iso", 5_000_000_000L, Hash16.parseHex("d1".repeat(16)));
         Ed2kLink.FileLink small = Ed2kLink.FileLink.of("small.iso", 5000, Hash16.parseHex("d2".repeat(16)));
-        assertThat(this.onLoop(() -> network.addDownload(large)).status()).isEqualTo(DownloadInfo.Status.PAUSED);
-        assertThat(this.onLoop(() -> network.addDownload(large)).status())
+        assertThat(onLoop(() -> network.addDownload(large)).status()).isEqualTo(DownloadInfo.Status.PAUSED);
+        assertThat(onLoop(() -> network.addDownload(large)).status())
                 .as("added again: left as it is")
                 .isEqualTo(DownloadInfo.Status.PAUSED);
-        this.onLoop(() -> network.addDownload(small));
+        onLoop(() -> network.addDownload(small));
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, ServerMessages.TCP_OBFUSCATION)) {
-            this.connect(network, server);
-            this.next(EngineEvent.ServerConnected.class);
+            connect(network, server);
+            next(EngineEvent.ServerConnected.class);
 
-            this.onLoop(() -> network.resumeDownload(large.hash()) && network.resumeDownload(small.hash()));
+            onLoop(() -> network.resumeDownload(large.hash()) && network.resumeDownload(small.hash()));
 
             Packet asked = server.next(Opcodes.Server.GETSOURCES_OBFU.code(), Duration.ofSeconds(10))
                     .orElseThrow();
@@ -630,68 +625,67 @@ class NetworkTest {
 
     @Test
     void theFriendSlotGoesWithTheFriend() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Hash16 pal = Hash16.parseHex("e1".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.addFriend(new Friend(pal, "pal", Optional.empty()));
             return null;
         });
-        assertThat(this.onLoop(() -> network.setFriendSlot(Optional.of(USER))))
+        assertThat(onLoop(() -> network.setFriendSlot(Optional.of(USER))))
                 .as("not a friend")
                 .isFalse();
-        assertThat(this.onLoop(() -> network.setFriendSlot(Optional.of(pal)))).isTrue();
+        assertThat(onLoop(() -> network.setFriendSlot(Optional.of(pal)))).isTrue();
 
-        assertThat(this.onLoop(() -> network.removeFriend(pal))).isTrue();
+        assertThat(onLoop(() -> network.removeFriend(pal))).isTrue();
 
-        assertThat(this.onLoop(network::friendSlot)).isEmpty();
-        assertThat(this.onLoop(network::friends)).isEmpty();
+        assertThat(onLoop(network::friendSlot)).isEmpty();
+        assertThat(onLoop(network::friends)).isEmpty();
     }
 
     @Test
     void downloadsCanBeStoppedPrioritisedAndPreviewed() throws Exception {
         this.preferences =
                 this.preferences.toBuilder().rememberCancelledFiles(false).build();
-        Network network = this.create();
+        Network network = create();
         Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f1".repeat(16)));
-        this.onLoop(() -> network.addDownload(film));
+        onLoop(() -> network.addDownload(film));
 
-        assertThat(this.onLoop(() -> network.setDownloadPriority(film.hash(), DownloadPriority.HIGH)))
+        assertThat(onLoop(() -> network.setDownloadPriority(film.hash(), DownloadPriority.HIGH)))
                 .isTrue();
-        assertThat(this.onLoop(() -> network.setDownloadPreview(film.hash(), true)))
-                .isTrue();
-        assertThat(this.onLoop(() -> network.downloadData(film.hash())))
+        assertThat(onLoop(() -> network.setDownloadPreview(film.hash(), true))).isTrue();
+        assertThat(onLoop(() -> network.downloadData(film.hash())))
                 .as("nothing to preview yet")
                 .isEmpty();
-        assertThat(this.onLoop(() -> network.stopDownload(film.hash()))).isTrue();
-        assertThat(this.onLoop(network::downloads)).singleElement().satisfies(d -> {
+        assertThat(onLoop(() -> network.stopDownload(film.hash()))).isTrue();
+        assertThat(onLoop(network::downloads)).singleElement().satisfies(d -> {
             assertThat(d.status()).isEqualTo(DownloadInfo.Status.STOPPED);
             assertThat(d.priority()).isEqualTo(DownloadPriority.HIGH);
         });
 
-        assertThat(this.onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
-        assertThat(this.onLoop(network::history).cancelled(film.hash()))
+        assertThat(onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
+        assertThat(onLoop(network::history).cancelled(film.hash()))
                 .as("not remembered")
                 .isFalse();
     }
 
     @Test
     void aCancelledDownloadThatCannotBeRememberedIsStillCancelled() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f2".repeat(16)));
-        this.onLoop(() -> network.addDownload(film));
+        onLoop(() -> network.addDownload(film));
         blockWrites(this.dirs.config().resolve(CancelledFiles.FILE_NAME));
 
-        assertThat(this.onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
+        assertThat(onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
 
-        assertThat(this.onLoop(network::downloads)).isEmpty();
+        assertThat(onLoop(network::downloads)).isEmpty();
     }
 
     @Test
     void aSchedulerRuleLeavesDownloadsOfOtherCategoriesAndRunningOnesAlone() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a3".repeat(16)));
         Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a4".repeat(16)));
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.setCategories(List.of(
                     new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false),
                     new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false)));
@@ -702,13 +696,13 @@ class NetworkTest {
             return null;
         });
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.scheduleCategories(OptionalInt.empty(), OptionalInt.of(2));
             network.scheduleCategories(OptionalInt.of(3), OptionalInt.empty());
             return null;
         });
 
-        assertThat(this.onLoop(network::downloads))
+        assertThat(onLoop(network::downloads))
                 .extracting(DownloadInfo::status)
                 .containsOnly(DownloadInfo.Status.DOWNLOADING);
         assertThat(this.log)
@@ -719,7 +713,7 @@ class NetworkTest {
 
     @Test
     void aHelloToNobodyOrToAClientThatHangsUpFails() throws Exception {
-        Network network = this.create();
+        Network network = create();
         int closed = freeTcpPort();
 
         assertThatThrownBy(() -> network.hello(local(closed)).get(20, TimeUnit.SECONDS))
@@ -749,7 +743,7 @@ class NetworkTest {
 
     @Test
     void aClientWithoutTheIdentificationIsTold() throws Exception {
-        Network network = this.create();
+        Network network = create();
         Hash16 peerHash = Hash16.parseHex("21".repeat(16));
         try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
@@ -780,7 +774,7 @@ class NetworkTest {
     void theServerOfAClientIsLearntWhenThePreferencesAskForIt() throws Exception {
         this.preferences =
                 this.preferences.toBuilder().addServersFromClients(true).build();
-        this.started();
+        started();
         // A documentation address with no UDP port above it: never pinged, never connected to.
         Hello hello = Hello.of(
                 Hash16.parseHex("23".repeat(16)), 0, 4999, "peer", 0, 0, 0, 0, Ipv4.of(198, 51, 100, 3), 65_534);
@@ -789,31 +783,31 @@ class NetworkTest {
             socket.setSoTimeout(10_000);
             socket.getOutputStream().write(TcpFraming.encode(hello.encode(false)));
 
-            assertThat(this.next(EngineEvent.ServersChanged.class).count()).isEqualTo(1);
+            assertThat(next(EngineEvent.ServersChanged.class).count()).isEqualTo(1);
         }
         assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "1 new server from a client"));
     }
 
     @Test
     void aNewIdFromTheServerIsTheIdOurHelloTells() throws Exception {
-        this.givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
 
-        this.whenTheServerGivesUsTheId(OTHER_HIGH_ID);
+        whenTheServerGivesUsTheId(OTHER_HIGH_ID);
 
-        this.thenOurHelloTellsTheId(OTHER_HIGH_ID);
+        thenOurHelloTellsTheId(OTHER_HIGH_ID);
     }
 
     private void givenALoginTo(ScriptedServer server) throws Exception {
         this.scripted = server;
-        Network network = this.started();
-        this.connect(network, server);
-        this.next(EngineEvent.ServerConnected.class);
+        Network network = started();
+        connect(network, server);
+        next(EngineEvent.ServerConnected.class);
     }
 
     private void whenTheServerGivesUsTheId(long id) throws Exception {
         this.scripted.send(new ServerMessages.IdChange(id, 0, 0).encode());
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (this.onLoop(this.network::status).clientId() != id) {
+        while (onLoop(this.network::status).clientId() != id) {
             assertThat(System.nanoTime()).as("the new id taken").isLessThan(deadline);
             Thread.sleep(20);
         }
@@ -831,53 +825,53 @@ class NetworkTest {
 
     @Test
     void kadGetsItsPortEvenWhenTheServerSocketHoldsIt() throws Exception {
-        this.givenARunningNetworkWithoutKad();
+        givenARunningNetworkWithoutKad();
 
-        this.whenKadIsTurnedOnAtThePortOfTheServerSocket();
+        whenKadIsTurnedOnAtThePortOfTheServerSocket();
 
-        this.thenKadListensOnThatPort();
-        this.thenTheServerSocketListensElsewhere();
+        thenKadListensOnThatPort();
+        thenTheServerSocketListensElsewhere();
     }
 
     private void givenARunningNetworkWithoutKad() throws Exception {
-        this.started();
-        this.serverSocketPort = this.onLoop(this.network::serverUdpPort).orElseThrow();
+        started();
+        this.serverSocketPort = onLoop(this.network::serverUdpPort).orElseThrow();
     }
 
     private void whenKadIsTurnedOnAtThePortOfTheServerSocket() throws Exception {
-        this.reconfigure(this.network, p -> p.udpPort(this.serverSocketPort).kadEnabled(true));
+        reconfigure(this.network, p -> p.udpPort(this.serverSocketPort).kadEnabled(true));
     }
 
     private void thenKadListensOnThatPort() throws Exception {
-        assertThat(this.onLoop(this.network::kadInfo))
+        assertThat(onLoop(this.network::kadInfo))
                 .as("Kad started")
                 .hasValueSatisfying(kad -> assertThat(kad.udpPort()).isEqualTo(this.serverSocketPort));
     }
 
     private void thenTheServerSocketListensElsewhere() throws Exception {
-        OptionalInt port = this.onLoop(this.network::serverUdpPort);
+        OptionalInt port = onLoop(this.network::serverUdpPort);
         assertThat(port).isPresent();
         assertThat(port.getAsInt()).isNotEqualTo(this.serverSocketPort);
     }
 
     @Test
     void aRunForTheUserConnectsAtStartWhenThePreferencesSaySo() throws Exception {
-        this.givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
-        this.givenConnectingAtStart(true);
+        givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
+        givenConnectingAtStart(true);
 
-        this.whenTheNetworkStartsForTheUser();
+        whenTheNetworkStartsForTheUser();
 
-        this.thenItConnectsToThatServer();
+        thenItConnectsToThatServer();
     }
 
     @Test
     void aRunForTheUserStaysDisconnectedWhenThePreferencesSaySo() throws Exception {
-        this.givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
-        this.givenConnectingAtStart(false);
+        givenTheServerListHolds(ScriptedServer.startAt(ScriptedServer.lanAddress(), HIGH_ID, 0));
+        givenConnectingAtStart(false);
 
-        this.whenTheNetworkStartsForTheUser();
+        whenTheNetworkStartsForTheUser();
 
-        this.thenItStaysDisconnected();
+        thenItStaysDisconnected();
     }
 
     private void givenTheServerListHolds(ScriptedServer server) throws IOException {
@@ -896,15 +890,15 @@ class NetworkTest {
     }
 
     private void whenTheNetworkStartsForTheUser() throws Exception {
-        Network created = this.create(true);
-        this.onLoop(() -> {
+        Network created = create(true);
+        onLoop(() -> {
             created.start();
             return null;
         });
     }
 
     private void thenItConnectsToThatServer() throws Exception {
-        EngineEvent.ServerConnected connected = this.next(EngineEvent.ServerConnected.class);
+        EngineEvent.ServerConnected connected = next(EngineEvent.ServerConnected.class);
         assertThat(connected.server().address()).endsWith(":" + this.scripted.port());
     }
 
@@ -915,11 +909,11 @@ class NetworkTest {
     }
 
     private Network create() throws Exception {
-        return this.create(false);
+        return create(false);
     }
 
     private Network create(boolean automaticConnections) throws Exception {
-        this.network = this.onLoop(() -> new Network(
+        this.network = onLoop(() -> new Network(
                 this.loop,
                 this.dirs.config(),
                 () -> this.preferences,
@@ -934,8 +928,8 @@ class NetworkTest {
     }
 
     private Network started() throws Exception {
-        Network created = this.create();
-        this.onLoop(() -> {
+        Network created = create();
+        onLoop(() -> {
             created.start();
             return null;
         });
@@ -943,7 +937,7 @@ class NetworkTest {
     }
 
     private void connect(Network network, ScriptedServer server) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.connect(Optional.of(new ServerList.Address(server.ip(), server.port())));
             return null;
         });
@@ -953,7 +947,7 @@ class NetworkTest {
         Preferences was = this.preferences;
         Preferences now = change.apply(was.toBuilder()).build();
         this.preferences = now;
-        this.onLoop(() -> {
+        onLoop(() -> {
             network.reconfigure(was, now);
             return null;
         });

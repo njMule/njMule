@@ -140,7 +140,7 @@ public final class FakePeer implements AutoCloseable {
                 this.link.hash(),
                 this.link.aichHash(),
                 List.of(),
-                List.of(new Ed2kLink.Source(this.tcp.getInetAddress().getHostAddress(), this.port())),
+                List.of(new Ed2kLink.Source(this.tcp.getInetAddress().getHostAddress(), port())),
                 List.of());
     }
 
@@ -167,7 +167,7 @@ public final class FakePeer implements AutoCloseable {
         this.serverPort = serverPort;
         Thread.ofVirtual().name("fake-peer-lowid").start(() -> {
             try {
-                this.serve(new Socket(downloader.getAddress(), downloader.getPort()), Answer.HELLO_ONLY);
+                serve(new Socket(downloader.getAddress(), downloader.getPort()), Answer.HELLO_ONLY);
             } catch (IOException e) {
                 logger.debug("Cannot call as a LowID: {}", e.getMessage());
             }
@@ -205,7 +205,7 @@ public final class FakePeer implements AutoCloseable {
         while (!this.tcp.isClosed()) {
             try {
                 Socket client = this.tcp.accept();
-                Thread.ofVirtual().name("fake-peer-client").start(() -> this.serve(client));
+                Thread.ofVirtual().name("fake-peer-client").start(() -> serve(client));
             } catch (IOException e) {
                 if (!this.tcp.isClosed()) {
                     logger.warn("Fake peer accept failed", e);
@@ -215,11 +215,11 @@ public final class FakePeer implements AutoCloseable {
     }
 
     private void serve(Socket client) {
-        this.serve(client, Answer.NONE);
+        serve(client, Answer.NONE);
     }
 
     private void serve(Socket client, boolean calledBack) {
-        this.serve(client, calledBack ? Answer.SLOT : Answer.NONE);
+        serve(client, calledBack ? Answer.SLOT : Answer.NONE);
     }
 
     // What an outgoing connection says first: nothing (it was accepted), a hello and then a slot
@@ -255,7 +255,7 @@ public final class FakePeer implements AutoCloseable {
         Thread.ofVirtual().name("fake-peer-callback").start(() -> {
             try {
                 Thread.sleep(SLOT_DELAY_MILLIS);
-                this.serve(new Socket(address, port), true);
+                serve(new Socket(address, port), true);
             } catch (IOException e) {
                 logger.debug("Cannot call back: {}", e.getMessage());
             } catch (InterruptedException e) {
@@ -292,11 +292,11 @@ public final class FakePeer implements AutoCloseable {
             FakePeer.this.received.add(name(packet));
             Hash16 hash = FakePeer.this.link.hash();
             if (packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.REQUESTPARTS_I64.code()) {
-                this.blocks(ClientMessages.RequestParts.decode(packet));
+                blocks(ClientMessages.RequestParts.decode(packet));
                 return;
             }
             if (packet.protocol() == Protocol.EMULE && packet.opcode() == Opcodes.Extended.AICHREQUEST.code()) {
-                this.aichRequested(packet);
+                aichRequested(packet);
                 return;
             }
             if (packet.protocol() != Protocol.EDONKEY) {
@@ -309,43 +309,42 @@ public final class FakePeer implements AutoCloseable {
             switch (opcode) {
                 case HELLO -> {
                     this.downloaderPort = Hello.decode(packet).tcpPort();
-                    this.send(this.hello().encode(true));
+                    send(hello().encode(true));
                 }
                 case HELLOANSWER -> {
                     if (this.calledBack) {
-                        this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                        send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                     }
                 }
                 case REQUESTFILENAME -> {
-                    this.send(new ClientMessages.FileName(hash, FakePeer.this.link.name()).encode());
+                    send(new ClientMessages.FileName(hash, FakePeer.this.link.name()).encode());
                     Hash16 file = FakePeer.this.wanted;
                     if (file != null && !this.askedForOurs) {
                         this.askedForOurs = true;
-                        this.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
-                        this.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
+                        send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file));
+                        send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
                     }
                 }
-                case SETREQFILEID -> this.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-                case HASHSETREQUEST ->
-                    this.send(new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes()).encode());
+                case SETREQFILEID -> send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
+                case HASHSETREQUEST -> send(new ClientMessages.HashSet(hash, FakePeer.this.link.partHashes()).encode());
                 case STARTUPLOADREQ -> {
                     Slot slot = this.calledBack ? Slot.NOW : FakePeer.this.config.slot();
                     if (slot != Slot.NOW) {
-                        this.send(Packet.of(
+                        send(Packet.of(
                                 Protocol.EMULE,
                                 Opcodes.Extended.QUEUERANKING.code(),
                                 new PacketWriter().u16(1).bytes(new byte[10])));
                     }
                     if (slot == Slot.AFTER_QUEUE) {
-                        this.slotLater();
+                        slotLater();
                     } else if (slot == Slot.CALL_BACK) {
                         FakePeer.this.callBack(this.socket.getInetAddress(), this.downloaderPort);
                         this.socket.close();
                     } else {
-                        this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                        send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                     }
                 }
-                case REQUESTPARTS -> this.blocks(ClientMessages.RequestParts.decode(packet));
+                case REQUESTPARTS -> blocks(ClientMessages.RequestParts.decode(packet));
                 default -> {
                     // Cancels and the end of the download need no answer.
                 }
@@ -381,7 +380,7 @@ public final class FakePeer implements AutoCloseable {
                         && AichRecovery.hasRecovery(tree.get().size(), part)) {
                     answer.u16(part).hash20(master).bytes(AichRecovery.create(tree.get(), part));
                 }
-                this.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
+                send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
             } catch (DecodeException e) {
                 throw new IOException(e);
             }
@@ -391,7 +390,7 @@ public final class FakePeer implements AutoCloseable {
             Thread.ofVirtual().start(() -> {
                 try {
                     Thread.sleep(SLOT_DELAY_MILLIS);
-                    this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+                    send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
                 } catch (IOException e) {
                     logger.debug("No slot given: {}", e.getMessage());
                 } catch (InterruptedException e) {
@@ -413,15 +412,15 @@ public final class FakePeer implements AutoCloseable {
                     this.data.seek(range.start());
                     this.data.readFully(block);
                 }
-                this.corrupt(range.start(), block);
-                this.sendBlock(range.start(), block);
+                corrupt(range.start(), block);
+                sendBlock(range.start(), block);
                 FakePeer.this.sent.addAndGet(block.length);
                 this.sessionBytes += block.length;
                 long limit = FakePeer.this.config.sessionLimit();
                 if (limit > 0 && this.sessionBytes >= limit) {
                     this.sessionBytes = 0;
-                    this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-                    this.slotLater();
+                    send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+                    slotLater();
                     return;
                 }
             }
@@ -455,7 +454,7 @@ public final class FakePeer implements AutoCloseable {
                 }
             }
             for (Packet packet : packets) {
-                this.send(packet);
+                send(packet);
             }
         }
 

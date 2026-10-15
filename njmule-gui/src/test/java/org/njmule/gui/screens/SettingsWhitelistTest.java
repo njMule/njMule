@@ -45,42 +45,42 @@ class SettingsWhitelistTest {
 
     @Test
     void shouldSaveTheAddressesTypedInTheWhitelist() throws Exception {
-        this.givenTheSettingsScreen();
-        this.givenTheWhitelistTyped("1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255");
+        givenTheSettingsScreen();
+        givenTheWhitelistTyped("1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255");
 
-        this.whenTheSettingsAreApplied();
+        whenTheSettingsAreApplied();
 
-        this.thenTheEngineAlwaysAllows("1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255");
+        thenTheEngineAlwaysAllows("1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255");
     }
 
     @Test
     void shouldShowTheWhitelistOfTheEngine() throws Exception {
-        this.givenTheEngineAlwaysAllows("9.9.9.9");
-        this.givenTheSettingsScreen();
+        givenTheEngineAlwaysAllows("9.9.9.9");
+        givenTheSettingsScreen();
 
-        this.whenTheSettingsAreShown();
+        whenTheSettingsAreShown();
 
-        this.thenTheWhitelistShows("9.9.9.9");
+        thenTheWhitelistShows("9.9.9.9");
     }
 
     @Test
     void shouldMarkAWrongLineAndNameItInTheTooltip() throws Exception {
-        this.givenTheSettingsScreen();
+        givenTheSettingsScreen();
 
-        this.whenTheWhitelistIsTyped("1.2.3.4\nmy friend\n5.6.7.8");
+        whenTheWhitelistIsTyped("1.2.3.4\nmy friend\n5.6.7.8");
 
-        this.thenTheWhitelistIsMarkedInvalid();
-        this.thenTheTooltipNames("Not an address, a block or a range: my friend");
+        thenTheWhitelistIsMarkedInvalid();
+        thenTheTooltipNames("Not an address, a block or a range: my friend");
     }
 
     @Test
     void shouldDropControlCharactersButKeepTheLines() throws Exception {
-        this.givenTheSettingsScreen();
+        givenTheSettingsScreen();
 
-        this.whenTheWhitelistIsTyped("1.2.3.4\u0007\n5.6.7.8\r\n");
+        whenTheWhitelistIsTyped("1.2.3.4\u0007\n5.6.7.8\r\n");
 
-        this.thenTheWhitelistShows("1.2.3.4\n5.6.7.8\n");
-        this.thenTheTooltipNamesNoLine();
+        thenTheWhitelistShows("1.2.3.4\n5.6.7.8\n");
+        thenTheTooltipNamesNoLine();
     }
 
     private void givenTheSettingsScreen() throws Exception {
@@ -109,7 +109,7 @@ class SettingsWhitelistTest {
     }
 
     private void givenTheWhitelistTyped(String text) throws Exception {
-        this.whenTheWhitelistIsTyped(text);
+        whenTheWhitelistIsTyped(text);
     }
 
     private void whenTheWhitelistIsTyped(String text) throws Exception {

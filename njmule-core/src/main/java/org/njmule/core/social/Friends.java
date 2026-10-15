@@ -115,13 +115,13 @@ public final class Friends {
                         known == null ? 0 : known.lastSeen(),
                         known == null ? 0 : known.lastChatted(),
                         tags));
-        this.save();
+        save();
     }
 
     public boolean remove(Hash16 userHash) throws IOException {
         boolean removed = this.friends.remove(userHash) != null;
         if (removed) {
-            this.save();
+            save();
         }
         return removed;
     }

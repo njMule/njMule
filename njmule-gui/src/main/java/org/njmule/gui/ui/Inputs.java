@@ -63,7 +63,7 @@ public final class Inputs {
 
     /** A whole number in {@code [min, max]}. */
     public Input<Integer> number(TextField field, String name, int min, int max) {
-        return this.number(field, name, min, () -> max, max);
+        return number(field, name, min, () -> max, max);
     }
 
     /**
@@ -81,7 +81,7 @@ public final class Inputs {
 
     /** Nothing, or a whole number in {@code [min, max]}. */
     public Input<OptionalInt> optionalNumber(TextField field, String name, int min, int max) {
-        return this.optionalNumber(field, name, () -> min, max);
+        return optionalNumber(field, name, () -> min, max);
     }
 
     /** Nothing, or a whole number in {@code [min, max]}, where {@code min} moves; check again after it did. */
@@ -97,7 +97,7 @@ public final class Inputs {
 
     /** Nothing, or a file extension of letters and digits, which may start with a dot. */
     public Input<String> extension(TextField field, String name, int maxLength) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.extension"), Inputs::extensionChar, maxLength, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.extension"), Inputs::extensionChar, maxLength, t -> {
             if (!t.isEmpty() && !EXTENSION.matcher(t).matches()) {
                 throw new IllegalArgumentException(t);
             }
@@ -118,7 +118,7 @@ public final class Inputs {
 
     /** {@code host:port}. */
     public Input<ServerAddress> address(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.address"), Inputs::addressChar, MAX_HOST + 8, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.address"), Inputs::addressChar, MAX_HOST + 8, t -> {
             ServerAddress address = ServerAddress.parse(t);
             if (!ServerAddress.isValidHost(address.host())) {
                 throw new IllegalArgumentException(t);
@@ -129,7 +129,7 @@ public final class Inputs {
 
     /** An http or https address with a host. */
     public Input<URI> url(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.url"), Inputs::printable, MAX_TEXT, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.url"), Inputs::printable, MAX_TEXT, t -> {
             URI uri = URI.create(t);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null) {
@@ -141,7 +141,7 @@ public final class Inputs {
 
     /** A host name or an IP address; empty only while {@code required} says no. */
     public Input<String> host(TextField field, String name, BooleanSupplier required) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.host"), Inputs::addressChar, MAX_HOST, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.host"), Inputs::addressChar, MAX_HOST, t -> {
             if (t.isEmpty() ? required.getAsBoolean() : !ServerAddress.isValidHost(t)) {
                 throw new IllegalArgumentException(t);
             }
@@ -173,7 +173,7 @@ public final class Inputs {
 
     /** Nothing, for the default folder, or the path of a folder, which need not exist yet. */
     public Input<Optional<Path>> folder(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.folder"), Inputs::printable, MAX_TEXT, t -> {
             if (t.isEmpty()) {
                 return Optional.empty();
             }
@@ -187,7 +187,7 @@ public final class Inputs {
 
     /** Nothing, or the full path of a sound file, which need not exist yet. */
     public Input<Optional<Path>> soundFile(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.soundFile"), Inputs::printable, MAX_TEXT, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.soundFile"), Inputs::printable, MAX_TEXT, t -> {
             if (t.isEmpty()) {
                 return Optional.empty();
             }
@@ -201,7 +201,7 @@ public final class Inputs {
 
     /** The path of a folder that exists. */
     public Input<Path> existingFolder(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.existingFolder"), Inputs::printable, MAX_TEXT, t -> {
             Path path = Path.of(t);
             if (t.isEmpty() || !Files.isDirectory(path)) {
                 throw new IllegalArgumentException(t);
@@ -212,7 +212,7 @@ public final class Inputs {
 
     /** One or more eD2K file links, apart by spaces or lines. */
     public Input<List<Ed2kLink.FileLink>> fileLinks(TextField field, String name) {
-        return this.leftToRight(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_LINKS_TEXT, t -> {
+        return leftToRight(field, name, this.gui.t("nj.input.fileLinks"), c -> true, MAX_LINKS_TEXT, t -> {
                     List<Ed2kLink.FileLink> links = new ArrayList<>();
                     for (String one : LINKS.split(t, -1)) {
                         if (one.isEmpty()) {
@@ -235,7 +235,7 @@ public final class Inputs {
     /** Nothing, or a program and its arguments, which may hold {@code placeholders}; see EventCommands. */
     public Input<String> commandLine(TextField field, String name, List<String> placeholders) {
         String hint = this.gui.f("nj.input.commandLine", String.join(" ", placeholders));
-        return this.leftToRight(field, name, hint, Inputs::printable, EventCommands.MAX_COMMAND_LINE, t -> {
+        return leftToRight(field, name, hint, Inputs::printable, EventCommands.MAX_COMMAND_LINE, t -> {
             EventCommands.arguments(t);
             return t;
         });

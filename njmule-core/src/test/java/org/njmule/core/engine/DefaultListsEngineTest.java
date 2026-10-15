@@ -60,17 +60,17 @@ class DefaultListsEngineTest {
 
     @Test
     void aNewProfileStartsWithTheShippedServers() throws Exception {
-        this.givenANewProfileWithoutNetworks();
-        this.whenTheEngineStarts();
-        this.thenItKnowsTheShippedServers();
+        givenANewProfileWithoutNetworks();
+        whenTheEngineStarts();
+        thenItKnowsTheShippedServers();
     }
 
     @Test
     void aProfileWhoseServerListWasEmptiedKeepsItEmpty() throws Exception {
-        this.givenANewProfileWithoutNetworks();
-        this.givenAnEmptyServerList();
-        this.whenTheEngineStarts();
-        this.thenItKnowsNoServer();
+        givenANewProfileWithoutNetworks();
+        givenAnEmptyServerList();
+        whenTheEngineStarts();
+        thenItKnowsNoServer();
     }
 
     private void givenANewProfileWithoutNetworks() throws Exception {

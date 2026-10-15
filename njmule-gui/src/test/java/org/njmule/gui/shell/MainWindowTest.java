@@ -84,7 +84,7 @@ class MainWindowTest {
         this.model = new EngineModel(this.engine, Platform::runLater);
         for (Locale language : I18n.LANGUAGES) {
             for (GuiSettings.Mode mode : List.of(GuiSettings.Mode.LIGHT, GuiSettings.Mode.DARK)) {
-                MainWindow window = this.window(language, mode);
+                MainWindow window = window(language, mode);
                 for (String screen : SCREENS) {
                     FxTesting.onFx(() -> {
                         window.show(screen);
@@ -112,7 +112,7 @@ class MainWindowTest {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
         this.model = new EngineModel(this.engine, Platform::runLater);
         for (Locale language : I18n.LANGUAGES) {
-            MainWindow window = this.window(language, GuiSettings.Mode.LIGHT);
+            MainWindow window = window(language, GuiSettings.Mode.LIGHT);
             Dimension2D minimum = FxTesting.onFx(window::minimumSize);
             for (String screen : SCREENS) {
                 List<String> cut = FxTesting.onFx(() -> {
@@ -148,7 +148,7 @@ class MainWindowTest {
     void messagesComeAndGo() throws Exception {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
         this.model = new EngineModel(this.engine, Platform::runLater);
-        MainWindow window = this.window(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+        MainWindow window = window(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
 
         FxTesting.onFx(() -> window.message("hello"));
 

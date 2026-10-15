@@ -78,33 +78,31 @@ class KadNodeKeywordResultsTest {
 
     @Test
     void shouldKeepOnlyTheFilesMatchingTheWholeExpression() {
-        this.givenASearchFor(new SearchExpr.And(
+        givenASearchFor(new SearchExpr.And(
                 new SearchExpr.Not(new SearchExpr.Keyword(WORD), new SearchExpr.Keyword("server")),
                 new SearchExpr.NumericAttr(FileTag.FILESIZE, SearchExpr.Comparison.GREATER, 500)));
 
-        this.whenTheNodeFinds(
-                this.file("ubuntu desktop.iso", 1_000),
-                this.file("ubuntu server.iso", 1_000),
-                this.file("ubuntu small.iso", 100));
+        whenTheNodeFinds(
+                file("ubuntu desktop.iso", 1_000), file("ubuntu server.iso", 1_000), file("ubuntu small.iso", 100));
 
-        this.thenTheFilesFoundAre("ubuntu desktop.iso");
+        thenTheFilesFoundAre("ubuntu desktop.iso");
     }
 
     @Test
     void shouldKeepOnlyTheFilesWithTheWordLookedUpWithoutAnExpression() {
-        this.givenASearchWithoutAnExpression();
+        givenASearchWithoutAnExpression();
 
-        this.whenTheNodeFinds(this.file("ubuntu desktop.iso", 1_000), this.file("kubuntu.iso", 1_000));
+        whenTheNodeFinds(file("ubuntu desktop.iso", 1_000), file("kubuntu.iso", 1_000));
 
-        this.thenTheFilesFoundAre("ubuntu desktop.iso");
+        thenTheFilesFoundAre("ubuntu desktop.iso");
     }
 
     private void givenASearchFor(SearchExpr expression) {
-        this.search(Optional.of(expression));
+        search(Optional.of(expression));
     }
 
     private void givenASearchWithoutAnExpression() {
-        this.search(Optional.empty());
+        search(Optional.empty());
     }
 
     private void search(Optional<SearchExpr> expression) {

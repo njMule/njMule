@@ -64,35 +64,35 @@ class ServersCurrentTest {
 
     @Test
     void shouldMarkTheServerBeingTriedThenTheOneConnectedTo() throws Exception {
-        this.givenTheServersListed();
+        givenTheServersListed();
 
-        this.whenNjMuleConnectsTo(BIG);
-        this.thenTheServerIsBeingTried(BIG);
-        this.thenTheServerIsNotMarked(SMALL);
+        whenNjMuleConnectsTo(BIG);
+        thenTheServerIsBeingTried(BIG);
+        thenTheServerIsNotMarked(SMALL);
 
-        this.whenTheConnectionIsMadeTo(BIG);
-        this.thenTheServerIsInUse(BIG);
+        whenTheConnectionIsMadeTo(BIG);
+        thenTheServerIsInUse(BIG);
     }
 
     @Test
     void shouldMoveTheMarkWhenTheUserConnectsToAnotherServer() throws Exception {
-        this.givenTheServersListed();
-        this.givenConnectedTo(BIG);
+        givenTheServersListed();
+        givenConnectedTo(BIG);
 
-        this.whenTheUserConnectsTo(SMALL);
+        whenTheUserConnectsTo(SMALL);
 
-        this.thenTheServerIsNotMarked(BIG);
-        this.thenTheServerIsInUse(SMALL);
+        thenTheServerIsNotMarked(BIG);
+        thenTheServerIsInUse(SMALL);
     }
 
     @Test
     void shouldUnmarkTheServerWhenTheConnectionEnds() throws Exception {
-        this.givenTheServersListed();
-        this.givenConnectedTo(BIG);
+        givenTheServersListed();
+        givenConnectedTo(BIG);
 
-        this.whenTheConnectionEnds(BIG);
+        whenTheConnectionEnds(BIG);
 
-        this.thenTheServerIsNotMarked(BIG);
+        thenTheServerIsNotMarked(BIG);
     }
 
     private void givenTheServersListed() throws Exception {
@@ -106,27 +106,27 @@ class ServersCurrentTest {
     }
 
     private void givenConnectedTo(ServerInfo server) throws Exception {
-        this.whenNjMuleConnectsTo(server);
-        this.whenTheConnectionIsMadeTo(server);
+        whenNjMuleConnectsTo(server);
+        whenTheConnectionIsMadeTo(server);
     }
 
     private void whenNjMuleConnectsTo(ServerInfo server) throws Exception {
-        this.event(new EngineEvent.ServerConnecting(server));
+        event(new EngineEvent.ServerConnecting(server));
     }
 
     private void whenTheConnectionIsMadeTo(ServerInfo server) throws Exception {
-        this.event(new EngineEvent.ServerConnected(server, 0x12345678L, false, false));
+        event(new EngineEvent.ServerConnected(server, 0x12345678L, false, false));
     }
 
     // A connection the user asks for comes through the same events: the old one ends, the new one is tried.
     private void whenTheUserConnectsTo(ServerInfo server) throws Exception {
-        this.event(new EngineEvent.ServerDisconnected(Optional.of(BIG), "the user chose another server"));
-        this.whenNjMuleConnectsTo(server);
-        this.whenTheConnectionIsMadeTo(server);
+        event(new EngineEvent.ServerDisconnected(Optional.of(BIG), "the user chose another server"));
+        whenNjMuleConnectsTo(server);
+        whenTheConnectionIsMadeTo(server);
     }
 
     private void whenTheConnectionEnds(ServerInfo server) throws Exception {
-        this.event(new EngineEvent.ServerDisconnected(Optional.of(server), "bye"));
+        event(new EngineEvent.ServerDisconnected(Optional.of(server), "bye"));
     }
 
     private void event(EngineEvent event) throws Exception {
@@ -138,19 +138,19 @@ class ServersCurrentTest {
     }
 
     private void thenTheServerIsBeingTried(ServerInfo server) throws Exception {
-        this.thenTheRowIs(server, false, true, "Connecting to this server");
+        thenTheRowIs(server, false, true, "Connecting to this server");
     }
 
     private void thenTheServerIsInUse(ServerInfo server) throws Exception {
-        this.thenTheRowIs(server, true, false, "Connected to this server");
+        thenTheRowIs(server, true, false, "Connected to this server");
     }
 
     private void thenTheServerIsNotMarked(ServerInfo server) throws Exception {
-        this.thenTheRowIs(server, false, false, null);
+        thenTheRowIs(server, false, false, null);
     }
 
     private void thenTheRowIs(ServerInfo server, boolean current, boolean trying, String tooltip) throws Exception {
-        TableRow<?> row = this.rowOf(server);
+        TableRow<?> row = rowOf(server);
         assertThat(FxTesting.onFx(() -> row.getPseudoClassStates().contains(CURRENT)))
                 .as("%s in use", server.name())
                 .isEqualTo(current);

@@ -233,16 +233,16 @@ public final class GuiSettings {
 
     /** Starts the history {@code name}, when it is empty, with eMule's box history in {@code file}, if any. */
     public void seedHistory(String name, Path file) {
-        if (!this.history(name).isEmpty() || !Files.isRegularFile(file)) {
+        if (!history(name).isEmpty() || !Files.isRegularFile(file)) {
             return;
         }
         try {
             List<String> entries = emuleHistory(Files.readAllBytes(file));
             for (String entry : entries.reversed()) {
-                this.remember(name, entry);
+                remember(name, entry);
             }
             if (!entries.isEmpty()) {
-                this.save();
+                save();
             }
         } catch (IOException e) {
             logger.debug("Cannot read {}: {}", file, e.toString());
@@ -265,7 +265,7 @@ public final class GuiSettings {
 
     /** Puts {@code entry} at the top of the list {@code name}, once, keeping the latest {@value #MAX_HISTORY}. */
     public void remember(String name, String entry) {
-        List<String> entries = new ArrayList<>(this.history(name));
+        List<String> entries = new ArrayList<>(history(name));
         entries.remove(entry);
         entries.addFirst(entry);
         for (int i = 1; i <= MAX_HISTORY; i++) {

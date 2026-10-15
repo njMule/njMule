@@ -57,16 +57,16 @@ class FirstStartTest {
 
     @Test
     void theFirstStartAsksTheQuestionsOfTheWizard() throws Exception {
-        this.givenAProfile(false);
-        this.whenTheAppShows();
-        this.thenTheWizardShows(true);
+        givenAProfile(false);
+        whenTheAppShows();
+        thenTheWizardShows(true);
     }
 
     @Test
     void aLaterStartAsksNothing() throws Exception {
-        this.givenAProfile(true);
-        this.whenTheAppShows();
-        this.thenTheWizardShows(false);
+        givenAProfile(true);
+        whenTheAppShows();
+        thenTheWizardShows(false);
     }
 
     // On free ports and without Kad: never on the ports of a running eMule.

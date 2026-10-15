@@ -56,27 +56,27 @@ class ServersAddTest {
 
     @Test
     void withoutServersTheWaysToAddThemAreOpen() throws Exception {
-        this.givenTheServers(List.of());
-        this.thenTheWaysToAddAreOpen(true);
+        givenTheServers(List.of());
+        thenTheWaysToAddAreOpen(true);
     }
 
     @Test
     void theFirstServersCloseTheWaysToAddAndTheLastGoneOpensThem() throws Exception {
-        this.givenTheServers(List.of());
-        this.whenTheServersBecome(TWO);
-        this.thenTheWaysToAddAreOpen(false);
-        this.whenTheUserOpensTheWaysToAdd();
-        this.whenTheServersBecome(TWO.subList(0, 1));
-        this.thenTheWaysToAddAreOpen(true);
-        this.whenTheServersBecome(List.of());
-        this.thenTheWaysToAddAreOpen(true);
+        givenTheServers(List.of());
+        whenTheServersBecome(TWO);
+        thenTheWaysToAddAreOpen(false);
+        whenTheUserOpensTheWaysToAdd();
+        whenTheServersBecome(TWO.subList(0, 1));
+        thenTheWaysToAddAreOpen(true);
+        whenTheServersBecome(List.of());
+        thenTheWaysToAddAreOpen(true);
     }
 
     @Test
     void withServersTheWaysToAddStartClosedAndMyInfoIsATab() throws Exception {
-        this.givenTheServers(TWO);
-        this.thenTheWaysToAddAreOpen(false);
-        this.thenTheTabsBelowAre("Server Info", "Log", "My Info");
+        givenTheServers(TWO);
+        thenTheWaysToAddAreOpen(false);
+        thenTheTabsBelowAre("Server Info", "Log", "My Info");
     }
 
     private void givenTheServers(List<ServerInfo> list) throws Exception {

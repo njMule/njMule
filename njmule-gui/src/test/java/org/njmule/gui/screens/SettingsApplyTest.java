@@ -47,19 +47,19 @@ class SettingsApplyTest {
 
     @Test
     void applyWithAWrongValueShowsTheFieldAndSaysWhatItTakes() throws Exception {
-        this.givenTheOptionsScrolledToTheBottom();
-        this.givenAPortOutOfRange();
-        this.whenApplyIsPressed();
-        this.thenTheUserIsToldWhichFieldAndWhatItTakes("Not saved: TCP: ");
-        this.thenTheFieldHasTheCursorAndIsInSight(this.screen.tcpPortField());
-        this.thenNothingWasSaved();
+        givenTheOptionsScrolledToTheBottom();
+        givenAPortOutOfRange();
+        whenApplyIsPressed();
+        thenTheUserIsToldWhichFieldAndWhatItTakes("Not saved: TCP: ");
+        thenTheFieldHasTheCursorAndIsInSight(this.screen.tcpPortField());
+        thenNothingWasSaved();
     }
 
     @Test
     void applyIsNeverGreyedOutByAWrongValue() throws Exception {
-        this.givenTheOptionsScrolledToTheBottom();
-        this.givenAPortOutOfRange();
-        this.thenApplyCanBePressed();
+        givenTheOptionsScrolledToTheBottom();
+        givenAPortOutOfRange();
+        thenApplyCanBePressed();
     }
 
     private void givenTheOptionsScrolledToTheBottom() throws Exception {

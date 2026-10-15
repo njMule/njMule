@@ -146,7 +146,7 @@ public final class ServersScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -164,7 +164,7 @@ public final class ServersScreen implements Screen {
                         Fx.ownDirection(Fx.column(this.gui.t("IDS_SL_SERVERNAME"), 170, ServerInfo::name)),
                         Fx.leftToRight(Fx.column(this.gui.t("IDS_IP"), 150, ServerInfo::address)),
                         Fx.ownDirection(Fx.column(this.gui.t("IDS_DESCRIPTION"), 170, ServerInfo::description)),
-                        Fx.numeric(Fx.column(this.gui.t("IDS_PING"), 75, ServerInfo::ping, ms -> this.known(ms))),
+                        Fx.numeric(Fx.column(this.gui.t("IDS_PING"), 75, ServerInfo::ping, ms -> known(ms))),
                         Fx.numeric(Fx.column(this.gui.t("IDS_UUSERS"), 90, ServerInfo::users, this::known)),
                         Fx.numeric(Fx.column(this.gui.t("IDS_MAXCLIENT"), 120, ServerInfo::maxUsers, this::known)),
                         Fx.numeric(Fx.column(this.gui.t("IDS_PW_FILES"), 95, ServerInfo::files, this::known)),
@@ -191,31 +191,31 @@ public final class ServersScreen implements Screen {
             };
             row.setOnMouseClicked(e -> {
                 if (e.getClickCount() == 2 && !row.isEmpty()) {
-                    this.connectTo(row.getItem().get());
+                    connectTo(row.getItem().get());
                 }
             });
             return row;
         });
-        this.table.setContextMenu(this.menu());
+        this.table.setContextMenu(menu());
 
         this.address.setPromptText(this.gui.i18n().embed(this.gui.t("nj.servers.addressPrompt")));
         this.address.setPrefColumnCount(18);
-        this.address.setOnAction(e -> this.connectToAddress());
+        this.address.setOnAction(e -> connectToAddress());
         this.addressInput = new Inputs(this.gui)
                 .address(this.address, this.gui.t("nj.servers.addConnect"))
                 .quietWhenEmpty();
         Button connectTo = Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress);
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
-        this.connectButton.setOnAction(e -> this.connectOrDisconnect());
-        this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.showConnect());
-        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.showCurrent());
-        this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> this.showCurrent());
-        this.showConnect();
+        this.connectButton.setOnAction(e -> connectOrDisconnect());
+        this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> showConnect());
+        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> showCurrent());
+        this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> showCurrent());
+        showConnect();
         var tools = Fx.toolRow(
                 this.connectButton, Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected));
         this.add.setText(this.gui.t("nj.servers.add"));
         this.add.getStyleClass().add(Styles.DENSE);
-        this.add.setContent(this.ways(connectTo));
+        this.add.setContent(ways(connectTo));
         // Open while there is no server to connect to, closed once there are some; in between, as the user leaves it.
         this.add.setExpanded(this.table.getItems().isEmpty());
         this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> {
@@ -228,7 +228,7 @@ public final class ServersScreen implements Screen {
         this.wasEmpty = this.gui.model().servers().rows().isEmpty();
 
         // The list, with the server's messages, the log and My Info below it.
-        SplitPane split = new SplitPane(this.listPane(), this.logs());
+        SplitPane split = new SplitPane(listPane(), logs());
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
         VBox content = new VBox(8, this.add, split);
@@ -279,10 +279,10 @@ public final class ServersScreen implements Screen {
     }
 
     private void showCurrent() {
-        this.showConnect();
+        showConnect();
         for (Node node : this.table.lookupAll(".table-row-cell")) {
             if (node instanceof TableRow<?> row) {
-                this.markCurrent(row);
+                markCurrent(row);
             }
         }
     }
@@ -292,7 +292,7 @@ public final class ServersScreen implements Screen {
     private void markCurrent(TableRow<?> row) {
         boolean ours = row.getItem() instanceof LiveList.Row<?> item
                 && item.get() instanceof ServerInfo server
-                && this.isCurrent(server);
+                && isCurrent(server);
         EngineModel.Connection state = this.gui.model().connectionProperty().get();
         boolean connected = ours && state == EngineModel.Connection.CONNECTED;
         boolean connecting = ours && state == EngineModel.Connection.CONNECTING;
@@ -314,13 +314,13 @@ public final class ServersScreen implements Screen {
 
     private String connectText() {
         LiveList.Row<ServerInfo> row = this.table.getSelectionModel().getSelectedItem();
-        return this.isCurrent(row == null ? null : row.get())
+        return isCurrent(row == null ? null : row.get())
                 ? this.gui.t("IDS_MAIN_BTN_DISCONNECT")
                 : this.gui.t("IDS_MAIN_BTN_CONNECT");
     }
 
     private void showConnect() {
-        String text = this.connectText();
+        String text = connectText();
         this.connectButton.setText(text);
         this.connectButton.setGraphic(new FontIcon(
                 text.equals(this.gui.t("IDS_MAIN_BTN_CONNECT")) ? Material2AL.LINK : Material2AL.LINK_OFF));
@@ -329,10 +329,10 @@ public final class ServersScreen implements Screen {
     /** Disconnects from the selected server when it is ours, else connects to it, leaving the current one. */
     void connectOrDisconnect() {
         LiveList.Row<ServerInfo> row = this.table.getSelectionModel().getSelectedItem();
-        if (this.isCurrent(row == null ? null : row.get())) {
+        if (isCurrent(row == null ? null : row.get())) {
             this.gui.model().disconnect();
         } else {
-            this.connectSelected();
+            connectSelected();
         }
     }
 
@@ -342,7 +342,7 @@ public final class ServersScreen implements Screen {
 
     /** Brings the log to the front, below the server list. */
     public void showLog() {
-        this.view();
+        view();
         this.logTabs.getSelectionModel().select(this.logTab);
     }
 
@@ -355,7 +355,7 @@ public final class ServersScreen implements Screen {
     private Node ways(Button connectTo) {
         this.list = new UrlBox(this.gui, "serverMet", this.gui.t("IDS_SV_MET"));
         this.list.node().setPromptText("https://\u2026/server.met");
-        this.list.node().getEditor().setOnAction(e -> this.updateFromUrl());
+        this.list.node().getEditor().setOnAction(e -> updateFromUrl());
         this.list.node().setMaxWidth(Double.MAX_VALUE);
         Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl);
         update.disableProperty().bind(this.list.input().validProperty().not());
@@ -404,9 +404,9 @@ public final class ServersScreen implements Screen {
             }
         });
         this.count.getStyleClass().add(Styles.TEXT_BOLD);
-        this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> this.showCount());
-        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> this.showCount());
-        this.showCount();
+        this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> showCount());
+        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> showCount());
+        showCount();
         HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
         head.setAlignment(Pos.CENTER_LEFT);
         VBox pane = new VBox(6, head, this.table);
@@ -447,16 +447,16 @@ public final class ServersScreen implements Screen {
         ToggleGroup priorities = new ToggleGroup();
         for (ServerInfo.Priority p :
                 List.of(ServerInfo.Priority.LOW, ServerInfo.Priority.NORMAL, ServerInfo.Priority.HIGH)) {
-            RadioMenuItem item = new RadioMenuItem(this.priority(p));
+            RadioMenuItem item = new RadioMenuItem(priority(p));
             item.setUserData(p);
             item.setToggleGroup(priorities);
-            item.setOnAction(e -> this.setPriority(p));
+            item.setOnAction(e -> setPriority(p));
             priority.getItems().add(item);
         }
         MenuItem addStatic =
-                Fx.menuItem(this.gui.t("IDS_ADDTOSTATIC"), Material2MZ.PLAYLIST_ADD, () -> this.setStatic(true));
+                Fx.menuItem(this.gui.t("IDS_ADDTOSTATIC"), Material2MZ.PLAYLIST_ADD, () -> setStatic(true));
         MenuItem removeStatic = Fx.menuItem(
-                this.gui.t("IDS_REMOVEFROMSTATIC"), Material2MZ.REMOVE_CIRCLE_OUTLINE, () -> this.setStatic(false));
+                this.gui.t("IDS_REMOVEFROMSTATIC"), Material2MZ.REMOVE_CIRCLE_OUTLINE, () -> setStatic(false));
         MenuItem copy = Fx.menuItem(this.gui.t("IDS_DL_LINK1"), Material2AL.CONTENT_COPY, this::copyLinks);
         MenuItem paste = Fx.menuItem(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Material2AL.CONTENT_PASTE, this::pasteLinks);
         MenuItem remove = Fx.menuItem(this.gui.t("IDS_REMOVETHIS"), Material2AL.DELETE, this::removeSelected);
@@ -476,7 +476,7 @@ public final class ServersScreen implements Screen {
             List<ServerInfo> selected = Fx.selected(this.table);
             boolean none = selected.isEmpty();
             connect.setText(
-                    this.isCurrent(none ? null : selected.getFirst())
+                    isCurrent(none ? null : selected.getFirst())
                             ? this.gui.t("IDS_MAIN_BTN_DISCONNECT")
                             : this.gui.t("IDS_CONNECTTHIS"));
             connect.setDisable(none);
@@ -499,13 +499,13 @@ public final class ServersScreen implements Screen {
 
     private void key(KeyEvent e) {
         if (e.getCode() == KeyCode.DELETE) {
-            this.removeSelected();
+            removeSelected();
         } else if (e.getCode() == KeyCode.ENTER) {
-            this.connectOrDisconnect();
+            connectOrDisconnect();
         } else if (COPY.match(e)) {
-            this.copyLinks();
+            copyLinks();
         } else if (PASTE.match(e)) {
-            this.pasteLinks();
+            pasteLinks();
         } else {
             return;
         }
@@ -548,7 +548,7 @@ public final class ServersScreen implements Screen {
                     this.gui.model().addServer(new ServerAddress(server.host(), server.port()));
                 case Ed2kLink.ServerListLink linked -> {
                     this.list.node().getEditor().setText(linked.url());
-                    this.updateFromUrl();
+                    updateFromUrl();
                 }
                 default -> {
                     // Only server links are taken here.
@@ -577,7 +577,7 @@ public final class ServersScreen implements Screen {
         Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS")));
         ButtonType go = Fx.answers(confirm, this.gui.t("IDS_REMOVEALL"), this.gui.t("IDS_CANCEL"), true);
         confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(go::equals).ifPresent(b -> this.removeAll());
+        confirm.showAndWait().filter(go::equals).ifPresent(b -> removeAll());
     }
 
     void removeAll() {
@@ -626,7 +626,7 @@ public final class ServersScreen implements Screen {
         if (selected.isEmpty()) {
             this.gui.model().connect(Optional.empty());
         } else {
-            this.connectTo(selected.getFirst());
+            connectTo(selected.getFirst());
         }
     }
 
@@ -661,7 +661,7 @@ public final class ServersScreen implements Screen {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("server.met", "*.met"));
         var file = chooser.showOpenDialog(this.view.getScene().getWindow());
         if (file != null) {
-            this.addServerMet(file.toPath());
+            addServerMet(file.toPath());
         }
     }
 
@@ -688,15 +688,15 @@ public final class ServersScreen implements Screen {
         @Override
         protected void updateItem(LogLine line, boolean empty) {
             super.updateItem(line, empty);
-            this.getStyleClass().removeAll("log-line", "debug", "info", "success", "warning", "error");
+            getStyleClass().removeAll("log-line", "debug", "info", "success", "warning", "error");
             if (empty || line == null) {
-                this.setText(null);
-                this.setGraphic(null);
+                setText(null);
+                setGraphic(null);
                 return;
             }
-            this.setText(this.formats.dateTime(line.time()) + ": " + line.message());
-            this.setGraphic(icon(line.level()));
-            this.getStyleClass().addAll("log-line", line.level().name().toLowerCase(Locale.ROOT));
+            setText(this.formats.dateTime(line.time()) + ": " + line.message());
+            setGraphic(icon(line.level()));
+            getStyleClass().addAll("log-line", line.level().name().toLowerCase(Locale.ROOT));
         }
 
         // Problems and successes carry an icon besides their colour; the other lines keep the same indent.
@@ -727,21 +727,21 @@ public final class ServersScreen implements Screen {
         @Override
         protected void updateItem(EngineModel.ServerNote note, boolean empty) {
             super.updateItem(note, empty);
-            this.getStyleClass().removeAll("log-line", "success");
+            getStyleClass().removeAll("log-line", "success");
             if (empty || note == null) {
-                this.setText(null);
+                setText(null);
                 return;
             }
-            this.getStyleClass().add("log-line");
+            getStyleClass().add("log-line");
             switch (note.kind()) {
                 case CONNECTED, CONNECTED_OBFUSCATED -> {
                     String key = note.kind() == EngineModel.ServerNote.Kind.CONNECTED
                             ? "IDS_CONNECTEDTO"
                             : "IDS_CONNECTEDTOOBFUSCATED";
-                    this.setText(this.gui.formats().dateTime(note.time()) + ": " + this.gui.f(key, note.text()));
-                    this.getStyleClass().add("success");
+                    setText(this.gui.formats().dateTime(note.time()) + ": " + this.gui.f(key, note.text()));
+                    getStyleClass().add("success");
                 }
-                default -> this.setText(note.text());
+                default -> setText(note.text());
             }
         }
     }

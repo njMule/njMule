@@ -86,11 +86,11 @@ public final class TcpListener implements AutoCloseable {
                 socket = this.server.accept();
             } catch (IOException e) {
                 if (!this.server.isClosed()) {
-                    logger.warn("Accept failed on port {}", this.port(), e);
+                    logger.warn("Accept failed on port {}", port(), e);
                 }
                 continue;
             }
-            this.admit(socket);
+            admit(socket);
         }
     }
 

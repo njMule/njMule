@@ -78,15 +78,15 @@ public final class MiniMule {
         this.stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         GridPane grid = new GridPane();
         grid.getStyleClass().add("minimule-grid");
-        this.row(grid, 0, Material2AL.LINK, gui.t("IDS_CONNECTED"), this.connected);
-        this.row(grid, 1, Material2AL.ARROW_UPWARD, gui.t("IDS_PW_CON_UPLBL"), this.upload);
-        this.row(grid, 2, Material2AL.ARROW_DOWNWARD, gui.t("IDS_PW_CON_DOWNLBL"), this.download);
-        this.row(grid, 3, Material2AL.DONE_ALL, gui.t("IDS_DL_TRANSFCOMPL"), this.completed);
-        this.row(grid, 4, Material2MZ.STORAGE, gui.t("IDS_STATS_FREESPACE"), this.space);
+        row(grid, 0, Material2AL.LINK, gui.t("IDS_CONNECTED"), this.connected);
+        row(grid, 1, Material2AL.ARROW_UPWARD, gui.t("IDS_PW_CON_UPLBL"), this.upload);
+        row(grid, 2, Material2AL.ARROW_DOWNWARD, gui.t("IDS_PW_CON_DOWNLBL"), this.download);
+        row(grid, 3, Material2AL.DONE_ALL, gui.t("IDS_DL_TRANSFCOMPL"), this.completed);
+        row(grid, 4, Material2MZ.STORAGE, gui.t("IDS_STATS_FREESPACE"), this.space);
         HBox buttons = new HBox(
-                this.button(gui.t("IDS_OPENINC"), Material2AL.FOLDER_OPEN, actions::openIncoming),
-                this.button(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
-                this.button(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore));
+                button(gui.t("IDS_OPENINC"), Material2AL.FOLDER_OPEN, actions::openIncoming),
+                button(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
+                button(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore));
         buttons.getStyleClass().add("minimule-buttons");
         buttons.setAlignment(Pos.CENTER_RIGHT);
         VBox root = new VBox(grid, new Separator(), buttons);
@@ -98,7 +98,7 @@ public final class MiniMule {
 
     /** Opens the window in the corner of the screen next to the notification area. */
     public void show() {
-        this.refresh();
+        refresh();
         this.stage.sizeToScene();
         this.stage.show();
         Rectangle2D bounds = Screen.getPrimary().getVisualBounds();
@@ -132,7 +132,7 @@ public final class MiniMule {
         this.upload.setText(this.gui.formats().rate(up));
         this.download.setText(this.gui.formats().rate(down));
         this.completed.setText(String.valueOf(model.completedProperty().get()));
-        this.space.setText(this.freeSpace());
+        this.space.setText(freeSpace());
     }
 
     private String freeSpace() {

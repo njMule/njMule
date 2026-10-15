@@ -41,11 +41,11 @@ class ServerListTest {
 
     @Test
     void shouldDropTheControlCharactersOfTheNamesAServerListGives() {
-        this.givenAServerList(server("1.2.3.4", 4661)
+        givenAServerList(server("1.2.3.4", 4661)
                 .with(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "\u001b[31mBig\u0007 server"))
                 .with(new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), "line\r\nbreak")));
 
-        this.thenTheServerIsNamed("[31mBig server", "linebreak");
+        thenTheServerIsNamed("[31mBig server", "linebreak");
     }
 
     private void givenAServerList(ServerMet.Server... servers) {

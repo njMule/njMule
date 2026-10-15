@@ -42,7 +42,8 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 - [Google Java Style](https://google.github.io/styleguide/javaguide.html) formatted by
   [palantir-java-format](https://github.com/palantir/palantir-java-format) (PALANTIR style: 4-space
   indent, 120 columns): run `./mvnw spotless:apply`.
-- Always qualify instance members with `this.` (enforced by Checkstyle).
+- Always qualify instance fields with `this.`, and call the object's own methods without it
+  (both enforced by Checkstyle).
 - LF line endings, UTF-8, the SPDX header from `config/license/header-java.txt` on every Java file.
 - Comments explain *why*, not *what*; keep them short.
 - Optional hook: `git config core.hooksPath .githooks`.

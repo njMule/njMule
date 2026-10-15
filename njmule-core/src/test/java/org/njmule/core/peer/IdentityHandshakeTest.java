@@ -53,14 +53,14 @@ class IdentityHandshakeTest {
 
     @Test
     void strangersExchangeKeysAndSignatures() throws DecodeException {
-        this.run(3, 3, Optional.empty(), Optional.empty());
+        run(3, 3, Optional.empty(), Optional.empty());
 
         assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
 
     @Test
     void aPinnedKeyNeedsOnlyTheSignature() throws DecodeException {
-        this.run(3, 3, Optional.of(this.b.publicKey()), Optional.of(this.a.publicKey()));
+        run(3, 3, Optional.of(this.b.publicKey()), Optional.of(this.a.publicKey()));
 
         assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
@@ -70,7 +70,7 @@ class IdentityHandshakeTest {
         byte[] stranger = IdentityHandshake.Identity.of(Rsa.generate(Rsa.NETWORK_KEY_BITS, RANDOM))
                 .publicKey();
 
-        this.run(3, 3, Optional.of(stranger), Optional.empty());
+        run(3, 3, Optional.of(stranger), Optional.empty());
 
         // A signs over the key it pinned, which is not B's: both checks fail.
         assertThat(this.results).containsExactlyInAnyOrder("A failed " + HASH_B, "B failed " + HASH_A);
@@ -79,7 +79,7 @@ class IdentityHandshakeTest {
     @Test
     void peersWithoutVersionOneGetAddressBoundSignatures() throws DecodeException {
         // A only takes version 2, so B binds its signature to an address A can check.
-        this.run(2, 3, Optional.empty(), Optional.empty());
+        run(2, 3, Optional.empty(), Optional.empty());
 
         assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
     }
@@ -95,7 +95,7 @@ class IdentityHandshakeTest {
                 Optional.empty(),
                 Optional.of(IP_A),
                 sent::add,
-                this.listener("A"));
+                listener("A"));
         handshake.start(RANDOM);
 
         assertThat(handshake.isSupported()).isFalse();
@@ -107,7 +107,7 @@ class IdentityHandshakeTest {
         List<Packet> fromA = new ArrayList<>();
         List<Packet> fromB = new ArrayList<>();
 
-        this.run(3, 3, Optional.of(IP_A), Optional.of(IP_B), fromA, fromB);
+        run(3, 3, Optional.of(IP_A), Optional.of(IP_B), fromA, fromB);
 
         assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
         assertThat(signatureKind(fromA)).contains(SecureIdent.IpKind.LOCAL_CLIENT.code());
@@ -120,7 +120,7 @@ class IdentityHandshakeTest {
         List<Packet> fromB = new ArrayList<>();
 
         // A verifier without a HighID may not know the address a signature would be bound to.
-        this.run(3, 3, Optional.empty(), Optional.empty(), fromA, fromB);
+        run(3, 3, Optional.empty(), Optional.empty(), fromA, fromB);
 
         assertThat(this.results).containsExactlyInAnyOrder("A identified " + HASH_B, "B identified " + HASH_A);
         assertThat(signatureKind(fromA)).isEmpty();
@@ -133,7 +133,7 @@ class IdentityHandshakeTest {
         List<Packet> fromB = new ArrayList<>();
 
         // A takes version 2 only, and neither knows its public address: B binds to A's address as it sees it.
-        this.run(2, 3, Optional.empty(), Optional.empty(), fromA, fromB);
+        run(2, 3, Optional.empty(), Optional.empty(), fromA, fromB);
 
         assertThat(signatureKind(fromB)).contains(SecureIdent.IpKind.REMOTE_CLIENT.code());
         assertThat(this.results).contains("A identified " + HASH_B);
@@ -150,7 +150,7 @@ class IdentityHandshakeTest {
                 Optional.of(IP_A),
                 Optional.of(IP_A),
                 toB::add,
-                this.listener("A"));
+                listener("A"));
         atA.start(RANDOM);
         PacketReader state = toB.getFirst().reader();
         state.u8();
@@ -189,7 +189,7 @@ class IdentityHandshakeTest {
     // A and B on 10.0.0.1 and 10.0.0.2, both with HighIDs, delivering each other's packets.
     private void run(int versionsA, int versionsB, Optional<byte[]> aPinsB, Optional<byte[]> bPinsA)
             throws DecodeException {
-        this.run(
+        run(
                 versionsA,
                 versionsB,
                 aPinsB,
@@ -209,7 +209,7 @@ class IdentityHandshakeTest {
             List<Packet> fromA,
             List<Packet> fromB)
             throws DecodeException {
-        this.run(versionsA, versionsB, Optional.empty(), Optional.empty(), publicA, publicB, fromA, fromB);
+        run(versionsA, versionsB, Optional.empty(), Optional.empty(), publicA, publicB, fromA, fromB);
     }
 
     private void run(
@@ -235,7 +235,7 @@ class IdentityHandshakeTest {
                     fromA.add(p);
                     toB.add(p);
                 },
-                this.listener("A"));
+                listener("A"));
         IdentityHandshake atB = new IdentityHandshake(
                 this.b,
                 hello(HASH_A, versionsA),
@@ -247,7 +247,7 @@ class IdentityHandshakeTest {
                     fromB.add(p);
                     toA.add(p);
                 },
-                this.listener("B"));
+                listener("B"));
         atA.start(RANDOM);
         atB.start(RANDOM);
         for (int round = 0; round < 10 && !(toA.isEmpty() && toB.isEmpty()); round++) {

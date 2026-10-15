@@ -94,7 +94,7 @@ class DownloadA4afTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -108,212 +108,212 @@ class DownloadA4afTest {
 
     @Test
     void shouldAskAClientThatIsASourceOfTwoDownloadsForOneAtATime() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
 
-        this.whenTheClientIsAsked();
+        whenTheClientIsAsked();
 
-        this.thenItIsAskedFor(FIRST);
-        this.thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
-        this.thenTheSourceIs(FIRST, SourceInfo.State.ASKING);
+        thenItIsAskedFor(FIRST);
+        thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
+        thenTheSourceIs(FIRST, SourceInfo.State.ASKING);
     }
 
     @Test
     void shouldAskForTheDownloadOfHigherPriorityFirst() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.HIGH);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.HIGH);
 
-        this.whenTheClientIsAsked();
+        whenTheClientIsAsked();
 
-        this.thenItIsAskedFor(SECOND);
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenItIsAskedFor(SECOND);
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
     }
 
     @Test
     void shouldAskForAnotherDownloadOnTheSameConnectionWhenTheClientHasNoPartWeNeed() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
 
-        this.whenTheClientHasNoPartWeNeedOf(FIRST);
+        whenTheClientHasNoPartWeNeedOf(FIRST);
 
-        this.thenItIsAskedOnTheSameConnectionFor(SECOND);
-        this.thenTheClientQueuesUsFor(SECOND, 2);
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenItIsAskedOnTheSameConnectionFor(SECOND);
+        thenTheClientQueuesUsFor(SECOND, 2);
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
     }
 
     @Test
     void shouldForgetTheSourceOfADownloadItLacksAndAskForAnotherOnTheSameConnection() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
 
-        this.whenTheClientLacks(FIRST);
+        whenTheClientLacks(FIRST);
 
-        this.thenItIsAskedOnTheSameConnectionFor(SECOND);
-        this.thenTheDownloadHasSources(FIRST, 0);
-        this.thenTheDownloadHasSources(SECOND, 1);
+        thenItIsAskedOnTheSameConnectionFor(SECOND);
+        thenTheDownloadHasSources(FIRST, 0);
+        thenTheDownloadHasSources(SECOND, 1);
     }
 
     @Test
     void shouldAskAgainForTheDownloadWhereTheClientKeepsUsInAGoodPlace() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
-        this.givenTheConnectionCloses();
-        this.givenTheDownloadHasPriority(SECOND, DownloadPriority.HIGH);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
+        givenTheConnectionCloses();
+        givenTheDownloadHasPriority(SECOND, DownloadPriority.HIGH);
 
-        this.whenTheClientIsAskedAgainAtItsTime();
+        whenTheClientIsAskedAgainAtItsTime();
 
-        this.thenItIsAskedFor(FIRST);
-        this.thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
+        thenItIsAskedFor(FIRST);
+        thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
     }
 
     @Test
     void shouldAskForABetterDownloadWhenTheClientKeepsUsInNoPlace() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientIsSilentAfterTheUploadRequest();
-        this.givenTheConnectionCloses();
-        this.givenTheDownloadHasPriority(SECOND, DownloadPriority.HIGH);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientIsSilentAfterTheUploadRequest();
+        givenTheConnectionCloses();
+        givenTheDownloadHasPriority(SECOND, DownloadPriority.HIGH);
 
-        this.whenTheClientIsAskedAgainAtItsTime();
+        whenTheClientIsAskedAgainAtItsTime();
 
-        this.thenItIsAskedFor(SECOND);
+        thenItIsAskedFor(SECOND);
     }
 
     @Test
     void shouldAskForAnotherDownloadOnceTheOneAskedForIsPaused() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
 
-        this.whenTheDownloadIsPaused(FIRST);
+        whenTheDownloadIsPaused(FIRST);
 
-        this.thenTheConnectionCloses();
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
-        this.thenTheSourceIs(SECOND, SourceInfo.State.WAITING);
-        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+        thenTheConnectionCloses();
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenTheSourceIs(SECOND, SourceInfo.State.WAITING);
+        thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
     @Test
     void shouldWaitAMinuteMoreThanSourcesAllowBeforeAskingForAnotherDownload() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
 
-        this.whenTheDownloadIsPaused(FIRST);
+        whenTheDownloadIsPaused(FIRST);
 
-        this.thenTheConnectionCloses();
-        this.thenTheClientIsNotAskedAgainWithin(DownloadManager.MIN_REASK);
-        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+        thenTheConnectionCloses();
+        thenTheClientIsNotAskedAgainWithin(DownloadManager.MIN_REASK);
+        thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
     @Test
     void shouldAskForAnotherDownloadOnceTheOneAskedForIsCancelled() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
 
-        this.whenTheDownloadIsCancelled(FIRST);
+        whenTheDownloadIsCancelled(FIRST);
 
-        this.thenTheConnectionCloses();
-        this.thenTheSourceIs(SECOND, SourceInfo.State.WAITING);
-        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+        thenTheConnectionCloses();
+        thenTheSourceIs(SECOND, SourceInfo.State.WAITING);
+        thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
     @Test
     void shouldAskTheSourcesSwappedByHandForTheirNewDownloadDespiteAGoodPlace() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
-        this.givenTheConnectionCloses();
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
+        givenTheConnectionCloses();
 
-        this.whenTheA4afSourcesAreSwappedTo(SECOND);
+        whenTheA4afSourcesAreSwappedTo(SECOND);
 
-        this.thenSwappedSources(1);
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
-        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+        thenSwappedSources(1);
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
     @Test
     void shouldSwapOneSourceWaitingInTheQueueByHand() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
 
-        this.whenTheSourceIsSwappedTo(SECOND);
+        whenTheSourceIsSwappedTo(SECOND);
 
-        this.thenTheSwapIsDone(true);
-        this.thenTheConnectionCloses();
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
-        this.thenTheSourceCannotBeSwappedAgainTo(SECOND);
+        thenTheSwapIsDone(true);
+        thenTheConnectionCloses();
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenTheSourceCannotBeSwappedAgainTo(SECOND);
     }
 
     @Test
     void shouldSwapTheSourcesOfADownloadAwayToOtherDownloads() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
-        this.givenTheConnectionCloses();
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
+        givenTheConnectionCloses();
 
-        this.whenTheSourcesAreSwappedAwayFrom(FIRST);
+        whenTheSourcesAreSwappedAwayFrom(FIRST);
 
-        this.thenSwappedSources(1);
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
-        this.thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
+        thenSwappedSources(1);
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenTheClientIsAskedAgainOnceItAllowsFor(SECOND);
     }
 
     @Test
     void shouldTakeTheFreeA4afSourcesWhenADownloadTakesThemByItself() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientIsSilentAfterTheUploadRequest();
-        this.givenTheConnectionCloses();
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientIsSilentAfterTheUploadRequest();
+        givenTheConnectionCloses();
 
-        this.whenTheDownloadTakesA4afSourcesByItself(SECOND);
+        whenTheDownloadTakesA4afSourcesByItself(SECOND);
 
-        this.thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
-        this.thenTheDownloadTakesA4afSourcesByItself(SECOND, true);
-        this.thenTheClientIsAskedAgainAtItsTimeFor(SECOND);
+        thenTheSourceIsA4afFor(FIRST, SECOND, SECOND_NAME);
+        thenTheDownloadTakesA4afSourcesByItself(SECOND, true);
+        thenTheClientIsAskedAgainAtItsTimeFor(SECOND);
     }
 
     @Test
     void shouldLeaveAClientThatKeepsUsInAGoodPlaceWhenADownloadTakesA4afSourcesByItself() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheClientIsAskedFor(FIRST);
-        this.givenTheClientQueuesUsAt(3);
-        this.givenTheConnectionCloses();
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheClientIsAskedFor(FIRST);
+        givenTheClientQueuesUsAt(3);
+        givenTheConnectionCloses();
 
-        this.whenTheDownloadTakesA4afSourcesByItself(SECOND);
+        whenTheDownloadTakesA4afSourcesByItself(SECOND);
 
-        this.thenTheSourceIs(FIRST, SourceInfo.State.WAITING);
-        this.thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
+        thenTheSourceIs(FIRST, SourceInfo.State.WAITING);
+        thenTheSourceIsA4afFor(SECOND, FIRST, FIRST_NAME);
     }
 
     @Test
     void shouldRememberThatADownloadTakesA4afSourcesByItself() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
-        this.givenTheDownloadTakesA4afSourcesByItself(SECOND);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenTheDownloadTakesA4afSourcesByItself(SECOND);
 
-        this.whenTheDownloadsAreLoadedAgain();
+        whenTheDownloadsAreLoadedAgain();
 
-        this.thenTheDownloadTakesA4afSourcesByItself(SECOND, true);
-        this.thenTheDownloadTakesA4afSourcesByItself(FIRST, false);
+        thenTheDownloadTakesA4afSourcesByItself(SECOND, true);
+        thenTheDownloadTakesA4afSourcesByItself(FIRST, false);
     }
 
     @Test
     void shouldChangeNothingForAnUnknownDownload() throws Exception {
-        this.givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
+        givenAClientThatIsASourceOfTwoDownloads(DownloadPriority.NORMAL, DownloadPriority.NORMAL);
 
-        this.whenEverySwapIsAskedFor(UNKNOWN);
+        whenEverySwapIsAskedFor(UNKNOWN);
 
-        this.thenEveryAnswerIs(0, 0, false, false);
+        thenEveryAnswerIs(0, 0, false, false);
     }
 
     private void givenAClientThatIsASourceOfTwoDownloads(DownloadPriority first, DownloadPriority second)
             throws Exception {
         this.client = new ScriptedSource(PEER, 0, 0);
         this.resources.add(this.client);
-        this.manager = this.open();
+        this.manager = open();
         // In one go, so that no ask comes between.
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.add(this.client.link(FIRST_NAME, SIZE, FIRST));
             this.manager.add(this.client.link(SECOND_NAME, SIZE, SECOND));
             this.manager.setPriority(FIRST, first);
@@ -322,8 +322,8 @@ class DownloadA4afTest {
     }
 
     private void givenTheClientIsAskedFor(Hash16 file) throws Exception {
-        this.whenTheClientIsAsked();
-        this.thenItIsAskedFor(file);
+        whenTheClientIsAsked();
+        thenItIsAskedFor(file);
     }
 
     private void givenTheClientQueuesUsAt(int rank) throws Exception {
@@ -333,31 +333,31 @@ class DownloadA4afTest {
                 Protocol.EMULE,
                 Opcodes.Extended.QUEUERANKING.code(),
                 new PacketWriter().u16(rank).bytes(new byte[10])));
-        this.awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() == rank);
+        awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() == rank);
     }
 
     private void givenTheClientIsSilentAfterTheUploadRequest() throws Exception {
         this.link.send(new ClientMessages.FileStatus(this.askedFor, 0, new BitSet()).encode());
         this.lastUploadRequest = this.link.until(Opcodes.Client.STARTUPLOADREQ).getLast();
-        this.awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.QUEUED);
+        awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.QUEUED);
     }
 
     private void givenTheConnectionCloses() throws Exception {
         this.link.close();
-        this.awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.WAITING);
+        awaitSource(this.askedFor, s -> s.state() == SourceInfo.State.WAITING);
     }
 
     private void givenTheDownloadHasPriority(Hash16 file, DownloadPriority priority) throws Exception {
-        this.onLoop(() -> this.manager.setPriority(file, priority));
+        onLoop(() -> this.manager.setPriority(file, priority));
     }
 
     private void givenTheDownloadTakesA4afSourcesByItself(Hash16 file) throws Exception {
-        this.whenTheDownloadTakesA4afSourcesByItself(file);
+        whenTheDownloadTakesA4afSourcesByItself(file);
     }
 
     private void whenTheClientIsAsked() throws Exception {
         this.link = this.client.accept();
-        this.askedFor = this.requestedFile();
+        this.askedFor = requestedFile();
     }
 
     private void whenTheClientHasNoPartWeNeedOf(Hash16 file) throws Exception {
@@ -370,43 +370,43 @@ class DownloadA4afTest {
 
     private void whenTheClientIsAskedAgainAtItsTime() throws Exception {
         this.now.addAndGet(DownloadManager.REASK_INTERVAL.toNanos());
-        this.whenTheClientIsAsked();
+        whenTheClientIsAsked();
     }
 
     private void whenTheDownloadIsPaused(Hash16 file) throws Exception {
-        this.onLoop(() -> this.manager.pause(file));
+        onLoop(() -> this.manager.pause(file));
     }
 
     private void whenTheDownloadIsCancelled(Hash16 file) throws Exception {
-        this.onLoop(() -> this.manager.cancel(file));
+        onLoop(() -> this.manager.cancel(file));
     }
 
     private void whenTheA4afSourcesAreSwappedTo(Hash16 file) throws Exception {
-        this.swapped = this.onLoop(() -> this.manager.swapSourcesHere(file));
+        this.swapped = onLoop(() -> this.manager.swapSourcesHere(file));
     }
 
     private void whenTheSourcesAreSwappedAwayFrom(Hash16 file) throws Exception {
-        this.swapped = this.onLoop(() -> this.manager.swapSourcesAway(file));
+        this.swapped = onLoop(() -> this.manager.swapSourcesAway(file));
     }
 
     private void whenTheSourceIsSwappedTo(Hash16 file) throws Exception {
-        this.done = this.onLoop(() -> this.manager.swapSource(file, this.client.address()));
+        this.done = onLoop(() -> this.manager.swapSource(file, this.client.address()));
     }
 
     private void whenTheDownloadTakesA4afSourcesByItself(Hash16 file) throws Exception {
-        this.onLoop(() -> this.manager.setAutoSwap(file, true));
+        onLoop(() -> this.manager.setAutoSwap(file, true));
     }
 
     private void whenTheDownloadsAreLoadedAgain() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.close();
             return null;
         });
-        this.manager = this.open();
+        this.manager = open();
     }
 
     private void whenEverySwapIsAskedFor(Hash16 file) throws Exception {
-        this.answers = this.onLoop(() -> List.of(
+        this.answers = onLoop(() -> List.of(
                 this.manager.swapSourcesHere(file),
                 this.manager.swapSourcesAway(file),
                 this.manager.swapSource(file, this.client.address()),
@@ -420,8 +420,8 @@ class DownloadA4afTest {
     // Not before the shortest wait sources allow between two asks, with a margin.
     private void thenTheClientIsAskedAgainOnceItAllowsFor(Hash16 file) throws Exception {
         this.now.addAndGet(DownloadManager.EARLIEST_REASK.toNanos());
-        this.whenTheClientIsAsked();
-        this.thenItIsAskedFor(file);
+        whenTheClientIsAsked();
+        thenItIsAskedFor(file);
     }
 
     private void thenTheClientIsNotAskedAgainWithin(Duration wait) throws Exception {
@@ -430,34 +430,34 @@ class DownloadA4afTest {
     }
 
     private void thenTheClientIsAskedAgainAtItsTimeFor(Hash16 file) throws Exception {
-        this.whenTheClientIsAskedAgainAtItsTime();
-        this.thenItIsAskedFor(file);
+        whenTheClientIsAskedAgainAtItsTime();
+        thenItIsAskedFor(file);
     }
 
     private void thenTheSourceCannotBeSwappedAgainTo(Hash16 file) throws Exception {
-        this.whenTheSourceIsSwappedTo(file);
-        this.thenTheSwapIsDone(false);
+        whenTheSourceIsSwappedTo(file);
+        thenTheSwapIsDone(false);
     }
 
     private void thenItIsAskedOnTheSameConnectionFor(Hash16 file) throws Exception {
-        this.askedFor = this.requestedFile();
+        this.askedFor = requestedFile();
         assertThat(this.askedFor).isEqualTo(file);
     }
 
     private void thenTheClientQueuesUsFor(Hash16 file, int rank) throws Exception {
-        this.givenTheClientQueuesUsAt(rank);
+        givenTheClientQueuesUsAt(rank);
         assertThat(ClientMessages.fileOf(this.lastUploadRequest)).isEqualTo(file);
     }
 
     private void thenTheSourceIsA4afFor(Hash16 file, Hash16 other, String otherName) throws Exception {
-        SourceInfo source = this.awaitSource(file, s -> s.state() == SourceInfo.State.A4AF);
+        SourceInfo source = awaitSource(file, s -> s.state() == SourceInfo.State.A4AF);
         assertThat(source.askedFor()).contains(other);
         assertThat(source.askedForName()).isEqualTo(otherName);
         assertThat(source.queueRank()).isZero();
     }
 
     private void thenTheSourceIs(Hash16 file, SourceInfo.State state) throws Exception {
-        SourceInfo source = this.awaitSource(file, s -> s.state() == state);
+        SourceInfo source = awaitSource(file, s -> s.state() == state);
         assertThat(source.askedFor()).isEmpty();
     }
 
@@ -466,7 +466,7 @@ class DownloadA4afTest {
     }
 
     private void thenTheDownloadHasSources(Hash16 file, int count) throws Exception {
-        this.await(
+        await(
                 count + " sources",
                 () -> this.manager.download(file).orElseThrow().sources() == count);
     }
@@ -480,7 +480,7 @@ class DownloadA4afTest {
     }
 
     private void thenTheDownloadTakesA4afSourcesByItself(Hash16 file, boolean expected) throws Exception {
-        assertThat(this.onLoop(() -> this.manager.download(file).map(DownloadInfo::autoSwap)))
+        assertThat(onLoop(() -> this.manager.download(file).map(DownloadInfo::autoSwap)))
                 .contains(expected);
     }
 
@@ -503,7 +503,7 @@ class DownloadA4afTest {
                 Optional::empty,
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
-        return this.onLoop(() -> DownloadManager.open(
+        return onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -522,7 +522,7 @@ class DownloadA4afTest {
 
     private SourceInfo awaitSource(Hash16 file, Predicate<SourceInfo> wanted) throws Exception {
         SourceInfo[] seen = new SourceInfo[1];
-        this.await("the source of " + file + " as wanted", () -> {
+        await("the source of " + file + " as wanted", () -> {
             for (SourceInfo info : this.manager.sources()) {
                 if (info.file().equals(file) && wanted.test(info)) {
                     seen[0] = info;
@@ -537,7 +537,7 @@ class DownloadA4afTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

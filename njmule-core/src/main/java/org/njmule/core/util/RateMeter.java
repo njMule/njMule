@@ -37,13 +37,13 @@ public final class RateMeter {
 
     /** Counts {@code bytes} at {@code now} (monotonic nanoseconds). */
     public void add(long bytes, long now) {
-        this.advance(now);
+        advance(now);
         this.perSecond[Math.floorMod(this.second, this.perSecond.length)] += bytes;
         this.total += bytes;
     }
 
     public long rate(long now) {
-        this.advance(now);
+        advance(now);
         long sum = 0;
         for (long bytes : this.perSecond) {
             sum += bytes;

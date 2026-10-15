@@ -89,18 +89,18 @@ final class RemoteControl {
         switch (words.getFirst().toLowerCase(Locale.ROOT)) {
             case "status" -> {
                 none(args);
-                this.status();
+                status();
             }
             case "downloads" -> {
                 none(args);
-                this.downloads();
+                downloads();
             }
-            case "add" -> this.add(args);
+            case "add" -> add(args);
             case "pause", "resume", "stop" -> {
                 String action = words.getFirst().toLowerCase(Locale.ROOT);
-                this.each(args, h -> this.api.post(DOWNLOADS + encode(h) + "/" + action, Map.of()));
+                each(args, h -> this.api.post(DOWNLOADS + encode(h) + "/" + action, Map.of()));
             }
-            case "cancel" -> this.each(args, h -> this.api.delete(DOWNLOADS + encode(h)));
+            case "cancel" -> each(args, h -> this.api.delete(DOWNLOADS + encode(h)));
             case "priority" -> {
                 exactly(args, 2);
                 this.api.put(DOWNLOADS + encode(args.getFirst()) + "/priority", Map.of("priority", args.get(1)));
@@ -108,11 +108,11 @@ final class RemoteControl {
             }
             case "uploads" -> {
                 none(args);
-                this.uploads();
+                uploads();
             }
             case "servers" -> {
                 none(args);
-                this.servers();
+                servers();
             }
             case "connect" -> {
                 Map<String, Object> body = new LinkedHashMap<>();
@@ -130,11 +130,11 @@ final class RemoteControl {
                 this.api.post("/servers/disconnect", Map.of());
                 this.out.println("Disconnected.");
             }
-            case "kad" -> this.kad(args);
-            case "search" -> this.search(args);
+            case "kad" -> kad(args);
+            case "search" -> search(args);
             case "results" -> {
                 exactly(args, 1);
-                this.results(this.api.get("/searches/" + encode(args.getFirst())));
+                results(this.api.get("/searches/" + encode(args.getFirst())));
             }
             case "get" -> {
                 exactly(args, 2);
@@ -142,7 +142,7 @@ final class RemoteControl {
                         "/searches/" + encode(args.getFirst()) + "/download", Map.of("hash", args.get(1)));
                 this.out.println("Downloading " + text(d, "name"));
             }
-            case "limits" -> this.limits(args);
+            case "limits" -> limits(args);
             case "log" -> {
                 none(args);
                 for (Object line : list(this.api.get("/log"))) {
@@ -307,7 +307,7 @@ final class RemoteControl {
         Object started = this.api.post("/searches", Map.of("query", String.join(" ", words), "scope", scope));
         long id = number(started, "id");
         this.out.println("Search " + id + ": waiting for results...");
-        this.results(this.settled("/searches/" + id));
+        results(settled("/searches/" + id));
         this.out.println("More: njmule --remote results " + id + "; download: njmule --remote get " + id + " <hash>");
     }
 

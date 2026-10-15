@@ -28,29 +28,29 @@ class CommentFilterTest {
 
     @Test
     void shouldLeaveOutATextHoldingAWordInAnyCase() {
-        this.givenTheFilterOfTheSettings(Preferences.DEFAULT_COMMENT_FILTER);
+        givenTheFilterOfTheSettings(Preferences.DEFAULT_COMMENT_FILTER);
 
-        this.whenTheFilterReads("Visit WWW.example.org for more");
+        whenTheFilterReads("Visit WWW.example.org for more");
 
-        this.thenTheTextIsLeftOut(true);
+        thenTheTextIsLeftOut(true);
     }
 
     @Test
     void shouldKeepATextHoldingNoWord() {
-        this.givenTheFilterOfTheSettings(" spam | | fake ");
+        givenTheFilterOfTheSettings(" spam | | fake ");
 
-        this.whenTheFilterReads("a fine copy, no problem");
+        whenTheFilterReads("a fine copy, no problem");
 
-        this.thenTheTextIsLeftOut(false);
+        thenTheTextIsLeftOut(false);
     }
 
     @Test
     void shouldKeepEverythingWithAnEmptyFilter() {
-        this.givenTheFilterOfTheSettings("");
+        givenTheFilterOfTheSettings("");
 
-        this.whenTheFilterReads("http://anything");
+        whenTheFilterReads("http://anything");
 
-        this.thenTheTextIsLeftOut(false);
+        thenTheTextIsLeftOut(false);
     }
 
     private void givenTheFilterOfTheSettings(String settings) {

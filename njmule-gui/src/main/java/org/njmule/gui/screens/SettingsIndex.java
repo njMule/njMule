@@ -57,7 +57,7 @@ final class SettingsIndex {
         this.scroll = scroll;
         this.all = entries(grid);
         this.find.setPromptText(gui.t("nj.settings.find"));
-        this.find.textProperty().addListener((o, was, now) -> this.filter(now));
+        this.find.textProperty().addListener((o, was, now) -> filter(now));
         this.find.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ESCAPE) {
                 this.find.clear();
@@ -65,30 +65,30 @@ final class SettingsIndex {
                 this.list.requestFocus();
                 this.list.getSelectionModel().selectFirst();
             } else if (e.getCode() == KeyCode.ENTER && !this.list.getItems().isEmpty()) {
-                this.go(this.list.getItems().getFirst(), true);
+                go(this.list.getItems().getFirst(), true);
             }
         });
         // Moving in the list scrolls the page; a click or Enter also takes the cursor to the option.
-        this.list.setOnMouseClicked(e -> this.goToChosen());
+        this.list.setOnMouseClicked(e -> goToChosen());
         this.list.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ENTER) {
-                this.goToChosen();
+                goToChosen();
             }
         });
         this.list.setCellFactory(l -> new EntryCell());
         this.list.getStyleClass().add("settings-index");
         this.list.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
             if (now != null && !this.following && !this.list.getItems().isEmpty()) {
-                this.go(now, false);
+                go(now, false);
             }
         });
-        this.scroll.vvalueProperty().addListener((o, was, now) -> this.follow());
+        this.scroll.vvalueProperty().addListener((o, was, now) -> follow());
         this.view = new VBox(8, this.find, this.list);
         VBox.setVgrow(this.list, Priority.ALWAYS);
         this.view.setMinWidth(150);
         this.view.setPrefWidth(210);
         this.view.setMaxWidth(260);
-        this.filter("");
+        filter("");
         // The page opens at its top: the first section is the one chosen.
         this.following = true;
         try {
@@ -136,7 +136,7 @@ final class SettingsIndex {
     private void goToChosen() {
         Entry chosen = this.list.getSelectionModel().getSelectedItem();
         if (chosen != null) {
-            this.go(chosen, true);
+            go(chosen, true);
         }
     }
 
@@ -230,13 +230,13 @@ final class SettingsIndex {
         @Override
         protected void updateItem(Entry entry, boolean empty) {
             super.updateItem(entry, empty);
-            this.getStyleClass().removeAll("index-section", "index-option");
+            getStyleClass().removeAll("index-section", "index-option");
             if (empty || entry == null) {
-                this.setText(null);
+                setText(null);
                 return;
             }
-            this.setText(entry.text().strip().replaceAll(":$", ""));
-            this.getStyleClass().add(entry.isSection() ? "index-section" : "index-option");
+            setText(entry.text().strip().replaceAll(":$", ""));
+            getStyleClass().add(entry.isSection() ? "index-section" : "index-option");
         }
     }
 }

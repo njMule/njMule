@@ -50,7 +50,7 @@ public final class UrlBox {
     public UrlBox(Gui gui, String history, String name) {
         this.settings = gui.settings();
         this.history = history;
-        this.seed(gui.directories().config());
+        seed(gui.directories().config());
         this.box.setEditable(true);
         this.box.setMaxWidth(Double.MAX_VALUE);
         // The list of addresses too reads left to right.

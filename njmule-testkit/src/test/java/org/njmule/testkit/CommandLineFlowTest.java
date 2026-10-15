@@ -60,7 +60,7 @@ class CommandLineFlowTest {
                     new String[] {
                         "--headless",
                         "--config-dir",
-                        this.configDir().toString(),
+                        configDir().toString(),
                         "--connect-server",
                         "127.0.0.1:" + server.port(),
                         "--search",
@@ -94,7 +94,7 @@ class CommandLineFlowTest {
                 InetAddress.getLoopbackAddress(), shared, FakePeer.Config.simple(Hash16.parseHex("cd".repeat(16))))) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ByteArrayOutputStream err = new ByteArrayOutputStream();
-            Path config = this.configDir();
+            Path config = configDir();
 
             int exit = Main.run(
                     new String[] {
@@ -124,7 +124,7 @@ class CommandLineFlowTest {
         ByteArrayOutputStream err = new ByteArrayOutputStream();
 
         int exit = Main.run(
-                new String[] {"--config-dir", this.configDir().toString(), "--search", "x"},
+                new String[] {"--config-dir", configDir().toString(), "--search", "x"},
                 new PrintStream(out, true, UTF_8),
                 new PrintStream(err, true, UTF_8),
                 new CompletableFuture<>());
@@ -140,9 +140,7 @@ class CommandLineFlowTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         int exit = Main.run(
-                new String[] {
-                    "--config-dir", this.configDir().toString(), "--import-emule", emule.toString(), "--dry-run"
-                },
+                new String[] {"--config-dir", configDir().toString(), "--import-emule", emule.toString(), "--dry-run"},
                 new PrintStream(out, true, UTF_8),
                 new PrintStream(new ByteArrayOutputStream(), true, UTF_8),
                 new CompletableFuture<>());

@@ -61,7 +61,7 @@ class CorruptPartTest {
     @AfterEach
     void stop() throws Exception {
         if (this.queue != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.queue.close();
                 return null;
             });
@@ -71,41 +71,41 @@ class CorruptPartTest {
 
     @Test
     void aCorruptPartIsWholeAgainOnceItsBadBlockIsDownloadedAgain() throws Exception {
-        this.givenADownloadOfTwoParts();
-        this.givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
+        givenADownloadOfTwoParts();
+        givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
 
-        this.whenTheBlockArrivesAgainAt(BAD_BLOCK);
+        whenTheBlockArrivesAgainAt(BAD_BLOCK);
 
-        this.thenTheFirstPartIsWholeAndChecked();
+        thenTheFirstPartIsWholeAndChecked();
     }
 
     @Test
     void dataForAPartThatIsWholeAgainIsNotWrittenOverIt() throws Exception {
-        this.givenADownloadOfTwoParts();
-        this.givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
-        this.givenTheBlockArrivedAgainAt(BAD_BLOCK);
+        givenADownloadOfTwoParts();
+        givenItsFirstPartArrivedWithABadByteIn(BAD_BLOCK + 5);
+        givenTheBlockArrivedAgainAt(BAD_BLOCK);
 
-        this.whenBadDataForTheFirstPartArrivesAndThenTheSecondPart();
+        whenBadDataForTheFirstPartArrivesAndThenTheSecondPart();
 
-        this.thenTheFinishedFileHoldsTheGoodData();
+        thenTheFinishedFileHoldsTheGoodData();
     }
 
     @Test
     void theSourceThatAloneSentACorruptPartThreeTimesIsReported() throws Exception {
-        this.givenADownloadOfTwoParts();
-        this.givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
-        this.givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+        givenADownloadOfTwoParts();
+        givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+        givenItsFirstPartArrivedFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
 
-        this.whenItsFirstPartArrivesFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
+        whenItsFirstPartArrivesFromWithABadByteIn(SENDER, BAD_BLOCK + 5);
 
-        this.thenTheSourceIsReportedForCorruptData(SENDER);
+        thenTheSourceIsReportedForCorruptData(SENDER);
     }
 
     private void givenADownloadOfTwoParts() throws Exception {
         new Random(11).nextBytes(this.data);
         List<Hash16> parts =
                 List.of(Ed2k.md4(this.data, 0, (int) Ed2k.PARTSIZE), Ed2k.md4(this.data, (int) Ed2k.PARTSIZE, 1000));
-        this.queue = this.onLoop(() -> DownloadQueue.load(
+        this.queue = onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
                 file -> this.dir.resolve("incoming"),
@@ -137,14 +137,14 @@ class CorruptPartTest {
                         CorruptPartTest.this.events.add("guilty " + ips);
                     }
                 }));
-        this.download = this.onLoop(() -> this.queue.add(new Ed2kLink.FileLink(
+        this.download = onLoop(() -> this.queue.add(new Ed2kLink.FileLink(
                 "two.bin", SIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of())));
     }
 
     private void givenItsFirstPartArrivedWithABadByteIn(int offset) throws Exception {
         byte[] bad = Arrays.copyOf(this.data, (int) Ed2k.PARTSIZE);
         bad[offset] ^= 1;
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.received(this.download, 0, bad);
             return null;
         });
@@ -152,14 +152,14 @@ class CorruptPartTest {
     }
 
     private void givenItsFirstPartArrivedFromWithABadByteIn(int ip, int offset) throws Exception {
-        this.whenItsFirstPartArrivesFromWithABadByteIn(ip, offset);
+        whenItsFirstPartArrivesFromWithABadByteIn(ip, offset);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("corrupt 0");
     }
 
     private void whenItsFirstPartArrivesFromWithABadByteIn(int ip, int offset) throws Exception {
         byte[] bad = Arrays.copyOf(this.data, (int) Ed2k.PARTSIZE);
         bad[offset] ^= 1;
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.received(this.download, 0, bad, ip);
             return null;
         });
@@ -176,12 +176,12 @@ class CorruptPartTest {
     }
 
     private void givenTheBlockArrivedAgainAt(int start) throws Exception {
-        this.whenTheBlockArrivesAgainAt(start);
-        this.thenTheFirstPartIsWholeAndChecked();
+        whenTheBlockArrivesAgainAt(start);
+        thenTheFirstPartIsWholeAndChecked();
     }
 
     private void whenTheBlockArrivesAgainAt(int start) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.received(this.download, start, Arrays.copyOfRange(this.data, start, start + Ed2k.EMBLOCKSIZE));
             return null;
         });
@@ -190,7 +190,7 @@ class CorruptPartTest {
     private void whenBadDataForTheFirstPartArrivesAndThenTheSecondPart() throws Exception {
         byte[] bad = Arrays.copyOf(this.data, Ed2k.EMBLOCKSIZE);
         bad[7] ^= 1;
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.received(this.download, 0, bad);
             this.queue.received(this.download, Ed2k.PARTSIZE, Arrays.copyOfRange(this.data, (int) Ed2k.PARTSIZE, SIZE));
             return null;
@@ -202,11 +202,11 @@ class CorruptPartTest {
 
     private void thenTheFirstPartIsWholeAndChecked() throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (!this.onLoop(() -> this.download.verifiedParts().get(0))) {
+        while (!onLoop(() -> this.download.verifiedParts().get(0))) {
             assertThat(System.nanoTime()).as("the part checked").isLessThan(deadline);
             Thread.sleep(20);
         }
-        assertThat(this.onLoop(() -> this.download.file().isComplete(0))).isTrue();
+        assertThat(onLoop(() -> this.download.file().isComplete(0))).isTrue();
     }
 
     private void thenTheFinishedFileHoldsTheGoodData() throws Exception {

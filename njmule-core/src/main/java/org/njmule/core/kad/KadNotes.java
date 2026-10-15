@@ -129,7 +129,7 @@ public final class KadNotes {
                 done.completeExceptionally(new IllegalStateException("Kad is not connected"));
                 return;
             }
-            if (!this.start(finder.get(), file, size)) {
+            if (!start(finder.get(), file, size)) {
                 done.completeExceptionally(
                         new IllegalStateException("Kad is busy with this file: try again in a minute"));
                 return;
@@ -155,7 +155,7 @@ public final class KadNotes {
         for (Download d : this.downloads.get()) {
             current.add(d.hash());
             if (!started && !this.searched.contains(d.hash())) {
-                started = this.start(finder.get(), d.hash(), d.size());
+                started = start(finder.get(), d.hash(), d.size());
             }
         }
         // A download taken away and added again is searched for again.
@@ -165,13 +165,13 @@ public final class KadNotes {
     /** Kad stopped: the searches running end with what they found. */
     public void kadStopped() {
         for (Hash16 file : List.copyOf(this.running.keySet())) {
-            this.ended(file);
+            ended(file);
         }
     }
 
     private boolean start(Finder finder, Hash16 file, long size) {
         this.running.put(file, new ArrayList<>());
-        if (!finder.findNotes(file, size, notes -> this.found(file, notes), () -> this.ended(file))) {
+        if (!finder.findNotes(file, size, notes -> found(file, notes), () -> ended(file))) {
             this.running.remove(file);
             return false;
         }
@@ -217,7 +217,7 @@ public final class KadNotes {
     private void ended(Hash16 file) {
         List<CompletableFuture<List<KadNote>>> waiting = this.running.remove(file);
         if (waiting != null) {
-            List<KadNote> notes = this.notes(file);
+            List<KadNote> notes = notes(file);
             waiting.forEach(w -> w.complete(notes));
         }
     }

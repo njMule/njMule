@@ -189,8 +189,8 @@ public final class ServerSession {
      * attempt is dropped first.
      */
     public void connect(Optional<ServerMet.Server> target) {
-        this.stop("reconnecting");
-        this.look(Objects.requireNonNull(target, "target"));
+        stop("reconnecting");
+        look(Objects.requireNonNull(target, "target"));
     }
 
     private void look(Optional<ServerMet.Server> target) {
@@ -199,13 +199,13 @@ public final class ServerSession {
         this.attempted = false;
         this.lastFailure = "";
         this.obfuscatedPass = this.preferences.get().obfuscation().compareTo(ObfuscationMode.REQUESTED) >= 0;
-        this.fillPass();
-        this.next();
+        fillPass();
+        next();
     }
 
     /** Ends the session or the attempt; no further server is tried. */
     public void disconnect() {
-        this.stop("disconnected");
+        stop("disconnected");
     }
 
     /** Whether the current session is obfuscated. */
@@ -253,7 +253,7 @@ public final class ServerSession {
         if (this.target.isPresent()) {
             this.pending.add(this.target.get());
         } else {
-            this.pending.addAll(this.candidates());
+            this.pending.addAll(candidates());
         }
     }
 
@@ -266,7 +266,7 @@ public final class ServerSession {
                 logger.debug("Skipping {}: no such port", ServerList.addressOf(next));
                 continue;
             }
-            Optional<Boolean> obfuscated = this.obfuscationFor(next);
+            Optional<Boolean> obfuscated = obfuscationFor(next);
             if (obfuscated.isEmpty()) {
                 logger.debug("Skipping {} in this pass: obfuscation", ServerList.addressOf(next));
                 continue;
@@ -275,20 +275,20 @@ public final class ServerSession {
             if (probe) {
                 this.probed.add(ServerList.addressOf(next));
             }
-            this.start(new Attempt(next, obfuscated.get(), probe));
+            start(new Attempt(next, obfuscated.get(), probe));
         }
         if (!this.attempts.isEmpty() || !this.pending.isEmpty()) {
             return;
         }
         if (this.obfuscatedPass && this.preferences.get().obfuscation() != ObfuscationMode.REQUIRED) {
             this.obfuscatedPass = false;
-            this.fillPass();
-            this.next();
+            fillPass();
+            next();
             return;
         }
         // Without a server tried, waiting would change nothing.
         if (this.target.isEmpty() && this.attempted && this.keepConnected.getAsBoolean()) {
-            this.retryLater();
+            retryLater();
             return;
         }
         Optional<ServerMet.Server> tried = this.last;
@@ -308,14 +308,14 @@ public final class ServerSession {
         attempt.timeout = this.loop.schedule(
                 "server login timeout",
                 LOGIN_TIMEOUT,
-                () -> this.fail(attempt, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
+                () -> fail(attempt, "no answer within " + LOGIN_TIMEOUT.toSeconds() + " s"));
         Optional<String> host = server.dynamicIp();
         if (host.isEmpty()) {
             if (server.ip() >>> 24 == 0) {
                 // Later, as every other outcome: the attempts are being started.
-                this.loop.post(() -> this.fail(attempt, "no address to connect to"));
+                this.loop.post(() -> fail(attempt, "no address to connect to"));
             } else {
-                this.dial(attempt);
+                dial(attempt);
             }
             return;
         }
@@ -323,9 +323,9 @@ public final class ServerSession {
         Thread.ofVirtual().name("njmule-server-resolve").start(() -> {
             try {
                 int ip = resolve(host.get());
-                this.loop.postOutcome(() -> this.resolved(attempt, ip));
+                this.loop.postOutcome(() -> resolved(attempt, ip));
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.fail(attempt, describe(e)));
+                this.loop.postOutcome(() -> fail(attempt, describe(e)));
             }
         });
     }
@@ -344,13 +344,13 @@ public final class ServerSession {
             return;
         }
         if (!this.servers.accepts(ip)) {
-            this.fail(attempt, Ipv4.format(ip) + " is not an address to connect to");
+            fail(attempt, Ipv4.format(ip) + " is not an address to connect to");
             return;
         }
         ServerMet.Server named = attempt.server;
         this.servers.update(ServerList.addressOf(named), s -> new ServerMet.Server(ip, s.port(), s.tags()));
         attempt.server = new ServerMet.Server(ip, named.port(), named.tags());
-        this.dial(attempt);
+        dial(attempt);
     }
 
     private void dial(Attempt attempt) {
@@ -361,11 +361,11 @@ public final class ServerSession {
             try {
                 TcpConnection opened =
                         TcpConnector.connectToServer(address, attempt.obfuscated, LOGIN_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.opened(attempt, opened))) {
+                if (!this.loop.postOutcome(() -> opened(attempt, opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.fail(attempt, describe(e)));
+                this.loop.postOutcome(() -> fail(attempt, describe(e)));
             }
         });
     }
@@ -428,7 +428,7 @@ public final class ServerSession {
         }
         try {
             switch (opcode.get()) {
-                case IDCHANGE -> this.idChanged(attempt, IdChange.decode(packet));
+                case IDCHANGE -> idChanged(attempt, IdChange.decode(packet));
                 case SERVERMESSAGE -> {
                     // Shown and logged: no terminal escapes, bells or other control characters.
                     for (String raw : ServerMessages.decodeMessage(packet)) {
@@ -436,19 +436,19 @@ public final class ServerSession {
                         if (line.isEmpty()) {
                             continue;
                         }
-                        version(line).ifPresent(v -> this.update(attempt, stringTag(ServerTag.VERSION, v)));
+                        version(line).ifPresent(v -> update(attempt, stringTag(ServerTag.VERSION, v)));
                         this.listener.message(target, line);
                     }
                 }
                 case SERVERSTATUS ->
                     ServerMessages.ServerStatus.decode(packet)
-                            .ifPresent(status -> this.update(
+                            .ifPresent(status -> update(
                                     attempt,
                                     intTag(ServerTag.USERS, status.users()),
                                     intTag(ServerTag.FILES, status.files())));
                 case SERVERIDENT -> {
                     ServerMessages.ServerIdent ident = ServerMessages.ServerIdent.decode(packet);
-                    this.update(
+                    update(
                             attempt,
                             ident.name()
                                     .map(n -> stringTag(ServerTag.SERVERNAME, CONTROL.removeFrom(n)))
@@ -520,7 +520,7 @@ public final class ServerSession {
         attempt.id = Optional.of(change);
         this.lastClientId = change.clientId();
         if (attempt != this.session) {
-            this.loggedIn(attempt, change);
+            loggedIn(attempt, change);
         } else if (changed) {
             this.listener.idChanged(attempt.server, change);
         }
@@ -615,7 +615,7 @@ public final class ServerSession {
         this.attempts.remove(attempt);
         this.lastFailure = reason;
         this.listener.attemptFailed(attempt.server, reason);
-        this.next();
+        next();
     }
 
     private void closed(Attempt attempt, String reason) {
@@ -623,14 +623,14 @@ public final class ServerSession {
             return;
         }
         if (attempt != this.session) {
-            this.fail(attempt, reason);
+            fail(attempt, reason);
             return;
         }
         drop(attempt);
         this.session = null;
         this.listener.disconnected(Optional.of(attempt.server), reason);
         if (this.session == null && !this.looking && this.keepConnected.getAsBoolean()) {
-            this.reconnect();
+            reconnect();
         }
     }
 
@@ -639,19 +639,19 @@ public final class ServerSession {
         if (this.reconnectedLately) {
             this.target = Optional.empty();
             this.looking = true;
-            this.retryLater();
+            retryLater();
             return;
         }
         this.reconnectedLately = true;
         this.loop.schedule("server reconnect pause", RETRY_AFTER, () -> this.reconnectedLately = false);
-        this.look(Optional.empty());
+        look(Optional.empty());
     }
 
     private void retryLater() {
         this.retry = this.loop.schedule("server retry", RETRY_AFTER, () -> {
             this.retry = null;
             if (this.looking && this.session == null && this.attempts.isEmpty()) {
-                this.look(Optional.empty());
+                look(Optional.empty());
             }
         });
         this.listener.retrying(RETRY_AFTER);
@@ -659,7 +659,7 @@ public final class ServerSession {
 
     // Drops the session and the attempts; tells it when there was one.
     private void stop(String reason) {
-        Optional<ServerMet.Server> was = this.server().or(() -> this.last);
+        Optional<ServerMet.Server> was = server().or(() -> this.last);
         boolean active = this.session != null || this.looking;
         if (this.retry != null) {
             this.retry.cancel(false);

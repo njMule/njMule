@@ -70,73 +70,73 @@ class SearchColumnsTest {
 
     @Test
     void shouldShowTheMediaColumnsAndOfferTheFileIdFromTheColumnMenu() throws Exception {
-        this.givenASearchTab();
+        givenASearchTab();
 
-        this.whenTheServerFinds(LONG_SONG, SHORT_SONG);
+        whenTheServerFinds(LONG_SONG, SHORT_SONG);
 
-        this.thenTheHiddenColumnsAre("File ID");
-        this.thenTheShownColumnsInclude("Artist", "Album", "Title", "Length", "Bitrate", "Codec");
-        this.thenTheCellsShow("Some Band", "First Album", "Long Song", "1:02:03", "96 Kbit/s", "3:25", "1,000 Kbit/s");
+        thenTheHiddenColumnsAre("File ID");
+        thenTheShownColumnsInclude("Artist", "Album", "Title", "Length", "Bitrate", "Codec");
+        thenTheCellsShow("Some Band", "First Album", "Long Song", "1:02:03", "96 Kbit/s", "3:25", "1,000 Kbit/s");
     }
 
     @Test
     void shouldHideTheMediaColumnsWithoutSongsOrFilms() throws Exception {
-        this.givenASearchTab();
+        givenASearchTab();
 
-        this.whenTheServerFinds(DISC);
+        whenTheServerFinds(DISC);
 
-        this.thenTheHiddenColumnsAre("File ID", "Artist", "Album", "Title", "Length", "Bitrate", "Codec");
+        thenTheHiddenColumnsAre("File ID", "Artist", "Album", "Title", "Length", "Bitrate", "Codec");
     }
 
     @Test
     void shouldShowTheMediaColumnsOnceASongComes() throws Exception {
-        this.givenASearchTab();
-        this.givenTheServerFound(DISC);
+        givenASearchTab();
+        givenTheServerFound(DISC);
 
-        this.whenTheServerFinds(DISC, SHORT_SONG);
+        whenTheServerFinds(DISC, SHORT_SONG);
 
-        this.thenTheShownColumnsInclude(MEDIA);
+        thenTheShownColumnsInclude(MEDIA);
     }
 
     @Test
     void shouldKeepTheMediaColumnsTheColumnMenuChose() throws Exception {
-        this.givenASearchTab();
-        this.givenTheServerFound(LONG_SONG);
+        givenASearchTab();
+        givenTheServerFound(LONG_SONG);
 
-        this.whenTheColumnIsHidden("Artist");
-        this.whenTheServerFinds(LONG_SONG, SHORT_SONG);
+        whenTheColumnIsHidden("Artist");
+        whenTheServerFinds(LONG_SONG, SHORT_SONG);
 
-        this.thenTheHiddenColumnsAre("File ID", "Artist");
+        thenTheHiddenColumnsAre("File ID", "Artist");
     }
 
     @Test
     void shouldGiveTheFileIdColumnTheHashOfTheFile() throws Exception {
-        this.givenASearchTab();
-        this.givenTheServerFound(LONG_SONG);
+        givenASearchTab();
+        givenTheServerFound(LONG_SONG);
 
-        this.whenTheColumnIsShown("File ID");
+        whenTheColumnIsShown("File ID");
 
-        this.thenTheCellsShow("0123456789ABCDEF0123456789ABCDEF");
+        thenTheCellsShow("0123456789ABCDEF0123456789ABCDEF");
     }
 
     @Test
     void shouldSortTheBitrateAsNumbers() throws Exception {
-        this.givenASearchTab();
-        this.givenTheServerFound(SHORT_SONG, LONG_SONG);
+        givenASearchTab();
+        givenTheServerFound(SHORT_SONG, LONG_SONG);
 
-        this.whenTheResultsAreSortedBy("Bitrate");
+        whenTheResultsAreSortedBy("Bitrate");
 
-        this.thenTheResultsAreInTheOrder("long song.mp3", "short song.flac");
+        thenTheResultsAreInTheOrder("long song.mp3", "short song.flac");
     }
 
     @Test
     void shouldSortTheLengthAsNumbers() throws Exception {
-        this.givenASearchTab();
-        this.givenTheServerFound(LONG_SONG, SHORT_SONG);
+        givenASearchTab();
+        givenTheServerFound(LONG_SONG, SHORT_SONG);
 
-        this.whenTheResultsAreSortedBy("Length");
+        whenTheResultsAreSortedBy("Length");
 
-        this.thenTheResultsAreInTheOrder("short song.flac", "long song.mp3");
+        thenTheResultsAreInTheOrder("short song.flac", "long song.mp3");
     }
 
     private void givenASearchTab() throws Exception {
@@ -156,7 +156,7 @@ class SearchColumnsTest {
     }
 
     private void givenTheServerFound(SearchResult... results) throws Exception {
-        this.whenTheServerFinds(results);
+        whenTheServerFinds(results);
     }
 
     private void whenTheServerFinds(SearchResult... results) throws Exception {
@@ -165,16 +165,16 @@ class SearchColumnsTest {
     }
 
     private void whenTheColumnIsHidden(String title) throws Exception {
-        FxTesting.onFx(() -> this.column(title).setVisible(false));
+        FxTesting.onFx(() -> column(title).setVisible(false));
     }
 
     private void whenTheColumnIsShown(String title) throws Exception {
-        FxTesting.onFx(() -> this.column(title).setVisible(true));
+        FxTesting.onFx(() -> column(title).setVisible(true));
     }
 
     private void whenTheResultsAreSortedBy(String title) throws Exception {
         FxTesting.onFx(() -> {
-            TableColumn<LiveList.Row<SearchResult>, ?> column = this.column(title);
+            TableColumn<LiveList.Row<SearchResult>, ?> column = column(title);
             column.setSortType(TableColumn.SortType.ASCENDING);
             this.table.getSortOrder().setAll(List.of(column));
         });

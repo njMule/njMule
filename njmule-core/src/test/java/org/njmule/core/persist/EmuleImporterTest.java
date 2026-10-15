@@ -159,7 +159,7 @@ class EmuleImporterTest {
     void aDryRunReportsEverythingAndChangesNothing() throws IOException {
         SortedMap<String, String> before = this.emule.fingerprint();
 
-        ImportReport report = this.run(new ImportOptions(true, true, true), false);
+        ImportReport report = run(new ImportOptions(true, true, true), false);
 
         assertThat(report.dryRun()).isTrue();
         Map<String, Outcome> outcomes = outcomes(report);
@@ -193,7 +193,7 @@ class EmuleImporterTest {
     void anImportTakesEverythingAndLeavesEmuleAlone() throws IOException {
         SortedMap<String, String> before = this.emule.fingerprint();
 
-        ImportReport report = this.run(new ImportOptions(false, true, true), false);
+        ImportReport report = run(new ImportOptions(false, true, true), false);
 
         Map<String, Outcome> outcomes = outcomes(report);
         assertThat(outcomes)
@@ -263,7 +263,7 @@ class EmuleImporterTest {
                         "Color=16711680",
                         "AutoCat=ubuntu|debian"));
 
-        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
 
         assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
         assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 3);
@@ -296,7 +296,7 @@ class EmuleImporterTest {
                         "AutoCatAsRegularExpression=1",
                         ""));
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(this.target.categories).extracting(Category::id).containsExactly(1, 2);
         Category shortened = this.target.categories.getFirst();
@@ -313,7 +313,7 @@ class EmuleImporterTest {
         this.emule.putInCategory(2, 2);
         Files.writeString(this.emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
 
-        this.run(new ImportOptions(false, false, true), false);
+        run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.adoptedCategories)
                 .containsEntry("001.part.met", 1)
@@ -321,7 +321,7 @@ class EmuleImporterTest {
                 .containsEntry("002.part.met", Category.NONE);
 
         this.target.ownCategories = true;
-        this.run(new ImportOptions(false, false, true), false);
+        run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.adoptedCategories).containsEntry("001.part.met", Category.NONE);
     }
@@ -333,7 +333,7 @@ class EmuleImporterTest {
                 String.join(
                         "\r\n", "[Cat#1]", "Title=Films", "[Cat#01]", "Title=Copy", "[Cat# 2]", "Title=Spaced", ""));
 
-        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
 
         assertThat(outcomes).containsEntry("Category.ini", Outcome.IMPORTED);
         assertThat(this.target.categories).extracting(Category::name).containsExactly("Films");
@@ -344,7 +344,7 @@ class EmuleImporterTest {
         Files.writeString(this.ours.resolve("ipfilter.dat"), "");
         Files.writeString(this.ours.resolve("cancelled.met"), "");
 
-        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
 
         assertThat(outcomes)
                 .containsEntry("ipfilter.dat", Outcome.SKIPPED)
@@ -356,7 +356,7 @@ class EmuleImporterTest {
     void filesTheEngineRewritesTakeItsPlaceAtTheNextStart() throws IOException {
         Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(detail(report, "cancelled.met")).endsWith("from the next start");
         assertThat(this.ours.resolve("cancelled.met")).doesNotExist();
@@ -377,11 +377,11 @@ class EmuleImporterTest {
     void aSecondImportReplacesTheFilesWaitingAndKeepsOurOwn() throws IOException {
         Files.writeString(this.emule.config.resolve("staticservers.dat"), "10.1.2.3:4661,1,Static\r\n");
         Files.writeString(this.ours.resolve("staticservers.dat"), "");
-        this.run(new ImportOptions(false, false, false), false);
+        run(new ImportOptions(false, false, false), false);
         // Written by the engine after the first import, so not of its own before it.
         Files.writeString(this.ours.resolve("cancelled.met"), "");
 
-        Map<String, Outcome> outcomes = outcomes(this.run(new ImportOptions(false, false, false), false));
+        Map<String, Outcome> outcomes = outcomes(run(new ImportOptions(false, false, false), false));
 
         assertThat(outcomes)
                 .containsEntry("cancelled.met", Outcome.IMPORTED)
@@ -392,7 +392,7 @@ class EmuleImporterTest {
 
     @Test
     void identityAndDownloadsNeedAsking() throws IOException {
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(outcomes(report))
                 .containsEntry("preferences.dat", Outcome.SKIPPED)
@@ -405,7 +405,7 @@ class EmuleImporterTest {
 
     @Test
     void aRunningEmuleKeepsItsIdentityAndActiveDownloads() throws IOException {
-        ImportReport report = this.run(new ImportOptions(false, true, true), true);
+        ImportReport report = run(new ImportOptions(false, true, true), true);
 
         assertThat(outcomes(report))
                 .containsEntry("preferences.dat", Outcome.SKIPPED)
@@ -420,7 +420,7 @@ class EmuleImporterTest {
     void theUserHashComesOnlyWithItsKey() throws IOException {
         Files.writeString(this.emule.config.resolve("cryptkey.dat"), "not base64 at all!");
 
-        ImportReport report = this.run(new ImportOptions(false, true, false), false);
+        ImportReport report = run(new ImportOptions(false, true, false), false);
 
         assertThat(outcomes(report)).containsEntry("cryptkey.dat", Outcome.FAILED);
         assertThat(report.items()).anyMatch(i -> i.detail().contains("the user hash and the key are taken only"));
@@ -432,7 +432,7 @@ class EmuleImporterTest {
         Files.write(this.emule.config.resolve("server.met"), new byte[] {(byte) 0xE0, 1});
         Files.delete(this.emule.config.resolve("preferences.ini"));
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(outcomes(report))
                 .containsEntry("server.met", Outcome.FAILED)
@@ -443,7 +443,7 @@ class EmuleImporterTest {
 
     @Test
     void aPendingIdentityWaitsUntilEmuleIsClosed() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
 
         assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> true)).isFalse();
@@ -459,8 +459,8 @@ class EmuleImporterTest {
 
     @Test
     void anIdentityImportedTwiceBeforeARestartIsStillTaken() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
 
         assertThat(EmuleImporter.applyPendingIdentity(this.ours, () -> false)).isTrue();
 
@@ -471,7 +471,7 @@ class EmuleImporterTest {
 
     @Test
     void leftoversInThePendingIdentityDoNotStopTheStart() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         Files.writeString(pending.resolve("preferences.dat.bak"), "older");
         Files.writeString(pending.resolve("cryptkey.dat.tmp"), "interrupted");
@@ -486,7 +486,7 @@ class EmuleImporterTest {
 
     @Test
     void anotherProfileReplacesTheWholePendingIdentity() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         SyntheticEmuleProfile other = SyntheticEmuleProfile.create(this.dir.resolve("other"));
         Files.delete(other.config.resolve("clients.met"));
         Files.delete(other.config.resolve("preferencesKad.dat"));
@@ -507,7 +507,7 @@ class EmuleImporterTest {
 
     @Test
     void aUserHashWithoutItsKeyIsNotApplied() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         Files.delete(pending.resolve("cryptkey.dat"));
 
@@ -519,10 +519,10 @@ class EmuleImporterTest {
 
     @Test
     void aDryRunKeepsThePendingIdentity() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         Files.delete(this.emule.config.resolve("cryptkey.dat"));
 
-        this.run(new ImportOptions(true, true, false), false);
+        run(new ImportOptions(true, true, false), false);
 
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         assertThat(pending.resolve("preferences.dat")).exists();
@@ -644,7 +644,7 @@ class EmuleImporterTest {
     void aProfileWithoutPreferencesSectionFails() throws IOException {
         Files.writeString(this.emule.config.resolve("preferences.ini"), "[Other]\nA=1\n");
 
-        ImportReport report = this.run(new ImportOptions(false, true, true), false);
+        ImportReport report = run(new ImportOptions(false, true, true), false);
 
         assertThat(outcomes(report)).containsEntry("preferences.ini", Outcome.FAILED);
         assertThat(this.target.preferences).isEqualTo(Preferences.defaults());
@@ -669,7 +669,7 @@ class EmuleImporterTest {
                         + "\r\n",
                 StandardCharsets.ISO_8859_1);
 
-        this.run(new ImportOptions(false, false, true), false);
+        run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
     }
@@ -682,7 +682,7 @@ class EmuleImporterTest {
             }
         }
 
-        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+        ImportReport report = run(new ImportOptions(false, false, true), false);
 
         assertThat(outcomes(report)).containsEntry("Temp", Outcome.MISSING);
         assertThat(detail(report, "Temp")).isEqualTo("no downloads in progress");
@@ -699,7 +699,7 @@ class EmuleImporterTest {
                 StandardCharsets.ISO_8859_1);
         Files.write(this.emule.config.resolve("shareddir.dat"), TextFiles.writeLines(List.of(".", "..")));
 
-        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+        ImportReport report = run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.shared).isEmpty();
         assertThat(outcomes(report)).containsEntry("shareddir.dat", Outcome.MISSING);
@@ -716,7 +716,7 @@ class EmuleImporterTest {
             huge.position(3L << 30).write(ByteBuffer.wrap(new byte[] {1}));
         }
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(outcomes(report))
                 .containsEntry("known.met", Outcome.FAILED)
@@ -729,7 +729,7 @@ class EmuleImporterTest {
             this.ours = inside;
             SortedMap<String, String> before = this.emule.fingerprint();
 
-            ImportReport report = this.run(new ImportOptions(false, true, true), false);
+            ImportReport report = run(new ImportOptions(false, true, true), false);
 
             assertThat(report.items())
                     .singleElement()
@@ -743,7 +743,7 @@ class EmuleImporterTest {
     void aBrokenAichFileLeavesOnlyTheAichTreesOut() throws IOException {
         Files.write(this.emule.config.resolve("known2_64.met"), new byte[] {2, 1});
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         assertThat(outcomes(report)).containsEntry("known.met", Outcome.IMPORTED);
         assertThat(detail(report, "known.met")).contains("known2_64.met");
@@ -753,9 +753,9 @@ class EmuleImporterTest {
     @Test
     void aSecondImportChangesNeitherEmuleNorWhatItTookAlready() throws IOException {
         SortedMap<String, String> before = this.emule.fingerprint();
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
 
-        Map<String, Outcome> again = outcomes(this.run(new ImportOptions(false, true, false), false));
+        Map<String, Outcome> again = outcomes(run(new ImportOptions(false, true, false), false));
 
         assertThat(again)
                 .containsEntry("ipfilter.dat", Outcome.SKIPPED)
@@ -765,10 +765,10 @@ class EmuleImporterTest {
 
     @Test
     void aDryRunLeavesOurFilesAsTheyWere() throws IOException {
-        this.run(new ImportOptions(false, true, false), false);
+        run(new ImportOptions(false, true, false), false);
         SortedMap<String, String> ours = fingerprint(this.ours);
 
-        this.run(new ImportOptions(true, true, true), false);
+        run(new ImportOptions(true, true, true), false);
 
         assertThat(fingerprint(this.ours)).isEqualTo(ours);
     }
@@ -799,7 +799,7 @@ class EmuleImporterTest {
         Files.delete(this.emule.config.resolve("preferences.ini"));
         Files.createDirectory(this.emule.config.resolve("preferences.ini"));
 
-        ImportReport report = this.run(new ImportOptions(false, false, true), false);
+        ImportReport report = run(new ImportOptions(false, false, true), false);
 
         assertThat(outcomes(report))
                 .containsEntry("server.met", Outcome.FAILED)
@@ -814,7 +814,7 @@ class EmuleImporterTest {
     void aDownloadNamedToClimbOutStaysWhereItIs() throws IOException {
         this.emule.retag(2, new Tag.StringTag(TagName.id(FileTag.FILENAME), "../../evil.bin"));
 
-        this.run(new ImportOptions(false, false, true), false);
+        run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.adoptedFrom)
                 .allSatisfy(p -> assertThat(p.getParent()).isEqualTo(this.emule.temp));
@@ -830,7 +830,7 @@ class EmuleImporterTest {
                         + this.emule.temp + File.separator + "\r\n",
                 StandardCharsets.ISO_8859_1);
 
-        this.run(new ImportOptions(false, false, true), false);
+        run(new ImportOptions(false, false, true), false);
 
         assertThat(this.target.adopted).containsExactlyInAnyOrder("001.part.met", "002.part.met");
     }
@@ -842,7 +842,7 @@ class EmuleImporterTest {
                 PreferencesDat.write(new PreferencesDat.Contents(
                         PreferencesDat.VERSION, Hash16.parseHex("0102030405060708090A0B0C0D0E0F10"), Bytes.EMPTY)));
 
-        ImportReport report = this.run(new ImportOptions(false, true, false), false);
+        ImportReport report = run(new ImportOptions(false, true, false), false);
 
         assertThat(outcomes(report)).containsEntry("preferences.dat", Outcome.FAILED);
         assertThat(this.ours.resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
@@ -852,7 +852,7 @@ class EmuleImporterTest {
     void corruptCreditsLeaveTheRestOfTheIdentity() throws IOException {
         Files.write(this.emule.config.resolve("clients.met"), new byte[] {0x12, 1, 0});
 
-        ImportReport report = this.run(new ImportOptions(false, true, false), false);
+        ImportReport report = run(new ImportOptions(false, true, false), false);
 
         Path pending = this.ours.resolve(EmuleImporter.PENDING_IDENTITY);
         assertThat(outcomes(report)).containsEntry("clients.met", Outcome.FAILED);
@@ -878,7 +878,7 @@ class EmuleImporterTest {
     void aRefusedSharedDirectoryDoesNotStopTheOthers() throws IOException {
         this.target.refused.add(this.emule.incoming);
 
-        ImportReport report = this.run(new ImportOptions(false, false, false), false);
+        ImportReport report = run(new ImportOptions(false, false, false), false);
 
         ImportReport.Item dirs = report.items().stream()
                 .filter(i -> i.file().equals("shareddir.dat"))

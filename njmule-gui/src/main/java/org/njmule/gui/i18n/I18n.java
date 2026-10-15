@@ -162,7 +162,7 @@ public final class I18n {
      * with what is around it. Unchanged in the other languages.
      */
     public String embed(String text) {
-        if (!this.isRightToLeft() || text.isEmpty()) {
+        if (!isRightToLeft() || text.isEmpty()) {
             return text;
         }
         List<String> lines = new ArrayList<>();
@@ -182,7 +182,7 @@ public final class I18n {
 
     /** The name of this language, written in it: Deutsch, Italiano. */
     public String name() {
-        return this.t("nj.language");
+        return t("nj.language");
     }
 
     /**
@@ -198,7 +198,7 @@ public final class I18n {
     /** The text of {@code key}; an unknown key shows itself, so it is noticed. */
     public String t(String key) {
         try {
-            return this.bundle(key).getString(key);
+            return bundle(key).getString(key);
         } catch (MissingResourceException e) {
             return "[" + key + "]";
         }
@@ -206,9 +206,9 @@ public final class I18n {
 
     /** The text of {@code key} with its {@code %} placeholders filled in; a text filled in is {@link #embed}ded. */
     public String f(String key, Object... args) {
-        String pattern = this.t(key);
+        String pattern = t(key);
         try {
-            return String.format(this.numbers, pattern, this.embedded(args));
+            return String.format(this.numbers, pattern, embedded(args));
         } catch (IllegalFormatException e) {
             return pattern;
         }
@@ -216,7 +216,7 @@ public final class I18n {
 
     // Numbers, characters, truth values and times are formatted, not embedded.
     private Object[] embedded(Object[] args) {
-        if (!this.isRightToLeft()) {
+        if (!isRightToLeft()) {
             return args;
         }
         Object[] shown = args.clone();
@@ -228,7 +228,7 @@ public final class I18n {
                             || shown[i] instanceof TemporalAccessor
                             || shown[i] instanceof Date
                             || shown[i] instanceof Calendar)) {
-                shown[i] = this.embed(shown[i].toString());
+                shown[i] = embed(shown[i].toString());
             }
         }
         return shown;
@@ -236,7 +236,7 @@ public final class I18n {
 
     /** Whether {@code key} has a text. */
     public boolean has(String key) {
-        return this.bundle(key).containsKey(key);
+        return bundle(key).containsKey(key);
     }
 
     // A language may word an eMule text its own way; English keeps eMule's.

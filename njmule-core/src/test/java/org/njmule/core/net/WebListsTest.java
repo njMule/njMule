@@ -107,10 +107,10 @@ class WebListsTest {
         this.responses.put("/list.gz", response(200, "", gzip(list)));
         this.responses.put("/list.zip", response(200, "", zip("nodes.dat", list)));
 
-        assertThat(this.anyAddress.fetch(this.uri("/server.met"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(this.uri("/moved"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(this.uri("/list.gz"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(this.uri("/list.zip"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(uri("/server.met"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(uri("/moved"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(uri("/list.gz"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(uri("/list.zip"))).isEqualTo(list);
     }
 
     @Test
@@ -118,14 +118,14 @@ class WebListsTest {
         this.responses.put("/loop", response(302, "Location: /loop\r\n", new byte[0]));
         this.responses.put("/away", response(301, "Location: ftp://example.org/server.met\r\n", new byte[0]));
 
-        assertThatThrownBy(() -> WebLists.create().fetch(this.uri("/server.met")))
+        assertThatThrownBy(() -> WebLists.create().fetch(uri("/server.met")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("local or private");
         assertThatThrownBy(() -> this.anyAddress.fetch(URI.create("ftp://example.org/server.met")))
                 .hasMessageContaining("http and https");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/missing"))).hasMessageContaining("HTTP 404");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/loop"))).hasMessageContaining("too many redirects");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/away")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/missing"))).hasMessageContaining("HTTP 404");
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/loop"))).hasMessageContaining("too many redirects");
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/away")))
                 .as("a redirect is checked like the first address")
                 .hasMessageContaining("http and https");
     }
@@ -139,8 +139,7 @@ class WebListsTest {
 
         assertTimeoutPreemptively(
                 Duration.ofSeconds(15),
-                () -> assertThatThrownBy(() -> quick.fetch(this.uri("/stalled")))
-                        .isInstanceOf(IOException.class));
+                () -> assertThatThrownBy(() -> quick.fetch(uri("/stalled"))).isInstanceOf(IOException.class));
     }
 
     @Test
@@ -156,8 +155,8 @@ class WebListsTest {
         this.responses.put("/lists.zip", response(200, "", out.toByteArray()));
         this.responses.put("/other.zip", response(200, "", zip("only.txt", list)));
 
-        assertThat(this.anyAddress.fetch(this.uri("/lists.zip"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(this.uri("/other.zip")))
+        assertThat(this.anyAddress.fetch(uri("/lists.zip"))).isEqualTo(list);
+        assertThat(this.anyAddress.fetch(uri("/other.zip")))
                 .as("else the first")
                 .isEqualTo(list);
     }
@@ -185,12 +184,12 @@ class WebListsTest {
         this.responses.put("/whole.dat", untilClosed(lines));
         this.responses.put("/cut.dat", untilClosed(cut));
 
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/short"))).isInstanceOf(IOException.class);
-        assertThat(this.anyAddress.fetchText(this.uri("/whole.dat"))).isEqualTo(lines);
-        assertThatThrownBy(() -> this.anyAddress.fetchText(this.uri("/cut.dat")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/short"))).isInstanceOf(IOException.class);
+        assertThat(this.anyAddress.fetchText(uri("/whole.dat"))).isEqualTo(lines);
+        assertThatThrownBy(() -> this.anyAddress.fetchText(uri("/cut.dat")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("cut short");
-        assertThat(this.anyAddress.fetch(this.uri("/cut.dat")))
+        assertThat(this.anyAddress.fetch(uri("/cut.dat")))
                 .as("not a list of lines")
                 .isEqualTo(cut);
     }
@@ -213,12 +212,12 @@ class WebListsTest {
 
     @Test
     void listsGoThroughTheSocksProxyOfThePreferencesWithItsCredentials() throws Exception {
-        this.givenAList("/server.met", "through socks");
-        this.givenASocksProxyThatWantsAPassword();
+        givenAList("/server.met", "through socks");
+        givenASocksProxyThatWantsAPassword();
         try {
-            this.whenTheListIsFetched("/server.met");
-            this.thenTheListCame("through socks");
-            this.thenTheProxyWasAskedWithTheCredentialsForTheServer();
+            whenTheListIsFetched("/server.met");
+            thenTheListCame("through socks");
+            thenTheProxyWasAskedWithTheCredentialsForTheServer();
         } finally {
             ProxyRoute.install(() -> ProxySettings.NONE);
         }
@@ -231,13 +230,13 @@ class WebListsTest {
     private void givenASocksProxyThatWantsAPassword() throws IOException {
         ServerSocket proxy = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
         this.proxies.add(proxy);
-        Thread.ofVirtual().start(() -> this.socks5(proxy));
+        Thread.ofVirtual().start(() -> socks5(proxy));
         ProxyRoute.install(
                 () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret"));
     }
 
     private void whenTheListIsFetched(String path) throws IOException {
-        this.fetched = this.anyAddress.fetch(this.uri(path));
+        this.fetched = this.anyAddress.fetch(uri(path));
     }
 
     private void thenTheListCame(String text) {
@@ -296,7 +295,7 @@ class WebListsTest {
         for (int status : new int[] {303, 307, 308}) {
             this.responses.put("/moved" + status, response(status, "Location: /server.met\r\n", new byte[0]));
 
-            assertThat(this.anyAddress.fetch(this.uri("/moved" + status)))
+            assertThat(this.anyAddress.fetch(uri("/moved" + status)))
                     .as("HTTP %d", status)
                     .isEqualTo(list);
         }
@@ -313,10 +312,10 @@ class WebListsTest {
         assertThatThrownBy(() -> this.anyAddress.fetch(URI.create("http:/server.met")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("no host");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/bad")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/bad")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("bad address");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/nowhere")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/nowhere")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("without a location");
     }
@@ -325,7 +324,7 @@ class WebListsTest {
     void noTimeLeftOrAnInterruptedCallerFetchesNothing() throws Exception {
         this.responses.put("/server.met", response(200, "", new byte[] {1}));
 
-        assertThatThrownBy(() -> new WebLists(a -> true, Duration.ZERO).fetch(this.uri("/server.met")))
+        assertThatThrownBy(() -> new WebLists(a -> true, Duration.ZERO).fetch(uri("/server.met")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("in time");
 
@@ -334,7 +333,7 @@ class WebListsTest {
         Thread.ofVirtual().start(() -> {
             Thread.currentThread().interrupt();
             try {
-                this.anyAddress.fetch(this.uri("/server.met"));
+                this.anyAddress.fetch(uri("/server.met"));
                 failure.complete(null);
             } catch (IOException e) {
                 failure.complete(e);
@@ -361,15 +360,15 @@ class WebListsTest {
                         ("1d\r\n" + new String(noBreak, StandardCharsets.US_ASCII) + "\r\n0\r\n\r\n")
                                 .getBytes(StandardCharsets.US_ASCII)));
 
-        assertThat(this.anyAddress.fetchText(this.uri("/packed.gz")))
+        assertThat(this.anyAddress.fetchText(uri("/packed.gz")))
                 .as("gzip checks itself")
                 .isEqualTo(noBreak);
-        assertThat(this.anyAddress.fetchText(this.uri("/cr.dat"))).isEqualTo(carriageReturn);
-        assertThat(this.anyAddress.fetchText(this.uri("/empty.dat"))).isEmpty();
-        assertThat(this.anyAddress.fetchText(this.uri("/sized.dat")))
+        assertThat(this.anyAddress.fetchText(uri("/cr.dat"))).isEqualTo(carriageReturn);
+        assertThat(this.anyAddress.fetchText(uri("/empty.dat"))).isEmpty();
+        assertThat(this.anyAddress.fetchText(uri("/sized.dat")))
                 .as("its length was given")
                 .isEqualTo(noBreak);
-        assertThat(this.anyAddress.fetchText(this.uri("/chunked.dat")))
+        assertThat(this.anyAddress.fetchText(uri("/chunked.dat")))
                 .as("chunks end on their own")
                 .isEqualTo(noBreak);
     }
@@ -385,10 +384,10 @@ class WebListsTest {
         this.responses.put("/c", response(200, "", almostZipToo));
         this.responses.put("/d", response(200, "", tooShort));
 
-        assertThat(this.anyAddress.fetch(this.uri("/a"))).isEqualTo(almostGzip);
-        assertThat(this.anyAddress.fetch(this.uri("/b"))).isEqualTo(almostZip);
-        assertThat(this.anyAddress.fetch(this.uri("/c"))).isEqualTo(almostZipToo);
-        assertThat(this.anyAddress.fetch(this.uri("/d"))).isEqualTo(tooShort);
+        assertThat(this.anyAddress.fetch(uri("/a"))).isEqualTo(almostGzip);
+        assertThat(this.anyAddress.fetch(uri("/b"))).isEqualTo(almostZip);
+        assertThat(this.anyAddress.fetch(uri("/c"))).isEqualTo(almostZipToo);
+        assertThat(this.anyAddress.fetch(uri("/d"))).isEqualTo(tooShort);
     }
 
     @Test
@@ -408,10 +407,10 @@ class WebListsTest {
         this.responses.put("/folders.zip", response(200, "", folders.toByteArray()));
         this.responses.put("/bomb.gz", response(200, "", bomb.toByteArray()));
 
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/folders.zip")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/folders.zip")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("empty zip");
-        assertThatThrownBy(() -> this.anyAddress.fetch(this.uri("/bomb.gz")))
+        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/bomb.gz")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("larger than");
     }

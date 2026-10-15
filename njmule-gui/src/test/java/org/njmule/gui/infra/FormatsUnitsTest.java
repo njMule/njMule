@@ -32,70 +32,70 @@ class FormatsUnitsTest {
 
     @Test
     void shouldWriteFrenchSizesAndRatesInOctets() {
-        this.givenTheInterfaceIn(Locale.FRENCH);
+        givenTheInterfaceIn(Locale.FRENCH);
 
-        this.whenASizeAndARateAreShown(1536, 12_595);
+        whenASizeAndARateAreShown(1536, 12_595);
 
-        this.thenTheyRead("1,50 Ko", "12,3 Ko/s");
+        thenTheyRead("1,50 Ko", "12,3 Ko/s");
     }
 
     @Test
     void shouldKeepTheEnglishUnitsInEnglish() {
-        this.givenTheInterfaceIn(Locale.ENGLISH);
+        givenTheInterfaceIn(Locale.ENGLISH);
 
-        this.whenASizeAndARateAreShown(5L << 30, 2048);
+        whenASizeAndARateAreShown(5L << 30, 2048);
 
-        this.thenTheyRead("5.00 GB", "2.0 KB/s");
+        thenTheyRead("5.00 GB", "2.0 KB/s");
     }
 
     @Test
     void shouldNameSmallSizesWithTheShortUnitOfTheLanguage() {
-        this.givenTheInterfaceIn(Locale.FRENCH);
+        givenTheInterfaceIn(Locale.FRENCH);
 
-        this.whenASizeAndARateAreShown(900, 0);
+        whenASizeAndARateAreShown(900, 0);
 
-        this.thenTheyRead("900 o", "0,0 Ko/s");
+        thenTheyRead("900 o", "0,0 Ko/s");
     }
 
     @Test
     void shouldKeepTheEnglishUnitsALanguageDoesNotName() {
-        this.givenUnitsNamedOnlyFor(Map.of("IDS_MBYTES", "Mo"));
+        givenUnitsNamedOnlyFor(Map.of("IDS_MBYTES", "Mo"));
 
-        this.whenASizeAndARateAreShown(3L << 20, 1024);
+        whenASizeAndARateAreShown(3L << 20, 1024);
 
-        this.thenTheyRead("3.00 Mo", "1.0 KB/s");
+        thenTheyRead("3.00 Mo", "1.0 KB/s");
     }
 
     @Test
     void shouldWriteFastRatesInMegabytesAndGigabytes() {
-        this.givenTheInterfaceIn(Locale.ENGLISH);
+        givenTheInterfaceIn(Locale.ENGLISH);
 
-        this.whenARateIsShown(1_355_000);
-        this.thenItReads("1.29 MB/s");
-        this.whenARateIsShown(100L << 20);
-        this.thenItReads("100.0 MB/s");
-        this.whenARateIsShown(1_181_116_006);
-        this.thenItReads("1.10 GB/s");
+        whenARateIsShown(1_355_000);
+        thenItReads("1.29 MB/s");
+        whenARateIsShown(100L << 20);
+        thenItReads("100.0 MB/s");
+        whenARateIsShown(1_181_116_006);
+        thenItReads("1.10 GB/s");
     }
 
     @Test
     void shouldKeepKilobytesJustBelowAThousand() {
-        this.givenTheInterfaceIn(Locale.ENGLISH);
+        givenTheInterfaceIn(Locale.ENGLISH);
 
-        this.whenARateIsShown(999 * 1024);
-        this.thenItReads("999.0 KB/s");
-        this.whenARateIsShown(1000 * 1024);
-        this.thenItReads("0.98 MB/s");
+        whenARateIsShown(999 * 1024);
+        thenItReads("999.0 KB/s");
+        whenARateIsShown(1000 * 1024);
+        thenItReads("0.98 MB/s");
     }
 
     @Test
     void shouldWriteFastRatesWithTheUnitsOfTheLanguage() {
-        this.givenTheInterfaceIn(Locale.FRENCH);
+        givenTheInterfaceIn(Locale.FRENCH);
 
-        this.whenARateIsShown(1_355_000);
-        this.thenItReads("1,29 Mo/s");
-        this.whenARateIsShown(1_181_116_006);
-        this.thenItReads("1,10 Go/s");
+        whenARateIsShown(1_355_000);
+        thenItReads("1,29 Mo/s");
+        whenARateIsShown(1_181_116_006);
+        thenItReads("1,10 Go/s");
     }
 
     private void givenTheInterfaceIn(Locale language) {

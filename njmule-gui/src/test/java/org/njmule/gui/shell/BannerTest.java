@@ -66,16 +66,16 @@ class BannerTest {
     })
     void theBannerTellsOfNoNetworkAndOfANetworkThatCannotReachUs(
             EngineModel.Connection connection, boolean lowId, String kad, Banner.Kind expected) {
-        this.whenTheStateIs(connection, lowId, kad);
-        this.thenTheBannerTellsOf(expected);
+        whenTheStateIs(connection, lowId, kad);
+        thenTheBannerTellsOf(expected);
     }
 
     @Test
     void offlineTheBannerOffersToConnectAndOnceClosedStaysAway() throws Exception {
-        this.givenTheWindowOffline();
-        this.thenTheBannerShowsAfterAMoment(Banner.Kind.OFFLINE, "Connect");
-        this.whenTheBannerIsClosed();
-        this.thenTheBannerIsGone();
+        givenTheWindowOffline();
+        thenTheBannerShowsAfterAMoment(Banner.Kind.OFFLINE, "Connect");
+        whenTheBannerIsClosed();
+        thenTheBannerIsGone();
     }
 
     private void givenTheWindowOffline() throws Exception {

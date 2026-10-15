@@ -92,6 +92,6 @@ public final class Hash16 implements Comparable<Hash16> {
 
     @Override
     public String toString() {
-        return this.toHex();
+        return toHex();
     }
 }

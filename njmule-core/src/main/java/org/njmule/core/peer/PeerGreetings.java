@@ -136,7 +136,7 @@ public final class PeerGreetings implements AutoCloseable {
      * peer closes it or it is idle.
      */
     public CompletableFuture<PeerInfo> greet(InetSocketAddress address) {
-        return this.greet(address, Optional.empty());
+        return greet(address, Optional.empty());
     }
 
     /** As {@link #greet(InetSocketAddress)}, obfuscated with the peer's user hash when known. */

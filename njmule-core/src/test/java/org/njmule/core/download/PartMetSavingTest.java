@@ -55,7 +55,7 @@ class PartMetSavingTest {
             this.holder.close();
         }
         if (this.queue != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.queue.close();
                 return null;
             });
@@ -66,17 +66,17 @@ class PartMetSavingTest {
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void aPartMetThatIsSlowToReplaceDoesNotHoldUpTheEngine() throws Exception {
-        this.givenADownload();
-        this.givenAnotherProgramHoldsItsPartMet();
+        givenADownload();
+        givenAnotherProgramHoldsItsPartMet();
 
-        this.whenTheDownloadIsPausedAndSaved();
+        whenTheDownloadIsPausedAndSaved();
 
-        this.thenTheEngineWasNotHeldUp();
-        this.thenThePartMetIsSavedOnceItIsFree();
+        thenTheEngineWasNotHeldUp();
+        thenThePartMetIsSavedOnceItIsFree();
     }
 
     private void givenADownload() throws Exception {
-        this.queue = this.onLoop(() -> DownloadQueue.load(
+        this.queue = onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
                 file -> this.dir.resolve("incoming"),
@@ -94,9 +94,9 @@ class PartMetSavingTest {
                     @Override
                     public void failed(DownloadQueue.Download d, String reason) {}
                 }));
-        this.download = this.onLoop(
-                () -> this.queue.add(Ed2kLink.FileLink.of("held.bin", 5000, Hash16.parseHex("4d".repeat(16)))));
-        this.onLoop(() -> {
+        this.download =
+                onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("held.bin", 5000, Hash16.parseHex("4d".repeat(16)))));
+        onLoop(() -> {
             this.queue.saveChanged();
             return null;
         });
@@ -114,7 +114,7 @@ class PartMetSavingTest {
     }
 
     private void whenTheDownloadIsPausedAndSaved() throws Exception {
-        this.engineBusy = this.onLoop(() -> {
+        this.engineBusy = onLoop(() -> {
             long start = System.nanoTime();
             this.queue.pause(this.download);
             this.queue.saveChanged();
@@ -129,7 +129,7 @@ class PartMetSavingTest {
     private void thenThePartMetIsSavedOnceItIsFree() throws Exception {
         this.holder.close();
         this.holder = null;
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.close();
             return null;
         });

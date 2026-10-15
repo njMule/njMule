@@ -88,21 +88,21 @@ class MessagingTest {
     void aSpammerComingBackFromAnotherPortIsStillFiltered() throws Exception {
         this.filter = new ChatFilter(false, List.of(), true);
 
-        this.incoming(hello(SPAMMER, 4001), "cheap stuff at http://spam.example", () -> true, p -> {});
-        this.incoming(hello(SPAMMER, 4002), "hello there", () -> true, p -> {});
-        this.incoming(hello(PAL, 4003), "a link from a friend: http://pal.example", () -> true, p -> {});
+        incoming(hello(SPAMMER, 4001), "cheap stuff at http://spam.example", () -> true, p -> {});
+        incoming(hello(SPAMMER, 4002), "hello there", () -> true, p -> {});
+        incoming(hello(PAL, 4003), "a link from a friend: http://pal.example", () -> true, p -> {});
 
         assertThat(this.received).containsExactly("a link from a friend: http://pal.example");
     }
 
     @Test
     void blankTextStartsNoConversation() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.messaging.send(FROM, " \t ");
             return null;
         });
 
-        assertThat(this.onLoop(this.messaging::conversations)).isZero();
+        assertThat(onLoop(this.messaging::conversations)).isZero();
     }
 
     @Test
@@ -111,7 +111,7 @@ class MessagingTest {
         try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             closed = new InetSocketAddress(InetAddress.getLoopbackAddress(), probe.getLocalPort());
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.messaging.send(closed, "anyone?");
             return null;
         });
@@ -121,18 +121,18 @@ class MessagingTest {
             Thread.sleep(20);
         }
         assertThat(this.failed).containsExactly(closed.toString());
-        assertThat(this.onLoop(this.messaging::conversations)).isZero();
+        assertThat(onLoop(this.messaging::conversations)).isZero();
     }
 
     @Test
     void aConversationGoesOnceItsConnectionClosesWithNothingPending() throws Exception {
         AtomicBoolean open = new AtomicBoolean(true);
-        this.incoming(hello(PAL, 4001), "hi", open::get, p -> {});
-        assertThat(this.onLoop(this.messaging::conversations)).isEqualTo(1);
+        incoming(hello(PAL, 4001), "hi", open::get, p -> {});
+        assertThat(onLoop(this.messaging::conversations)).isEqualTo(1);
 
         open.set(false);
 
-        assertThat(this.onLoop(this.messaging::conversations)).isZero();
+        assertThat(onLoop(this.messaging::conversations)).isZero();
         assertThat(this.received).containsExactly("hi");
     }
 
@@ -140,7 +140,7 @@ class MessagingTest {
     void ourConnectionClosingKeepsAConversationThatAnIncomingOneServes() throws Exception {
         try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             InetSocketAddress to = new InetSocketAddress(InetAddress.getLoopbackAddress(), peer.getLocalPort());
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.messaging.send(to, "first");
                 return null;
             });
@@ -151,7 +151,7 @@ class MessagingTest {
                                 .opcode())
                         .isEqualTo(Opcodes.Client.HELLO.code());
                 // The client connects to us before answering our hello: the conversation goes over its connection.
-                this.onLoop(() -> this.messaging.incoming(
+                onLoop(() -> this.messaging.incoming(
                         new InetSocketAddress(InetAddress.getLoopbackAddress(), 50_001),
                         hello(PAL, peer.getLocalPort()),
                         true,
@@ -161,11 +161,11 @@ class MessagingTest {
             }
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (System.nanoTime() < deadline) {
-                assertThat(this.onLoop(this.messaging::conversations)).isEqualTo(1);
+                assertThat(onLoop(this.messaging::conversations)).isEqualTo(1);
                 Thread.sleep(50);
             }
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.messaging.send(to, "second");
                 return null;
             });
@@ -177,7 +177,7 @@ class MessagingTest {
     }
 
     private void incoming(Hello peer, String text, BooleanSupplier open, Consumer<Packet> reply) throws Exception {
-        this.onLoop(() -> this.messaging.incoming(FROM, peer, true, reply, open, ChatMessages.message(text, true)));
+        onLoop(() -> this.messaging.incoming(FROM, peer, true, reply, open, ChatMessages.message(text, true)));
     }
 
     private <T> T onLoop(Callable<T> task) throws Exception {

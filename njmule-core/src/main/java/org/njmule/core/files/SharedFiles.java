@@ -166,7 +166,7 @@ public final class SharedFiles implements AutoCloseable {
     private final Map<Hash20, Optional<AichTree>> built = new LinkedHashMap<>(16, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Hash20, Optional<AichTree>> eldest) {
-            return this.size() > MAX_BUILT_TREES;
+            return size() > MAX_BUILT_TREES;
         }
     };
     private final Map<Hash16, SharedFile> byHash = new LinkedHashMap<>();
@@ -241,7 +241,7 @@ public final class SharedFiles implements AutoCloseable {
     public void rememberDownloaded(boolean remember) {
         if (this.rememberDownloaded != remember) {
             this.rememberDownloaded = remember;
-            this.saveSoon();
+            saveSoon();
         }
     }
 
@@ -314,9 +314,9 @@ public final class SharedFiles implements AutoCloseable {
                 target, name, file.size(), file.hash(), file.partHashes(), file.aichHash(), mtime(target));
         KnownMet.KnownFile known = this.known.remove(key(file));
         this.known.put(key(renamed), known == null ? record(renamed) : renamed(known, renamed));
-        this.unshare(file);
-        this.share(renamed, Optional.empty());
-        this.saveSoon();
+        unshare(file);
+        share(renamed, Optional.empty());
+        saveSoon();
         return Optional.of(renamed);
     }
 
@@ -337,7 +337,7 @@ public final class SharedFiles implements AutoCloseable {
         }
         tags.add(new Tag.IntTag(name, priorityCode(priority)));
         this.known.put(key, new KnownMet.KnownFile(record.mtime(), record.fileHash(), record.partHashes(), tags));
-        this.saveSoon();
+        saveSoon();
         return true;
     }
 
@@ -347,12 +347,12 @@ public final class SharedFiles implements AutoCloseable {
 
     /** The directories shared alone, besides the incoming one. */
     public List<Path> directories() {
-        return this.readDirectories(SHARED_DIRS);
+        return readDirectories(SHARED_DIRS);
     }
 
     /** The directories shared with their subdirectories. */
     public List<Path> trees() {
-        return this.readDirectories(SHARED_TREES);
+        return readDirectories(SHARED_TREES);
     }
 
     private List<Path> readDirectories(String name) {
@@ -381,7 +381,7 @@ public final class SharedFiles implements AutoCloseable {
      * @throws IllegalArgumentException for a private directory (see {@link #isPrivate})
      */
     public void addDirectory(Path directory) throws IOException {
-        this.addDirectory(directory, false);
+        addDirectory(directory, false);
     }
 
     /**
@@ -391,24 +391,24 @@ public final class SharedFiles implements AutoCloseable {
      */
     public void addDirectory(Path directory, boolean subdirectories) throws IOException {
         Path dir = directory.toAbsolutePath().normalize();
-        if (this.isPrivate(dir)) {
+        if (isPrivate(dir)) {
             throw new IllegalArgumentException("refusing to share the private directory " + dir);
         }
-        this.change(SHARED_DIRS, dir, !subdirectories);
-        this.change(SHARED_TREES, dir, subdirectories);
-        this.scan();
+        change(SHARED_DIRS, dir, !subdirectories);
+        change(SHARED_TREES, dir, subdirectories);
+        scan();
     }
 
     /** Stops sharing {@code directory}, as shared alone or with its subdirectories. */
     public void removeDirectory(Path directory) throws IOException {
         Path dir = directory.toAbsolutePath().normalize();
-        this.change(SHARED_DIRS, dir, false);
-        this.change(SHARED_TREES, dir, false);
-        this.scan();
+        change(SHARED_DIRS, dir, false);
+        change(SHARED_TREES, dir, false);
+        scan();
     }
 
     private void change(String name, Path dir, boolean listed) throws IOException {
-        List<Path> dirs = new ArrayList<>(this.readDirectories(name));
+        List<Path> dirs = new ArrayList<>(readDirectories(name));
         boolean changed = listed ? !dirs.contains(dir) && dirs.add(dir) : dirs.remove(dir);
         if (changed) {
             List<String> lines = new ArrayList<>();
@@ -441,8 +441,8 @@ public final class SharedFiles implements AutoCloseable {
             }
         }
         if (added > 0) {
-            this.saveSoon();
-            this.scan();
+            saveSoon();
+            scan();
         }
         return added;
     }
@@ -455,7 +455,7 @@ public final class SharedFiles implements AutoCloseable {
         long mtime;
         try {
             mtime = mtime(file);
-            this.share(
+            share(
                     new SharedFile(
                             file,
                             String.valueOf(file.getFileName()),
@@ -469,15 +469,14 @@ public final class SharedFiles implements AutoCloseable {
             logger.warn("Cannot share {}", file, e);
             return;
         }
-        this.hashFinished(file, mtime, download);
+        hashFinished(file, mtime, download);
     }
 
     // The download checked the parts, not the AICH blocks: hashing the file once more gives its tree, and with it the
     // recovery data other clients may ask for.
     private void hashFinished(Path file, long mtime, PartFile download) {
         if (this.hashing.add(file)) {
-            this.loop.whenDone(
-                    this.hash(file), (result, failure) -> this.treeOfFinished(file, mtime, download, result, failure));
+            this.loop.whenDone(hash(file), (result, failure) -> treeOfFinished(file, mtime, download, result, failure));
         } else {
             this.finishing.put(file, download);
         }
@@ -489,7 +488,7 @@ public final class SharedFiles implements AutoCloseable {
             this.hashing.remove(file);
             SharedFile current = this.byHash.get(download.hash());
             if (current != null && !current.path().equals(file)) {
-                this.hashFinished(current.path(), current.mtime(), download);
+                hashFinished(current.path(), current.mtime(), download);
             }
             return;
         }
@@ -503,7 +502,7 @@ public final class SharedFiles implements AutoCloseable {
                 && !result.aich().map(AichTree::masterHash).equals(download.aichHash())) {
             logger.warn("The AICH hash of the link of {} was wrong; the file's own is kept", download.name());
         }
-        this.hashed(file, mtime, result, failure);
+        hashed(file, mtime, result, failure);
     }
 
     /** Looks at the directories again: new files are hashed, missing ones unshared. */
@@ -515,26 +514,26 @@ public final class SharedFiles implements AutoCloseable {
         for (Path incoming : this.incomingDirs.get()) {
             dirs.add(incoming.toAbsolutePath().normalize());
         }
-        for (Path dir : this.directories()) {
+        for (Path dir : directories()) {
             dirs.add(dir.toAbsolutePath().normalize());
         }
-        for (Path tree : this.trees()) {
-            this.walk(tree.toAbsolutePath().normalize(), dirs);
+        for (Path tree : trees()) {
+            walk(tree.toAbsolutePath().normalize(), dirs);
         }
-        this.watch(dirs);
+        watch(dirs);
         Set<Path> seen = new LinkedHashSet<>();
         for (Path dir : dirs) {
             if (!Files.isDirectory(dir)) {
                 continue;
             }
-            if (this.isPrivate(dir)) {
+            if (isPrivate(dir)) {
                 logger.warn("Not sharing the private directory {}", dir);
                 continue;
             }
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
                 for (Path file : files) {
                     try {
-                        this.consider(file, seen);
+                        consider(file, seen);
                     } catch (IOException e) {
                         // A file gone or locked meanwhile leaves the others alone; a locked one stays shared.
                         if (!(e instanceof NoSuchFileException) && this.byPath.containsKey(file)) {
@@ -549,7 +548,7 @@ public final class SharedFiles implements AutoCloseable {
         }
         for (SharedFile file : List.copyOf(this.byPath.values())) {
             if (!seen.contains(file.path())) {
-                this.unshare(file);
+                unshare(file);
             }
         }
         this.scanned = true;
@@ -673,7 +672,7 @@ public final class SharedFiles implements AutoCloseable {
             }
         }
         this.hasher.shutdownNow();
-        this.save();
+        save();
     }
 
     private void consider(Path file, Set<Path> seen) throws IOException {
@@ -692,9 +691,9 @@ public final class SharedFiles implements AutoCloseable {
         if (shared != null && shared.size() == attrs.size() && shared.mtime() == mtime) {
             return;
         }
-        KnownMet.KnownFile record = this.knownRecord(name, attrs.size(), mtime);
+        KnownMet.KnownFile record = knownRecord(name, attrs.size(), mtime);
         if (record != null && record.isConsistent()) {
-            this.share(
+            share(
                     new SharedFile(
                             file, name, attrs.size(), record.fileHash(), record.partHashes(), record.aichHash(), mtime),
                     Optional.empty());
@@ -704,7 +703,7 @@ public final class SharedFiles implements AutoCloseable {
             }
         }
         if (this.hashing.add(file)) {
-            this.loop.whenDone(this.hash(file), (result, failure) -> this.hashed(file, mtime, result, failure));
+            this.loop.whenDone(hash(file), (result, failure) -> hashed(file, mtime, result, failure));
         }
     }
 
@@ -752,12 +751,12 @@ public final class SharedFiles implements AutoCloseable {
             for (long slack = -DATE_SLACK; slack <= DATE_SLACK; slack++) {
                 Key near = new Key(name, size, mtime + hour + slack);
                 KnownMet.KnownFile record = near.equals(key) ? null : this.known.get(near);
-                if (record != null && record.isConsistent() && !this.isInUse(near, record)) {
+                if (record != null && record.isConsistent() && !isInUse(near, record)) {
                     this.known.remove(near);
                     KnownMet.KnownFile moved =
                             new KnownMet.KnownFile(mtime, record.fileHash(), record.partHashes(), record.tags());
                     this.known.put(key, moved);
-                    this.saveSoon();
+                    saveSoon();
                     return moved;
                 }
             }
@@ -781,7 +780,7 @@ public final class SharedFiles implements AutoCloseable {
             // What the scan read may not be the whole download, nor still under this name: the file is read once more.
             SharedFile current = this.byHash.get(finished.hash());
             if (current != null) {
-                this.hashFinished(current.path(), current.mtime(), finished);
+                hashFinished(current.path(), current.mtime(), finished);
             }
             return;
         }
@@ -795,14 +794,14 @@ public final class SharedFiles implements AutoCloseable {
                 && (now.size() != result.ed2k().size() || now.lastModifiedTime().toMillis() / 1000 != mtime)) {
             // Written to while it was read: the hashes may be of neither content. A scan hashes it again once it rests.
             logger.debug("{} changed while it was hashed", file);
-            this.changed();
+            changed();
             return;
         }
         if (now == null) {
             // Renamed or gone while hashed: the copy shared now, if any, gets the AICH tree.
             SharedFile current = this.byHash.get(result.ed2k().fileHash());
             if (current != null && current.size() == result.ed2k().size()) {
-                this.share(
+                share(
                         new SharedFile(
                                 current.path(),
                                 current.name(),
@@ -815,7 +814,7 @@ public final class SharedFiles implements AutoCloseable {
             }
             return;
         }
-        this.share(
+        share(
                 new SharedFile(
                         file,
                         String.valueOf(file.getFileName()),
@@ -830,26 +829,26 @@ public final class SharedFiles implements AutoCloseable {
     private void share(SharedFile file, Optional<Known2Met.Entry> tree) {
         SharedFile old = this.byPath.put(file.path(), file);
         if (old != null && !old.hash().equals(file.hash())) {
-            this.forget(old);
+            forget(old);
         }
         boolean fresh = !this.byHash.containsKey(file.hash());
         this.byHash.put(file.hash(), file);
         Key key = new Key(file.name(), file.size(), file.mtime());
         KnownMet.KnownFile known = this.known.get(key);
         if (known == null) {
-            KnownMet.KnownFile older = this.takeOlderDate(file);
+            KnownMet.KnownFile older = takeOlderDate(file);
             this.known.put(key, older == null ? record(file) : redated(older, file));
-            this.saveSoon();
+            saveSoon();
         } else if (file.aichHash().isPresent() && !known.aichHash().equals(file.aichHash())) {
             // A finished download comes back with its AICH hash once hashed again; its other tags stay.
             this.known.put(key, withAich(known, file.aichHash().get()));
-            this.saveSoon();
+            saveSoon();
         }
         tree.ifPresent(t -> {
             this.aich.put(t.masterHash(), t);
             this.built.remove(t.masterHash());
             this.treesChanged = true;
-            this.saveSoon();
+            saveSoon();
         });
         if (fresh) {
             logger.debug("Sharing {}", file.path());
@@ -878,7 +877,7 @@ public final class SharedFiles implements AutoCloseable {
 
     private void unshare(SharedFile file) {
         this.byPath.remove(file.path());
-        this.forget(file);
+        forget(file);
     }
 
     // A path that went or changed: its content stays shared from another copy, if there is one.

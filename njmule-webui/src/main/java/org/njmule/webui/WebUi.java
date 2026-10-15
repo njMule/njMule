@@ -254,21 +254,21 @@ public final class WebUi implements AutoCloseable {
 
     private void handle(Exchange exchange) throws IOException {
         try {
-            this.route(exchange);
+            route(exchange);
         } catch (EngineFailure e) {
-            this.fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
+            fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
         } catch (IllegalArgumentException e) {
-            this.fail(exchange, 400, "Bad request.");
+            fail(exchange, 400, "Bad request.");
         } catch (RuntimeException e) {
             logger.warn("Web interface request failed", e);
-            this.fail(exchange, 500, "The request failed.");
+            fail(exchange, 500, "The request failed.");
         }
     }
 
     // An error answer, unless another one has started.
     private void fail(Exchange exchange, int status, String message) throws IOException {
         if (!exchange.started()) {
-            this.send(exchange, status, TEXT, message);
+            send(exchange, status, TEXT, message);
         }
     }
 
@@ -277,38 +277,38 @@ public final class WebUi implements AutoCloseable {
         // A HEAD gets the headers of the GET; send() leaves the body out.
         String method = exchange.isHead() ? GET : exchange.method();
         if (!trustedHost(exchange.header("Host"), this.settings.lan())) {
-            this.send(exchange, 421, TEXT, "Unknown host name.");
+            send(exchange, 421, TEXT, "Unknown host name.");
             return;
         }
         if (method.equals(POST) && !sameOrigin(exchange)) {
-            this.send(exchange, 403, TEXT, "Cross-site request refused.");
+            send(exchange, 403, TEXT, "Cross-site request refused.");
             return;
         }
         if (path.startsWith("/api/")) {
-            this.send(exchange, 404, TEXT, "The remote-control API is off.");
+            send(exchange, 404, TEXT, "The remote-control API is off.");
             return;
         }
         if (path.equals("/style.css") && method.equals(GET)) {
-            this.send(exchange, 200, "text/css; charset=utf-8", Html.STYLE);
+            send(exchange, 200, "text/css; charset=utf-8", Html.STYLE);
             return;
         }
         if (path.equals("/login")) {
-            this.login(exchange, method);
+            login(exchange, method);
             return;
         }
-        Optional<Sessions.Session> session = this.session(exchange);
+        Optional<Sessions.Session> session = session(exchange);
         if (session.isEmpty()) {
             if (method.equals(GET)) {
-                this.redirect(exchange, "/login");
+                redirect(exchange, "/login");
             } else {
-                this.send(exchange, 403, TEXT, "Log in first.");
+                send(exchange, 403, TEXT, "Log in first.");
             }
             return;
         }
         switch (method) {
-            case POST -> this.post(exchange, path, session.get());
-            case GET -> this.get(exchange, path, session.get());
-            default -> this.send(exchange, 405, TEXT, "Method not allowed.");
+            case POST -> post(exchange, path, session.get());
+            case GET -> get(exchange, path, session.get());
+            default -> send(exchange, 405, TEXT, "Method not allowed.");
         }
     }
 
@@ -351,16 +351,16 @@ public final class WebUi implements AutoCloseable {
 
     private void login(Exchange exchange, String method) throws IOException {
         if (method.equals(GET)) {
-            this.send(exchange, 200, HTML, loginPage(""));
+            send(exchange, 200, HTML, loginPage(""));
             return;
         }
         if (!method.equals(POST)) {
-            this.send(exchange, 405, TEXT, "Method not allowed.");
+            send(exchange, 405, TEXT, "Method not allowed.");
             return;
         }
         String address = Sessions.clientKey(exchange.remoteAddress());
         if (!this.sessions.mayTry(address)) {
-            this.send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
+            send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;
         }
         char[] password = form(exchange, MAX_LOGIN_BODY)
@@ -369,7 +369,7 @@ public final class WebUi implements AutoCloseable {
                 .toCharArray();
         if (!this.checking.tryAcquire()) {
             Passwords.wipe(password);
-            this.send(exchange, 429, HTML, loginPage("Busy: try again in a moment."));
+            send(exchange, 429, HTML, loginPage("Busy: try again in a moment."));
             return;
         }
         boolean right;
@@ -381,13 +381,13 @@ public final class WebUi implements AutoCloseable {
         }
         if (!right) {
             logger.warn("Wrong web interface password from {}", address);
-            this.send(exchange, 401, HTML, loginPage("Wrong password."));
+            send(exchange, 401, HTML, loginPage("Wrong password."));
             return;
         }
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
         exchange.addHeader("Set-Cookie", this.cookie + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
-        this.redirect(exchange, "/");
+        redirect(exchange, "/");
     }
 
     private static String loginPage(String error) {
@@ -403,31 +403,31 @@ public final class WebUi implements AutoCloseable {
 
     private void get(Exchange exchange, String path, Sessions.Session session) throws IOException {
         String page = switch (path) {
-            case "/" -> this.statusPage(session);
-            case TRANSFERS -> this.transfersPage(session);
-            case SEARCH -> this.searchPage(session, query(exchange).get("id"));
-            case SERVERS -> this.serversPage(session);
-            case SHARED -> this.sharedPage(session);
-            case KAD -> this.kadPage(session);
-            case LOG -> this.logPage(session);
+            case "/" -> statusPage(session);
+            case TRANSFERS -> transfersPage(session);
+            case SEARCH -> searchPage(session, query(exchange).get("id"));
+            case SERVERS -> serversPage(session);
+            case SHARED -> sharedPage(session);
+            case KAD -> kadPage(session);
+            case LOG -> logPage(session);
             default -> null;
         };
         if (page == null) {
-            this.send(exchange, 404, TEXT, "Not found.");
+            send(exchange, 404, TEXT, "Not found.");
         } else {
-            this.send(exchange, 200, HTML, page);
+            send(exchange, 200, HTML, page);
         }
     }
 
     private void post(Exchange exchange, String path, Sessions.Session session) throws IOException {
         Optional<Map<String, String>> posted = form(exchange, MAX_BODY);
         if (posted.isEmpty()) {
-            this.send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
+            send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
             return;
         }
         Map<String, String> form = posted.get();
         if (!Sessions.validForm(session, form.get("csrf"))) {
-            this.send(exchange, 403, TEXT, "Expired form: reload the page.");
+            send(exchange, 403, TEXT, "Expired form: reload the page.");
             return;
         }
         String next;
@@ -440,32 +440,32 @@ public final class WebUi implements AutoCloseable {
                     yield "/login";
                 }
                 case TRANSFERS -> {
-                    this.transfer(form);
+                    transfer(form);
                     yield TRANSFERS;
                 }
-                case SEARCH -> this.search(form);
+                case SEARCH -> search(form);
                 case SERVERS -> {
-                    this.server(form);
+                    server(form);
                     yield SERVERS;
                 }
                 case SHARED -> {
-                    this.shared(form);
+                    shared(form);
                     yield SHARED;
                 }
                 case KAD -> {
-                    this.kad(form);
+                    kad(form);
                     yield KAD;
                 }
                 default -> null;
             };
         } catch (IllegalArgumentException | EngineFailure e) {
-            this.send(exchange, 400, HTML, notDone(session, path, String.valueOf(e.getMessage())));
+            send(exchange, 400, HTML, notDone(session, path, String.valueOf(e.getMessage())));
             return;
         }
         if (next == null) {
-            this.send(exchange, 404, TEXT, "Not found.");
+            send(exchange, 404, TEXT, "Not found.");
         } else {
-            this.redirect(exchange, next);
+            redirect(exchange, next);
         }
     }
 
@@ -486,7 +486,7 @@ public final class WebUi implements AutoCloseable {
                 if (!(Ed2kLink.tryParse(one).orElse(null) instanceof Ed2kLink.FileLink link)) {
                     throw new IllegalArgumentException("Not an eD2K file link: " + one);
                 }
-                this.await(this.engine.addDownload(link));
+                await(this.engine.addDownload(link));
             }
             return;
         }
@@ -503,7 +503,7 @@ public final class WebUi implements AutoCloseable {
             case "cancel" -> this.engine.cancelDownload(hash);
             default -> throw new IllegalArgumentException("Unknown action.");
         };
-        if (!this.await(done)) {
+        if (!await(done)) {
             throw new IllegalArgumentException("That download is gone: reload the page.");
         }
     }
@@ -515,7 +515,7 @@ public final class WebUi implements AutoCloseable {
             SearchResult result = this.searches
                     .result(id, hash)
                     .orElseThrow(() -> new IllegalArgumentException("That result is gone: search again."));
-            this.await(this.engine.addDownload(result.link()));
+            await(this.engine.addDownload(result.link()));
             return TRANSFERS;
         }
         String expression = form.getOrDefault("query", "").strip();
@@ -524,7 +524,7 @@ public final class WebUi implements AutoCloseable {
         }
         SearchRequest.checkExpression(expression);
         SearchRequest.Scope scope = SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
-        SearchId id = this.await(this.engine.search(new SearchRequest(expression, scope)));
+        SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
         this.searches.started(id.value());
         return SEARCH + "?id=" + id.value();
     }
@@ -533,10 +533,10 @@ public final class WebUi implements AutoCloseable {
         switch (form.getOrDefault(ACTION, "")) {
             case "connect" -> {
                 String address = form.getOrDefault("address", "").strip();
-                this.await(this.engine.connect(
+                await(this.engine.connect(
                         address.isEmpty() ? Optional.empty() : Optional.of(ServerAddress.parse(address))));
             }
-            case "disconnect" -> this.await(this.engine.disconnect());
+            case "disconnect" -> await(this.engine.disconnect());
             default -> throw new IllegalArgumentException("Unknown action.");
         }
     }
@@ -548,30 +548,30 @@ public final class WebUi implements AutoCloseable {
         Hash16 hash = Hash16.parseHex(form.getOrDefault("hash", ""));
         UploadPriority priority =
                 UploadPriority.valueOf(form.getOrDefault("priority", "").toUpperCase(Locale.ROOT));
-        if (!this.await(this.engine.setUploadPriority(hash, priority))) {
+        if (!await(this.engine.setUploadPriority(hash, priority))) {
             throw new IllegalArgumentException("That file is no longer shared: reload the page.");
         }
     }
 
     private void kad(Map<String, String> form) {
         switch (form.getOrDefault(ACTION, "")) {
-            case "connect" -> this.await(this.engine.connectKad());
-            case "disconnect" -> this.await(this.engine.disconnectKad());
+            case "connect" -> await(this.engine.connectKad());
+            case "disconnect" -> await(this.engine.disconnectKad());
             case "recheck" -> {
-                if (!this.await(this.engine.recheckKadFirewall())) {
+                if (!await(this.engine.recheckKadFirewall())) {
                     throw new IllegalArgumentException("Kad is not connected.");
                 }
             }
             case "bootstrap" ->
-                this.await(this.engine.kadBootstrap(
+                await(this.engine.kadBootstrap(
                         ServerAddress.parse(form.getOrDefault("address", "").strip())));
             default -> throw new IllegalArgumentException("Unknown action.");
         }
     }
 
     private String sharedPage(Sessions.Session session) {
-        List<SharedFileInfo> files = this.await(this.engine.sharedFiles());
-        List<SharedDirectory> directories = this.await(this.engine.sharedDirectories());
+        List<SharedFileInfo> files = await(this.engine.sharedFiles());
+        List<SharedDirectory> directories = await(this.engine.sharedDirectories());
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(1024 + files.size() * 384);
         body.append("<p>");
@@ -612,7 +612,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private String kadPage(Sessions.Session session) {
-        Optional<KadInfo> kad = this.await(this.engine.kad());
+        Optional<KadInfo> kad = await(this.engine.kad());
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(2048);
         if (kad.isEmpty()) {
@@ -687,7 +687,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private String statusPage(Sessions.Session session) {
-        EngineStatus s = this.await(this.engine.status());
+        EngineStatus s = await(this.engine.status());
         String ed2k = s.server()
                 .map(i -> Html.text(i.name()) + (s.lowId() ? " (LowID)" : " (HighID)"))
                 .orElse("not connected");
@@ -709,7 +709,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private String transfersPage(Sessions.Session session) {
-        List<DownloadInfo> downloads = this.await(this.engine.downloads());
+        List<DownloadInfo> downloads = await(this.engine.downloads());
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(1024 + downloads.size() * 512);
         body.append("<p>")
@@ -732,7 +732,7 @@ public final class WebUi implements AutoCloseable {
         body.append("<table><tr><th>File</th><th>Size</th><th>Done</th><th>Speed</th>")
                 .append("<th>Sources</th><th>Status</th><th>Priority</th><th>Category</th><th></th></tr>");
         Map<Integer, String> categories = new HashMap<>();
-        this.await(this.engine.categories()).forEach(c -> categories.put(c.id(), c.name()));
+        await(this.engine.categories()).forEach(c -> categories.put(c.id(), c.name()));
         for (DownloadInfo d : downloads) {
             int percent = d.size() <= 0 ? 0 : (int) (d.completed() * 100 / d.size());
             String hash = Html.hidden("hash", d.hash().toHex());
@@ -851,7 +851,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private String serversPage(Sessions.Session session) {
-        List<ServerInfo> servers = this.await(this.engine.servers());
+        List<ServerInfo> servers = await(this.engine.servers());
         String csrf = session.csrf();
         StringBuilder body = new StringBuilder(1024 + servers.size() * 256);
         body.append("<p>")

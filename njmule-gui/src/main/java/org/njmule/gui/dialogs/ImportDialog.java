@@ -83,11 +83,11 @@ public final class ImportDialog {
         this.directoryInput = new Inputs(gui)
                 .existingFolder(this.directory, gui.t("nj.import.directory"))
                 .quietWhenEmpty();
-        this.check = Fx.button(gui.t("nj.import.check"), Material2MZ.SEARCH, () -> this.run(true));
+        this.check = Fx.button(gui.t("nj.import.check"), Material2MZ.SEARCH, () -> run(true));
         this.check
                 .disableProperty()
                 .bind(this.directoryInput.validProperty().not().or(this.working));
-        this.take = Fx.button(gui.t("nj.import.run"), Material2AL.INPUT, () -> this.run(false));
+        this.take = Fx.button(gui.t("nj.import.run"), Material2AL.INPUT, () -> run(false));
         this.take.setDisable(true);
 
         TableColumn<ImportReport.Item, String> file = new TableColumn<>(gui.t("IDS_DL_FILENAME"));
@@ -95,7 +95,7 @@ public final class ImportDialog {
         file.setPrefWidth(170);
         TableColumn<ImportReport.Item, String> outcome = new TableColumn<>(gui.t("nj.import.outcome"));
         outcome.setCellValueFactory(
-                c -> new ReadOnlyStringWrapper(this.outcome(c.getValue().outcome())));
+                c -> new ReadOnlyStringWrapper(outcome(c.getValue().outcome())));
         outcome.setPrefWidth(130);
         TableColumn<ImportReport.Item, String> detail = new TableColumn<>(gui.t("nj.import.detail"));
         detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().detail()));
@@ -201,7 +201,7 @@ public final class ImportDialog {
                             this.working.set(false);
                             this.take.setDisable(!dryRun);
                             if (!dryRun && result.startAtLogin()) {
-                                this.startAtLogin();
+                                startAtLogin();
                             }
                         },
                         error -> {

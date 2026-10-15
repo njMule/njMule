@@ -86,38 +86,38 @@ class KadNodeIdChangeTest {
 
     @Test
     void shouldBanANodeThatProvesAnotherIdWithinAnHour() {
-        this.givenThePeerProvesTheId(new UInt128(1, 1));
+        givenThePeerProvesTheId(new UInt128(1, 1));
 
-        this.whenTimePasses(Duration.ofMinutes(30));
-        this.whenThePeerProvesTheId(new UInt128(2, 2));
+        whenTimePasses(Duration.ofMinutes(30));
+        whenThePeerProvesTheId(new UInt128(2, 2));
 
-        this.thenThePeerIsIgnored(true);
-        this.thenTheNodeHasContacts(0);
+        thenThePeerIsIgnored(true);
+        thenTheNodeHasContacts(0);
     }
 
     @Test
     void shouldLetANodeChangeItsIdAfterAnHour() {
-        this.givenThePeerProvesTheId(new UInt128(1, 1));
+        givenThePeerProvesTheId(new UInt128(1, 1));
 
-        this.whenTimePasses(Duration.ofMinutes(61));
-        this.whenThePeerProvesTheId(new UInt128(2, 2));
+        whenTimePasses(Duration.ofMinutes(61));
+        whenThePeerProvesTheId(new UInt128(2, 2));
 
-        this.thenThePeerIsIgnored(false);
+        thenThePeerIsIgnored(false);
     }
 
     @Test
     void shouldIgnoreASearchAnswerUnderAnotherIdThanTheOneProvenThere() {
-        this.givenThePeerProvesTheId(Keywords.id(WORD));
-        this.givenAKeywordSearchThatAskedThePeer();
+        givenThePeerProvesTheId(Keywords.id(WORD));
+        givenAKeywordSearchThatAskedThePeer();
 
-        this.whenThePeerAnswersUnderTheId(new UInt128(3, 3), "ubuntu forged.iso");
-        this.whenThePeerAnswersUnderTheId(Keywords.id(WORD), "ubuntu real.iso");
+        whenThePeerAnswersUnderTheId(new UInt128(3, 3), "ubuntu forged.iso");
+        whenThePeerAnswersUnderTheId(Keywords.id(WORD), "ubuntu real.iso");
 
-        this.thenTheFilesFoundAre("ubuntu real.iso");
+        thenTheFilesFoundAre("ubuntu real.iso");
     }
 
     private void givenThePeerProvesTheId(UInt128 id) {
-        this.whenThePeerProvesTheId(id);
+        whenThePeerProvesTheId(id);
     }
 
     private void givenAKeywordSearchThatAskedThePeer() {

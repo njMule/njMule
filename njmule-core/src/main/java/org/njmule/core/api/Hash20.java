@@ -90,6 +90,6 @@ public final class Hash20 implements Comparable<Hash20> {
 
     @Override
     public String toString() {
-        return this.toBase32();
+        return toBase32();
     }
 }

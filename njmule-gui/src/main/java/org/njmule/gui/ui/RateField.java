@@ -107,7 +107,7 @@ public final class RateField<T> {
                 c -> Character.isDigit(c) || c == '.' || c == ',',
                 MAX_TEXT,
                 parser.apply(this));
-        this.unit.valueProperty().addListener((o, was, now) -> this.unitChanged(was, now));
+        this.unit.valueProperty().addListener((o, was, now) -> unitChanged(was, now));
         this.none.ifPresent(n -> {
             this.text.disableProperty().bind(n.selectedProperty());
             this.unit.disableProperty().bind(n.selectedProperty());
@@ -117,13 +117,13 @@ public final class RateField<T> {
         if (units.size() > 1) {
             this.box.getChildren().addAll(this.text, this.unit);
         } else {
-            this.box.getChildren().addAll(this.text, new Label(this.unitName(units.getFirst())));
+            this.box.getChildren().addAll(this.text, new Label(unitName(units.getFirst())));
         }
         this.none.ifPresent(this.box.getChildren()::add);
         if (units.contains(Unit.MBIT)) {
             // A line is sold in bits; what njMule shows is bytes: the same speed in both.
             this.about.getStyleClass().add("rate-about");
-            this.text.textProperty().addListener((o, was, now) -> this.showAbout());
+            this.text.textProperty().addListener((o, was, now) -> showAbout());
             this.box.getChildren().add(this.about);
         }
     }
@@ -158,7 +158,7 @@ public final class RateField<T> {
 
     /** Shows {@code kib}: no limit for 0 where there can be none, else in the unit that suits it. */
     public void show(int kib) {
-        this.showOptional(OptionalInt.of(kib));
+        showOptional(OptionalInt.of(kib));
     }
 
     /** Shows {@code kib}, or an empty field for nothing. */
@@ -166,14 +166,14 @@ public final class RateField<T> {
         boolean unlimited = kib.isPresent() && kib.getAsInt() == 0 && this.none.isPresent();
         this.none.ifPresent(n -> n.setSelected(unlimited));
         if (kib.isEmpty() || unlimited) {
-            this.shown("", this.unit.getValue(), 0);
+            shown("", this.unit.getValue(), 0);
             return;
         }
         int value = kib.getAsInt();
         Unit suited = this.unit.getItems().contains(Unit.MBIT)
                 ? Unit.MBIT
                 : value >= 1024 && this.unit.getItems().contains(Unit.MB) ? Unit.MB : Unit.KB;
-        this.shown(this.text(value, suited), suited, value);
+        shown(text(value, suited), suited, value);
     }
 
     private void shown(String text, Unit unit, int kib) {
@@ -197,13 +197,13 @@ public final class RateField<T> {
         }
         OptionalInt kib;
         try {
-            kib = this.kib(this.text.getText().strip(), was);
+            kib = kib(this.text.getText().strip(), was);
         } catch (IllegalArgumentException e) {
             this.input.check();
             return;
         }
         if (kib.isPresent()) {
-            this.text.setText(this.text(kib.getAsInt(), now));
+            this.text.setText(text(kib.getAsInt(), now));
         }
         this.input.check();
     }
@@ -213,11 +213,11 @@ public final class RateField<T> {
     }
 
     private int required(String typed) {
-        return this.kib(typed).orElseThrow(() -> new IllegalArgumentException("empty"));
+        return kib(typed).orElseThrow(() -> new IllegalArgumentException("empty"));
     }
 
     private OptionalInt kib(String typed) {
-        return this.kib(typed, this.unit.getValue());
+        return kib(typed, this.unit.getValue());
     }
 
     // The KiB/s of a typed number in unit, empty for nothing typed.
@@ -251,7 +251,7 @@ public final class RateField<T> {
 
     private void showAbout() {
         try {
-            OptionalInt kib = this.kib(this.text.getText().strip());
+            OptionalInt kib = kib(this.text.getText().strip());
             this.about.setText(kib.isPresent() ? "≈ " + this.gui.formats().rate(kib.getAsInt() * 1024L) : "");
         } catch (IllegalArgumentException e) {
             this.about.setText("");

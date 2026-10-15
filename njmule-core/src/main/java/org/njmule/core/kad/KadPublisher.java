@@ -62,7 +62,7 @@ public final class KadPublisher {
 
         /** Whether other clients can reach us: directly, through a buddy or by a direct callback. */
         default boolean isReachable() {
-            return !this.isFirewalled();
+            return !isFirewalled();
         }
 
         /** The address of the buddy that relays callbacks to us, 0 without one. */
@@ -155,15 +155,15 @@ public final class KadPublisher {
         List<Shared> files = this.shared.get();
         if (now - this.nextKeyword >= 0 && this.node.runningKeywordPublishes() < MAX_KEYWORD_PUBLISHES) {
             this.nextKeyword = now + START_EVERY.toNanos();
-            this.publishOneKeyword(files, now);
+            publishOneKeyword(files, now);
         }
         if (now - this.nextSource >= 0 && this.node.runningSourcePublishes() < MAX_SOURCE_PUBLISHES) {
             this.nextSource = now + START_EVERY.toNanos();
-            this.publishOneSource(files, now);
+            publishOneSource(files, now);
         }
         if (now - this.nextNote >= 0 && this.node.runningNotePublishes() < MAX_NOTE_PUBLISHES) {
             this.nextNote = now + START_EVERY.toNanos();
-            this.publishOneNote(files, now);
+            publishOneNote(files, now);
         }
     }
 
@@ -218,7 +218,7 @@ public final class KadPublisher {
         Shared due = null;
         FileComment dueComment = null;
         for (Shared file : inTurn(files, this.lastNote)) {
-            Optional<FileComment> comment = this.comment(file.hash());
+            Optional<FileComment> comment = comment(file.hash());
             if (comment.isEmpty()) {
                 continue;
             }
@@ -238,7 +238,7 @@ public final class KadPublisher {
         }
         Hash16 hash = due.hash();
         this.lastNote = hash;
-        if (this.node.publishNote(hash, due.name(), due.size(), () -> this.comment(hash))) {
+        if (this.node.publishNote(hash, due.name(), due.size(), () -> comment(hash))) {
             this.noteDone.put(hash, new PublishedNote(dueComment, now));
         }
     }

@@ -51,7 +51,7 @@ public final class Rc4 {
 
     /** XORs the key stream into {@code data} in place. */
     public void apply(byte[] data, int offset, int length) {
-        this.apply(data, offset, data, offset, length);
+        apply(data, offset, data, offset, length);
     }
 
     public void apply(byte[] in, int inOffset, byte[] out, int outOffset, int length) {
@@ -69,7 +69,7 @@ public final class Rc4 {
         }
         byte[] scratch = new byte[Math.min(length, SKIP_CHUNK)];
         for (int left = length; left > 0; left -= scratch.length) {
-            this.apply(scratch, 0, Math.min(left, scratch.length));
+            apply(scratch, 0, Math.min(left, scratch.length));
         }
     }
 

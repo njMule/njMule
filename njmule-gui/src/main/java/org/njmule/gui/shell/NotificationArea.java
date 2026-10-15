@@ -127,7 +127,7 @@ public final class NotificationArea implements AutoCloseable {
     /** Hides the window into the notification area now, as when it is minimised. */
     public void hideNow() {
         if (!this.hidden && this.supported.getAsBoolean()) {
-            this.hide();
+            hide();
         }
     }
 
@@ -190,7 +190,7 @@ public final class NotificationArea implements AutoCloseable {
     private void showIcon() {
         try {
             if (this.icon == null) {
-                this.icon = this.create();
+                this.icon = create();
             }
             SystemTray.getSystemTray().add(this.icon);
         } catch (AWTException | IOException | RuntimeException e) {

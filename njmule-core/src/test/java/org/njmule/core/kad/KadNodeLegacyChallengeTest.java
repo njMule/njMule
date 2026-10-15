@@ -82,56 +82,56 @@ class KadNodeLegacyChallengeTest {
 
     @Test
     void shouldVerifyANodeWithKeysThatAnswersOurPing() {
-        this.givenAHelloFrom(7);
+        givenAHelloFrom(7);
 
-        this.thenThePeerIsVerified(false);
+        thenThePeerIsVerified(false);
 
-        this.whenThePeerAnswersOurPing();
+        whenThePeerAnswersOurPing();
 
-        this.thenThePeerIsVerified(true);
+        thenThePeerIsVerified(true);
     }
 
     @Test
     void shouldVerifyAnOlderNodeThatAnswersALookupOnlyItWasSent() throws DecodeException {
-        this.givenAHelloFrom(5);
+        givenAHelloFrom(5);
 
-        this.thenTheChallengeIsAPlainLookupAddressedToThePeer();
+        thenTheChallengeIsAPlainLookupAddressedToThePeer();
 
-        this.whenThePeerAnswersTheLookupFor(this.challenge());
+        whenThePeerAnswersTheLookupFor(challenge());
 
-        this.thenThePeerIsVerified(true);
+        thenThePeerIsVerified(true);
     }
 
     @Test
     void shouldNotVerifyAnOlderNodeThatAnswersAnotherLookup() throws DecodeException {
-        this.givenAHelloFrom(5);
+        givenAHelloFrom(5);
 
-        this.whenThePeerAnswersTheLookupFor(this.challenge().xor(new UInt128(0, 1)));
+        whenThePeerAnswersTheLookupFor(challenge().xor(new UInt128(0, 1)));
 
-        this.thenThePeerIsVerified(false);
+        thenThePeerIsVerified(false);
     }
 
     @Test
     void shouldChallengeANodeOnceAtATime() {
-        this.givenAHelloFrom(5);
+        givenAHelloFrom(5);
 
-        this.whenAHelloArrivesFrom(5);
+        whenAHelloArrivesFrom(5);
 
-        this.thenChallengesSent(1);
+        thenChallengesSent(1);
     }
 
     @Test
     void shouldChallengeAnOlderNodeAnsweringOurHello() throws DecodeException {
-        this.givenAContactWeSayHelloTo(5);
+        givenAContactWeSayHelloTo(5);
 
-        this.whenThePeerAnswersOurHello(5);
-        this.whenThePeerAnswersTheLookupFor(this.challenge());
+        whenThePeerAnswersOurHello(5);
+        whenThePeerAnswersTheLookupFor(challenge());
 
-        this.thenThePeerIsVerified(true);
+        thenThePeerIsVerified(true);
     }
 
     private void givenAHelloFrom(int version) {
-        this.whenAHelloArrivesFrom(version);
+        whenAHelloArrivesFrom(version);
     }
 
     private void givenAContactWeSayHelloTo(int version) {
@@ -167,7 +167,7 @@ class KadNodeLegacyChallengeTest {
     }
 
     private void whenThePeerAnswersOurPing() {
-        assertThat(this.sentOf(Opcodes.Kad.PING)).as("our ping").hasSize(1);
+        assertThat(sentOf(Opcodes.Kad.PING)).as("our ping").hasSize(1);
         this.node.received(PEER, PORT, KadMessages.pong(5_000), false, 0, 0);
     }
 
@@ -184,17 +184,17 @@ class KadNodeLegacyChallengeTest {
     }
 
     private void thenTheChallengeIsAPlainLookupAddressedToThePeer() throws DecodeException {
-        Sent challenge = this.sentOf(Opcodes.Kad.REQ).getFirst();
+        Sent challenge = sentOf(Opcodes.Kad.REQ).getFirst();
         assertThat(challenge.receiverId()).isEmpty();
         assertThat(KadMessages.Request.decode(challenge.packet()).receiver()).isEqualTo(this.peerId);
     }
 
     private void thenChallengesSent(int count) {
-        assertThat(this.sentOf(Opcodes.Kad.REQ)).hasSize(count);
+        assertThat(sentOf(Opcodes.Kad.REQ)).hasSize(count);
     }
 
     private UInt128 challenge() throws DecodeException {
-        List<Sent> requests = this.sentOf(Opcodes.Kad.REQ);
+        List<Sent> requests = sentOf(Opcodes.Kad.REQ);
         assertThat(requests).as("our challenge").isNotEmpty();
         return KadMessages.Request.decode(requests.getLast().packet()).target();
     }

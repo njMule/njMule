@@ -74,9 +74,9 @@ class DownloadFlowTest {
     @Test
     void downloadsAFileSentInCompressedBlocks() throws Exception {
         byte[] data = content(2 * PART + 12_345, 1);
-        FakePeer peer = this.peer(data, FakePeer.Config.simple(hash(1)));
+        FakePeer peer = peer(data, FakePeer.Config.simple(hash(1)));
 
-        Path file = this.download(peer);
+        Path file = download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(file.getFileName().toString()).isEqualTo("shared.bin");
@@ -91,8 +91,8 @@ class DownloadFlowTest {
         Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
         Files.write(incoming.resolve("ours.bin"), content(300_000, 9));
         byte[] data = content(PART / 2, 10);
-        FakePeer peer = this.peer(data, FakePeer.Config.simple(hash(10)));
-        NjMuleEngine engine = this.engine();
+        FakePeer peer = peer(data, FakePeer.Config.simple(hash(10)));
+        NjMuleEngine engine = engine();
         peer.alsoAskFor(awaitShared(engine).hash());
         Events events = new Events(engine);
 
@@ -123,10 +123,9 @@ class DownloadFlowTest {
     @Test
     void waitsInTheQueueAndGetsASlotAgainAfterTheSessionEnds() throws Exception {
         byte[] data = content(PART + 500_000, 2);
-        FakePeer peer =
-                this.peer(data, new FakePeer.Config(hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
+        FakePeer peer = peer(data, new FakePeer.Config(hash(2), false, FakePeer.Slot.AFTER_QUEUE, 1_000_000, Set.of()));
 
-        Path file = this.download(peer);
+        Path file = download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(Collections.frequency(peer.received(), "STARTUPLOADREQ")).isEqualTo(1);
@@ -135,9 +134,9 @@ class DownloadFlowTest {
     @Test
     void downloadsACorruptPartAgain() throws Exception {
         byte[] data = content(2 * PART + 1000, 3);
-        FakePeer peer = this.peer(data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
+        FakePeer peer = peer(data, new FakePeer.Config(hash(3), true, FakePeer.Slot.NOW, 0, Set.of(1)));
 
-        Path file = this.download(peer);
+        Path file = download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(peer.bytesSent()).isGreaterThan(data.length);
@@ -146,9 +145,9 @@ class DownloadFlowTest {
     @Test
     void aichRecoveryDataSavesTheGoodBlocksOfACorruptPart() throws Exception {
         byte[] data = content(3 * PART + 1000, 6);
-        FakePeer peer = this.peer(data, new FakePeer.Config(hash(6), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+        FakePeer peer = peer(data, new FakePeer.Config(hash(6), false, FakePeer.Slot.NOW, 0, Set.of(1)));
 
-        Path file = this.download(peer);
+        Path file = download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(peer.received()).contains("AICHREQUEST");
@@ -159,9 +158,9 @@ class DownloadFlowTest {
     @Test
     void getsTheSlotWhenTheSourceCallsBack() throws Exception {
         byte[] data = content(PART / 2, 4);
-        FakePeer peer = this.peer(data, new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
+        FakePeer peer = peer(data, new FakePeer.Config(hash(4), true, FakePeer.Slot.CALL_BACK, 0, Set.of()));
 
-        Path file = this.download(peer);
+        Path file = download(peer);
 
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(peer.received()).containsSubsequence("STARTUPLOADREQ", "HELLOANSWER");
@@ -179,7 +178,7 @@ class DownloadFlowTest {
                 lan, new FakeServer.Config(Ipv4.toEd2k(Ipv4.fromBytes(lan.getAddress())), "hi", List.of()));
         this.resources.add(server);
         server.addSource(peer.link().hash(), new InetSocketAddress(lan, peer.port()));
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
                 .get();
@@ -206,7 +205,7 @@ class DownloadFlowTest {
         this.resources.add(server);
         long lowId = 4242;
         server.addLowIdSource(peer.link().hash(), lowId, peer);
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         engine.connect(Optional.of(new ServerAddress(lan.getHostAddress(), server.port())))
                 .get();
@@ -223,7 +222,7 @@ class DownloadFlowTest {
 
     @Test
     void pausesResumesAndCancelsDownloads() throws Exception {
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         int closed;
         try (ServerSocket probe = new ServerSocket(0)) {
@@ -260,7 +259,7 @@ class DownloadFlowTest {
     }
 
     private Path download(FakePeer peer) throws Exception {
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
         assertThat(added.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);

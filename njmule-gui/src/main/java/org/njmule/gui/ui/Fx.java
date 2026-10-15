@@ -325,7 +325,7 @@ public final class Fx {
             @Override
             protected void updateItem(T item, boolean empty) {
                 super.updateItem(item, empty);
-                this.setText(empty || item == null ? null : text.apply(item));
+                setText(empty || item == null ? null : text.apply(item));
             }
         });
         return column;

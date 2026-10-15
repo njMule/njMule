@@ -89,7 +89,7 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
 
     @Override
     public void onNext(EngineEvent event) {
-        this.handle(event);
+        handle(event);
     }
 
     @Override
@@ -106,7 +106,7 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
     void handle(EngineEvent event) {
         switch (event) {
             case EngineEvent.DownloadCompleted e ->
-                this.run(
+                run(
                         EventCommands.Event.DOWNLOAD_COMPLETED,
                         Map.of(
                                 "NAME",
@@ -118,7 +118,7 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
                                 "SIZE",
                                 Long.toString(e.download().size())));
             case EngineEvent.DownloadFailed e ->
-                this.run(
+                run(
                         EventCommands.Event.DOWNLOAD_FAILED,
                         Map.of(
                                 "NAME",
@@ -130,12 +130,12 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
                                 "MESSAGE",
                                 e.reason()));
             case EngineEvent.MessageReceived e ->
-                this.run(
+                run(
                         EventCommands.Event.CHAT_MESSAGE,
                         Map.of("SENDER", e.nick().orElse(e.address()), "MESSAGE", e.text()));
             case EngineEvent.DiskSpace e
             when !e.enough() ->
-                this.run(
+                run(
                         EventCommands.Event.DISK_SPACE_SHORT,
                         Map.of("FILE", e.directory().toAbsolutePath().toString()));
             default -> {
@@ -152,7 +152,7 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
         List<String> arguments;
         try {
             arguments = EventCommands.arguments(command.commandLine()).stream()
-                    .map(argument -> this.fill(argument, values))
+                    .map(argument -> fill(argument, values))
                     .toList();
         } catch (IllegalArgumentException e) {
             logger.warn("The command for {} cannot run: {}", event.id(), e.getMessage());
@@ -187,7 +187,7 @@ final class EventCommandRunner implements Flow.Subscriber<EngineEvent> {
     private String fill(String argument, Map<String, String> values) {
         return PLACEHOLDER
                 .matcher(argument)
-                .replaceAll(m -> Matcher.quoteReplacement(this.safe(values.getOrDefault(m.group(1), ""))));
+                .replaceAll(m -> Matcher.quoteReplacement(safe(values.getOrDefault(m.group(1), ""))));
     }
 
     // On Windows the arguments travel as one command line, where a quote in a name or a message would split it.

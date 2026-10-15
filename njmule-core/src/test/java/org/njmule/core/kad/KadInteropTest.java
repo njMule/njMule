@@ -58,7 +58,7 @@ class KadInteropTest {
             socket.setSoTimeout(5_000);
             UInt128 own = this.own;
 
-            Optional<Packet> bootstrap = this.ask(socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
+            Optional<Packet> bootstrap = ask(socket, KadMessages.bootstrapRequest(), Opcodes.Kad.BOOTSTRAP_RES);
             assumeTrue(bootstrap.isPresent(), "no eMule Kad answering on UDP port " + PORT);
             KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(bootstrap.get());
             assertThat(answer.sender().version()).isGreaterThanOrEqualTo(8);
@@ -71,18 +71,18 @@ class KadInteropTest {
             KadMessages.Hello hello =
                     new KadMessages.Hello(new KadMessages.Self(own, 4662, KadMessages.VERSION), List.of());
             KadMessages.Hello reply = KadMessages.Hello.decode(
-                    this.ask(socket, hello.encode(false), Opcodes.Kad.HELLO_RES).orElseThrow());
+                    ask(socket, hello.encode(false), Opcodes.Kad.HELLO_RES).orElseThrow());
             assertThat(reply.sender().id()).isEqualTo(emule);
             assertThat(reply.sender().version()).isEqualTo(KadMessages.VERSION);
 
             KadMessages.Request request = new KadMessages.Request(11, own, emule);
             KadMessages.Answer contacts = KadMessages.Answer.decode(
-                    this.ask(socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
+                    ask(socket, request.encode(), Opcodes.Kad.RES).orElseThrow());
             assertThat(contacts.target()).isEqualTo(own);
             assertThat(contacts.contacts()).hasSizeLessThanOrEqualTo(11);
 
             int port = KadMessages.decodePong(
-                    this.ask(socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
+                    ask(socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
             assertThat(port).isEqualTo(socket.getLocalPort());
         }
     }

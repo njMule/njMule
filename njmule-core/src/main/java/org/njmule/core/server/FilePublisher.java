@@ -108,7 +108,7 @@ public final class FilePublisher {
         }
         int flags = id.get().serverFlags();
         boolean large = (flags & ServerMessages.TCP_LARGEFILES) != 0;
-        long room = Math.min(BATCH, this.room());
+        long room = Math.min(BATCH, room());
         List<FileEntry> batch = new ArrayList<>();
         List<Hash16> hashes = new ArrayList<>();
         for (Offer offer : this.files.get()) {
@@ -118,7 +118,7 @@ public final class FilePublisher {
             if (this.offered.contains(offer.hash()) || (offer.size() > Ed2k.OLD_MAX_FILE_SIZE && !large)) {
                 continue;
             }
-            batch.add(this.entry(offer, id.get(), flags));
+            batch.add(entry(offer, id.get(), flags));
             hashes.add(offer.hash());
         }
         if (batch.isEmpty()) {

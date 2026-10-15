@@ -39,20 +39,20 @@ class AnswersTest {
 
     @Test
     void aRiskyAnswerIsMarkedAndKeepingThingsIsTheDefault() throws Exception {
-        this.givenAQuestion();
-        this.whenItIsAnswered("Cancel and delete", "Keep downloading", true);
-        this.thenTheButtonsRead("Cancel and delete", "Keep downloading");
-        this.thenTheDefaultButtonIs("Keep downloading");
-        this.thenTheButtonMarkedAsDangerousIs("Cancel and delete");
+        givenAQuestion();
+        whenItIsAnswered("Cancel and delete", "Keep downloading", true);
+        thenTheButtonsRead("Cancel and delete", "Keep downloading");
+        thenTheDefaultButtonIs("Keep downloading");
+        thenTheButtonMarkedAsDangerousIs("Cancel and delete");
     }
 
     @Test
     void aSafeAnswerIsTheDefaultAndNothingIsMarked() throws Exception {
-        this.givenAQuestion();
-        this.whenItIsAnswered("Share", "Cancel", false);
-        this.thenTheButtonsRead("Share", "Cancel");
-        this.thenTheDefaultButtonIs("Share");
-        this.thenNoButtonIsMarkedAsDangerous();
+        givenAQuestion();
+        whenItIsAnswered("Share", "Cancel", false);
+        thenTheButtonsRead("Share", "Cancel");
+        thenTheDefaultButtonIs("Share");
+        thenNoButtonIsMarkedAsDangerous();
     }
 
     private void givenAQuestion() throws Exception {
@@ -64,14 +64,13 @@ class AnswersTest {
     }
 
     private void thenTheButtonsRead(String... texts) throws Exception {
-        assertThat(FxTesting.onFx(
-                        () -> this.buttons().stream().map(Button::getText).toList()))
+        assertThat(FxTesting.onFx(() -> buttons().stream().map(Button::getText).toList()))
                 .containsExactly(texts);
         assertThat(this.go.getText()).isEqualTo(texts[0]);
     }
 
     private void thenTheDefaultButtonIs(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.buttons().stream()
+        assertThat(FxTesting.onFx(() -> buttons().stream()
                         .filter(Button::isDefaultButton)
                         .map(Button::getText)
                         .toList()))
@@ -79,7 +78,7 @@ class AnswersTest {
     }
 
     private void thenTheButtonMarkedAsDangerousIs(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.buttons().stream()
+        assertThat(FxTesting.onFx(() -> buttons().stream()
                         .filter(b -> b.getStyleClass().contains(Styles.DANGER))
                         .map(Button::getText)
                         .toList()))
@@ -88,7 +87,7 @@ class AnswersTest {
 
     private void thenNoButtonIsMarkedAsDangerous() throws Exception {
         assertThat(FxTesting.onFx(() ->
-                        this.buttons().stream().noneMatch(b -> b.getStyleClass().contains(Styles.DANGER))))
+                        buttons().stream().noneMatch(b -> b.getStyleClass().contains(Styles.DANGER))))
                 .isTrue();
     }
 

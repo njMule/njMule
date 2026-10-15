@@ -97,25 +97,25 @@ class MainTest {
 
     @Test
     void printsVersionLicenseWarrantyNoticeAndHelp() {
-        assertThat(this.run("--version")).isZero();
+        assertThat(run("--version")).isZero();
         assertThat(this.out.toString(UTF_8)).contains(NjMuleInfo.version(), "GPL-3.0-or-later");
 
-        assertThat(this.run("--license")).isZero();
+        assertThat(run("--license")).isZero();
         assertThat(this.out.toString(UTF_8)).contains("GNU GENERAL PUBLIC LICENSE");
 
-        assertThat(this.run("--warranty")).isZero();
+        assertThat(run("--warranty")).isZero();
         assertThat(this.out.toString(UTF_8)).contains("Disclaimer of Warranty");
 
-        assertThat(this.run("--notice")).isZero();
+        assertThat(run("--notice")).isZero();
         assertThat(this.out.toString(UTF_8)).contains("Third-party components");
 
-        assertThat(this.run("--help")).isZero();
+        assertThat(run("--help")).isZero();
         assertThat(this.out.toString(UTF_8)).contains("--config-dir");
     }
 
     @Test
     void invalidArgumentsExitWithUsage() {
-        assertThat(this.run("--nope")).isEqualTo(Main.EXIT_USAGE);
+        assertThat(run("--nope")).isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("Unknown option", "Usage:");
     }
 
@@ -123,14 +123,14 @@ class MainTest {
     void hashPrintsTheLinkOfEachFile() throws Exception {
         Path file = Files.writeString(this.dir.resolve("abc.txt"), "abc", UTF_8);
 
-        assertThat(this.run("--hash", file.toString())).isZero();
+        assertThat(run("--hash", file.toString())).isZero();
         assertThat(this.out.toString(UTF_8))
                 .contains(
                         "ed2k://|file|abc.txt|3|A448017AAF21D8525FC10AE87AA6729D|"
                                 + "h=VGMT4NSHA2AWVOR6EVYXQUGCNSONBWE5|/",
                         "3 bytes, 0 part hashes");
 
-        assertThat(this.run("--hash", this.dir.resolve("missing").toString())).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(run("--hash", this.dir.resolve("missing").toString())).isEqualTo(Main.EXIT_FAILURE);
         assertThat(this.err.toString(UTF_8)).contains("Cannot hash");
     }
 
@@ -192,7 +192,7 @@ class MainTest {
 
     @Test
     void aLinkToAnUnusableListAddressStopsNothing() throws Exception {
-        assertThat(this.run(
+        assertThat(run(
                         "--config-dir",
                         this.dir.toString(),
                         "ed2k://|serverlist|http://|/",
@@ -236,12 +236,12 @@ class MainTest {
     @Test
     void exitAsksTheRunningOneToStop() throws Exception {
         String config = this.dir.toString();
-        assertThat(this.run("--config-dir", config, "--exit")).isNotZero();
+        assertThat(run("--config-dir", config, "--exit")).isNotZero();
         assertThat(this.err.toString(UTF_8)).contains("No njMule runs");
         Path handoff = this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME);
         Files.createDirectories(handoff.getParent());
         Files.writeString(handoff, "70000 " + "ab".repeat(32));
-        assertThat(this.run("--config-dir", config, "--exit"))
+        assertThat(run("--config-dir", config, "--exit"))
                 .as("a damaged handoff file")
                 .isNotZero();
         Files.delete(handoff);
@@ -256,7 +256,7 @@ class MainTest {
             Thread.sleep(20);
         }
 
-        assertThat(this.run("--config-dir", config, "--exit")).isZero();
+        assertThat(run("--config-dir", config, "--exit")).isZero();
         // It returns once the instance has gone: another may start at once.
         try (NjMuleEngine next = NjMuleEngine.start(new EngineConfig(AppDirectories.resolve(Optional.of(this.dir))))) {
             assertThat(next.directories().config()).isEqualTo(this.dir.resolve("config"));
@@ -278,20 +278,20 @@ class MainTest {
     @Test
     void setsTheWebInterfacePasswordAndStartsTheInterface() throws Exception {
         String config = this.dir.toString();
-        assertThat(this.runWith(List.of("short", "short"), "--config-dir", config, "--webui-password"))
+        assertThat(runWith(List.of("short", "short"), "--config-dir", config, "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("at least " + Passwords.MIN_LENGTH);
-        assertThat(this.runWith(List.of("long enough", "different"), "--config-dir", config, "--webui-password"))
+        assertThat(runWith(List.of("long enough", "different"), "--config-dir", config, "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("differ");
-        assertThat(this.runWith(List.of(), "--config-dir", config, "--webui-password"))
+        assertThat(runWith(List.of(), "--config-dir", config, "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
 
         int port;
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
-        assertThat(this.runWith(
+        assertThat(runWith(
                         List.of("long enough", "long enough"),
                         "--config-dir",
                         config,
@@ -391,12 +391,12 @@ class MainTest {
 
     @Test
     void aPasswordTypedOnceOrThatCannotBeSavedSetsNothing() throws Exception {
-        assertThat(this.runWith(List.of("long enough"), "--config-dir", this.dir.toString(), "--webui-password"))
+        assertThat(runWith(List.of("long enough"), "--config-dir", this.dir.toString(), "--webui-password"))
                 .isEqualTo(Main.EXIT_USAGE);
         assertThat(this.err.toString(UTF_8)).contains("at least " + Passwords.MIN_LENGTH);
 
         Files.writeString(this.dir.resolve("config"), "a file where the directory goes", UTF_8);
-        assertThat(this.runWith(
+        assertThat(runWith(
                         List.of("long enough", "long enough"), "--config-dir", this.dir.toString(), "--webui-password"))
                 .isEqualTo(Main.EXIT_FAILURE);
         assertThat(this.err.toString(UTF_8)).contains("Cannot set the web interface password");
@@ -406,7 +406,7 @@ class MainTest {
     void anEngineThatCannotStartIsReported() throws Exception {
         Files.writeString(this.dir.resolve("config"), "a file where the directory goes", UTF_8);
 
-        assertThat(this.run("--config-dir", this.dir.toString())).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(run("--config-dir", this.dir.toString())).isEqualTo(Main.EXIT_FAILURE);
 
         assertThat(this.err.toString(UTF_8)).contains("Cannot start " + NjMuleInfo.NAME);
         assertThat(this.out.toString(UTF_8)).contains("ABSOLUTELY NO WARRANTY");
@@ -416,7 +416,7 @@ class MainTest {
     void aNetworkTaskThatFailsStopsTheEngine() throws Exception {
         Path missing = this.dir.resolve("missing.met");
 
-        assertThat(this.run("--config-dir", this.dir.toString(), "--add-servers", missing.toString()))
+        assertThat(run("--config-dir", this.dir.toString(), "--add-servers", missing.toString()))
                 .isEqualTo(Main.EXIT_FAILURE);
 
         assertThat(this.err.toString(UTF_8)).contains("Failed: ");
@@ -429,7 +429,7 @@ class MainTest {
     void aOneShotRunLeavesItsLinksAlone() throws Exception {
         Path emule = Files.createDirectories(this.dir.resolve("emule"));
 
-        assertThat(this.run(
+        assertThat(run(
                         "--config-dir",
                         this.dir.resolve("njmule").toString(),
                         "--log-level",
@@ -474,9 +474,9 @@ class MainTest {
 
     @Test
     void anInterruptedRunStopsAndStillUnlocksTheConfiguration() throws Exception {
-        this.givenANjMuleRunningOnItsOwnThread();
-        this.whenItsThreadIsInterrupted();
-        this.thenItHasStoppedWithItsConfigurationUnlocked();
+        givenANjMuleRunningOnItsOwnThread();
+        whenItsThreadIsInterrupted();
+        thenItHasStoppedWithItsConfigurationUnlocked();
     }
 
     private void givenANjMuleRunningOnItsOwnThread() throws InterruptedException {
@@ -511,7 +511,7 @@ class MainTest {
             new WebUiSettings(true, busy.getLocalPort(), false, "pbkdf2-sha512$1$AA$AA")
                     .save(this.dir.resolve("config"));
 
-            assertThat(this.run("--config-dir", this.dir.toString())).isZero();
+            assertThat(run("--config-dir", this.dir.toString())).isZero();
 
             assertThat(this.out.toString(UTF_8)).doesNotContain("Web interface on port");
             assertThat(logged.messages())
@@ -525,7 +525,7 @@ class MainTest {
         Path handoff = Files.createDirectories(this.dir.resolve("config").resolve(LinkHandoff.FILE_NAME));
         Files.writeString(handoff.resolve("kept"), "", UTF_8);
         try (Logged logged = new Logged(Main.class)) {
-            assertThat(this.run("--config-dir", this.dir.toString())).isZero();
+            assertThat(run("--config-dir", this.dir.toString())).isZero();
 
             assertThat(logged.messages()).anyMatch(m -> m.startsWith("Later starts cannot hand their links over"));
         }

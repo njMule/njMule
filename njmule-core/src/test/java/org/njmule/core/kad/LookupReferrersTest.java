@@ -67,7 +67,7 @@ class LookupReferrersTest {
     void create() {
         RoutingTable table = new RoutingTable(UInt128.random(this.random), ip -> false);
         for (int node : new int[] {FIRST, SECOND_NODE, 3, OURS_NEAR}) {
-            KadContact c = new KadContact(this.idOf(node), ip(node), PORT, 4662, 8, 0);
+            KadContact c = new KadContact(idOf(node), ip(node), PORT, 4662, 8, 0);
             c.setVerified(true);
             assertThat(table.add(c, false, NodesDat.UdpKey.NONE, 0, 0)).isEqualTo(RoutingTable.Outcome.ADDED);
         }
@@ -77,40 +77,40 @@ class LookupReferrersTest {
 
     @Test
     void shouldSendTheSearchFirstToANodeTwoOthersVouchFor() {
-        this.givenANodeTells(FIRST, this.contact(NEAR, ip(NEAR)), this.contact(NEARER, ip(NEARER)));
-        this.givenANodeTells(SECOND_NODE, this.contact(NEAR, ip(NEAR)));
+        givenANodeTells(FIRST, contact(NEAR, ip(NEAR)), contact(NEARER, ip(NEARER)));
+        givenANodeTells(SECOND_NODE, contact(NEAR, ip(NEAR)));
 
-        this.whenTheseNodesAnswer(NEAR, NEARER);
-        this.whenSecondsPass(3);
+        whenTheseNodesAnswer(NEAR, NEARER);
+        whenSecondsPass(3);
 
-        this.thenTheSearchWentTo(ip(NEAR));
+        thenTheSearchWentTo(ip(NEAR));
 
-        this.whenSecondsPass(2);
+        whenSecondsPass(2);
 
-        this.thenTheSearchWentTo(ip(NEAR), ip(NEARER));
+        thenTheSearchWentTo(ip(NEAR), ip(NEARER));
     }
 
     @Test
     void shouldNeverSendTheSearchToANodeTwoOthersPlaceAtDifferentAddresses() {
-        this.givenANodeTells(FIRST, this.contact(NEAR, ip(NEAR)));
-        this.givenANodeTells(SECOND_NODE, this.contact(NEAR, ELSEWHERE));
+        givenANodeTells(FIRST, contact(NEAR, ip(NEAR)));
+        givenANodeTells(SECOND_NODE, contact(NEAR, ELSEWHERE));
 
-        this.whenTheseNodesAnswer(NEAR);
-        this.whenSecondsPass(30);
+        whenTheseNodesAnswer(NEAR);
+        whenSecondsPass(30);
 
-        this.thenTheSearchNeverWentTo(ip(NEAR));
-        this.thenNoOneAsked(ELSEWHERE);
+        thenTheSearchNeverWentTo(ip(NEAR));
+        thenNoOneAsked(ELSEWHERE);
     }
 
     @Test
     void shouldKeepTheAddressOfOurOwnContact() {
-        this.givenANodeTells(FIRST, this.contact(OURS_NEAR, ELSEWHERE));
+        givenANodeTells(FIRST, contact(OURS_NEAR, ELSEWHERE));
 
-        this.whenTheseNodesAnswer(OURS_NEAR);
-        this.whenSecondsPass(4);
+        whenTheseNodesAnswer(OURS_NEAR);
+        whenSecondsPass(4);
 
-        this.thenTheSearchWentTo(ip(OURS_NEAR));
-        this.thenNoOneAsked(ELSEWHERE);
+        thenTheSearchWentTo(ip(OURS_NEAR));
+        thenNoOneAsked(ELSEWHERE);
     }
 
     private void givenANodeTells(int responder, KadMessages.Contact... contacts) {
@@ -143,7 +143,7 @@ class LookupReferrersTest {
     }
 
     private KadMessages.Contact contact(int node, int ip) {
-        return new KadMessages.Contact(this.idOf(node), ip, PORT, 4662, 8);
+        return new KadMessages.Contact(idOf(node), ip, PORT, 4662, 8);
     }
 
     // The nodes of our table below OURS_NEAR are beyond the request tolerance; the others within, nearer the higher.

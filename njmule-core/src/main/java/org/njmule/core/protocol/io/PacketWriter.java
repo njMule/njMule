@@ -43,41 +43,41 @@ public final class PacketWriter {
     }
 
     public PacketWriter u8(int value) {
-        this.ensure(1);
+        ensure(1);
         this.data[this.size++] = (byte) value;
         return this;
     }
 
     public PacketWriter u16(int value) {
-        this.ensure(2);
-        this.put16(this.size, value);
+        ensure(2);
+        put16(this.size, value);
         this.size += 2;
         return this;
     }
 
     public PacketWriter u32(long value) {
-        this.ensure(4);
-        this.put32(this.size, (int) value);
+        ensure(4);
+        put32(this.size, (int) value);
         this.size += 4;
         return this;
     }
 
     public PacketWriter u64(long value) {
-        this.ensure(8);
-        this.put32(this.size, (int) value);
-        this.put32(this.size + 4, (int) (value >>> 32));
+        ensure(8);
+        put32(this.size, (int) value);
+        put32(this.size + 4, (int) (value >>> 32));
         this.size += 8;
         return this;
     }
 
     /** A u8 item count; a list too long for the field is the caller's error, never silently cut. */
     public PacketWriter count8(int count) {
-        return this.u8(checkCount(count, 0xFF));
+        return u8(checkCount(count, 0xFF));
     }
 
     /** A u16 item count; a list too long for the field is the caller's error, never silently cut. */
     public PacketWriter count16(int count) {
-        return this.u16(checkCount(count, 0xFFFF));
+        return u16(checkCount(count, 0xFFFF));
     }
 
     /** A 32-bit offset of a narrow message form; a larger one needs the 64-bit form. */
@@ -85,33 +85,33 @@ public final class PacketWriter {
         if (offset < 0 || offset > 0xFFFF_FFFFL) {
             throw new IllegalArgumentException("offset " + offset + " needs the 64-bit form");
         }
-        return this.u32(offset);
+        return u32(offset);
     }
 
     public PacketWriter f32(float value) {
-        return this.u32(Float.floatToRawIntBits(value));
+        return u32(Float.floatToRawIntBits(value));
     }
 
     public PacketWriter bytes(byte[] value) {
-        return this.bytes(value, 0, value.length);
+        return bytes(value, 0, value.length);
     }
 
     public PacketWriter bytes(byte[] value, int offset, int length) {
-        this.ensure(length);
+        ensure(length);
         System.arraycopy(value, offset, this.data, this.size, length);
         this.size += length;
         return this;
     }
 
     public PacketWriter hash16(Hash16 hash) {
-        this.ensure(Hash16.LENGTH);
+        ensure(Hash16.LENGTH);
         hash.copyTo(this.data, this.size);
         this.size += Hash16.LENGTH;
         return this;
     }
 
     public PacketWriter hash20(Hash20 hash) {
-        this.ensure(Hash20.LENGTH);
+        ensure(Hash20.LENGTH);
         hash.copyTo(this.data, this.size);
         this.size += Hash20.LENGTH;
         return this;
@@ -123,23 +123,23 @@ public final class PacketWriter {
         if (raw.length > 0xFFFF) {
             throw new IllegalArgumentException("string too long: " + raw.length + " bytes");
         }
-        return this.u16(raw.length).bytes(raw);
+        return u16(raw.length).bytes(raw);
     }
 
     /** Overwrites a previously written u16, e.g. a count only known at the end. */
     public void setU16(int position, int value) {
-        this.checkPatch(position, 2);
-        this.put16(position, value);
+        checkPatch(position, 2);
+        put16(position, value);
     }
 
     /** Overwrites a previously written u32. */
     public void setU32(int position, long value) {
-        this.checkPatch(position, 4);
-        this.put32(position, (int) value);
+        checkPatch(position, 4);
+        put32(position, (int) value);
     }
 
     public void setU8(int position, int value) {
-        this.checkPatch(position, 1);
+        checkPatch(position, 1);
         this.data[position] = (byte) value;
     }
 

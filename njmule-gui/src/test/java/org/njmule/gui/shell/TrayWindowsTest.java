@@ -88,7 +88,7 @@ class TrayWindowsTest {
 
     @Test
     void theMenuSetsTheLimitsAndCallsItsActions() throws Exception {
-        this.start();
+        start();
         TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
             @Override
             public void restore() {
@@ -112,29 +112,25 @@ class TrayWindowsTest {
             return null;
         });
 
-        int top = Math.max(
-                this.preferences().downloadCapacityKiBps(), this.preferences().maxDownloadKiBps());
+        int top = Math.max(preferences().downloadCapacityKiBps(), preferences().maxDownloadKiBps());
         FxTesting.onFx(() -> ((Slider)
                         menu.scene().getRoot().lookupAll(".slider").iterator().next())
                 .setValue(SpeedLimits.position(250, top)));
-        FxTesting.await("the download limit", () -> this.preferences().maxDownloadKiBps() == 250);
+        FxTesting.await("the download limit", () -> preferences().maxDownloadKiBps() == 250);
 
-        this.press(menu.scene(), this.gui.t("IDS_PW_PA"));
+        press(menu.scene(), this.gui.t("IDS_PW_PA"));
         FxTesting.await(
                 "the throttled limits",
-                () -> this.preferences().maxDownloadKiBps() == 1
-                        && this.preferences().maxUploadKiBps() == 1);
-        this.press(menu.scene(), this.gui.t("IDS_PW_UA"));
+                () -> preferences().maxDownloadKiBps() == 1 && preferences().maxUploadKiBps() == 1);
+        press(menu.scene(), this.gui.t("IDS_PW_UA"));
         FxTesting.await(
                 "the full limits",
-                () -> this.preferences().maxDownloadKiBps()
-                                == this.preferences().downloadCapacityKiBps()
-                        && this.preferences().maxUploadKiBps()
-                                == this.preferences().uploadCapacityKiBps());
+                () -> preferences().maxDownloadKiBps() == preferences().downloadCapacityKiBps()
+                        && preferences().maxUploadKiBps() == preferences().uploadCapacityKiBps());
 
         for (String item : List.of("IDS_EM_PREFS", "IDS_MAIN_POPUP_RESTORE", "IDS_EXIT")) {
             FxTesting.onFx(() -> menu.show(600, 500));
-            this.press(menu.scene(), this.gui.t(item));
+            press(menu.scene(), this.gui.t(item));
         }
         assertThat(this.actions).containsExactly("options", "restore", "exit");
         assertThat(FxTesting.onFx(menu::isShowing))
@@ -145,11 +141,11 @@ class TrayWindowsTest {
     @Test
     void openingTheMenuNeverChangesTheLimits() throws Exception {
         AtomicInteger writes = new AtomicInteger();
-        this.start(real -> Engines.overriding(real, Map.of("updatePreferences", args -> {
+        start(real -> Engines.overriding(real, Map.of("updatePreferences", args -> {
             writes.incrementAndGet();
             return real.updatePreferences(change(args[0]));
         })));
-        this.limits(1000, 800);
+        limits(1000, 800);
         TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
             @Override
             public void restore() {}
@@ -163,11 +159,11 @@ class TrayWindowsTest {
         FxTesting.onFx(() -> menu.show(600, 500));
         FxTesting.onFx(menu::hide);
         // The line got slower meanwhile: the slider's top falls below its old position.
-        this.limits(500, 300);
+        limits(500, 300);
 
         FxTesting.onFx(() -> menu.show(600, 500));
         assertThat(writes).as("opening the menu").hasValue(0);
-        assertThat(this.preferences().maxDownloadKiBps()).isEqualTo(300);
+        assertThat(preferences().maxDownloadKiBps()).isEqualTo(300);
 
         assertThat(FxTesting.onFx(() -> ((Label) menu.scene()
                                 .getRoot()
@@ -181,7 +177,7 @@ class TrayWindowsTest {
 
     @Test
     void theStatusWindowShowsTheStateAtAGlance() throws Exception {
-        this.start();
+        start();
         MiniMule mini = FxTesting.onFx(() -> new MiniMule(this.gui, this.owner, () -> this.dir, new MiniMule.Actions() {
             @Override
             public void openIncoming() {
@@ -223,7 +219,7 @@ class TrayWindowsTest {
     void theMenuConnectsTakesTheLimitsLetGoAndCloses() throws Exception {
         List<String> commands = new CopyOnWriteArrayList<>();
         AtomicInteger writes = new AtomicInteger();
-        this.start(real -> Engines.overriding(
+        start(real -> Engines.overriding(
                 real,
                 Map.of(
                         "connect",
@@ -241,7 +237,7 @@ class TrayWindowsTest {
                             writes.incrementAndGet();
                             return real.updatePreferences(change(args[0]));
                         })));
-        this.limits(1000, 800);
+        limits(1000, 800);
         TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
             @Override
             public void restore() {}
@@ -256,29 +252,28 @@ class TrayWindowsTest {
         String disconnect = this.gui.t("IDS_MAIN_BTN_DISCONNECT");
 
         FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(FxTesting.onFx(() -> this.item(menu.scene(), disconnect).isDisabled()))
+        assertThat(FxTesting.onFx(() -> item(menu.scene(), disconnect).isDisabled()))
                 .isTrue();
-        this.press(menu.scene(), connect);
+        press(menu.scene(), connect);
         FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(FxTesting.onFx(() -> this.item(menu.scene(), connect).isDisabled()))
+        assertThat(FxTesting.onFx(() -> item(menu.scene(), connect).isDisabled()))
                 .as("trying the servers")
                 .isTrue();
-        this.press(menu.scene(), disconnect);
+        press(menu.scene(), disconnect);
         assertThat(commands).containsExactly("connect", "disconnect");
 
         // A slider dragged sets its limit once it is let go, and only when it moved.
         FxTesting.onFx(() -> menu.show(600, 500));
         Slider up = FxTesting.onFx(
                 () -> (Slider) menu.scene().getRoot().lookupAll(".slider").toArray()[1]);
-        int top = Math.max(
-                this.preferences().uploadCapacityKiBps(), this.preferences().maxUploadKiBps());
+        int top = Math.max(preferences().uploadCapacityKiBps(), preferences().maxUploadKiBps());
         FxTesting.onFx(() -> {
             up.setValueChanging(true);
             up.setValue(SpeedLimits.position(300, top));
         });
         assertThat(writes).as("while dragged").hasValue(0);
         FxTesting.onFx(() -> up.setValueChanging(false));
-        FxTesting.await("the upload limit", () -> this.preferences().maxUploadKiBps() == 300);
+        FxTesting.await("the upload limit", () -> preferences().maxUploadKiBps() == 300);
         FxTesting.await(
                 "the new preferences",
                 () -> this.model.preferencesProperty().get().maxUploadKiBps() == 300);
@@ -298,8 +293,7 @@ class TrayWindowsTest {
     @Test
     void theStatusWindowCountsKadAndAFolderNotMadeYet() throws Exception {
         EngineStatus onKad = Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
-        this.start(
-                real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
+        start(real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
         FxTesting.await(
                 "on Kad", () -> Objects.equals(this.model.statusProperty().get(), onKad));
         MiniMule mini = FxTesting.onFx(() -> new MiniMule(
@@ -374,7 +368,7 @@ class TrayWindowsTest {
     }
 
     private void start() throws Exception {
-        this.start(UnaryOperator.identity());
+        start(UnaryOperator.identity());
     }
 
     // The model sees the engine through wrap; the test sees the real one.

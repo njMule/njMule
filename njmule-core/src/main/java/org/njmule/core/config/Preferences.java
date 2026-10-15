@@ -367,7 +367,7 @@ public record Preferences(
             this.incomingDir = p.incomingDir;
             this.tempDir = p.tempDir;
             this.logLevel = p.logLevel;
-            this.proxy(p.proxy);
+            proxy(p.proxy);
             this.upnp = p.upnp;
             this.downloadCapacityKiBps = p.downloadCapacityKiBps;
             this.uploadCapacityKiBps = p.uploadCapacityKiBps;

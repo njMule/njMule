@@ -184,25 +184,25 @@ class ConnectionGuardTest {
 
     @Test
     void anAddressOpeningConnectionsInARowLeavesTheAcceptRateToOthers() {
-        this.givenAGuard(new Limits(100, 2, 8, Duration.ofSeconds(5)));
-        this.givenAnAddressThatOpenedAndClosedConnectionsInARow(PEER, 8);
+        givenAGuard(new Limits(100, 2, 8, Duration.ofSeconds(5)));
+        givenAnAddressThatOpenedAndClosedConnectionsInARow(PEER, 8);
 
-        this.whenAnotherAddressConnects(OTHER);
+        whenAnotherAddressConnects(OTHER);
 
-        this.thenTheFirstAddressGotOnlyItsShare(2);
-        this.thenTheOtherAddressIsAdmitted();
+        thenTheFirstAddressGotOnlyItsShare(2);
+        thenTheOtherAddressIsAdmitted();
     }
 
     @Test
     void ourConnectionsCountInTheTotalTheIncomingOnesShare() {
-        this.givenAGuard(new Limits(2, 5, 100, Duration.ofSeconds(5)));
-        this.givenConnectionsOfOurs(2);
+        givenAGuard(new Limits(2, 5, 100, Duration.ofSeconds(5)));
+        givenConnectionsOfOurs(2);
 
-        this.whenAnotherAddressConnects(OTHER);
+        whenAnotherAddressConnects(OTHER);
 
-        this.thenTheOtherAddressIsRefused(Refusal.TOO_MANY_CONNECTIONS);
-        this.thenThereIsNoRoomForOneMoreOfOurs();
-        this.thenTheOtherAddressIsAdmittedOnceOneOfOursCloses();
+        thenTheOtherAddressIsRefused(Refusal.TOO_MANY_CONNECTIONS);
+        thenThereIsNoRoomForOneMoreOfOurs();
+        thenTheOtherAddressIsAdmittedOnceOneOfOursCloses();
     }
 
     private void givenAGuard(Limits limits) {

@@ -61,7 +61,7 @@ final class NetworkPane {
     /** The view with the part {@code id} in it. */
     Node view(String id) {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         Screen part = this.parts.get(id);
         this.shown.getChildren().setAll(part.view());

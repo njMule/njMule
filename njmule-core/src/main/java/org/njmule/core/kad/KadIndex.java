@@ -109,7 +109,7 @@ final class KadIndex {
 
         // A publisher counts once, for the name it gave last, so repeating or switching names gains nothing.
         void published(int ip, String name, long now) {
-            this.forget(now);
+            forget(now);
             Publisher before = this.publishers.remove(ip);
             if (before == null && this.publishers.size() >= MAX_PUBLISHERS) {
                 return;
@@ -117,7 +117,7 @@ final class KadIndex {
             this.publishers.put(ip, new Publisher(name, now));
             if (before == null || !before.name().equals(name)) {
                 if (before != null) {
-                    this.drop(before.name());
+                    drop(before.name());
                 }
                 this.names.merge(name, 1, Integer::sum);
                 this.popular = null;
@@ -132,7 +132,7 @@ final class KadIndex {
                     return;
                 }
                 it.remove();
-                this.drop(p.name());
+                drop(p.name());
             }
         }
 
@@ -158,7 +158,7 @@ final class KadIndex {
         }
 
         String popularNameLower() {
-            this.popularName();
+            popularName();
             return this.popularLower;
         }
     }
@@ -466,7 +466,7 @@ final class KadIndex {
             for (KadIndexFiles.KeywordSource f : k.sources()) {
                 for (KadIndexFiles.KeywordEntry e : f.entries()) {
                     if (e.lifetime() > wall) {
-                        this.restoreKeyword(k.key(), f.id(), e, refused, wall, now);
+                        restoreKeyword(k.key(), f.id(), e, refused, wall, now);
                     }
                 }
             }
@@ -505,7 +505,7 @@ final class KadIndex {
             tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), i < names.size() ? names.get(i) : popular.get()));
             tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size.getAsLong()));
             tags.addAll(other);
-            this.publishKeyword(keyword, new KadMessages.Entry(id, tags), p.ip(), tickerOf(at, wall, now));
+            publishKeyword(keyword, new KadMessages.Entry(id, tags), p.ip(), tickerOf(at, wall, now));
         }
     }
 
@@ -546,7 +546,7 @@ final class KadIndex {
                     int udp = Tags.portValue(e.tags(), FileTag.SOURCEUPORT).orElse(0);
                     long lifetime = Math.min(e.lifetime(), wall + SOURCE_LIFETIME.toSeconds());
                     if (lifetime > wall && ip != 0 && !refused.test(ip)) {
-                        this.publishSource(
+                        publishSource(
                                 k.key(),
                                 s.id(),
                                 e.tags(),
@@ -595,7 +595,7 @@ final class KadIndex {
                     int ip = (int) Tags.intValue(e.tags(), FileTag.SOURCEIP).orElse(0);
                     long lifetime = Math.min(e.lifetime(), wall + NOTE_LIFETIME.toSeconds());
                     if (lifetime > wall && ip != 0 && !refused.test(ip)) {
-                        this.publishNote(
+                        publishNote(
                                 k.key(), s.id(), e.tags(), ip, tickerOf(lifetime, wall, now) - NOTE_LIFETIME.toNanos());
                     }
                 }
@@ -619,7 +619,7 @@ final class KadIndex {
         for (KadIndexFiles.Load l : file.loads()) {
             long until = Math.min(l.time(), wall + longest.toSeconds());
             if (until > wall) {
-                this.loaded(l.key(), tickerOf(until, wall, now));
+                loaded(l.key(), tickerOf(until, wall, now));
             }
         }
     }
@@ -725,25 +725,22 @@ final class KadIndex {
 
         Matcher(SearchExpr expression) {
             this.expression = expression;
-            this.split(expression);
+            split(expression);
         }
 
         /** Whether the file {@code name} ({@code lower} in the network's lower case) matches. */
         boolean matches(String name, String lower, long size, List<Tag> tags) {
-            return this.matches(this.expression, name, lower, size, tags);
+            return matches(this.expression, name, lower, size, tags);
         }
 
         private boolean matches(SearchExpr expr, String name, String lower, long size, List<Tag> tags) {
             return switch (expr) {
                 case SearchExpr.And and ->
-                    this.matches(and.left(), name, lower, size, tags)
-                            && this.matches(and.right(), name, lower, size, tags);
+                    matches(and.left(), name, lower, size, tags) && matches(and.right(), name, lower, size, tags);
                 case SearchExpr.Or or ->
-                    this.matches(or.left(), name, lower, size, tags)
-                            || this.matches(or.right(), name, lower, size, tags);
+                    matches(or.left(), name, lower, size, tags) || matches(or.right(), name, lower, size, tags);
                 case SearchExpr.Not not ->
-                    this.matches(not.left(), name, lower, size, tags)
-                            && !this.matches(not.right(), name, lower, size, tags);
+                    matches(not.left(), name, lower, size, tags) && !matches(not.right(), name, lower, size, tags);
                 case SearchExpr.Keyword keyword -> containsAll(lower, this.words.get(keyword.text()));
                 case SearchExpr.StringAttr attr -> matchesString(attr, name, tags);
                 case SearchExpr.NumericAttr attr -> matchesNumber(attr, size, tags);
@@ -753,16 +750,16 @@ final class KadIndex {
         private void split(SearchExpr expr) {
             switch (expr) {
                 case SearchExpr.And and -> {
-                    this.split(and.left());
-                    this.split(and.right());
+                    split(and.left());
+                    split(and.right());
                 }
                 case SearchExpr.Or or -> {
-                    this.split(or.left());
-                    this.split(or.right());
+                    split(or.left());
+                    split(or.right());
                 }
                 case SearchExpr.Not not -> {
-                    this.split(not.left());
-                    this.split(not.right());
+                    split(not.left());
+                    split(not.right());
                 }
                 case SearchExpr.Keyword keyword -> this.words.computeIfAbsent(keyword.text(), KadIndex::words);
                 case SearchExpr.StringAttr attr -> {

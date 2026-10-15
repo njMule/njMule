@@ -87,10 +87,10 @@ public final class CancelledFiles {
     /** Remembers that the download of {@code fileHash} was cancelled. */
     public void add(Hash16 fileHash) throws IOException {
         if (this.seed == 0) {
-            this.seed = this.newSeed();
+            this.seed = newSeed();
         }
         if (this.keys.add(CancelledMet.key(this.seed, fileHash))) {
-            this.save();
+            save();
         }
     }
 
@@ -98,7 +98,7 @@ public final class CancelledFiles {
     public void clear() throws IOException {
         if (!this.keys.isEmpty()) {
             this.keys.clear();
-            this.save();
+            save();
         }
     }
 

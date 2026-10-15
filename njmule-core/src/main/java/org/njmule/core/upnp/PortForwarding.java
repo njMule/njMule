@@ -127,11 +127,11 @@ public final class PortForwarding implements AutoCloseable {
                 return;
             }
             this.gateway = found.get();
-            this.mapAll(true);
+            mapAll(true);
             this.started.countDown();
             while (!this.closed) {
                 this.pause.sleep(LEASE.dividedBy(2));
-                this.renew();
+                renew();
             }
         } catch (InterruptedException e) {
             // Closing.
@@ -150,7 +150,7 @@ public final class PortForwarding implements AutoCloseable {
         List<String> refused = new ArrayList<>();
         for (Mapping m : this.wanted) {
             try {
-                this.add(m);
+                add(m);
             } catch (Igd.Refused e) {
                 refused.add(m + " (" + e.getMessage() + ")");
             }
@@ -159,7 +159,7 @@ public final class PortForwarding implements AutoCloseable {
             return;
         }
         String host = this.gateway.controlUrl().getHost();
-        String forwarded = String.join(" and ", this.mappings()) + " forwarded by " + host;
+        String forwarded = String.join(" and ", mappings()) + " forwarded by " + host;
         String denied = String.join(" and ", refused);
         if (refused.isEmpty()) {
             this.report.line(true, "UPnP: " + forwarded);
@@ -173,7 +173,7 @@ public final class PortForwarding implements AutoCloseable {
     // A renewal asks again, from our address now; a router that no longer answers is looked for again.
     private void renew() throws InterruptedException {
         try {
-            this.mapAll(false);
+            mapAll(false);
             return;
         } catch (IOException e) {
             logger.debug("UPnP: renewal failed, looking for the router again: {}", e.getMessage());
@@ -186,7 +186,7 @@ public final class PortForwarding implements AutoCloseable {
             Igd old = this.gateway;
             this.gateway = found.get();
             old.close();
-            this.mapAll(true);
+            mapAll(true);
         } catch (IOException e) {
             // Tried again at the next renewal.
             logger.debug("UPnP: the router is still away: {}", e.getMessage());

@@ -109,20 +109,20 @@ final class GuiTour {
         this.steps.addAll(this.appTour);
         for (String id : this.window.screenIds()) {
             this.steps.add(() -> this.window.show(id));
-            this.steps.add(() -> this.popups(this.stage.getScene().getRoot()));
+            this.steps.add(() -> popups(this.stage.getScene().getRoot()));
             this.steps.add(this::closePopups);
         }
         // What a key or a button opens rather than the popups of the screens.
         this.steps.add(() -> this.window.show("transfers"));
-        this.steps.add(() -> this.click("#details"));
-        this.steps.add(() -> this.click("#details"));
+        this.steps.add(() -> click("#details"));
+        this.steps.add(() -> click("#details"));
         this.steps.add(() -> this.window.show("search"));
-        this.steps.add(() -> this.click("#search-parameters"));
-        this.steps.add(() -> this.click("#rates"));
+        this.steps.add(() -> click("#search-parameters"));
+        this.steps.add(() -> click("#rates"));
         this.steps.add(this::closePopups);
-        this.steps.add(() -> this.press(KeyCode.K, true));
-        this.steps.add(() -> this.press(KeyCode.ESCAPE, false));
-        this.steps.add(() -> this.press(KeyCode.F1, false));
+        this.steps.add(() -> press(KeyCode.K, true));
+        this.steps.add(() -> press(KeyCode.ESCAPE, false));
+        this.steps.add(() -> press(KeyCode.F1, false));
         Themes themes = this.gui.themes();
         Themes.Family family = themes.family();
         GuiSettings.Mode mode = themes.mode();

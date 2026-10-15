@@ -92,93 +92,93 @@ class KadNodeNotesTest {
 
     @Test
     void shouldStoreANotePublishedNearUsAndAnswerItsSearch() throws Exception {
-        this.givenANotePublishedBy(PEER, this.node.id(), note("Film.avi", SIZE, 4, "a good copy"));
+        givenANotePublishedBy(PEER, this.node.id(), note("Film.avi", SIZE, 4, "a good copy"));
 
-        this.whenTheNotesAreSearchedForBy(SEARCHER, this.node.id(), SIZE);
+        whenTheNotesAreSearchedForBy(SEARCHER, this.node.id(), SIZE);
 
-        this.thenThePublisherHeardItWasStored(PEER, this.node.id());
-        this.thenTheNodeIndexesNotes(1);
-        this.thenTheSearcherGetsTheNote(SEARCHER, "Film.avi", 4, "a good copy");
+        thenThePublisherHeardItWasStored(PEER, this.node.id());
+        thenTheNodeIndexesNotes(1);
+        thenTheSearcherGetsTheNote(SEARCHER, "Film.avi", 4, "a good copy");
     }
 
     @Test
     void shouldNotStoreANotePublishedFarFromUs() {
-        this.givenANotePublishedBy(PEER, farFrom(this.node.id()), note("Film.avi", SIZE, 4, "a good copy"));
+        givenANotePublishedBy(PEER, farFrom(this.node.id()), note("Film.avi", SIZE, 4, "a good copy"));
 
-        this.whenTheNotesAreSearchedForBy(SEARCHER, farFrom(this.node.id()), SIZE);
+        whenTheNotesAreSearchedForBy(SEARCHER, farFrom(this.node.id()), SIZE);
 
-        this.thenNothingWasSentTo(PEER);
-        this.thenNothingWasSentTo(SEARCHER);
-        this.thenTheNodeIndexesNotes(0);
+        thenNothingWasSentTo(PEER);
+        thenNothingWasSentTo(SEARCHER);
+        thenTheNodeIndexesNotes(0);
     }
 
     @Test
     void shouldServeOnlyTwoNotePublishesAMinuteFromOneAddress() {
-        this.givenANotePublishedBy(PEER, near(this.node.id(), 1), note("a.avi", SIZE, 1, "one"));
-        this.givenANotePublishedBy(PEER, near(this.node.id(), 2), note("b.avi", SIZE, 2, "two"));
+        givenANotePublishedBy(PEER, near(this.node.id(), 1), note("a.avi", SIZE, 1, "one"));
+        givenANotePublishedBy(PEER, near(this.node.id(), 2), note("b.avi", SIZE, 2, "two"));
 
-        this.whenANotePublishedBy(PEER, near(this.node.id(), 3), note("c.avi", SIZE, 3, "three"));
+        whenANotePublishedBy(PEER, near(this.node.id(), 3), note("c.avi", SIZE, 3, "three"));
 
-        this.thenThePublisherHeardStoredSoManyTimes(PEER, 2);
-        this.thenTheNodeIndexesNotes(2);
+        thenThePublisherHeardStoredSoManyTimes(PEER, 2);
+        thenTheNodeIndexesNotes(2);
     }
 
     @Test
     void shouldForgetANoteNobodyRenewsWithinADay() {
-        this.givenANotePublishedBy(PEER, this.node.id(), note("Film.avi", SIZE, 4, "a good copy"));
-        this.givenTimePasses(25 * HOUR);
+        givenANotePublishedBy(PEER, this.node.id(), note("Film.avi", SIZE, 4, "a good copy"));
+        givenTimePasses(25 * HOUR);
 
-        this.whenTheNotesAreSearchedForBy(SEARCHER, this.node.id(), SIZE);
+        whenTheNotesAreSearchedForBy(SEARCHER, this.node.id(), SIZE);
 
-        this.thenNothingWasSentTo(SEARCHER);
+        thenNothingWasSentTo(SEARCHER);
     }
 
     @Test
     void shouldPublishOurNoteWithItsNameRatingCommentAndSize() throws Exception {
-        this.givenAContactAtTheFile();
-        this.givenOurComment(FileComment.of("great film", 5));
-        this.givenOurNoteIsPublished("Film.avi");
+        givenAContactAtTheFile();
+        givenOurComment(FileComment.of("great film", 5));
+        givenOurNoteIsPublished("Film.avi");
 
-        this.whenTheLookupReachesTheNodeAt(PEER);
+        whenTheLookupReachesTheNodeAt(PEER);
 
-        this.thenThePublishWasStarted();
-        this.thenTheLookupShowsAs(KadSearchInfo.Kind.STORE_NOTES);
-        this.thenTheNodeAtWasSentOurNote(PEER, "Film.avi", 5, "great film");
+        thenThePublishWasStarted();
+        thenTheLookupShowsAs(KadSearchInfo.Kind.STORE_NOTES);
+        thenTheNodeAtWasSentOurNote(PEER, "Film.avi", 5, "great film");
     }
 
     @Test
     void shouldStopPublishingACommentTakenAwayMeanwhile() {
-        this.givenAContactAtTheFile();
-        this.givenOurComment(FileComment.of("great film", 5));
-        this.givenOurNoteIsPublished("Film.avi");
-        this.givenOurComment(FileComment.NONE);
+        givenAContactAtTheFile();
+        givenOurComment(FileComment.of("great film", 5));
+        givenOurNoteIsPublished("Film.avi");
+        givenOurComment(FileComment.NONE);
 
-        this.whenTheLookupReachesTheNodeAt(PEER);
+        whenTheLookupReachesTheNodeAt(PEER);
 
-        this.thenThePublishWasStarted();
-        this.thenNoNoteWasSentTo(PEER);
-        this.thenNoNotePublishRuns();
+        thenThePublishWasStarted();
+        thenNoNoteWasSentTo(PEER);
+        thenNoNotePublishRuns();
     }
 
     @Test
     void shouldAskTheNodesNearTheFileForItsNotesOfThatSize() throws Exception {
-        this.givenAContactAtTheFile();
-        this.givenTheNotesAreSearchedFor();
+        givenAContactAtTheFile();
+        givenTheNotesAreSearchedFor();
 
-        this.whenTheLookupReachesTheNodeAt(PEER);
+        whenTheLookupReachesTheNodeAt(PEER);
 
-        this.thenTheSearchWasStarted();
-        this.thenTheLookupShowsAs(KadSearchInfo.Kind.NOTES);
-        this.thenTheNodeAtWasAskedForNotesOfSize(PEER, SIZE);
+        thenTheSearchWasStarted();
+        thenTheLookupShowsAs(KadSearchInfo.Kind.NOTES);
+        thenTheNodeAtWasAskedForNotesOfSize(PEER, SIZE);
     }
 
     @Test
     void shouldTakeEachPublishersNoteOnceAndOnlyNotesOnThisFile() {
-        this.givenAContactAtTheFile();
-        this.givenTheNotesAreSearchedFor();
-        this.givenTheLookupReachedTheNodeAt(PEER);
+        givenAContactAtTheFile();
+        givenTheNotesAreSearchedFor();
+        givenTheLookupReachedTheNodeAt(PEER);
 
-        this.whenTheNodeAtAnswers(
+        whenTheNodeAtAnswers(
                 PEER,
                 new KadMessages.Entry(id(1), note("Film.avi", SIZE, 4, "good")),
                 new KadMessages.Entry(id(1), note("Film.avi", SIZE, 1, "the same publisher again")),
@@ -186,49 +186,49 @@ class KadNodeNotesTest {
                 new KadMessages.Entry(id(3), note("Other.avi", SIZE + 1, 2, "another size")),
                 new KadMessages.Entry(id(4), note("", 0, 3, "no name nor size")));
 
-        this.thenTheNotesFoundComeFrom(id(1), id(4));
-        this.thenTheNoteFromIs(id(1), "Film.avi", FileComment.of("good", 4));
+        thenTheNotesFoundComeFrom(id(1), id(4));
+        thenTheNoteFromIs(id(1), "Film.avi", FileComment.of("good", 4));
     }
 
     @Test
     void shouldIgnoreNotesFromANodeThisSearchDidNotAsk() {
-        this.givenAContactAtTheFile();
-        this.givenAContactAt(OTHER, farFrom(this.target));
-        this.givenASourceSearchReachedTheNodeAt(OTHER);
-        this.givenTheNotesAreSearchedFor();
-        this.givenTheLookupReachedTheNodeAt(PEER);
+        givenAContactAtTheFile();
+        givenAContactAt(OTHER, farFrom(this.target));
+        givenASourceSearchReachedTheNodeAt(OTHER);
+        givenTheNotesAreSearchedFor();
+        givenTheLookupReachedTheNodeAt(PEER);
 
-        this.whenTheNodeAtAnswers(OTHER, new KadMessages.Entry(id(1), note("Film.avi", SIZE, 4, "planted")));
+        whenTheNodeAtAnswers(OTHER, new KadMessages.Entry(id(1), note("Film.avi", SIZE, 4, "planted")));
 
-        this.thenNoNoteIsFound();
+        thenNoNoteIsFound();
     }
 
     @Test
     void shouldTellWhenTheSearchEnds() {
-        this.givenAContactAtTheFile();
-        this.givenTheNotesAreSearchedFor();
-        this.givenTheLookupReachedTheNodeAt(PEER);
+        givenAContactAtTheFile();
+        givenTheNotesAreSearchedFor();
+        givenTheLookupReachedTheNodeAt(PEER);
 
-        this.whenTimePassesForTheNode(60 * SECOND);
+        whenTimePassesForTheNode(60 * SECOND);
 
-        this.thenTheSearchEnded();
-        this.thenNoNotesSearchRuns();
+        thenTheSearchEnded();
+        thenNoNotesSearchRuns();
     }
 
     @Test
     void shouldNotSearchAFileThatIsLookedUpAlready() {
-        this.givenAContactAtTheFile();
-        this.givenASourceSearchOfTheFile();
+        givenAContactAtTheFile();
+        givenASourceSearchOfTheFile();
 
-        this.whenTheNotesAreSearchedFor();
+        whenTheNotesAreSearchedFor();
 
-        this.thenTheSearchWasNotStarted();
+        thenTheSearchWasNotStarted();
     }
 
     private void givenAContactAtTheFile() {
         this.file = hash(this.random);
         this.target = UInt128.of(this.file);
-        this.givenAContactAt(PEER, this.target);
+        givenAContactAt(PEER, this.target);
     }
 
     private void givenAContactAt(int ip, UInt128 id) {
@@ -239,7 +239,7 @@ class KadNodeNotesTest {
     private void givenASourceSearchReachedTheNodeAt(int ip) {
         assertThat(this.node.findSources(farFrom(this.target).toHash16(), SIZE, s -> {}))
                 .isTrue();
-        this.receive(ip, new KadMessages.Answer(farFrom(this.target), List.of()).encode());
+        receive(ip, new KadMessages.Answer(farFrom(this.target), List.of()).encode());
     }
 
     private void givenASourceSearchOfTheFile() {
@@ -247,11 +247,11 @@ class KadNodeNotesTest {
     }
 
     private void givenTheNotesAreSearchedFor() {
-        this.whenTheNotesAreSearchedFor();
+        whenTheNotesAreSearchedFor();
     }
 
     private void givenTheLookupReachedTheNodeAt(int ip) {
-        this.whenTheLookupReachesTheNodeAt(ip);
+        whenTheLookupReachesTheNodeAt(ip);
     }
 
     private void givenOurComment(FileComment comment) {
@@ -263,7 +263,7 @@ class KadNodeNotesTest {
     }
 
     private void givenANotePublishedBy(int ip, UInt128 file, List<Tag> tags) {
-        this.whenANotePublishedBy(ip, file, tags);
+        whenANotePublishedBy(ip, file, tags);
     }
 
     private void givenTimePasses(long nanos) {
@@ -271,11 +271,11 @@ class KadNodeNotesTest {
     }
 
     private void whenANotePublishedBy(int ip, UInt128 file, List<Tag> tags) {
-        this.receive(ip, new KadMessages.NotesPublish(file, id(77), tags).encode());
+        receive(ip, new KadMessages.NotesPublish(file, id(77), tags).encode());
     }
 
     private void whenTheNotesAreSearchedForBy(int ip, UInt128 file, long size) {
-        this.receive(ip, new KadMessages.NotesSearch(file, size).encode());
+        receive(ip, new KadMessages.NotesSearch(file, size).encode());
     }
 
     private void whenTheNotesAreSearchedFor() {
@@ -284,13 +284,13 @@ class KadNodeNotesTest {
 
     // The node answers the lookup, which then sends it the actual request.
     private void whenTheLookupReachesTheNodeAt(int ip) {
-        this.receive(ip, new KadMessages.Answer(this.target, List.of()).encode());
+        receive(ip, new KadMessages.Answer(this.target, List.of()).encode());
         this.time.addAndGet(4 * SECOND);
         this.node.tick();
     }
 
     private void whenTheNodeAtAnswers(int ip, KadMessages.Entry... notes) {
-        this.receive(ip, new KadMessages.SearchAnswer(id(9), this.target, List.of(notes)).encode());
+        receive(ip, new KadMessages.SearchAnswer(id(9), this.target, List.of(notes)).encode());
     }
 
     private void whenTimePassesForTheNode(long nanos) {
@@ -301,7 +301,7 @@ class KadNodeNotesTest {
     }
 
     private void thenThePublisherHeardItWasStored(int ip, UInt128 file) throws DecodeException {
-        assertThat(KadMessages.PublishAnswer.decode(this.last(ip, Opcodes.Kad.PUBLISH_RES))
+        assertThat(KadMessages.PublishAnswer.decode(last(ip, Opcodes.Kad.PUBLISH_RES))
                         .target())
                 .isEqualTo(file);
     }
@@ -315,7 +315,7 @@ class KadNodeNotesTest {
     }
 
     private void thenTheSearcherGetsTheNote(int ip, String name, int rating, String comment) throws DecodeException {
-        KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(this.last(ip, Opcodes.Kad.SEARCH_RES));
+        KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(last(ip, Opcodes.Kad.SEARCH_RES));
         assertThat(answer.sender()).isEqualTo(this.node.id());
         assertThat(answer.results()).singleElement().satisfies(e -> {
             assertThat(e.id()).as("the publisher's id").isEqualTo(id(77));
@@ -346,8 +346,7 @@ class KadNodeNotesTest {
     }
 
     private void thenTheNodeAtWasSentOurNote(int ip, String name, int rating, String comment) throws DecodeException {
-        KadMessages.NotesPublish publish =
-                KadMessages.NotesPublish.decode(this.last(ip, Opcodes.Kad.PUBLISH_NOTES_REQ));
+        KadMessages.NotesPublish publish = KadMessages.NotesPublish.decode(last(ip, Opcodes.Kad.PUBLISH_NOTES_REQ));
         assertThat(publish.file()).isEqualTo(this.target);
         assertThat(publish.publisher()).as("our Kad id").isEqualTo(this.node.id());
         assertThat(publish.tags())
@@ -360,7 +359,7 @@ class KadNodeNotesTest {
     }
 
     private void thenNoNoteWasSentTo(int ip) {
-        assertThat(this.last(ip, Opcodes.Kad.PUBLISH_NOTES_REQ)).isNull();
+        assertThat(last(ip, Opcodes.Kad.PUBLISH_NOTES_REQ)).isNull();
     }
 
     private void thenNoNotePublishRuns() {
@@ -369,7 +368,7 @@ class KadNodeNotesTest {
     }
 
     private void thenTheNodeAtWasAskedForNotesOfSize(int ip, long size) throws DecodeException {
-        KadMessages.NotesSearch search = KadMessages.NotesSearch.decode(this.last(ip, Opcodes.Kad.SEARCH_NOTES_REQ));
+        KadMessages.NotesSearch search = KadMessages.NotesSearch.decode(last(ip, Opcodes.Kad.SEARCH_NOTES_REQ));
         assertThat(search.target()).isEqualTo(this.target);
         assertThat(search.size()).isEqualTo(size);
     }

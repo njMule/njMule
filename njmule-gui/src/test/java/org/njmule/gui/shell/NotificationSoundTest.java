@@ -53,43 +53,43 @@ class NotificationSoundTest {
 
     @Test
     void shouldPlayTheSoundWhenADownloadCompletes() throws Exception {
-        this.givenTheWindow();
-        this.givenTheSound(true, Optional.of(this.ding()));
+        givenTheWindow();
+        givenTheSound(true, Optional.of(ding()));
 
-        this.whenADownloadCompletes();
+        whenADownloadCompletes();
 
-        this.thenThePlayedSoundsAre(this.ding());
+        thenThePlayedSoundsAre(ding());
     }
 
     @Test
     void shouldPlayTheSoundWhenAMessageArrivesOnAnotherScreen() throws Exception {
-        this.givenTheWindow();
-        this.givenTheSound(true, Optional.of(this.ding()));
-        this.givenTheScreenShows("transfers");
+        givenTheWindow();
+        givenTheSound(true, Optional.of(ding()));
+        givenTheScreenShows("transfers");
 
-        this.whenAMessageArrives();
+        whenAMessageArrives();
 
-        this.thenThePlayedSoundsAre(this.ding());
+        thenThePlayedSoundsAre(ding());
     }
 
     @Test
     void shouldPlayNothingWhileTheSoundIsOff() throws Exception {
-        this.givenTheWindow();
-        this.givenTheSound(false, Optional.of(this.ding()));
+        givenTheWindow();
+        givenTheSound(false, Optional.of(ding()));
 
-        this.whenADownloadCompletes();
+        whenADownloadCompletes();
 
-        this.thenNoSoundWasPlayed();
+        thenNoSoundWasPlayed();
     }
 
     @Test
     void shouldPlayNothingWithoutASoundFile() throws Exception {
-        this.givenTheWindow();
-        this.givenTheSound(true, Optional.empty());
+        givenTheWindow();
+        givenTheSound(true, Optional.empty());
 
-        this.whenADownloadCompletes();
+        whenADownloadCompletes();
 
-        this.thenNoSoundWasPlayed();
+        thenNoSoundWasPlayed();
     }
 
     private void givenTheWindow() throws Exception {

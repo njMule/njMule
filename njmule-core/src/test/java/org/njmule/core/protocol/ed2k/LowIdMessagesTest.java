@@ -49,58 +49,58 @@ class LowIdMessagesTest {
 
     @Test
     void aRelayedCallbackNamesTheBuddyTheFileAndTheRequesterInKadLayout() throws Exception {
-        this.whenEncoded(new LowIdMessages.Callback(BUDDY, FILE, Ipv4.of(1, 2, 3, 4), 4662));
+        whenEncoded(new LowIdMessages.Callback(BUDDY, FILE, Ipv4.of(1, 2, 3, 4), 4662));
 
-        this.thenThePacketIs(
+        thenThePacketIs(
                 Protocol.EMULE,
                 Opcodes.Extended.CALLBACK.code(),
                 "04030201080706050c0b0a09100f0e0d" + "a3a2a1a0a7a6a5a4abaaa9a8afaeadac" + "04030201" + "3612");
-        this.thenItReadsBackAs(
+        thenItReadsBackAs(
                 LowIdMessages.Callback::decode, new LowIdMessages.Callback(BUDDY, FILE, Ipv4.of(1, 2, 3, 4), 4662));
     }
 
     @Test
     void aDirectCallbackRequestGivesOurPortHashAndConnectOptions() throws Exception {
-        this.whenEncoded(new LowIdMessages.DirectCallbackRequest(4662, USER, 0x03));
+        whenEncoded(new LowIdMessages.DirectCallbackRequest(4662, USER, 0x03));
 
-        this.thenThePacketIs(
+        thenThePacketIs(
                 Protocol.EMULE,
                 Opcodes.ClientUdp.DIRECTCALLBACKREQ.code(),
                 "3612" + "00112233445566778899aabbccddeeff" + "03");
-        this.thenItReadsBackAs(
+        thenItReadsBackAs(
                 LowIdMessages.DirectCallbackRequest::decode, new LowIdMessages.DirectCallbackRequest(4662, USER, 0x03));
     }
 
     @Test
     void aUdpCheckRequestGivesBothPortsAndTheKey() throws Exception {
-        this.whenEncoded(new LowIdMessages.UdpCheckRequest(4672, 5000, 0x01020304));
+        whenEncoded(new LowIdMessages.UdpCheckRequest(4672, 5000, 0x01020304));
 
-        this.thenThePacketIs(Protocol.EMULE, Opcodes.Extended.FWCHECKUDPREQ.code(), "4012" + "8813" + "04030201");
-        this.thenItReadsBackAs(
+        thenThePacketIs(Protocol.EMULE, Opcodes.Extended.FWCHECKUDPREQ.code(), "4012" + "8813" + "04030201");
+        thenItReadsBackAs(
                 LowIdMessages.UdpCheckRequest::decode, new LowIdMessages.UdpCheckRequest(4672, 5000, 0x01020304));
     }
 
     @Test
     void aBuddyPingCarriesNothing() {
-        this.whenEncoded(LowIdMessages.buddyPing());
+        whenEncoded(LowIdMessages.buddyPing());
 
-        this.thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPING.code(), "");
+        thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPING.code(), "");
     }
 
     @Test
     void aBuddyPongCarriesNothing() {
-        this.whenEncoded(LowIdMessages.buddyPong());
+        whenEncoded(LowIdMessages.buddyPong());
 
-        this.thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPONG.code(), "");
+        thenThePacketIs(Protocol.EMULE, Opcodes.Extended.BUDDYPONG.code(), "");
     }
 
     @Test
     void aHelloWithABuddyNamesItRightAfterTheUdpPorts() throws Exception {
-        this.givenOurHello(Hello.MISC2_DIRECT_UDP_CALLBACK);
+        givenOurHello(Hello.MISC2_DIRECT_UDP_CALLBACK);
 
-        this.whenOurBuddyIsAdded(Ipv4.of(1, 2, 3, 4), 4672);
+        whenOurBuddyIsAdded(Ipv4.of(1, 2, 3, 4), 4672);
 
-        this.thenTheTagsAre(
+        thenTheTagsAre(
                 ClientTag.NAME,
                 ClientTag.VERSION,
                 ClientTag.EMULE_UDPPORTS,
@@ -109,18 +109,18 @@ class LowIdMessagesTest {
                 ClientTag.EMULE_MISCOPTIONS1,
                 ClientTag.EMULE_MISCOPTIONS2,
                 ClientTag.EMULE_VERSION);
-        this.thenTheBuddyReadIs(Ipv4.of(1, 2, 3, 4), 4672);
-        this.thenDirectCallbacksAreTaken(true);
+        thenTheBuddyReadIs(Ipv4.of(1, 2, 3, 4), 4672);
+        thenDirectCallbacksAreTaken(true);
     }
 
     @Test
     void aHelloWithoutABuddyNamesNone() throws Exception {
-        this.givenOurHello(0);
+        givenOurHello(0);
 
-        this.whenTheHelloTravels();
+        whenTheHelloTravels();
 
-        this.thenTheBuddyReadIs(0, 0);
-        this.thenDirectCallbacksAreTaken(false);
+        thenTheBuddyReadIs(0, 0);
+        thenDirectCallbacksAreTaken(false);
     }
 
     private void givenOurHello(int misc2) {

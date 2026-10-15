@@ -123,7 +123,7 @@ class DownloadKadCallbackTest {
                 return true;
             }
         };
-        this.manager = this.onLoop(() -> DownloadManager.open(
+        this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -173,7 +173,7 @@ class DownloadKadCallbackTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.close();
             return null;
         });
@@ -186,88 +186,88 @@ class DownloadKadCallbackTest {
 
     @Test
     void aSourceBehindABuddyIsAskedThroughItAndTakenWhenItCallsBack() throws Exception {
-        this.givenADownloadThatKadSearches();
+        givenADownloadThatKadSearches();
 
-        this.whenKadFinds(this.behindABuddy(PEER));
+        whenKadFinds(behindABuddy(PEER));
 
-        this.thenACallbackIsAskedFor(1, PEER, true);
+        thenACallbackIsAskedFor(1, PEER, true);
 
-        this.whenTheSourceCallsBackAs(PEER);
+        whenTheSourceCallsBackAs(PEER);
 
-        this.thenTheCallIs("adopted");
-        this.thenTheSourceIsAskedForTheFile();
+        thenTheCallIs("adopted");
+        thenTheSourceIsAskedForTheFile();
     }
 
     @Test
     void aSourceTakingDirectCallbacksIsAskedDirectly() throws Exception {
-        this.givenADownloadThatKadSearches();
+        givenADownloadThatKadSearches();
 
-        this.whenKadFinds(this.takingDirectCallbacks(PEER));
+        whenKadFinds(takingDirectCallbacks(PEER));
 
-        this.thenACallbackIsAskedFor(1, PEER, false);
+        thenACallbackIsAskedFor(1, PEER, false);
     }
 
     @Test
     void aClientWeDidNotAskIsNotTakenForTheSource() throws Exception {
-        this.givenADownloadThatKadSearches();
-        this.givenKadFound(this.behindABuddy(PEER));
+        givenADownloadThatKadSearches();
+        givenKadFound(behindABuddy(PEER));
 
-        this.whenTheSourceCallsBackAs(Hash16.parseHex("46".repeat(16)));
+        whenTheSourceCallsBackAs(Hash16.parseHex("46".repeat(16)));
 
-        this.thenTheCallIs("refused");
+        thenTheCallIs("refused");
     }
 
     @Test
     void weAreNeverAskedToCallOurselves() throws Exception {
-        this.givenADownloadThatKadSearches();
+        givenADownloadThatKadSearches();
 
-        this.whenKadFinds(this.behindABuddy(OURS), this.takingDirectCallbacks(PEER));
+        whenKadFinds(behindABuddy(OURS), takingDirectCallbacks(PEER));
 
-        this.thenACallbackIsAskedFor(1, PEER, false);
-        this.thenNoMoreCallbacksAreAsked();
+        thenACallbackIsAskedFor(1, PEER, false);
+        thenNoMoreCallbacksAreAsked();
     }
 
     @Test
     void aSourceThatCalledBackIsAskedThroughKadAgainAndNeverPassedOn() throws Exception {
-        this.givenADownloadThatKadSearches();
-        this.givenKadFound(this.behindABuddy(PEER));
-        this.givenTheSourceCalledBackAndKeepsUsQueued();
+        givenADownloadThatKadSearches();
+        givenKadFound(behindABuddy(PEER));
+        givenTheSourceCalledBackAndKeepsUsQueued();
 
-        this.whenItsTurnComesAgain();
+        whenItsTurnComesAgain();
 
-        this.thenACallbackIsAskedFor(2, PEER, true);
-        this.thenTheSourceIsNotPassedOn();
+        thenACallbackIsAskedFor(2, PEER, true);
+        thenTheSourceIsNotPassedOn();
     }
 
     // Steps.
 
     private void givenADownloadThatKadSearches() throws Exception {
-        this.onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, FILE)));
-        this.await("Kad searched", () -> this.search.get() != null);
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, FILE)));
+        await("Kad searched", () -> this.search.get() != null);
     }
 
     private void givenKadFound(DownloadManager.KadSource found) throws Exception {
-        this.whenKadFinds(found);
-        this.thenACallbackIsAskedFor(
+        whenKadFinds(found);
+        thenACallbackIsAskedFor(
                 1,
                 found.userHash().orElseThrow(),
                 found.callback().orElseThrow().viaBuddy());
     }
 
     private void givenTheSourceCalledBackAndKeepsUsQueued() throws Exception {
-        this.whenTheSourceCallsBackAs(PEER);
-        this.thenTheCallIs("adopted");
+        whenTheSourceCallsBackAs(PEER);
+        thenTheCallIs("adopted");
         this.link.until(Opcodes.Client.SETREQFILEID);
         this.link.send(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
         this.link.until(Opcodes.Client.STARTUPLOADREQ);
         this.link.close();
-        this.await(
+        await(
                 "the session ends",
                 () -> this.manager.sources().stream().allMatch(s -> s.state() == SourceInfo.State.WAITING));
     }
 
     private void whenKadFinds(DownloadManager.KadSource... found) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.search.get().accept(List.of(found));
             return null;
         });
@@ -283,7 +283,7 @@ class DownloadKadCallbackTest {
     }
 
     private void thenACallbackIsAskedFor(int times, Hash16 userHash, boolean viaBuddy) throws Exception {
-        this.await("callback asked " + times + " times", () -> this.asked.size() >= times);
+        await("callback asked " + times + " times", () -> this.asked.size() >= times);
         Asked last = this.asked.getLast();
         assertThat(this.asked).hasSize(times);
         assertThat(last.file()).isEqualTo(FILE);
@@ -297,7 +297,7 @@ class DownloadKadCallbackTest {
     }
 
     private void thenTheCallIs(String outcome) throws Exception {
-        this.await("routed", () -> !this.routed.isEmpty());
+        await("routed", () -> !this.routed.isEmpty());
         assertThat(this.routed.removeLast()).isEqualTo(outcome);
     }
 
@@ -307,7 +307,7 @@ class DownloadKadCallbackTest {
     }
 
     private void thenTheSourceIsNotPassedOn() throws Exception {
-        assertThat(this.onLoop(() -> this.manager.exchangeable(FILE))).isEmpty();
+        assertThat(onLoop(() -> this.manager.exchangeable(FILE))).isEmpty();
     }
 
     // Helpers.
@@ -332,7 +332,7 @@ class DownloadKadCallbackTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

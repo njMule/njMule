@@ -53,182 +53,180 @@ class AutostartTest {
 
     @Test
     void shouldOfferNothingToAJavaLauncher() {
-        this.givenTheProgram("C:\\jdk\\bin\\java.exe");
+        givenTheProgram("C:\\jdk\\bin\\java.exe");
 
-        this.whenTheStartAtLoginIsLookedFor();
+        whenTheStartAtLoginIsLookedFor();
 
-        this.thenThereIsNone();
+        thenThereIsNone();
     }
 
     @Test
     void shouldWriteTheRunValueWithTheProgramAndItsArgumentsOnWindows() throws IOException {
-        this.givenTheArguments("--config-dir", "D:\\njMule data\\");
-        this.givenTheStartAtLogin();
+        givenTheArguments("--config-dir", "D:\\njMule data\\");
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
 
-        this.thenTheImportedRegistryFileContains(
-                "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]");
-        this.thenTheImportedRegistryFileContains(
+        thenTheImportedRegistryFileContains("[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]");
+        thenTheImportedRegistryFileContains(
                 "\"njMule\"=\"\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\" \\\"--config-dir\\\""
                         + " \\\"D:\\\\njMule data\\\\\\\\\\\"\"");
-        this.thenNoWorkFileIsLeft();
+        thenNoWorkFileIsLeft();
     }
 
     @Test
     void shouldReadTheRunValueBackOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
+        givenTheStartAtLogin();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(true);
-        this.thenNoWorkFileIsLeft();
+        thenItIsOn(true);
+        thenNoWorkFileIsLeft();
     }
 
     @Test
     void shouldTakeAValueOfAnotherCopyAsOffOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"D:\\\\old\\\\njmule-gui.exe\\\"");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"D:\\\\old\\\\njmule-gui.exe\\\"");
+        givenTheStartAtLogin();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(false);
+        thenItIsOn(false);
     }
 
     @Test
     void shouldDeleteTheRunValueOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOff();
+        whenItIsTurnedOff();
 
-        this.thenTheCommandsInclude(List.of("reg", "delete", SystemAutostart.Windows.KEY, "/v", "njMule", "/f"));
+        thenTheCommandsInclude(List.of("reg", "delete", SystemAutostart.Windows.KEY, "/v", "njMule", "/f"));
     }
 
     @Test
     void shouldTakeAValueDisabledInTheTaskManagerAsOffOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
-        this.givenTheTaskManagerFlag("03");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
+        givenTheTaskManagerFlag("03");
+        givenTheStartAtLogin();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(false);
+        thenItIsOn(false);
     }
 
     @Test
     void shouldTakeAValueEnabledInTheTaskManagerAsOnOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
-        this.givenTheTaskManagerFlag("02");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
+        givenTheTaskManagerFlag("02");
+        givenTheStartAtLogin();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(true);
+        thenItIsOn(true);
     }
 
     @Test
     void shouldEnableAgainAValueDisabledInTheTaskManagerOnWindows() throws IOException {
-        this.givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
-        this.givenTheTaskManagerFlag("03");
-        this.givenTheStartAtLogin();
+        givenTheRunValue("\\\"C:\\\\Program Files\\\\njMule\\\\njmule-gui.exe\\\"");
+        givenTheTaskManagerFlag("03");
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
 
-        this.thenTheCommandsInclude(
-                List.of("reg", "delete", SystemAutostart.Windows.APPROVED_KEY, "/v", "njMule", "/f"));
+        thenTheCommandsInclude(List.of("reg", "delete", SystemAutostart.Windows.APPROVED_KEY, "/v", "njMule", "/f"));
     }
 
     @Test
     void shouldDeleteNothingWithoutARunValueOnWindows() throws IOException {
-        this.givenTheStartAtLogin();
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOff();
+        whenItIsTurnedOff();
 
-        this.thenNothingWasDeleted();
+        thenNothingWasDeleted();
     }
 
     @Test
     void shouldWriteAnAutostartEntryOnLinux() throws IOException {
-        this.givenLinux();
-        this.givenTheArguments("--config-dir", "/home/ann/my files/100%");
-        this.givenTheStartAtLogin();
+        givenLinux();
+        givenTheArguments("--config-dir", "/home/ann/my files/100%");
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
 
-        this.thenTheLinuxEntryContains("Exec=/usr/lib/njmule/njmule-gui --config-dir \"/home/ann/my files/100%%\"");
-        this.thenTheLinuxEntryContains("X-GNOME-Autostart-enabled=true");
-        this.thenItIsOnNow(true);
+        thenTheLinuxEntryContains("Exec=/usr/lib/njmule/njmule-gui --config-dir \"/home/ann/my files/100%%\"");
+        thenTheLinuxEntryContains("X-GNOME-Autostart-enabled=true");
+        thenItIsOnNow(true);
     }
 
     @Test
     void shouldUseTheDefaultConfigFolderWithoutXdgConfigHome() throws IOException {
-        this.givenLinux();
-        this.givenNoXdgConfigHome();
-        this.givenTheStartAtLogin();
+        givenLinux();
+        givenNoXdgConfigHome();
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
 
-        this.thenTheFileExists(this.dir.resolve("home/.config/autostart/org.njmule.njMule.desktop"));
+        thenTheFileExists(this.dir.resolve("home/.config/autostart/org.njmule.njMule.desktop"));
     }
 
     @Test
     void shouldTakeAHiddenEntryAsOffOnLinux() throws IOException {
-        this.givenLinux();
-        this.givenTheStartAtLogin();
-        this.givenItWasTurnedOn();
-        this.givenTheUserHidTheEntry();
+        givenLinux();
+        givenTheStartAtLogin();
+        givenItWasTurnedOn();
+        givenTheUserHidTheEntry();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(false);
+        thenItIsOn(false);
     }
 
     @Test
     void shouldFollowAnEntryRemovedElsewhereOnLinux() throws IOException {
-        this.givenLinux();
-        this.givenTheStartAtLogin();
-        this.givenItWasTurnedOn();
-        this.givenTheUserRemovedTheEntry();
+        givenLinux();
+        givenTheStartAtLogin();
+        givenItWasTurnedOn();
+        givenTheUserRemovedTheEntry();
 
-        this.whenTheSystemIsAsked();
+        whenTheSystemIsAsked();
 
-        this.thenItIsOn(false);
+        thenItIsOn(false);
     }
 
     @Test
     void shouldEscapeTheReservedCharactersOfAnExecLine() {
-        this.thenTheExecArgumentOfIs("plain", "plain");
-        this.thenTheExecArgumentOfIs("a b", "\"a b\"");
-        this.thenTheExecArgumentOfIs("say \"$hi\"", "\"say \\\\\"\\\\$hi\\\\\"\"");
-        this.thenTheExecArgumentOfIs("C:\\x", "\"C:\\\\\\\\x\"");
-        this.thenTheExecArgumentOfIs("", "\"\"");
+        thenTheExecArgumentOfIs("plain", "plain");
+        thenTheExecArgumentOfIs("a b", "\"a b\"");
+        thenTheExecArgumentOfIs("say \"$hi\"", "\"say \\\\\"\\\\$hi\\\\\"\"");
+        thenTheExecArgumentOfIs("C:\\x", "\"C:\\\\\\\\x\"");
+        thenTheExecArgumentOfIs("", "\"\"");
     }
 
     @Test
     void shouldWriteALaunchAgentOnMacOs() throws IOException {
-        this.givenMacOs();
-        this.givenTheArguments("--config-dir", "/Users/ann/a&b");
-        this.givenTheStartAtLogin();
+        givenMacOs();
+        givenTheArguments("--config-dir", "/Users/ann/a&b");
+        givenTheStartAtLogin();
 
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
 
-        this.thenTheLaunchAgentContains("<string>/Applications/njMule.app/Contents/MacOS/njmule-gui</string>");
-        this.thenTheLaunchAgentContains("<string>/Users/ann/a&amp;b</string>");
-        this.thenTheLaunchAgentContains("<key>RunAtLoad</key>\n    <true/>");
-        this.thenItIsOnNow(true);
+        thenTheLaunchAgentContains("<string>/Applications/njMule.app/Contents/MacOS/njmule-gui</string>");
+        thenTheLaunchAgentContains("<string>/Users/ann/a&amp;b</string>");
+        thenTheLaunchAgentContains("<key>RunAtLoad</key>\n    <true/>");
+        thenItIsOnNow(true);
     }
 
     @Test
     void shouldRemoveTheLaunchAgentOnMacOs() throws IOException {
-        this.givenMacOs();
-        this.givenTheStartAtLogin();
-        this.givenItWasTurnedOn();
+        givenMacOs();
+        givenTheStartAtLogin();
+        givenItWasTurnedOn();
 
-        this.whenItIsTurnedOff();
+        whenItIsTurnedOff();
 
-        this.thenItIsOnNow(false);
+        thenItIsOnNow(false);
     }
 
     private void givenTheProgram(String path) {
@@ -263,20 +261,20 @@ class AutostartTest {
     }
 
     private void givenTheStartAtLogin() {
-        this.whenTheStartAtLoginIsLookedFor();
+        whenTheStartAtLoginIsLookedFor();
     }
 
     private void givenItWasTurnedOn() throws IOException {
-        this.whenItIsTurnedOn();
+        whenItIsTurnedOn();
     }
 
     private void givenTheUserHidTheEntry() throws IOException {
-        Path entry = this.linuxEntry();
+        Path entry = linuxEntry();
         Files.writeString(entry, Files.readString(entry, StandardCharsets.UTF_8) + "Hidden=true\n");
     }
 
     private void givenTheUserRemovedTheEntry() throws IOException {
-        Files.delete(this.linuxEntry());
+        Files.delete(linuxEntry());
     }
 
     private void whenTheStartAtLoginIsLookedFor() {
@@ -333,7 +331,7 @@ class AutostartTest {
     }
 
     private void thenTheLinuxEntryContains(String line) throws IOException {
-        assertThat(Files.readString(this.linuxEntry(), StandardCharsets.UTF_8).lines())
+        assertThat(Files.readString(linuxEntry(), StandardCharsets.UTF_8).lines())
                 .contains(line);
     }
 
@@ -363,7 +361,7 @@ class AutostartTest {
             this.imported.add(Files.readString(Path.of(command.get(2)), StandardCharsets.UTF_16LE));
         } else if (tool.equals("export")) {
             boolean approved = command.get(2).equals(SystemAutostart.Windows.APPROVED_KEY);
-            String exported = approved ? this.approvedExport() : this.runExport();
+            String exported = approved ? approvedExport() : runExport();
             if (exported == null) {
                 return new LinkAssociation.Result(1, "ERROR");
             }

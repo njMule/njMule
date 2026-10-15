@@ -38,29 +38,29 @@ class NotificationSoundCodecTest {
 
     @Test
     void shouldKeepTheNotificationSoundThroughTheFile() throws IOException {
-        this.givenTheSound(true, Optional.of(this.dir.resolve("my sounds").resolve("ding #1.wav")));
+        givenTheSound(true, Optional.of(this.dir.resolve("my sounds").resolve("ding #1.wav")));
 
-        this.whenThePreferencesAreSavedAndLoaded();
+        whenThePreferencesAreSavedAndLoaded();
 
-        this.thenTheLoadedPreferencesAreTheSaved();
+        thenTheLoadedPreferencesAreTheSaved();
     }
 
     @Test
     void shouldHaveNoSoundByDefault() throws IOException {
-        this.givenTheFile("");
+        givenTheFile("");
 
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
 
-        this.thenTheSoundIs(false, Optional.empty());
+        thenTheSoundIs(false, Optional.empty());
     }
 
     @Test
     void shouldLeaveOutARelativeSoundFile() throws IOException {
-        this.givenTheFile("notify.sound=true\nnotify.soundFile=ding.wav\n");
+        givenTheFile("notify.sound=true\nnotify.soundFile=ding.wav\n");
 
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
 
-        this.thenTheSoundIs(true, Optional.empty());
+        thenTheSoundIs(true, Optional.empty());
     }
 
     private void givenTheSound(boolean on, Optional<Path> file) {
@@ -78,7 +78,7 @@ class NotificationSoundCodecTest {
         StringWriter file = new StringWriter();
         PreferencesCodec.format(this.preferences, file);
         this.text = file.toString();
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
     }
 
     private void whenTheFileIsLoaded() throws IOException {

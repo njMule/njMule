@@ -90,7 +90,7 @@ class ServerFlowTest {
     @Test
     void logsInAndSearchesTheServerThenTheOthersOverUdp() throws Exception {
         InetAddress local = lanAddress();
-        FakeServer connected = this.server(
+        FakeServer connected = server(
                 local,
                 new FakeServer.Config(
                         highId(local),
@@ -100,7 +100,7 @@ class ServerFlowTest {
                                 // Unusable results, which must not reach the front ends.
                                 FakeServer.file("empty.bin", 0, 3),
                                 FakeServer.file(" ", 100, 1))));
-        FakeServer other = this.server(
+        FakeServer other = server(
                 local,
                 new FakeServer.Config(
                         1,
@@ -108,7 +108,7 @@ class ServerFlowTest {
                         List.of(
                                 FakeServer.file("ubuntu-24.04.iso", 6_000_000_000L, 7),
                                 FakeServer.file("ubuntu notes.txt", 10, 1))));
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         Path serverMet = this.dir.resolve("other-server.met");
         Files.write(
@@ -151,10 +151,10 @@ class ServerFlowTest {
     @Test
     void anAnswerOfTheServerStaysWithTheSearchItAnswers() throws Exception {
         InetAddress local = lanAddress();
-        FakeServer server = this.server(local, new FakeServer.Config(highId(local), "", List.of()));
+        FakeServer server = server(local, new FakeServer.Config(highId(local), "", List.of()));
         server.answerSearches(expression -> List.of(
                 FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         engine.connect(Optional.of(new ServerAddress(local.getHostAddress(), server.port())))
                 .get();
@@ -174,10 +174,10 @@ class ServerFlowTest {
     @Test
     void offersTheSharedFilesToTheServer() throws Exception {
         InetAddress local = lanAddress();
-        FakeServer server = this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        FakeServer server = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
         Path incoming = Files.createDirectories(this.dir.resolve("njmule").resolve("incoming"));
         Files.write(incoming.resolve("song.mp3"), new byte[] {1, 2, 3, 4, 5});
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (engine.sharedFiles().get().isEmpty()) {
@@ -209,8 +209,8 @@ class ServerFlowTest {
         try (ServerSocket probe = new ServerSocket(0, 1, local)) {
             deadPort = probe.getLocalPort();
         }
-        FakeServer alive = this.server(local, new FakeServer.Config(1234, "low", List.of()));
-        NjMuleEngine engine = this.engine();
+        FakeServer alive = server(local, new FakeServer.Config(1234, "low", List.of()));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         Path serverMet = this.dir.resolve("two-servers.met");
         int ip = Ipv4.fromBytes(local.getAddress());
@@ -236,9 +236,9 @@ class ServerFlowTest {
         try (ServerSocket probe = new ServerSocket(0, 1, local)) {
             deadPort = probe.getLocalPort();
         }
-        FakeServer alive = this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        FakeServer alive = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
         alive.knowsServers(List.of(new ServerMessages.Endpoint(Ipv4.of(81, 2, 3, 9), 4661)));
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         engine.updatePreferences(p -> p.toBuilder().addServersFromServer(true).build())
                 .get();
         Events events = new Events(engine);
@@ -274,9 +274,9 @@ class ServerFlowTest {
     @Test
     void pingsTheKnownServersAndConnectsBackOnCallbackRequests() throws Exception {
         InetAddress local = lanAddress();
-        FakeServer connected = this.server(local, new FakeServer.Config(highId(local), "hi", List.of()));
-        FakeServer other = this.server(local, new FakeServer.Config(1, "", List.of()));
-        NjMuleEngine engine = this.engine();
+        FakeServer connected = server(local, new FakeServer.Config(highId(local), "hi", List.of()));
+        FakeServer other = server(local, new FakeServer.Config(1, "", List.of()));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         Path serverMet = this.dir.resolve("other.met");
         Files.write(
@@ -316,7 +316,7 @@ class ServerFlowTest {
 
     @Test
     void answersHellosAndReportsTheAnswer() throws Exception {
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         int port = engine.preferences().tcpPort();
 
         PeerInfo self = engine.hello(new ServerAddress("127.0.0.1", port)).get(10, TimeUnit.SECONDS);

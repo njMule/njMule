@@ -74,91 +74,91 @@ class KadNodeIndexFilesTest {
 
     @BeforeEach
     void create() throws IOException {
-        this.node = this.newNode();
+        this.node = newNode();
     }
 
     @Test
     void shouldAnswerAfterARestartWhatWasPublishedBefore() throws IOException, DecodeException {
-        this.givenAKeywordASourceAndANotePublishedToTheNode();
-        this.givenTheNodeSavesItsIndex();
+        givenAKeywordASourceAndANotePublishedToTheNode();
+        givenTheNodeSavesItsIndex();
 
-        this.whenTheNodeStartsAgainAfter(Duration.ofHours(1));
+        whenTheNodeStartsAgainAfter(Duration.ofHours(1));
 
-        this.thenAKeywordSearchFinds("ubuntu desktop.iso");
-        this.thenASourceSearchFinds(1);
-        this.thenANotesSearchFinds(1);
+        thenAKeywordSearchFinds("ubuntu desktop.iso");
+        thenASourceSearchFinds(1);
+        thenANotesSearchFinds(1);
     }
 
     @Test
     void shouldNotLoadWhatExpiredMeanwhile() throws IOException, DecodeException {
-        this.givenAKeywordASourceAndANotePublishedToTheNode();
-        this.givenTheNodeSavesItsIndex();
+        givenAKeywordASourceAndANotePublishedToTheNode();
+        givenTheNodeSavesItsIndex();
 
-        this.whenTheNodeStartsAgainAfter(Duration.ofHours(6));
+        whenTheNodeStartsAgainAfter(Duration.ofHours(6));
 
-        this.thenAKeywordSearchFinds("ubuntu desktop.iso");
-        this.thenASourceSearchFinds(0);
+        thenAKeywordSearchFinds("ubuntu desktop.iso");
+        thenASourceSearchFinds(0);
 
-        this.whenTheNodeStartsAgainAfter(Duration.ofHours(19));
+        whenTheNodeStartsAgainAfter(Duration.ofHours(19));
 
-        this.thenAKeywordSearchFinds();
-        this.thenANotesSearchFinds(0);
+        thenAKeywordSearchFinds();
+        thenANotesSearchFinds(0);
     }
 
     @Test
     void shouldLoadNoMoreThanALivePublishWouldStore() throws IOException, DecodeException {
-        this.givenAnIndexFileOfSourcesForOneFile(KadIndex.MAX_SOURCES_PER_FILE + 100);
-        this.givenAKeywordIndexFileWithAName("x".repeat(1_000), this.node.id());
+        givenAnIndexFileOfSourcesForOneFile(KadIndex.MAX_SOURCES_PER_FILE + 100);
+        givenAKeywordIndexFileWithAName("x".repeat(1_000), this.node.id());
 
-        this.whenTheNodeStartsAgainAfter(Duration.ZERO);
+        whenTheNodeStartsAgainAfter(Duration.ZERO);
 
-        this.thenTheNodeHoldsSources(KadIndex.MAX_SOURCES_PER_FILE);
-        this.thenAKeywordSearchFinds("x".repeat(KadIndex.MAX_KEYWORD_NAME));
+        thenTheNodeHoldsSources(KadIndex.MAX_SOURCES_PER_FILE);
+        thenAKeywordSearchFinds("x".repeat(KadIndex.MAX_KEYWORD_NAME));
     }
 
     @Test
     void shouldIgnoreTheKeywordsOfAnotherNodeAndTheKeysFarFromUs() throws IOException, DecodeException {
-        this.givenAKeywordIndexFileWithAName("ubuntu other.iso", new UInt128(1, 2));
-        this.givenAnIndexFileOfSourcesFarFromUs();
+        givenAKeywordIndexFileWithAName("ubuntu other.iso", new UInt128(1, 2));
+        givenAnIndexFileOfSourcesFarFromUs();
 
-        this.whenTheNodeStartsAgainAfter(Duration.ZERO);
+        whenTheNodeStartsAgainAfter(Duration.ZERO);
 
-        this.thenAKeywordSearchFinds();
-        this.thenTheNodeHoldsSources(0);
+        thenAKeywordSearchFinds();
+        thenTheNodeHoldsSources(0);
     }
 
     @Test
     void shouldStartEmptyFromDamagedFiles() throws IOException, DecodeException {
-        this.givenDamagedIndexFiles();
+        givenDamagedIndexFiles();
 
-        this.whenTheNodeStartsAgainAfter(Duration.ZERO);
+        whenTheNodeStartsAgainAfter(Duration.ZERO);
 
-        this.thenTheNodeHoldsSources(0);
-        this.thenAKeywordSearchFinds();
+        thenTheNodeHoldsSources(0);
+        thenAKeywordSearchFinds();
     }
 
     @Test
     void shouldStillSpareALoadedKeywordAfterARestart() throws IOException {
-        this.givenAKeywordPublishOfOursWhoseNodeReportsTheLoad(80);
-        this.givenTheNodeSavesItsIndex();
+        givenAKeywordPublishOfOursWhoseNodeReportsTheLoad(80);
+        givenTheNodeSavesItsIndex();
 
-        this.whenTheNodeStartsAgainAfter(Duration.ofDays(1));
+        whenTheNodeStartsAgainAfter(Duration.ofDays(1));
 
-        this.thenOurKeywordCannotBePublished();
+        thenOurKeywordCannotBePublished();
     }
 
     private void givenAKeywordASourceAndANotePublishedToTheNode() {
-        this.fromPublisher(new KadMessages.KeywordPublish(this.near(1), List.of(file("ubuntu desktop.iso"))).encode());
-        this.fromPublisher(new KadMessages.SourcePublish(
-                        this.near(2),
+        fromPublisher(new KadMessages.KeywordPublish(near(1), List.of(file("ubuntu desktop.iso"))).encode());
+        fromPublisher(new KadMessages.SourcePublish(
+                        near(2),
                         new UInt128(7, 7),
                         List.of(
                                 new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), 1),
                                 new Tag.IntTag(TagName.id(FileTag.SOURCEPORT), 4662),
                                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), SIZE)))
                 .encode());
-        this.fromPublisher(new KadMessages.NotesPublish(
-                        this.near(3),
+        fromPublisher(new KadMessages.NotesPublish(
+                        near(3),
                         new UInt128(8, 8),
                         List.of(
                                 new Tag.StringTag(TagName.id(FileTag.FILENAME), "ubuntu.iso"),
@@ -178,12 +178,12 @@ class KadNodeIndexFilesTest {
             list.add(new KadIndexFiles.Source(
                     new UInt128(100, i), List.of(new KadIndexFiles.Entry(this.wall + 3_600, sourceTags(i)))));
         }
-        this.writeSources(List.of(new KadIndexFiles.IndexKey(this.near(2), list)));
+        writeSources(List.of(new KadIndexFiles.IndexKey(near(2), list)));
     }
 
     private void givenAnIndexFileOfSourcesFarFromUs() throws IOException {
         UInt128 far = this.node.id().xor(new UInt128(-1L, 0));
-        this.writeSources(List.of(new KadIndexFiles.IndexKey(
+        writeSources(List.of(new KadIndexFiles.IndexKey(
                 far,
                 List.of(new KadIndexFiles.Source(
                         new UInt128(100, 1), List.of(new KadIndexFiles.Entry(this.wall + 3_600, sourceTags(1))))))));
@@ -201,7 +201,7 @@ class KadNodeIndexFilesTest {
                         new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
                         new Tag.IntTag(TagName.id(FileTag.FILESIZE), SIZE)));
         KadIndexFiles.Keyword keyword = new KadIndexFiles.Keyword(
-                this.near(1), List.of(new KadIndexFiles.KeywordSource(new UInt128(9, 9), List.of(entry))));
+                near(1), List.of(new KadIndexFiles.KeywordSource(new UInt128(9, 9), List.of(entry))));
         Files.write(
                 this.dir.resolve(KadNode.KEYWORD_INDEX_FILE),
                 KadIndexFiles.writeKeywords(
@@ -227,9 +227,9 @@ class KadNodeIndexFilesTest {
         UInt128 target = Keywords.id(WORD);
         assertThat(this.node.publishKeyword(WORD, List.of(file("ubuntu.iso")))).isTrue();
         this.node.received(PUBLISHER, PORT, new KadMessages.Answer(target, List.of()).encode(), false, 0, 0);
-        this.seconds(4);
+        seconds(4);
         this.node.received(PUBLISHER, PORT, new KadMessages.PublishAnswer(target, load).encode(), false, 0, 0);
-        this.seconds(30);
+        seconds(30);
         assertThat(this.node.runningKeywordPublishes()).isZero();
     }
 
@@ -238,27 +238,25 @@ class KadNodeIndexFilesTest {
         this.node.saveNodes();
         this.time.addAndGet(pause.toNanos());
         this.wall += pause.toSeconds();
-        this.node = this.newNode();
+        this.node = newNode();
         this.node.loadNodes();
         this.node.loadIndex(this.wall);
     }
 
     private void thenAKeywordSearchFinds(String... names) throws DecodeException {
-        List<KadMessages.Entry> found =
-                this.search(new KadMessages.KeywordSearch(this.near(1), 0, new byte[0]).encode());
+        List<KadMessages.Entry> found = search(new KadMessages.KeywordSearch(near(1), 0, new byte[0]).encode());
         assertThat(found)
                 .extracting(e -> Tags.stringValue(e.tags(), FileTag.FILENAME).orElseThrow())
                 .containsExactly(names);
     }
 
     private void thenASourceSearchFinds(int count) throws DecodeException {
-        assertThat(this.search(new KadMessages.SourceSearch(this.near(2), 0, SIZE).encode()))
+        assertThat(search(new KadMessages.SourceSearch(near(2), 0, SIZE).encode()))
                 .hasSize(count);
     }
 
     private void thenANotesSearchFinds(int count) throws DecodeException {
-        assertThat(this.search(new KadMessages.NotesSearch(this.near(3), SIZE).encode()))
-                .hasSize(count);
+        assertThat(search(new KadMessages.NotesSearch(near(3), SIZE).encode())).hasSize(count);
     }
 
     private void thenTheNodeHoldsSources(int count) {

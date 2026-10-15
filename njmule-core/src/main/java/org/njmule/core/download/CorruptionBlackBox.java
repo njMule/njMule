@@ -54,7 +54,7 @@ final class CorruptionBlackBox {
         Range<Long> range = Range.closedOpen(start, end);
         for (Map.Entry<Range<Long>, Integer> sent :
                 this.senders.subRangeMap(range).asMapOfRanges().entrySet()) {
-            this.proven(sent.getValue())[0] += length(sent.getKey());
+            proven(sent.getValue())[0] += length(sent.getKey());
         }
         this.senders.remove(range);
     }
@@ -74,10 +74,10 @@ final class CorruptionBlackBox {
         if (ips.size() != 1 || covered != end - start) {
             return Set.of();
         }
-        long[] bytes = this.proven(ips.iterator().next());
+        long[] bytes = proven(ips.iterator().next());
         bytes[2] += end - start;
         bytes[3]++;
-        return this.guilty(ips);
+        return guilty(ips);
     }
 
     /**
@@ -86,24 +86,24 @@ final class CorruptionBlackBox {
      */
     Set<Integer> recovered(List<Range<Long>> good, List<Range<Long>> bad) {
         for (Range<Long> block : good) {
-            this.passed(block.lowerEndpoint(), block.upperEndpoint());
+            passed(block.lowerEndpoint(), block.upperEndpoint());
         }
         Set<Integer> suspects = new HashSet<>();
         for (Range<Long> block : bad) {
             for (int ip : new HashSet<>(
                     this.senders.subRangeMap(block).asMapOfRanges().values())) {
-                this.proven(ip)[1] += length(block);
+                proven(ip)[1] += length(block);
                 suspects.add(ip);
             }
             this.senders.remove(block);
         }
-        return this.guilty(suspects);
+        return guilty(suspects);
     }
 
     private Set<Integer> guilty(Set<Integer> suspects) {
         Set<Integer> guilty = new HashSet<>();
         for (int ip : suspects) {
-            long[] bytes = this.proven(ip);
+            long[] bytes = proven(ip);
             if (tooMuch(bytes[1], bytes[0]) || (bytes[3] >= FAILED_PARTS && tooMuch(bytes[2], bytes[0]))) {
                 guilty.add(ip);
             }

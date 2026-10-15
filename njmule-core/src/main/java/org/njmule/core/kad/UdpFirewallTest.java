@@ -85,7 +85,7 @@ final class UdpFirewallTest {
      * {@code lastWhileTesting}. A test that timed out says firewalled.
      */
     boolean isFirewalled(boolean lastWhileTesting) {
-        boolean testing = this.isRunning();
+        boolean testing = isRunning();
         if (this.timedOut && testing) {
             return true;
         }
@@ -114,7 +114,7 @@ final class UdpFirewallTest {
 
     /** Whether helpers are missing and none is left to ask. */
     boolean wantsCandidates() {
-        return this.needsHelpers() && this.candidates.isEmpty();
+        return needsHelpers() && this.candidates.isEmpty();
     }
 
     /** Starts a new test; the outcome of the last one stands meanwhile. */
@@ -134,7 +134,7 @@ final class UdpFirewallTest {
 
     /** Runs every second: the test's time counts from when Kad is connected; one without an outcome times out. */
     void tick(boolean connected, boolean tcpFirewalled, long now) {
-        if (!this.isRunning()) {
+        if (!isRunning()) {
             return;
         }
         if (this.started == 0 && connected) {
@@ -172,7 +172,7 @@ final class UdpFirewallTest {
 
     /** A contact that a lookup for helpers found. */
     void candidate(KadMessages.Contact contact) {
-        if (!this.isRunning()) {
+        if (!isRunning()) {
             return;
         }
         this.candidates.addFirst(contact);
@@ -186,7 +186,7 @@ final class UdpFirewallTest {
      * and {@code usable}; it counts as asked from now on.
      */
     Optional<KadMessages.Contact> nextHelper(Predicate<KadMessages.Contact> usable, int ourIp, UInt128 ourId) {
-        if (!this.needsHelpers() || this.findsExternalPort()) {
+        if (!needsHelpers() || findsExternalPort()) {
             return Optional.empty();
         }
         while (!this.candidates.isEmpty()) {
@@ -227,7 +227,7 @@ final class UdpFirewallTest {
             return false;
         }
         // The helper's datagram to our own port came right after the one to the NAT's: our own port is better.
-        if (!this.isRunning()
+        if (!isRunning()
                 && !this.firewalled
                 && this.succeededOnce
                 && now - this.lastSuccess < LATE_DATAGRAM.toNanos()
@@ -241,7 +241,7 @@ final class UdpFirewallTest {
             return false;
         }
         this.asked.put(ip, new Asked(helper.round(), true));
-        if (!this.isRunning()) {
+        if (!isRunning()) {
             return false;
         }
         if (this.running > 0) {
@@ -280,6 +280,6 @@ final class UdpFirewallTest {
     }
 
     private boolean needsHelpers() {
-        return this.isRunning() && this.running + this.finished < HELPERS;
+        return isRunning() && this.running + this.finished < HELPERS;
     }
 }

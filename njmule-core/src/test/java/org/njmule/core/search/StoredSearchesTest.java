@@ -122,7 +122,7 @@ class StoredSearchesTest {
 
     @Test
     void shouldKeepTheMediaDetailsOfTheResults() throws Exception {
-        this.givenAnOpenSearchWith(new SearchResult(
+        givenAnOpenSearchWith(new SearchResult(
                 hash(7),
                 "song.mp3",
                 4_000_000,
@@ -131,9 +131,9 @@ class StoredSearchesTest {
                 Optional.of("Audio"),
                 new SearchResult.Media("Some Band", "First Album", "Opening Song", 205, 192, "mp3")));
 
-        this.whenTheSearchesAreSavedAndLoaded();
+        whenTheSearchesAreSavedAndLoaded();
 
-        this.thenTheLoadedSearchesAreTheSaved();
+        thenTheLoadedSearchesAreTheSaved();
     }
 
     private void givenAnOpenSearchWith(SearchResult result) {

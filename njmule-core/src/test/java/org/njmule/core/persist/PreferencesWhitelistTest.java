@@ -36,40 +36,39 @@ class PreferencesWhitelistTest {
 
     @Test
     void shouldKeepAWhitelistOfSeveralLines() throws Exception {
-        this.givenTheWhitelist("# friends\n1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255 , 100 , office");
+        givenTheWhitelist("# friends\n1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255 , 100 , office");
 
-        this.whenThePreferencesAreSavedAndLoaded();
+        whenThePreferencesAreSavedAndLoaded();
 
-        this.thenTheLoadedWhitelistIs("# friends\n1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255 , 100 , office");
+        thenTheLoadedWhitelistIs("# friends\n1.2.3.4\n10.0.0.0/8\n5.6.7.0 - 5.6.7.255 , 100 , office");
     }
 
     @Test
     void shouldKeepNoWhitelistWhenTheFileHoldsAWrongOne() throws Exception {
-        this.givenAPreferencesFileWith(
-                "security.ipFilterWhitelist=1.2.3.4\\nnot an address\nsecurity.ipFilterLevel=99\n");
+        givenAPreferencesFileWith("security.ipFilterWhitelist=1.2.3.4\\nnot an address\nsecurity.ipFilterLevel=99\n");
 
-        this.whenThePreferencesAreLoaded();
+        whenThePreferencesAreLoaded();
 
-        this.thenTheLoadedWhitelistIs("");
-        this.thenTheLoadedFilterLevelIs(99);
+        thenTheLoadedWhitelistIs("");
+        thenTheLoadedFilterLevelIs(99);
     }
 
     @Test
     void shouldRefuseAWhitelistWithAWrongEntry() {
-        this.givenTheWhitelist("1.2.3.4\n1.2.3.0/40");
+        givenTheWhitelist("1.2.3.4\n1.2.3.0/40");
 
-        this.whenThePreferencesAreBuilt();
+        whenThePreferencesAreBuilt();
 
-        this.thenTheFailureNames("1.2.3.0/40");
+        thenTheFailureNames("1.2.3.0/40");
     }
 
     @Test
     void shouldRefuseAWhitelistTooLong() {
-        this.givenTheWhitelist("1.2.3.4\n".repeat(Preferences.MAX_IP_FILTER_WHITELIST / 8 + 1));
+        givenTheWhitelist("1.2.3.4\n".repeat(Preferences.MAX_IP_FILTER_WHITELIST / 8 + 1));
 
-        this.whenThePreferencesAreBuilt();
+        whenThePreferencesAreBuilt();
 
-        this.thenTheFailureNames("at most " + Preferences.MAX_IP_FILTER_WHITELIST);
+        thenTheFailureNames("at most " + Preferences.MAX_IP_FILTER_WHITELIST);
     }
 
     private void givenTheWhitelist(String text) {

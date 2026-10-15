@@ -77,7 +77,7 @@ final class ScriptedSource implements AutoCloseable {
     }
 
     InetSocketAddress address() {
-        return new InetSocketAddress(this.server.getInetAddress(), this.port());
+        return new InetSocketAddress(this.server.getInetAddress(), port());
     }
 
     /** A link of {@code size} bytes named {@code name}, with this source. */
@@ -88,17 +88,17 @@ final class ScriptedSource implements AutoCloseable {
                 hash,
                 Optional.empty(),
                 List.of(),
-                List.of(new Ed2kLink.Source("127.0.0.1", this.port())),
+                List.of(new Ed2kLink.Source("127.0.0.1", port())),
                 List.of());
     }
 
     Hello hello() {
-        return this.hello(this.userHash, 0, 0);
+        return hello(this.userHash, 0, 0);
     }
 
     /** Our hello with another user hash, client id and server, as a firewalled client tells them. */
     Hello hello(Hash16 hash, long clientId, int serverIp) {
-        return Hello.of(hash, clientId, this.port(), "scripted", 0, 0, this.misc1, this.misc2, serverIp, 4661);
+        return Hello.of(hash, clientId, port(), "scripted", 0, 0, this.misc1, this.misc2, serverIp, 4661);
     }
 
     /** Connects to the downloader listening at {@code port} with {@code hello}, as a source calling back does. */
@@ -113,15 +113,15 @@ final class ScriptedSource implements AutoCloseable {
 
     /** Waits for the next downloader and leaves its connection unanswered. */
     Socket acceptSilently() throws Exception {
-        return this.nextSocket();
+        return nextSocket();
     }
 
     /** Waits for the next downloader and answers its hello. */
     Link accept() throws Exception {
-        Link link = new Link(this.nextSocket());
+        Link link = new Link(nextSocket());
         Packet hello = link.next();
         assertThat(hello.opcode()).isEqualTo(Opcodes.Client.HELLO.code());
-        link.send(this.hello().encode(true));
+        link.send(hello().encode(true));
         return link;
     }
 
@@ -136,7 +136,7 @@ final class ScriptedSource implements AutoCloseable {
 
     /** Waits for the next downloader and closes its connection without a word. */
     void refuseNext() throws Exception {
-        this.nextSocket().close();
+        nextSocket().close();
     }
 
     /** Whether a downloader connects within {@code wait}; its connection is closed without a word. */
@@ -205,7 +205,7 @@ final class ScriptedSource implements AutoCloseable {
         List<Packet> until(int protocol, int opcode) throws IOException {
             List<Packet> read = new ArrayList<>();
             while (true) {
-                Packet packet = this.next();
+                Packet packet = next();
                 read.add(packet);
                 if (packet.protocol() == protocol && packet.opcode() == opcode) {
                     return read;
@@ -214,11 +214,11 @@ final class ScriptedSource implements AutoCloseable {
         }
 
         List<Packet> until(Opcodes.Client opcode) throws IOException {
-            return this.until(Protocol.EDONKEY, opcode.code());
+            return until(Protocol.EDONKEY, opcode.code());
         }
 
         List<Packet> until(Opcodes.Extended opcode) throws IOException {
-            return this.until(Protocol.EMULE, opcode.code());
+            return until(Protocol.EMULE, opcode.code());
         }
 
         /** Whether the downloader closes the connection within {@code wait}, whatever it sends before. */
@@ -226,7 +226,7 @@ final class ScriptedSource implements AutoCloseable {
             this.socket.setSoTimeout((int) wait.toMillis());
             try {
                 while (true) {
-                    this.next();
+                    next();
                 }
             } catch (EOFException | SocketException e) {
                 return true;

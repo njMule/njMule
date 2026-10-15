@@ -141,20 +141,20 @@ public final class SearchManager {
     public SearchId start(SearchRequest request) {
         SearchExpr expression = SearchParser.parse(request.expression());
         if (request.scope() == SearchRequest.Scope.KAD) {
-            return this.startKad(request, expression);
+            return startKad(request, expression);
         }
         ServerMessages.IdChange id =
                 this.session.id().orElseThrow(() -> new IllegalStateException("not connected to a server"));
         for (Search open : List.copyOf(this.searches.values())) {
             if (open.scope != SearchRequest.Scope.KAD) {
-                this.end(open);
+                end(open);
             }
         }
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         this.searches.put(search.id, search);
         this.serverSearch = search;
         this.session.send(ServerMessages.searchRequest(expression, id.has(ServerMessages.TCP_LARGEFILES)));
-        this.waitForServer(search);
+        waitForServer(search);
         return search.id;
     }
 
@@ -166,7 +166,7 @@ public final class SearchManager {
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         Optional<Runnable> started = searches.search(keyword, SearchTreeCodec.indexedTypes(expression), results -> {
             if (!search.ended) {
-                this.mergeResults(search, results, false);
+                mergeResults(search, results, false);
             }
         });
         if (started.isEmpty()) {
@@ -174,7 +174,7 @@ public final class SearchManager {
         }
         search.kadStop = started.get();
         this.searches.put(search.id, search);
-        search.serverTimer = this.loop.schedule("Kad search", KAD_WAIT, () -> this.end(search));
+        search.serverTimer = this.loop.schedule("Kad search", KAD_WAIT, () -> end(search));
         return search.id;
     }
 
@@ -252,14 +252,14 @@ public final class SearchManager {
         }
         search.moreRequests++;
         search.moreAvailable = false;
-        this.waitForServer(search);
+        waitForServer(search);
         return true;
     }
 
     public void stop(SearchId id) {
         Search search = this.searches.get(id);
         if (search != null && !search.ended) {
-            this.end(search);
+            end(search);
         }
     }
 
@@ -275,8 +275,8 @@ public final class SearchManager {
             return;
         }
         search.moreAvailable = results.more();
-        this.merge(search, results.files());
-        this.afterServer(search);
+        merge(search, results.files());
+        afterServer(search);
     }
 
     /** A UDP answer from {@code from}; ignored unless an open global search asked that server. */
@@ -284,7 +284,7 @@ public final class SearchManager {
         int ip = Ipv4.fromBytes(from.getAddress().getAddress());
         for (Search search : this.searches.values()) {
             if (!search.ended && search.askedOverUdp.contains(ip)) {
-                this.merge(search, files);
+                merge(search, files);
                 return;
             }
         }
@@ -296,29 +296,29 @@ public final class SearchManager {
         this.serverQueue.clear();
         for (Search search : List.copyOf(this.searches.values())) {
             if (search.scope != SearchRequest.Scope.KAD) {
-                this.end(search);
+                end(search);
             }
         }
     }
 
     private void waitForServer(Search search) {
         this.serverQueue.addLast(search);
-        search.serverTimer = this.loop.schedule("search server wait", SERVER_WAIT, () -> this.serverSilent(search));
+        search.serverTimer = this.loop.schedule("search server wait", SERVER_WAIT, () -> serverSilent(search));
     }
 
     // A server that does not answer in time is taken not to answer at all.
     private void serverSilent(Search search) {
         if (this.serverQueue.remove(search) && !search.ended) {
-            this.afterServer(search);
+            afterServer(search);
         }
     }
 
     private void afterServer(Search search) {
         if (search.scope == SearchRequest.Scope.GLOBAL && !search.globalStarted) {
-            this.startGlobal(search);
+            startGlobal(search);
         } else if (search.scope == SearchRequest.Scope.SERVER || search.udpQueue.isEmpty()) {
             if (!search.moreAvailable && search.udpTimer == null) {
-                this.end(search);
+                end(search);
             }
         }
     }
@@ -334,11 +334,11 @@ public final class SearchManager {
             }
         }
         if (this.udp.get().isEmpty() || search.udpQueue.isEmpty()) {
-            this.end(search);
+            end(search);
             return;
         }
-        search.udpTimer = this.loop.scheduleRepeating(
-                "global search", Duration.ZERO, GLOBAL_INTERVAL, () -> this.queryNext(search));
+        search.udpTimer =
+                this.loop.scheduleRepeating("global search", Duration.ZERO, GLOBAL_INTERVAL, () -> queryNext(search));
     }
 
     private void queryNext(Search search) {
@@ -348,7 +348,7 @@ public final class SearchManager {
         Optional<ServerUdp> socket = this.udp.get();
         if (search.udpQueue.isEmpty() || search.results.size() >= MAX_RESULTS || socket.isEmpty()) {
             search.udpTimer.cancel(false);
-            this.loop.schedule("global search answers", ANSWER_GRACE, () -> this.end(search));
+            this.loop.schedule("global search answers", ANSWER_GRACE, () -> end(search));
             return;
         }
         ServerMet.Server server = search.udpQueue.poll();
@@ -383,7 +383,7 @@ public final class SearchManager {
                     file.type(),
                     file.media()));
         }
-        this.mergeResults(search, found, true);
+        mergeResults(search, found, true);
     }
 
     /**

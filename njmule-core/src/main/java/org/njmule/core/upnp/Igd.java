@@ -203,7 +203,7 @@ public final class Igd implements AutoCloseable {
      * seconds (0: until removed).
      */
     public void addMapping(String protocol, int port, String description, long lease) throws IOException {
-        this.call(
+        call(
                 "AddPortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
                         + "<NewExternalPort>"
@@ -231,7 +231,7 @@ public final class Igd implements AutoCloseable {
     /** Whether the WAN connection is up; a gateway that does not say is not taken as up. */
     boolean isConnected() {
         try {
-            byte[] answer = this.call("GetStatusInfo", "");
+            byte[] answer = call("GetStatusInfo", "");
             return named(parse(answer, true).getDocumentElement(), "NewConnectionStatus")
                     .filter("Connected"::equalsIgnoreCase)
                     .isPresent();
@@ -243,7 +243,7 @@ public final class Igd implements AutoCloseable {
 
     /** Removes the forwarding of {@code port}. */
     public void deleteMapping(String protocol, int port) throws IOException {
-        this.call(
+        call(
                 "DeletePortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
                         + "<NewExternalPort>"

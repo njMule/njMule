@@ -60,7 +60,7 @@ class NotificationAreaTest {
 
     @Test
     void aMinimisedWindowHidesInTheAreaAndComesBack() throws Exception {
-        NotificationArea area = this.attach(true);
+        NotificationArea area = attach(true);
         FxTesting.onFx(() -> {
             area.notify("not hidden");
             area.tooltip("not hidden");
@@ -113,7 +113,7 @@ class NotificationAreaTest {
 
     @Test
     void withoutANotificationAreaTheWindowMinimisesAsUsual() throws Exception {
-        NotificationArea area = this.attach(false);
+        NotificationArea area = attach(false);
 
         FxTesting.onFx(() -> this.stage.setIconified(true));
         FxTesting.onFx(area::hideNow);
@@ -127,7 +127,7 @@ class NotificationAreaTest {
 
     @Test
     void aClickWaitsForASecondOneBeforeItOpensTheStatusWindow() throws Exception {
-        NotificationArea area = this.attach(true);
+        NotificationArea area = attach(true);
 
         FxTesting.onFx(area::clicked);
         FxTesting.await("the click", () -> this.handled.contains("click"));

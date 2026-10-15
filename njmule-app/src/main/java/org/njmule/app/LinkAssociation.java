@@ -157,7 +157,7 @@ public abstract sealed class LinkAssociation {
                 if (export.exit() != 0) {
                     return false;
                 }
-                String ours = this.command().toLowerCase(Locale.ROOT);
+                String ours = command().toLowerCase(Locale.ROOT);
                 return defaultValue(Files.readString(file, StandardCharsets.UTF_16))
                         .filter(value -> value.toLowerCase(Locale.ROOT).contains(ours))
                         .isPresent();
@@ -185,22 +185,22 @@ public abstract sealed class LinkAssociation {
         @Override
         public void take() throws IOException {
             Path backup = this.configDir.resolve(BACKUP);
-            if (!this.isOurs() && this.shell.run(List.of("reg", "query", KEY)).exit() == 0) {
-                this.check(List.of("reg", "export", KEY, backup.toString(), "/y"));
+            if (!isOurs() && this.shell.run(List.of("reg", "query", KEY)).exit() == 0) {
+                check(List.of("reg", "export", KEY, backup.toString(), "/y"));
             }
-            this.importReg(this.ours());
+            importReg(ours());
             logger.info("ed2k links now open in njMule");
         }
 
         @Override
         public void giveBack() throws IOException {
-            if (!this.isOurs()) {
+            if (!isOurs()) {
                 return;
             }
-            this.importReg("[-" + KEY_PATH + "]\r\n");
+            importReg("[-" + KEY_PATH + "]\r\n");
             Path backup = this.configDir.resolve(BACKUP);
             if (Files.exists(backup)) {
-                this.check(List.of("reg", "import", backup.toString()));
+                check(List.of("reg", "import", backup.toString()));
                 Files.delete(backup);
             }
             logger.info("ed2k links given back");
@@ -218,7 +218,7 @@ public abstract sealed class LinkAssociation {
                     + "[" + KEY_PATH + "\\DefaultIcon]\r\n"
                     + "@=" + regString("\"" + this.program + "\",0") + "\r\n\r\n"
                     + "[" + KEY_PATH + "\\shell\\open\\command]\r\n"
-                    + "@=" + regString(this.command()) + "\r\n";
+                    + "@=" + regString(command()) + "\r\n";
         }
 
         private void importReg(String body) throws IOException {
@@ -227,7 +227,7 @@ public abstract sealed class LinkAssociation {
                 // reg import takes version 5 files in UTF-16 with a byte order mark.
                 Files.writeString(
                         file, "\uFEFFWindows Registry Editor Version 5.00\r\n\r\n" + body, StandardCharsets.UTF_16LE);
-                this.check(List.of("reg", "import", file.toString()));
+                check(List.of("reg", "import", file.toString()));
             } finally {
                 Files.deleteIfExists(file);
             }
@@ -252,22 +252,22 @@ public abstract sealed class LinkAssociation {
 
         @Override
         public boolean isOurs() throws IOException {
-            return DESKTOP_ID.equals(this.current());
+            return DESKTOP_ID.equals(current());
         }
 
         @Override
         public void take() throws IOException {
-            String before = this.current();
+            String before = current();
             if (!DESKTOP_ID.equals(before)) {
                 Files.writeString(this.configDir.resolve(PREVIOUS), before + "\n", StandardCharsets.UTF_8);
             }
-            this.check(List.of("xdg-mime", "default", DESKTOP_ID, SCHEME));
+            check(List.of("xdg-mime", "default", DESKTOP_ID, SCHEME));
             logger.info("ed2k links now open in njMule");
         }
 
         @Override
         public void giveBack() throws IOException {
-            if (!this.isOurs()) {
+            if (!isOurs()) {
                 return;
             }
             Path previous = this.configDir.resolve(PREVIOUS);
@@ -275,9 +275,9 @@ public abstract sealed class LinkAssociation {
                     ? Files.readString(previous, StandardCharsets.UTF_8).strip()
                     : "";
             if (before.endsWith(".desktop")) {
-                this.check(List.of("xdg-mime", "default", before, SCHEME));
+                check(List.of("xdg-mime", "default", before, SCHEME));
             } else {
-                this.removeOurDefault();
+                removeOurDefault();
             }
             Files.deleteIfExists(previous);
             logger.info("ed2k links given back");

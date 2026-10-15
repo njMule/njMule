@@ -71,7 +71,7 @@ class SharedFilesScanTest {
     @AfterEach
     void stop() throws Exception {
         if (this.shares != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.shares.close();
                 return null;
             });
@@ -81,7 +81,7 @@ class SharedFilesScanTest {
 
     @Test
     void filesOtherProgramsLeaveBehindOrAreStillWritingAreNeverShared() throws Exception {
-        this.givenTheIncomingDirectoryHolds(
+        givenTheIncomingDirectoryHolds(
                 "real.bin",
                 "~$report.docx",
                 "._photo.jpg",
@@ -97,20 +97,20 @@ class SharedFilesScanTest {
                 "album.zip.!ut",
                 "draft.txt~");
 
-        this.whenTheDirectoriesAreScanned("real.bin");
+        whenTheDirectoriesAreScanned("real.bin");
 
-        this.thenOnlyTheseAreShared("real.bin");
+        thenOnlyTheseAreShared("real.bin");
     }
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void aFileAnotherProgramLocksForAMomentIsSharedOnceItIsFree() throws Exception {
-        this.givenTheIncomingDirectoryHolds("locked.bin");
-        this.givenAnotherProgramLocksItFor("locked.bin", Duration.ofMillis(1500));
+        givenTheIncomingDirectoryHolds("locked.bin");
+        givenAnotherProgramLocksItFor("locked.bin", Duration.ofMillis(1500));
 
-        this.whenTheDirectoriesAreScanned("locked.bin");
+        whenTheDirectoriesAreScanned("locked.bin");
 
-        this.thenOnlyTheseAreShared("locked.bin");
+        thenOnlyTheseAreShared("locked.bin");
     }
 
     private void givenTheIncomingDirectoryHolds(String... names) throws Exception {
@@ -124,36 +124,36 @@ class SharedFilesScanTest {
 
     @Test
     void aFileThatChangesWhileItIsHashedIsSharedWithItsNewContent() throws Exception {
-        this.givenTheIncomingDirectoryHolds();
-        this.givenALargeFileKeepsTheHashingBusy();
-        this.givenAnotherDirectoryHolds("changing.bin", bytes(3000, 7));
+        givenTheIncomingDirectoryHolds();
+        givenALargeFileKeepsTheHashingBusy();
+        givenAnotherDirectoryHolds("changing.bin", bytes(3000, 7));
 
-        this.whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(bytes(5000, 8));
+        whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(bytes(5000, 8));
 
-        this.thenTheFileIsSharedWithItsContentAndDateNow("changing.bin");
+        thenTheFileIsSharedWithItsContentAndDateNow("changing.bin");
     }
 
     @ParameterizedTest
     @ValueSource(longs = {2, -2, 3600, -3600, 3602, -3598})
     void aKnownFileWhoseDateMovedAsOnFatOrAcrossDaylightSavingIsNotHashedAgain(long seconds) throws Exception {
-        this.givenTheIncomingDirectoryHolds("dated.bin");
-        this.givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
+        givenTheIncomingDirectoryHolds("dated.bin");
+        givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
 
-        this.whenTheDirectoriesAreScanned("dated.bin");
+        whenTheDirectoriesAreScanned("dated.bin");
 
-        this.thenItIsSharedWithTheRememberedHash("dated.bin");
-        this.thenKnownMetHoldsOneRecordOfItAtTheDateItHasNow("dated.bin");
+        thenItIsSharedWithTheRememberedHash("dated.bin");
+        thenKnownMetHoldsOneRecordOfItAtTheDateItHasNow("dated.bin");
     }
 
     @ParameterizedTest
     @ValueSource(longs = {3, -3, 60, 3597, 3603, 7200})
     void aKnownFileWhoseDateMovedOtherwiseIsHashedAgain(long seconds) throws Exception {
-        this.givenTheIncomingDirectoryHolds("dated.bin");
-        this.givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
+        givenTheIncomingDirectoryHolds("dated.bin");
+        givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy("dated.bin", seconds);
 
-        this.whenTheDirectoriesAreScanned("dated.bin");
+        whenTheDirectoriesAreScanned("dated.bin");
 
-        this.thenItIsSharedWithTheHashOfItsContent("dated.bin");
+        thenItIsSharedWithTheHashOfItsContent("dated.bin");
     }
 
     private void givenKnownMetRemembersItUnderAHashOfItsOwnAtADateOffBy(String name, long seconds) throws Exception {
@@ -176,16 +176,16 @@ class SharedFilesScanTest {
     }
 
     private void thenItIsSharedWithTheRememberedHash(String name) throws Exception {
-        assertThat(this.sharedFile(name).hash()).isEqualTo(REMEMBERED);
+        assertThat(sharedFile(name).hash()).isEqualTo(REMEMBERED);
     }
 
     private void thenItIsSharedWithTheHashOfItsContent(String name) throws Exception {
         byte[] content = Files.readAllBytes(this.incoming.resolve(name));
-        assertThat(this.sharedFile(name).hash()).isEqualTo(Ed2k.md4(content, 0, content.length));
+        assertThat(sharedFile(name).hash()).isEqualTo(Ed2k.md4(content, 0, content.length));
     }
 
     private void thenKnownMetHoldsOneRecordOfItAtTheDateItHasNow(String name) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.shares.close();
             return null;
         });
@@ -197,7 +197,7 @@ class SharedFilesScanTest {
     }
 
     private SharedFiles.SharedFile sharedFile(String name) throws Exception {
-        return this.onLoop(() -> this.shares.all().stream()
+        return onLoop(() -> this.shares.all().stream()
                 .filter(f -> f.name().equals(name))
                 .findFirst()
                 .orElseThrow());
@@ -205,7 +205,7 @@ class SharedFilesScanTest {
 
     private void givenALargeFileKeepsTheHashingBusy() throws Exception {
         Files.write(this.incoming.resolve("large.bin"), bytes(32_000_000, 9));
-        this.shares = this.open();
+        this.shares = open();
     }
 
     private void givenAnotherDirectoryHolds(String name, byte[] content) throws Exception {
@@ -215,20 +215,20 @@ class SharedFilesScanTest {
 
     private void whenThatDirectoryIsSharedAndTheFileChangesAtOnceTo(byte[] content) throws Exception {
         Path file = this.other.resolve("changing.bin");
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.shares.addDirectory(this.other);
             Files.write(file, content);
             Files.setLastModifiedTime(
                     file, FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() + 60_000));
             return null;
         });
-        this.awaitShared("changing.bin");
+        awaitShared("changing.bin");
     }
 
     private void thenTheFileIsSharedWithItsContentAndDateNow(String name) throws Exception {
         Path file = this.other.resolve(name);
         byte[] content = Files.readAllBytes(file);
-        SharedFiles.SharedFile shared = this.onLoop(() -> this.shares.all().stream()
+        SharedFiles.SharedFile shared = onLoop(() -> this.shares.all().stream()
                 .filter(f -> f.path().equals(file))
                 .findFirst()
                 .orElseThrow());
@@ -254,20 +254,20 @@ class SharedFilesScanTest {
 
     // Waits for the file expected last, then a moment for any other.
     private void whenTheDirectoriesAreScanned(String awaited) throws Exception {
-        this.shares = this.open();
-        this.awaitShared(awaited);
-        this.collect(this.events.poll(1, TimeUnit.SECONDS));
+        this.shares = open();
+        awaitShared(awaited);
+        collect(this.events.poll(1, TimeUnit.SECONDS));
     }
 
     private void awaitShared(String name) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (!this.sharedNames.contains(name) && System.nanoTime() < deadline) {
-            this.collect(this.events.poll(100, TimeUnit.MILLISECONDS));
+            collect(this.events.poll(100, TimeUnit.MILLISECONDS));
         }
     }
 
     private SharedFiles open() throws Exception {
-        return this.onLoop(() -> SharedFiles.open(
+        return onLoop(() -> SharedFiles.open(
                 this.loop,
                 this.config,
                 () -> List.of(this.incoming),
@@ -293,7 +293,7 @@ class SharedFilesScanTest {
 
     private void thenOnlyTheseAreShared(String... names) throws Exception {
         assertThat(this.sharedNames).containsExactlyInAnyOrder(names);
-        assertThat(this.onLoop(() -> this.shares.all().stream()
+        assertThat(onLoop(() -> this.shares.all().stream()
                         .map(SharedFiles.SharedFile::name)
                         .toList()))
                 .containsExactlyInAnyOrder(names);

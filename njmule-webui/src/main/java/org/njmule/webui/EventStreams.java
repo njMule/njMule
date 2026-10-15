@@ -139,7 +139,7 @@ final class EventStreams implements AutoCloseable {
             }
             if (this.waiting.incrementAndGet() > BACKLOG) {
                 this.lost = true;
-                this.end();
+                end();
                 return;
             }
             this.queue.add(event);
@@ -147,12 +147,12 @@ final class EventStreams implements AutoCloseable {
 
         @Override
         public void onError(Throwable throwable) {
-            this.end();
+            end();
         }
 
         @Override
         public void onComplete() {
-            this.end();
+            end();
         }
 
         void end() {
@@ -180,7 +180,7 @@ final class EventStreams implements AutoCloseable {
                     return;
                 } else if (next instanceof EngineEvent event) {
                     this.waiting.decrementAndGet();
-                    if (this.wants(ApiJson.eventName(event))) {
+                    if (wants(ApiJson.eventName(event))) {
                         byte[] data = ApiJson.write(g -> ApiJson.event(g, event));
                         write(
                                 out,

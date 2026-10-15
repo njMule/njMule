@@ -79,7 +79,7 @@ public final class KnownMet {
 
         /** Whether the part hashes match the size and produce the file hash. */
         public boolean isConsistent() {
-            OptionalLong size = this.size();
+            OptionalLong size = size();
             if (size.isEmpty() || size.getAsLong() < 0 || size.getAsLong() > Ed2k.MAX_FILE_SIZE) {
                 return false;
             }

@@ -49,20 +49,20 @@ class IpWhitelistTest {
                 "Some Org:9.9.9.0-9.9.9.127              | 9.9.9.0   | 9.9.9.127"
             })
     void shouldReadAnAddressABlockOrARangeOfIpFilterDat(String entry, String start, String end) {
-        this.givenTheWhitelist(entry);
+        givenTheWhitelist(entry);
 
-        this.whenItsRangesAreRead();
+        whenItsRangesAreRead();
 
-        this.thenTheRangesAre(range(start, end));
+        thenTheRangesAre(range(start, end));
     }
 
     @Test
     void shouldLeaveOutEmptyLinesAndComments() {
-        this.givenTheWhitelist("# my friends\n\n  1.2.3.4  \r\n// office\n5.6.7.0/31\n");
+        givenTheWhitelist("# my friends\n\n  1.2.3.4  \r\n// office\n5.6.7.0/31\n");
 
-        this.whenItsRangesAreRead();
+        whenItsRangesAreRead();
 
-        this.thenTheRangesAre(range("1.2.3.4", "1.2.3.4"), range("5.6.7.0", "5.6.7.1"));
+        thenTheRangesAre(range("1.2.3.4", "1.2.3.4"), range("5.6.7.0", "5.6.7.1"));
     }
 
     @ParameterizedTest
@@ -81,43 +81,43 @@ class IpWhitelistTest {
                 "friend.example.org"
             })
     void shouldNameAnEntryThatIsNoAddressBlockOrRange(String entry) {
-        this.givenTheWhitelist("1.2.3.4\n" + entry + "\n5.6.7.8");
+        givenTheWhitelist("1.2.3.4\n" + entry + "\n5.6.7.8");
 
-        this.whenItsFirstInvalidEntryIsLookedFor();
+        whenItsFirstInvalidEntryIsLookedFor();
 
-        this.thenTheInvalidEntryIs(entry);
+        thenTheInvalidEntryIs(entry);
     }
 
     @Test
     void shouldFindNothingWrongInAGoodWhitelist() {
-        this.givenTheWhitelist("1.2.3.4\n10.0.0.0/8");
+        givenTheWhitelist("1.2.3.4\n10.0.0.0/8");
 
-        this.whenItsFirstInvalidEntryIsLookedFor();
+        whenItsFirstInvalidEntryIsLookedFor();
 
-        this.thenNoEntryIsInvalid();
+        thenNoEntryIsInvalid();
     }
 
     @Test
     void shouldLetThroughTheAllowedAddressesOfABlockedRange() {
-        this.givenAFilterBlocking(range("1.2.3.0", "1.2.3.255"));
-        this.givenTheWhitelist("1.2.3.4\n1.2.3.128/25");
+        givenAFilterBlocking(range("1.2.3.0", "1.2.3.255"));
+        givenTheWhitelist("1.2.3.4\n1.2.3.128/25");
 
-        this.whenTheFilterAllowsTheWhitelist();
+        whenTheFilterAllowsTheWhitelist();
 
-        this.thenTheFilterLetsThrough("1.2.3.4", "1.2.3.128", "1.2.3.255", "9.9.9.9");
-        this.thenTheFilterBlocks("1.2.3.3", "1.2.3.5", "1.2.3.127");
+        thenTheFilterLetsThrough("1.2.3.4", "1.2.3.128", "1.2.3.255", "9.9.9.9");
+        thenTheFilterBlocks("1.2.3.3", "1.2.3.5", "1.2.3.127");
     }
 
     @Test
     void shouldForgetTheAddressesOfAnEarlierWhitelist() {
-        this.givenAFilterBlocking(range("1.2.3.0", "1.2.3.255"));
-        this.givenTheFilterAllowed("1.2.3.4");
-        this.givenTheWhitelist("1.2.3.5");
+        givenAFilterBlocking(range("1.2.3.0", "1.2.3.255"));
+        givenTheFilterAllowed("1.2.3.4");
+        givenTheWhitelist("1.2.3.5");
 
-        this.whenTheFilterAllowsTheWhitelist();
+        whenTheFilterAllowsTheWhitelist();
 
-        this.thenTheFilterBlocks("1.2.3.4");
-        this.thenTheFilterLetsThrough("1.2.3.5");
+        thenTheFilterBlocks("1.2.3.4");
+        thenTheFilterLetsThrough("1.2.3.5");
     }
 
     private void givenTheWhitelist(String whitelist) {

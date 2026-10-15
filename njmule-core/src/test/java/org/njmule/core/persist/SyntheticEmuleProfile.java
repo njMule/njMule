@@ -197,7 +197,7 @@ public final class SyntheticEmuleProfile {
 
     /** Puts download {@code number} (1 complete, 2 half done) in eMule's category {@code category}. */
     public void putInCategory(int number, int category) throws IOException {
-        this.retag(number, new Tag.IntTag(TagName.id(FileTag.CATEGORY), category));
+        retag(number, new Tag.IntTag(TagName.id(FileTag.CATEGORY), category));
     }
 
     /** Gives download {@code number} (1 complete, 2 half done) {@code tag} in place of the one of that name. */
@@ -224,10 +224,10 @@ public final class SyntheticEmuleProfile {
     /** SHA-256 of every file below the profile, to prove an import left it untouched. */
     public SortedMap<String, String> fingerprint() throws IOException {
         TreeMap<String, String> sums = new TreeMap<>();
-        try (Stream<Path> files = Files.walk(this.root())) {
+        try (Stream<Path> files = Files.walk(root())) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 sums.put(
-                        this.root().relativize(file).toString(),
+                        root().relativize(file).toString(),
                         HexFormat.of().formatHex(sha256(Files.readAllBytes(file)))
                                 + "@"
                                 + Files.getLastModifiedTime(file).toMillis());

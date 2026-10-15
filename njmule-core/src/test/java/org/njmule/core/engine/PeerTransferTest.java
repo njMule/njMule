@@ -75,12 +75,12 @@ class PeerTransferTest {
         Path uploaderRoot = this.dir.resolve("uploader");
         Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
         Files.write(incoming.resolve("shared.bin"), data);
-        NjMuleEngine uploader = this.engine(uploaderRoot);
+        NjMuleEngine uploader = engine(uploaderRoot);
         SharedFileInfo shared = awaitShared(uploader);
         assertThat(shared.size()).isEqualTo(data.length);
 
         Path downloaderRoot = this.dir.resolve("downloader");
-        NjMuleEngine downloader = this.engine(downloaderRoot);
+        NjMuleEngine downloader = engine(downloaderRoot);
         BlockingQueue<EngineEvent> events = events(downloader);
         Ed2kLink.FileLink link =
                 (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
@@ -108,9 +108,9 @@ class PeerTransferTest {
         Path uploaderRoot = this.dir.resolve("browsed");
         Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
         Files.write(incoming.resolve("film.mkv"), new byte[300_000]);
-        NjMuleEngine browsed = this.engine(uploaderRoot);
+        NjMuleEngine browsed = engine(uploaderRoot);
         SharedFileInfo shared = awaitShared(browsed);
-        NjMuleEngine browser = this.engine(this.dir.resolve("browser"));
+        NjMuleEngine browser = engine(this.dir.resolve("browser"));
         ServerAddress address =
                 new ServerAddress("127.0.0.1", browsed.preferences().tcpPort());
 
@@ -136,14 +136,14 @@ class PeerTransferTest {
         Path uploaderRoot = this.dir.resolve("commenting");
         Path incoming = Files.createDirectories(uploaderRoot.resolve("incoming"));
         Files.write(incoming.resolve("song.mp3"), new byte[3_000_000]);
-        NjMuleEngine uploader = this.engine(uploaderRoot, "limits.uploadKiBps=1" + System.lineSeparator());
+        NjMuleEngine uploader = engine(uploaderRoot, "limits.uploadKiBps=1" + System.lineSeparator());
         SharedFileInfo shared = awaitShared(uploader);
         FileComment comment = FileComment.of("A fine song", 4);
         uploader.setFileComment(shared.hash(), comment).get(10, TimeUnit.SECONDS);
         assertThat(uploader.fileComment(shared.hash()).get(10, TimeUnit.SECONDS))
                 .contains(comment);
 
-        NjMuleEngine downloader = this.engine(this.dir.resolve("listening"));
+        NjMuleEngine downloader = engine(this.dir.resolve("listening"));
         Ed2kLink.FileLink link =
                 (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri() + "|sources,127.0.0.1:"
                         + uploader.preferences().tcpPort() + "|/");
@@ -235,7 +235,7 @@ class PeerTransferTest {
     }
 
     private NjMuleEngine engine(Path root) throws IOException {
-        return this.engine(root, "");
+        return engine(root, "");
     }
 
     private NjMuleEngine engine(Path root, String extra) throws IOException {

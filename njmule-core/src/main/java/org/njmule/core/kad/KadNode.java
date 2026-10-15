@@ -420,7 +420,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     /** Whether we take direct UDP callbacks: TCP-firewalled, with a UDP port proven open. */
     public boolean supportsDirectCallback() {
-        return this.isFirewalled() && !this.isFirewalledUdp() && this.udpTest.isVerified();
+        return isFirewalled() && !isFirewalledUdp() && this.udpTest.isVerified();
     }
 
     /** The Kad port other clients should use: the one a NAT shows them once a test proved it, else ours. */
@@ -443,15 +443,15 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     // Firewalled as other clients see us: neither Kad nor the server gives us a HighID.
     private boolean isFirewalledForClients() {
-        return this.isFirewalled() && !this.host.hasHighId();
+        return isFirewalled() && !this.host.hasHighId();
     }
 
     /** Whether other clients can reach us, directly, through our buddy or by a direct callback. */
     @Override
     public boolean isReachable() {
-        return !this.isFirewalledForClients()
+        return !isFirewalledForClients()
                 || this.buddies.state() == Buddies.State.CONNECTED
-                || (!this.isFirewalledUdp() && this.udpTest.isVerified());
+                || (!isFirewalledUdp() && this.udpTest.isVerified());
     }
 
     @Override
@@ -489,7 +489,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         try {
             NodesDat.Contents contents = NodesDat.read(Files.readAllBytes(file));
-            int added = this.addContacts(contents);
+            int added = addContacts(contents);
             logger.info(
                     "{} Kad {} from {}",
                     added,
@@ -507,7 +507,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      */
     public int addContacts(NodesDat.Contents contents) {
         if (contents.bootstrap()) {
-            return this.keepForBootstrap(contents.contacts());
+            return keepForBootstrap(contents.contacts());
         }
         boolean anyVerified = false;
         for (NodesDat.Contact c : contents.contacts()) {
@@ -516,7 +516,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         long now = this.ticker.read();
         int added = 0;
         for (NodesDat.Contact c : contents.contacts()) {
-            if (!this.isGoodAddress(c.ip())) {
+            if (!isGoodAddress(c.ip())) {
                 continue;
             }
             KadContact contact = new KadContact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version(), now);
@@ -536,7 +536,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.bootstrapList.forEach(c -> known.add(c.id()));
         int before = this.bootstrapList.size();
         for (NodesDat.Contact c : contacts) {
-            if (this.isGoodAddress(c.ip())
+            if (isGoodAddress(c.ip())
                     && c.udpPort() != 0
                     && c.version() > 1
                     && !(c.udpPort() == DNS_PORT && c.version() <= 5)
@@ -554,14 +554,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // The next bootstrap contact is asked while nothing tells us we are connected.
     private void bootstrapFromList(long now) {
         long gap = (this.table.size() == 0 ? BOOTSTRAP_EVERY_ALONE : BOOTSTRAP_EVERY).toNanos();
-        if (this.bootstrapList.isEmpty() || this.isConnected() || now - this.lastBootstrap < gap) {
+        if (this.bootstrapList.isEmpty() || isConnected() || now - this.lastBootstrap < gap) {
             return;
         }
         this.lastBootstrap = now;
         KadMessages.Contact c = this.bootstrapList.removeFirst();
         Optional<UInt128> key = c.version() >= OBFUSCATION_VERSION ? Optional.of(c.id()) : Optional.empty();
-        this.send(c.ip(), c.udpPort(), KadMessages.bootstrapRequest(), key, 0);
-        this.tracking.sent(c.ip(), Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
+        send(c.ip(), c.udpPort(), KadMessages.bootstrapRequest(), key, 0);
+        this.tracking.sent(c.ip(), Opcodes.Kad.BOOTSTRAP_REQ, nowMs());
     }
 
     /** Looks for contacts at once rather than at the next rounds: when asked to connect, or after new ones came. */
@@ -595,17 +595,17 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     /** Writes what other nodes published to us. */
     public void saveIndex() {
-        this.saveIndex(System.currentTimeMillis() / 1000);
+        saveIndex(System.currentTimeMillis() / 1000);
     }
 
     void saveIndex(long wallSeconds) {
         long now = this.ticker.read();
-        this.writeIndex(
+        writeIndex(
                 KEYWORD_INDEX_FILE,
                 KadIndexFiles.writeKeywords(this.index.keywordFile(this.identity.id(), wallSeconds, now)));
-        this.writeIndex(SOURCE_INDEX_FILE, KadIndexFiles.writeSources(this.index.sourceFile(wallSeconds, now)));
-        this.writeIndex(NOTE_INDEX_FILE, KadIndexFiles.writeSources(this.index.noteFile(wallSeconds, now)));
-        this.writeIndex(LOAD_INDEX_FILE, KadIndexFiles.writeLoad(this.index.loadFile(wallSeconds, now)));
+        writeIndex(SOURCE_INDEX_FILE, KadIndexFiles.writeSources(this.index.sourceFile(wallSeconds, now)));
+        writeIndex(NOTE_INDEX_FILE, KadIndexFiles.writeSources(this.index.noteFile(wallSeconds, now)));
+        writeIndex(LOAD_INDEX_FILE, KadIndexFiles.writeLoad(this.index.loadFile(wallSeconds, now)));
     }
 
     private void writeIndex(String name, byte[] data) {
@@ -618,23 +618,23 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     /** Loads what other nodes published to us before, as far as it is still alive. */
     public void loadIndex() {
-        this.loadIndex(System.currentTimeMillis() / 1000);
+        loadIndex(System.currentTimeMillis() / 1000);
     }
 
     // Read with the limits of live publishes: our tolerance, the IP filter and the index's own caps.
     void loadIndex(long wallSeconds) {
         long now = this.ticker.read();
         IntPredicate refused = this.settings.blocked();
-        this.readIndex(KEYWORD_INDEX_FILE, KadIndexFiles::readKeywords)
+        readIndex(KEYWORD_INDEX_FILE, KadIndexFiles::readKeywords)
                 .ifPresent(f -> this.index.restoreKeywords(f, this.identity.id(), refused, wallSeconds, now));
-        this.readIndex(SOURCE_INDEX_FILE, KadIndexFiles::readSources)
+        readIndex(SOURCE_INDEX_FILE, KadIndexFiles::readSources)
                 .ifPresent(f -> this.index.restoreSources(f, this::inTolerance, refused, wallSeconds, now));
-        this.readIndex(NOTE_INDEX_FILE, KadIndexFiles::readSources)
+        readIndex(NOTE_INDEX_FILE, KadIndexFiles::readSources)
                 .ifPresent(f -> this.index.restoreNotes(f, this::inTolerance, refused, wallSeconds, now));
-        this.readIndex(LOAD_INDEX_FILE, KadIndexFiles::readLoad)
+        readIndex(LOAD_INDEX_FILE, KadIndexFiles::readLoad)
                 .ifPresent(f -> this.index.restoreLoads(f, LOADED_FOR, wallSeconds, now));
-        int[] held = this.indexed();
-        logger.info("Kad index: {} keyword entries, {} sources, {} notes", held[0], held[1], this.indexedNotes());
+        int[] held = indexed();
+        logger.info("Kad index: {} keyword entries, {} sources, {} notes", held[0], held[1], indexedNotes());
     }
 
     /** Decodes the bytes of an index file. */
@@ -664,14 +664,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     @Override
     public void close() {
-        this.saveNodes();
-        this.saveIndex();
+        saveNodes();
+        saveIndex();
     }
 
     /** Asks the node at {@code ip:port} for contacts to start from. */
     public void bootstrap(int ip, int port) {
-        this.send(ip, port, KadMessages.bootstrapRequest(), Optional.empty(), 0);
-        this.tracking.sent(ip, Opcodes.Kad.BOOTSTRAP_REQ, this.nowMs());
+        send(ip, port, KadMessages.bootstrapRequest(), Optional.empty(), 0);
+        this.tracking.sent(ip, Opcodes.Kad.BOOTSTRAP_REQ, nowMs());
     }
 
     /**
@@ -694,7 +694,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             SearchTreeCodec.write(out, expression.get(), true);
             tree = out.toByteArray();
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.KEYWORD);
+        Lookup lookup = startLookup(target, Lookup.Kind.KEYWORD);
         if (lookup == null) {
             return Optional.empty();
         }
@@ -706,7 +706,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return found.size();
         });
         // Ending a lookup that already ended leaves the one now running for the keyword alone.
-        return Optional.of(() -> this.lookupEnded(lookup));
+        return Optional.of(() -> lookupEnded(lookup));
     }
 
     /** Looks for sources of the file {@code hash} of {@code size} bytes. */
@@ -715,7 +715,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.lookups.containsKey(target)) {
             return false;
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.SOURCES);
+        Lookup lookup = startLookup(target, Lookup.Kind.SOURCES);
         if (lookup == null) {
             return false;
         }
@@ -738,7 +738,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.lookups.containsKey(target)) {
             return false;
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.NOTES);
+        Lookup lookup = startLookup(target, Lookup.Kind.NOTES);
         if (lookup == null) {
             return false;
         }
@@ -762,7 +762,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (files.isEmpty() || this.lookups.containsKey(target) || !this.index.mayStore(target, this.ticker.read())) {
             return false;
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.STORE_KEYWORD);
+        Lookup lookup = startLookup(target, Lookup.Kind.STORE_KEYWORD);
         if (lookup != null) {
             this.lookupData.put(lookup, List.copyOf(files));
         }
@@ -776,7 +776,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.lookups.containsKey(target)) {
             return false;
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.STORE_SOURCE);
+        Lookup lookup = startLookup(target, Lookup.Kind.STORE_SOURCE);
         if (lookup != null) {
             this.lookupData.put(lookup, size);
         }
@@ -790,7 +790,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.lookups.containsKey(target)) {
             return false;
         }
-        Lookup lookup = this.startLookup(target, Lookup.Kind.STORE_NOTES);
+        Lookup lookup = startLookup(target, Lookup.Kind.STORE_NOTES);
         if (lookup != null) {
             this.lookupData.put(lookup, new OwnNote(name, size, comment));
         }
@@ -820,19 +820,19 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     /** Keyword publishes running now. */
     @Override
     public int runningKeywordPublishes() {
-        return this.running(Lookup.Kind.STORE_KEYWORD);
+        return running(Lookup.Kind.STORE_KEYWORD);
     }
 
     /** Source publishes running now. */
     @Override
     public int runningSourcePublishes() {
-        return this.running(Lookup.Kind.STORE_SOURCE);
+        return running(Lookup.Kind.STORE_SOURCE);
     }
 
     /** Note publishes running now. */
     @Override
     public int runningNotePublishes() {
-        return this.running(Lookup.Kind.STORE_NOTES);
+        return running(Lookup.Kind.STORE_NOTES);
     }
 
     private int running(Lookup.Kind kind) {
@@ -895,7 +895,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     public int filtersChanged() {
         int dropped = 0;
         for (KadContact c : this.table.all()) {
-            if (!this.isGoodAddress(c.ip())) {
+            if (!isGoodAddress(c.ip())) {
                 this.table.remove(c);
                 dropped++;
             }
@@ -922,7 +922,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      */
     public void udpCheckEnded(int ip, boolean asked) {
         if (this.udpTest.outcome(ip, false, !asked, 0, this.settings.udpPort(), this.ticker.read())) {
-            this.askUdpHelpers();
+            askUdpHelpers();
         }
     }
 
@@ -933,7 +933,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      */
     public void udpCheckRequested(int ip, int internalPort, int externalPort, int senderKey, boolean knownClient) {
         long now = this.ticker.read();
-        if (internalPort == 0 || !this.isGoodAddress(ip)) {
+        if (internalPort == 0 || !isGoodAddress(ip)) {
             return;
         }
         this.udpHelped.values().removeIf(at -> now - at >= UDP_HELP_GAP.toNanos());
@@ -941,16 +941,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         this.udpHelped.put(ip, now);
-        boolean known = knownClient || this.table.byAddress(ip).isPresent() || this.tracking.wroteTo(ip, this.nowMs());
+        boolean known = knownClient || this.table.byAddress(ip).isPresent() || this.tracking.wroteTo(ip, nowMs());
         int error = known ? 1 : 0;
-        this.send(
-                ip,
-                internalPort,
-                new KadMessages.FirewallUdp(error, internalPort).encode(),
-                Optional.empty(),
-                senderKey);
+        send(ip, internalPort, new KadMessages.FirewallUdp(error, internalPort).encode(), Optional.empty(), senderKey);
         if (externalPort != 0 && externalPort != internalPort) {
-            this.send(
+            send(
                     ip,
                     externalPort,
                     new KadMessages.FirewallUdp(error, externalPort).encode(),
@@ -964,7 +959,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      * port for {@code file}; {@code false} when the buddy's address is not usable.
      */
     public boolean requestCallback(Buddy buddy, Hash16 file) {
-        if (!this.isGoodAddress(buddy.ip()) || buddy.udpPort() == 0) {
+        if (!isGoodAddress(buddy.ip()) || buddy.udpPort() == 0) {
             return false;
         }
         Packet request =
@@ -979,12 +974,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         for (Lookup lookup : List.copyOf(this.lookups.values())) {
             lookup.tick(now);
             if (lookup.isStopped()) {
-                this.lookupEnded(lookup);
+                lookupEnded(lookup);
             }
         }
         if (now - this.nextSmallTimer >= 0) {
             this.nextSmallTimer = now + MINUTE;
-            this.checkContacts(now);
+            checkContacts(now);
         }
         if (now - this.nextBigTimer >= 0) {
             this.nextBigTimer = now + 10 * SECOND;
@@ -998,7 +993,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 }
                 this.lastQuietRefresh = now;
             }
-            this.refreshOneZone(now);
+            refreshOneZone(now);
         }
         if (now - this.nextConsolidate >= 0) {
             this.nextConsolidate = now + 45 * MINUTE;
@@ -1006,7 +1001,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         if (now - this.nextSelfLookup >= 0 && this.table.size() > 0) {
             this.nextSelfLookup = now + SELF_LOOKUP_EVERY.toNanos();
-            this.startLookup(this.identity.id(), Lookup.Kind.NODE_COMPLETE);
+            startLookup(this.identity.id(), Lookup.Kind.NODE_COMPLETE);
         }
         if (now - this.nextFirewallCheck >= 0) {
             this.nextFirewallCheck = now + FIREWALL_CHECK_EVERY.toNanos();
@@ -1017,22 +1012,22 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             }
             this.firewallReports = 0;
             this.firewallAcks.clear();
-            this.udpTest.recheck(this.isConnected(), now);
+            this.udpTest.recheck(isConnected(), now);
             this.udpHelperLookups = 0;
             this.nextUdpHelperLookup = now;
-            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            stopLookups(Lookup.Kind.UDP_HELPERS);
             // A buddy is looked for once the outcome is likely known.
             this.findBuddy = false;
             if (this.nextFindBuddy - (now + FIND_BUDDY_FIRST.toNanos()) < 0) {
                 this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
             }
         }
-        this.bootstrapFromList(now);
-        this.tickUdpTest(now);
-        this.tickBuddies(now);
+        bootstrapFromList(now);
+        tickUdpTest(now);
+        tickBuddies(now);
         if (now - this.nextClean >= 0) {
             this.nextClean = now + 12 * MINUTE;
-            this.tracking.clean(this.nowMs());
+            this.tracking.clean(nowMs());
             this.provenIds.clean(now);
             this.index.clean(now);
             this.firewallChecks.values().removeIf(at -> now - at > 3 * MINUTE);
@@ -1042,10 +1037,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     // While the UDP test runs: nodes are asked the port they see us on, and lookups find helpers.
     private void tickUdpTest(long now) {
-        boolean connected = this.isConnected();
-        this.udpTest.tick(connected, this.isFirewalled(), now);
+        boolean connected = isConnected();
+        this.udpTest.tick(connected, isFirewalled(), now);
         if (!this.udpTest.isRunning()) {
-            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            stopLookups(Lookup.Kind.UDP_HELPERS);
             return;
         }
         if (!connected) {
@@ -1053,15 +1048,15 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         if (this.udpTest.findsExternalPort() && now - this.nextExternalPortAsk >= 0) {
             this.nextExternalPortAsk = now + EXTERNAL_PORT_ASK_EVERY.toNanos();
-            this.askExternalPort();
+            askExternalPort();
         }
         // Helpers are looked for once they can be asked: when the port a NAT shows is known.
         if (!this.udpTest.findsExternalPort()
                 && this.udpTest.wantsCandidates()
                 && this.udpHelperLookups < UDP_HELPER_LOOKUPS
                 && now - this.nextUdpHelperLookup >= 0
-                && this.running(Lookup.Kind.UDP_HELPERS) == 0
-                && this.startLookup(UInt128.random(this.random), Lookup.Kind.UDP_HELPERS) != null) {
+                && running(Lookup.Kind.UDP_HELPERS) == 0
+                && startLookup(UInt128.random(this.random), Lookup.Kind.UDP_HELPERS) != null) {
             this.udpHelperLookups++;
             this.nextUdpHelperLookup = now + UDP_HELPER_LOOKUP_GAP.toNanos();
         }
@@ -1076,7 +1071,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             }
         }
         if (!usable.isEmpty()) {
-            this.request(usable.get(this.random.nextInt(usable.size())), KadMessages.ping(), Opcodes.Kad.PING);
+            request(usable.get(this.random.nextInt(usable.size())), KadMessages.ping(), Opcodes.Kad.PING);
         }
     }
 
@@ -1104,9 +1099,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private boolean mayHelpWithUdp(KadMessages.Contact c) {
         return this.settings.udpPort() != 0
                 && c.tcpPort() != 0
-                && this.isGoodAddress(c.ip())
+                && isGoodAddress(c.ip())
                 && this.table.byAddress(c.ip()).isEmpty()
-                && !this.tracking.wroteTo(c.ip(), this.nowMs())
+                && !this.tracking.wroteTo(c.ip(), nowMs())
                 && !this.host.isKnownClient(c.ip());
     }
 
@@ -1120,13 +1115,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         boolean lost = state == Buddies.State.NONE
                 && (this.buddyState == Buddies.State.CONNECTED || this.buddyState == Buddies.State.CONNECTING);
         this.buddyState = state;
-        if (!this.isConnected()) {
+        if (!isConnected()) {
             if (state != Buddies.State.NONE) {
                 this.buddies.release();
             }
             return;
         }
-        if (!this.needsBuddy()) {
+        if (!needsBuddy()) {
             if (state == Buddies.State.CONNECTED || state == Buddies.State.CONNECTING) {
                 logger.debug("Kad: our buddy is no longer needed");
                 this.buddies.release();
@@ -1142,7 +1137,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 && this.findBuddy
                 && (this.settings.connectOptions() & OBFUSCATION_REQUIRED) == 0) {
             this.findBuddy = false;
-            if (this.startLookup(this.identity.id().xor(ALL_ONES), Lookup.Kind.FIND_BUDDY) == null) {
+            if (startLookup(this.identity.id().xor(ALL_ONES), Lookup.Kind.FIND_BUDDY) == null) {
                 this.findBuddy = true;
             }
         }
@@ -1150,13 +1145,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     // Firewalled on both ports, a node needs a buddy to be reached.
     private boolean needsBuddy() {
-        return this.isConnected() && this.isFirewalled() && this.isFirewalledUdp();
+        return isConnected() && isFirewalled() && isFirewalledUdp();
     }
 
     private void stopLookups(Lookup.Kind kind) {
         for (Lookup lookup : List.copyOf(this.lookups.values())) {
             if (lookup.kind() == kind) {
-                this.lookupEnded(lookup);
+                lookupEnded(lookup);
             }
         }
     }
@@ -1167,7 +1162,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (port == DNS_PORT && senderKey == 0) {
             return;
         }
-        long nowMs = this.nowMs();
+        long nowMs = nowMs();
         if (this.tracking.isBanned(ip, nowMs)) {
             return;
         }
@@ -1183,29 +1178,29 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         Peer peer = new Peer(ip, port, receiverKey != 0 && receiverKey == this.identity.verifyKey(ip), senderKey);
         try {
             switch (opcode.get()) {
-                case BOOTSTRAP_REQ -> this.bootstrapRequested(peer);
-                case BOOTSTRAP_RES -> this.bootstrapAnswered(peer, packet);
-                case HELLO_REQ -> this.helloReceived(peer, packet, false);
-                case HELLO_RES -> this.helloReceived(peer, packet, true);
-                case HELLO_RES_ACK -> this.helloAcknowledged(peer, packet);
-                case REQ -> this.lookupRequested(peer, packet);
-                case RES -> this.lookupAnswered(peer, packet);
-                case SEARCH_KEY_REQ -> this.keywordSearchRequested(peer, packet);
-                case SEARCH_SOURCE_REQ -> this.sourceSearchRequested(peer, packet);
-                case SEARCH_NOTES_REQ -> this.notesSearchRequested(peer, packet);
-                case SEARCH_RES -> this.searchAnswered(peer, packet);
-                case PUBLISH_KEY_REQ -> this.keywordPublished(peer, packet);
-                case PUBLISH_SOURCE_REQ -> this.sourcePublished(peer, packet);
-                case PUBLISH_NOTES_REQ -> this.notePublished(peer, packet);
-                case PUBLISH_RES -> this.publishAnswered(peer, packet);
-                case FIREWALLED2_REQ -> this.firewallCheckRequested(peer, packet);
-                case FIREWALLED_RES -> this.firewallAnswered(peer, packet);
-                case FIREWALLUDP -> this.udpTestAnswered(peer, packet);
-                case FINDBUDDY_REQ -> this.buddyRequested(peer, packet);
-                case FINDBUDDY_RES -> this.buddyOffered(peer, packet);
-                case CALLBACK_REQ -> this.callbackRequested(peer, packet);
-                case PING -> this.answer(peer, KadMessages.pong(port));
-                case PONG -> this.pongReceived(peer, packet);
+                case BOOTSTRAP_REQ -> bootstrapRequested(peer);
+                case BOOTSTRAP_RES -> bootstrapAnswered(peer, packet);
+                case HELLO_REQ -> helloReceived(peer, packet, false);
+                case HELLO_RES -> helloReceived(peer, packet, true);
+                case HELLO_RES_ACK -> helloAcknowledged(peer, packet);
+                case REQ -> lookupRequested(peer, packet);
+                case RES -> lookupAnswered(peer, packet);
+                case SEARCH_KEY_REQ -> keywordSearchRequested(peer, packet);
+                case SEARCH_SOURCE_REQ -> sourceSearchRequested(peer, packet);
+                case SEARCH_NOTES_REQ -> notesSearchRequested(peer, packet);
+                case SEARCH_RES -> searchAnswered(peer, packet);
+                case PUBLISH_KEY_REQ -> keywordPublished(peer, packet);
+                case PUBLISH_SOURCE_REQ -> sourcePublished(peer, packet);
+                case PUBLISH_NOTES_REQ -> notePublished(peer, packet);
+                case PUBLISH_RES -> publishAnswered(peer, packet);
+                case FIREWALLED2_REQ -> firewallCheckRequested(peer, packet);
+                case FIREWALLED_RES -> firewallAnswered(peer, packet);
+                case FIREWALLUDP -> udpTestAnswered(peer, packet);
+                case FINDBUDDY_REQ -> buddyRequested(peer, packet);
+                case FINDBUDDY_RES -> buddyOffered(peer, packet);
+                case CALLBACK_REQ -> callbackRequested(peer, packet);
+                case PING -> answer(peer, KadMessages.pong(port));
+                case PONG -> pongReceived(peer, packet);
                 default -> {
                     // Kad 1 and acknowledgements we never ask for.
                 }
@@ -1229,18 +1224,18 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         for (KadContact c : this.table.bootstrapContacts(KadMessages.MAX_BOOTSTRAP_CONTACTS, this.random)) {
             contacts.add(c.message());
         }
-        this.answer(peer, new KadMessages.BootstrapAnswer(this.self(), contacts).encode());
+        answer(peer, new KadMessages.BootstrapAnswer(self(), contacts).encode());
     }
 
     private void bootstrapAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.BOOTSTRAP_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.BOOTSTRAP_RES, nowMs())) {
             return;
         }
         KadMessages.BootstrapAnswer answer = KadMessages.BootstrapAnswer.decode(packet);
         long now = this.ticker.read();
         boolean empty = this.table.size() == 0;
         // A node of a bootstrap list gives contacts but is not taken: everyone starting from that list would.
-        if (this.bootstrapList.isEmpty() && this.isGoodAddress(peer.ip())) {
+        if (this.bootstrapList.isEmpty() && isGoodAddress(peer.ip())) {
             KadContact sender = new KadContact(
                     answer.sender().id(),
                     peer.ip(),
@@ -1252,17 +1247,17 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             this.table.add(sender, true, peer.key(this.publicIp), this.publicIp, now);
         }
         for (KadMessages.Contact c : answer.contacts()) {
-            this.addUnverified(c, empty, now);
+            addUnverified(c, empty, now);
         }
     }
 
     private void helloReceived(Peer peer, Packet packet, boolean answer) throws DecodeException {
-        if (answer && !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES, this.nowMs())) {
+        if (answer && !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES, nowMs())) {
             return;
         }
         KadMessages.Hello hello = KadMessages.Hello.decode(packet);
         // Our key for its address proves where the node is: the id it gives there counts as proven.
-        if (peer.validKey() && !this.proved(peer, hello.sender().id())) {
+        if (peer.validKey() && !proved(peer, hello.sender().id())) {
             return;
         }
         boolean claimedOnly = !peer.validKey()
@@ -1273,7 +1268,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         int version = hello.sender().version();
         long now = this.ticker.read();
         RoutingTable.Outcome outcome = RoutingTable.Outcome.REFUSED;
-        if (!claimedOnly && this.isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
+        if (!claimedOnly && isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
             KadContact contact = new KadContact(
                     hello.sender().id(), peer.ip(), udpPort, hello.sender().tcpPort(), version, now);
             contact.setVerified(peer.validKey());
@@ -1283,36 +1278,36 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         boolean verified =
                 this.table.get(hello.sender().id()).map(KadContact::isVerified).orElse(peer.validKey());
         if (outcome != RoutingTable.Outcome.REFUSED && !verified && !peer.validKey()) {
-            this.challenge(peer, hello.sender().id(), version, answer);
+            challenge(peer, hello.sender().id(), version, answer);
         }
         if (!answer) {
             boolean askAck = outcome != RoutingTable.Outcome.REFUSED && !verified && version >= HELLO_ACK_VERSION;
-            Packet reply = this.hello(version, askAck).encode(true);
+            Packet reply = hello(version, askAck).encode(true);
             Optional<UInt128> key =
                     version >= OBFUSCATION_VERSION && !hello.sender().id().isZero()
                             ? Optional.of(hello.sender().id())
                             : Optional.empty();
-            this.send(peer.ip(), peer.port(), reply, key, peer.senderKey());
+            send(peer.ip(), peer.port(), reply, key, peer.senderKey());
             if (askAck) {
-                this.tracking.sent(peer.ip(), Opcodes.Kad.HELLO_RES, this.nowMs());
+                this.tracking.sent(peer.ip(), Opcodes.Kad.HELLO_RES, nowMs());
             }
         } else if ((misc & MISC_ACK_REQUESTED) != 0 && version >= HELLO_ACK_VERSION && peer.senderKey() != 0) {
-            this.answer(peer, KadMessages.helloAck(this.identity.id()));
+            answer(peer, KadMessages.helloAck(this.identity.id()));
         }
-        this.maybeCheckFirewall(peer, version);
+        maybeCheckFirewall(peer, version);
     }
 
     // Nodes older than the hello acknowledgement prove their address by answering a request only they were sent: a
     // ping for a node with keys, else a lookup for a random target. One at a time per address.
     private void challenge(Peer peer, UInt128 id, int version, boolean answer) {
-        long nowMs = this.nowMs();
+        long nowMs = nowMs();
         if (version >= HELLO_ACK_VERSION
                 || (answer && version >= KEYS_VERSION)
                 || this.tracking.isChallenged(peer.ip(), nowMs)) {
             return;
         }
         if (version >= KEYS_VERSION) {
-            this.answer(peer, KadMessages.ping());
+            answer(peer, KadMessages.ping());
             this.tracking.sent(peer.ip(), Opcodes.Kad.PING, nowMs);
             this.tracking.challenged(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, id, nowMs);
             return;
@@ -1331,7 +1326,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     }
 
     private void verified(Peer peer, UInt128 id) {
-        if (this.proved(peer, id)) {
+        if (proved(peer, id)) {
             this.table.get(id).filter(c -> c.ip() == peer.ip()).ifPresent(c -> c.setVerified(true));
         }
     }
@@ -1342,16 +1337,16 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return true;
         }
         logger.debug("Kad: {} changed its id too soon, ignored for a while", Ipv4.format(peer.ip()));
-        this.tracking.ban(peer.ip(), ID_CHANGE_BAN, this.nowMs());
+        this.tracking.ban(peer.ip(), ID_CHANGE_BAN, nowMs());
         this.table.byAddress(peer.ip()).ifPresent(this.table::remove);
         return false;
     }
 
     private void helloAcknowledged(Peer peer, Packet packet) throws DecodeException {
-        if (!peer.validKey() || !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES_ACK, this.nowMs())) {
+        if (!peer.validKey() || !this.tracking.expected(peer.ip(), Opcodes.Kad.HELLO_RES_ACK, nowMs())) {
             return;
         }
-        this.verified(peer, KadMessages.decodeHelloAck(packet));
+        verified(peer, KadMessages.decodeHelloAck(packet));
     }
 
     private void lookupRequested(Peer peer, Packet packet) throws DecodeException {
@@ -1364,11 +1359,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         for (KadContact c : this.table.closest(request.target(), 2, count)) {
             closest.add(c.message());
         }
-        this.answer(peer, new KadMessages.Answer(request.target(), closest).encode());
+        answer(peer, new KadMessages.Answer(request.target(), closest).encode());
     }
 
     private void lookupAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.RES, nowMs())) {
             return;
         }
         KadMessages.Answer answer = KadMessages.Answer.decode(packet);
@@ -1376,9 +1371,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.table.byAddress(peer.ip()).ifPresent(c -> this.table.alive(c, now));
         // The answer to a challenge proves the contact; the contacts it carries are not wanted.
         Optional<UInt128> proven =
-                this.tracking.challengeAnswered(peer.ip(), Opcodes.Kad.REQ, answer.target(), this.nowMs());
+                this.tracking.challengeAnswered(peer.ip(), Opcodes.Kad.REQ, answer.target(), nowMs());
         if (proven.isPresent()) {
-            this.verified(peer, proven.get());
+            verified(peer, proven.get());
             return;
         }
         // Contacts are learnt only from the answer to a lookup that asked this node for that many, under the id
@@ -1398,7 +1393,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         for (KadMessages.Contact c : answer.contacts()) {
             if (c.version() < 2
                     || c.udpPort() == 0
-                    || !this.isGoodAddress(c.ip())
+                    || !isGoodAddress(c.ip())
                     || (c.udpPort() == DNS_PORT && c.version() <= 5)) {
                 continue;
             }
@@ -1406,14 +1401,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             if (helpers) {
                 this.udpTest.candidate(c);
                 usable.add(c);
-            } else if (this.addUnverified(c, false, now) == RoutingTable.Outcome.ADDED
+            } else if (addUnverified(c, false, now) == RoutingTable.Outcome.ADDED
                     || this.table.isAcceptable(c.id(), c.ip(), c.udpPort())) {
                 usable.add(c);
             }
         }
         lookup.answered(peer.ip(), peer.port(), helpers ? List.of() : usable, now);
         if (helpers) {
-            this.askUdpHelpers();
+            askUdpHelpers();
         }
     }
 
@@ -1425,19 +1420,19 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         List<KadMessages.Entry> results =
                 this.index.searchKeyword(search.target(), expression, search.start(), this.ticker.read());
-        this.answerResults(peer, search.target(), results);
+        answerResults(peer, search.target(), results);
     }
 
     private void sourceSearchRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.SourceSearch search = KadMessages.SourceSearch.decode(packet);
         List<KadMessages.Entry> results =
                 this.index.searchSources(search.target(), search.size(), search.start(), this.ticker.read());
-        this.answerResults(peer, search.target(), results);
+        answerResults(peer, search.target(), results);
     }
 
     private void notesSearchRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.NotesSearch search = KadMessages.NotesSearch.decode(packet);
-        this.answerResults(
+        answerResults(
                 peer, search.target(), this.index.searchNotes(search.target(), search.size(), this.ticker.read()));
     }
 
@@ -1446,12 +1441,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         for (Packet p : KadMessages.SearchAnswer.split(this.identity.id(), target, results, KadIndex.ANSWER_BYTES)) {
-            this.answer(peer, p);
+            answer(peer, p);
         }
     }
 
     private void searchAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.awaits(peer.ip(), Opcodes.Kad.SEARCH_RES, this.nowMs())) {
+        if (!this.tracking.awaits(peer.ip(), Opcodes.Kad.SEARCH_RES, nowMs())) {
             return;
         }
         KadMessages.SearchAnswer answer = KadMessages.SearchAnswer.decode(packet);
@@ -1471,7 +1466,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // A node others cannot send to would store what nobody can ask for: it takes no publishes.
     private void keywordPublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.KeywordPublish publish = KadMessages.KeywordPublish.decode(packet);
-        if (this.isFirewalledUdp() || !this.inTolerance(publish.keyword())) {
+        if (isFirewalledUdp() || !inTolerance(publish.keyword())) {
             return;
         }
         long now = this.ticker.read();
@@ -1479,36 +1474,36 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         for (KadMessages.Entry file : publish.files()) {
             load = this.index.publishKeyword(publish.keyword(), file, peer.ip(), now);
         }
-        this.answer(peer, new KadMessages.PublishAnswer(publish.keyword(), load).encode());
+        answer(peer, new KadMessages.PublishAnswer(publish.keyword(), load).encode());
     }
 
     private void sourcePublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.SourcePublish publish = KadMessages.SourcePublish.decode(packet);
-        if (this.isFirewalledUdp() || !this.inTolerance(publish.file())) {
+        if (isFirewalledUdp() || !inTolerance(publish.file())) {
             return;
         }
         OptionalLong load = this.index.publishSource(
                 publish.file(), publish.source(), publish.tags(), peer.ip(), peer.port(), this.ticker.read());
         if (load.isPresent()) {
-            this.answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
+            answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
         }
     }
 
     private void notePublished(Peer peer, Packet packet) throws DecodeException {
         KadMessages.NotesPublish publish = KadMessages.NotesPublish.decode(packet);
         // Like keywords and sources: a node others cannot ask over UDP keeps nothing for them.
-        if (this.isFirewalledUdp() || !this.inTolerance(publish.file())) {
+        if (isFirewalledUdp() || !inTolerance(publish.file())) {
             return;
         }
         OptionalLong load = this.index.publishNote(
                 publish.file(), publish.publisher(), publish.tags(), peer.ip(), this.ticker.read());
         if (load.isPresent()) {
-            this.answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
+            answer(peer, new KadMessages.PublishAnswer(publish.file(), (int) load.getAsLong()).encode());
         }
     }
 
     private void publishAnswered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PUBLISH_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PUBLISH_RES, nowMs())) {
             return;
         }
         KadMessages.PublishAnswer answer = KadMessages.PublishAnswer.decode(packet);
@@ -1524,16 +1519,16 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // We help only nodes on addresses that could be real: a loopback answer would mislead them.
     private void firewallCheckRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.FirewallCheck check = KadMessages.FirewallCheck.decode(packet);
-        if (!this.isGoodAddress(peer.ip()) || check.tcpPort() == 0) {
+        if (!isGoodAddress(peer.ip()) || check.tcpPort() == 0) {
             return;
         }
-        this.answer(peer, KadMessages.firewallAnswer(peer.ip()));
+        answer(peer, KadMessages.firewallAnswer(peer.ip()));
         this.host.checkReachable(peer.ip(), check.tcpPort(), check.userHash().toHash16(), check.connectOptions());
     }
 
     private void firewallAnswered(Peer peer, Packet packet) throws DecodeException {
         if (!this.firewallChecks.containsKey(peer.ip())
-                || !this.tracking.expected(peer.ip(), Opcodes.Kad.FIREWALLED_RES, this.nowMs())) {
+                || !this.tracking.expected(peer.ip(), Opcodes.Kad.FIREWALLED_RES, nowMs())) {
             return;
         }
         int ip = KadMessages.decodeFirewallAnswer(packet);
@@ -1551,16 +1546,16 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     }
 
     private void pongReceived(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PONG, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.PONG, nowMs())) {
             return;
         }
         this.tracking
-                .challengeAnswered(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, this.nowMs())
-                .ifPresent(id -> this.verified(peer, id));
+                .challengeAnswered(peer.ip(), Opcodes.Kad.PING, UInt128.ZERO, nowMs())
+                .ifPresent(id -> verified(peer, id));
         int port = KadMessages.decodePong(packet);
         if (port != 0 && this.udpTest.isRunning() && this.udpTest.findsExternalPort()) {
             this.udpTest.portSeen(port, peer.ip());
-            this.askUdpHelpers();
+            askUdpHelpers();
         }
     }
 
@@ -1577,22 +1572,22 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         long now = this.ticker.read();
         boolean more = this.udpTest.outcome(peer.ip(), succeeded, !succeeded, succeeded ? port : 0, internal, now);
         if (!this.udpTest.isRunning()) {
-            this.stopLookups(Lookup.Kind.UDP_HELPERS);
+            stopLookups(Lookup.Kind.UDP_HELPERS);
             logger.info("Kad: UDP {}", this.udpTest.isFirewalled(false) ? "firewalled" : "open");
         } else if (more) {
-            this.askUdpHelpers();
+            askUdpHelpers();
         }
     }
 
     // We serve one firewalled node, and only when both our ports are open: it must be able to reach us.
     private void buddyRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.FindBuddy request = KadMessages.FindBuddy.decode(packet);
-        if (this.isFirewalled()
-                || this.isFirewalledUdp()
+        if (isFirewalled()
+                || isFirewalledUdp()
                 || !this.udpTest.isVerified()
                 || this.buddies.state() != Buddies.State.NONE
                 || request.tcpPort() == 0
-                || !this.isGoodAddress(peer.ip())
+                || !isGoodAddress(peer.ip())
                 || this.firewallChecks.containsKey(peer.ip())) {
             return;
         }
@@ -1603,7 +1598,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         // Only nodes recent enough to obfuscate read the connect options.
         OptionalInt options =
                 peer.senderKey() != 0 ? OptionalInt.of(this.settings.connectOptions()) : OptionalInt.empty();
-        this.answer(
+        answer(
                 peer,
                 new KadMessages.BuddyOffer(
                                 request.buddyId(),
@@ -1614,15 +1609,15 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     }
 
     private void buddyOffered(Peer peer, Packet packet) throws DecodeException {
-        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.FINDBUDDY_RES, this.nowMs())) {
+        if (!this.tracking.expected(peer.ip(), Opcodes.Kad.FINDBUDDY_RES, nowMs())) {
             return;
         }
         KadMessages.BuddyOffer offer = KadMessages.BuddyOffer.decode(packet);
         Buddies.State state = this.buddies.state();
-        if (!this.isOurBuddyId(offer.buddyId())
+        if (!isOurBuddyId(offer.buddyId())
                 || offer.tcpPort() == 0
-                || !this.isGoodAddress(peer.ip())
-                || !this.needsBuddy()
+                || !isGoodAddress(peer.ip())
+                || !needsBuddy()
                 || (state != Buddies.State.NONE && state != Buddies.State.CONNECTING)) {
             return;
         }
@@ -1637,7 +1632,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // The node we serve is asked to connect to whoever sent this; the buddy id must be the one it registered.
     private void callbackRequested(Peer peer, Packet packet) throws DecodeException {
         KadMessages.CallbackRequest request = KadMessages.CallbackRequest.decode(packet);
-        if (request.tcpPort() == 0 || !this.isGoodAddress(peer.ip()) || this.buddies.state() != Buddies.State.SERVING) {
+        if (request.tcpPort() == 0 || !isGoodAddress(peer.ip()) || this.buddies.state() != Buddies.State.SERVING) {
             return;
         }
         if (this.buddies.relay(request.buddyId(), request.file(), peer.ip(), request.tcpPort())) {
@@ -1649,19 +1644,17 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (this.firewallReports >= FIREWALL_CHECKS
                 || version < FIREWALL2_VERSION
                 || this.firewallChecks.containsKey(peer.ip())
-                || !this.isGoodAddress(peer.ip())) {
+                || !isGoodAddress(peer.ip())) {
             return;
         }
         this.firewallChecks.put(peer.ip(), this.ticker.read());
         Packet request = new KadMessages.FirewallCheck(
                         this.settings.tcpPort(), UInt128.of(this.settings.userHash()), this.settings.connectOptions())
                 .encode();
-        this.table
-                .byAddress(peer.ip())
-                .ifPresentOrElse(c -> this.request(c, request, Opcodes.Kad.FIREWALLED2_REQ), () -> {
-                    this.send(peer.ip(), peer.port(), request, Optional.empty(), peer.senderKey());
-                    this.tracking.sent(peer.ip(), Opcodes.Kad.FIREWALLED2_REQ, this.nowMs());
-                });
+        this.table.byAddress(peer.ip()).ifPresentOrElse(c -> request(c, request, Opcodes.Kad.FIREWALLED2_REQ), () -> {
+            send(peer.ip(), peer.port(), request, Optional.empty(), peer.senderKey());
+            this.tracking.sent(peer.ip(), Opcodes.Kad.FIREWALLED2_REQ, nowMs());
+        });
     }
 
     // Each minute a bin checks its oldest contact; contacts that keep failing are dropped.
@@ -1685,7 +1678,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 continue;
             }
             oldest.checking(now);
-            this.request(oldest, this.hello(oldest.version(), false).encode(false), Opcodes.Kad.HELLO_REQ);
+            request(oldest, hello(oldest.version(), false).encode(false), Opcodes.Kad.HELLO_REQ);
         }
     }
 
@@ -1697,7 +1690,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             }
             zone.setNextBigTimer(now + HOUR);
             if (this.table.wantsContacts(zone)) {
-                this.startLookup(this.table.randomIdIn(zone, this.random), Lookup.Kind.NODE);
+                startLookup(this.table.randomIdIn(zone, this.random), Lookup.Kind.NODE);
                 return;
             }
         }
@@ -1712,7 +1705,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         this.lookups.put(target, lookup);
         lookup.start(this.table);
         if (lookup.isStopped()) {
-            this.lookupEnded(lookup);
+            lookupEnded(lookup);
             return null;
         }
         return lookup;
@@ -1821,9 +1814,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         boolean large = size > LARGE_SOURCE;
         boolean direct = false;
         List<Tag> tags = new ArrayList<>();
-        if (!this.isFirewalledForClients()) {
+        if (!isFirewalledForClients()) {
             tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), large ? SOURCE_DIRECT_LARGE : SOURCE_DIRECT));
-        } else if (!this.isFirewalledUdp() && this.udpTest.isVerified()) {
+        } else if (!isFirewalledUdp() && this.udpTest.isVerified()) {
             direct = true;
             tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), SOURCE_DIRECT_CALLBACK));
         } else if (this.buddies.state() == Buddies.State.CONNECTED && this.buddies.buddyIp() != 0) {
@@ -1873,24 +1866,24 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private void requestTo(KadMessages.Contact contact, Packet request, Opcodes.Kad kind) {
         Optional<KadContact> known = this.table.get(contact.id());
         if (known.isPresent()) {
-            this.request(known.get(), request, kind);
+            request(known.get(), request, kind);
             return;
         }
         Optional<UInt128> key = contact.version() >= OBFUSCATION_VERSION ? Optional.of(contact.id()) : Optional.empty();
-        this.send(contact.ip(), contact.udpPort(), request, key, 0);
-        this.tracking.sent(contact.ip(), kind, this.nowMs());
+        send(contact.ip(), contact.udpPort(), request, key, 0);
+        this.tracking.sent(contact.ip(), kind, nowMs());
     }
 
     private void request(KadContact contact, Packet request, Opcodes.Kad kind) {
         Optional<UInt128> key = contact.version() >= OBFUSCATION_VERSION ? Optional.of(contact.id()) : Optional.empty();
         NodesDat.UdpKey stored = contact.udpKey();
         int receiverKey = stored.ip() == this.publicIp ? stored.key() : 0;
-        this.send(contact.ip(), contact.udpPort(), request, key, receiverKey);
-        this.tracking.sent(contact.ip(), kind, this.nowMs());
+        send(contact.ip(), contact.udpPort(), request, key, receiverKey);
+        this.tracking.sent(contact.ip(), kind, nowMs());
     }
 
     private void answer(Peer peer, Packet answer) {
-        this.send(peer.ip(), peer.port(), answer, Optional.empty(), peer.senderKey());
+        send(peer.ip(), peer.port(), answer, Optional.empty(), peer.senderKey());
     }
 
     private void send(int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey) {
@@ -1903,8 +1896,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         if (!this.udpTest.useExternalPort() && this.settings.udpPort() != 0) {
             tags.add(new Tag.IntTag(TagName.id(FileTag.SOURCEUPORT), this.settings.udpPort()));
         }
-        boolean tcp = this.isFirewalled();
-        boolean udp = this.isFirewalledUdp();
+        boolean tcp = isFirewalled();
+        boolean udp = isFirewalledUdp();
         // A UDP-firewalled node says so: others do not take it as a contact.
         if (peerVersion >= HELLO_ACK_VERSION && (askAck || tcp || udp)) {
             int misc = (udp ? MISC_UDP_FIREWALLED : 0)
@@ -1912,7 +1905,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                     | (askAck ? MISC_ACK_REQUESTED : 0);
             tags.add(new Tag.IntTag(TagName.id(FileTag.KADMISCOPTIONS), misc));
         }
-        return new KadMessages.Hello(this.self(), tags);
+        return new KadMessages.Hello(self(), tags);
     }
 
     private KadMessages.Self self() {
@@ -1920,7 +1913,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     }
 
     private RoutingTable.Outcome addUnverified(KadMessages.Contact c, boolean verified, long now) {
-        if (!this.isGoodAddress(c.ip()) || c.version() < 2) {
+        if (!isGoodAddress(c.ip()) || c.version() < 2) {
             return RoutingTable.Outcome.REFUSED;
         }
         KadContact contact = KadContact.of(c, now);

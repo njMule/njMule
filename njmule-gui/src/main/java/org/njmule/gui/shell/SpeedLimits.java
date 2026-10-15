@@ -55,7 +55,7 @@ final class SpeedLimits {
     SpeedLimits(Gui gui) {
         this.gui = gui;
         this.grid.getStyleClass().add("tray-speeds");
-        this.speed(
+        speed(
                 0,
                 Material2AL.ARROW_DOWNWARD,
                 gui.t("IDS_PW_CON_DOWNLBL"),
@@ -63,7 +63,7 @@ final class SpeedLimits {
                 this.downText,
                 () -> this.downTop,
                 (p, v) -> p.toBuilder().maxDownloadKiBps(v).build());
-        this.speed(
+        speed(
                 1,
                 Material2AL.ARROW_UPWARD,
                 gui.t("IDS_PW_CON_UPLBL"),
@@ -81,7 +81,7 @@ final class SpeedLimits {
     void load() {
         Preferences p = this.gui.model().preferencesProperty().get();
         if (p != null) {
-            this.load(p);
+            load(p);
         }
     }
 
@@ -144,15 +144,15 @@ final class SpeedLimits {
         text.getStyleClass().add("speed-value");
         slider.valueChangingProperty().addListener((o, was, now) -> {
             if (!now && !this.loading) {
-                this.apply(change, kib(slider.getValue(), top.getAsInt()));
+                apply(change, kib(slider.getValue(), top.getAsInt()));
             }
         });
         slider.valueProperty().addListener((o, was, now) -> {
             int kib = kib(now.doubleValue(), top.getAsInt());
-            text.setText(this.limitText(kib));
+            text.setText(limitText(kib));
             slider.setAccessibleHelp(text.getText());
             if (!slider.isValueChanging() && !this.loading) {
-                this.apply(change, kib);
+                apply(change, kib);
             }
         });
         this.grid.addRow(row, arrow, new Label(name), slider, text);
@@ -179,8 +179,8 @@ final class SpeedLimits {
             this.down.setValue(position(p.maxDownloadKiBps(), this.downTop));
             this.up.setValue(position(p.maxUploadKiBps(), this.upTop));
             // The limit as set, not as the position gives it back.
-            this.downText.setText(this.limitText(p.maxDownloadKiBps()));
-            this.upText.setText(this.limitText(p.maxUploadKiBps()));
+            this.downText.setText(limitText(p.maxDownloadKiBps()));
+            this.upText.setText(limitText(p.maxUploadKiBps()));
         } finally {
             this.loading = false;
         }

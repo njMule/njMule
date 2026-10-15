@@ -69,17 +69,17 @@ public final class RateGraph extends Region {
         this.rate = rate;
         this.down = down;
         this.up = up;
-        this.getStyleClass().add("rate-graph");
+        getStyleClass().add("rate-graph");
         // Time runs to the right in every language, as in JavaFX's charts.
-        this.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
+        setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.grid.setManaged(false);
         this.grid.setVisible(false);
-        this.getChildren().addAll(this.canvas, this.grid, this.top, this.middle);
-        this.setMinHeight(160);
-        this.setPrefHeight(260);
-        subscriptions.onListChange(samples, c -> this.draw());
+        getChildren().addAll(this.canvas, this.grid, this.top, this.middle);
+        setMinHeight(160);
+        setPrefHeight(260);
+        subscriptions.onListChange(samples, c -> draw());
         for (Region r : List.of(down, up, this.grid)) {
-            r.backgroundProperty().addListener((o, was, now) -> this.draw());
+            r.backgroundProperty().addListener((o, was, now) -> draw());
         }
     }
 
@@ -97,11 +97,11 @@ public final class RateGraph extends Region {
 
     @Override
     protected void layoutChildren() {
-        this.canvas.setWidth(this.getWidth());
-        this.canvas.setHeight(this.getHeight());
-        this.draw();
+        this.canvas.setWidth(getWidth());
+        this.canvas.setHeight(getHeight());
+        draw();
         // The scale's words sit just under the lines they name, at the left edge.
-        double h = this.getHeight();
+        double h = getHeight();
         for (Label label : List.of(this.top, this.middle)) {
             label.autosize();
         }
@@ -164,8 +164,8 @@ public final class RateGraph extends Region {
             double y = Math.round(h * i / 4.0) + 0.5;
             g.strokeLine(0, y, w, y);
         }
-        this.line(g, shown, EngineModel.RateSample::down, max, color(this.down, Color.STEELBLUE));
-        this.line(g, shown, EngineModel.RateSample::up, max, color(this.up, Color.SEAGREEN));
+        line(g, shown, EngineModel.RateSample::down, max, color(this.down, Color.STEELBLUE));
+        line(g, shown, EngineModel.RateSample::up, max, color(this.up, Color.SEAGREEN));
     }
 
     private void line(

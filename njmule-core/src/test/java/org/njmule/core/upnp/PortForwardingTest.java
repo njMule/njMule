@@ -60,7 +60,7 @@ class PortForwardingTest {
     void forwardsOurPortsForALeaseAndRemovesThemAtTheEnd() throws Exception {
         this.gateway = FakeGateway.start(IP, "/ctl");
 
-        PortForwarding forwarding = this.start(OptionalInt.of(4672));
+        PortForwarding forwarding = start(OptionalInt.of(4672));
         forwarding.awaitStarted(Duration.ofSeconds(10));
 
         assertThat(forwarding.mappings()).containsExactly("TCP 4662", "UDP 4672");
@@ -84,7 +84,7 @@ class PortForwardingTest {
     @Test
     void renewsTheMappingsAtHalfTheLease() throws Exception {
         this.gateway = FakeGateway.start(IP, "/ctl");
-        try (PortForwarding forwarding = this.start(OptionalInt.of(4672))) {
+        try (PortForwarding forwarding = start(OptionalInt.of(4672))) {
             forwarding.awaitStarted(Duration.ofSeconds(10));
 
             assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS)).isEqualTo(PortForwarding.LEASE.dividedBy(2));
@@ -103,7 +103,7 @@ class PortForwardingTest {
         this.gateway = FakeGateway.start(IP, "/ctl");
         this.gateway.onlyPermanentLeases();
 
-        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+        try (PortForwarding forwarding = start(OptionalInt.empty())) {
             forwarding.awaitStarted(Duration.ofSeconds(10));
 
             assertThat(forwarding.mappings()).containsExactly("TCP 4662");
@@ -116,7 +116,7 @@ class PortForwardingTest {
     @Test
     void findsTheRouterAgainWhenItStopsAnswering() throws Exception {
         this.gateway = FakeGateway.start(IP, "/ctl");
-        PortForwarding forwarding = this.start(OptionalInt.empty());
+        PortForwarding forwarding = start(OptionalInt.empty());
         forwarding.awaitStarted(Duration.ofSeconds(10));
         assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS)).isNotNull();
 
@@ -136,7 +136,7 @@ class PortForwardingTest {
         this.gateway = FakeGateway.start(IP, "/ctl");
         // Each mapping takes the router longer than the end waits for.
         this.gateway.delayMappings(Duration.ofSeconds(3));
-        PortForwarding forwarding = this.start(OptionalInt.of(4672));
+        PortForwarding forwarding = start(OptionalInt.of(4672));
         assertThat(await(() -> !this.gateway.actions(ADD).isEmpty())).isTrue();
 
         forwarding.close();
@@ -156,7 +156,7 @@ class PortForwardingTest {
         this.gateway = FakeGateway.start(PPP, "ctl");
         this.gateway.refuseWith(606);
 
-        PortForwarding forwarding = this.start(OptionalInt.empty());
+        PortForwarding forwarding = start(OptionalInt.empty());
         forwarding.awaitStarted(Duration.ofSeconds(10));
         forwarding.close();
 
@@ -170,14 +170,14 @@ class PortForwardingTest {
     @Test
     void routersWithoutTheServiceOrElsewhereAreIgnored() throws Exception {
         this.gateway = FakeGateway.start("urn:schemas-upnp-org:service:Layer3Forwarding:1", "/l3");
-        PortForwarding forwarding = this.start(OptionalInt.empty());
+        PortForwarding forwarding = start(OptionalInt.empty());
         forwarding.awaitStarted(Duration.ofSeconds(10));
         forwarding.close();
         assertThat(this.log).singleElement().asString().contains("no router answered");
 
         // A description announced on another host is not fetched.
         this.gateway.announceOn("192.168.200.1");
-        PortForwarding elsewhere = this.start(OptionalInt.empty());
+        PortForwarding elsewhere = start(OptionalInt.empty());
         elsewhere.awaitStarted(Duration.ofSeconds(10));
         elsewhere.close();
         assertThat(this.log).last().asString().contains("no router answered");
@@ -193,7 +193,7 @@ class PortForwardingTest {
         }
         this.gateway.othersAnswerFirst(List.of("http://127.0.0.1:" + closed + "/desc.xml"));
 
-        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+        try (PortForwarding forwarding = start(OptionalInt.empty())) {
             forwarding.awaitStarted(Duration.ofSeconds(10));
 
             assertThat(forwarding.mappings()).containsExactly("TCP 4662");
@@ -204,13 +204,13 @@ class PortForwardingTest {
     void aDescriptionThatStallsOrNeverEndsIsGivenUp() throws Exception {
         this.gateway = FakeGateway.start(IP, "/ctl");
         this.gateway.serveDescription(FakeGateway.Body.STALLED);
-        try (PortForwarding stalled = this.start(OptionalInt.empty())) {
+        try (PortForwarding stalled = start(OptionalInt.empty())) {
             stalled.awaitStarted(Duration.ofSeconds(20));
             assertThat(this.log).singleElement().asString().contains("no router answered");
         }
 
         this.gateway.serveDescription(FakeGateway.Body.OVERSIZED);
-        try (PortForwarding oversized = this.start(OptionalInt.empty())) {
+        try (PortForwarding oversized = start(OptionalInt.empty())) {
             oversized.awaitStarted(Duration.ofSeconds(10));
             assertThat(this.log).last().asString().contains("no router answered");
         }
@@ -222,7 +222,7 @@ class PortForwardingTest {
         this.gateway = FakeGateway.describing(FakeGateway.description(new String[] {IP, "/ip", PPP, "/ppp"}));
         this.gateway.status("/ip", "Disconnected");
 
-        try (PortForwarding forwarding = this.start(OptionalInt.empty())) {
+        try (PortForwarding forwarding = start(OptionalInt.empty())) {
             forwarding.awaitStarted(Duration.ofSeconds(10));
 
             assertThat(this.gateway.actions(ADD))

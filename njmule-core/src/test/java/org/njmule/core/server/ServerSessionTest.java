@@ -88,7 +88,7 @@ class ServerSessionTest {
                     .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION))
                     .with(intTag(ServerTag.TCPPORTOBFUSCATION, 70_000));
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
@@ -107,7 +107,7 @@ class ServerSessionTest {
             ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
                     // Pinged before and known to be plain: no obfuscation is tried first.
                     .with(intTag(ServerTag.UDPFLAGS, 0));
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
@@ -127,9 +127,9 @@ class ServerSessionTest {
                         .encode()));
                 out.flush();
 
-                assertThat(this.next("message")).isEqualTo("message [31mWelcome");
-                assertThat(this.next("message")).isEqualTo("message secondline");
-                assertThat(this.next("updated")).isEqualTo("updated Evil6.6.6.6:4661,0,Injected / baddescription");
+                assertThat(next("message")).isEqualTo("message [31mWelcome");
+                assertThat(next("message")).isEqualTo("message secondline");
+                assertThat(next("updated")).isEqualTo("updated Evil6.6.6.6:4661,0,Injected / baddescription");
             }
         }
     }
@@ -140,7 +140,7 @@ class ServerSessionTest {
             ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
                     // Pinged before and known to be plain: no obfuscation is tried first.
                     .with(intTag(ServerTag.UDPFLAGS, 0));
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
@@ -153,8 +153,8 @@ class ServerSessionTest {
                 out.write(TcpFraming.encode(new ServerMessages.IdChange(HIGH_ID, 0, 0).encode()));
                 out.flush();
 
-                assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
-                assertThat(this.onLoop(() -> this.session.id().map(ServerMessages.IdChange::clientId)))
+                assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
+                assertThat(onLoop(() -> this.session.id().map(ServerMessages.IdChange::clientId)))
                         .contains(HIGH_ID);
                 assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
             }
@@ -167,7 +167,7 @@ class ServerSessionTest {
             ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
                     // Pinged before and known to be plain: no obfuscation is tried first.
                     .with(intTag(ServerTag.UDPFLAGS, 0));
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
@@ -175,9 +175,9 @@ class ServerSessionTest {
                 TcpFraming.read(new BufferedInputStream(socket.getInputStream()), FrameLimits.SERVER);
             }
 
-            assertThat(this.next("disconnected")).startsWith("disconnected");
-            assertThat(this.onLoop(this.session::isConnected)).isFalse();
-            assertThat(this.onLoop(this.session::server)).isEmpty();
+            assertThat(next("disconnected")).startsWith("disconnected");
+            assertThat(onLoop(this.session::isConnected)).isFalse();
+            assertThat(onLoop(this.session::server)).isEmpty();
         }
     }
 
@@ -188,12 +188,12 @@ class ServerSessionTest {
             ServerMet.Server named = new ServerMet.Server(
                     0, trap.getLocalPort(), List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "localhost")));
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(named));
                 return null;
             });
 
-            assertThat(this.next("disconnected")).startsWith("disconnected");
+            assertThat(next("disconnected")).startsWith("disconnected");
             assertThat(this.seen).noneMatch(e -> e.startsWith("connecting 0.0.0.0"));
             trap.setSoTimeout(500);
             assertThat(accepts(trap)).isFalse();
@@ -236,28 +236,28 @@ class ServerSessionTest {
 
         @Override
         public void connecting(ServerMet.Server server) {
-            this.add("connecting " + Ipv4.format(server.ip()));
+            add("connecting " + Ipv4.format(server.ip()));
         }
 
         @Override
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
-            this.add("connected " + id.clientId());
+            add("connected " + id.clientId());
         }
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
-            this.add("disconnected " + reason);
+            add("disconnected " + reason);
         }
 
         @Override
         public void message(ServerMet.Server server, String line) {
-            this.add("message " + line);
+            add("message " + line);
         }
 
         @Override
         public void updated(ServerMet.Server server) {
             if (server.name().isPresent()) {
-                this.add("updated " + server.name().get() + " / "
+                add("updated " + server.name().get() + " / "
                         + server.description().orElse(""));
             }
         }

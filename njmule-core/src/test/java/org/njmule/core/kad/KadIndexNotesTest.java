@@ -50,90 +50,90 @@ class KadIndexNotesTest {
 
     @Test
     void shouldAnswerASearchWithWhatTheNoteSays() {
-        this.givenANote(id(100), IP, notes("Film.avi", SIZE, 4, "good copy", new Tag.IntTag(TagName.id(0x99), 7)));
+        givenANote(id(100), IP, notes("Film.avi", SIZE, 4, "good copy", new Tag.IntTag(TagName.id(0x99), 7)));
 
-        this.whenTheNotesAreSearchedFor(SIZE);
+        whenTheNotesAreSearchedFor(SIZE);
 
-        this.thenTheLoadIs(0);
-        this.thenTheNotesFoundComeFrom(id(100));
-        this.thenTheNoteFoundIs("Film.avi", SIZE, 4, "good copy");
-        this.thenTheNoteFoundHasOnlyItsOwnTags();
+        thenTheLoadIs(0);
+        thenTheNotesFoundComeFrom(id(100));
+        thenTheNoteFoundIs("Film.avi", SIZE, 4, "good copy");
+        thenTheNoteFoundHasOnlyItsOwnTags();
     }
 
     @Test
     void shouldKeepOneNotePerPublisherAndPerAddress() {
-        this.givenANote(id(100), IP, notes("a.avi", SIZE, 1, "first", null));
-        this.givenANote(id(100), IP + 1, notes("a.avi", SIZE, 2, "same publisher, new address", null));
-        this.givenANote(id(101), IP + 1, notes("a.avi", SIZE, 3, "same address, new publisher", null));
-        this.givenANote(id(102), IP + 2, notes("a.avi", SIZE, 5, "another", null));
+        givenANote(id(100), IP, notes("a.avi", SIZE, 1, "first", null));
+        givenANote(id(100), IP + 1, notes("a.avi", SIZE, 2, "same publisher, new address", null));
+        givenANote(id(101), IP + 1, notes("a.avi", SIZE, 3, "same address, new publisher", null));
+        givenANote(id(102), IP + 2, notes("a.avi", SIZE, 5, "another", null));
 
-        this.whenTheNotesAreSearchedFor(0);
+        whenTheNotesAreSearchedFor(0);
 
-        this.thenTheNotesFoundComeFrom(id(101), id(102));
-        this.thenTheIndexHoldsNotes(2);
+        thenTheNotesFoundComeFrom(id(101), id(102));
+        thenTheIndexHoldsNotes(2);
     }
 
     @Test
     void shouldRefuseANoteThatSaysNothingOrHasNoAddress() {
-        this.whenTheseNotesArePublished(
+        whenTheseNotesArePublished(
                 new Published(id(100), IP, notes("a.avi", SIZE, 0, "   ", null)),
                 new Published(id(101), IP, notes("a.avi", SIZE, 9, "", null)),
                 new Published(id(102), 0, notes("a.avi", SIZE, 3, "fine", null)));
 
-        this.thenEveryNoteIsRefused();
-        this.thenTheIndexHoldsNotes(0);
+        thenEveryNoteIsRefused();
+        thenTheIndexHoldsNotes(0);
     }
 
     @Test
     void shouldKeepTheNewestNotesOfAFileWhenItHasTooMany() {
-        this.givenNotesFromDifferentPublishers(KadIndex.MAX_NOTES_PER_FILE + 5);
+        givenNotesFromDifferentPublishers(KadIndex.MAX_NOTES_PER_FILE + 5);
 
-        this.whenTheNotesAreSearchedFor(SIZE);
+        whenTheNotesAreSearchedFor(SIZE);
 
-        this.thenTheLoadIs(100);
-        this.thenSoManyNotesAreFound(KadIndex.MAX_NOTES_PER_FILE);
-        this.thenTheOldestNotesAreGone(5);
+        thenTheLoadIs(100);
+        thenSoManyNotesAreFound(KadIndex.MAX_NOTES_PER_FILE);
+        thenTheOldestNotesAreGone(5);
     }
 
     @Test
     void shouldStopAtTheCapOfAllNotesTakingNoNewFile() {
-        this.givenTheIndexIsFull();
+        givenTheIndexIsFull();
 
-        this.whenANoteOnANewFileComes();
+        whenANoteOnANewFileComes();
 
-        this.thenTheNoteIsRefused();
-        this.thenTheIndexHoldsNotes(KadIndex.MAX_NOTES);
+        thenTheNoteIsRefused();
+        thenTheIndexHoldsNotes(KadIndex.MAX_NOTES);
     }
 
     @Test
     void shouldForgetANoteNobodyRenewsWithinADay() {
-        this.givenANote(id(100), IP, notes("a.avi", SIZE, 3, "fine", null));
-        this.givenTimePasses(25 * HOUR);
+        givenANote(id(100), IP, notes("a.avi", SIZE, 3, "fine", null));
+        givenTimePasses(25 * HOUR);
 
-        this.whenTheIndexIsCleaned();
+        whenTheIndexIsCleaned();
 
-        this.thenNoNoteIsFound();
-        this.thenTheIndexHoldsNotes(0);
+        thenNoNoteIsFound();
+        thenTheIndexHoldsNotes(0);
     }
 
     @Test
     void shouldLeaveOutNotesOnAFileOfAnotherSize() {
-        this.givenANote(id(100), IP, notes("a.avi", SIZE, 3, "this size", null));
-        this.givenANote(id(101), IP + 1, notes("a.avi", SIZE + 1, 3, "another size", null));
-        this.givenANote(id(102), IP + 2, notes("a.avi", 0, 3, "no size", null));
+        givenANote(id(100), IP, notes("a.avi", SIZE, 3, "this size", null));
+        givenANote(id(101), IP + 1, notes("a.avi", SIZE + 1, 3, "another size", null));
+        givenANote(id(102), IP + 2, notes("a.avi", 0, 3, "no size", null));
 
-        this.whenTheNotesAreSearchedFor(SIZE);
+        whenTheNotesAreSearchedFor(SIZE);
 
-        this.thenTheNotesFoundComeFrom(id(100), id(102));
+        thenTheNotesFoundComeFrom(id(100), id(102));
     }
 
     @Test
     void shouldCutLongNamesAndComments() {
-        this.givenANote(id(100), IP, notes("n".repeat(1_000), SIZE, 3, "c".repeat(1_000), null));
+        givenANote(id(100), IP, notes("n".repeat(1_000), SIZE, 3, "c".repeat(1_000), null));
 
-        this.whenTheNotesAreSearchedFor(SIZE);
+        whenTheNotesAreSearchedFor(SIZE);
 
-        this.thenTheNoteFoundIs("n".repeat(KadIndex.MAX_NOTE_NAME), SIZE, 3, "c".repeat(FileComment.MAX_LENGTH));
+        thenTheNoteFoundIs("n".repeat(KadIndex.MAX_NOTE_NAME), SIZE, 3, "c".repeat(FileComment.MAX_LENGTH));
     }
 
     private void givenANote(UInt128 publisher, int ip, List<Tag> tags) {
@@ -142,7 +142,7 @@ class KadIndexNotesTest {
 
     private void givenNotesFromDifferentPublishers(int count) {
         for (int i = 0; i < count; i++) {
-            this.givenANote(id(1_000 + i), IP + i, notes("a.avi", SIZE, 3, "note " + i, null));
+            givenANote(id(1_000 + i), IP + i, notes("a.avi", SIZE, 3, "note " + i, null));
         }
     }
 

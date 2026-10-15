@@ -231,7 +231,7 @@ public final class LinkHandoff implements AutoCloseable {
         while (!this.socket.isClosed()) {
             try {
                 Socket client = this.socket.accept();
-                Thread.ofVirtual().name("njmule-handoff-client").start(() -> this.serveOne(client));
+                Thread.ofVirtual().name("njmule-handoff-client").start(() -> serveOne(client));
             } catch (IOException | RuntimeException e) {
                 if (!this.socket.isClosed()) {
                     logger.debug("Handoff connection failed: {}", e.toString());
@@ -242,7 +242,7 @@ public final class LinkHandoff implements AutoCloseable {
 
     private void serveOne(Socket client) {
         try (client) {
-            this.serve(client, System.nanoTime() + DEADLINE.toNanos());
+            serve(client, System.nanoTime() + DEADLINE.toNanos());
         } catch (IOException | RuntimeException e) {
             if (!this.socket.isClosed()) {
                 logger.debug("Handoff connection failed: {}", e.toString());

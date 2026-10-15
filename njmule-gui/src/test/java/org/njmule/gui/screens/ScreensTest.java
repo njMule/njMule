@@ -409,14 +409,14 @@ class ScreensTest {
                 .isTrue();
 
         FxTesting.onFx(screen::connectOrDisconnect);
-        this.tickUntil(() -> this.test.model.statusProperty().get().kad().isPresent());
+        tickUntil(() -> this.test.model.statusProperty().get().kad().isPresent());
         FxTesting.await(
                 "the button follows", () -> screen.connectButton().getText().equals("Disconnect"));
         assertThat(this.test.engine.recheckKadFirewall().get(10, TimeUnit.SECONDS))
                 .isTrue();
         FxTesting.onFx(() -> screen.recheckButton().fire());
         FxTesting.onFx(screen::connectOrDisconnect);
-        this.tickUntil(() -> this.test.model.statusProperty().get().kad().isEmpty());
+        tickUntil(() -> this.test.model.statusProperty().get().kad().isEmpty());
         assertThat(this.test.model.statusProperty().get().kad()).isEmpty();
     }
 
@@ -439,15 +439,15 @@ class ScreensTest {
 
     @Test
     void kadNamesTheTestedUdpStateAndTheBuddy() throws Exception {
-        this.givenTheGui();
+        givenTheGui();
 
-        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, true, KadInfo.Buddy.SERVING));
+        whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, true, KadInfo.Buddy.SERVING));
 
-        this.thenKadReads("Open", "Buddy of a firewalled client");
+        thenKadReads("Open", "Buddy of a firewalled client");
 
-        this.whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, false, KadInfo.Buddy.CONNECTING));
+        whenKadIs(new KadInfo(true, 10, 5, true, "", "", 4672, false, false, KadInfo.Buddy.CONNECTING));
 
-        this.thenKadReads("Unknown", "Connecting");
+        thenKadReads("Unknown", "Connecting");
     }
 
     private void givenTheGui() throws Exception {
@@ -666,12 +666,12 @@ class ScreensTest {
 
     @Test
     void theLanguageBoxNamesEachLanguageInItself() throws Exception {
-        this.givenTheSettingsScreen();
+        givenTheSettingsScreen();
 
-        this.whenTheLanguagesOfTheLanguageBoxAreRead();
+        whenTheLanguagesOfTheLanguageBoxAreRead();
 
-        this.thenTheSystemLanguageComesFirst();
-        this.thenEveryLanguageFollowsByItsOwnName();
+        thenTheSystemLanguageComesFirst();
+        thenEveryLanguageFollowsByItsOwnName();
     }
 
     private void givenTheSettingsScreen() throws Exception {

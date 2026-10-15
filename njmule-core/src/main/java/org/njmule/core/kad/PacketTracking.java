@@ -76,7 +76,7 @@ final class PacketTracking {
         if (perMinute == null) {
             return true;
         }
-        if (this.isBanned(ip, nowMs)) {
+        if (isBanned(ip, nowMs)) {
             return false;
         }
         // Firewall requests share one budget.
@@ -120,7 +120,7 @@ final class PacketTracking {
 
     /** Whether {@code answer} from {@code ip} answers a request of ours; the request is consumed. */
     boolean expected(int ip, Kad answer, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         Optional<Kad[]> requests = requestsOf(answer);
         if (requests.isEmpty()) {
             return false;
@@ -141,7 +141,7 @@ final class PacketTracking {
 
     /** Whether some request to {@code ip} waits for {@code answer}, without consuming it. */
     boolean awaits(int ip, Kad answer, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         Optional<Kad[]> requests = requestsOf(answer);
         if (requests.isEmpty()) {
             return false;
@@ -158,7 +158,7 @@ final class PacketTracking {
 
     /** Whether we sent any request to {@code ip} in the last three minutes. */
     boolean wroteTo(int ip, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         for (Sent s : this.sent) {
             if (s.ip() == ip) {
                 return true;
@@ -169,7 +169,7 @@ final class PacketTracking {
 
     /** We sent {@code ip} a request whose answer proves the contact {@code id} is there; ZERO target for a ping. */
     void challenged(int ip, Kad request, UInt128 target, UInt128 id, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         if (this.challenges.size() >= MAX_CHALLENGES) {
             this.challenges.removeFirst();
         }
@@ -178,7 +178,7 @@ final class PacketTracking {
 
     /** Whether a challenge to {@code ip} waits for its answer: one at a time. */
     boolean isChallenged(int ip, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         for (Challenge c : this.challenges) {
             if (c.ip() == ip) {
                 return true;
@@ -189,7 +189,7 @@ final class PacketTracking {
 
     /** The contact proven by this answer of {@code ip} to {@code request} for {@code target}; consumed. */
     Optional<UInt128> challengeAnswered(int ip, Kad request, UInt128 target, long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         for (Iterator<Challenge> it = this.challenges.iterator(); it.hasNext(); ) {
             Challenge c = it.next();
             if (c.ip() == ip && c.request() == request && c.target().equals(target)) {
@@ -202,7 +202,7 @@ final class PacketTracking {
 
     /** Drops what is old; call every few minutes. */
     void clean(long nowMs) {
-        this.expire(nowMs);
+        expire(nowMs);
         this.buckets.values().removeIf(b -> nowMs - b[1] > 2 * MINUTE_MS);
         this.bans.values().removeIf(until -> nowMs - until >= 0);
     }

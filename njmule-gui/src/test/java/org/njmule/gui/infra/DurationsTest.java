@@ -38,9 +38,9 @@ class DurationsTest {
         "en, 247, 4:07 mins"
     })
     void aDurationIsWrittenInTheUnitsOfTheLanguage(String language, long seconds, String expected) {
-        this.givenTheFormatsOf(language);
-        this.whenTheDurationIsWritten(seconds);
-        this.thenItReads(expected);
+        givenTheFormatsOf(language);
+        whenTheDurationIsWritten(seconds);
+        thenItReads(expected);
     }
 
     private void givenTheFormatsOf(String language) {

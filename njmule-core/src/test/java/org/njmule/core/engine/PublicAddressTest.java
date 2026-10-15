@@ -36,39 +36,39 @@ class PublicAddressTest {
 
     @Test
     void aHighIdIsOurAddress() {
-        this.givenAServerThatGaveUs(new ServerMessages.IdChange(Ipv4.toEd2k(OURS), 0, 0));
+        givenAServerThatGaveUs(new ServerMessages.IdChange(Ipv4.toEd2k(OURS), 0, 0));
 
-        this.whenOurPublicAddressIsWanted();
+        whenOurPublicAddressIsWanted();
 
-        this.thenItIs("198.51.100.7");
+        thenItIs("198.51.100.7");
     }
 
     @Test
     void withALowIdOurAddressIsTheOneTheServerSaw() {
-        this.givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, OURS));
-        this.givenKadSawUsAt(SEEN_BY_KAD);
+        givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, OURS));
+        givenKadSawUsAt(SEEN_BY_KAD);
 
-        this.whenOurPublicAddressIsWanted();
+        whenOurPublicAddressIsWanted();
 
-        this.thenItIs("198.51.100.7");
+        thenItIs("198.51.100.7");
     }
 
     @Test
     void withoutAServerKadTellsOurAddress() {
-        this.givenKadSawUsAt(SEEN_BY_KAD);
+        givenKadSawUsAt(SEEN_BY_KAD);
 
-        this.whenOurPublicAddressIsWanted();
+        whenOurPublicAddressIsWanted();
 
-        this.thenItIs("198.51.100.8");
+        thenItIs("198.51.100.8");
     }
 
     @Test
     void aLowIdFromAServerThatDoesNotSayOurAddressLeavesItUnknown() {
-        this.givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, 0));
+        givenAServerThatGaveUs(new ServerMessages.IdChange(1234, 0, 0));
 
-        this.whenOurPublicAddressIsWanted();
+        whenOurPublicAddressIsWanted();
 
-        this.thenItIsUnknown();
+        thenItIsUnknown();
     }
 
     private void givenAServerThatGaveUs(ServerMessages.IdChange id) {

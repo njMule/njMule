@@ -418,7 +418,7 @@ public final class UploadManager implements AutoCloseable {
 
     /** Takes the upload side of a link whose client greeted us; empty for a banned client. */
     public Optional<PeerLink.Role> attach(PeerLink link) {
-        if (this.isBanned(link.remoteAddress().getAddress())) {
+        if (isBanned(link.remoteAddress().getAddress())) {
             return Optional.empty();
         }
         return Optional.of(UploadSession.on(link, this.ourHello, this.events));
@@ -466,7 +466,7 @@ public final class UploadManager implements AutoCloseable {
 
     /** The place in the queue of the client waiting with {@code userHash}. */
     int rankOf(Hash16 userHash) {
-        return this.rank(this.waiting.get(userHash), this.ticker.read());
+        return rank(this.waiting.get(userHash), this.ticker.read());
     }
 
     // One step of the queue: slots fed, ended and filled.
@@ -484,28 +484,27 @@ public final class UploadManager implements AutoCloseable {
                 .removeIf(c -> now - c.lastAsk > PURGE_AFTER.toNanos()
                         || !available.computeIfAbsent(c.file.hash(), this::isAvailable));
         for (Slot slot : List.copyOf(this.slots)) {
-            this.read(slot);
+            read(slot);
             if (slot.sent >= SESSION_LIMIT
                     && !this.waiting.isEmpty()
                     && slot.out.isEmpty()
                     && !slot.reading
-                    && !this.hasFriendSlot(
-                            slot.client.userHash, slot.session.trust().credits())) {
-                this.requeue(slot, now);
+                    && !hasFriendSlot(slot.client.userHash, slot.session.trust().credits())) {
+                requeue(slot, now);
             } else if (slot.isBusy()) {
                 slot.idleSince = now;
             } else if (!this.waiting.isEmpty()
                     && now - slot.idleSince > (slot.requested ? IDLE_SLOT : FIRST_REQUEST_WAIT).toNanos()) {
                 // A client that holds a slot without asking for data we have keeps others waiting.
                 logger.debug("{} left its upload slot idle", slot.session.address());
-                this.requeue(slot, now);
+                requeue(slot, now);
                 if (!slot.requested) {
-                    this.idleSlot(slot, now);
+                    idleSlot(slot, now);
                 }
             }
         }
-        this.send();
-        this.fillSlots(now);
+        send();
+        fillSlots(now);
         if (now - this.nextCreditsSave >= 0) {
             this.nextCreditsSave = now + CREDITS_SAVE.toNanos();
             this.credits.save();
@@ -522,9 +521,8 @@ public final class UploadManager implements AutoCloseable {
     private void idleSlot(Slot slot, long now) {
         InetAddress ip = slot.session.address().getAddress();
         if (this.requests.idleSlot(new RequestTracker.Key(ip, slot.client.userHash), now) >= IDLE_SLOTS_LIMIT
-                && !this.hasFriendSlot(
-                        slot.client.userHash, slot.session.trust().credits())) {
-            this.ban(ip, now, "took slots and asked for nothing");
+                && !hasFriendSlot(slot.client.userHash, slot.session.trust().credits())) {
+            ban(ip, now, "took slots and asked for nothing");
         }
     }
 
@@ -567,7 +565,7 @@ public final class UploadManager implements AutoCloseable {
                     }
                 }
                 if (slot.out.isEmpty()) {
-                    this.read(slot);
+                    read(slot);
                 }
             }
             this.turn = this.slots.isEmpty() ? 0 : (this.turn + 1) % this.slots.size();
@@ -582,7 +580,7 @@ public final class UploadManager implements AutoCloseable {
         if (next.isEmpty()) {
             return;
         }
-        this.read(slot, next.get().file(), next.get());
+        read(slot, next.get().file(), next.get());
     }
 
     // The block is read, and compressed, off the engine thread.
@@ -595,7 +593,7 @@ public final class UploadManager implements AutoCloseable {
                 && (slot.session.peer().miscOptions1() >>> 20 & 0x0F) != 0;
         this.loop.whenDone(
                 Blocks.readPackets(file.data(), file.hash(), block.start(), length, compress),
-                (packets, failure) -> this.blockRead(slot, file, block, packets, failure));
+                (packets, failure) -> blockRead(slot, file, block, packets, failure));
     }
 
     private void blockRead(
@@ -607,10 +605,9 @@ public final class UploadManager implements AutoCloseable {
         // A file renamed, or a download completed, since the block was asked for is read where it is now.
         Optional<Uploadable> moved = failure == null
                 ? Optional.empty()
-                : this.find(file.hash())
-                        .filter(f -> !f.data().equals(file.data()) && f.has(block.start(), block.end()));
+                : find(file.hash()).filter(f -> !f.data().equals(file.data()) && f.has(block.start(), block.end()));
         if (moved.isPresent()) {
-            this.read(slot, moved.get(), block);
+            read(slot, moved.get(), block);
             return;
         }
         if (failure != null) {
@@ -628,13 +625,13 @@ public final class UploadManager implements AutoCloseable {
     // About one part sent while others wait: the client waits again, from now.
     private void requeue(Slot slot, long now) {
         this.slots.remove(slot);
-        this.slotEnded(slot);
+        slotEnded(slot);
         Client client = slot.client;
         client.session = slot.session;
         client.waitStart = now;
         client.lastAsk = now;
         this.waiting.put(client.userHash, client);
-        slot.session.endSlot(this.rank(client, now));
+        slot.session.endSlot(rank(client, now));
         slot.session.setReadTimeout(WAITING_TIMEOUT);
     }
 
@@ -687,7 +684,7 @@ public final class UploadManager implements AutoCloseable {
 
     /** Bans {@code ip} for {@link #BAN_TIME}, as when it sent corrupt data. */
     public void ban(InetAddress ip, String reason) {
-        this.ban(ip, this.ticker.read(), reason);
+        ban(ip, this.ticker.read(), reason);
     }
 
     // Clients waiting from a banned address leave the queue; a slot it holds runs to its end, as
@@ -699,7 +696,7 @@ public final class UploadManager implements AutoCloseable {
             if (!c.ip.equals(ip)) {
                 return false;
             }
-            if (c.session != null && this.slotOf(c.session).isEmpty()) {
+            if (c.session != null && slotOf(c.session).isEmpty()) {
                 c.session.disconnect();
             }
             return true;
@@ -711,7 +708,7 @@ public final class UploadManager implements AutoCloseable {
     private void fillSlots(long now) {
         // Moving a client from the queue to a slot changes no score.
         Scoring scoring = new Scoring(now);
-        while (!this.waiting.isEmpty() && this.canOpenSlot(false)) {
+        while (!this.waiting.isEmpty() && canOpenSlot(false)) {
             Client best = null;
             double bestScore = -1;
             Client away = null;
@@ -738,11 +735,11 @@ public final class UploadManager implements AutoCloseable {
             }
             if (best.session != null && best.session.isOpen()) {
                 this.waiting.remove(best.userHash);
-                this.open(best, best.session);
+                open(best, best.session);
             } else {
                 // Called once our connections leave room for one more.
                 if (this.links.mayConnect()) {
-                    this.connect(best);
+                    connect(best);
                 }
                 return;
             }
@@ -786,12 +783,11 @@ public final class UploadManager implements AutoCloseable {
     private boolean askedTooOften(UploadSession session, Uploadable file, long now) {
         InetAddress ip = session.address().getAddress();
         int bad = this.requests.asked(new RequestTracker.Key(ip, session.userHash()), file.hash(), now);
-        if (bad < BAD_LIMIT
-                || this.hasFriendSlot(session.userHash(), session.trust().credits())) {
+        if (bad < BAD_LIMIT || hasFriendSlot(session.userHash(), session.trust().credits())) {
             return false;
         }
-        this.ban(ip, now, "asked again too often");
-        if (this.slotOf(session).isEmpty()) {
+        ban(ip, now, "asked again too often");
+        if (slotOf(session).isEmpty()) {
             session.disconnect();
         }
         return true;
@@ -847,7 +843,7 @@ public final class UploadManager implements AutoCloseable {
             }
             double waited = Math.max(0, this.now - client.waitStart) / 1e9;
             double ratio = UploadManager.this.credits.ratio(client.userHash, trusted);
-            return waited * ratio * this.factor(client.file.hash()) / 10;
+            return waited * ratio * factor(client.file.hash()) / 10;
         }
 
         // The factor of a file's level, in tenths.
@@ -858,7 +854,7 @@ public final class UploadManager implements AutoCloseable {
                 case NORMAL -> 7;
                 case HIGH -> 9;
                 case RELEASE -> 18;
-                case AUTO -> this.automatic(f);
+                case AUTO -> automatic(f);
             });
         }
 
@@ -890,11 +886,11 @@ public final class UploadManager implements AutoCloseable {
             try {
                 TcpConnection opened =
                         TcpConnector.connectToClient(address, obfuscateFor, CONNECT_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.connected(client, opened))) {
+                if (!this.loop.postOutcome(() -> connected(client, opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.unreachable(client, e.getMessage()));
+                this.loop.postOutcome(() -> unreachable(client, e.getMessage()));
             }
         });
     }
@@ -935,7 +931,7 @@ public final class UploadManager implements AutoCloseable {
         }
         UploadSession session = UploadSession.on(link, this.ourHello, this.events);
         this.waiting.remove(client.userHash);
-        this.open(client, session);
+        open(client, session);
     }
 
     // A client may ask once, then again after 40 minutes for rare downloads or 160 for the rest; only for a file it
@@ -945,10 +941,10 @@ public final class UploadManager implements AutoCloseable {
     private void answerSources(UploadSession session, SourceExchange.Request request) {
         long now = this.ticker.read();
         InetAddress ip = session.address().getAddress();
-        if (!session.asked(request.file()) || this.isBanned(ip)) {
+        if (!session.asked(request.file()) || isBanned(ip)) {
             return;
         }
-        Optional<Uploadable> file = this.find(request.file());
+        Optional<Uploadable> file = find(request.file());
         if (file.isEmpty() || request.version() < 1) {
             return;
         }
@@ -965,7 +961,7 @@ public final class UploadManager implements AutoCloseable {
             return;
         }
         if (sources.isEmpty()) {
-            for (Client c : this.uploaders(request.file())) {
+            for (Client c : uploaders(request.file())) {
                 if (!c.lowId && c.ip instanceof Inet4Address ip4) {
                     sources.add(new SourceExchange.Source(
                             Ipv4.fromBytes(ip4.getAddress()), 0, c.port, 0, 0, Optional.of(c.userHash), 0));
@@ -1159,7 +1155,7 @@ public final class UploadManager implements AutoCloseable {
 
         @Override
         public void stopped(UploadSession session, String reason) {
-            this.slotGone(session);
+            slotGone(session);
         }
 
         private void slotGone(UploadSession session) {
@@ -1173,7 +1169,7 @@ public final class UploadManager implements AutoCloseable {
         @Override
         public void closed(UploadSession session) {
             UploadManager manager = UploadManager.this;
-            this.slotGone(session);
+            slotGone(session);
             for (Client c : manager.waiting.values()) {
                 if (c.session == session) {
                     c.trusted = session.trust().credits();

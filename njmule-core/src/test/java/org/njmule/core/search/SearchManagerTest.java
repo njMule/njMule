@@ -103,7 +103,7 @@ class SearchManagerTest {
 
     @Test
     void kadSearchesKeepTheLargestCountsUpToTheLimitAndEndWhenStopped() throws Exception {
-        assertThatThrownBy(() -> this.onLoop(() -> this.manager.start(kad("linux"))))
+        assertThatThrownBy(() -> onLoop(() -> this.manager.start(kad("linux"))))
                 .hasRootCauseInstanceOf(IllegalStateException.class)
                 .hasRootCauseMessage("Kad is not running");
         List<String> keywords = new ArrayList<>();
@@ -117,13 +117,13 @@ class SearchManagerTest {
             found.set(results);
             return Optional.of(() -> stopped.add(keyword));
         });
-        assertThatThrownBy(() -> this.onLoop(() -> this.manager.start(kad("never"))))
+        assertThatThrownBy(() -> onLoop(() -> this.manager.start(kad("never"))))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
 
-        SearchId id = this.onLoop(() -> this.manager.start(kad("rare linux distro")));
+        SearchId id = onLoop(() -> this.manager.start(kad("rare linux distro")));
         assertThat(keywords).last().as("the longest word").isEqualTo("distro");
         Hash16 iso = hash(1);
-        this.onLoop(() -> {
+        onLoop(() -> {
             found.get()
                     .accept(List.of(
                             new SearchResult(iso, "distro.iso", 1000, 5, 1, Optional.empty()),
@@ -135,8 +135,8 @@ class SearchManagerTest {
                             new SearchResult(iso, "distro.iso", 2000, 9, 9, Optional.empty())));
             return null;
         });
-        assertThat(this.next()).isEqualTo("results " + id.value() + " distro.iso 5/1");
-        assertThat(this.next())
+        assertThat(next()).isEqualTo("results " + id.value() + " distro.iso 5/1");
+        assertThat(next())
                 .as("Kad nodes report the same sources: the largest count is kept")
                 .isEqualTo("results " + id.value() + " distro.iso 5/4");
 
@@ -144,12 +144,12 @@ class SearchManagerTest {
         for (int i = 0; i < SearchManager.MAX_RESULTS + 1; i++) {
             many.add(new SearchResult(hash(1000 + i), "file" + i + ".bin", 10, 1, 0, Optional.empty()));
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             found.get().accept(many);
             return null;
         });
-        assertThat(this.next()).startsWith("results " + id.value() + " file0.bin");
-        this.onLoop(() -> {
+        assertThat(next()).startsWith("results " + id.value() + " file0.bin");
+        onLoop(() -> {
             this.manager.serverLost();
             this.manager.stop(id);
             this.manager.stop(id);
@@ -157,7 +157,7 @@ class SearchManagerTest {
             return null;
         });
 
-        assertThat(this.next())
+        assertThat(next())
                 .as("a Kad search outlives the server; once stopped it takes nothing more")
                 .isEqualTo("ended " + id.value() + " " + SearchManager.MAX_RESULTS);
         assertThat(stopped).containsExactly("distro");
@@ -166,61 +166,61 @@ class SearchManagerTest {
 
     @Test
     void shouldFillTheMediaDetailsAFirstAnswerLackedFromLaterOnes() throws Exception {
-        this.givenAKadSearchFor("opening song");
-        this.givenKadAnswered(song(new SearchResult.Media("Some Band", "", "", 0, 192, "")));
+        givenAKadSearchFor("opening song");
+        givenKadAnswered(song(new SearchResult.Media("Some Band", "", "", 0, 192, "")));
 
-        this.whenKadAnswers(song(new SearchResult.Media("Other Band", "First Album", "", 205, 128, "mp3")));
+        whenKadAnswers(song(new SearchResult.Media("Other Band", "First Album", "", 205, 128, "mp3")));
 
-        this.thenTheLastResultHasTheMedia(new SearchResult.Media("Some Band", "First Album", "", 205, 192, "mp3"));
+        thenTheLastResultHasTheMedia(new SearchResult.Media("Some Band", "First Album", "", 205, 192, "mp3"));
     }
 
     @Test
     void shouldTakeTheTypeFromTheFileNameRatherThanFromThePublisher() throws Exception {
-        this.givenAKadSearchFor("holiday clip");
+        givenAKadSearchFor("holiday clip");
 
-        this.whenKadAnswers(new SearchResult(hash(11), "holiday clip.exe", 1000, 1, 0, Optional.of("Video")));
+        whenKadAnswers(new SearchResult(hash(11), "holiday clip.exe", 1000, 1, 0, Optional.of("Video")));
 
-        this.thenTheLastResultHasTheType(Optional.of("Pro"));
+        thenTheLastResultHasTheType(Optional.of("Pro"));
     }
 
     @Test
     void shouldKeepTheReportedTypeOfANameThatDoesNotTellIt() throws Exception {
-        this.givenAKadSearchFor("readme");
+        givenAKadSearchFor("readme");
 
-        this.whenKadAnswers(new SearchResult(hash(12), "readme", 10, 1, 0, Optional.of("Doc")));
+        whenKadAnswers(new SearchResult(hash(12), "readme", 10, 1, 0, Optional.of("Doc")));
 
-        this.thenTheLastResultHasTheType(Optional.of("Doc"));
+        thenTheLastResultHasTheType(Optional.of("Doc"));
     }
 
     @Test
     void shouldDropAReportedTypeThatIsNoFileType() throws Exception {
-        this.givenAKadSearchFor("notes");
+        givenAKadSearchFor("notes");
 
-        this.whenKadAnswers(new SearchResult(hash(13), "notes", 10, 1, 0, Optional.of("\u001b[2JFree")));
+        whenKadAnswers(new SearchResult(hash(13), "notes", 10, 1, 0, Optional.of("\u001b[2JFree")));
 
-        this.thenTheLastResultHasTheType(Optional.empty());
+        thenTheLastResultHasTheType(Optional.empty());
     }
 
     @Test
     void shouldKeepControlAndDirectionCharactersOutOfResultNames() throws Exception {
-        this.givenAKadSearchFor("song");
+        givenAKadSearchFor("song");
 
-        this.whenKadAnswers(new SearchResult(hash(16), "\u001b[2Jsong\u202Egpj.exe\r\n", 10, 1, 0, Optional.empty()));
+        whenKadAnswers(new SearchResult(hash(16), "\u001b[2Jsong\u202Egpj.exe\r\n", 10, 1, 0, Optional.empty()));
 
-        this.thenTheResultsReportedAre("[2Jsonggpj.exe");
+        thenTheResultsReportedAre("[2Jsonggpj.exe");
     }
 
     @Test
     void shouldAskKadForArchivesAsProgramsAndKeepOnlyTheArchives() throws Exception {
-        this.givenAKadSearchFor("linux @type=archive");
+        givenAKadSearchFor("linux @type=archive");
 
-        this.whenKadAnswers(
+        whenKadAnswers(
                 new SearchResult(hash(14), "linux setup.exe", 1000, 1, 0, Optional.of("Pro")),
                 new SearchResult(hash(15), "linux sources.tar.gz", 1000, 1, 0, Optional.of("Pro")));
 
-        this.thenKadIsAskedFor(new SearchExpr.And(
+        thenKadIsAskedFor(new SearchExpr.And(
                 new SearchExpr.Keyword("linux"), new SearchExpr.StringAttr(FileTag.FILETYPE, "Pro")));
-        this.thenTheResultsReportedAre("linux sources.tar.gz");
+        thenTheResultsReportedAre("linux sources.tar.gz");
     }
 
     private void givenAKadSearchFor(String words) throws Exception {
@@ -229,19 +229,19 @@ class SearchManagerTest {
             this.kadAnswers = results;
             return Optional.of(() -> {});
         });
-        this.onLoop(() -> this.manager.start(kad(words)));
+        onLoop(() -> this.manager.start(kad(words)));
     }
 
     private void givenKadAnswered(SearchResult result) throws Exception {
-        this.whenKadAnswers(result);
+        whenKadAnswers(result);
     }
 
     private void whenKadAnswers(SearchResult... results) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.kadAnswers.accept(List.of(results));
             return null;
         });
-        this.next();
+        next();
     }
 
     private void thenKadIsAskedFor(SearchExpr expected) {
@@ -281,9 +281,9 @@ class SearchManagerTest {
 
     @Test
     void aServerSearchTakesMoreResultsAndEndsWhenTheServerIsLost() throws Exception {
-        assertThatThrownBy(() -> this.onLoop(() -> this.manager.start(server("linux"))))
+        assertThatThrownBy(() -> onLoop(() -> this.manager.start(server("linux"))))
                 .hasRootCauseInstanceOf(IllegalStateException.class);
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.serverResults(
                     new ServerMet.Server(LOOPBACK, 4661, List.of()),
                     new ServerMessages.SearchResults(List.of(), false));
@@ -294,9 +294,9 @@ class SearchManagerTest {
         assertThat(this.events.poll(200, TimeUnit.MILLISECONDS))
                 .as("answers no search asked for")
                 .isNull();
-        ScriptedServer server = this.connect();
+        ScriptedServer server = connect();
 
-        SearchId id = this.onLoop(() -> this.manager.start(server("linux")));
+        SearchId id = onLoop(() -> this.manager.start(server("linux")));
         assertThat(server.next().opcode()).isEqualTo(Opcodes.Server.SEARCHREQUEST.code());
         server.send(new ServerMessages.SearchResults(
                         List.of(
@@ -310,26 +310,26 @@ class SearchManagerTest {
                                 entry(1, "linux.iso", 2000, 7)),
                         true)
                 .encode());
-        assertThat(this.next()).isEqualTo("results " + id.value() + " linux.iso 2/2");
-        assertThat(this.onLoop(() -> this.manager.more(id))).isTrue();
+        assertThat(next()).isEqualTo("results " + id.value() + " linux.iso 2/2");
+        assertThat(onLoop(() -> this.manager.more(id))).isTrue();
         assertThat(server.next().opcode()).isEqualTo(Opcodes.Server.QUERY_MORE_RESULT.code());
-        assertThat(this.onLoop(() -> this.manager.more(id)))
+        assertThat(onLoop(() -> this.manager.more(id)))
                 .as("one request at a time")
                 .isFalse();
         server.send(new ServerMessages.SearchResults(List.of(entry(1, "linux.iso", 1000, 3)), false).encode());
-        assertThat(this.next())
+        assertThat(next())
                 .as("servers count their own sources: they add up")
                 .isEqualTo("results " + id.value() + " linux.iso 5/5");
-        assertThat(this.next()).isEqualTo("ended " + id.value() + " 1");
-        assertThat(this.onLoop(() -> this.manager.more(id))).isFalse();
+        assertThat(next()).isEqualTo("ended " + id.value() + " 1");
+        assertThat(onLoop(() -> this.manager.more(id))).isFalse();
 
-        SearchId lost = this.onLoop(() -> this.manager.start(server("lost")));
+        SearchId lost = onLoop(() -> this.manager.start(server("lost")));
         server.next();
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.serverLost();
             return null;
         });
-        assertThat(this.next()).isEqualTo("ended " + lost.value() + " 0");
+        assertThat(next()).isEqualTo("ended " + lost.value() + " 0");
         server.send(new ServerMessages.SearchResults(List.of(entry(3, "late.iso", 10, 1)), false).encode());
         assertThat(this.events.poll(500, TimeUnit.MILLISECONDS)).isNull();
     }
@@ -340,37 +340,37 @@ class SearchManagerTest {
                 .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_LARGEFILES | ServerDatagrams.UDP_EXT_GETFILES));
         ServerMet.Server narrow = new ServerMet.Server(Ipv4.of(192, 0, 2, 2), 4661, List.of());
         ServerMet.Server noUdpPort = new ServerMet.Server(Ipv4.of(192, 0, 2, 3), 65_533, List.of());
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.servers.add(wide);
             this.servers.add(narrow);
             this.servers.add(noUdpPort);
             this.servers.setPriority(ServerList.addressOf(wide), ServerInfo.Priority.HIGH);
             return null;
         });
-        ScriptedServer server = this.connect();
+        ScriptedServer server = connect();
 
         // Without the UDP socket the search ends with the server's answer.
-        SearchId alone = this.onLoop(() -> this.manager.start(global("alone")));
+        SearchId alone = onLoop(() -> this.manager.start(global("alone")));
         server.next();
         server.send(new ServerMessages.SearchResults(List.of(), false).encode());
-        assertThat(this.next()).isEqualTo("ended " + alone.value() + " 0");
+        assertThat(next()).isEqualTo("ended " + alone.value() + " 0");
 
         // A query that cannot be sent, and one that cannot be made for a server without 64-bit sizes: the search
         // still ends, once the time for answers is over.
         ServerUdp closed = ServerUdp.open(0, (from, packet) -> {});
         closed.close();
         this.udp = Optional.of(closed);
-        SearchId sized = this.onLoop(() -> this.manager.start(global("@size>5g linux")));
+        SearchId sized = onLoop(() -> this.manager.start(global("@size>5g linux")));
         server.next();
         server.send(new ServerMessages.SearchResults(List.of(), false).encode());
-        assertThat(this.next(SearchManager.ANSWER_GRACE.plusSeconds(10).toMillis()))
+        assertThat(next(SearchManager.ANSWER_GRACE.plusSeconds(10).toMillis()))
                 .isEqualTo("ended " + sized.value() + " 0");
     }
 
     private ScriptedServer connect() throws Exception {
         ServerSocket listening = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
         this.resources.add(listening);
-        this.onLoop(() -> {
+        onLoop(() -> {
             // Pinged before and known to be plain: no obfuscation is tried first.
             this.session.connect(Optional.of(new ServerMet.Server(LOOPBACK, listening.getLocalPort(), List.of())
                     .with(intTag(ServerTag.UDPFLAGS, 0))));
@@ -382,7 +382,7 @@ class SearchManagerTest {
         assertThat(server.next().opcode()).isEqualTo(Opcodes.Server.LOGINREQUEST.code());
         server.send(new ServerMessages.IdChange(HIGH_ID, ServerMessages.TCP_LARGEFILES, 0).encode());
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (!this.onLoop(this.session::isConnected)) {
+        while (!onLoop(this.session::isConnected)) {
             assertThat(System.nanoTime()).as("connected in time").isLessThan(deadline);
             Thread.sleep(20);
         }
@@ -422,7 +422,7 @@ class SearchManagerTest {
     }
 
     private String next() throws InterruptedException {
-        return this.next(10_000);
+        return next(10_000);
     }
 
     private String next(long millis) throws InterruptedException {

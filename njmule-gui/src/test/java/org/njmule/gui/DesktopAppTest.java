@@ -111,7 +111,7 @@ class DesktopAppTest {
         Files.writeString(
                 gui.resolve(GuiSettings.FILE_NAME),
                 "window.x=-50000\nwindow.y=-50000\nwindow.width=900\nwindow.height=700\n");
-        DesktopApp app = this.open();
+        DesktopApp app = open();
         AtomicReference<Stage> stage = new AtomicReference<>();
         try {
             // Without the tray: minimising must never put a real icon in the system tray.
@@ -148,7 +148,7 @@ class DesktopAppTest {
 
     @Test
     void theWindowLeftByALanguageChangeNoLongerFollowsTheEngine() throws Exception {
-        DesktopApp app = this.open();
+        DesktopApp app = open();
         AtomicReference<Stage> stage = new AtomicReference<>();
         try {
             FxTesting.onFx(() -> {

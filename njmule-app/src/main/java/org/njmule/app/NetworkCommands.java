@@ -90,7 +90,7 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
     int run(NetworkTasks tasks) throws InterruptedException {
         try {
             if (tasks.emuleImport().isPresent()) {
-                this.importEmule(tasks.emuleImport().get());
+                importEmule(tasks.emuleImport().get());
             }
             if (tasks.serverMet().isPresent()) {
                 int added = this.engine.addServers(tasks.serverMet().get()).get();
@@ -102,34 +102,33 @@ final class NetworkCommands implements Flow.Subscriber<EngineEvent> {
                 this.out.println("Sharing " + dir);
             }
             if (tasks.hello().isPresent()) {
-                this.hello(tasks);
+                hello(tasks);
             }
             if (tasks.kadBootstrap().isPresent()) {
                 this.engine.kadBootstrap(tasks.kadBootstrap().get()).get();
                 this.out.println("Joining Kad through " + tasks.kadBootstrap().get());
             }
             if (tasks.kad()) {
-                if (!this.awaitKad()) {
+                if (!awaitKad()) {
                     return Main.EXIT_FAILURE;
                 }
-                this.search(tasks.search().orElseThrow(), SearchRequest.Scope.KAD);
-                return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
+                search(tasks.search().orElseThrow(), SearchRequest.Scope.KAD);
+                return tasks.downloads().isEmpty() ? Main.EXIT_OK : download(tasks.downloads());
             }
             if (tasks.server().isEmpty() && tasks.search().isEmpty()) {
-                return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
+                return tasks.downloads().isEmpty() ? Main.EXIT_OK : download(tasks.downloads());
             }
             this.engine.connect(tasks.server()).get();
             if (!tasks.isOneShot()) {
                 return Main.EXIT_OK;
             }
-            if (!this.awaitLogin()) {
+            if (!awaitLogin()) {
                 return Main.EXIT_FAILURE;
             }
             if (tasks.search().isPresent()) {
-                this.search(
-                        tasks.search().get(), tasks.global() ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER);
+                search(tasks.search().get(), tasks.global() ? SearchRequest.Scope.GLOBAL : SearchRequest.Scope.SERVER);
             }
-            return tasks.downloads().isEmpty() ? Main.EXIT_OK : this.download(tasks.downloads());
+            return tasks.downloads().isEmpty() ? Main.EXIT_OK : download(tasks.downloads());
         } catch (ExecutionException e) {
             this.err.println("Failed: " + message(e.getCause()));
             return Main.EXIT_FAILURE;

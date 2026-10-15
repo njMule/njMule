@@ -71,7 +71,7 @@ class ServersMenusTest {
 
     @Test
     void theServerMenuFollowsTheSelectionAndActs() throws Exception {
-        ServersScreen screen = this.screen();
+        ServersScreen screen = screen();
         ContextMenu menu = FxTesting.onFx(() -> screen.table().getContextMenu());
 
         FxTesting.onFx(() -> {
@@ -80,9 +80,9 @@ class ServersMenusTest {
             Clipboard.getSystemClipboard().setContent(content);
             screen.table().getSelectionModel().clearSelection();
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_CONNECTTHIS").isDisable()).isTrue();
-            assertThat(this.item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isTrue();
-            assertThat(this.item(menu, "IDS_REMOVEALL").isDisable()).isFalse();
+            assertThat(item(menu, "IDS_CONNECTTHIS").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_REMOVEALL").isDisable()).isFalse();
             screen.copyLinks();
             screen.connectOrDisconnect();
         });
@@ -92,26 +92,26 @@ class ServersMenusTest {
         FxTesting.onFx(() -> {
             screen.table().getSelectionModel().selectAll();
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_ADDTOSTATIC").isDisable()).isFalse();
-            assertThat(this.item(menu, "IDS_REMOVEFROMSTATIC").isDisable()).isFalse();
-            assertThat(this.priorities(menu)).noneMatch(RadioMenuItem::isSelected);
-            this.item(menu, "IDS_REMOVEFROMSTATIC").fire();
+            assertThat(item(menu, "IDS_ADDTOSTATIC").isDisable()).isFalse();
+            assertThat(item(menu, "IDS_REMOVEFROMSTATIC").isDisable()).isFalse();
+            assertThat(priorities(menu)).noneMatch(RadioMenuItem::isSelected);
+            item(menu, "IDS_REMOVEFROMSTATIC").fire();
         });
         assertThat(this.calls).contains("static 81.2.3.5:4242 false");
 
         // The server we are on: Disconnect, and its priority ticked.
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, true)));
         FxTesting.onFx(() -> {
-            this.select(screen, BIG);
+            select(screen, BIG);
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_CONNECTTHIS").getText()).isEqualTo("Disconnect");
-            assertThat(this.priorities(menu))
+            assertThat(item(menu, "IDS_CONNECTTHIS").getText()).isEqualTo("Disconnect");
+            assertThat(priorities(menu))
                     .filteredOn(RadioMenuItem::isSelected)
                     .extracting(MenuItem::getText)
                     .containsExactly("Normal");
-            this.priorities(menu).getLast().fire();
-            this.item(menu, "IDS_ADDTOSTATIC").fire();
-            this.item(menu, "IDS_CONNECTTHIS").fire();
+            priorities(menu).getLast().fire();
+            item(menu, "IDS_ADDTOSTATIC").fire();
+            item(menu, "IDS_CONNECTTHIS").fire();
         });
         assertThat(this.calls).contains("priority 81.2.3.4:4661 HIGH", "static 81.2.3.4:4661 true", "disconnect");
 
@@ -121,8 +121,8 @@ class ServersMenusTest {
             content.putString("ed2k://|server|81.2.3.9|4661|/ ed2k://|serverlist|https://example.org/list.met|/");
             Clipboard.getSystemClipboard().setContent(content);
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isFalse();
-            this.item(menu, "IDS_SW_DIRECTDOWNLOAD").fire();
+            assertThat(item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isFalse();
+            item(menu, "IDS_SW_DIRECTDOWNLOAD").fire();
         });
         FxTesting.await("the list fetched", () -> this.test.told.contains("3 new servers from example.org"));
         assertThat(this.calls).contains("add 81.2.3.9:4661", "list https://example.org/list.met");
@@ -131,13 +131,13 @@ class ServersMenusTest {
         // Remove All asks first.
         FxTesting.onFx(() -> {
             FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
-            this.item(menu, "IDS_REMOVEALL").fire();
+            item(menu, "IDS_REMOVEALL").fire();
         });
         assertThat(this.calls).noneMatch(c -> c.startsWith("remove"));
         FxTesting.onFx(() -> {
             this.test.model.connect(Optional.empty());
             FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
-            this.item(menu, "IDS_REMOVEALL").fire();
+            item(menu, "IDS_REMOVEALL").fire();
         });
         assertThat(this.calls).contains("remove [81.2.3.4:4661, 81.2.3.5:4242]");
         assertThat(this.calls.getLast())
@@ -148,9 +148,9 @@ class ServersMenusTest {
 
     @Test
     void keysAndDoubleClicksActOnTheList() throws Exception {
-        ServersScreen screen = this.screen();
+        ServersScreen screen = screen();
         FxTesting.onFx(() -> {
-            this.select(screen, SMALL);
+            select(screen, SMALL);
             screen.table().fireEvent(FxTesting.key(KeyCode.C, true));
             assertThat(Clipboard.getSystemClipboard().getString()).isEqualTo("ed2k://|server|81.2.3.5|4242|/");
             ClipboardContent content = new ClipboardContent();
@@ -187,7 +187,7 @@ class ServersMenusTest {
 
     @Test
     void theLogsShowTheSessionsAndAreReset() throws Exception {
-        ServersScreen screen = this.screen();
+        ServersScreen screen = screen();
         FxTesting.onFx(() -> {
             this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, true));
             this.test.model.handle(new EngineEvent.ServerConnected(SMALL, 99, true, false));
@@ -203,7 +203,7 @@ class ServersMenusTest {
                         && FxTesting.cellTexts(info).contains("Welcome to Big"));
         assertThat(FxTesting.onFx(() -> info.lookupAll(".success").size())).isEqualTo(2);
 
-        FxTesting.onFx(() -> this.reset(screen).fire());
+        FxTesting.onFx(() -> reset(screen).fire());
         FxTesting.await("no server info", () -> this.test.model.serverInfo().isEmpty());
         assertThat(this.test.model.log()).isNotEmpty();
 
@@ -211,7 +211,7 @@ class ServersMenusTest {
         ListView<?> log = FxTesting.onFx(
                 () -> (ListView<?>) screen.logTabs().getTabs().get(1).getContent());
         FxTesting.await("the warning", () -> log.lookupAll(".warning").size() == 1);
-        FxTesting.onFx(() -> this.reset(screen).fire());
+        FxTesting.onFx(() -> reset(screen).fire());
         assertThat(FxTesting.onFx(() -> this.test.model.log().isEmpty())).isTrue();
     }
 
@@ -273,7 +273,7 @@ class ServersMenusTest {
     }
 
     private List<RadioMenuItem> priorities(ContextMenu menu) {
-        return ((Menu) this.item(menu, "IDS_PRIORITY"))
+        return ((Menu) item(menu, "IDS_PRIORITY"))
                 .getItems().stream().map(RadioMenuItem.class::cast).toList();
     }
 

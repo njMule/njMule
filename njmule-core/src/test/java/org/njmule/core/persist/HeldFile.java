@@ -85,6 +85,6 @@ final class HeldFile implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        this.release();
+        release();
     }
 }

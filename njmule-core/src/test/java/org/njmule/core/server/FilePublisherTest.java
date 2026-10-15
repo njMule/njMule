@@ -80,7 +80,7 @@ class FilePublisherTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.disconnect();
             return null;
         });
@@ -96,8 +96,8 @@ class FilePublisherTest {
         this.files.add(new FilePublisher.Offer(small, "film.avi", 1000, true));
         this.files.add(new FilePublisher.Offer(hash(2), "huge.iso", 5_000_000_000L, true));
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
-            this.connect(server);
-            this.tick();
+            connect(server);
+            tick();
 
             List<FileEntry> offered =
                     offers(server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
@@ -110,7 +110,7 @@ class FilePublisherTest {
                         .as("a type name")
                         .hasValue("Video");
             });
-            this.tick();
+            tick();
             assertThat(server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500)))
                     .as("nothing new")
                     .isEmpty();
@@ -125,8 +125,8 @@ class FilePublisherTest {
             this.files.add(new FilePublisher.Offer(hash(i + 10), "file " + i + ".iso", 5_000_000_000L + i, i > 0));
         }
         try (ScriptedServer server = ScriptedServer.start(lowId, flags)) {
-            this.connect(server);
-            this.tick();
+            connect(server);
+            tick();
 
             List<FileEntry> first =
                     offers(server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
@@ -140,23 +140,23 @@ class FilePublisherTest {
                     .as("a type code")
                     .isPresent();
 
-            this.tick();
+            tick();
             assertThat(server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500)))
                     .as("the next batch waits a minute")
                     .isEmpty();
             this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
-            this.tick();
+            tick();
             assertThat(offers(
                             server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()))
                     .extracting(FileEntry::hash)
                     .containsExactly(hash(FilePublisher.BATCH + 10));
 
             this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.publisher.changed(Optional.of(hash(10)));
                 return null;
             });
-            this.tick();
+            tick();
             assertThat(offers(
                             server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()))
                     .as("a file that completed is offered again")
@@ -167,12 +167,12 @@ class FilePublisherTest {
 
     @Test
     void noMoreFilesAreOfferedThanTheServerTakes() throws Exception {
-        this.givenSharedFiles(5);
-        this.givenALoginToAServerTakingFiles(3);
+        givenSharedFiles(5);
+        givenALoginToAServerTakingFiles(3);
 
-        this.whenTwoBatchesAreDue();
+        whenTwoBatchesAreDue();
 
-        this.thenTheServerWasOffered(3);
+        thenTheServerWasOffered(3);
     }
 
     private void givenSharedFiles(int count) {
@@ -186,7 +186,7 @@ class FilePublisherTest {
         ServerMet.Server target = new ServerMet.Server(this.server.ip(), this.server.port(), List.of())
                 .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), 0))
                 .with(new Tag.IntTag(TagName.id(ServerTag.SOFTFILES), softLimit));
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(target));
             return null;
         });
@@ -195,7 +195,7 @@ class FilePublisherTest {
 
     private void whenTwoBatchesAreDue() throws Exception {
         for (int batch = 0; batch < 2; batch++) {
-            this.tick();
+            tick();
             this.server
                     .next(Opcodes.Server.OFFERFILES.code(), Duration.ofSeconds(2))
                     .ifPresent(packet -> this.offered.addAll(offersOf(packet)));
@@ -219,7 +219,7 @@ class FilePublisherTest {
     void nothingIsOfferedWithoutASession() throws Exception {
         this.files.add(new FilePublisher.Offer(hash(1), "film.avi", 1000, true));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.publisher.changed(Optional.empty());
             this.publisher.tick();
             this.publisher.disconnected();
@@ -227,11 +227,11 @@ class FilePublisherTest {
             return null;
         });
 
-        assertThat(this.onLoop(this.session::isConnected)).isFalse();
+        assertThat(onLoop(this.session::isConnected)).isFalse();
     }
 
     private void connect(ScriptedServer server) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(new ServerMet.Server(server.ip(), server.port(), List.of())));
             return null;
         });
@@ -239,7 +239,7 @@ class FilePublisherTest {
     }
 
     private void tick() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.publisher.tick();
             return null;
         });

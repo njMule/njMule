@@ -84,30 +84,30 @@ class KadNotesSimulationTest {
 
     @Test
     void shouldFindTheNoteAnotherNodePublished() throws Exception {
-        this.givenANetworkThatFoundItself();
-        this.givenAFileSomeNodeIsCloseTo();
-        this.givenTheNodeAtPublishesItsComment(PUBLISHER, FileComment.of("the real thing", 5));
+        givenANetworkThatFoundItself();
+        givenAFileSomeNodeIsCloseTo();
+        givenTheNodeAtPublishesItsComment(PUBLISHER, FileComment.of("the real thing", 5));
 
-        this.whenTheNodeAtSearchesForNotes(SEARCHER);
+        whenTheNodeAtSearchesForNotes(SEARCHER);
 
-        this.thenSomeNodesStoreTheNote();
-        this.thenTheSearchFoundTheNoteOf(this.publisher, FileComment.of("the real thing", 5));
+        thenSomeNodesStoreTheNote();
+        thenTheSearchFoundTheNoteOf(this.publisher, FileComment.of("the real thing", 5));
     }
 
     private void givenANetworkThatFoundItself() throws Exception {
         for (int i = 0; i < NODES; i++) {
-            this.node(i);
+            node(i);
         }
         for (int i = 1; i < NODES; i++) {
             this.nodes.get(i).bootstrap(this.ips.get(0), PORT);
             if (i > 1) {
                 this.nodes.get(i).bootstrap(this.ips.get(this.random.nextInt(i)), PORT);
             }
-            this.deliver();
+            deliver();
         }
         this.nodes.get(0).bootstrap(this.ips.get(1), PORT);
         // The second lookup of their own ids, after four hours, has the nodes know their nearest neighbours.
-        this.run(4 * 60 * 60 + 5 * 60);
+        run(4 * 60 * 60 + 5 * 60);
     }
 
     // With few nodes, the file is picked so that a node besides the publisher and the searcher may store its notes.
@@ -133,7 +133,7 @@ class KadNotesSimulationTest {
         assertThat(this.publisher.publishNote(this.file, "Night Sky.zip", SIZE, () -> Optional.of(comment)))
                 .isTrue();
         // A note publish lives 100 s.
-        this.run(110);
+        run(110);
     }
 
     private void whenTheNodeAtSearchesForNotes(int index) {
@@ -141,7 +141,7 @@ class KadNotesSimulationTest {
         for (int attempt = 0; attempt < SEARCHES && this.found.isEmpty(); attempt++) {
             assertThat(searcher.findNotes(this.file, SIZE, this.found::addAll, () -> {}))
                     .isTrue();
-            this.run(60);
+            run(60);
         }
     }
 
@@ -168,7 +168,7 @@ class KadNotesSimulationTest {
         KadNode node = new KadNode(
                 KadIdentity.loadOrCreate(config, this.random),
                 (to, port, packet, receiverId, receiverKey, senderKey) ->
-                        this.wire.add(() -> this.arrive(ip, to, port, packet, receiverKey, senderKey)),
+                        this.wire.add(() -> arrive(ip, to, port, packet, receiverKey, senderKey)),
                 (to, port, userHash, options) ->
                         this.wire.add(() -> this.byIp.get(to).reachableConfirmed(ip)),
                 new KadNode.Settings(4662, Hash16.of(hash), 1, x -> false, x -> false),
@@ -193,7 +193,7 @@ class KadNotesSimulationTest {
             for (KadNode node : this.nodes) {
                 node.tick();
             }
-            this.deliver();
+            deliver();
         }
     }
 

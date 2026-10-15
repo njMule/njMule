@@ -149,7 +149,7 @@ public final class IdentityHandshake {
 
     /** Asks the peer for a signature, after the hellos. */
     public void start(SecureRandom random) {
-        if (!this.isSupported()) {
+        if (!isSupported()) {
             return;
         }
         int challenge;
@@ -171,11 +171,11 @@ public final class IdentityHandshake {
         }
         int opcode = packet.opcode();
         if (opcode == Opcodes.Extended.SECIDENTSTATE.code()) {
-            this.stateReceived(packet);
+            stateReceived(packet);
         } else if (opcode == Opcodes.Extended.PUBLICKEY.code()) {
-            this.keyReceived(packet);
+            keyReceived(packet);
         } else if (opcode == Opcodes.Extended.SIGNATURE.code()) {
-            this.signatureReceived(packet);
+            signatureReceived(packet);
         } else {
             return false;
         }
@@ -183,7 +183,7 @@ public final class IdentityHandshake {
     }
 
     private void stateReceived(Packet packet) throws DecodeException {
-        if (packet.length() != 5 || !this.isSupported()) {
+        if (packet.length() != 5 || !isSupported()) {
             return;
         }
         PacketReader in = packet.reader();
@@ -198,7 +198,7 @@ public final class IdentityHandshake {
         }
         if (state == STATE_SIGNATURE || state == STATE_KEY_AND_SIGNATURE) {
             this.signatureWanted = true;
-            this.trySign();
+            trySign();
         }
     }
 
@@ -217,7 +217,7 @@ public final class IdentityHandshake {
         if (!this.pinned) {
             this.peerKey = key;
         }
-        this.trySign();
+        trySign();
     }
 
     private void signatureReceived(Packet packet) throws DecodeException {
@@ -238,9 +238,9 @@ public final class IdentityHandshake {
             if (kind.isEmpty()) {
                 return;
             }
-            bindings = this.bindingsOf(kind.get()).stream().map(Optional::of).toList();
+            bindings = bindingsOf(kind.get()).stream().map(Optional::of).toList();
             if (bindings.isEmpty()) {
-                this.finish(false);
+                finish(false);
                 return;
             }
         } else {
@@ -255,7 +255,7 @@ public final class IdentityHandshake {
         } catch (DecodeException | IllegalArgumentException e) {
             valid = false;
         }
-        this.finish(valid);
+        finish(valid);
     }
 
     // The addresses the peer may have bound its signature to, as we can check them. Our challenge ties any signature

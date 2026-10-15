@@ -204,7 +204,7 @@ public final class PartFile {
 
     /** Writes {@code NNN.part.met} crash-safely, keeping the previous one as backup. */
     public void save() throws IOException {
-        writeMet(this.metFile(), this.metContents(), this.dataFile());
+        writeMet(metFile(), metContents(), dataFile());
     }
 
     /** What {@link #save} writes, but for the date of the data, which {@link #writeMet} takes when it writes. */
@@ -212,7 +212,7 @@ public final class PartFile {
         List<Tag> tags = new ArrayList<>();
         tags.add(new Tag.StringTag(TagName.id(FileTag.FILENAME), this.name));
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), this.size));
-        tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), this.dataName()));
+        tags.add(new Tag.StringTag(TagName.id(FileTag.PARTFILENAME), dataName()));
         tags.add(new Tag.IntTag(TagName.id(FileTag.STATUS), statusCode(this.status)));
         tags.add(new Tag.IntTag(TagName.id(FileTag.DLPRIORITY), priorityCode(this.priority)));
         if (this.previewFirst) {
@@ -326,7 +326,7 @@ public final class PartFile {
     }
 
     public Path dataFile() {
-        return this.directory.resolve(this.dataName());
+        return this.directory.resolve(dataName());
     }
 
     public Path metFile() {
@@ -346,7 +346,7 @@ public final class PartFile {
     }
 
     public long completedBytes() {
-        return this.size - this.missingBytes();
+        return this.size - missingBytes();
     }
 
     /** Whether every part can be verified: files below one part need only the file hash. */
@@ -438,7 +438,7 @@ public final class PartFile {
      */
     public List<Block> nextBlocks(BitSet sourceParts, int max) {
         List<Block> blocks = new ArrayList<>(max);
-        int part = this.pickPart(sourceParts);
+        int part = pickPart(sourceParts);
         if (part < 0) {
             return blocks;
         }
@@ -477,7 +477,7 @@ public final class PartFile {
 
     /** A requested block that will not arrive (the source is gone). */
     public void release(Block block) {
-        this.release(block.start(), block.end());
+        release(block.start(), block.end());
     }
 
     /** Requested data in {@code [start, end)} that will not reach the disk, so it is handed out again. */
@@ -501,9 +501,9 @@ public final class PartFile {
 
     /** The parts that are complete, as reported to other clients. */
     public BitSet completeParts() {
-        BitSet parts = new BitSet(this.partCount());
-        for (int part = 0; part < this.partCount(); part++) {
-            if (this.isComplete(part)) {
+        BitSet parts = new BitSet(partCount());
+        for (int part = 0; part < partCount(); part++) {
+            if (isComplete(part)) {
                 parts.set(part);
             }
         }
@@ -576,7 +576,7 @@ public final class PartFile {
      */
     BitSet previewParts(boolean always) {
         BitSet parts = new BitSet();
-        int count = this.partCount();
+        int count = partCount();
         boolean playable = FileTypes.of(this.name)
                 .filter(t -> t.equals(FileTypes.VIDEO) || t.equals(FileTypes.AUDIO))
                 .isPresent();
@@ -598,12 +598,12 @@ public final class PartFile {
     // The parts for a preview first; then the rarest; among equally rare parts, one begun already, so that parts
     // complete, are checked and can be shared sooner; then the lowest.
     private int pickPart(BitSet sourceParts) {
-        BitSet preview = this.previewParts(this.previewAlways);
+        BitSet preview = previewParts(this.previewAlways);
         int best = -1;
         boolean bestBegun = false;
         boolean bestPreview = false;
         for (int part = sourceParts.nextSetBit(0);
-                part >= 0 && part < this.partCount();
+                part >= 0 && part < partCount();
                 part = sourceParts.nextSetBit(part + 1)) {
             if (this.held.get(part)) {
                 continue;

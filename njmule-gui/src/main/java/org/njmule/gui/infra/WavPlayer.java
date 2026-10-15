@@ -65,7 +65,7 @@ public final class WavPlayer implements SoundPlayer {
                 configureSoundSystem(this.cache);
                 playNow(file);
             } catch (IOException | UnsupportedAudioFileException | LineUnavailableException | RuntimeException e) {
-                this.failed(file, e);
+                failed(file, e);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {

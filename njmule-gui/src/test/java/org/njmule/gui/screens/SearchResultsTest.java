@@ -98,8 +98,8 @@ class SearchResultsTest {
 
     @Test
     void resultsAreFilteredMarkedDownloadedAndCopied() throws Exception {
-        SearchScreen screen = this.screen();
-        Tab tab = this.search(screen, "film", SearchScreen.Method.SERVER);
+        SearchScreen screen = screen();
+        Tab tab = search(screen, "film", SearchScreen.Method.SERVER);
         assertThat(this.calls).containsExactly("search film SERVER");
         assertThat(FxTesting.onFx(tab::getText)).isEqualTo("film (0)");
 
@@ -122,32 +122,32 @@ class SearchResultsTest {
         // Spam: the menu offers what the selection is not yet.
         ContextMenu menu = FxTesting.onFx(table::getContextMenu);
         FxTesting.onFx(() -> {
-            this.select(table, FILM_DVD);
+            select(table, FILM_DVD);
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_SEARCHRELATED").isDisable())
+            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable())
                     .as("the server finds no related files")
                     .isTrue();
-            assertThat(this.item(menu, "IDS_MARKSPAM").isDisable()).isFalse();
-            assertThat(this.item(menu, "IDS_MARKNOTSPAM").isDisable()).isTrue();
-            this.item(menu, "IDS_MARKSPAM").fire();
+            assertThat(item(menu, "IDS_MARKSPAM").isDisable()).isFalse();
+            assertThat(item(menu, "IDS_MARKNOTSPAM").isDisable()).isTrue();
+            item(menu, "IDS_MARKSPAM").fire();
         });
         FxTesting.await("marked as spam", () -> table.lookupAll(".known-spam").size() == 1);
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table))).contains("Spam");
         FxTesting.onFx(() -> {
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_MARKSPAM").isDisable()).isTrue();
-            assertThat(this.item(menu, "IDS_MARKNOTSPAM").isDisable()).isFalse();
-            this.item(menu, "IDS_MARKNOTSPAM").fire();
+            assertThat(item(menu, "IDS_MARKSPAM").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_MARKNOTSPAM").isDisable()).isFalse();
+            item(menu, "IDS_MARKNOTSPAM").fire();
         });
         FxTesting.await(
                 "not spam any more", () -> table.lookupAll(".known-spam").isEmpty());
 
         FxTesting.onFx(() -> {
-            this.item(menu, "nj.copyLink").fire();
+            item(menu, "nj.copyLink").fire();
             assertThat(Clipboard.getSystemClipboard().getString()).startsWith("ed2k://|file|Film%20DVD%20rip.avi|");
-            this.item(menu, "IDS_DL_LINK2").fire();
+            item(menu, "IDS_DL_LINK2").fire();
             assertThat(Clipboard.getSystemClipboard().getString()).startsWith("<a href=\"ed2k://|file|");
-            this.item(menu, "IDS_DOWNLOAD").fire();
+            item(menu, "IDS_DOWNLOAD").fire();
         });
         FxTesting.await(
                 "downloading", () -> table.lookupAll(".known-downloading").size() == 1);
@@ -170,8 +170,8 @@ class SearchResultsTest {
 
     @Test
     void whatWasDoneWithAFileShowsBeforeItsSpamMark() throws Exception {
-        SearchScreen screen = this.screen();
-        Tab tab = this.search(screen, "film", SearchScreen.Method.GLOBAL);
+        SearchScreen screen = screen();
+        Tab tab = search(screen, "film", SearchScreen.Method.GLOBAL);
         assertThat(this.calls).containsExactly("search film GLOBAL");
         FxTesting.onFx(() -> this.test.model.handle(
                 new EngineEvent.SearchResults(new SearchId(1), List.of(SHARED, DOWNLOADED, CANCELLED, FILM_HD))));
@@ -188,8 +188,8 @@ class SearchResultsTest {
     @Test
     void aRelatedSearchOpensATabOfItsOwnAndAClosedTabStops() throws Exception {
         this.status.set(Statuses.of(Optional.empty(), 0, false, Optional.empty(), true));
-        SearchScreen screen = this.screen();
-        Tab tab = this.search(screen, "film @size>=1m", SearchScreen.Method.KAD);
+        SearchScreen screen = screen();
+        Tab tab = search(screen, "film @size>=1m", SearchScreen.Method.KAD);
         assertThat(this.calls).containsExactly("search film @size>=1m KAD");
         assertThat(FxTesting.onFx(tab::getText))
                 .as("no attributes in the title")
@@ -201,15 +201,15 @@ class SearchResultsTest {
 
         FxTesting.onFx(() -> {
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_SEARCHRELATED").isDisable())
+            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable())
                     .as("nothing selected")
                     .isTrue();
             screen.searchRelated();
             screen.markSpam(true);
-            this.select(table, FILM_HD);
+            select(table, FILM_HD);
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_SEARCHRELATED").isDisable()).isFalse();
-            this.item(menu, "IDS_SEARCHRELATED").fire();
+            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable()).isFalse();
+            item(menu, "IDS_SEARCHRELATED").fire();
         });
         FxTesting.await("the related tab", () -> screen.tabs().getTabs().size() == 2);
         assertThat(this.calls).contains("search related::00112233445566778899AABBCCDDEEFF SERVER");
@@ -234,7 +234,7 @@ class SearchResultsTest {
 
     @Test
     void automaticSearchesTheNetworkThereIs() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
         FxTesting.onFx(() -> {
             screen.queryField().setText("film");
             screen.start();
@@ -242,21 +242,18 @@ class SearchResultsTest {
         assertThat(this.test.told).containsExactly("You are not connected to a server or the Kad network!");
 
         // Kad alone.
-        this.status(Optional.empty(), Optional.of(Statuses.kad(true, false, "")));
-        this.search(screen, "kad only", SearchScreen.Method.AUTOMATIC);
+        status(Optional.empty(), Optional.of(Statuses.kad(true, false, "")));
+        search(screen, "kad only", SearchScreen.Method.AUTOMATIC);
         // A server alone.
         FxTesting.onFx(() -> this.test.model.handle(
                 new EngineEvent.ServerConnected(Statuses.server("81.2.3.4:4661", "Big", false), 99, false, false)));
-        this.status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)), Optional.empty());
-        this.search(screen, "server only", SearchScreen.Method.AUTOMATIC);
+        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)), Optional.empty());
+        search(screen, "server only", SearchScreen.Method.AUTOMATIC);
         // Both: Kad, unless the server is a static one.
-        this.status(
-                Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)),
-                Optional.of(Statuses.kad(true, false, "")));
-        this.search(screen, "both", SearchScreen.Method.AUTOMATIC);
-        this.status(
-                Optional.of(Statuses.server("81.2.3.4:4661", "Big", true)), Optional.of(Statuses.kad(true, false, "")));
-        this.search(screen, "static", SearchScreen.Method.AUTOMATIC);
+        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)), Optional.of(Statuses.kad(true, false, "")));
+        search(screen, "both", SearchScreen.Method.AUTOMATIC);
+        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", true)), Optional.of(Statuses.kad(true, false, "")));
+        search(screen, "static", SearchScreen.Method.AUTOMATIC);
 
         assertThat(this.calls)
                 .containsExactly(
@@ -267,7 +264,7 @@ class SearchResultsTest {
 
     @Test
     void wrongParametersAreToldAndResetClearsThem() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
         FxTesting.onFx(() -> {
             screen.queryField().setText("film");
             screen.methodBox().setValue(SearchScreen.Method.SERVER);
@@ -298,7 +295,7 @@ class SearchResultsTest {
     @Test
     void theEdgesOfTheParametersAndOfASearchWithoutSelection() throws Exception {
         this.extra.put("saveSearches", args -> CompletableFuture.failedFuture(new IOException("disk full")));
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
         FxTesting.onFx(() -> {
             // Without a tab these do nothing.
             screen.searchRelated();
@@ -322,7 +319,7 @@ class SearchResultsTest {
             screen.typeBox().setValue(SearchScreen.FileType.ANY);
             screen.extensionField().setText(".mkv");
         });
-        Tab found = this.search(screen, "film", SearchScreen.Method.SERVER);
+        Tab found = search(screen, "film", SearchScreen.Method.SERVER);
         assertThat(this.calls).containsExactly("search film @ext=mkv SERVER");
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(FILM_DVD))));
         FxTesting.onFx(() -> {
@@ -343,29 +340,29 @@ class SearchResultsTest {
 
     @Test
     void downloadWaitsForAResultChosenAndMoreAndStopForASearch() throws Exception {
-        this.givenTheSearchScreen();
-        this.thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
-        this.whenSearchedFor("film", FILM_DVD, FILM_HD);
-        this.thenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
-        this.thenTheButtonsAreOff(true, "IDS_DOWNLOAD");
-        this.whenTheResultIsChosen(FILM_HD);
-        this.thenTheButtonsAreOff(false, "IDS_DOWNLOAD");
-        this.whenTheSearchIsClosed();
-        this.thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        givenTheSearchScreen();
+        thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        whenSearchedFor("film", FILM_DVD, FILM_HD);
+        thenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
+        thenTheButtonsAreOff(true, "IDS_DOWNLOAD");
+        whenTheResultIsChosen(FILM_HD);
+        thenTheButtonsAreOff(false, "IDS_DOWNLOAD");
+        whenTheSearchIsClosed();
+        thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
     }
 
     private void givenTheSearchScreen() throws Exception {
-        this.shownScreen = this.screen();
+        this.shownScreen = screen();
     }
 
     private void whenSearchedFor(String words, SearchResult... results) throws Exception {
-        this.shownTab = this.search(this.shownScreen, words, SearchScreen.Method.SERVER);
+        this.shownTab = search(this.shownScreen, words, SearchScreen.Method.SERVER);
         FxTesting.onFx(() ->
                 this.test.model.handle(new EngineEvent.SearchResults(new SearchId(this.ids.get()), List.of(results))));
     }
 
     private void whenTheResultIsChosen(SearchResult result) throws Exception {
-        FxTesting.onFx(() -> this.select(this.shownScreen.table(this.shownTab), result));
+        FxTesting.onFx(() -> select(this.shownScreen.table(this.shownTab), result));
     }
 
     private void whenTheSearchIsClosed() throws Exception {
@@ -384,14 +381,14 @@ class SearchResultsTest {
 
     @Test
     void searchesAreNotKeptWhenTheSettingsSaySo() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
         this.test
                 .engine
                 .updatePreferences(p -> p.toBuilder().storeSearches(false).build())
                 .get(10, TimeUnit.SECONDS);
         FxTesting.onFx(
                 () -> this.test.model.handle(new EngineEvent.PreferencesChanged(this.test.engine.preferences())));
-        this.search(screen, "film", SearchScreen.Method.SERVER);
+        search(screen, "film", SearchScreen.Method.SERVER);
         FxTesting.onFx(screen::closing);
         assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS)).isEmpty();
     }
@@ -424,7 +421,7 @@ class SearchResultsTest {
                         this.dir.resolve(SHARED.name()),
                         UploadPriority.NORMAL))));
         commands.putAll(this.extra);
-        this.test = TestGui.start(this.dir.resolve("njmule"), real -> this.wrap(real, commands));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> wrap(real, commands));
         SearchScreen screen = new SearchScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
         if (this.status.get() != null) {

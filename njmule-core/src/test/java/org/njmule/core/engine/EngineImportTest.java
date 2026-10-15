@@ -58,7 +58,7 @@ class EngineImportTest {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
         SortedMap<String, String> before = emule.fingerprint();
         int port = freePort();
-        AppDirectories dirs = this.directories(port);
+        AppDirectories dirs = directories(port);
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
             ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, true, true))
@@ -104,7 +104,7 @@ class EngineImportTest {
     @Test
     void theEngineStartsAfterTwoIdentityImports() throws Exception {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        AppDirectories dirs = this.directories(freePort());
+        AppDirectories dirs = directories(freePort());
         ImportOptions identity = new ImportOptions(false, true, false);
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
@@ -127,7 +127,7 @@ class EngineImportTest {
                 emule.config.resolve(StoredSearches.FILE_NAME),
                 SearchFiles.writeStored(
                         List.of(new SearchFiles.StoredSearch(1, 1, false, "linux", "linux", "", List.of()))));
-        AppDirectories dirs = this.directories(freePort());
+        AppDirectories dirs = directories(freePort());
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
             ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, false, false))
@@ -152,7 +152,7 @@ class EngineImportTest {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
         Files.writeString(emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
         emule.putInCategory(2, 1);
-        AppDirectories dirs = this.directories(freePort());
+        AppDirectories dirs = directories(freePort());
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
             engine.setCategories(
@@ -172,7 +172,7 @@ class EngineImportTest {
     @Test
     void aDryRunLeavesTheEngineAsItWas() throws Exception {
         SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        AppDirectories dirs = this.directories(freePort());
+        AppDirectories dirs = directories(freePort());
 
         try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
             ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(true, true, true))

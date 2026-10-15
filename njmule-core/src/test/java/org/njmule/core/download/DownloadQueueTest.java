@@ -74,18 +74,18 @@ class DownloadQueueTest {
     @Test
     void writesVerifiesAndMovesAFinishedFile() throws Exception {
         byte[] data = random(400_000, 1);
-        DownloadQueue queue = this.queue();
-        DownloadQueue.Download download = this.onLoop(
+        DownloadQueue queue = queue();
+        DownloadQueue.Download download = onLoop(
                 () -> queue.add(Ed2kLink.FileLink.of("../evil:name.bin", data.length, Ed2k.md4(data, 0, data.length))));
         assertThat(this.events.take()).isEqualTo("added");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, 200_000, Arrays.copyOfRange(data, 200_000, data.length));
             queue.received(download, 0, Arrays.copyOfRange(data, 0, 200_000));
             return null;
         });
 
-        String completed = this.awaitPrefix("completed ");
+        String completed = awaitPrefix("completed ");
         Path file = Path.of(completed.substring("completed ".length()));
         assertThat(file.getParent())
                 .isEqualTo(this.dir.resolve("incoming").toAbsolutePath().normalize());
@@ -100,30 +100,30 @@ class DownloadQueueTest {
         int size = (int) Ed2k.PARTSIZE + 1000;
         byte[] data = random(size, 2);
         List<Hash16> parts = List.of(Ed2k.md4(data, 0, (int) Ed2k.PARTSIZE), Ed2k.md4(data, (int) Ed2k.PARTSIZE, 1000));
-        DownloadQueue queue = this.queue();
-        DownloadQueue.Download download = this.onLoop(() -> queue.add(new Ed2kLink.FileLink(
+        DownloadQueue queue = queue();
+        DownloadQueue.Download download = onLoop(() -> queue.add(new Ed2kLink.FileLink(
                 "two.bin", size, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of())));
         byte[] bad = data.clone();
         bad[123] ^= 1;
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, 0, Arrays.copyOfRange(bad, 0, (int) Ed2k.PARTSIZE));
             queue.received(download, Ed2k.PARTSIZE, Arrays.copyOfRange(data, (int) Ed2k.PARTSIZE, size));
             return null;
         });
-        this.awaitCorruptPart0(download);
+        awaitCorruptPart0(download);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, 0, Arrays.copyOfRange(data, 0, (int) Ed2k.PARTSIZE));
             return null;
         });
-        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
     }
 
     @Test
     void aLinkWithAWrongHashSetIsStillDownloaded() throws Exception {
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
                 "exact.bin",
                 Ed2k.PARTSIZE,
@@ -133,7 +133,7 @@ class DownloadQueueTest {
                 List.of(),
                 List.of());
 
-        DownloadQueue.Download download = this.onLoop(() -> queue.add(link));
+        DownloadQueue.Download download = onLoop(() -> queue.add(link));
 
         assertThat(this.events.take()).isEqualTo("added");
         assertThat(download.file().hasHashSet()).as("asked from the sources").isFalse();
@@ -143,26 +143,26 @@ class DownloadQueueTest {
     @EnabledOnOs(OS.WINDOWS)
     void aRangeThatCouldNotBeWrittenIsAskedForAgain() throws Exception {
         byte[] data = random(400_000, 5);
-        DownloadQueue queue = this.queue();
-        DownloadQueue.Download download = this.onLoop(
+        DownloadQueue queue = queue();
+        DownloadQueue.Download download = onLoop(
                 () -> queue.add(Ed2kLink.FileLink.of("locked.bin", data.length, Ed2k.md4(data, 0, data.length))));
         assertThat(this.events.take()).isEqualTo("added");
         BitSet all = new BitSet();
         all.set(0);
-        this.onLoop(() -> download.file().nextBlocks(all, 3));
+        onLoop(() -> download.file().nextBlocks(all, 3));
 
         // Another process holds a lock on the data: the write fails.
         try (FileChannel other =
                         FileChannel.open(this.dir.resolve("temp").resolve("001.part"), StandardOpenOption.WRITE);
                 FileLock _ = other.lock()) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 queue.received(download, 0, Arrays.copyOf(data, Ed2k.EMBLOCKSIZE));
                 return null;
             });
-            assertThat(this.awaitPrefix("failed")).contains("cannot write");
+            assertThat(awaitPrefix("failed")).contains("cannot write");
         }
 
-        List<PartFile.Block> again = this.onLoop(() -> {
+        List<PartFile.Block> again = onLoop(() -> {
             queue.pause(download);
             queue.resume(download);
             return download.file().nextBlocks(all, 3);
@@ -176,7 +176,7 @@ class DownloadQueueTest {
         Ed2kLink.FileLink link = Ed2kLink.FileLink.of("moved.bin", data.length, Ed2k.md4(data, 0, data.length));
         AtomicReference<DownloadQueue> queue = new AtomicReference<>();
         AtomicReference<Boolean> keptAfterCancel = new AtomicReference<>();
-        queue.set(this.queue(file -> {
+        queue.set(queue(file -> {
             // The user cancels and adds the link again while the finished file is being moved.
             this.loop.post(() -> {
                 DownloadQueue q = queue.get();
@@ -190,23 +190,23 @@ class DownloadQueueTest {
             });
             return this.dir.resolve("incoming");
         }));
-        DownloadQueue.Download download = this.onLoop(() -> queue.get().add(link));
+        DownloadQueue.Download download = onLoop(() -> queue.get().add(link));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.get().received(download, 0, data);
             return null;
         });
 
-        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(keptAfterCancel.get())
                 .as("the cancel waits for nothing it could undo")
                 .isTrue();
-        assertThat(this.onLoop(() -> queue.get().all())).isEmpty();
+        assertThat(onLoop(() -> queue.get().all())).isEmpty();
         try (Stream<Path> left = Files.list(this.dir.resolve("temp"))) {
             assertThat(left).as("nothing left behind").isEmpty();
         }
-        assertThat(this.onLoop(() -> download.storage().isOpen()))
+        assertThat(onLoop(() -> download.storage().isOpen()))
                 .as("its disk thread ends")
                 .isFalse();
     }
@@ -216,34 +216,34 @@ class DownloadQueueTest {
         byte[] data = random(2000, 7);
         Path incoming = this.dir.resolve("incoming");
         Files.writeString(incoming, "a file where the directory should be");
-        DownloadQueue queue = this.queue(file -> incoming);
-        DownloadQueue.Download download = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("stuck.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        DownloadQueue queue = queue(file -> incoming);
+        DownloadQueue.Download download =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("stuck.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        onLoop(() -> {
             queue.received(download, 0, data);
             return null;
         });
-        assertThat(this.awaitPrefix("failed")).contains("cannot move");
-        assertThat(this.onLoop(() -> download.file().status())).isEqualTo(PartFile.Status.ERROR);
+        assertThat(awaitPrefix("failed")).contains("cannot move");
+        assertThat(onLoop(() -> download.file().status())).isEqualTo(PartFile.Status.ERROR);
 
         Files.delete(incoming);
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.pause(download);
             queue.resume(download);
             return null;
         });
 
-        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
-        assertThat(this.onLoop(() -> queue.get(download.hash()))).isEmpty();
+        assertThat(onLoop(() -> queue.get(download.hash()))).isEmpty();
     }
 
     @Test
     void twoPartFilesOfOneFileLoadAsOneDownload() throws Exception {
         Hash16 hash = Hash16.parseHex("9c".repeat(16));
-        DownloadQueue first = this.queue();
-        this.onLoop(() -> first.add(Ed2kLink.FileLink.of("twice.bin", 1000, hash)));
-        this.onLoop(() -> {
+        DownloadQueue first = queue();
+        onLoop(() -> first.add(Ed2kLink.FileLink.of("twice.bin", 1000, hash)));
+        onLoop(() -> {
             first.close();
             return null;
         });
@@ -251,13 +251,13 @@ class DownloadQueueTest {
         Files.copy(temp.resolve("001" + PartFile.MET_SUFFIX), temp.resolve("002" + PartFile.MET_SUFFIX));
         Files.copy(temp.resolve("001" + PartFile.DATA_SUFFIX), temp.resolve("002" + PartFile.DATA_SUFFIX));
 
-        DownloadQueue again = this.queue();
+        DownloadQueue again = queue();
 
-        assertThat(this.onLoop(again::all))
+        assertThat(onLoop(again::all))
                 .singleElement()
                 .satisfies(d ->
                         assertThat(d.file().number()).as("the first is kept").isEqualTo(1));
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -265,13 +265,13 @@ class DownloadQueueTest {
 
     @Test
     void filesOfExactlyOnePartAndOneByteMoreComplete() throws Exception {
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         for (int size : new int[] {(int) Ed2k.PARTSIZE, (int) Ed2k.PARTSIZE + 1}) {
             byte[] data = random(size, size);
             List<Hash16> parts = size == Ed2k.PARTSIZE
                     ? List.of(Ed2k.md4(data, 0, size), Ed2k.EMPTY_PART_HASH)
                     : List.of(Ed2k.md4(data, 0, (int) Ed2k.PARTSIZE), Ed2k.md4(data, (int) Ed2k.PARTSIZE, 1));
-            DownloadQueue.Download download = this.onLoop(() -> queue.add(new Ed2kLink.FileLink(
+            DownloadQueue.Download download = onLoop(() -> queue.add(new Ed2kLink.FileLink(
                     "edge" + size + ".bin",
                     size,
                     Ed2k.fileHash(parts),
@@ -281,7 +281,7 @@ class DownloadQueueTest {
                     List.of())));
             assertThat(download.file().hasHashSet()).isTrue();
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 queue.received(download, 0, new byte[0]);
                 for (int at = size; at > 0; at -= 1_000_000) {
                     int from = Math.max(0, at - 1_000_000);
@@ -290,7 +290,7 @@ class DownloadQueueTest {
                 return null;
             });
 
-            Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+            Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
             assertThat(Files.size(file)).isEqualTo(size);
             assertThat(Files.readAllBytes(file)).isEqualTo(data);
         }
@@ -299,20 +299,20 @@ class DownloadQueueTest {
     @Test
     void reloadsDownloadsFromTheirPartFiles() throws Exception {
         byte[] data = random(300_000, 3);
-        DownloadQueue first = this.queue();
-        DownloadQueue.Download download = this.onLoop(
-                () -> first.add(Ed2kLink.FileLink.of("kept.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        DownloadQueue first = queue();
+        DownloadQueue.Download download =
+                onLoop(() -> first.add(Ed2kLink.FileLink.of("kept.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        onLoop(() -> {
             first.received(download, 0, Arrays.copyOfRange(data, 0, 100_000));
             return null;
         });
-        this.awaitPrefix("progress");
-        this.onLoop(() -> {
+        awaitPrefix("progress");
+        onLoop(() -> {
             first.close();
             return null;
         });
 
-        DownloadQueue second = this.queue();
+        DownloadQueue second = queue();
         DownloadQueue.Download reloaded = second.get(download.hash()).orElseThrow();
         assertThat(reloaded.file().name()).isEqualTo("kept.bin");
         assertThat(reloaded.file().completedBytes()).isEqualTo(100_000);
@@ -321,39 +321,39 @@ class DownloadQueueTest {
     @Test
     void checksTheCompletePartsOfAResumedDownload() throws Exception {
         byte[] data = random(200_000, 4);
-        DownloadQueue first = this.queue();
-        DownloadQueue.Download download = this.onLoop(
+        DownloadQueue first = queue();
+        DownloadQueue.Download download = onLoop(
                 () -> first.add(Ed2kLink.FileLink.of("resumed.bin", data.length, Ed2k.md4(data, 0, data.length))));
         byte[] bad = data.clone();
         bad[7] ^= 1;
         // Written, then closed before the check could run: as after a crash.
-        this.onLoop(() -> {
+        onLoop(() -> {
             download.file().written(0, data.length);
             download.file().save();
             return null;
         });
         Files.write(this.dir.resolve("temp").resolve("001.part"), bad);
-        this.onLoop(() -> {
+        onLoop(() -> {
             first.close();
             return null;
         });
 
-        DownloadQueue second = this.queue();
+        DownloadQueue second = queue();
         DownloadQueue.Download reloaded = second.get(download.hash()).orElseThrow();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> reloaded.file().completedBytes()) != 0) {
+        while (onLoop(() -> reloaded.file().completedBytes()) != 0) {
             assertThat(System.nanoTime()).isLessThan(deadline);
             this.events.poll(100, TimeUnit.MILLISECONDS);
         }
-        assertThat(this.onLoop(() -> reloaded.verifiedParts().isEmpty())).isTrue();
+        assertThat(onLoop(() -> reloaded.verifiedParts().isEmpty())).isTrue();
     }
 
     @Test
     void loadsADownloadOfWhichOnlyTheBackupIsLeftAndNeverReusesItsNumber() throws Exception {
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         Hash16 hash = Hash16.parseHex("12".repeat(16));
-        this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("kept.bin", 1000, hash)));
-        this.onLoop(() -> {
+        onLoop(() -> queue.add(Ed2kLink.FileLink.of("kept.bin", 1000, hash)));
+        onLoop(() -> {
             queue.close();
             return null;
         });
@@ -362,12 +362,12 @@ class DownloadQueueTest {
         Files.move(met, AtomicFiles.bakPath(met), StandardCopyOption.REPLACE_EXISTING);
         Files.writeString(temp.resolve("002" + PartFile.DATA_SUFFIX), "left by a crash");
 
-        DownloadQueue again = this.queue();
-        assertThat(this.onLoop(() -> again.get(hash))).isPresent();
+        DownloadQueue again = queue();
+        assertThat(onLoop(() -> again.get(hash))).isPresent();
         DownloadQueue.Download next =
-                this.onLoop(() -> again.add(Ed2kLink.FileLink.of("new.bin", 1000, Hash16.parseHex("34".repeat(16)))));
+                onLoop(() -> again.add(Ed2kLink.FileLink.of("new.bin", 1000, Hash16.parseHex("34".repeat(16)))));
         assertThat(next.file().number()).isEqualTo(3);
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -376,19 +376,19 @@ class DownloadQueueTest {
     @Test
     void aWriteThatEndsAfterTheCancelIsIgnored() throws Exception {
         byte[] data = random(1000, 3);
-        DownloadQueue queue = this.queue();
-        DownloadQueue.Download download = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("gone.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        DownloadQueue queue = queue();
+        DownloadQueue.Download download =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("gone.bin", data.length, Ed2k.md4(data, 0, data.length))));
         assertThat(this.events.take()).isEqualTo("added");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, 0, data);
             queue.cancel(download);
             return null;
         });
 
         assertThat(this.events.poll(1, TimeUnit.SECONDS)).isNull();
-        assertThat(this.onLoop(() -> download.file().completedBytes())).isZero();
+        assertThat(onLoop(() -> download.file().completedBytes())).isZero();
     }
 
     @Test
@@ -399,12 +399,12 @@ class DownloadQueueTest {
         Files.write(AtomicFiles.tmpPath(temp.resolve("003" + PartFile.MET_SUFFIX)), new byte[] {1});
         Files.write(temp.resolve("004" + PartFile.DATA_SUFFIX), new byte[] {1});
 
-        DownloadQueue queue = this.queue();
-        assertThat(this.onLoop(queue::all))
+        DownloadQueue queue = queue();
+        assertThat(onLoop(queue::all))
                 .as("unreadable part files are left alone")
                 .isEmpty();
         DownloadQueue.Download download =
-                this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("fresh.bin", 5000, Hash16.parseHex("13".repeat(16)))));
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("fresh.bin", 5000, Hash16.parseHex("13".repeat(16)))));
 
         assertThat(download.file().number()).isEqualTo(5);
         assertThat(temp.resolve("001" + PartFile.MET_SUFFIX)).hasBinaryContent(new byte[] {1, 2, 3});
@@ -412,12 +412,12 @@ class DownloadQueueTest {
 
     @Test
     void aPausedDownloadTakesNoDataAndNoneBeyondItsEnd() throws Exception {
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         DownloadQueue.Download download =
-                this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("small.bin", 5000, Hash16.parseHex("14".repeat(16)))));
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("small.bin", 5000, Hash16.parseHex("14".repeat(16)))));
         assertThat(this.events.take()).isEqualTo("added");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, 4990, new byte[20]);
             queue.pause(download);
             queue.received(download, 0, new byte[100]);
@@ -426,8 +426,8 @@ class DownloadQueueTest {
         });
 
         assertThat(this.events.poll(300, TimeUnit.MILLISECONDS)).isNull();
-        assertThat(this.onLoop(() -> download.file().completedBytes())).isZero();
-        assertThat(this.onLoop(() -> download.file().previewFirst())).isTrue();
+        assertThat(onLoop(() -> download.file().completedBytes())).isZero();
+        assertThat(onLoop(() -> download.file().previewFirst())).isTrue();
         assertThat(download.sources()).isEmpty();
     }
 
@@ -443,38 +443,38 @@ class DownloadQueueTest {
                 List.of(),
                 List.of(),
                 List.of());
-        DownloadQueue queue = this.queue();
-        DownloadQueue.Download download = this.onLoop(() -> queue.add(link));
+        DownloadQueue queue = queue();
+        DownloadQueue.Download download = onLoop(() -> queue.add(link));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.received(download, Ed2k.PARTSIZE, last);
             return null;
         });
-        assertThat(this.awaitPrefix("progress")).isEqualTo("progress");
-        assertThat(this.onLoop(() -> download.verifiedParts().isEmpty()))
+        assertThat(awaitPrefix("progress")).isEqualTo("progress");
+        assertThat(onLoop(() -> download.verifiedParts().isEmpty()))
                 .as("no hash to check it with")
                 .isTrue();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             download.file().setHashSet(parts);
             queue.hashSetKnown(download);
             return null;
         });
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (!this.onLoop(() -> download.verifiedParts().get(1))) {
+        while (!onLoop(() -> download.verifiedParts().get(1))) {
             assertThat(System.nanoTime()).isLessThan(deadline);
             Thread.sleep(20);
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.close();
             return null;
         });
 
-        DownloadQueue again = this.queue();
-        assertThat(this.onLoop(() -> again.get(link.hash()).orElseThrow().verifiedParts()))
+        DownloadQueue again = queue();
+        assertThat(onLoop(() -> again.get(link.hash()).orElseThrow().verifiedParts()))
                 .as("checked before the restart, on data that did not change since")
                 .isEqualTo(BitSet.valueOf(new long[] {2}));
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -485,23 +485,23 @@ class DownloadQueueTest {
         byte[] data = random(5000, 9);
         Path incoming = this.dir.resolve("incoming");
         Files.writeString(incoming, "a file where the directory should be");
-        DownloadQueue queue = this.queue(file -> incoming);
-        DownloadQueue.Download download = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("again.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        DownloadQueue queue = queue(file -> incoming);
+        DownloadQueue.Download download =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("again.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        onLoop(() -> {
             queue.received(download, 0, data);
             return null;
         });
-        assertThat(this.awaitPrefix("failed")).contains("cannot move");
-        this.onLoop(() -> {
+        assertThat(awaitPrefix("failed")).contains("cannot move");
+        onLoop(() -> {
             queue.close();
             return null;
         });
 
         Files.delete(incoming);
-        this.queue(file -> incoming);
+        queue(file -> incoming);
 
-        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
     }
 
@@ -510,29 +510,29 @@ class DownloadQueueTest {
         byte[] data = random(5000, 10);
         Path incoming = this.dir.resolve("incoming");
         Files.writeString(incoming, "a file where the directory should be");
-        DownloadQueue queue = this.queue(file -> incoming);
-        DownloadQueue.Download download = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("lost.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        DownloadQueue queue = queue(file -> incoming);
+        DownloadQueue.Download download =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("lost.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        onLoop(() -> {
             queue.received(download, 0, data);
             return null;
         });
-        assertThat(this.awaitPrefix("failed")).contains("cannot move");
+        assertThat(awaitPrefix("failed")).contains("cannot move");
 
         Path data0 = download.file().dataFile();
         Files.delete(data0);
         Files.createDirectories(data0.resolve("in the way"));
-        assertThat(this.onLoop(() -> queue.resume(download))).isTrue();
+        assertThat(onLoop(() -> queue.resume(download))).isTrue();
 
-        assertThat(this.awaitPrefix("failed")).contains("cannot open the data");
-        assertThat(this.onLoop(() -> download.file().status())).isEqualTo(PartFile.Status.ERROR);
+        assertThat(awaitPrefix("failed")).contains("cannot open the data");
+        assertThat(onLoop(() -> download.file().status())).isEqualTo(PartFile.Status.ERROR);
     }
 
     @Test
     void checksAndRecoveriesThatEndAfterTheCancelAreIgnored() throws Exception {
         byte[] data = random(400_000, 11);
         AtomicReference<DownloadQueue> queue = new AtomicReference<>();
-        queue.set(this.queue(file -> this.dir.resolve("incoming"), new Recorder() {
+        queue.set(queue(file -> this.dir.resolve("incoming"), new Recorder() {
             @Override
             public void progress(DownloadQueue.Download download) {
                 // The check of the part just written is on its way.
@@ -540,20 +540,20 @@ class DownloadQueueTest {
                 super.progress(download);
             }
         }));
-        DownloadQueue.Download checked = this.onLoop(() ->
+        DownloadQueue.Download checked = onLoop(() ->
                 queue.get().add(Ed2kLink.FileLink.of("checked.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.get().received(checked, 0, data);
             return null;
         });
-        assertThat(this.awaitPrefix("progress")).isEqualTo("progress");
+        assertThat(awaitPrefix("progress")).isEqualTo("progress");
         assertThat(this.events.poll(500, TimeUnit.MILLISECONDS))
                 .as("no completion")
                 .isNull();
 
-        DownloadQueue.Download recovered = this.onLoop(() ->
+        DownloadQueue.Download recovered = onLoop(() ->
                 queue.get().add(Ed2kLink.FileLink.of("recovered.bin", data.length, Hash16.parseHex("16".repeat(16)))));
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.get().recovered(recovered, 0, List.of());
             queue.get().cancel(recovered);
             queue.get().recovered(recovered, 0, List.of());
@@ -568,55 +568,53 @@ class DownloadQueueTest {
         byte[] data = random(400_000, 12);
         byte[] bad = data.clone();
         bad[data.length - 1] ^= 1;
-        DownloadQueue queue = this.queue(file -> this.dir.resolve("incoming"), new Recorder());
-        DownloadQueue.Download download = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("aich.bin", data.length, Ed2k.md4(data, 0, data.length))));
-        this.onLoop(() -> {
+        DownloadQueue queue = queue(file -> this.dir.resolve("incoming"), new Recorder());
+        DownloadQueue.Download download =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("aich.bin", data.length, Ed2k.md4(data, 0, data.length))));
+        onLoop(() -> {
             queue.received(download, 0, bad);
             return null;
         });
-        assertThat(this.awaitPrefix("corrupt")).isEqualTo("corrupt 0");
+        assertThat(awaitPrefix("corrupt")).isEqualTo("corrupt 0");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.recovered(download, 0, List.of(Hash20.parseBase32("A".repeat(32))));
             return null;
         });
-        assertThat(this.awaitPrefix("progress"))
-                .as("the hashes do not fit the part")
-                .isEqualTo("progress");
-        assertThat(this.onLoop(() -> download.file().completedBytes())).isZero();
+        assertThat(awaitPrefix("progress")).as("the hashes do not fit the part").isEqualTo("progress");
+        assertThat(onLoop(() -> download.file().completedBytes())).isZero();
 
         // Hashes that prove the blocks on the disk, wrong as they are: the part is whole again, and checked again.
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.recovered(download, 0, blockHashes(bad));
             return null;
         });
-        assertThat(this.awaitPrefix("corrupt")).isEqualTo("corrupt 0");
+        assertThat(awaitPrefix("corrupt")).isEqualTo("corrupt 0");
     }
 
     @Test
     void theFreeSpaceOfAVanishedTempDirectoryChangesNothing() throws Exception {
         this.minFree.set(1);
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         Files.delete(this.dir.resolve("temp"));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.checkSpace();
             return null;
         });
 
-        assertThat(this.onLoop(queue::isSpaceShort)).isFalse();
+        assertThat(onLoop(queue::isSpaceShort)).isFalse();
         assertThat(this.events.poll(200, TimeUnit.MILLISECONDS)).isNull();
     }
 
     @Test
     void filesThatCannotBeSavedOrDeletedAreLeftBehind() throws Exception {
         byte[] data = random(5000, 13);
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         DownloadQueue.Download kept =
-                this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("kept.bin", 5000, Hash16.parseHex("17".repeat(16)))));
-        DownloadQueue.Download done = this.onLoop(
-                () -> queue.add(Ed2kLink.FileLink.of("done.bin", data.length, Ed2k.md4(data, 0, data.length))));
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("kept.bin", 5000, Hash16.parseHex("17".repeat(16)))));
+        DownloadQueue.Download done =
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("done.bin", data.length, Ed2k.md4(data, 0, data.length))));
         Path keptMet = kept.file().metFile();
         Path doneMet = done.file().metFile();
         // Directories in the way of the saving and of the deleting.
@@ -624,23 +622,23 @@ class DownloadQueueTest {
         Files.createDirectories(AtomicFiles.bakPath(keptMet).resolve("x"));
         Files.createDirectories(AtomicFiles.bakPath(doneMet).resolve("x"));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.pause(kept);
             queue.received(done, 0, data);
             return null;
         });
-        Path file = Path.of(this.awaitPrefix("completed ").substring("completed ".length()));
+        Path file = Path.of(awaitPrefix("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(file)).isEqualTo(data);
         assertThat(doneMet).doesNotExist();
         assertThat(AtomicFiles.bakPath(doneMet)).isDirectory();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.close();
             return null;
         });
         assertThat(keptMet).as("the paused state could not be saved").exists();
-        assertThat(this.onLoop(() -> queue.cancel(kept))).isTrue();
-        assertThat(this.onLoop(queue::all)).isEmpty();
+        assertThat(onLoop(() -> queue.cancel(kept))).isTrue();
+        assertThat(onLoop(queue::all)).isEmpty();
         assertThat(AtomicFiles.bakPath(keptMet)).isDirectory();
     }
 
@@ -683,7 +681,7 @@ class DownloadQueueTest {
     }
 
     private DownloadQueue queue(Function<PartFile, Path> incoming, DownloadQueue.Listener listener) throws Exception {
-        return this.onLoop(
+        return onLoop(
                 () -> DownloadQueue.load(this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, listener));
     }
 
@@ -691,9 +689,9 @@ class DownloadQueueTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {
             this.events.poll(100, TimeUnit.MILLISECONDS);
-            Boolean back = this.onLoop(
+            Boolean back = onLoop(
                     () -> !download.file().isComplete(0) && download.file().isComplete(1));
-            if (back && this.onLoop(() -> download.file().completedBytes() == 1000)) {
+            if (back && onLoop(() -> download.file().completedBytes() == 1000)) {
                 return;
             }
         }
@@ -702,35 +700,35 @@ class DownloadQueueTest {
 
     @Test
     void downloadsWaitForFreeSpaceAndGoOnByThemselves() throws Exception {
-        DownloadQueue queue = this.queue();
+        DownloadQueue queue = queue();
         DownloadQueue.Download download =
-                this.onLoop(() -> queue.add(Ed2kLink.FileLink.of("wait.bin", 5000, Hash16.parseHex("ab".repeat(16)))));
-        assertThat(this.onLoop(download::isActive)).isTrue();
+                onLoop(() -> queue.add(Ed2kLink.FileLink.of("wait.bin", 5000, Hash16.parseHex("ab".repeat(16)))));
+        assertThat(onLoop(download::isActive)).isTrue();
 
         this.minFree.set(Long.MAX_VALUE);
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.checkSpace();
             return null;
         });
-        assertThat(this.awaitPrefix("space")).isEqualTo("space short");
-        assertThat(this.onLoop(download::isActive)).isFalse();
-        assertThat(this.onLoop(queue::isSpaceShort)).isTrue();
+        assertThat(awaitPrefix("space")).isEqualTo("space short");
+        assertThat(onLoop(download::isActive)).isFalse();
+        assertThat(onLoop(queue::isSpaceShort)).isTrue();
 
         this.minFree.set(1);
-        this.onLoop(() -> {
+        onLoop(() -> {
             queue.checkSpace();
             return null;
         });
-        assertThat(this.awaitPrefix("space")).isEqualTo("space enough");
-        assertThat(this.onLoop(download::isActive)).isTrue();
+        assertThat(awaitPrefix("space")).isEqualTo("space enough");
+        assertThat(onLoop(download::isActive)).isTrue();
     }
 
     private DownloadQueue queue() throws Exception {
-        return this.queue(file -> this.dir.resolve("incoming"));
+        return queue(file -> this.dir.resolve("incoming"));
     }
 
     private DownloadQueue queue(Function<PartFile, Path> incoming) throws Exception {
-        return this.onLoop(() -> DownloadQueue.load(
+        return onLoop(() -> DownloadQueue.load(
                 this.loop, this.dir.resolve("temp"), incoming, this.minFree::get, new DownloadQueue.Listener() {
                     @Override
                     public void diskSpace(boolean enough) {

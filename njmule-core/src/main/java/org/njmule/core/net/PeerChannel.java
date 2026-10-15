@@ -29,7 +29,7 @@ public interface PeerChannel {
 
     /** As {@link #send(Packet)}, for file data, which waits behind the other packets. */
     default boolean sendData(Packet packet) {
-        return this.send(packet);
+        return send(packet);
     }
 
     /** Bytes of file data queued and not written yet. */

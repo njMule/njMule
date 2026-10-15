@@ -78,7 +78,7 @@ final class StatsTree {
     void refresh() {
         TreeItem<String> root = this.view.getRoot();
         boolean first = root.getChildren().isEmpty();
-        sync(root, this.entries());
+        sync(root, entries());
         if (first) {
             root.getChildren().forEach(item -> item.setExpanded(true));
         }
@@ -92,8 +92,8 @@ final class StatsTree {
         List<Entry> all = new ArrayList<>();
         all.add(Entry.of(
                 this.gui.t("IDS_EM_TRANS"),
-                Entry.of(this.gui.t("IDS_STATS_SRATIO") + " " + this.ratio(s.uploaded(), s.downloaded())),
-                Entry.of(this.gui.t("IDS_STATS_CRATIO") + " " + this.ratio(s.totalUploaded(), s.totalDownloaded()))));
+                Entry.of(this.gui.t("IDS_STATS_SRATIO") + " " + ratio(s.uploaded(), s.downloaded())),
+                Entry.of(this.gui.t("IDS_STATS_CRATIO") + " " + ratio(s.totalUploaded(), s.totalDownloaded()))));
         all.add(Entry.of(
                 this.gui.t("IDS_TW_UPLOADS"),
                 Entry.of(
@@ -129,10 +129,10 @@ final class StatsTree {
                 this.gui.t("IDS_STATS_TIMESTATS"),
                 Entry.of(this.gui.t("IDS_STATS_SESSION") + ": " + f.duration(s.sessionSeconds())),
                 Entry.of(this.gui.t("IDS_STATS_CUMULATIVE") + ": " + f.duration(s.totalSeconds()))));
-        all.add(this.clients(m.sources(), m.uploads()));
-        all.add(this.servers(m.servers()));
-        all.add(this.shared(m.sharedFiles()));
-        all.add(new Entry(this.gui.t("IDS_DWTOT"), this.disk()));
+        all.add(clients(m.sources(), m.uploads()));
+        all.add(servers(m.servers()));
+        all.add(shared(m.sharedFiles()));
+        all.add(new Entry(this.gui.t("IDS_DWTOT"), disk()));
         return all;
     }
 
@@ -215,8 +215,8 @@ final class StatsTree {
         this.diskReadAt = now;
         Preferences p = this.gui.model().preferencesProperty().get();
         this.disk = List.of(
-                this.free(this.gui.t("IDS_PW_TEMP"), p.effectiveTempDir(this.gui.directories())),
-                this.free(this.gui.t("IDS_PW_INCOMING"), p.effectiveIncomingDir(this.gui.directories())));
+                free(this.gui.t("IDS_PW_TEMP"), p.effectiveTempDir(this.gui.directories())),
+                free(this.gui.t("IDS_PW_INCOMING"), p.effectiveIncomingDir(this.gui.directories())));
         return this.disk;
     }
 

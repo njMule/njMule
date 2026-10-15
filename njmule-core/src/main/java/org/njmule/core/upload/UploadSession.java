@@ -226,9 +226,9 @@ final class UploadSession implements PeerLink.Role {
 
     /** Requested and sent blocks, for diagnostics. */
     String describe() {
-        return this.address()
+        return address()
                 + (this.slot ? " slot" : "")
-                + (this.isOpen() ? "" : " closed")
+                + (isOpen() ? "" : " closed")
                 + " pending "
                 + this.pending
                 + " sent "
@@ -245,12 +245,12 @@ final class UploadSession implements PeerLink.Role {
         this.slot = true;
         this.pending.clear();
         this.sent.clear();
-        this.sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
     }
 
     /** Tells the client its place in our queue. */
     void sendRank(int rank) {
-        this.sendData(Packet.of(
+        sendData(Packet.of(
                 Protocol.EMULE,
                 Opcodes.Extended.QUEUERANKING.code(),
                 new PacketWriter().u16(Math.min(rank, 0xFFFF)).bytes(new byte[10])));
@@ -261,9 +261,9 @@ final class UploadSession implements PeerLink.Role {
         if (this.slot) {
             this.slot = false;
             this.pending.clear();
-            this.sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
+            sendData(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
         }
-        this.sendRank(rank);
+        sendRank(rank);
     }
 
     boolean send(Packet packet) {
@@ -303,7 +303,7 @@ final class UploadSession implements PeerLink.Role {
         if (this.closed) {
             return;
         }
-        if (this.waitsForProof(packet)) {
+        if (waitsForProof(packet)) {
             if (this.held.size() < MAX_HELD) {
                 this.held.add(packet);
             }
@@ -311,16 +311,16 @@ final class UploadSession implements PeerLink.Role {
         }
         try {
             if (packet.protocol() == Protocol.EDONKEY) {
-                this.basic(packet);
+                basic(packet);
             } else if (packet.protocol() == Protocol.EMULE) {
-                this.extended(packet);
+                extended(packet);
             }
         } catch (DecodeException | IllegalArgumentException e) {
-            logger.debug("Bad packet from {}: {}", this.address(), e.getMessage());
-            this.disconnect();
+            logger.debug("Bad packet from {}: {}", address(), e.getMessage());
+            disconnect();
         } catch (RuntimeException e) {
-            logger.warn("Failed handling a packet from {}", this.address(), e);
-            this.close();
+            logger.warn("Failed handling a packet from {}", address(), e);
+            close();
         }
     }
 
@@ -343,7 +343,7 @@ final class UploadSession implements PeerLink.Role {
                 : packet.protocol() == Protocol.EMULE
                         && (opcode == Opcodes.Extended.CHATCAPTCHAREQ.code()
                                 || opcode == Opcodes.Extended.CHATCAPTCHARES.code());
-        return forFriends && this.trust() == Identities.Trust.NEEDED && this.queue.isFriend(this.userHash());
+        return forFriends && trust() == Identities.Trust.NEEDED && this.queue.isFriend(userHash());
     }
 
     private void basic(Packet packet) throws DecodeException {
@@ -358,53 +358,52 @@ final class UploadSession implements PeerLink.Role {
                 // credits, place in the queue and slot.
                 if (!again.userHash().equals(this.peer.userHash())) {
                     this.queue.misbehaved(this, "changed its user hash");
-                    this.disconnect();
+                    disconnect();
                     return;
                 }
                 this.peer = again;
-                this.send(this.ourHello.get().encode(true));
+                send(this.ourHello.get().encode(true));
             }
             case REQUESTFILENAME -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.name(this.lookup(hash)).ifPresent(f -> {
-                    this.send(new ClientMessages.FileName(hash, f.name()).encode());
-                    this.tellComment(hash);
+                name(lookup(hash)).ifPresent(f -> {
+                    send(new ClientMessages.FileName(hash, f.name()).encode());
+                    tellComment(hash);
                 });
             }
             case SETREQFILEID -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.file = this.name(this.lookup(hash));
+                this.file = name(lookup(hash));
                 if (this.file.isEmpty()) {
-                    this.send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, hash));
+                    send(ClientMessages.forFile(Opcodes.Client.FILEREQANSNOFIL, hash));
                 } else {
-                    this.send(status(this.file.get()).encode());
+                    send(status(this.file.get()).encode());
                 }
             }
             case HASHSETREQUEST -> {
                 Hash16 hash = ClientMessages.fileOf(packet);
-                this.lookup(hash)
+                lookup(hash)
                         .filter(f -> !f.partHashes().isEmpty())
-                        .ifPresent(f -> this.send(new ClientMessages.HashSet(hash, f.partHashes()).encode()));
+                        .ifPresent(f -> send(new ClientMessages.HashSet(hash, f.partHashes()).encode()));
             }
             case STARTUPLOADREQ -> {
                 if (packet.length() >= Hash16.LENGTH) {
-                    this.file = this.name(this.lookup(ClientMessages.fileOf(packet)))
-                            .or(() -> this.file);
+                    this.file = name(lookup(ClientMessages.fileOf(packet))).or(() -> this.file);
                 }
                 this.file.ifPresent(f -> this.queue.requested(this, f));
             }
-            case REQUESTPARTS -> this.blocks(ClientMessages.RequestParts.decode(packet));
-            case MESSAGE -> this.chat(packet);
+            case REQUESTPARTS -> blocks(ClientMessages.RequestParts.decode(packet));
+            case MESSAGE -> chat(packet);
             case CANCELTRANSFER, END_OF_DOWNLOAD -> {
                 this.slot = false;
                 this.pending.clear();
                 this.queue.stopped(this, "the client stopped downloading");
             }
-            case ASKSHAREDFILES -> this.sharedFilesAsked(Optional.empty());
-            case ASKSHAREDDIRS -> this.sharedDirectoriesAsked();
+            case ASKSHAREDFILES -> sharedFilesAsked(Optional.empty());
+            case ASKSHAREDDIRS -> sharedDirectoriesAsked();
             case ASKSHAREDFILESDIR -> {
                 PacketReader in = packet.reader();
-                this.sharedFilesAsked(Optional.of(in.bytes(in.u16())));
+                sharedFilesAsked(Optional.of(in.bytes(in.u16())));
             }
             default -> {
                 // Nothing else needs an answer from an uploader.
@@ -414,26 +413,25 @@ final class UploadSession implements PeerLink.Role {
 
     // Real paths stay private: every file shows in one pseudo-directory, the one of single shared files.
     private void sharedDirectoriesAsked() {
-        if (this.queue.visibleTo(this.peer.userHash(), this.trust().credits()).isEmpty()) {
-            this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+        if (this.queue.visibleTo(this.peer.userHash(), trust().credits()).isEmpty()) {
+            send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
             return;
         }
         PacketWriter out = new PacketWriter().u32(1).string16(FILES_DIRECTORY, StringEncoding.UTF8);
-        this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRSANS.code(), out));
+        send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRSANS.code(), out));
     }
 
     // The files the preferences let this client see, all of them or those of {@code directory}, echoed as asked. A
     // client not allowed gets an empty list or, for a directory, a refusal. The list can take a megabyte to build and
     // send: once a connection.
     private void sharedFilesAsked(Optional<byte[]> directory) {
-        Optional<List<SharedFiles.SharedFile>> visible =
-                this.queue.visibleTo(this.peer.userHash(), this.trust().credits());
+        Optional<List<SharedFiles.SharedFile>> visible = this.queue.visibleTo(this.peer.userHash(), trust().credits());
         if (visible.isEmpty() && directory.isPresent()) {
-            this.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
+            send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code()));
             return;
         }
         if (this.listed) {
-            logger.debug("{} asked for our files again", this.address());
+            logger.debug("{} asked for our files again", address());
             return;
         }
         this.listed = true;
@@ -445,13 +443,13 @@ final class UploadSession implements PeerLink.Role {
         PacketWriter list = listing(files, (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0);
         logger.debug("Our files listed to {}", this.peer.nick().orElse("?"));
         if (directory.isEmpty()) {
-            this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list));
+            send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list));
         } else {
             PacketWriter out = new PacketWriter()
                     .u16(directory.get().length)
                     .bytes(directory.get())
                     .bytes(list.toByteArray());
-            this.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESDIRANS.code(), out));
+            send(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESDIRANS.code(), out));
         }
     }
 
@@ -476,7 +474,7 @@ final class UploadSession implements PeerLink.Role {
     // A client that takes comments hears ours on a file it asks for, once a connection.
     private void tellComment(Hash16 file) {
         if (FileDescription.accepted(this.peer) && this.commented.add(file)) {
-            this.queue.comment(file).ifPresent(c -> this.send(FileDescription.encode(c)));
+            this.queue.comment(file).ifPresent(c -> send(FileDescription.encode(c)));
         }
     }
 
@@ -486,22 +484,22 @@ final class UploadSession implements PeerLink.Role {
             return;
         }
         switch (opcode.get()) {
-            case REQUESTPARTS_I64 -> this.blocks(ClientMessages.RequestParts.decode(packet));
+            case REQUESTPARTS_I64 -> blocks(ClientMessages.RequestParts.decode(packet));
             case KAD_FWTCPCHECK_ACK -> this.queue.reachabilityConfirmed(this);
             case FWCHECKUDPREQ -> this.queue.udpCheckRequested(this, LowIdMessages.UdpCheckRequest.decode(packet));
-            case CHATCAPTCHAREQ, CHATCAPTCHARES -> this.chat(packet);
+            case CHATCAPTCHAREQ, CHATCAPTCHARES -> chat(packet);
             case REQUESTSOURCES2 -> this.queue.sourcesRequested(this, SourceExchange.Request.decode(packet));
             case PUBLICIP_REQ ->
-                this.send(Packet.of(
+                send(Packet.of(
                         Protocol.EMULE,
                         Opcodes.Extended.PUBLICIP_ANSWER.code(),
-                        this.address().getAddress().getAddress()));
-            case AICHREQUEST -> this.aichRequested(packet);
+                        address().getAddress().getAddress()));
+            case AICHREQUEST -> aichRequested(packet);
             case AICHFILEHASHREQ -> {
                 Hash16 file = ClientMessages.fileOf(packet);
                 this.queue
                         .aichMaster(file)
-                        .ifPresent(master -> this.send(Packet.of(
+                        .ifPresent(master -> send(Packet.of(
                                 Protocol.EMULE,
                                 Opcodes.Extended.AICHFILEHASHANS.code(),
                                 new PacketWriter().hash16(file).hash20(master))));
@@ -522,7 +520,7 @@ final class UploadSession implements PeerLink.Role {
         Optional<byte[]> recovery = this.queue.aichRecovery(file, part, master);
         PacketWriter answer = new PacketWriter().hash16(file);
         recovery.ifPresent(data -> answer.u16(part).hash20(master).bytes(data));
-        this.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
+        send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), answer));
     }
 
     // Chat waits for the hello: we must know who writes.
@@ -546,7 +544,7 @@ final class UploadSession implements PeerLink.Role {
             }
             Block block = new Block(upload, range.start(), range.end());
             if (range.end() - range.start() > MAX_BLOCK || !upload.has(range.start(), range.end())) {
-                logger.debug("Refusing block {}-{} to {}", range.start(), range.end(), this.address());
+                logger.debug("Refusing block {}-{} to {}", range.start(), range.end(), address());
                 continue;
             }
             if (!this.pending.contains(block)
@@ -562,7 +560,7 @@ final class UploadSession implements PeerLink.Role {
 
     @Override
     public void closed(Optional<String> cause) {
-        this.gone();
+        gone();
     }
 
     /** The connection is closed, on the engine thread. */
@@ -581,9 +579,9 @@ final class UploadSession implements PeerLink.Role {
                 && !this.queue.isOurs(hash)
                 && this.unknown.add(hash)
                 && this.unknown.size() >= UNKNOWN_FILES_LIMIT) {
-            logger.debug("{} asked for {} files we do not have", this.address(), this.unknown.size());
+            logger.debug("{} asked for {} files we do not have", address(), this.unknown.size());
             this.queue.askedForUnknownFiles(this);
-            this.disconnect();
+            disconnect();
         }
         boolean large = (this.peer.miscOptions2() & Hello.MISC2_LARGE_FILES) != 0;
         return found.filter(f -> large || f.size() <= Ed2k.OLD_MAX_FILE_SIZE);
@@ -594,7 +592,7 @@ final class UploadSession implements PeerLink.Role {
         try {
             this.connection.setReadTimeout(timeout);
         } catch (SocketException e) {
-            this.close();
+            close();
         }
     }
 

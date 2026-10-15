@@ -88,8 +88,8 @@ class WebUiTest {
 
     @Test
     void sendsVisitorsToTheLoginPage() throws Exception {
-        this.start();
-        HttpResponse<String> root = this.get("/");
+        start();
+        HttpResponse<String> root = get("/");
         assertThat(root.statusCode()).isEqualTo(303);
         assertThat(root.headers().firstValue("Location")).hasValue("/login");
         assertThat(root.headers().firstValue("X-Frame-Options")).hasValue("DENY");
@@ -97,75 +97,73 @@ class WebUiTest {
                 .contains("default-src 'none'")
                 .contains("frame-ancestors 'none'");
 
-        HttpResponse<String> login = this.get("/login");
+        HttpResponse<String> login = get("/login");
         assertThat(login.statusCode()).isEqualTo(200);
         assertThat(login.body()).contains("type=\"password\"").doesNotContain("csrf");
-        assertThat(this.get("/style.css").body()).contains("color-scheme");
-        assertThat(this.post("/transfers", Map.of("action", "add")).statusCode())
-                .isEqualTo(403);
+        assertThat(get("/style.css").body()).contains("color-scheme");
+        assertThat(post("/transfers", Map.of("action", "add")).statusCode()).isEqualTo(403);
     }
 
     @Test
     void locksOutAfterTooManyWrongPasswords() throws Exception {
-        this.start();
+        start();
         for (int i = 0; i < Sessions.MAX_FAILURES; i++) {
-            HttpResponse<String> wrong = this.post("/login", Map.of("password", "guess " + i));
+            HttpResponse<String> wrong = post("/login", Map.of("password", "guess " + i));
             assertThat(wrong.statusCode()).isEqualTo(401);
             assertThat(wrong.body()).contains("Wrong password");
         }
-        HttpResponse<String> locked = this.post("/login", Map.of("password", PASSWORD));
+        HttpResponse<String> locked = post("/login", Map.of("password", PASSWORD));
         assertThat(locked.statusCode()).isEqualTo(429);
         assertThat(locked.headers().firstValue("Set-Cookie")).isEmpty();
     }
 
     @Test
     void showsStatusAndEndsTheSessionOnLogout() throws Exception {
-        this.start();
-        this.login();
-        HttpResponse<String> status = this.get("/");
+        start();
+        login();
+        HttpResponse<String> status = get("/");
         assertThat(status.statusCode()).isEqualTo(200);
         assertThat(status.body()).contains("<h1>Status</h1>", "not connected", "Log out");
-        assertThat(this.get("/nowhere").statusCode()).isEqualTo(404);
-        assertThat(this.send("/", "PUT").statusCode()).isEqualTo(405);
+        assertThat(get("/nowhere").statusCode()).isEqualTo(404);
+        assertThat(send("/", "PUT").statusCode()).isEqualTo(405);
 
-        HttpResponse<String> out = this.post("/logout", Map.of("csrf", this.csrf("/")));
+        HttpResponse<String> out = post("/logout", Map.of("csrf", csrf("/")));
         assertThat(out.statusCode()).isEqualTo(303);
         assertThat(out.headers().firstValue("Set-Cookie").orElseThrow()).contains("Max-Age=0");
-        assertThat(this.get("/").statusCode()).isEqualTo(303);
+        assertThat(get("/").statusCode()).isEqualTo(303);
     }
 
     @Test
     void refusesFormsWithoutTokenOrFromOtherSites() throws Exception {
-        this.start();
-        this.login();
+        start();
+        login();
         String link = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
-        assertThat(this.post("/transfers", Map.of("action", "add", "link", link))
+        assertThat(post("/transfers", Map.of("action", "add", "link", link)).statusCode())
+                .isEqualTo(403);
+        assertThat(post("/transfers", Map.of("action", "add", "link", link, "csrf", "not-the-token"))
                         .statusCode())
                 .isEqualTo(403);
-        assertThat(this.post("/transfers", Map.of("action", "add", "link", link, "csrf", "not-the-token"))
-                        .statusCode())
-                .isEqualTo(403);
-        HttpRequest foreign = this.request("/transfers")
+        HttpRequest foreign = request("/transfers")
                 .header("Origin", "http://evil.example")
-                .POST(form(Map.of("action", "add", "link", link, "csrf", this.csrf("/transfers"))))
+                .POST(form(Map.of("action", "add", "link", link, "csrf", csrf("/transfers"))))
                 .build();
         assertThat(this.http.send(foreign, HttpResponse.BodyHandlers.ofString()).statusCode())
                 .isEqualTo(403);
-        assertThat(this.get("/transfers").body()).doesNotContain("refused.bin");
+        assertThat(get("/transfers").body()).doesNotContain("refused.bin");
     }
 
     @Test
     void browsersMayPostTheFormsOfThePages() throws Exception {
-        this.start();
+        start();
         // With no-referrer a browser sends "Origin: null" even to the page's own origin.
-        assertThat(this.get("/login").headers().firstValue("Referrer-Policy")).hasValue("same-origin");
-        HttpRequest same = this.request("/login")
+        assertThat(get("/login").headers().firstValue("Referrer-Policy")).hasValue("same-origin");
+        HttpRequest same = request("/login")
                 .header("Origin", "http://127.0.0.1:" + this.ui.port())
                 .POST(form(Map.of("password", PASSWORD)))
                 .build();
         assertThat(this.http.send(same, HttpResponse.BodyHandlers.ofString()).statusCode())
                 .isEqualTo(303);
-        HttpRequest opaque = this.request("/login")
+        HttpRequest opaque = request("/login")
                 .header("Origin", "null")
                 .POST(form(Map.of("password", PASSWORD)))
                 .build();
@@ -175,7 +173,7 @@ class WebUiTest {
 
     @Test
     void refusesOtherHostNames() throws Exception {
-        this.start();
+        start();
         try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
             OutputStream out = socket.getOutputStream();
             out.write(
@@ -190,37 +188,34 @@ class WebUiTest {
 
     @Test
     void addsPausesResumesAndCancelsDownloads() throws Exception {
-        this.start();
-        this.login();
+        start();
+        login();
         String hash = "0123456789ABCDEF0123456789ABCDEF";
         String link = "ed2k://|file|web & test.bin|1000|" + hash + "|/";
         HttpResponse<String> added =
-                this.post("/transfers", Map.of("action", "add", "link", link, "csrf", this.csrf("/transfers")));
+                post("/transfers", Map.of("action", "add", "link", link, "csrf", csrf("/transfers")));
         assertThat(added.statusCode()).isEqualTo(303);
         assertThat(added.headers().firstValue("Location")).hasValue("/transfers");
-        String page = this.get("/transfers").body();
+        String page = get("/transfers").body();
         assertThat(page).contains("web &amp; test.bin", "Pause").doesNotContain("web & test");
 
-        this.action("pause", hash);
-        assertThat(this.get("/transfers").body()).contains("paused", "Resume");
-        this.action("resume", hash);
-        assertThat(this.get("/transfers").body()).contains("Pause");
-        this.action("stop", hash);
-        assertThat(this.get("/transfers").body()).contains("stopped", "Resume");
-        this.post(
-                "/transfers",
-                Map.of("action", "priority", "hash", hash, "priority", "high", "csrf", this.csrf("/transfers")));
-        assertThat(this.get("/transfers").body()).contains("value=\"high\" selected");
-        this.action("cancel", hash);
-        await(() -> !this.uncheckedGet("/transfers").contains("web &amp; test.bin"));
+        action("pause", hash);
+        assertThat(get("/transfers").body()).contains("paused", "Resume");
+        action("resume", hash);
+        assertThat(get("/transfers").body()).contains("Pause");
+        action("stop", hash);
+        assertThat(get("/transfers").body()).contains("stopped", "Resume");
+        post("/transfers", Map.of("action", "priority", "hash", hash, "priority", "high", "csrf", csrf("/transfers")));
+        assertThat(get("/transfers").body()).contains("value=\"high\" selected");
+        action("cancel", hash);
+        await(() -> !uncheckedGet("/transfers").contains("web &amp; test.bin"));
 
-        HttpResponse<String> bad = this.post(
+        HttpResponse<String> bad = post(
                 "/transfers",
-                Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/", "csrf", this.csrf("/transfers")));
+                Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/", "csrf", csrf("/transfers")));
         assertThat(bad.statusCode()).isEqualTo(400);
         assertThat(bad.body()).contains("Not an eD2K file link");
-        HttpResponse<String> unknown =
-                this.post("/transfers", Map.of("action", "explode", "hash", hash, "csrf", this.csrf("/")));
+        HttpResponse<String> unknown = post("/transfers", Map.of("action", "explode", "hash", hash, "csrf", csrf("/")));
         assertThat(unknown.statusCode()).isEqualTo(400);
     }
 
@@ -230,7 +225,7 @@ class WebUiTest {
     }
 
     private void login() throws Exception {
-        HttpResponse<String> in = this.post("/login", Map.of("password", PASSWORD));
+        HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
         assertThat(set).contains("HttpOnly", "SameSite=Strict");
@@ -239,23 +234,23 @@ class WebUiTest {
 
     private void action(String action, String hash) throws Exception {
         HttpResponse<String> done =
-                this.post("/transfers", Map.of("action", action, "hash", hash, "csrf", this.csrf("/transfers")));
+                post("/transfers", Map.of("action", action, "hash", hash, "csrf", csrf("/transfers")));
         assertThat(done.statusCode()).isEqualTo(303);
     }
 
     private String csrf(String page) throws Exception {
-        Matcher m = CSRF.matcher(this.get(page).body());
+        Matcher m = CSRF.matcher(get(page).body());
         assertThat(m.find()).isTrue();
         return m.group(1);
     }
 
     private HttpResponse<String> get(String path) throws Exception {
-        return this.http.send(this.request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private String uncheckedGet(String path) {
         try {
-            return this.get(path).body();
+            return get(path).body();
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
@@ -263,14 +258,14 @@ class WebUiTest {
 
     private HttpResponse<String> send(String path, String method) throws Exception {
         return this.http.send(
-                this.request(path)
+                request(path)
                         .method(method, HttpRequest.BodyPublishers.noBody())
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        return this.http.send(this.request(path).POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(request(path).POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {

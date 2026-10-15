@@ -67,7 +67,7 @@ class SharedFilesBrowserTest {
 
     @Test
     void anExtendedPacketWithTheOpcodeOfARefusalIsNotOne() throws Exception {
-        List<SearchResult> files = this.browse(
+        List<SearchResult> files = browse(
                 Packet.empty(Protocol.EMULE, Opcodes.Client.ASKSHAREDDENIEDANS.code()),
                 Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list(FILE, "film.avi", 700)));
 
@@ -80,7 +80,7 @@ class SharedFilesBrowserTest {
 
     @Test
     void aRefusalFailsTheBrowse() {
-        assertThatThrownBy(() -> this.browse(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code())))
+        assertThatThrownBy(() -> browse(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code())))
                 .hasCauseInstanceOf(IOException.class)
                 .hasMessageContaining("does not show its files");
     }
@@ -90,8 +90,7 @@ class SharedFilesBrowserTest {
         byte[] one = list(FILE, "one.bin", 1).toByteArray();
         PacketWriter list = new PacketWriter().u32(5).bytes(one, 4, one.length - 4);
 
-        assertThatThrownBy(() ->
-                        this.browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
+        assertThatThrownBy(() -> browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
                 .hasCauseInstanceOf(DecodeException.class);
     }
 
@@ -109,7 +108,7 @@ class SharedFilesBrowserTest {
                                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), 0)))
                 .write(list);
 
-        assertThat(this.browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
+        assertThat(browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
                 .isEmpty();
     }
 

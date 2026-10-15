@@ -50,14 +50,14 @@ class ChatNewsTest {
 
     @Test
     void aConversationWithNewsIsMarkedUntilLookedAt() throws Exception {
-        this.givenTheMessages();
-        this.whenAMessageComesFrom("Ann", "10.0.0.1:4662");
-        this.whenAMessageComesFrom("Bob", "10.0.0.2:4662");
-        this.whenAMessageComesFrom("Ann", "10.0.0.1:4662");
-        this.thenTheConversationIsMarked("Ann", true);
-        this.thenTheConversationIsMarked("Bob", false);
-        this.whenTheConversationIsChosen("Ann");
-        this.thenTheConversationIsMarked("Ann", false);
+        givenTheMessages();
+        whenAMessageComesFrom("Ann", "10.0.0.1:4662");
+        whenAMessageComesFrom("Bob", "10.0.0.2:4662");
+        whenAMessageComesFrom("Ann", "10.0.0.1:4662");
+        thenTheConversationIsMarked("Ann", true);
+        thenTheConversationIsMarked("Bob", false);
+        whenTheConversationIsChosen("Ann");
+        thenTheConversationIsMarked("Ann", false);
     }
 
     private void givenTheMessages() throws Exception {
@@ -72,12 +72,11 @@ class ChatNewsTest {
     }
 
     private void whenTheConversationIsChosen(String nick) throws Exception {
-        FxTesting.onFx(() -> this.screen.tabs().getSelectionModel().select(this.tab(nick)));
+        FxTesting.onFx(() -> this.screen.tabs().getSelectionModel().select(tab(nick)));
     }
 
     private void thenTheConversationIsMarked(String nick, boolean marked) throws Exception {
-        assertThat(FxTesting.onFx(() -> MessagesScreen.isUnread(this.tab(nick))))
-                .isEqualTo(marked);
+        assertThat(FxTesting.onFx(() -> MessagesScreen.isUnread(tab(nick)))).isEqualTo(marked);
     }
 
     private Tab tab(String nick) {

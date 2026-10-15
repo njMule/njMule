@@ -65,7 +65,7 @@ final class MacLinks {
             if (!events.supported()) {
                 return false;
             }
-            events.handle(uri -> this.offer(uri.toString()));
+            events.handle(uri -> offer(uri.toString()));
             return true;
         } catch (RuntimeException | LinkageError e) {
             logger.warn("Links opened in the browser cannot reach njMule: {}", e.toString());

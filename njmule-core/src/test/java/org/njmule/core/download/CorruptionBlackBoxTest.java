@@ -37,66 +37,66 @@ class CorruptionBlackBoxTest {
 
     @Test
     void aSourceThatAloneSentOnePartThatFailedIsForgiven() {
-        this.givenSent(A, 0, PART);
+        givenSent(A, 0, PART);
 
-        this.whenThePartFails(0, PART);
+        whenThePartFails(0, PART);
 
-        this.thenTheGuiltyAre();
+        thenTheGuiltyAre();
     }
 
     @Test
     void aSourceThatAloneSentAPartThatFailedThreeTimesIsGuilty() {
-        this.givenSentAPartThatFailed(A, 0);
-        this.givenSentAPartThatFailed(A, 0);
-        this.givenSent(A, 0, PART);
+        givenSentAPartThatFailed(A, 0);
+        givenSentAPartThatFailed(A, 0);
+        givenSent(A, 0, PART);
 
-        this.whenThePartFails(0, PART);
+        whenThePartFails(0, PART);
 
-        this.thenTheGuiltyAre(A);
+        thenTheGuiltyAre(A);
     }
 
     @Test
     void aSourceWhoseOtherPartsPassedIsNotGuiltyOfThreeThatFailed() {
-        this.givenSentPartsThatPassed(A, 0, 7);
-        this.givenSentAPartThatFailed(A, 7);
-        this.givenSentAPartThatFailed(A, 8);
-        this.givenSent(A, 9 * PART, 10 * PART);
+        givenSentPartsThatPassed(A, 0, 7);
+        givenSentAPartThatFailed(A, 7);
+        givenSentAPartThatFailed(A, 8);
+        givenSent(A, 9 * PART, 10 * PART);
 
-        this.whenThePartFails(9 * PART, 10 * PART);
+        whenThePartFails(9 * PART, 10 * PART);
 
-        this.thenTheGuiltyAre();
+        thenTheGuiltyAre();
     }
 
     @Test
     void aPartThatFailedBlamesNoneOfTheSeveralSourcesThatSentIt() {
-        this.givenSent(A, 0, PART / 2);
-        this.givenSent(B, PART / 2, PART);
+        givenSent(A, 0, PART / 2);
+        givenSent(B, PART / 2, PART);
 
-        this.whenThePartFails(0, PART);
+        whenThePartFails(0, PART);
 
-        this.thenTheGuiltyAre();
+        thenTheGuiltyAre();
     }
 
     @Test
     void aPartOfWhichSomeDataCameFromNoKnownSourceBlamesNone() {
-        this.givenSent(A, BLOCK, PART);
+        givenSent(A, BLOCK, PART);
 
-        this.whenThePartFails(0, PART);
+        whenThePartFails(0, PART);
 
-        this.thenTheGuiltyAre();
+        thenTheGuiltyAre();
     }
 
     @Test
     void recoveryDataBlamesTheSourceOfTheBadBlockOnly() {
-        this.givenSent(A, 0, 2 * BLOCK);
-        this.givenSent(B, 2 * BLOCK, 3 * BLOCK);
-        this.givenThePartFailed(0, 3 * BLOCK);
+        givenSent(A, 0, 2 * BLOCK);
+        givenSent(B, 2 * BLOCK, 3 * BLOCK);
+        givenThePartFailed(0, 3 * BLOCK);
 
-        this.whenRecoveryDataProves(
+        whenRecoveryDataProves(
                 List.of(Range.closedOpen(0L, BLOCK), Range.closedOpen(BLOCK, 2 * BLOCK)),
                 List.of(Range.closedOpen(2 * BLOCK, 3 * BLOCK)));
 
-        this.thenTheGuiltyAre(B);
+        thenTheGuiltyAre(B);
     }
 
     private void givenSent(int ip, long start, long end) {
@@ -111,13 +111,13 @@ class CorruptionBlackBoxTest {
     }
 
     private void givenSentAPartThatFailed(int ip, int part) {
-        this.givenSent(ip, part * PART, (part + 1) * PART);
-        this.givenThePartFailed(part * PART, (part + 1) * PART);
+        givenSent(ip, part * PART, (part + 1) * PART);
+        givenThePartFailed(part * PART, (part + 1) * PART);
     }
 
     private void givenThePartFailed(long start, long end) {
-        this.whenThePartFails(start, end);
-        this.thenTheGuiltyAre();
+        whenThePartFails(start, end);
+        thenTheGuiltyAre();
     }
 
     private void whenThePartFails(long start, long end) {

@@ -97,7 +97,7 @@ class EngineTest {
 
     @Test
     void startCreatesTheLayoutAndPersistsDefaultPreferences() throws IOException {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.isRunning()).isTrue();
             assertThat(engine.directories().logs()).isDirectory();
             assertThat(engine.directories().config().resolve(PreferencesCodec.FILE_NAME))
@@ -109,7 +109,7 @@ class EngineTest {
     @Test
     void updatePersistsPublishesAndSurvivesARestart() throws Exception {
         Recorder recorder = new Recorder();
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.events().subscribe(recorder);
             Preferences updated = engine.updatePreferences(
                             p -> p.toBuilder().nick("renamed").build())
@@ -126,14 +126,14 @@ class EngineTest {
                 .hasSize(1);
         assertThat(recorder.events).last().isInstanceOf(EngineEvent.Stopping.class);
 
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.preferences().nick()).isEqualTo("renamed");
         }
     }
 
     @Test
     void invalidUpdateFailsAndKeepsThePreviousPreferences() throws IOException {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThatThrownBy(() -> engine.updatePreferences(
                                     p -> p.toBuilder().tcpPort(0).build())
                             .get())
@@ -156,7 +156,7 @@ class EngineTest {
                                         new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "One"),
                                         new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1))),
                         new ServerMet.Server(Ipv4.of(81, 2, 3, 5), 4242, List.of()))));
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
 
             List<ServerInfo> servers = engine.servers().get(5, TimeUnit.SECONDS);
@@ -189,7 +189,7 @@ class EngineTest {
                                 0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "localhost"))),
                         new ServerMet.Server(
                                 0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "b.example"))))));
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
             assertThat(engine.servers().get(5, TimeUnit.SECONDS))
                     .extracting(ServerInfo::address)
@@ -224,7 +224,7 @@ class EngineTest {
                 OptionalInt.empty(),
                 OptionalInt.of(1),
                 OptionalInt.of(2));
-        try (Engine engine = (Engine) this.start()) {
+        try (Engine engine = (Engine) start()) {
             engine.setCategories(List.of(
                             new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false),
                             new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false)))
@@ -257,7 +257,7 @@ class EngineTest {
                 OptionalInt.empty(),
                 OptionalInt.empty(),
                 OptionalInt.empty());
-        try (Engine engine = (Engine) this.start()) {
+        try (Engine engine = (Engine) start()) {
             assertThat(engine.activeRule()).isEmpty();
             engine.updateSchedule(new Schedule(List.of(always))).get(5, TimeUnit.SECONDS);
 
@@ -269,7 +269,7 @@ class EngineTest {
             assertThat(engine.effective().nick()).isEqualTo("other");
             assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
         }
-        try (Engine engine = (Engine) this.start()) {
+        try (Engine engine = (Engine) start()) {
             assertThat(engine.activeRule()).contains(always);
             engine.updateSchedule(Schedule.EMPTY).get(5, TimeUnit.SECONDS);
             assertThat(engine.activeRule()).isEmpty();
@@ -279,19 +279,19 @@ class EngineTest {
 
     @Test
     void totalsLastAcrossSessions() throws Exception {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
             assertThat(status.sessions()).isEqualTo(1);
             assertThat(status.totalDownloaded()).isZero();
             assertThat(status.totalSeconds()).isEqualTo(status.sessionSeconds());
         }
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.status().get(5, TimeUnit.SECONDS).sessions()).isEqualTo(2);
         }
         Files.writeString(
                 this.root.resolve("config").resolve("statistics.properties"),
                 "downloaded=12\nuploaded=x\nsessions=-4\n");
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
             assertThat(status.totalDownloaded()).isEqualTo(12);
             assertThat(status.totalUploaded()).isZero();
@@ -302,19 +302,19 @@ class EngineTest {
     @Test
     void keepsTheServerListAddressesInAddressesDat() throws Exception {
         URI list = URI.create("https://example.org/server.met");
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).isEmpty();
             engine.setServerListAddresses(List.of(list)).get(5, TimeUnit.SECONDS);
         }
         assertThat(this.root.resolve("config").resolve("addresses.dat")).exists();
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).containsExactly(list);
         }
     }
 
     @Test
     void closeIsIdempotent() throws IOException {
-        NjMuleEngine engine = this.start();
+        NjMuleEngine engine = start();
         engine.close();
         engine.close();
         assertThat(engine.isRunning()).isFalse();

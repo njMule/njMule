@@ -76,7 +76,7 @@ class DownloadSessionTest {
     @AfterEach
     void stop() throws Exception {
         if (this.queue != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.queue.close();
                 return null;
             });
@@ -90,10 +90,10 @@ class DownloadSessionTest {
 
     @Test
     void aListenerThatHearsOnlyTheEssentialsMissesNothingElse() throws Exception {
-        ScriptedSource source = this.source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
+        ScriptedSource source = source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
         Hash16 hash = Hash16.parseHex("6b".repeat(16));
-        DownloadSession session = this.session(source, hash);
-        this.onLoop(() -> {
+        DownloadSession session = session(source, hash);
+        onLoop(() -> {
             session.connect(Optional.empty(), new SecureRandom());
             return null;
         });
@@ -110,18 +110,18 @@ class DownloadSessionTest {
         link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
         link.until(Opcodes.Client.REQUESTPARTS);
         link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-        this.await("back in the queue", () -> session.state() == DownloadSession.State.QUEUED);
+        await("back in the queue", () -> session.state() == DownloadSession.State.QUEUED);
 
         // Asked for recovery data, it has none; asked again, it sends some.
-        assertThat(this.onLoop(() -> session.mayRecover(0))).isTrue();
-        this.onLoop(() -> {
+        assertThat(onLoop(() -> session.mayRecover(0))).isTrue();
+        onLoop(() -> {
             session.requestAich(0, MASTER);
             return null;
         });
         assertThat(link.until(Opcodes.Extended.AICHREQUEST).getLast().reader().hash16())
                 .isEqualTo(hash);
         link.send(Packet.of(Protocol.EMULE, Opcodes.Extended.AICHANSWER.code(), new PacketWriter().hash16(hash)));
-        this.onLoop(() -> {
+        onLoop(() -> {
             session.requestAich(0, MASTER);
             return null;
         });
@@ -131,10 +131,10 @@ class DownloadSessionTest {
                 Opcodes.Extended.AICHANSWER.code(),
                 new PacketWriter().hash16(hash).u16(0).hash20(MASTER).bytes(new byte[40])));
         link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(4)));
-        this.await("the rank", () -> session.queueRank() == 4);
+        await("the rank", () -> session.queueRank() == 4);
 
         // The download pauses under it: given the slot, it leaves.
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.pause(this.download);
             return null;
         });
@@ -145,10 +145,10 @@ class DownloadSessionTest {
 
     @Test
     void aSessionEndedBeforeItsConnectionOpensClosesIt() throws Exception {
-        ScriptedSource source = this.source(0, 0);
-        DownloadSession session = this.session(source, Hash16.parseHex("6c".repeat(16)));
+        ScriptedSource source = source(0, 0);
+        DownloadSession session = session(source, Hash16.parseHex("6c".repeat(16)));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             session.connect(Optional.empty(), new SecureRandom());
             session.close("changed our mind");
             return null;
@@ -168,11 +168,11 @@ class DownloadSessionTest {
         try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             closed = probe.getLocalPort();
         }
-        this.queue();
-        DownloadSession session = this.session(
+        queue();
+        DownloadSession session = session(
                 new InetSocketAddress(InetAddress.getLoopbackAddress(), closed), Hash16.parseHex("6d".repeat(16)));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             session.connect(Optional.empty(), new SecureRandom());
             session.close("given up");
             return null;
@@ -186,10 +186,10 @@ class DownloadSessionTest {
 
     @Test
     void aFaultInTheQueueEndsTheSessionToBeAskedAgainLater() throws Exception {
-        ScriptedSource source = this.source(0, 0);
+        ScriptedSource source = source(0, 0);
         Hash16 hash = Hash16.parseHex("6e".repeat(16));
-        DownloadSession session = this.session(source, hash);
-        this.onLoop(() -> {
+        DownloadSession session = session(source, hash);
+        onLoop(() -> {
             session.connect(Optional.empty(), new SecureRandom());
             return null;
         });
@@ -201,7 +201,7 @@ class DownloadSessionTest {
         link.until(Opcodes.Client.REQUESTPARTS);
 
         // Cancelled behind the session's back: its data file takes no more writes.
-        this.onLoop(() -> this.queue.cancel(this.download));
+        onLoop(() -> this.queue.cancel(this.download));
         link.send(new ClientMessages.SendingPart(hash, 0, 100, new byte[100]).encode(false));
 
         assertThat(this.events.poll(10, TimeUnit.SECONDS)).startsWith("ended LATER internal error");
@@ -215,14 +215,14 @@ class DownloadSessionTest {
     }
 
     private DownloadSession session(ScriptedSource source, Hash16 hash) throws Exception {
-        this.queue();
-        this.download = this.onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("session.bin", 5000, hash)));
-        return this.session(source.address(), hash);
+        queue();
+        this.download = onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("session.bin", 5000, hash)));
+        return session(source.address(), hash);
     }
 
     private DownloadSession session(InetSocketAddress address, Hash16 hash) throws Exception {
         if (this.download == null) {
-            this.download = this.onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("session.bin", 5000, hash)));
+            this.download = onLoop(() -> this.queue.add(Ed2kLink.FileLink.of("session.bin", 5000, hash)));
         }
         SecureRandom random = new SecureRandom();
         Identities identities = new Identities(
@@ -245,7 +245,7 @@ class DownloadSessionTest {
 
     private void queue() throws Exception {
         if (this.queue == null) {
-            this.queue = this.onLoop(() -> DownloadQueue.load(
+            this.queue = onLoop(() -> DownloadQueue.load(
                     this.loop,
                     this.dir.resolve("temp"),
                     (PartFile file) -> this.dir.resolve("incoming"),
@@ -269,7 +269,7 @@ class DownloadSessionTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + ScriptedSource.WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

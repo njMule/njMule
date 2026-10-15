@@ -87,13 +87,13 @@ class UploadQueueTest {
 
     @Test
     void givesTheSlotsTheLimitAllowsQueuesTheRestAndBansClientsThatAskTooOften() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
 
-        Client first = this.client(port, 1);
-        Client second = this.client(port, 2);
-        Client third = this.client(port, 3);
+        Client first = client(port, 1);
+        Client second = client(port, 2);
+        Client third = client(port, 3);
         for (Client c : List.of(first, second, third)) {
             c.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
             assertThat(c.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
@@ -156,9 +156,9 @@ class UploadQueueTest {
 
     @Test
     void uploadsGoOnAfterSettingALimitWhereThereWasNone() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         SharedFileInfo file = awaitShared(engine);
-        Client client = this.client(engine.preferences().tcpPort(), 15);
+        Client client = client(engine.preferences().tcpPort(), 15);
         assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         Thread.sleep(300);
 
@@ -178,9 +178,9 @@ class UploadQueueTest {
 
     @Test
     void anInvertedRangeInARequestIsSkipped() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         SharedFileInfo file = awaitShared(engine);
-        Client client = this.client(engine.preferences().tcpPort(), 21);
+        Client client = client(engine.preferences().tcpPort(), 21);
         assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
 
         // Ranges are three starts then three ends: 5000-4000 is backwards.
@@ -203,9 +203,9 @@ class UploadQueueTest {
 
     @Test
     void aFileRenamedDuringItsUploadKeepsBeingSent() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         SharedFileInfo file = awaitShared(engine);
-        Client client = this.client(engine.preferences().tcpPort(), 20);
+        Client client = client(engine.preferences().tcpPort(), 20);
         assertThat(client.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         client.send(new ClientMessages.RequestParts(
                         file.hash(),
@@ -233,7 +233,7 @@ class UploadQueueTest {
 
     @Test
     void theFriendWithTheFriendSlotGoesBeforeTheQueue() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
         Hash16 pal = hello(4, 5004).userHash();
@@ -247,7 +247,7 @@ class UploadQueueTest {
 
         List<Client> clients = new ArrayList<>();
         for (int seed = 1; seed <= 4; seed++) {
-            Client c = this.client(port, seed);
+            Client c = client(port, seed);
             c.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
             assertThat(c.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
             clients.add(c);
@@ -264,24 +264,24 @@ class UploadQueueTest {
 
     @Test
     void theFriendSlotWaitsForTheFriendToProveItsKey() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
         Hash16 pal = hello(16, 5016).userHash();
         engine.addFriend(new Friend(pal, "pal", Optional.empty())).get(5, TimeUnit.SECONDS);
         assertThat(engine.setFriendSlot(Optional.of(pal)).get(5, TimeUnit.SECONDS))
                 .isTrue();
-        assertThat(this.client(port, 1).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(this.client(port, 2).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        assertThat(ClientMessages.decodeQueueRank(this.client(port, 3).ask(file.hash())))
+        assertThat(client(port, 1).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(client(port, 2).ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+        assertThat(ClientMessages.decodeQueueRank(client(port, 3).ask(file.hash())))
                 .isEqualTo(1);
 
         // Anyone can send the friend's user hash: it counts once the key behind it is proven.
-        Client claimed = this.identifying(port, 16);
+        Client claimed = identifying(port, 16);
         assertThat(ClientMessages.decodeQueueRank(claimed.ask(file.hash())))
                 .as("not proven yet")
                 .isEqualTo(2);
-        Client proven = this.identifying(port, 16);
+        Client proven = identifying(port, 16);
         proven.prove();
         assertThat(ClientMessages.decodeQueueRank(proven.ask(file.hash())))
                 .as("proven")
@@ -290,7 +290,7 @@ class UploadQueueTest {
 
     @Test
     void filesSharedWithFriendsOnlyNeedTheFriendProven() throws Exception {
-        NjMuleEngine engine = this.engine("share.visibleTo=" + SharedFilesVisibility.FRIENDS + "\n");
+        NjMuleEngine engine = engine("share.visibleTo=" + SharedFilesVisibility.FRIENDS + "\n");
         awaitShared(engine);
         int port = engine.preferences().tcpPort();
         Hash16 pal = hello(17, 5017).userHash();
@@ -298,17 +298,17 @@ class UploadQueueTest {
         Packet ask = Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILES.code());
 
         // A client claiming the friend's hash waits for the proof, and failing it sees nothing.
-        Client impostor = this.identifying(port, 17);
+        Client impostor = identifying(port, 17);
         impostor.send(ask);
         assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
         IdentityProof.fake(impostor.out);
         assertThat(impostor.next().payload()).containsExactly(0, 0, 0, 0);
 
         // The friend not taking part in the identification, or proving its key, sees the file.
-        Client unsecured = this.client(port, 17);
+        Client unsecured = client(port, 17);
         unsecured.send(ask);
         assertThat(unsecured.next().payload()).startsWith(1, 0, 0, 0);
-        Client proven = this.identifying(port, 17);
+        Client proven = identifying(port, 17);
         proven.send(ask);
         proven.prove();
         Packet files = proven.next();
@@ -318,9 +318,9 @@ class UploadQueueTest {
 
     @Test
     void clientsBrowsingByDirectoryGetOurFilesInOnePseudoDirectoryOnceAConnection() throws Exception {
-        NjMuleEngine engine = this.engine("share.visibleTo=" + SharedFilesVisibility.EVERYBODY + "\n");
+        NjMuleEngine engine = engine("share.visibleTo=" + SharedFilesVisibility.EVERYBODY + "\n");
         SharedFileInfo file = awaitShared(engine);
-        Client client = this.client(engine.preferences().tcpPort(), 18);
+        Client client = client(engine.preferences().tcpPort(), 18);
 
         client.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDIRS.code()));
         Packet dirs = client.next();
@@ -347,13 +347,13 @@ class UploadQueueTest {
 
     @Test
     void theAichHashOfADownloadIsToldToClientsThatAskForIt() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         Hash16 hash = Hash16.parseHex("5A".repeat(16));
         Hash20 aich = Hash20.of(new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
         engine.addDownload(new Ed2kLink.FileLink(
                         "partial.bin", 1_000_000, hash, Optional.of(aich), List.of(), List.of(), List.of()))
                 .get(10, TimeUnit.SECONDS);
-        Client client = this.client(engine.preferences().tcpPort(), 19);
+        Client client = client(engine.preferences().tcpPort(), 19);
 
         client.send(
                 Packet.of(Protocol.EMULE, Opcodes.Extended.AICHFILEHASHREQ.code(), new PacketWriter().hash16(hash)));
@@ -367,7 +367,7 @@ class UploadQueueTest {
 
     @Test
     void aSharedFileKeepsTheUploadPriorityItIsGiven() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         SharedFileInfo file = awaitShared(engine);
         assertThat(file.priority()).isEqualTo(UploadPriority.AUTO);
 
@@ -384,9 +384,9 @@ class UploadQueueTest {
 
     @Test
     void answersTheOtherRequestsOfADownloader() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         SharedFileInfo file = awaitShared(engine);
-        Client client = this.client(engine.preferences().tcpPort(), 4);
+        Client client = client(engine.preferences().tcpPort(), 4);
 
         client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
         assertThat(ClientMessages.FileName.decode(client.next()).name()).isEqualTo("queued.bin");
@@ -428,15 +428,15 @@ class UploadQueueTest {
 
     @Test
     void callsAWaitingClientBackWhenASlotFrees() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
-        Client first = this.client(port, 5);
-        Client second = this.client(port, 6);
+        Client first = client(port, 5);
+        Client second = client(port, 6);
         assertThat(first.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         assertThat(second.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         try (ServerSocket listening = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            Client waiting = this.client(port, 7, listening.getLocalPort());
+            Client waiting = client(port, 7, listening.getLocalPort());
             assertThat(waiting.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
             waiting.socket.close();
 
@@ -454,16 +454,16 @@ class UploadQueueTest {
 
     @Test
     void anotherAddressClaimingAUserHashGetsNeitherItsSlotNorItsPlace() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
 
-        Client victim = this.client(port, 7);
+        Client victim = client(port, 7);
         victim.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
         assertThat(victim.next().opcode()).isEqualTo(Opcodes.Client.FILESTATUS.code());
         assertThat(victim.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
 
-        Client impostor = this.clientFrom(InetAddress.getByName("127.0.0.2"), port, 7);
+        Client impostor = clientFrom(InetAddress.getByName("127.0.0.2"), port, 7);
         impostor.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
         assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
 
@@ -481,10 +481,10 @@ class UploadQueueTest {
 
     @Test
     void aClientChangingItsUserHashIsDroppedAndBanned() throws Exception {
-        NjMuleEngine engine = this.engine("");
+        NjMuleEngine engine = engine("");
         int port = engine.preferences().tcpPort();
 
-        Client client = this.client(port, 8);
+        Client client = client(port, 8);
         client.send(hello(9, 5009).encode(false));
         assertThatThrownBy(client::next).isInstanceOf(IOException.class);
 
@@ -498,14 +498,14 @@ class UploadQueueTest {
 
     @Test
     void aSlotLeftIdleGoesToTheNextClientInTheQueue() throws Exception {
-        NjMuleEngine engine = this.engine("limits.uploadKiBps=1\n");
+        NjMuleEngine engine = engine("limits.uploadKiBps=1\n");
         SharedFileInfo file = awaitShared(engine);
         int port = engine.preferences().tcpPort();
-        Client busy = this.client(port, 11);
-        Client idle = this.client(port, 12);
+        Client busy = client(port, 11);
+        Client idle = client(port, 12);
         assertThat(busy.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         assertThat(idle.ask(file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
-        Client waiting = this.client(port, 13);
+        Client waiting = client(port, 13);
         assertThat(waiting.ask(file.hash()).opcode()).isEqualTo(Opcodes.Extended.QUEUERANKING.code());
 
         busy.send(new ClientMessages.RequestParts(
@@ -527,10 +527,10 @@ class UploadQueueTest {
 
     @Test
     void aSlotSendsTheFileItsClientSwitchedTo() throws Exception {
-        NjMuleEngine engine = this.engine("", 2);
+        NjMuleEngine engine = engine("", 2);
         List<SharedFileInfo> files = awaitShared(engine, 2);
         int port = engine.preferences().tcpPort();
-        Client client = this.client(port, 14);
+        Client client = client(port, 14);
         assertThat(client.ask(files.get(0).hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
 
         Hash16 other = files.get(1).hash();
@@ -562,16 +562,16 @@ class UploadQueueTest {
     }
 
     private Client client(int port, int seed) throws IOException {
-        return this.client(port, seed, 5000 + seed);
+        return client(port, seed, 5000 + seed);
     }
 
     private Client client(int port, int seed, int listenPort) throws IOException {
-        return this.client(port, seed, listenPort, 0);
+        return client(port, seed, listenPort, 0);
     }
 
     // A client taking part in the secure identification, which it leaves to the test.
     private Client identifying(int port, int seed) throws IOException {
-        return this.client(port, seed, 5000 + seed, IdentityProof.MISC1);
+        return client(port, seed, 5000 + seed, IdentityProof.MISC1);
     }
 
     private Client client(int port, int seed, int listenPort, int miscOptions1) throws IOException {
@@ -613,7 +613,7 @@ class UploadQueueTest {
     }
 
     private NjMuleEngine engine(String extra) throws IOException {
-        return this.engine(extra, 1);
+        return engine(extra, 1);
     }
 
     private NjMuleEngine engine(String extra, int files) throws IOException {
@@ -655,8 +655,8 @@ class UploadQueueTest {
         }
 
         Packet ask(Hash16 file) throws IOException {
-            this.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
-            return this.next();
+            send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file));
+            return next();
         }
 
         // The engine's side of the identification is left unanswered unless the test proves a key.
@@ -677,7 +677,7 @@ class UploadQueueTest {
             int old = this.socket.getSoTimeout();
             this.socket.setSoTimeout((int) wait.toMillis());
             try {
-                return Optional.of(this.next());
+                return Optional.of(next());
             } catch (SocketTimeoutException e) {
                 return Optional.empty();
             } finally {

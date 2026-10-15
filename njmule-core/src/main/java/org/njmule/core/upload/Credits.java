@@ -117,13 +117,13 @@ public final class Credits {
 
     /** We sent {@code bytes} to the client. */
     public void uploaded(Hash16 userHash, long bytes) {
-        this.credit(userHash).uploaded += bytes;
+        credit(userHash).uploaded += bytes;
         this.dirty = true;
     }
 
     /** The client sent us {@code bytes}. */
     public void downloaded(Hash16 userHash, long bytes) {
-        this.credit(userHash).downloaded += bytes;
+        credit(userHash).downloaded += bytes;
         this.dirty = true;
     }
 
@@ -132,7 +132,7 @@ public final class Credits {
      * by anyone, starts again from nothing.
      */
     public void identified(Hash16 userHash, Bytes key) {
-        Credit credit = this.credit(userHash);
+        Credit credit = credit(userHash);
         if (credit.publicKey.length() == 0) {
             credit.publicKey = key;
             if (credit.downloaded > 0) {
@@ -180,8 +180,8 @@ public final class Credits {
     }
 
     private Credit credit(Hash16 userHash) {
-        Credit credit = this.credits.computeIfAbsent(userHash, h -> new Credit(h, 0, 0, this.now(), Bytes.EMPTY));
-        credit.lastSeen = this.now();
+        Credit credit = this.credits.computeIfAbsent(userHash, h -> new Credit(h, 0, 0, now(), Bytes.EMPTY));
+        credit.lastSeen = now();
         return credit;
     }
 

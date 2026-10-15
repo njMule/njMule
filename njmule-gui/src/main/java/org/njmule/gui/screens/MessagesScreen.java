@@ -94,7 +94,7 @@ public final class MessagesScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -107,7 +107,7 @@ public final class MessagesScreen implements Screen {
             @Override
             protected void updateItem(LiveList.Row<Friend> row, boolean empty) {
                 super.updateItem(row, empty);
-                this.setText(empty || row == null ? null : MessagesScreen.this.friendText(row.get()));
+                setText(empty || row == null ? null : MessagesScreen.this.friendText(row.get()));
             }
         });
         this.gui.subscriptions().onChange(this.gui.model().friendSlotProperty(), (was, now) -> this.friends.refresh());
@@ -127,7 +127,7 @@ public final class MessagesScreen implements Screen {
 
         this.address.setPromptText(this.gui.i18n().embed(this.gui.t("nj.servers.addressPrompt")));
         this.address.setPrefColumnCount(18);
-        this.address.setOnAction(e -> this.startChat());
+        this.address.setOnAction(e -> startChat());
         this.addressInput = new Inputs(this.gui)
                 .address(this.address, this.gui.t("nj.chat.start"))
                 .quietWhenEmpty();
@@ -150,7 +150,7 @@ public final class MessagesScreen implements Screen {
         Label where = Fx.whole(new Label(this.gui.t("IDS_SV_ADDRESS")));
         where.setLabelFor(this.address);
         var tools = Fx.toolRow(where, this.address, start);
-        return Fx.screen(this.title(), tools, split);
+        return Fx.screen(title(), tools, split);
     }
 
     private String friendText(Friend f) {
@@ -195,7 +195,7 @@ public final class MessagesScreen implements Screen {
             this.gui.warn().accept(this.gui.f("nj.chat.ipv4Only", text));
             return;
         }
-        this.select(this.gui.model().chats().with(to.toString()));
+        select(this.gui.model().chats().with(to.toString()));
         this.address.clear();
     }
 
@@ -209,7 +209,7 @@ public final class MessagesScreen implements Screen {
             this.gui.warn().accept(this.gui.t("nj.chat.noAddress"));
             return;
         }
-        this.select(this.gui
+        select(this.gui
                 .model()
                 .chats()
                 .with(where.get().host() + ":" + where.get().port()));
@@ -329,7 +329,7 @@ public final class MessagesScreen implements Screen {
         ChatPane(Chats.Chat chat) {
             super(8);
             this.chat = chat;
-            this.setPadding(new Insets(8, 0, 0, 0));
+            setPadding(new Insets(8, 0, 0, 0));
             ListView<Chats.Line> lines = new ListView<>(chat.lines());
             lines.setUserData(chat);
             lines.getStyleClass().add("chat-lines");
@@ -343,7 +343,7 @@ public final class MessagesScreen implements Screen {
             request.setWrapText(true);
             // The list above gives way: the request is read whole, never cut short.
             request.setMinHeight(Region.USE_PREF_SIZE);
-            this.solution.setOnAction(e -> this.solve());
+            this.solution.setOnAction(e -> solve());
             this.captchaBox = new VBox(
                     6,
                     request,
@@ -354,19 +354,16 @@ public final class MessagesScreen implements Screen {
                             Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::solve)));
             this.captchaBox.getStyleClass().add("stat-card");
             this.captchaBox.setMinHeight(Region.USE_PREF_SIZE);
-            MessagesScreen.this
-                    .gui
-                    .subscriptions()
-                    .onChange(chat.captchaProperty(), (was, now) -> this.showCaptcha(now));
-            this.showCaptcha(chat.captchaProperty().get());
-            this.input.setOnAction(e -> this.send());
+            MessagesScreen.this.gui.subscriptions().onChange(chat.captchaProperty(), (was, now) -> showCaptcha(now));
+            showCaptcha(chat.captchaProperty().get());
+            this.input.setOnAction(e -> send());
             HBox.setHgrow(this.input, Priority.ALWAYS);
             HBox row = new HBox(
                     8,
                     this.input,
                     Fx.primary(Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::send)),
                     Fx.button(MessagesScreen.this.gui.t("nj.chat.addFriend"), Material2MZ.PERSON_ADD, this::befriend));
-            this.getChildren().addAll(lines, this.captchaBox, row);
+            getChildren().addAll(lines, this.captchaBox, row);
         }
 
         private void showCaptcha(byte[] bmp) {
@@ -434,16 +431,16 @@ public final class MessagesScreen implements Screen {
             this.bubble.getStyleClass().add("chat-bubble");
             this.bubble.setMinWidth(Region.USE_PREF_SIZE);
             // The cell takes the width of the list rather than of its text, so that long lines wrap.
-            this.setPrefWidth(0);
+            setPrefWidth(0);
         }
 
         @Override
         protected void updateItem(Chats.Line line, boolean empty) {
             super.updateItem(line, empty);
-            this.getStyleClass().removeAll("chat-us", "chat-them", "chat-notice");
-            this.setText(null);
+            getStyleClass().removeAll("chat-us", "chat-them", "chat-notice");
+            setText(null);
             if (empty || line == null) {
-                this.setGraphic(null);
+                setGraphic(null);
                 return;
             }
             String time = MessagesScreen.this.gui.formats().time(line.time());
@@ -455,7 +452,7 @@ public final class MessagesScreen implements Screen {
                     this.words.setText(i18n.embed(line.text()));
                 }
                 case THEM -> {
-                    this.meta.setText(time + "  " + i18n.embed(this.who()));
+                    this.meta.setText(time + "  " + i18n.embed(who()));
                     this.words.setText(i18n.embed(line.text()));
                 }
                 case NOTICE -> {
@@ -469,17 +466,17 @@ public final class MessagesScreen implements Screen {
                         case THEM -> Pos.CENTER_LEFT;
                         case NOTICE -> Pos.CENTER;
                     });
-            if (this.getListView() != null && !this.bubble.maxWidthProperty().isBound()) {
+            if (getListView() != null && !this.bubble.maxWidthProperty().isBound()) {
                 this.bubble
                         .maxWidthProperty()
-                        .bind(this.getListView().widthProperty().multiply(0.75));
+                        .bind(getListView().widthProperty().multiply(0.75));
             }
-            this.setGraphic(this.row);
-            this.getStyleClass().add("chat-" + line.author().name().toLowerCase(Locale.ROOT));
+            setGraphic(this.row);
+            getStyleClass().add("chat-" + line.author().name().toLowerCase(Locale.ROOT));
         }
 
         private String who() {
-            return this.getListView().getUserData() instanceof Chats.Chat chat
+            return getListView().getUserData() instanceof Chats.Chat chat
                             && !chat.nickProperty().get().isEmpty()
                     ? chat.nickProperty().get()
                     : "?";

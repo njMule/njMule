@@ -63,115 +63,115 @@ public final class SearchParser {
     }
 
     private SearchExpr top() {
-        Token first = this.peek();
+        Token first = peek();
         if (first.kind == Kind.ED2K_LINK && this.tokens.get(1).kind == Kind.EOF) {
             return new SearchExpr.Keyword(first.text);
         }
         if (first.kind == Kind.EOF) {
-            throw this.error(Reason.GENERAL, first, "empty expression");
+            throw error(Reason.GENERAL, first, "empty expression");
         }
-        SearchExpr expr = this.andList();
-        Token end = this.peek();
+        SearchExpr expr = andList();
+        Token end = peek();
         if (end.kind != Kind.EOF) {
-            throw this.error(Reason.GENERAL, end, "unexpected " + end);
+            throw error(Reason.GENERAL, end, "unexpected " + end);
         }
         if (this.operators > MAX_OPERATORS) {
-            throw this.error(Reason.TOO_COMPLEX, end, this.operators + " operators");
+            throw error(Reason.TOO_COMPLEX, end, this.operators + " operators");
         }
         return expr;
     }
 
     // and_searchexpr: searchexpr | searchexpr and_searchexpr (right-nested implicit AND)
     private SearchExpr andList() {
-        SearchExpr first = this.andExpr();
-        if (!this.startsExpression(this.peek())) {
+        SearchExpr first = andExpr();
+        if (!startsExpression(peek())) {
             return first;
         }
         this.operators++;
-        return new SearchExpr.And(first, this.andList());
+        return new SearchExpr.And(first, andList());
     }
 
     private SearchExpr andExpr() {
-        SearchExpr left = this.orExpr();
-        while (this.peek().kind == Kind.AND) {
-            this.take();
+        SearchExpr left = orExpr();
+        while (peek().kind == Kind.AND) {
+            take();
             this.operators++;
-            left = new SearchExpr.And(left, this.operand(Reason.MISSING_AND_OPERAND, this::orExpr));
+            left = new SearchExpr.And(left, operand(Reason.MISSING_AND_OPERAND, this::orExpr));
         }
         return left;
     }
 
     private SearchExpr orExpr() {
-        SearchExpr left = this.notExpr();
-        while (this.peek().kind == Kind.OR) {
-            this.take();
+        SearchExpr left = notExpr();
+        while (peek().kind == Kind.OR) {
+            take();
             this.operators++;
-            left = new SearchExpr.Or(left, this.operand(Reason.MISSING_OR_OPERAND, this::notExpr));
+            left = new SearchExpr.Or(left, operand(Reason.MISSING_OR_OPERAND, this::notExpr));
         }
         return left;
     }
 
     private SearchExpr notExpr() {
-        SearchExpr left = this.primary();
-        while (this.peek().kind == Kind.NOT) {
-            this.take();
+        SearchExpr left = primary();
+        while (peek().kind == Kind.NOT) {
+            take();
             this.operators++;
-            left = new SearchExpr.Not(left, this.operand(Reason.MISSING_NOT_OPERAND, this::primary));
+            left = new SearchExpr.Not(left, operand(Reason.MISSING_NOT_OPERAND, this::primary));
         }
         return left;
     }
 
     private SearchExpr operand(Reason missing, Supplier<SearchExpr> rule) {
-        if (!this.startsExpression(this.peek())) {
-            throw this.error(missing, this.peek(), "");
+        if (!startsExpression(peek())) {
+            throw error(missing, peek(), "");
         }
         return rule.get();
     }
 
     private SearchExpr primary() {
-        Token t = this.take();
+        Token t = take();
         return switch (t.kind) {
             case STRING -> new SearchExpr.Keyword(t.text);
-            case ATTRIBUTE -> this.attribute(t);
+            case ATTRIBUTE -> attribute(t);
             case LPAREN -> {
                 if (++this.depth > MAX_DEPTH) {
-                    throw this.error(Reason.TOO_COMPLEX, t, "nested too deeply");
+                    throw error(Reason.TOO_COMPLEX, t, "nested too deeply");
                 }
-                if (!this.startsExpression(this.peek())) {
-                    throw this.error(Reason.MISSING_EXPRESSION_IN_PARENTHESES, this.peek(), "");
+                if (!startsExpression(peek())) {
+                    throw error(Reason.MISSING_EXPRESSION_IN_PARENTHESES, peek(), "");
                 }
-                SearchExpr inner = this.andList();
-                if (this.peek().kind != Kind.RPAREN) {
-                    throw this.error(Reason.MISSING_CLOSING_PARENTHESIS, this.peek(), "");
+                SearchExpr inner = andList();
+                if (peek().kind != Kind.RPAREN) {
+                    throw error(Reason.MISSING_CLOSING_PARENTHESIS, peek(), "");
                 }
-                this.take();
+                take();
                 this.depth--;
                 yield inner;
             }
-            case OPERATOR -> throw this.error(Reason.OPERATOR_WITHOUT_ATTRIBUTE, t, t.text);
-            default -> throw this.error(Reason.GENERAL, t, "unexpected " + t);
+            case OPERATOR -> throw error(Reason.OPERATOR_WITHOUT_ATTRIBUTE, t, t.text);
+            default -> throw error(Reason.GENERAL, t, "unexpected " + t);
         };
     }
 
     private SearchExpr attribute(Token attr) {
         Attribute a = attr.attribute;
-        Token op = this.take();
+        Token op = take();
         if (op.kind != Kind.OPERATOR) {
-            throw this.error(Reason.INVALID_ATTRIBUTE_VALUE, op, "@" + a.name);
+            throw error(Reason.INVALID_ATTRIBUTE_VALUE, op, "@" + a.name);
         }
-        Token value = this.take();
+        Token value = take();
         if (a.numeric) {
             if (value.kind != Kind.NUMBER) {
-                throw this.error(Reason.INVALID_ATTRIBUTE_VALUE, value, "@" + a.name);
+                throw error(Reason.INVALID_ATTRIBUTE_VALUE, value, "@" + a.name);
             }
             return new SearchExpr.NumericAttr(a.tag, op.comparison, value.number);
         }
         if (op.comparison != Comparison.EQUAL) {
-            throw this.error(Reason.INVALID_ATTRIBUTE_VALUE, op, "@" + a.name + " takes '='");
+            throw error(Reason.INVALID_ATTRIBUTE_VALUE, op, "@" + a.name + " takes '='");
         }
         Kind expected = a == Attribute.TYPE ? Kind.TYPE_VALUE : Kind.STRING;
         if (value.kind != expected) {
-            throw this.error(Reason.INVALID_ATTRIBUTE_VALUE, value, "@" + a.name);
+            throw error(Reason.INVALID_ATTRIBUTE_VALUE, value, "@" + a.name);
         }
         return new SearchExpr.StringAttr(a.tag, value.text);
     }
@@ -282,10 +282,10 @@ public final class SearchParser {
                     return this.out;
                 }
                 switch (this.state) {
-                    case INITIAL -> this.initial();
-                    case NUMBER, SIZE, LENGTH -> this.number();
-                    case TYPE -> this.type();
-                    case STRING -> this.string();
+                    case INITIAL -> initial();
+                    case NUMBER, SIZE, LENGTH -> number();
+                    case TYPE -> type();
+                    case STRING -> string();
                 }
             }
         }
@@ -294,7 +294,7 @@ public final class SearchParser {
             int start = this.pos;
             char c = this.in.charAt(this.pos);
             if (c == '"') {
-                this.quoted(true);
+                quoted(true);
                 return;
             }
             if (c == '(' || c == ')') {
@@ -310,7 +310,7 @@ public final class SearchParser {
             if (c == '<' || c == '>') {
                 throw new SearchSyntaxException(Reason.OPERATOR_WITHOUT_ATTRIBUTE, start, String.valueOf(c));
             }
-            int wordEnd = this.wordEnd(start);
+            int wordEnd = wordEnd(start);
             String word = this.in.substring(start, wordEnd);
             Matcher link = ED2K_FILE_LINK.matcher(this.in).region(start, this.in.length());
             if (link.lookingAt() && link.end() >= wordEnd) {
@@ -319,16 +319,16 @@ public final class SearchParser {
                 return;
             }
             switch (word) {
-                case "AND" -> this.emit(Kind.AND, word, start, wordEnd);
-                case "OR" -> this.emit(Kind.OR, word, start, wordEnd);
-                case "NOT" -> this.emit(Kind.NOT, word, start, wordEnd);
+                case "AND" -> emit(Kind.AND, word, start, wordEnd);
+                case "OR" -> emit(Kind.OR, word, start, wordEnd);
+                case "NOT" -> emit(Kind.NOT, word, start, wordEnd);
                 default -> {
                     if (c == '-') {
-                        this.emit(Kind.NOT, "-", start, start + 1);
+                        emit(Kind.NOT, "-", start, start + 1);
                     } else if (c == '@') {
-                        this.attribute(start, word);
+                        attribute(start, word);
                     } else {
-                        this.emit(Kind.STRING, word, start, wordEnd);
+                        emit(Kind.STRING, word, start, wordEnd);
                     }
                 }
             }
@@ -361,7 +361,7 @@ public final class SearchParser {
 
         private void number() {
             int start = this.pos;
-            if (this.operator()) {
+            if (operator()) {
                 return;
             }
             if (this.state == State.LENGTH) {
@@ -380,11 +380,11 @@ public final class SearchParser {
                         throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number too large");
                     }
                     this.pos = hms.end();
-                    this.numberToken(seconds, start);
+                    numberToken(seconds, start);
                     return;
                 }
             }
-            int end = this.numberEnd(start);
+            int end = numberEnd(start);
             if (end == start) {
                 throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number expected");
             }
@@ -422,16 +422,16 @@ public final class SearchParser {
             if (!(scaled < 0x1p63)) {
                 throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "number too large");
             }
-            this.numberToken((long) (scaled + 0.5), start);
+            numberToken((long) (scaled + 0.5), start);
         }
 
         // digits[.digits] or .digits, then an optional exponent; the longest form wins ("1.5").
         private int numberEnd(int start) {
-            int i = this.digits(start);
+            int i = digits(start);
             boolean before = i > start;
             boolean after = false;
             if (i < this.in.length() && this.in.charAt(i) == '.') {
-                int j = this.digits(i + 1);
+                int j = digits(i + 1);
                 after = j > i + 1;
                 if (before || after) {
                     i = j;
@@ -445,7 +445,7 @@ public final class SearchParser {
                 if (j < this.in.length() && (this.in.charAt(j) == '+' || this.in.charAt(j) == '-')) {
                     j++;
                 }
-                int k = this.digits(j);
+                int k = digits(j);
                 if (k > j) {
                     i = k;
                 }
@@ -548,15 +548,15 @@ public final class SearchParser {
                 return;
             }
             if (c == '"') {
-                this.quoted(false);
+                quoted(false);
                 this.state = State.INITIAL;
                 return;
             }
-            int end = this.wordEnd(start);
+            int end = wordEnd(start);
             if (end == start) {
                 throw new SearchSyntaxException(Reason.INVALID_ATTRIBUTE_VALUE, start, "value expected");
             }
-            this.emit(Kind.STRING, this.in.substring(start, end), start, end);
+            emit(Kind.STRING, this.in.substring(start, end), start, end);
             this.state = State.INITIAL;
         }
 

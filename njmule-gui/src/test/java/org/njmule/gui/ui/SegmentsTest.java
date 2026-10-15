@@ -37,33 +37,33 @@ class SegmentsTest {
 
     @Test
     void theFirstChoiceIsChosenAtFirst() throws Exception {
-        this.givenTheChoices("auto", "server", "kad");
-        this.thenTheChoiceIs("auto");
-        this.thenTheChosenButtonsAre("auto");
+        givenTheChoices("auto", "server", "kad");
+        thenTheChoiceIs("auto");
+        thenTheChosenButtonsAre("auto");
     }
 
     @Test
     void aClickChoosesItsChoiceAndLeavesTheOthers() throws Exception {
-        this.givenTheChoices("auto", "server", "kad");
-        this.whenClicked("kad");
-        this.thenTheChoiceIs("kad");
-        this.thenTheChosenButtonsAre("kad");
+        givenTheChoices("auto", "server", "kad");
+        whenClicked("kad");
+        thenTheChoiceIs("kad");
+        thenTheChosenButtonsAre("kad");
     }
 
     @Test
     void aClickOnTheChosenOneKeepsIt() throws Exception {
-        this.givenTheChoices("auto", "server", "kad");
-        this.whenClicked("server");
-        this.whenClicked("server");
-        this.thenTheChoiceIs("server");
-        this.thenTheChosenButtonsAre("server");
+        givenTheChoices("auto", "server", "kad");
+        whenClicked("server");
+        whenClicked("server");
+        thenTheChoiceIs("server");
+        thenTheChosenButtonsAre("server");
     }
 
     @Test
     void aChoiceSetFromCodeShowsOnItsButton() throws Exception {
-        this.givenTheChoices("auto", "server", "kad");
-        this.whenTheChoiceIsSetTo("server");
-        this.thenTheChosenButtonsAre("server");
+        givenTheChoices("auto", "server", "kad");
+        whenTheChoiceIsSetTo("server");
+        thenTheChosenButtonsAre("server");
     }
 
     private void givenTheChoices(String... choices) throws Exception {

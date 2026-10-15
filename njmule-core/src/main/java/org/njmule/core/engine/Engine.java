@@ -289,8 +289,8 @@ public final class Engine implements NjMuleEngine {
                     throw new UncheckedIOException("Cannot save " + this.preferencesFile, e);
                 }
                 this.preferences = next;
-                this.refreshSchedule();
-                this.publish(new EngineEvent.PreferencesChanged(next));
+                refreshSchedule();
+                publish(new EngineEvent.PreferencesChanged(next));
                 this.network.reconfigure(current, next);
             }
             return next;
@@ -315,14 +315,14 @@ public final class Engine implements NjMuleEngine {
             this.schedule = changed;
             // A rule edited while it holds goes on, its actions done when it began: the same rule, or one in its place.
             Schedule.Rule was = this.activeRule;
-            Schedule.Rule rule = this.currentRule();
+            Schedule.Rule rule = currentRule();
             if (was != null
                     && rule != null
                     && (rule.equals(was)
                             || changed.rules().indexOf(rule) == before.rules().indexOf(was))) {
                 this.activeRule = rule;
             }
-            this.refreshSchedule();
+            refreshSchedule();
             return changed;
         });
     }
@@ -348,14 +348,14 @@ public final class Engine implements NjMuleEngine {
 
     // Engine thread: which rule holds now, and the preferences it gives; a rule acts when it begins.
     private void refreshSchedule() {
-        Schedule.Rule rule = this.currentRule();
-        this.effective = this.scheduled(rule);
+        Schedule.Rule rule = currentRule();
+        this.effective = scheduled(rule);
         if (!Objects.equals(rule, this.activeRule)) {
             this.activeRule = rule;
             if (rule != null) {
                 this.network.scheduleCategories(rule.stopCategory(), rule.resumeCategory());
             }
-            this.userLog(
+            userLog(
                     LogLine.Level.INFO,
                     rule == null
                             ? "Scheduler: the preferences apply again"
@@ -432,8 +432,7 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> addServers(URI url) {
         Objects.requireNonNull(url, "url");
-        return this.fetch(url, ServerMet::read)
-                .thenCompose(read -> this.loop.submit(() -> this.network.addServers(read)));
+        return fetch(url, ServerMet::read).thenCompose(read -> this.loop.submit(() -> this.network.addServers(read)));
     }
 
     @Override
@@ -445,7 +444,7 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Void> setServerListAddresses(List<URI> addresses) {
         List<String> lines = addresses.stream().map(URI::toString).toList();
         return this.loop.submit(() -> {
-            AtomicFiles.writeBytes(this.addressesFile(), TextFiles.writeLines(lines));
+            AtomicFiles.writeBytes(addressesFile(), TextFiles.writeLines(lines));
             return null;
         });
     }
@@ -453,16 +452,16 @@ public final class Engine implements NjMuleEngine {
     // The server lists of addresses.dat, taken again at each start when the preferences ask for it.
     @SuppressWarnings("FutureReturnValueIgnored") // each fetch reports its own outcome in the log
     private void updateServerLists() {
-        this.serverListAddresses().thenAccept(addresses -> {
+        serverListAddresses().thenAccept(addresses -> {
             for (URI url : addresses) {
-                this.addServers(url).whenComplete((added, failure) -> {
+                addServers(url).whenComplete((added, failure) -> {
                     if (failure == null) {
-                        this.userLog(LogLine.Level.INFO, added + " new servers from " + url.getHost());
+                        userLog(LogLine.Level.INFO, added + " new servers from " + url.getHost());
                     } else {
                         Throwable cause = failure instanceof CompletionException c && c.getCause() != null
                                 ? c.getCause()
                                 : failure;
-                        this.userLog(
+                        userLog(
                                 LogLine.Level.WARNING,
                                 "Cannot update the server list from " + url.getHost() + ": " + cause.getMessage());
                     }
@@ -472,7 +471,7 @@ public final class Engine implements NjMuleEngine {
     }
 
     private List<URI> readAddresses() throws IOException {
-        Path file = this.addressesFile();
+        Path file = addressesFile();
         if (!Files.exists(file)) {
             return List.of();
         }
@@ -497,7 +496,7 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> updateIpFilter(URI url) {
         Objects.requireNonNull(url, "url");
-        return this.fetch(url, true, data -> ipRanges(data, url))
+        return fetch(url, true, data -> ipRanges(data, url))
                 .thenCompose(ranges -> this.loop.submit(() -> this.network.setIpFilter(ranges)));
     }
 
@@ -533,13 +532,13 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> addKadContacts(URI url) {
         Objects.requireNonNull(url, "url");
-        return this.fetch(url, NodesDat::read)
+        return fetch(url, NodesDat::read)
                 .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
     }
 
     /** Reads what the web gives, on a thread of its own: the engine thread never waits for the network. */
     private <T> CompletableFuture<T> fetch(URI url, Parser<T> parser) {
-        return this.fetch(url, false, parser);
+        return fetch(url, false, parser);
     }
 
     // A list of lines (an IP filter) is also checked for a cut the HTTP framing does not show.
@@ -574,13 +573,12 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Boolean> removeServer(ServerAddress server) {
         Objects.requireNonNull(server, "server");
-        return this.serverAddress(server)
-                .thenCompose(address -> this.loop.submit(() -> this.network.removeServer(address)));
+        return serverAddress(server).thenCompose(address -> this.loop.submit(() -> this.network.removeServer(address)));
     }
 
     @Override
     public CompletableFuture<Boolean> addServer(ServerAddress server) {
-        return this.onServer(server, this.network::addServer);
+        return onServer(server, this.network::addServer);
     }
 
     @Override
@@ -588,7 +586,7 @@ public final class Engine implements NjMuleEngine {
         // A name that cannot be resolved names no server of the list: the others are removed all the same.
         List<CompletableFuture<Optional<ServerList.Address>>> addresses = new ArrayList<>();
         for (ServerAddress server : servers) {
-            addresses.add(this.serverAddress(server).thenApply(Optional::of).exceptionally(failure -> {
+            addresses.add(serverAddress(server).thenApply(Optional::of).exceptionally(failure -> {
                 logger.debug("Cannot resolve {}: {}", server, failure.toString());
                 return Optional.empty();
             }));
@@ -603,17 +601,17 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Boolean> setServerPriority(ServerAddress server, ServerInfo.Priority priority) {
         Objects.requireNonNull(priority, "priority");
-        return this.onServer(server, address -> this.network.setServerPriority(address, priority));
+        return onServer(server, address -> this.network.setServerPriority(address, priority));
     }
 
     @Override
     public CompletableFuture<Boolean> setStaticServer(ServerAddress server, boolean isStatic) {
-        return this.onServer(server, address -> this.network.setStaticServer(address, isStatic));
+        return onServer(server, address -> this.network.setStaticServer(address, isStatic));
     }
 
     private CompletableFuture<Boolean> onServer(ServerAddress server, Predicate<ServerList.Address> action) {
         Objects.requireNonNull(server, "server");
-        return this.serverAddress(server).thenCompose(address -> this.loop.submit(() -> action.test(address)));
+        return serverAddress(server).thenCompose(address -> this.loop.submit(() -> action.test(address)));
     }
 
     // A server known by its host name is that one, whatever the name resolves to; any other is known by its address.
@@ -697,7 +695,7 @@ public final class Engine implements NjMuleEngine {
                 return null;
             });
         }
-        return this.serverAddress(server.get())
+        return serverAddress(server.get())
                 .thenCompose(address -> this.loop.submit(() -> {
                     this.network.connect(Optional.of(address));
                     return null;
@@ -834,7 +832,7 @@ public final class Engine implements NjMuleEngine {
             this.network.categories().forEach(c -> deleted.add(c.id()));
             this.network.setCategories(copy);
             copy.forEach(c -> deleted.remove(c.id()));
-            this.forgetCategories(deleted);
+            forgetCategories(deleted);
             return null;
         });
     }
@@ -913,7 +911,7 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> shareDirectory(Path directory) {
-        return this.shareDirectory(directory, false);
+        return shareDirectory(directory, false);
     }
 
     @Override
@@ -1170,14 +1168,14 @@ public final class Engine implements NjMuleEngine {
         if (!this.closed.compareAndSet(false, true)) {
             return;
         }
-        this.publish(new EngineEvent.Stopping());
+        publish(new EngineEvent.Stopping());
         logger.info("Stopping {}", NjMuleInfo.NAME);
         AtomicReference<CompletableFuture<Void>> unmapped =
                 new AtomicReference<>(CompletableFuture.completedFuture(null));
         CompletableFuture<Void> closing = this.loop.submit(() -> {
             unmapped.set(this.network.close());
             // After the last saves.
-            this.backUp();
+            backUp();
             return null;
         });
         try {
@@ -1240,7 +1238,7 @@ public final class Engine implements NjMuleEngine {
             case WARNING -> logger.warn("{}", message);
             case ERROR -> logger.error("{}", message);
         }
-        this.publish(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
+        publish(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
     }
 
     // Name lookups block, so they run on a virtual thread; the eD2K network is IPv4 only.

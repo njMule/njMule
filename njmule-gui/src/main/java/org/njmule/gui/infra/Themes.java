@@ -61,7 +61,7 @@ public final class Themes {
     public Themes(Family family, GuiSettings.Mode mode) {
         this.family = Objects.requireNonNull(family, "family");
         this.mode = Objects.requireNonNull(mode, "mode");
-        Platform.getPreferences().colorSchemeProperty().addListener((o, was, now) -> this.apply());
+        Platform.getPreferences().colorSchemeProperty().addListener((o, was, now) -> apply());
     }
 
     /** The theme of a family, light or dark; Dracula has only a dark one. */
@@ -82,14 +82,14 @@ public final class Themes {
         if (!scene.getStylesheets().contains(css)) {
             scene.getStylesheets().add(css);
         }
-        scene.rootProperty().addListener((o, was, now) -> this.apply());
-        this.apply();
+        scene.rootProperty().addListener((o, was, now) -> apply());
+        apply();
     }
 
     public void set(Family family, GuiSettings.Mode mode) {
         this.family = Objects.requireNonNull(family, "family");
         this.mode = Objects.requireNonNull(mode, "mode");
-        this.apply();
+        apply();
     }
 
     public Family family() {

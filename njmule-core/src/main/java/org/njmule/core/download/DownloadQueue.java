@@ -261,7 +261,7 @@ public final class DownloadQueue implements AutoCloseable {
 
     /** Adds a download; an existing one for the same file gets the link's sources. */
     public Download add(Ed2kLink.FileLink link) throws IOException {
-        return this.add(link, Category.NONE, DownloadPriority.AUTO);
+        return add(link, Category.NONE, DownloadPriority.AUTO);
     }
 
     /**
@@ -281,7 +281,7 @@ public final class DownloadQueue implements AutoCloseable {
             return existing;
         }
         PartFile file = PartFile.create(
-                this.nextNumber(),
+                nextNumber(),
                 this.tempDir,
                 PathSanitizer.fileName(link.name()),
                 link.size(),
@@ -290,7 +290,7 @@ public final class DownloadQueue implements AutoCloseable {
                 link.partHashes());
         file.setCategory(category);
         file.setPriority(priority);
-        file.setAdded(this.nextAdded());
+        file.setAdded(nextAdded());
         // Written at once, so that a download that cannot be kept is not added.
         file.save();
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
@@ -310,7 +310,7 @@ public final class DownloadQueue implements AutoCloseable {
             throw new FileAlreadyExistsException(
                     contents.name().orElse(contents.fileHash().toString()), null, "already downloading");
         }
-        int number = this.nextNumber();
+        int number = nextNumber();
         Path ownData = this.tempDir.resolve(PartFile.fileName(number) + PartFile.DATA_SUFFIX);
         Path ownMet = this.tempDir.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX);
         Files.move(data, ownData);
@@ -324,12 +324,12 @@ public final class DownloadQueue implements AutoCloseable {
             throw e;
         }
         file.rename(PathSanitizer.fileName(file.name()));
-        file.setAdded(this.nextAdded());
+        file.setAdded(nextAdded());
         Download download = new Download(file, PartFileStorage.open(file.dataFile()));
         download.dirty = true;
         this.downloads.put(file.hash(), download);
         this.listener.added(download);
-        this.hashSetKnown(download);
+        hashSetKnown(download);
         return download;
     }
 
@@ -362,7 +362,7 @@ public final class DownloadQueue implements AutoCloseable {
 
     /** Data for {@code download} from a source; it is written, then the parts it ends are checked. */
     public void received(Download download, long start, byte[] data) {
-        this.received(download, start, data, 0);
+        received(download, start, data, 0);
     }
 
     /**
@@ -383,7 +383,7 @@ public final class DownloadQueue implements AutoCloseable {
                     : Arrays.copyOfRange(data, (int) (from - start), (int) (to - start));
             this.loop.whenDone(
                     download.storage.write(from, slice),
-                    (ok, failure) -> this.written(download, from, to, sourceIp, failure));
+                    (ok, failure) -> written(download, from, to, sourceIp, failure));
         }
     }
 
@@ -397,13 +397,13 @@ public final class DownloadQueue implements AutoCloseable {
             if (trusted.get(part)) {
                 download.verified.set(part);
             } else {
-                this.verify(download, part);
+                verify(download, part);
             }
         }
         if (download.file.isComplete()
                 && download.verified.cardinality() == download.file.partCount()
                 && !download.finishing) {
-            this.finish(download);
+            finish(download);
         }
     }
 
@@ -438,7 +438,7 @@ public final class DownloadQueue implements AutoCloseable {
             download.verified.clear();
             download.checking.clear();
             for (int part = 0; part < download.file.partCount(); part++) {
-                this.verify(download, part);
+                verify(download, part);
             }
         }
         return true;
@@ -494,7 +494,7 @@ public final class DownloadQueue implements AutoCloseable {
         for (Download download : this.downloads.values()) {
             download.dirty = true;
         }
-        this.saveChanged();
+        saveChanged();
         List<CompletableFuture<Void>> closing = new ArrayList<>(this.cancelled);
         for (Download download : this.downloads.values()) {
             download.storage.close();
@@ -512,17 +512,17 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     private void written(Download download, long start, long end, int sourceIp, Throwable failure) {
-        if (!this.isQueued(download)) {
+        if (!isQueued(download)) {
             return;
         }
         if (failure != null) {
             // The session has let the block go: the range is asked for again once the download goes on.
             download.file.release(start, end);
             download.dirty = true;
-            if (this.isOutOfSpace()) {
+            if (isOutOfSpace()) {
                 logger.warn("The temp disk is full: downloads wait for room");
                 this.diskFull = true;
-                this.checkSpace();
+                checkSpace();
                 return;
             }
             download.file.setStatus(PartFile.Status.ERROR);
@@ -539,12 +539,12 @@ public final class DownloadQueue implements AutoCloseable {
         for (int part = first; part <= last; part++) {
             if (download.file.isComplete(part)) {
                 if (!download.verified.get(part)) {
-                    this.verify(download, part);
+                    verify(download, part);
                 }
             } else if (download.corrupted.get(part)) {
                 Range<Long> range = PartFile.partRange(download.file.size(), part);
                 long bytes = Math.min(end, range.upperEndpoint()) - Math.max(start, range.lowerEndpoint());
-                this.mayBeWholeAgain(download, part, bytes);
+                mayBeWholeAgain(download, part, bytes);
             }
         }
         this.listener.progress(download);
@@ -562,12 +562,12 @@ public final class DownloadQueue implements AutoCloseable {
         download.ichRunning.set(part);
         this.loop.whenDone(
                 download.storage.hashPart(download.file.size(), part),
-                (actual, failure) -> this.ichChecked(download, part, expected.get(), actual, failure));
+                (actual, failure) -> ichChecked(download, part, expected.get(), actual, failure));
     }
 
     private void ichChecked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
         download.ichRunning.clear(part);
-        if (!this.isQueued(download)
+        if (!isQueued(download)
                 || failure != null
                 || !expected.equals(actual)
                 || !download.corrupted.get(part)
@@ -583,7 +583,7 @@ public final class DownloadQueue implements AutoCloseable {
         download.file.written(range.lowerEndpoint(), range.upperEndpoint());
         download.dirty = true;
         // Checked once more after any write queued meanwhile: no other can come, the part being whole.
-        this.verify(download, part);
+        verify(download, part);
         this.listener.progress(download);
     }
 
@@ -602,12 +602,12 @@ public final class DownloadQueue implements AutoCloseable {
         download.checking.set(part);
         this.loop.whenDone(
                 download.storage.hashPart(download.file.size(), part),
-                (actual, failure) -> this.checked(download, part, expected.get(), actual, failure));
+                (actual, failure) -> checked(download, part, expected.get(), actual, failure));
     }
 
     private void checked(Download download, int part, Hash16 expected, Hash16 actual, Throwable failure) {
         download.checking.clear(part);
-        if (!this.isQueued(download)) {
+        if (!isQueued(download)) {
             return;
         }
         if (failure != null || !expected.equals(actual)) {
@@ -618,7 +618,7 @@ public final class DownloadQueue implements AutoCloseable {
             download.dirty = true;
             if (failure == null) {
                 Range<Long> range = PartFile.partRange(download.file.size(), part);
-                this.blame(download, download.blackBox.failed(range.lowerEndpoint(), range.upperEndpoint()));
+                blame(download, download.blackBox.failed(range.lowerEndpoint(), range.upperEndpoint()));
             }
             // Before progress, which asks for blocks: a part that waits for its recovery data is not among them.
             this.listener.corrupt(download, part);
@@ -635,7 +635,7 @@ public final class DownloadQueue implements AutoCloseable {
         if (download.file.isComplete()
                 && download.verified.cardinality() == download.file.partCount()
                 && !download.finishing) {
-            this.finish(download);
+            finish(download);
         }
     }
 
@@ -644,17 +644,17 @@ public final class DownloadQueue implements AutoCloseable {
      * proved against the trusted master hash; the others are downloaded again.
      */
     public void recovered(Download download, int part, List<Hash20> blocks) {
-        if (!this.isQueued(download) || download.verified.get(part)) {
+        if (!isQueued(download) || download.verified.get(part)) {
             return;
         }
         this.loop.whenDone(
                 download.storage.hashBlocks(download.file.size(), part),
-                (ours, failure) -> this.takeBack(download, part, blocks, ours, failure));
+                (ours, failure) -> takeBack(download, part, blocks, ours, failure));
     }
 
     private void takeBack(Download download, int part, List<Hash20> blocks, List<Hash20> ours, Throwable failure) {
         download.file.unhold(part);
-        if (!this.isQueued(download)) {
+        if (!isQueued(download)) {
             return;
         }
         if (failure != null || ours.size() != blocks.size()) {
@@ -678,11 +678,11 @@ public final class DownloadQueue implements AutoCloseable {
                 bad.add(Range.closedOpen(from, to));
             }
         }
-        this.blame(download, download.blackBox.recovered(good, bad));
+        blame(download, download.blackBox.recovered(good, bad));
         download.dirty = true;
         logger.info("AICH saved {} of {} bytes of part {} of {}", saved, end - start, part, download.file.name());
         if (download.file.isComplete(part)) {
-            this.verify(download, part);
+            verify(download, part);
         }
         this.listener.progress(download);
     }
@@ -697,13 +697,13 @@ public final class DownloadQueue implements AutoCloseable {
         download.finishing = true;
         this.loop.whenDone(
                 download.storage.finish(this.incomingDir.apply(download.file), download.file.name()),
-                (moved, failure) -> this.finished(download, moved, failure));
+                (moved, failure) -> finished(download, moved, failure));
     }
 
     private void finished(Download download, Path moved, Throwable failure) {
         // Moved or not, the data file is closed: a retry opens it again.
         download.storage.close();
-        if (!this.isQueued(download)) {
+        if (!isQueued(download)) {
             return;
         }
         if (failure != null) {
@@ -713,7 +713,7 @@ public final class DownloadQueue implements AutoCloseable {
                         "{} is held by another program; it is moved again in {} s",
                         download.file.name(),
                         delay.toSeconds());
-                this.loop.schedule("move a finished file again", delay, () -> this.finishAgain(download));
+                this.loop.schedule("move a finished file again", delay, () -> finishAgain(download));
                 return;
             }
             download.finishRetries = 0;
@@ -754,7 +754,7 @@ public final class DownloadQueue implements AutoCloseable {
     }
 
     private void finishAgain(Download download) {
-        if (!this.isQueued(download)) {
+        if (!isQueued(download)) {
             return;
         }
         try {
@@ -766,7 +766,7 @@ public final class DownloadQueue implements AutoCloseable {
             this.listener.failed(download, "cannot open the data: " + e.getMessage());
             return;
         }
-        this.finish(download);
+        finish(download);
     }
 
     // Downloads wait while the temp disk is short of space and go on by themselves once there is room again.
@@ -806,7 +806,7 @@ public final class DownloadQueue implements AutoCloseable {
         for (Download download : this.downloads.values()) {
             // One being moved is complete and saved: its part.met goes once it is moved.
             if (download.dirty && !download.finishing) {
-                this.save(download);
+                save(download);
             }
         }
     }
@@ -830,7 +830,7 @@ public final class DownloadQueue implements AutoCloseable {
         this.loop.whenDone(
                 download.storage.saveMet(download.file.metFile(), contents, () -> download.saves.get() == generation),
                 (ok, failure) -> {
-                    if (failure != null && download.saves.get() == generation && this.isQueued(download)) {
+                    if (failure != null && download.saves.get() == generation && isQueued(download)) {
                         logger.warn("Cannot save {}: {}", download.file.metFile(), failure.toString());
                         download.dirty = true;
                     }
@@ -851,7 +851,7 @@ public final class DownloadQueue implements AutoCloseable {
             used.add(download.file.number());
         }
         int number = 1;
-        while (used.contains(number) || this.anyFileOf(number)) {
+        while (used.contains(number) || anyFileOf(number)) {
             number++;
         }
         return number;

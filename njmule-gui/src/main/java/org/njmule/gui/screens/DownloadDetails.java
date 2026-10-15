@@ -80,7 +80,7 @@ final class DownloadDetails {
         actions.setAlignment(Pos.CENTER_LEFT);
         Label parts = new Label(gui.t("IDS_FD_PARTS"));
         parts.getStyleClass().add("details-heading");
-        this.shown = new VBox(10, this.name, parts, this.bar, this.legend(), this.facts, actions);
+        this.shown = new VBox(10, this.name, parts, this.bar, legend(), this.facts, actions);
         this.shown.getStyleClass().add("details-content");
         this.none = new Label(gui.t("nj.details.none"));
         this.none.setWrapText(true);
@@ -90,7 +90,7 @@ final class DownloadDetails {
         this.view = new StackPane(scroll, this.none);
         this.view.getStyleClass().add("download-details");
         this.view.setMinWidth(240);
-        this.show(Optional.empty());
+        show(Optional.empty());
     }
 
     Node view() {
@@ -116,18 +116,18 @@ final class DownloadDetails {
         this.bar.setAccessibleText(percent + ", " + have + "/" + total);
         this.facts.getChildren().clear();
         int row = 0;
-        row = this.fact(row, "IDS_FD_SIZE", f.size(d.size()));
-        row = this.fact(row, "IDS_FD_COMPSIZE", f.size(d.completed()) + " (" + percent + ")");
-        row = this.fact(row, "IDS_FD_PARTS", have + " / " + total);
-        row = this.fact(row, "IDS_FD_DATARATE", f.rate(d.bytesPerSecond()));
-        row = this.fact(row, "IDS_DL_SOURCES", String.valueOf(d.sources()));
-        row = this.fact(row, "IDS_TRANSFERRING", String.valueOf(d.transferring()));
-        row = this.fact(row, "nj.transfers.status", this.words.state().apply(d));
-        row = this.fact(row, "IDS_PRIORITY", this.words.priority().apply(d));
-        row = this.fact(row, "IDS_CAT", this.words.category().apply(d));
-        row = this.fact(row, "IDS_DL_REMAINS", this.words.remaining().apply(d));
+        row = fact(row, "IDS_FD_SIZE", f.size(d.size()));
+        row = fact(row, "IDS_FD_COMPSIZE", f.size(d.completed()) + " (" + percent + ")");
+        row = fact(row, "IDS_FD_PARTS", have + " / " + total);
+        row = fact(row, "IDS_FD_DATARATE", f.rate(d.bytesPerSecond()));
+        row = fact(row, "IDS_DL_SOURCES", String.valueOf(d.sources()));
+        row = fact(row, "IDS_TRANSFERRING", String.valueOf(d.transferring()));
+        row = fact(row, "nj.transfers.status", this.words.state().apply(d));
+        row = fact(row, "IDS_PRIORITY", this.words.priority().apply(d));
+        row = fact(row, "IDS_CAT", this.words.category().apply(d));
+        row = fact(row, "IDS_DL_REMAINS", this.words.remaining().apply(d));
         this.hash.setText(d.hash().toString());
-        Label hashName = this.label("IDS_FD_HASH");
+        Label hashName = label("IDS_FD_HASH");
         this.facts.add(hashName, 0, row);
         this.facts.add(this.hash, 1, row);
     }
@@ -136,7 +136,7 @@ final class DownloadDetails {
         Label shownValue = new Label(value);
         shownValue.setWrapText(true);
         shownValue.getStyleClass().add("details-value");
-        this.facts.add(this.label(key), 0, row);
+        this.facts.add(label(key), 0, row);
         this.facts.add(shownValue, 1, row);
         return row + 1;
     }

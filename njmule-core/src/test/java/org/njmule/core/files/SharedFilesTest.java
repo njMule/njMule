@@ -86,26 +86,26 @@ class SharedFilesTest {
         Files.createDirectories(incoming.resolve("sub"));
         Files.write(incoming.resolve("sub").resolve("c.bin"), new byte[] {1});
 
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.addDirectory(extra);
             return null;
         });
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared b.bin");
-        assertThat(this.onLoop(
+        assertThat(onLoop(
                         () -> shares.get(Ed2k.md4(a, 0, a.length)).orElseThrow().size()))
                 .isEqualTo(a.length);
-        assertThat(this.onLoop(shares::all)).hasSize(2);
-        this.onLoop(() -> {
+        assertThat(onLoop(shares::all)).hasSize(2);
+        onLoop(() -> {
             shares.close();
             return null;
         });
         assertThat(config.resolve(SharedFiles.KNOWN_MET)).exists();
 
         // Known files are shared again at once, without hashing.
-        SharedFiles again = this.open(config, incoming);
-        assertThat(this.onLoop(() -> {
+        SharedFiles again = open(config, incoming);
+        assertThat(onLoop(() -> {
                     again.scan();
                     return again.all().size();
                 }))
@@ -113,13 +113,13 @@ class SharedFilesTest {
 
         Files.delete(extra.resolve("b.bin"));
         this.events.clear();
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.scan();
             return null;
         });
         assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("unshared b.bin");
-        assertThat(this.onLoop(again::all)).hasSize(1);
-        this.onLoop(() -> {
+        assertThat(onLoop(again::all)).hasSize(1);
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -138,33 +138,31 @@ class SharedFilesTest {
         Files.write(incoming.resolve("001.part.met.bak"), bytes(300, 7));
         Files.write(incoming.resolve("real.bin"), bytes(300, 8));
 
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared real.bin");
         for (Path dir : List.of(config, config.resolve("sub"), temp, emule, Path.of(System.getProperty("user.home")))) {
-            assertThat(this.onLoop(() -> shares.isPrivate(dir)))
-                    .as(dir.toString())
-                    .isTrue();
-            assertThatThrownBy(() -> this.onLoop(() -> {
+            assertThat(onLoop(() -> shares.isPrivate(dir))).as(dir.toString()).isTrue();
+            assertThatThrownBy(() -> onLoop(() -> {
                         shares.addDirectory(dir);
                         return null;
                     }))
                     .hasRootCauseInstanceOf(IllegalArgumentException.class);
         }
-        assertThat(this.onLoop(() -> shares.isPrivate(incoming))).isFalse();
+        assertThat(onLoop(() -> shares.isPrivate(incoming))).isFalse();
         assertThat(this.events.poll(2, TimeUnit.SECONDS)).isNull();
-        assertThat(this.onLoop(shares::all)).hasSize(1);
-        assertThat(this.onLoop(shares::directories)).isEmpty();
-        this.onLoop(() -> {
+        assertThat(onLoop(shares::all)).hasSize(1);
+        assertThat(onLoop(shares::directories)).isEmpty();
+        onLoop(() -> {
             shares.close();
             return null;
         });
 
         // A private directory already in the list, from an older version, stays unshared.
         Files.write(config.resolve(SharedFiles.SHARED_DIRS), TextFiles.writeLines(List.of(emule.toString())));
-        SharedFiles again = this.open(config, incoming);
+        SharedFiles again = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared real.bin");
         assertThat(this.events.poll(2, TimeUnit.SECONDS)).isNull();
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -178,24 +176,24 @@ class SharedFilesTest {
                 Files.createDirectories(this.dir.resolve("tree").resolve("sub").resolve("deeper"));
         Files.write(this.dir.resolve("tree").resolve("sub").resolve("c.bin"), bytes(3000, 4));
         Files.write(tree.resolve("d.bin"), bytes(4000, 5));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.addDirectory(this.dir.resolve("tree"), true);
             return null;
         });
         assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
                 .containsExactlyInAnyOrder("shared c.bin", "shared d.bin");
-        assertThat(this.onLoop(shares::trees))
+        assertThat(onLoop(shares::trees))
                 .containsExactly(this.dir.resolve("tree").toAbsolutePath());
-        assertThat(this.onLoop(shares::directories)).isEmpty();
+        assertThat(onLoop(shares::directories)).isEmpty();
 
         // A directory made later is watched and shared without a rescan.
         Path later = Files.createDirectories(this.dir.resolve("tree").resolve("later"));
         Files.write(later.resolve("e.bin"), bytes(5000, 6));
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared e.bin");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.removeDirectory(this.dir.resolve("tree"));
             return null;
         });
@@ -204,8 +202,8 @@ class SharedFilesTest {
                         this.events.poll(30, TimeUnit.SECONDS),
                         this.events.poll(30, TimeUnit.SECONDS)))
                 .containsExactlyInAnyOrder("unshared c.bin", "unshared d.bin", "unshared e.bin");
-        assertThat(this.onLoop(shares::trees)).isEmpty();
-        this.onLoop(() -> {
+        assertThat(onLoop(shares::trees)).isEmpty();
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -219,14 +217,14 @@ class SharedFilesTest {
         Files.write(incoming.resolve("a.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
 
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
-        assertThat(this.onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.AUTO);
-        assertThat(this.onLoop(() -> shares.setPriority(hash, UploadPriority.RELEASE)))
+        assertThat(onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.AUTO);
+        assertThat(onLoop(() -> shares.setPriority(hash, UploadPriority.RELEASE)))
                 .isTrue();
-        assertThat(this.onLoop(() -> shares.setPriority(Hash16.parseHex("00".repeat(16)), UploadPriority.LOW)))
+        assertThat(onLoop(() -> shares.setPriority(Hash16.parseHex("00".repeat(16)), UploadPriority.LOW)))
                 .isFalse();
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -236,13 +234,13 @@ class SharedFilesTest {
                 .satisfies(record -> assertThat(record.uploadPriority())
                         .as("the value other clients write")
                         .hasValue(3));
-        SharedFiles again = this.open(config, incoming);
-        assertThat(this.onLoop(() -> {
+        SharedFiles again = open(config, incoming);
+        assertThat(onLoop(() -> {
                     again.scan();
                     return again.priority(hash);
                 }))
                 .isEqualTo(UploadPriority.RELEASE);
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -255,11 +253,11 @@ class SharedFilesTest {
         byte[] a = bytes(20_000, 6);
         Files.write(incoming.resolve("a.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
-        this.onLoop(() -> shares.setPriority(hash, UploadPriority.HIGH));
+        onLoop(() -> shares.setPriority(hash, UploadPriority.HIGH));
 
-        assertThat(this.onLoop(() -> shares.rename(hash, "b?.bin")))
+        assertThat(onLoop(() -> shares.rename(hash, "b?.bin")))
                 .map(SharedFiles.SharedFile::name)
                 .as("a name the file system takes")
                 .contains("b_.bin");
@@ -267,14 +265,14 @@ class SharedFilesTest {
         assertThat(incoming.resolve("a.bin")).doesNotExist();
         assertThat(List.of(this.events.poll(10, TimeUnit.SECONDS), this.events.poll(10, TimeUnit.SECONDS)))
                 .containsExactly("unshared a.bin", "shared b_.bin");
-        assertThat(this.onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.HIGH);
+        assertThat(onLoop(() -> shares.priority(hash))).isEqualTo(UploadPriority.HIGH);
 
         Files.write(incoming.resolve("c.bin"), new byte[] {1});
-        assertThatThrownBy(() -> this.onLoop(() -> shares.rename(hash, "c.bin")))
+        assertThatThrownBy(() -> onLoop(() -> shares.rename(hash, "c.bin")))
                 .hasRootCauseInstanceOf(FileAlreadyExistsException.class);
-        assertThat(this.onLoop(() -> shares.rename(Hash16.parseHex("00".repeat(16)), "d.bin")))
+        assertThat(onLoop(() -> shares.rename(Hash16.parseHex("00".repeat(16)), "d.bin")))
                 .isEmpty();
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -287,14 +285,14 @@ class SharedFilesTest {
         byte[] a = bytes(500_000, 7);
         Files.write(incoming.resolve("a.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
 
-        AichTree first = this.onLoop(() -> shares.aichTree(hash)).orElseThrow();
+        AichTree first = onLoop(() -> shares.aichTree(hash)).orElseThrow();
 
-        assertThat(this.onLoop(() -> shares.aichTree(hash))).containsSame(first);
+        assertThat(onLoop(() -> shares.aichTree(hash))).containsSame(first);
         assertThat(first.size()).isEqualTo(a.length);
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -307,19 +305,19 @@ class SharedFilesTest {
         for (int i = 0; i < 6; i++) {
             Files.write(incoming.resolve("f" + i + ".bin"), bytes(3000, 20 + i));
         }
-        SharedFiles first = this.open(config, incoming);
+        SharedFiles first = open(config, incoming);
         List<String> order = new ArrayList<>();
         for (int i = 0; i < 6; i++) {
             order.add(this.events.poll(30, TimeUnit.SECONDS).substring("shared ".length()));
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             first.close();
             return null;
         });
 
         // The second file goes while the directory is read: it is listed, but gone.
         List<String> seen = new CopyOnWriteArrayList<>();
-        SharedFiles again = this.onLoop(() -> SharedFiles.open(
+        SharedFiles again = onLoop(() -> SharedFiles.open(
                 this.loop, config, () -> List.of(incoming), () -> List.of(), new SharedFiles.Listener() {
                     @Override
                     public void shared(SharedFiles.SharedFile file) {
@@ -339,11 +337,11 @@ class SharedFilesTest {
                     }
                 }));
 
-        assertThat(this.onLoop(() ->
+        assertThat(onLoop(() ->
                         again.all().stream().map(SharedFiles.SharedFile::name).toList()))
                 .containsExactlyInAnyOrderElementsOf(
                         order.stream().filter(n -> !n.equals(order.get(1))).toList());
-        this.onLoop(() -> {
+        onLoop(() -> {
             again.close();
             return null;
         });
@@ -357,29 +355,29 @@ class SharedFilesTest {
         Files.write(incoming.resolve("one.bin"), a);
         Files.write(incoming.resolve("two.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         String shared = this.events.poll(30, TimeUnit.SECONDS);
         assertThat(shared).startsWith("shared ");
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> shares.get(hash).orElseThrow().name()).equals(shared.substring(7))
+        while (onLoop(() -> shares.get(hash).orElseThrow().name()).equals(shared.substring(7))
                 && System.nanoTime() < deadline) {
             // Until the second copy is hashed and tracked.
             Thread.sleep(50);
         }
-        Path tracked = this.onLoop(() -> shares.get(hash).orElseThrow().path());
+        Path tracked = onLoop(() -> shares.get(hash).orElseThrow().path());
 
         Files.delete(tracked);
         this.events.clear();
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.scan();
             return null;
         });
 
-        assertThat(this.onLoop(() -> shares.get(hash)))
+        assertThat(onLoop(() -> shares.get(hash)))
                 .as("the other copy")
                 .hasValueSatisfying(f -> assertThat(f.path()).isNotEqualTo(tracked));
         assertThat(this.events.poll(1, TimeUnit.SECONDS)).isNull();
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -391,21 +389,21 @@ class SharedFilesTest {
         Path config = Files.createDirectories(this.dir.resolve("config"));
         Path file = incoming.resolve("changing.bin");
         Files.write(file, bytes(4000, 31));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared changing.bin");
-        Hash16 before = this.onLoop(() -> shares.all().getFirst().hash());
+        Hash16 before = onLoop(() -> shares.all().getFirst().hash());
 
         Files.write(file, bytes(5000, 32));
         Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.scan();
             return null;
         });
 
         assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
                 .containsExactly("unshared changing.bin", "shared changing.bin");
-        assertThat(this.onLoop(() -> shares.get(before))).isEmpty();
-        this.onLoop(() -> {
+        assertThat(onLoop(() -> shares.get(before))).isEmpty();
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -415,32 +413,32 @@ class SharedFilesTest {
     void aFileRenamedWhileHashedAgainStaysSharedUnderItsNewName() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         byte[] data = bytes(600_000, 33);
         Hash16 hash = Ed2k.md4(data, 0, data.length);
         Path done = incoming.resolve("done.bin");
         Files.write(done, data);
         PartFile download = PartFile.create(1, this.dir, "done.bin", data.length, hash, Optional.empty(), List.of());
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             // Hashed again for its AICH tree, and renamed meanwhile.
             shares.finished(done, download);
             return shares.rename(hash, "renamed.bin");
         });
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+        while (onLoop(() -> shares.aichTree(hash)).isEmpty()) {
             assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
             Thread.sleep(50);
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.scan();
             return null;
         });
 
-        assertThat(this.onLoop(() -> shares.get(hash)))
+        assertThat(onLoop(() -> shares.get(hash)))
                 .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(incoming.resolve("renamed.bin")));
-        assertThat(this.onLoop(() -> shares.aichTree(hash))).isPresent();
-        this.onLoop(() -> {
+        assertThat(onLoop(() -> shares.aichTree(hash))).isPresent();
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -450,7 +448,7 @@ class SharedFilesTest {
     void aFileRenamedBeforeItIsHashedAgainGetsItsAichTreeUnderItsNewName() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         // A large file hashed first keeps the hashing thread busy until the rename is done.
         Path large = Files.write(
                 Files.createDirectories(this.dir.resolve("other")).resolve("large.bin"), bytes(32_000_000, 36));
@@ -468,23 +466,23 @@ class SharedFilesTest {
         Files.write(done, data);
         PartFile download = PartFile.create(1, this.dir, "done.bin", data.length, hash, Optional.empty(), List.of());
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.finished(large, busy);
             shares.finished(done, download);
             return shares.rename(hash, "renamed.bin");
         });
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+        while (onLoop(() -> shares.aichTree(hash)).isEmpty()) {
             assertThat(System.nanoTime()).as("hashed under its new name").isLessThan(deadline);
             Thread.sleep(50);
         }
 
-        assertThat(this.onLoop(() -> shares.get(hash)))
+        assertThat(onLoop(() -> shares.get(hash)))
                 .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(incoming.resolve("renamed.bin")));
-        assertThat(this.onLoop(() -> shares.get(Hash16.parseHex("77".repeat(16)))))
+        assertThat(onLoop(() -> shares.get(Hash16.parseHex("77".repeat(16)))))
                 .as("a file that is not what was downloaded keeps no tree")
                 .hasValueSatisfying(f -> assertThat(f.aichHash()).isEmpty());
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -492,15 +490,15 @@ class SharedFilesTest {
 
     @Test
     void aDownloadFinishedWhileAScanWaitsToReadItsFileGetsItsAichTreeOnceRenamed() throws Exception {
-        this.givenSharesOfAnIncomingDirectory();
-        this.givenTheHashingThreadBusyWithALargeFile();
-        this.whenADownloadFinishesAfterAScanQueuedItsFileAndIsRenamed("renamed.bin");
-        this.thenTheFinishedFileGetsItsAichTreeUnder("renamed.bin");
+        givenSharesOfAnIncomingDirectory();
+        givenTheHashingThreadBusyWithALargeFile();
+        whenADownloadFinishesAfterAScanQueuedItsFileAndIsRenamed("renamed.bin");
+        thenTheFinishedFileGetsItsAichTreeUnder("renamed.bin");
     }
 
     private void givenSharesOfAnIncomingDirectory() throws Exception {
         this.stepIncoming = Files.createDirectories(this.dir.resolve("incoming"));
-        this.stepShares = this.open(Files.createDirectories(this.dir.resolve("config")), this.stepIncoming);
+        this.stepShares = open(Files.createDirectories(this.dir.resolve("config")), this.stepIncoming);
     }
 
     private void givenTheHashingThreadBusyWithALargeFile() throws Exception {
@@ -514,7 +512,7 @@ class SharedFilesTest {
                 Hash16.parseHex("66".repeat(16)),
                 Optional.empty(),
                 List.of());
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.stepShares.finished(large, busy);
             return null;
         });
@@ -527,7 +525,7 @@ class SharedFilesTest {
                 Files.createDirectories(this.dir.resolve("completed")).resolve("done.bin"), data);
         PartFile download =
                 PartFile.create(1, this.dir, "done.bin", data.length, this.stepFinished, Optional.empty(), List.of());
-        this.onLoop(() -> {
+        onLoop(() -> {
             Path done = Files.move(completed, this.stepIncoming.resolve("done.bin"));
             this.stepShares.scan();
             this.stepShares.finished(done, download);
@@ -537,13 +535,13 @@ class SharedFilesTest {
 
     private void thenTheFinishedFileGetsItsAichTreeUnder(String name) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> this.stepShares.aichTree(this.stepFinished)).isEmpty()) {
+        while (onLoop(() -> this.stepShares.aichTree(this.stepFinished)).isEmpty()) {
             assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
             Thread.sleep(50);
         }
-        assertThat(this.onLoop(() -> this.stepShares.get(this.stepFinished)))
+        assertThat(onLoop(() -> this.stepShares.get(this.stepFinished)))
                 .hasValueSatisfying(f -> assertThat(f.path()).isEqualTo(this.stepIncoming.resolve(name)));
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.stepShares.close();
             return null;
         });
@@ -568,12 +566,12 @@ class SharedFilesTest {
             Files.setAttribute(hidden, "dos:hidden", true);
         }
 
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
 
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
-        assertThat(this.onLoop(shares::directories)).isEmpty();
-        assertThat(this.onLoop(shares::trees)).containsExactly(this.dir.resolve("missing"));
-        this.onLoop(() -> {
+        assertThat(onLoop(shares::directories)).isEmpty();
+        assertThat(onLoop(shares::trees)).containsExactly(this.dir.resolve("missing"));
+        onLoop(() -> {
             shares.close();
             shares.scan();
             return null;
@@ -611,34 +609,34 @@ class SharedFilesTest {
                 new Known2Met.Entry(treeA, List.of(sha)),
                 new Known2Met.Entry(treeB, List.of(sha, sha, sha)),
                 new Known2Met.Entry(Hash20.parseBase32("C".repeat(32)), List.of(sha)));
-        SharedFiles shares = this.open(config, Files.createDirectories(this.dir.resolve("empty")));
+        SharedFiles shares = open(config, Files.createDirectories(this.dir.resolve("empty")));
 
-        int added = this.onLoop(() -> shares.addKnown(records, trees));
+        int added = onLoop(() -> shares.addKnown(records, trees));
         assertThat(added).isEqualTo(2);
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.addDirectory(incoming);
             return null;
         });
 
         Hash16 hashA = Ed2k.md4(a, 0, a.length);
         Hash16 hashB = Ed2k.md4(b, 0, b.length);
-        assertThat(this.onLoop(() -> shares.get(hashA)))
+        assertThat(onLoop(() -> shares.get(hashA)))
                 .as("shared without hashing")
                 .hasValueSatisfying(f -> assertThat(f.aichHash()).contains(treeA));
-        assertThat(this.onLoop(() -> shares.aichTree(hashA)))
+        assertThat(onLoop(() -> shares.aichTree(hashA)))
                 .as("one block hash for three blocks")
                 .isEmpty();
-        assertThat(this.onLoop(() -> shares.aichTree(hashB)))
+        assertThat(onLoop(() -> shares.aichTree(hashB)))
                 .as("block hashes of another tree")
                 .isEmpty();
-        assertThat(this.onLoop(() -> shares.rename(hashA, "a.bin")))
+        assertThat(onLoop(() -> shares.rename(hashA, "a.bin")))
                 .as("the same name")
                 .isPresent();
-        assertThat(this.onLoop(() -> shares.rename(hashA, "kept.bin")))
+        assertThat(onLoop(() -> shares.rename(hashA, "kept.bin")))
                 .hasValueSatisfying(f -> assertThat(f.name()).isEqualTo("kept.bin"));
-        assertThat(this.onLoop(() -> shares.rename(Hash16.parseHex("24".repeat(16)), "x.bin")))
+        assertThat(onLoop(() -> shares.rename(Hash16.parseHex("24".repeat(16)), "x.bin")))
                 .isEmpty();
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -660,19 +658,19 @@ class SharedFilesTest {
         byte[] a = bytes(2000, 42);
         Files.write(incoming.resolve("a.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared a.bin");
 
         for (UploadPriority priority : UploadPriority.values()) {
-            assertThat(this.onLoop(() -> {
+            assertThat(onLoop(() -> {
                         shares.setPriority(hash, priority);
                         return shares.priority(hash);
                     }))
                     .isEqualTo(priority);
         }
-        assertThat(this.onLoop(() -> shares.priority(Hash16.parseHex("25".repeat(16)))))
+        assertThat(onLoop(() -> shares.priority(Hash16.parseHex("25".repeat(16)))))
                 .isEqualTo(UploadPriority.AUTO);
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -682,7 +680,7 @@ class SharedFilesTest {
     void aFinishedFileIsHashedForItsOwnTreeAndOneThatCannotBeHashedIsLeftOut() throws Exception {
         Path incoming = Files.createDirectories(this.dir.resolve("incoming"));
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         Path other = Files.createDirectories(this.dir.resolve("other"));
         Path large = Files.write(other.resolve("large.bin"), bytes(32_000_000, 43));
         PartFile busy = PartFile.create(
@@ -701,7 +699,7 @@ class SharedFilesTest {
         Path extra = Files.createDirectories(this.dir.resolve("extra"));
         Path gone = Files.write(extra.resolve("gone.bin"), bytes(3000, 45));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.finished(large, busy);
             shares.finished(this.dir.resolve("never.bin"), download);
             shares.finished(done, download);
@@ -712,17 +710,17 @@ class SharedFilesTest {
         });
 
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> shares.aichTree(hash)).isEmpty()) {
+        while (onLoop(() -> shares.aichTree(hash)).isEmpty()) {
             assertThat(System.nanoTime()).as("hashed").isLessThan(deadline);
             Thread.sleep(50);
         }
-        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().aichHash()))
+        assertThat(onLoop(() -> shares.get(hash).orElseThrow().aichHash()))
                 .as("the file's own AICH hash, not the link's")
                 .hasValueSatisfying(h -> assertThat(h).isNotEqualTo(wrong));
-        assertThat(this.onLoop(() ->
+        assertThat(onLoop(() ->
                         shares.all().stream().map(SharedFiles.SharedFile::name).toList()))
                 .doesNotContain("gone.bin", "never.bin");
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -747,18 +745,18 @@ class SharedFilesTest {
         byte[] a = bytes(3000, 34);
         Files.write(incoming.resolve("movie.avi"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared movie.avi");
 
-        assertThat(this.onLoop(() -> shares.rename(hash, "Movie.avi")))
+        assertThat(onLoop(() -> shares.rename(hash, "Movie.avi")))
                 .map(SharedFiles.SharedFile::name)
                 .contains("Movie.avi");
 
         try (Stream<Path> names = Files.list(incoming)) {
             assertThat(names.map(p -> p.getFileName().toString())).containsExactly("Movie.avi");
         }
-        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("Movie.avi");
-        this.onLoop(() -> {
+        assertThat(onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("Movie.avi");
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -771,17 +769,17 @@ class SharedFilesTest {
         byte[] a = bytes(3000, 35);
         Files.write(incoming.resolve("kept.bin"), a);
         Hash16 hash = Ed2k.md4(a, 0, a.length);
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("shared kept.bin");
 
         for (String name : List.of("kept.bak", "kept.tmp", "001.part", "Desktop.ini", "link.lnk", ".hidden")) {
-            assertThatThrownBy(() -> this.onLoop(() -> shares.rename(hash, name)))
+            assertThatThrownBy(() -> onLoop(() -> shares.rename(hash, name)))
                     .as(name)
                     .hasRootCauseInstanceOf(IllegalArgumentException.class);
         }
         assertThat(incoming.resolve("kept.bin")).exists();
-        assertThat(this.onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("kept.bin");
-        this.onLoop(() -> {
+        assertThat(onLoop(() -> shares.get(hash).orElseThrow().name())).isEqualTo("kept.bin");
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -798,9 +796,9 @@ class SharedFilesTest {
         Files.write(outside.resolve("secret.bin"), bytes(3000, 37));
         junction(this.dir.resolve("tree").resolve("escape"), outside);
         junction(this.dir.resolve("tree").resolve("loop"), this.dir.resolve("tree"));
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.addDirectory(this.dir.resolve("tree"), true);
             return null;
         });
@@ -809,10 +807,10 @@ class SharedFilesTest {
         assertThat(this.events.poll(3, TimeUnit.SECONDS))
                 .as("nothing from outside the tree")
                 .isNull();
-        assertThat(this.onLoop(shares::all))
+        assertThat(onLoop(shares::all))
                 .singleElement()
                 .satisfies(f -> assertThat(f.path()).isEqualTo(tree.resolve("in.bin")));
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.close();
             return null;
         });
@@ -837,18 +835,18 @@ class SharedFilesTest {
         Hash16 kept = Ed2k.md4(a, 0, a.length);
         Hash16 gone = Ed2k.md4(b, 0, b.length);
 
-        SharedFiles shares = this.open(config, incoming);
+        SharedFiles shares = open(config, incoming);
         assertThat(List.of(this.events.poll(30, TimeUnit.SECONDS), this.events.poll(30, TimeUnit.SECONDS)))
                 .containsExactlyInAnyOrder("shared a.bin", "shared b.bin");
         Files.delete(incoming.resolve("b.bin"));
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.scan();
             return null;
         });
         assertThat(this.events.poll(10, TimeUnit.SECONDS)).isEqualTo("unshared b.bin");
-        assertThat(this.onLoop(shares::knownHashes)).as("downloaded before").containsExactlyInAnyOrder(kept, gone);
+        assertThat(onLoop(shares::knownHashes)).as("downloaded before").containsExactlyInAnyOrder(kept, gone);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             shares.rememberDownloaded(false);
             shares.close();
             return null;
@@ -860,7 +858,7 @@ class SharedFilesTest {
     }
 
     private SharedFiles open(Path config, Path incoming) throws Exception {
-        return this.onLoop(() -> SharedFiles.open(
+        return onLoop(() -> SharedFiles.open(
                 this.loop,
                 config,
                 () -> List.of(incoming),

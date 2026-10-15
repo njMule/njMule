@@ -75,40 +75,40 @@ class SharedMenusTest {
 
     @Test
     void theFileMenuRenamesCommentsAndPrioritizesOneFile() throws Exception {
-        SharedScreen screen = this.screen();
+        SharedScreen screen = screen();
         ContextMenu menu = FxTesting.onFx(() -> screen.table().getContextMenu());
 
         FxTesting.onFx(() -> {
             screen.table().getSelectionModel().selectAll();
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_RENAME").isDisable()).isTrue();
-            assertThat(this.item(menu, "IDS_CMT_ADD").isDisable()).isTrue();
-            assertThat(this.item(menu, "IDS_OPENFOLDER").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_RENAME").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_CMT_ADD").isDisable()).isTrue();
+            assertThat(item(menu, "IDS_OPENFOLDER").isDisable()).isTrue();
             // Several files: none is renamed, commented or shown in its folder.
             screen.renameSelected();
             screen.commentSelected();
             screen.openFolder();
-            this.item(menu, "IDS_DL_LINK2").fire();
+            item(menu, "IDS_DL_LINK2").fire();
         });
         assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
                 .contains("<a href=\"ed2k://|file|notes.txt|", "<a href=\"ed2k://|file|film.mkv|");
 
         FxTesting.onFx(() -> {
-            this.select(screen, this.notes);
+            select(screen, this.notes);
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_RENAME").isDisable()).isFalse();
-            FxTesting.answer(ButtonType.OK, pane -> this.type(pane, "  notes.txt "));
-            this.item(menu, "IDS_RENAME").fire();
-            FxTesting.answer(ButtonType.CANCEL, pane -> this.type(pane, "other.txt"));
+            assertThat(item(menu, "IDS_RENAME").isDisable()).isFalse();
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, "  notes.txt "));
+            item(menu, "IDS_RENAME").fire();
+            FxTesting.answer(ButtonType.CANCEL, pane -> type(pane, "other.txt"));
             screen.renameSelected();
-            FxTesting.answer(ButtonType.OK, pane -> this.type(pane, " letter.txt"));
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, " letter.txt"));
             screen.renameSelected();
         });
         FxTesting.await("renamed", () -> this.calls.contains("rename notes.txt letter.txt"));
         assertThat(this.calls).as("the same name, or cancelled").containsExactly("rename notes.txt letter.txt");
 
         FxTesting.onFx(() -> {
-            ((Menu) this.item(menu, "IDS_PRIORITY"))
+            ((Menu) item(menu, "IDS_PRIORITY"))
                     .getItems().stream()
                             .filter(i -> i.getText().equals("Release"))
                             .findFirst()
@@ -120,28 +120,28 @@ class SharedMenusTest {
                     .findFirst()
                     .orElseThrow()
                     .fire();
-            this.item(menu, "IDS_CMT_ADD").fire();
+            item(menu, "IDS_CMT_ADD").fire();
         });
         assertThat(this.calls).contains("priority notes.txt RELEASE", "priority notes.txt VERY_LOW");
-        FxTesting.await("the comment window", () -> this.window("Comments: notes.txt") != null);
+        FxTesting.await("the comment window", () -> window("Comments: notes.txt") != null);
         assertThat(FxTesting.onFx(() -> screen.view().lookupAll(".label").stream()
                         .map(n -> ((Label) n).getText())
                         .toList()))
                 .contains("Number of Shared Files: 2");
 
-        FxTesting.onFx(() -> this.button(screen, "Shared folders").fire());
-        FxTesting.await("the shared folders", () -> this.window("Shared folders") != null);
+        FxTesting.onFx(() -> button(screen, "Shared folders").fire());
+        FxTesting.await("the shared folders", () -> window("Shared folders") != null);
     }
 
     @Test
     void sharingAFolderAsksFirstAndWarnsOfASensitiveOne() throws Exception {
-        SharedScreen screen = this.screen();
+        SharedScreen screen = screen();
         Path folder = this.dir.resolve("films");
         AtomicReference<String> warning = new AtomicReference<>();
 
         FxTesting.onFx(() -> {
             FxTesting.answer(ButtonBar.ButtonData.OK_DONE, pane -> {
-                warning.set(this.warning(pane));
+                warning.set(warning(pane));
                 ((CheckBox) pane.lookup(".check-box")).setSelected(false);
             });
             screen.confirmShare(folder);
@@ -154,7 +154,7 @@ class SharedMenusTest {
         // The root of a disk is never shared without a warning; here the user steps back.
         Path root = this.dir.toAbsolutePath().getRoot();
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE, pane -> warning.set(this.warning(pane)));
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE, pane -> warning.set(warning(pane)));
             screen.confirmShare(root);
         });
         assertThat(warning.get()).contains(root.toString(), "personal or system files");
@@ -181,11 +181,11 @@ class SharedMenusTest {
         Map<String, Engines.Command> commands = new HashMap<>();
         commands.put("sharedFiles", args -> CompletableFuture.completedFuture(List.of(this.notes, this.film)));
         commands.put("renameSharedFile", args -> {
-            this.calls.add("rename " + this.name(args[0]) + " " + args[1]);
+            this.calls.add("rename " + name(args[0]) + " " + args[1]);
             return CompletableFuture.completedFuture(true);
         });
         commands.put("setUploadPriority", args -> {
-            this.calls.add("priority " + this.name(args[0]) + " " + args[1]);
+            this.calls.add("priority " + name(args[0]) + " " + args[1]);
             return CompletableFuture.completedFuture(true);
         });
         commands.put("shareDirectory", args -> {

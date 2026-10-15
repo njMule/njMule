@@ -75,14 +75,14 @@ final class Banner {
         Fx.whole(this.action);
         var close = Fx.iconButton(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, () -> {
             this.closed = this.shown;
-            this.show(Kind.NONE);
+            show(Kind.NONE);
         });
         close.getStyleClass().add("flat");
         this.box.getChildren().setAll(this.icon, this.text, this.action, close);
         this.box.setAlignment(Pos.CENTER_LEFT);
         this.box.getStyleClass().add("banner");
-        this.settle.setOnFinished(e -> this.show(this.wanted == this.closed ? Kind.NONE : this.wanted));
-        this.show(Kind.NONE);
+        this.settle.setOnFinished(e -> show(this.wanted == this.closed ? Kind.NONE : this.wanted));
+        show(Kind.NONE);
     }
 
     HBox view() {

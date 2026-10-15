@@ -33,33 +33,33 @@ class EventCommandsCodecTest {
 
     @Test
     void shouldKeepEveryEventCommandThroughTheFile() throws IOException {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, true, "\"C:\\Tools\\done.exe\" %FILE");
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_FAILED, false, "alert = %NAME: %MESSAGE");
-        this.givenTheCommand(EventCommands.Event.CHAT_MESSAGE, true, "notify-send '%SENDER' #%MESSAGE");
-        this.givenTheCommand(EventCommands.Event.DISK_SPACE_SHORT, true, "warn %FILE");
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, true, "\"C:\\Tools\\done.exe\" %FILE");
+        givenTheCommand(EventCommands.Event.DOWNLOAD_FAILED, false, "alert = %NAME: %MESSAGE");
+        givenTheCommand(EventCommands.Event.CHAT_MESSAGE, true, "notify-send '%SENDER' #%MESSAGE");
+        givenTheCommand(EventCommands.Event.DISK_SPACE_SHORT, true, "warn %FILE");
 
-        this.whenThePreferencesAreSavedAndLoaded();
+        whenThePreferencesAreSavedAndLoaded();
 
-        this.thenTheLoadedPreferencesAreTheSaved();
-        this.thenTheFileHasTheLine("events.chatMessage.enabled=true");
+        thenTheLoadedPreferencesAreTheSaved();
+        thenTheFileHasTheLine("events.chatMessage.enabled=true");
     }
 
     @Test
     void shouldReadAHandEditedSwitchAfterItsCommandLine() throws IOException {
-        this.givenTheFile("events.diskSpaceShort.command=beep\nevents.diskSpaceShort.enabled=on\n");
+        givenTheFile("events.diskSpaceShort.command=beep\nevents.diskSpaceShort.enabled=on\n");
 
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
 
-        this.thenTheCommandOfIs(EventCommands.Event.DISK_SPACE_SHORT, new EventCommands.Command(true, "beep"));
+        thenTheCommandOfIs(EventCommands.Event.DISK_SPACE_SHORT, new EventCommands.Command(true, "beep"));
     }
 
     @Test
     void shouldKeepTheDefaultForACommandLineOfSeveralLines() throws IOException {
-        this.givenTheFile("events.downloadCompleted.command=first\\nsecond\nevents.downloadCompleted.enabled=true\n");
+        givenTheFile("events.downloadCompleted.command=first\\nsecond\nevents.downloadCompleted.enabled=true\n");
 
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
 
-        this.thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_COMPLETED, new EventCommands.Command(true, ""));
+        thenTheCommandOfIs(EventCommands.Event.DOWNLOAD_COMPLETED, new EventCommands.Command(true, ""));
     }
 
     private void givenTheCommand(EventCommands.Event event, boolean enabled, String commandLine) {
@@ -77,7 +77,7 @@ class EventCommandsCodecTest {
         StringWriter file = new StringWriter();
         PreferencesCodec.format(this.preferences, file);
         this.text = file.toString();
-        this.whenTheFileIsLoaded();
+        whenTheFileIsLoaded();
     }
 
     private void whenTheFileIsLoaded() throws IOException {

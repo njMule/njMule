@@ -85,12 +85,12 @@ class DesktopAppFlowsTest {
     @Test
     void linksOfTheCommandLineAndOfLaterStartsAreFollowed() throws Exception {
         Path root = this.dir.resolve("njmule");
-        this.app = this.open(root, ENGLISH, FILE_LINK, "ed2k://|server|81.2.3.4|4661|/");
-        this.show(false);
+        this.app = open(root, ENGLISH, FILE_LINK, "ed2k://|server|81.2.3.4|4661|/");
+        show(false);
 
         FxTesting.await(
                 "the download and the server",
-                () -> this.messages()
+                () -> messages()
                         .containsAll(
                                 List.of("Download added: test file.bin", "81.2.3.4:4661 added to the server list")));
         assertThat(this.app.engine().downloads().get(10, TimeUnit.SECONDS))
@@ -110,18 +110,18 @@ class DesktopAppFlowsTest {
                 .isTrue();
         FxTesting.await(
                 "the lists refused and the bad address",
-                () -> this.messages().stream()
+                () -> messages().stream()
                                         .filter(m -> m.contains("local or private"))
                                         .count()
                                 == 2
-                        && this.messages().stream().anyMatch(m -> m.contains("Illegal character")));
+                        && messages().stream().anyMatch(m -> m.contains("Illegal character")));
         assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
     }
 
     @Test
     void exitIsAskedFirstUnlessTheUserSaidNotTo() throws Exception {
-        this.app = this.open(this.dir.resolve("njmule"), ENGLISH);
-        this.show(false);
+        this.app = open(this.dir.resolve("njmule"), ENGLISH);
+        show(false);
 
         FxTesting.onFx(() -> {
             FxTesting.answer(ButtonType.NO);
@@ -147,7 +147,7 @@ class DesktopAppFlowsTest {
     void theWebInterfaceStartsBesideTheWindowWhenItsPortIsFree() throws Exception {
         Path first = this.dir.resolve("first");
         new WebUiSettings(true, freePort(), false, "hash").save(first.resolve("config"));
-        DesktopApp served = this.open(first, ENGLISH);
+        DesktopApp served = open(first, ENGLISH);
         try {
             assertThat(served.webUi()).isPresent();
         } finally {
@@ -157,14 +157,14 @@ class DesktopAppFlowsTest {
         Path second = this.dir.resolve("second");
         try (ServerSocket taken = new ServerSocket(0)) {
             new WebUiSettings(true, taken.getLocalPort(), false, "hash").save(second.resolve("config"));
-            this.app = this.open(second, ENGLISH);
+            this.app = open(second, ENGLISH);
             assertThat(this.app.webUi()).as("the port is taken").isEmpty();
         }
     }
 
     @Test
     void aWindowStartsMinimisedWhereItWasLeft() throws Exception {
-        this.app = this.open(
+        this.app = open(
                 this.dir.resolve("njmule"),
                 ENGLISH
                         + "window.startMinimized=true\nwindow.minimizeToTray=false\n"
@@ -186,17 +186,17 @@ class DesktopAppFlowsTest {
 
     @Test
     void theTrayMenuOpensTheOptionsAndAsksBeforeExiting() throws Exception {
-        this.app = this.open(this.dir.resolve("njmule"), ENGLISH);
-        this.show(true);
+        this.app = open(this.dir.resolve("njmule"), ENGLISH);
+        show(true);
         TrayMenu menu = FxTesting.onFx(this.app::trayMenu);
         assertThat(menu).isNotNull();
 
-        this.press(menu, "Options");
+        press(menu, "Options");
         assertThat(FxTesting.onFx(() -> this.app.window().current())).isEqualTo("settings");
-        this.press(menu, "Restore");
+        press(menu, "Restore");
         FxTesting.onFx(() -> {
             FxTesting.answer(ButtonType.NO);
-            this.pressNow(menu, "Exit");
+            pressNow(menu, "Exit");
         });
         assertThat(this.app.engine().isRunning()).isTrue();
         assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
@@ -218,8 +218,8 @@ class DesktopAppFlowsTest {
 
     @Test
     void aCopiedLinkIsDownloadedOnceTheUserSaysSo() throws Exception {
-        this.app = this.open(this.dir.resolve("njmule"), ENGLISH + "links.watchClipboard=true\n");
-        this.show(false);
+        this.app = open(this.dir.resolve("njmule"), ENGLISH + "links.watchClipboard=true\n");
+        show(false);
         List<String> told = new CopyOnWriteArrayList<>();
         FxTesting.onFx(() -> this.app.window().whileHidden(told::add));
         // The watch first notes what the clipboard held before: it looks once a second, as the window's timer
@@ -243,8 +243,8 @@ class DesktopAppFlowsTest {
 
     @Test
     void closingTheWindowClosesItsOwnWindowsOnly() throws Exception {
-        this.app = this.open(this.dir.resolve("njmule"), ENGLISH);
-        this.show(false);
+        this.app = open(this.dir.resolve("njmule"), ENGLISH);
+        show(false);
         AtomicReference<ContextMenu> menu = new AtomicReference<>();
         AtomicReference<Stage> other = new AtomicReference<>();
         FxTesting.onFx(() -> {
@@ -264,17 +264,17 @@ class DesktopAppFlowsTest {
 
     @Test
     void shouldFollowTheLinksMacOsOpenedBeforeAndAfterTheWindowShowed() throws Exception {
-        this.givenAnAppWithoutLinks();
-        this.givenMacOsOpened(FILE_LINK);
-        this.givenTheWindowShowed();
+        givenAnAppWithoutLinks();
+        givenMacOsOpened(FILE_LINK);
+        givenTheWindowShowed();
 
-        this.whenMacOsOpens("ed2k://|server|81.2.3.4|4661|/");
+        whenMacOsOpens("ed2k://|server|81.2.3.4|4661|/");
 
-        this.thenTheWindowTells("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
+        thenTheWindowTells("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
     }
 
     private void givenAnAppWithoutLinks() throws Exception {
-        this.app = this.open(this.dir.resolve("njmule"), ENGLISH);
+        this.app = open(this.dir.resolve("njmule"), ENGLISH);
     }
 
     private void givenMacOsOpened(String link) {
@@ -282,7 +282,7 @@ class DesktopAppFlowsTest {
     }
 
     private void givenTheWindowShowed() throws Exception {
-        this.show(false);
+        show(false);
     }
 
     private void whenMacOsOpens(String link) {
@@ -290,12 +290,12 @@ class DesktopAppFlowsTest {
     }
 
     private void thenTheWindowTells(String... messages) throws Exception {
-        FxTesting.await("the messages", () -> this.messages().containsAll(List.of(messages)));
+        FxTesting.await("the messages", () -> messages().containsAll(List.of(messages)));
     }
 
     @Test
     void anAppNeverShownClosesToo() throws Exception {
-        DesktopApp unseen = this.open(this.dir.resolve("njmule"), null);
+        DesktopApp unseen = open(this.dir.resolve("njmule"), null);
         unseen.close();
         assertThat(unseen.engine().isRunning()).isFalse();
         assertThat(unseen.webUi()).isEmpty();
@@ -334,7 +334,7 @@ class DesktopAppFlowsTest {
     }
 
     private void press(TrayMenu menu, String item) throws Exception {
-        FxTesting.onFx(() -> this.pressNow(menu, item));
+        FxTesting.onFx(() -> pressNow(menu, item));
     }
 
     // Opens the menu and presses one of its items; FX thread. The menu of an app of an earlier test may still show.

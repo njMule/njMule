@@ -249,7 +249,7 @@ public final class FakeServer implements AutoCloseable {
         while (!this.tcp.isClosed()) {
             try {
                 Socket client = this.tcp.accept();
-                Thread.ofVirtual().name("fake-server-client").start(() -> this.serve(client));
+                Thread.ofVirtual().name("fake-server-client").start(() -> serve(client));
             } catch (IOException e) {
                 if (!this.tcp.isClosed()) {
                     logger.warn("Fake server accept failed", e);
@@ -267,7 +267,7 @@ public final class FakeServer implements AutoCloseable {
             while (true) {
                 Packet request = Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
                 synchronized (out) {
-                    for (Packet answer : this.answer(request, client)) {
+                    for (Packet answer : answer(request, client)) {
                         out.write(TcpFraming.encode(answer));
                     }
                     out.flush();
@@ -318,8 +318,8 @@ public final class FakeServer implements AutoCloseable {
                 peer.callAsLowId(
                         new InetSocketAddress(client.getInetAddress(), port),
                         lowId,
-                        Ipv4.fromBytes(this.address().getAddress()),
-                        this.port());
+                        Ipv4.fromBytes(address().getAddress()),
+                        port());
             }
             return List.of();
         }
@@ -344,7 +344,7 @@ public final class FakeServer implements AutoCloseable {
                 datagram.setLength(buffer.length);
                 this.udp.receive(datagram);
                 Packet request = UdpFraming.decode(buffer, 0, datagram.getLength());
-                Packet answer = this.answerUdp(request);
+                Packet answer = answerUdp(request);
                 if (answer != null) {
                     byte[] bytes = UdpFraming.encode(answer);
                     this.udp.send(new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));

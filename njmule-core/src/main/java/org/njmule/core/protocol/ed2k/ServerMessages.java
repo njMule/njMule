@@ -117,7 +117,7 @@ public final class ServerMessages {
 
         /** Our public address: the id itself for a HighID, else what the server reported. */
         public int publicIp() {
-            return this.isLowId() ? this.reportedIp : Ipv4.fromEd2k(this.clientId);
+            return isLowId() ? this.reportedIp : Ipv4.fromEd2k(this.clientId);
         }
 
         public boolean has(int flag) {

@@ -59,13 +59,13 @@ class ProxyRouteTest {
 
     @Test
     void connectionsGoThroughASocksProxyWithItsCredentials() throws Exception {
-        ServerSocket target = this.listen();
-        ServerSocket proxy = this.socks5(true);
+        ServerSocket target = listen();
+        ServerSocket proxy = socks5(true);
         ProxySettings settings =
                 new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret");
         ProxyRoute.install(() -> settings);
 
-        TcpConnection connection = this.connect(target);
+        TcpConnection connection = connect(target);
         try (Socket accepted = target.accept()) {
             assertThat(accepted).isNotNull();
         }
@@ -77,12 +77,12 @@ class ProxyRouteTest {
 
     @Test
     void aSocksProxyMayNeedNoCredentials() throws Exception {
-        ServerSocket target = this.listen();
-        ServerSocket proxy = this.socks5(false);
+        ServerSocket target = listen();
+        ServerSocket proxy = socks5(false);
         ProxyRoute.install(
                 () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "", ""));
 
-        TcpConnection connection = this.connect(target);
+        TcpConnection connection = connect(target);
         try (Socket accepted = target.accept()) {
             assertThat(accepted).isNotNull();
         }
@@ -93,11 +93,11 @@ class ProxyRouteTest {
 
     @Test
     void connectionsGoThroughAnHttpProxy() throws Exception {
-        ServerSocket target = this.listen();
-        ServerSocket proxy = this.httpConnect();
+        ServerSocket target = listen();
+        ServerSocket proxy = httpConnect();
         ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", proxy.getLocalPort(), "", ""));
 
-        TcpConnection connection = this.connect(target);
+        TcpConnection connection = connect(target);
         try (Socket accepted = target.accept()) {
             assertThat(accepted).isNotNull();
         }
@@ -133,7 +133,7 @@ class ProxyRouteTest {
 
     // A SOCKS 5 proxy (RFC 1928, user name and password per RFC 1929) that relays one connection.
     private ServerSocket socks5(boolean wantsPassword) throws IOException {
-        ServerSocket server = this.listen();
+        ServerSocket server = listen();
         Thread.ofVirtual().start(() -> {
             try (Socket client = server.accept()) {
                 DataInputStream in = new DataInputStream(client.getInputStream());
@@ -168,7 +168,7 @@ class ProxyRouteTest {
 
     // An HTTP proxy that accepts one CONNECT.
     private ServerSocket httpConnect() throws IOException {
-        ServerSocket server = this.listen();
+        ServerSocket server = listen();
         Thread.ofVirtual().start(() -> {
             try (Socket client = server.accept()) {
                 InputStream in = client.getInputStream();

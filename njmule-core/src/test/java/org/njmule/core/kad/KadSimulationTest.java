@@ -83,21 +83,21 @@ class KadSimulationTest {
     @Test
     void nodesFindEachOtherPublishAndSearch() throws Exception {
         for (int i = 0; i < NODES; i++) {
-            this.node(i);
+            node(i);
         }
         for (int i = 1; i < NODES; i++) {
             this.nodes.get(i).bootstrap(this.ips.get(0), PORT);
             if (i > 1) {
                 this.nodes.get(i).bootstrap(this.ips.get(this.random.nextInt(i)), PORT);
             }
-            this.deliver();
+            deliver();
         }
         // The first node only seeded the others; like any node it bootstraps too.
         this.nodes.get(0).bootstrap(this.ips.get(1), PORT);
         // All nodes start together, so their first self lookups (after 3 minutes) see a young
         // network; the second one, after 4 hours, finds the nearest nodes as joining a mature
         // network does.
-        this.run(4 * 60 * 60 + 5 * 60);
+        run(4 * 60 * 60 + 5 * 60);
 
         int connected = 0;
         long verified = 0;
@@ -131,8 +131,8 @@ class KadSimulationTest {
 
         // A keyword published by one node is found by another; with few nodes, the keyword is
         // picked so that some node is close enough to store it.
-        String word = this.wordNearSomeNode("pictures");
-        Hash16 file = this.hashNearSomeNode();
+        String word = wordNearSomeNode("pictures");
+        Hash16 file = hashNearSomeNode();
         List<Tag> tags = List.of(
                 new Tag.StringTag(TagName.id(FileTag.FILENAME), "Night Sky " + word + ".zip"),
                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), 123_456),
@@ -140,7 +140,7 @@ class KadSimulationTest {
         KadNode publisher = this.nodes.get(17);
         assertThat(publisher.publishKeyword(word, List.of(new KadMessages.Entry(UInt128.of(file), tags))))
                 .isTrue();
-        this.run(PUBLISH_WAIT);
+        run(PUBLISH_WAIT);
         assertThat(this.nodes.stream().filter(n -> n.indexed()[0] > 0).count())
                 .as("nodes that store the keyword")
                 .isPositive();
@@ -150,7 +150,7 @@ class KadSimulationTest {
         for (int attempt = 0; attempt < SEARCHES && found.isEmpty(); attempt++) {
             assertThat(this.nodes.get(150).searchKeyword(word, Optional.empty(), found::addAll))
                     .isPresent();
-            this.run(60);
+            run(60);
         }
         assertThat(found).isNotEmpty();
         assertThat(found.getFirst().name()).isEqualTo("Night Sky " + word + ".zip");
@@ -160,12 +160,12 @@ class KadSimulationTest {
         // A source published by one node is found by another.
         KadNode source = this.nodes.get(42);
         assertThat(source.publishSource(file, 123_456)).isTrue();
-        this.run(PUBLISH_WAIT);
+        run(PUBLISH_WAIT);
         List<KadNode.Source> sources = new ArrayList<>();
         for (int attempt = 0; attempt < SEARCHES && sources.isEmpty(); attempt++) {
             assertThat(this.nodes.get(99).findSources(file, 123_456, sources::addAll))
                     .isTrue();
-            this.run(60);
+            run(60);
         }
         assertThat(sources).isNotEmpty();
         assertThat(sources.getFirst().ip()).isEqualTo(this.ips.get(42));
@@ -203,7 +203,7 @@ class KadSimulationTest {
     private String wordNearSomeNode(String base) {
         for (int n = 0; ; n++) {
             String word = base + n;
-            if (this.someNodeNear(Keywords.id(word))) {
+            if (someNodeNear(Keywords.id(word))) {
                 return word;
             }
         }
@@ -214,7 +214,7 @@ class KadSimulationTest {
             byte[] bytes = new byte[16];
             this.random.nextBytes(bytes);
             Hash16 hash = Hash16.of(bytes);
-            if (this.someNodeNear(UInt128.of(hash))) {
+            if (someNodeNear(UInt128.of(hash))) {
                 return hash;
             }
         }
@@ -237,7 +237,7 @@ class KadSimulationTest {
         KadNode node = new KadNode(
                 KadIdentity.loadOrCreate(config, this.random),
                 (to, port, packet, receiverId, receiverKey, senderKey) ->
-                        this.wire.add(() -> this.arrive(ip, to, port, packet, receiverKey, senderKey)),
+                        this.wire.add(() -> arrive(ip, to, port, packet, receiverKey, senderKey)),
                 (to, port, userHash, options) -> {
                     // The helper connects back and the requester hears it worked.
                     this.reachabilityChecks.add(new int[] {ip, to});
@@ -265,7 +265,7 @@ class KadSimulationTest {
             for (KadNode node : this.nodes) {
                 node.tick();
             }
-            this.deliver();
+            deliver();
         }
     }
 

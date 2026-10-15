@@ -77,7 +77,7 @@ public final class StatisticsScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -112,8 +112,8 @@ public final class StatisticsScreen implements Screen {
                 KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
                 KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
                 KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions));
-        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
-        this.show(this.gui.model().statusProperty().get());
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> show(now));
+        show(this.gui.model().statusProperty().get());
         // A short window scrolls the cards instead of setting a tall minimum for the whole window.
         VBox all = new VBox(
                 10,
@@ -133,7 +133,7 @@ public final class StatisticsScreen implements Screen {
         split.setDividerPositions(0.34);
         SplitPane.setResizableWithParent(this.tree.view(), false);
         this.tree.refresh();
-        return Fx.screen(this.title(), Fx.toolRow(), split);
+        return Fx.screen(title(), Fx.toolRow(), split);
     }
 
     // Cards of one size in a regular grid, as wide as the widest. Their names never wrap: JavaFX's text layout can

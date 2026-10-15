@@ -41,7 +41,7 @@ final class FakeEngine {
 
     /** Answers {@code method} with {@code value} at once. */
     void answerWith(String method, Object value) {
-        this.answer(method, args -> CompletableFuture.completedFuture(value));
+        answer(method, args -> CompletableFuture.completedFuture(value));
     }
 
     NjMuleEngine engine() {

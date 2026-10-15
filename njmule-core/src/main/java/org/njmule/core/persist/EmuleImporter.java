@@ -235,41 +235,41 @@ public final class EmuleImporter {
     public ImportReport run() {
         // njMule writes into its configuration directory, which must never be eMule's.
         if (canonical(this.target.configDir()).startsWith(canonical(this.emule))) {
-            this.report(
+            report(
                     this.emule,
                     ImportReport.Outcome.FAILED,
                     "njMule's configuration is in eMule's directory: nothing is taken");
             return new ImportReport(this.options.dryRun(), this.items);
         }
-        Optional<IniFile> ini = this.preferences();
-        this.with(this.emule.resolve("server.met"), this::servers);
-        this.with(this.emule.resolve("nodes.dat"), this::nodes);
-        this.with(this.emule.resolve("known.met"), this::known);
-        this.sharedDirectories(ini);
-        this.with(this.emule.resolve("sharedfiles.dat"), EmuleImporter::sharedFiles);
-        this.with(this.emule.resolve("ipfilter.dat"), this::ipFilter);
-        this.kept("cancelled.met", data -> CancelledMet.read(data).keys().size() + " files");
-        this.kept("emfriends.met", data -> FriendsMet.read(data).size() + " friends");
-        this.kept("StoredSearches.met", data -> SearchFiles.readStored(data).size() + " searches");
-        this.kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
-        this.kept("fileinfo.ini", data -> IniFile.parse(data).sections().size() + " file comments");
-        this.kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
-        this.kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
+        Optional<IniFile> ini = preferences();
+        with(this.emule.resolve("server.met"), this::servers);
+        with(this.emule.resolve("nodes.dat"), this::nodes);
+        with(this.emule.resolve("known.met"), this::known);
+        sharedDirectories(ini);
+        with(this.emule.resolve("sharedfiles.dat"), EmuleImporter::sharedFiles);
+        with(this.emule.resolve("ipfilter.dat"), this::ipFilter);
+        kept("cancelled.met", data -> CancelledMet.read(data).keys().size() + " files");
+        kept("emfriends.met", data -> FriendsMet.read(data).size() + " friends");
+        kept("StoredSearches.met", data -> SearchFiles.readStored(data).size() + " searches");
+        kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
+        kept("fileinfo.ini", data -> IniFile.parse(data).sections().size() + " file comments");
+        kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
+        kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
         // The addresses typed in eMule's boxes, which the interface offers again.
         for (String history : List.of(
                 "AC_ServerMetURLs.dat", "AC_IPFilterUpdateURLs.dat", "AC_BootstrapIPs.dat", "AC_SearchStrings.dat")) {
-            this.kept(history, data -> TextFiles.entries(data).size() + " entries");
+            kept(history, data -> TextFiles.entries(data).size() + " entries");
         }
-        this.categories(ini);
-        this.kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
+        categories(ini);
+        kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
             Path file = this.emule.resolve(name);
             if (Files.exists(file)) {
-                this.report(file, ImportReport.Outcome.SKIPPED, "other nodes' entries, short-lived");
+                report(file, ImportReport.Outcome.SKIPPED, "other nodes' entries, short-lived");
             }
         }
-        this.identity(ini);
-        this.downloads(ini);
+        identity(ini);
+        downloads(ini);
         return new ImportReport(
                 this.options.dryRun(),
                 this.items,
@@ -285,32 +285,32 @@ public final class EmuleImporter {
     private Optional<IniFile> preferences() {
         Path file = this.emule.resolve("preferences.ini");
         if (!Files.exists(file)) {
-            this.report(file, ImportReport.Outcome.MISSING, "");
+            report(file, ImportReport.Outcome.MISSING, "");
             return Optional.empty();
         }
         IniFile ini;
         try {
             ini = IniFile.parse(read(file));
         } catch (IOException e) {
-            this.report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+            report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             return Optional.empty();
         }
         if (!ini.hasSection(SECTION)) {
-            this.report(file, ImportReport.Outcome.FAILED, "no [" + SECTION + "] section");
+            report(file, ImportReport.Outcome.FAILED, "no [" + SECTION + "] section");
             return Optional.empty();
         }
         String detail = "nick, limits, networks, obfuscation"
                 + (startsAtLogin(ini) ? ", start at login" : "")
                 + "; ports and directories stay ours";
         if (this.options.dryRun()) {
-            this.report(file, ImportReport.Outcome.WOULD_IMPORT, detail);
+            report(file, ImportReport.Outcome.WOULD_IMPORT, detail);
             return Optional.of(ini);
         }
         try {
             this.target.updatePreferences(p -> mapPreferences(ini, p));
-            this.report(file, ImportReport.Outcome.IMPORTED, detail);
+            report(file, ImportReport.Outcome.IMPORTED, detail);
         } catch (IOException | RuntimeException e) {
-            this.report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+            report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
         }
         return Optional.of(ini);
     }
@@ -507,16 +507,16 @@ public final class EmuleImporter {
                     path(entry).filter(Files::isDirectory).ifPresent(dirs::add);
                 }
             } catch (IOException | RuntimeException e) {
-                this.report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+                report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
                 return;
             }
         }
         if (dirs.isEmpty()) {
-            this.report(file, ImportReport.Outcome.MISSING, "no shared directory");
+            report(file, ImportReport.Outcome.MISSING, "no shared directory");
             return;
         }
         if (this.options.dryRun()) {
-            this.report(file, ImportReport.Outcome.WOULD_IMPORT, dirs.size() + " directories");
+            report(file, ImportReport.Outcome.WOULD_IMPORT, dirs.size() + " directories");
             return;
         }
         // A directory refused (a private one) or failing does not stop the others.
@@ -531,10 +531,10 @@ public final class EmuleImporter {
             }
         }
         if (shared == 0) {
-            this.report(file, ImportReport.Outcome.FAILED, failure);
+            report(file, ImportReport.Outcome.FAILED, failure);
         } else {
             int skipped = dirs.size() - shared;
-            this.report(
+            report(
                     file,
                     ImportReport.Outcome.IMPORTED,
                     shared + " directories" + (skipped == 0 ? "" : ", " + skipped + " not shared: " + failure));
@@ -565,7 +565,7 @@ public final class EmuleImporter {
         // eMule's own incoming folder is never ours: those categories finish into njMule's.
         Optional<Path> emuleIncoming =
                 preferences.flatMap(p -> p.get(SECTION, "IncomingDir")).flatMap(EmuleImporter::path);
-        this.with(this.emule.resolve("Category.ini"), (file, data) -> {
+        with(this.emule.resolve("Category.ini"), (file, data) -> {
             IniFile ini = IniFile.parse(data);
             List<Category> found = new ArrayList<>();
             StringBuilder notes = new StringBuilder();
@@ -671,7 +671,7 @@ public final class EmuleImporter {
 
     /** Files checked, then kept unless njMule has its own; those the engine keeps up to date wait for its start. */
     private void kept(String name, Reader reader) {
-        this.with(this.emule.resolve(name), (file, data) -> {
+        with(this.emule.resolve(name), (file, data) -> {
             String what = reader.read(data);
             Path ours = this.target.configDir().resolve(name);
             Path pending = this.target.configDir().resolve(PENDING_FILES);
@@ -706,22 +706,22 @@ public final class EmuleImporter {
             for (String name : IDENTITY.subList(0, IDENTITY.size() - 1)) {
                 Path file = this.emule.resolve(name);
                 if (Files.exists(file)) {
-                    this.report(file, ImportReport.Outcome.SKIPPED, refusal);
+                    report(file, ImportReport.Outcome.SKIPPED, refusal);
                 }
             }
             return;
         }
         if (!this.options.dryRun()) {
             // An identity waiting from an earlier import goes as a whole: its files must not mix with these.
-            this.dropPendingIdentity();
+            dropPendingIdentity();
         }
-        boolean hash = this.pending(UserHashStore.FILE_NAME, data -> {
+        boolean hash = pending(UserHashStore.FILE_NAME, data -> {
             if (!PreferencesDat.isMarkedUserHash(PreferencesDat.read(data).userHash())) {
                 throw new IOException("not a usable user hash");
             }
             return "user hash";
         });
-        boolean key = this.pending(KEY_FILE, data -> {
+        boolean key = pending(KEY_FILE, data -> {
             String text = new String(data, StandardCharsets.US_ASCII);
             RsaKeys.decodePrivate(Base64.getDecoder().decode(text.replaceAll("\\s+", "")));
             return "secure identification key";
@@ -729,16 +729,16 @@ public final class EmuleImporter {
         if (!hash || !key) {
             // Our key with eMule's user hash would fail every identification, and the reverse.
             if (!this.options.dryRun()) {
-                this.dropPendingIdentity();
+                dropPendingIdentity();
             }
-            this.report(
+            report(
                     this.emule,
                     ImportReport.Outcome.SKIPPED,
                     "identity: the user hash and the key are taken only together");
             return;
         }
-        this.pending("clients.met", data -> ClientsMet.read(data).size() + " credits");
-        this.pending("preferencesKad.dat", data -> {
+        pending("clients.met", data -> ClientsMet.read(data).size() + " credits");
+        pending("preferencesKad.dat", data -> {
             PreferencesKadDat.read(data);
             return "Kad id";
         });
@@ -754,7 +754,7 @@ public final class EmuleImporter {
                         pending.resolve(KAD_KEY_FILE),
                         new PacketWriter().u32(udpKey).toByteArray());
             } catch (IOException e) {
-                this.report(pending, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+                report(pending, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             }
         }
     }
@@ -770,7 +770,7 @@ public final class EmuleImporter {
 
     /** Checks an identity file and puts it aside for the next start; returns whether it could. */
     private boolean pending(String name, Reader check) {
-        ImportReport.Outcome outcome = this.with(this.emule.resolve(name), (file, data) -> {
+        ImportReport.Outcome outcome = with(this.emule.resolve(name), (file, data) -> {
             String what = check.read(data);
             if (this.options.dryRun()) {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
@@ -785,14 +785,14 @@ public final class EmuleImporter {
 
     // Downloads are copied, never moved, and only while eMule does not write them.
     private void downloads(Optional<IniFile> ini) {
-        List<Path> temps = this.tempDirectories(ini);
+        List<Path> temps = tempDirectories(ini);
         Path where = temps.isEmpty() ? this.emule.resolve("Temp") : temps.getFirst();
         if (temps.isEmpty()) {
-            this.report(where, ImportReport.Outcome.MISSING, "");
+            report(where, ImportReport.Outcome.MISSING, "");
             return;
         }
         if (!this.options.downloads()) {
-            this.report(where, ImportReport.Outcome.SKIPPED, "downloads were not asked for");
+            report(where, ImportReport.Outcome.SKIPPED, "downloads were not asked for");
             return;
         }
         boolean running = this.emuleRunning.getAsBoolean();
@@ -801,14 +801,14 @@ public final class EmuleImporter {
             try (DirectoryStream<Path> mets = Files.newDirectoryStream(temp, "*.part.met")) {
                 for (Path met : mets) {
                     found++;
-                    this.with(met, (file, data) -> this.download(file, data, running));
+                    with(met, (file, data) -> download(file, data, running));
                 }
             } catch (IOException e) {
-                this.report(temp, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
+                report(temp, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
             }
         }
         if (found == 0) {
-            this.report(where, ImportReport.Outcome.MISSING, "no downloads in progress");
+            report(where, ImportReport.Outcome.MISSING, "no downloads in progress");
         }
     }
 

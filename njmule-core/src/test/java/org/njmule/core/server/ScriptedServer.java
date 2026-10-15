@@ -169,7 +169,7 @@ public final class ScriptedServer implements AutoCloseable {
     @Override
     public void close() throws IOException {
         this.socket.close();
-        this.hangUp();
+        hangUp();
     }
 
     private void accept() {
@@ -177,7 +177,7 @@ public final class ScriptedServer implements AutoCloseable {
             try {
                 Socket client = this.socket.accept();
                 this.connections.incrementAndGet();
-                Thread.ofVirtual().name("scripted-server-client").start(() -> this.serve(client));
+                Thread.ofVirtual().name("scripted-server-client").start(() -> serve(client));
             } catch (IOException e) {
                 return;
             }

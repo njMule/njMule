@@ -180,15 +180,15 @@ public final class DesktopApp implements AutoCloseable {
         for (String text : links) {
             switch (Ed2kLink.tryParse(text).orElse(null)) {
                 case Ed2kLink.FileLink link -> this.pending.add(link);
-                case Ed2kLink.ServerListLink list -> this.fromUrl(list.url(), true);
-                case Ed2kLink.NodesListLink list -> this.fromUrl(list.url(), false);
-                case Ed2kLink.ServerLink server -> this.addServer(server);
+                case Ed2kLink.ServerListLink list -> fromUrl(list.url(), true);
+                case Ed2kLink.NodesListLink list -> fromUrl(list.url(), false);
+                case Ed2kLink.ServerLink server -> addServer(server);
                 case null, default -> {
                     // A search link is not acted upon yet.
                 }
             }
         }
-        this.addPending();
+        addPending();
         if (this.tray != null && this.tray.isHidden()) {
             this.tray.restore();
         } else if (this.stage != null) {
@@ -272,7 +272,7 @@ public final class DesktopApp implements AutoCloseable {
 
     /** Shows the main window in {@code stage}; FX thread. */
     public void show(Stage stage) {
-        this.show(stage, NotificationArea.isSupported());
+        show(stage, NotificationArea.isSupported());
     }
 
     /** As above, with the notification area's menu and windows when {@code tray}. */
@@ -280,7 +280,7 @@ public final class DesktopApp implements AutoCloseable {
         this.stage = stage;
         this.themes = new Themes(this.settings.theme(), this.settings.mode());
         this.model = new EngineModel(this.engine, Platform::runLater);
-        this.scene = new Scene(this.build(), 1180, 760);
+        this.scene = new Scene(build(), 1180, 760);
         // Dialogs take the direction of their owner's scene.
         this.gui.attach(this.scene);
         for (int size : ICON_SIZES) {
@@ -304,9 +304,9 @@ public final class DesktopApp implements AutoCloseable {
         stage.setMaximized(this.settings.maximized());
         stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         stage.setScene(this.scene);
-        stage.setOnHiding(e -> this.remember(stage));
+        stage.setOnHiding(e -> remember(stage));
         stage.setOnCloseRequest(e -> {
-            if (!this.mayExit(stage)) {
+            if (!mayExit(stage)) {
                 e.consume();
             }
         });
@@ -314,19 +314,19 @@ public final class DesktopApp implements AutoCloseable {
         this.model.start();
         this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> {
             this.model.tick();
-            this.tickTray();
+            tickTray();
         }));
         this.ticker.setCycleCount(Animation.INDEFINITE);
         this.ticker.play();
         // eD2K file links copied anywhere become downloads when the settings ask for it.
         this.clipboard = ClipboardWatch.start(this.settings::watchClipboard, this::confirmCopied, links -> {
             this.pending.addAll(links);
-            this.addPending();
+            addPending();
         });
         logger.info("Main window shown");
-        this.keepButtonsVisible(stage);
+        keepButtonsVisible(stage);
         if (tray) {
-            this.attachTray(stage);
+            attachTray(stage);
         }
         if (this.settings.startMinimized() && !GuiTour.requested()) {
             if (this.tray != null && this.settings.minimizeToTray()) {
@@ -337,25 +337,25 @@ public final class DesktopApp implements AutoCloseable {
         }
         stage.addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> {
             if (this.tray == null || !this.tray.isHidden()) {
-                this.closeTheOthers(stage);
+                closeTheOthers(stage);
             }
         });
-        this.handedOver(List.copyOf(this.startLinks));
+        handedOver(List.copyOf(this.startLinks));
         this.startLinks.clear();
         // Links opened on macOS, those that started the app first.
-        MacLinks.SYSTEM.attach(links -> Platform.runLater(() -> this.handedOver(links)));
+        MacLinks.SYSTEM.attach(links -> Platform.runLater(() -> handedOver(links)));
         if (GuiTour.requested()) {
-            GuiTour.start(this.gui, this.window, stage, this.appTour(stage), Platform::exit);
+            GuiTour.start(this.gui, this.window, stage, appTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
             // At the first start a few questions set njMule up; an eMule on this computer is offered for import.
-            this.firstRun(stage);
+            firstRun(stage);
         }
     }
 
     private void firstRun(Stage stage) {
         new FirstRunWizard(this.gui, stage, this.engine.preferences(), ImportDialog.guessEmuleDirectory(), outcome -> {
                     if (outcome.languageChanged()) {
-                        this.relaunch();
+                        relaunch();
                     }
                     // After the relaunch, so that it speaks the language chosen.
                     if (outcome.importEmule()) {
@@ -389,7 +389,7 @@ public final class DesktopApp implements AutoCloseable {
         owner.setX(-10_000);
         owner.setY(-10_000);
         owner.show();
-        this.trayWindows();
+        trayWindows();
         this.tray = NotificationArea.attach(stage, this.settings::minimizeToTray, new NotificationArea.Handlers() {
             @Override
             public void click() {
@@ -468,7 +468,7 @@ public final class DesktopApp implements AutoCloseable {
     // open (the tray's owner is never seen) would keep the toolkit running.
     private void closeTheOthers(Stage stage) {
         for (Window window : List.copyOf(Window.getWindows())) {
-            if (!window.equals(stage) && this.belongs(window, stage)) {
+            if (!window.equals(stage) && belongs(window, stage)) {
                 window.hide();
             }
         }
@@ -597,12 +597,12 @@ public final class DesktopApp implements AutoCloseable {
     void relaunch() {
         String screen = this.window.current();
         Gui old = this.gui;
-        this.scene.setRoot(this.build());
+        this.scene.setRoot(build());
         this.scene.setNodeOrientation(this.gui.orientation());
         old.subscriptions().unsubscribe();
         this.window.show(screen);
         if (this.tray != null) {
-            this.trayWindows();
+            trayWindows();
             this.window.whileHidden(this.tray::notify);
         }
     }

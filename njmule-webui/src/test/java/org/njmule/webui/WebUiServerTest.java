@@ -59,18 +59,18 @@ class WebUiServerTest {
 
     @Test
     void anAnswerNamesNoServerSoftware() throws Exception {
-        this.givenTheWebInterface();
-        this.whenAsked("GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
-        this.thenTheAnswerIs("200");
-        this.thenTheAnswerNamesNoServerSoftware();
+        givenTheWebInterface();
+        whenAsked("GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        thenTheAnswerIs("200");
+        thenTheAnswerNamesNoServerSoftware();
     }
 
     @Test
     void aBadRequestGetsNoStackTrace() throws Exception {
-        this.givenTheWebInterface();
-        this.whenAsked("GET /%2e%2e/%2e%2e/secret HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
-        this.thenTheAnswerIs("400");
-        this.thenTheAnswerNamesNoServerSoftware();
+        givenTheWebInterface();
+        whenAsked("GET /%2e%2e/%2e%2e/secret HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        thenTheAnswerIs("400");
+        thenTheAnswerNamesNoServerSoftware();
     }
 
     private void givenTheWebInterface() throws IOException {

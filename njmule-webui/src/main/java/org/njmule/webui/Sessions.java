@@ -70,14 +70,14 @@ final class Sessions {
     }
 
     synchronized Session open() {
-        Session session = new Session(this.token(), this.token());
+        Session session = new Session(token(), token());
         this.sessions.put(session.id(), new Entry(session, this.clock.getAsLong()));
         return session;
     }
 
     /** The live session of {@code id}, whose use is noted. */
     synchronized Optional<Session> find(String id) {
-        this.expire();
+        expire();
         Entry entry = this.sessions.get(id);
         if (entry == null) {
             return Optional.empty();

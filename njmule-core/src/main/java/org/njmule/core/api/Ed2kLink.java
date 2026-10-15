@@ -92,7 +92,7 @@ public sealed interface Ed2kLink {
         /** The link as an HTML anchor named after the file, for a web page. */
         public String toHtml() {
             Escaper html = HtmlEscapers.htmlEscaper();
-            return "<a href=\"" + html.escape(this.toUri()) + "\">" + html.escape(this.name) + "</a>";
+            return "<a href=\"" + html.escape(toUri()) + "\">" + html.escape(this.name) + "</a>";
         }
 
         @Override

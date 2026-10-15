@@ -107,7 +107,7 @@ final class ScriptedDownloader implements AutoCloseable {
     Optional<Packet> poll(Duration wait) throws IOException {
         this.socket.setSoTimeout((int) wait.toMillis());
         try {
-            return Optional.of(this.next());
+            return Optional.of(next());
         } catch (SocketTimeoutException e) {
             return Optional.empty();
         } finally {
@@ -119,7 +119,7 @@ final class ScriptedDownloader implements AutoCloseable {
     List<Packet> until(int protocol, int opcode) throws IOException {
         List<Packet> read = new ArrayList<>();
         while (true) {
-            Packet packet = this.next();
+            Packet packet = next();
             read.add(packet);
             if (packet.protocol() == protocol && packet.opcode() == opcode) {
                 return read;
@@ -128,11 +128,11 @@ final class ScriptedDownloader implements AutoCloseable {
     }
 
     Packet until(Opcodes.Client opcode) throws IOException {
-        return this.until(Protocol.EDONKEY, opcode.code()).getLast();
+        return until(Protocol.EDONKEY, opcode.code()).getLast();
     }
 
     Packet until(Opcodes.Extended opcode) throws IOException {
-        return this.until(Protocol.EMULE, opcode.code()).getLast();
+        return until(Protocol.EMULE, opcode.code()).getLast();
     }
 
     /** Whether we close the connection within {@code wait}, whatever we send before. */
@@ -140,7 +140,7 @@ final class ScriptedDownloader implements AutoCloseable {
         this.socket.setSoTimeout((int) wait.toMillis());
         try {
             while (true) {
-                this.next();
+                next();
             }
         } catch (EOFException | SocketException e) {
             return true;

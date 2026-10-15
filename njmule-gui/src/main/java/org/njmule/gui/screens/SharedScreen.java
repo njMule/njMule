@@ -85,7 +85,7 @@ public final class SharedScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -109,11 +109,11 @@ public final class SharedScreen implements Screen {
                 this.gui.t("nj.shared.none"),
                 Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)));
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
-        copy.setOnAction(e -> this.copyLinks());
+        copy.setOnAction(e -> copyLinks());
         MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
-        html.setOnAction(e -> this.copyHtml());
+        html.setOnAction(e -> copyHtml());
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY));
-        priority.getItems().setAll(this.priorityItems());
+        priority.getItems().setAll(priorityItems());
         MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
         MenuItem comment = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Material2MZ.RATE_REVIEW, this::commentSelected);
         MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Material2AL.FOLDER_OPEN, this::openFolder);
@@ -126,7 +126,7 @@ public final class SharedScreen implements Screen {
         });
         this.table.setContextMenu(menu);
         MenuButton priorities = new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY));
-        priorities.getItems().setAll(this.priorityItems());
+        priorities.getItems().setAll(priorityItems());
         priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
         priorities.setAccessibleText(this.gui.t("IDS_PRIORITY"));
         Label count = new Label();
@@ -145,7 +145,7 @@ public final class SharedScreen implements Screen {
                 priorities,
                 Fx.spacer(),
                 count);
-        return Fx.screen(this.title(), tools, this.table);
+        return Fx.screen(title(), tools, this.table);
     }
 
     private void chooseDirectory() {
@@ -153,7 +153,7 @@ public final class SharedScreen implements Screen {
         chooser.setTitle(this.gui.t("IDS_SHAREDIR"));
         var dir = chooser.showDialog(this.view.getScene().getWindow());
         if (dir != null) {
-            this.confirmShare(dir.toPath());
+            confirmShare(dir.toPath());
         }
     }
 
@@ -179,7 +179,7 @@ public final class SharedScreen implements Screen {
         ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
         ask.getDialogPane().setContent(content);
         ask.initOwner(this.view.getScene().getWindow());
-        ask.showAndWait().filter(go::equals).ifPresent(b -> this.share(directory, subfolders.isSelected()));
+        ask.showAndWait().filter(go::equals).ifPresent(b -> share(directory, subfolders.isSelected()));
     }
 
     void share(Path directory, boolean subdirectories) {
@@ -194,8 +194,8 @@ public final class SharedScreen implements Screen {
     private List<MenuItem> priorityItems() {
         List<MenuItem> items = new ArrayList<>();
         for (UploadPriority priority : UploadPriority.values()) {
-            MenuItem item = new MenuItem(this.priorityName(priority));
-            item.setOnAction(e -> this.prioritize(priority));
+            MenuItem item = new MenuItem(priorityName(priority));
+            item.setOnAction(e -> prioritize(priority));
             items.add(item);
         }
         return items;
@@ -254,11 +254,11 @@ public final class SharedScreen implements Screen {
     }
 
     void copyLinks() {
-        this.copy(Ed2kLink.FileLink::toUri);
+        copy(Ed2kLink.FileLink::toUri);
     }
 
     void copyHtml() {
-        this.copy(Ed2kLink.FileLink::toHtml);
+        copy(Ed2kLink.FileLink::toHtml);
     }
 
     private void copy(Function<Ed2kLink.FileLink, String> form) {

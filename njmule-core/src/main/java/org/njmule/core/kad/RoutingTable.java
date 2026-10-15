@@ -141,26 +141,26 @@ final class RoutingTable {
         }
         KadContact known = this.byId.get(contact.id());
         if (known != null) {
-            return update ? this.update(known, contact, senderKey, ourIp, now) : Outcome.REFUSED;
+            return update ? update(known, contact, senderKey, ourIp, now) : Outcome.REFUSED;
         }
-        Zone leaf = this.leaf(contact.id().xor(this.own));
+        Zone leaf = leaf(contact.id().xor(this.own));
         while (true) {
             if (leaf.bin.size() < K) {
-                if (!this.fits(contact.ip(), leaf, null)) {
+                if (!fits(contact.ip(), leaf, null)) {
                     return Outcome.REFUSED;
                 }
                 if (senderKey.key() != 0) {
                     contact.setUdpKey(senderKey);
                 }
                 leaf.bin.add(contact);
-                this.index(contact);
+                index(contact);
                 return Outcome.ADDED;
             }
-            if (!this.canSplit(leaf)) {
+            if (!canSplit(leaf)) {
                 return Outcome.REFUSED;
             }
-            this.split(leaf);
-            leaf = this.leaf(contact.id().xor(this.own));
+            split(leaf);
+            leaf = leaf(contact.id().xor(this.own));
         }
     }
 
@@ -182,13 +182,13 @@ final class RoutingTable {
             return Outcome.REFUSED;
         }
         if (fresh.ip() != known.ip()) {
-            Zone leaf = this.leaf(known.id().xor(this.own));
-            if (!this.fits(fresh.ip(), leaf, known)) {
+            Zone leaf = leaf(known.id().xor(this.own));
+            if (!fits(fresh.ip(), leaf, known)) {
                 return Outcome.REFUSED;
             }
-            this.unindex(known);
+            unindex(known);
             known.moveTo(fresh.ip(), fresh.udpPort());
-            this.index(known);
+            index(known);
         } else {
             known.moveTo(fresh.ip(), fresh.udpPort());
         }
@@ -199,23 +199,23 @@ final class RoutingTable {
         if (fresh.isVerified()) {
             known.setVerified(true);
         }
-        this.alive(known, now);
+        alive(known, now);
         return Outcome.UPDATED;
     }
 
     /** The contact answered: it ages and moves to the end of its bin. */
     void alive(KadContact contact, long now) {
         contact.alive(now);
-        Zone leaf = this.leaf(contact.id().xor(this.own));
+        Zone leaf = leaf(contact.id().xor(this.own));
         if (leaf.bin.remove(contact)) {
             leaf.bin.add(contact);
         }
     }
 
     void remove(KadContact contact) {
-        Zone leaf = this.leaf(contact.id().xor(this.own));
+        Zone leaf = leaf(contact.id().xor(this.own));
         if (leaf.bin.remove(contact)) {
-            this.unindex(contact);
+            unindex(contact);
         }
     }
 
@@ -236,7 +236,7 @@ final class RoutingTable {
     List<KadContact> closest(UInt128 target, int maxType, int count) {
         List<KadContact> out = new ArrayList<>(Math.max(0, Math.min(count, this.byId.size())));
         if (count > 0) {
-            this.closest(this.root, target.xor(this.own), target, maxType, count, out);
+            closest(this.root, target.xor(this.own), target, maxType, count, out);
         }
         return out;
     }
@@ -258,9 +258,9 @@ final class RoutingTable {
             return;
         }
         boolean far = distance.bit(zone.level) == 1;
-        this.closest(far ? zone.far : zone.near, distance, target, maxType, count, out);
+        closest(far ? zone.far : zone.near, distance, target, maxType, count, out);
         if (out.size() < count) {
-            this.closest(far ? zone.near : zone.far, distance, target, maxType, count, out);
+            closest(far ? zone.near : zone.far, distance, target, maxType, count, out);
         }
     }
 
@@ -273,7 +273,7 @@ final class RoutingTable {
     /** Contacts to hand to a joining node: those of the zones near the root. */
     List<KadContact> bootstrapContacts(int count, SecureRandom random) {
         List<KadContact> contacts = new ArrayList<>();
-        this.collect(this.root, 5, random, contacts);
+        collect(this.root, 5, random, contacts);
         return contacts.size() > count ? contacts.subList(0, count) : contacts;
     }
 
@@ -283,16 +283,16 @@ final class RoutingTable {
             return;
         }
         if (depth == 0) {
-            this.collect(random.nextBoolean() ? zone.near : zone.far, 0, random, out);
+            collect(random.nextBoolean() ? zone.near : zone.far, 0, random, out);
             return;
         }
-        this.collect(zone.near, depth - 1, random, out);
-        this.collect(zone.far, depth - 1, random, out);
+        collect(zone.near, depth - 1, random, out);
+        collect(zone.far, depth - 1, random, out);
     }
 
     List<Zone> leaves() {
         List<Zone> leaves = new ArrayList<>();
-        this.leaves(this.root, leaves);
+        leaves(this.root, leaves);
         return leaves;
     }
 
@@ -300,8 +300,8 @@ final class RoutingTable {
         if (zone.isLeaf()) {
             out.add(zone);
         } else {
-            this.leaves(zone.near, out);
-            this.leaves(zone.far, out);
+            leaves(zone.near, out);
+            leaves(zone.far, out);
         }
     }
 
@@ -324,15 +324,15 @@ final class RoutingTable {
 
     /** Merges sibling leaves that together hold fewer than half a bin. */
     void consolidate() {
-        this.consolidate(this.root);
+        consolidate(this.root);
     }
 
     private void consolidate(Zone zone) {
         if (zone.isLeaf()) {
             return;
         }
-        this.consolidate(zone.near);
-        this.consolidate(zone.far);
+        consolidate(zone.near);
+        consolidate(zone.far);
         if (zone.near.isLeaf() && zone.far.isLeaf() && zone.near.bin.size() + zone.far.bin.size() < K / 2) {
             zone.bin.addAll(zone.near.bin);
             zone.bin.addAll(zone.far.bin);

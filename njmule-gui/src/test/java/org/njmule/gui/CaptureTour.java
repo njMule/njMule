@@ -150,9 +150,9 @@ class CaptureTour {
 
     @Test
     void everyStateOfTheInterfaceIsPictured() throws Exception {
-        this.givenTheSetsAsked();
-        this.whenEachSetIsPictured();
-        this.thenEveryPictureIsListedAndNothingFailedToOpen();
+        givenTheSetsAsked();
+        whenEachSetIsPictured();
+        thenEveryPictureIsListedAndNothingFailedToOpen();
     }
 
     private void givenTheSetsAsked() throws Exception {
@@ -168,13 +168,13 @@ class CaptureTour {
             Locale language = Locale.forLanguageTag(parts[0]);
             GuiSettings.Mode mode = "dark".equals(parts[1]) ? GuiSettings.Mode.DARK : GuiSettings.Mode.LIGHT;
             String depth = parts.length > 2 ? parts[2] : "screens";
-            this.open(language, mode, !"empty".equals(depth), name.strip());
+            open(language, mode, !"empty".equals(depth), name.strip());
             if ("full".equals(depth)) {
-                this.everything();
+                everything();
             } else {
-                this.screens("screens".equals(depth));
+                screens("screens".equals(depth));
             }
-            this.close();
+            close();
         }
         Files.write(this.out.resolve("index.tsv"), this.index);
     }
@@ -254,7 +254,7 @@ class CaptureTour {
             this.stage.show();
         });
         if (demo) {
-            this.feed();
+            feed();
         }
         for (int i = 0; i < 31; i++) {
             FxTesting.onFx(this.model::tick);
@@ -318,67 +318,67 @@ class CaptureTour {
 
     private void screens(boolean tabs) throws Exception {
         for (String id : this.window.screenIds()) {
-            this.fx(() -> this.window.show(id));
-            this.fx(() -> expandTrees(this.stage.getScene().getRoot()));
-            this.shot(id, "Screen " + id);
+            fx(() -> this.window.show(id));
+            fx(() -> expandTrees(this.stage.getScene().getRoot()));
+            shot(id, "Screen " + id);
             if (tabs) {
-                this.tabs(id, this.screenRoot(), false);
+                tabs(id, screenRoot(), false);
             }
         }
     }
 
     private void everything() throws Exception {
         for (String id : this.window.screenIds()) {
-            this.fx(() -> this.window.show(id));
-            this.fx(() -> expandTrees(this.stage.getScene().getRoot()));
-            this.shot(id, "Screen " + id + " as it opens");
+            fx(() -> this.window.show(id));
+            fx(() -> expandTrees(this.stage.getScene().getRoot()));
+            shot(id, "Screen " + id + " as it opens");
             if (id.equals("search")) {
                 // The parameters fold away until wanted: open them to picture their lists too.
-                this.fx(() -> ((javafx.scene.control.ToggleButton)
+                fx(() -> ((javafx.scene.control.ToggleButton)
                                 this.stage.getScene().getRoot().lookup("#search-parameters"))
                         .fire());
-                this.shot("search-parameters", "Search with its parameters open");
+                shot("search-parameters", "Search with its parameters open");
             }
-            this.tabs(id, this.screenRoot(), true);
-            this.menus(id, this.screenRoot());
-            this.tooltips(id, this.screenRoot());
+            tabs(id, screenRoot(), true);
+            menus(id, screenRoot());
+            tooltips(id, screenRoot());
         }
-        this.fx(() -> this.window.show("transfers"));
-        this.menus("topbar", this.stage.getScene().getRoot());
-        this.tooltips("topbar", this.stage.getScene().getRoot());
-        this.fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#rates")).fire());
-        this.shot("topbar-limits", "The limits under the rates of the top bar");
-        this.fx(CaptureTour::closePopups);
-        this.fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
-        this.shot("palette", "The command palette (Ctrl+K)");
-        this.fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))
+        fx(() -> this.window.show("transfers"));
+        menus("topbar", this.stage.getScene().getRoot());
+        tooltips("topbar", this.stage.getScene().getRoot());
+        fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#rates")).fire());
+        shot("topbar-limits", "The limits under the rates of the top bar");
+        fx(CaptureTour::closePopups);
+        fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
+        shot("palette", "The command palette (Ctrl+K)");
+        fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))
                 .setText("big buck"));
-        this.shot("palette-search", "The command palette offering a search of the network");
-        this.fx(() -> this.stage
+        shot("palette-search", "The command palette offering a search of the network");
+        fx(() -> this.stage
                 .getScene()
                 .getRoot()
                 .lookup(".command-palette .text-field")
                 .fireEvent(FxTesting.key(javafx.scene.input.KeyCode.ESCAPE, false)));
-        this.fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.F1, false)));
+        fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.F1, false)));
         Thread.sleep(300);
         FxTesting.onFx(() -> {
             for (Window w : List.copyOf(Window.getWindows())) {
                 if (w instanceof Stage s && !s.equals(this.stage) && s.isShowing()) {
-                    this.save("shortcuts", image(s.getScene()), "The keyboard shortcuts (F1)");
+                    save("shortcuts", image(s.getScene()), "The keyboard shortcuts (F1)");
                     s.hide();
                 }
             }
             return null;
         });
-        this.textFieldMenu();
-        this.settingsPage();
-        this.liveSearch();
-        this.transfersDetails();
-        this.dialogs();
-        this.invalidInputs();
-        this.toasts();
-        this.trayWindows();
-        this.smallWindow();
+        textFieldMenu();
+        settingsPage();
+        liveSearch();
+        transfersDetails();
+        dialogs();
+        invalidInputs();
+        toasts();
+        trayWindows();
+        smallWindow();
     }
 
     // ---------------------------------------------------------------- exploration
@@ -398,24 +398,24 @@ class CaptureTour {
             for (int i = 0; i < size; i++) {
                 int at = i;
                 Tab tab = FxTesting.onFx(() -> pane.getTabs().get(at));
-                this.fx(() -> pane.getSelectionModel().select(at));
-                this.fx(() -> expandTrees(this.stage.getScene().getRoot()));
+                fx(() -> pane.getSelectionModel().select(at));
+                fx(() -> expandTrees(this.stage.getScene().getRoot()));
                 String title = FxTesting.onFx(tab::getText);
-                this.shot(context + "-tab-" + slug(title), "Tab \"" + title + "\" of " + context);
+                shot(context + "-tab-" + slug(title), "Tab \"" + title + "\" of " + context);
                 if (deep && FxTesting.onFx(tab::getContent) instanceof Parent content) {
-                    this.tabs(context + "-" + slug(title), content, true);
-                    this.menus(context + "-" + slug(title), content);
+                    tabs(context + "-" + slug(title), content, true);
+                    menus(context + "-" + slug(title), content);
                 }
             }
-            this.fx(() -> pane.getSelectionModel().select(Math.max(0, was)));
+            fx(() -> pane.getSelectionModel().select(Math.max(0, was)));
         }
     }
 
     private void menus(String context, Parent root) throws Exception {
-        this.contextMenus(context, root);
-        this.menuButtons(context, root);
-        this.dropDowns(context, root);
-        this.columnMenus(context, root);
+        contextMenus(context, root);
+        menuButtons(context, root);
+        dropDowns(context, root);
+        columnMenus(context, root);
     }
 
     // Each context menu with a row chosen, as for a right click on it, and its sub-menus.
@@ -428,15 +428,15 @@ class CaptureTour {
             if (!this.seen.add(menu)) {
                 continue;
             }
-            String name = context + "-ctx-" + this.name(owner);
-            this.fx(() -> choose(owner));
-            this.fx(() -> {
+            String name = context + "-ctx-" + name(owner);
+            fx(() -> choose(owner));
+            fx(() -> {
                 double[] at = anchor(owner);
                 menu.show(owner, at[0], at[1]);
             });
-            this.shot(name, "Context menu of " + this.name(owner) + " in " + context);
-            this.submenus(name, FxTesting.onFx(() -> List.copyOf(menu.getItems())));
-            this.fx(CaptureTour::closePopups);
+            shot(name, "Context menu of " + name(owner) + " in " + context);
+            submenus(name, FxTesting.onFx(() -> List.copyOf(menu.getItems())));
+            fx(CaptureTour::closePopups);
         }
     }
 
@@ -448,11 +448,11 @@ class CaptureTour {
             if (!this.seen.add(button)) {
                 continue;
             }
-            String name = context + "-menubutton-" + this.name(button);
-            this.fx(button::show);
-            this.shot(name, "Menu of the button " + this.name(button) + " in " + context);
-            this.submenus(name, FxTesting.onFx(() -> List.copyOf(button.getItems())));
-            this.fx(() -> {
+            String name = context + "-menubutton-" + name(button);
+            fx(button::show);
+            shot(name, "Menu of the button " + name(button) + " in " + context);
+            submenus(name, FxTesting.onFx(() -> List.copyOf(button.getItems())));
+            fx(() -> {
                 button.hide();
                 closePopups();
             });
@@ -467,15 +467,15 @@ class CaptureTour {
             if (!this.seen.add(box)) {
                 continue;
             }
-            this.fx(() -> {
+            fx(() -> {
                 if (box instanceof ComboBox<?> combo) {
                     combo.show();
                 } else if (box instanceof ChoiceBox<?> choice) {
                     choice.show();
                 }
             });
-            this.shot(context + "-dropdown-" + this.name(box), "Drop-down list " + this.name(box) + " in " + context);
-            this.fx(() -> {
+            shot(context + "-dropdown-" + name(box), "Drop-down list " + name(box) + " in " + context);
+            fx(() -> {
                 if (box instanceof ComboBox<?> combo) {
                     combo.hide();
                 } else if (box instanceof ChoiceBox<?> choice) {
@@ -497,7 +497,7 @@ class CaptureTour {
             if (corner == null || !this.seen.add(corner)) {
                 continue;
             }
-            this.fx(() -> {
+            fx(() -> {
                 Bounds b = corner.localToScreen(corner.getBoundsInLocal());
                 corner.fireEvent(new MouseEvent(
                         MouseEvent.MOUSE_PRESSED,
@@ -519,8 +519,8 @@ class CaptureTour {
                         false,
                         null));
             });
-            this.shot(context + "-columns-" + this.name(table), "Column menu of the table " + this.name(table));
-            this.fx(CaptureTour::closePopups);
+            shot(context + "-columns-" + name(table), "Column menu of the table " + name(table));
+            fx(CaptureTour::closePopups);
         }
     }
 
@@ -528,10 +528,10 @@ class CaptureTour {
         for (MenuItem item : items) {
             if (item instanceof Menu sub && !FxTesting.onFx(sub::isDisable)) {
                 String title = FxTesting.onFx(sub::getText);
-                this.fx(() -> hover(sub));
-                this.shot(context + "-sub-" + slug(title), "Sub-menu \"" + title + "\"");
-                this.submenus(context + "-sub-" + slug(title), FxTesting.onFx(() -> List.copyOf(sub.getItems())));
-                this.fx(sub::hide);
+                fx(() -> hover(sub));
+                shot(context + "-sub-" + slug(title), "Sub-menu \"" + title + "\"");
+                submenus(context + "-sub-" + slug(title), FxTesting.onFx(() -> List.copyOf(sub.getItems())));
+                fx(sub::hide);
             }
         }
     }
@@ -550,12 +550,12 @@ class CaptureTour {
             if (!this.seen.add(c.getTooltip())) {
                 continue;
             }
-            this.fx(() -> {
+            fx(() -> {
                 Bounds b = c.localToScreen(c.getBoundsInLocal());
                 c.getTooltip().show(c, b.getMinX(), b.getMaxY() + 4);
             });
-            this.shot(context + "-tooltip-" + this.name(c), "Tooltip of " + this.name(c));
-            this.fx(() -> {
+            shot(context + "-tooltip-" + name(c), "Tooltip of " + name(c));
+            fx(() -> {
                 c.getTooltip().hide();
                 closePopups();
             });
@@ -563,15 +563,15 @@ class CaptureTour {
     }
 
     private void textFieldMenu() throws Exception {
-        this.fx(() -> this.window.show("transfers"));
-        Parent screen = this.screenRoot();
+        fx(() -> this.window.show("transfers"));
+        Parent screen = screenRoot();
         Optional<TextField> field = FxTesting.onFx(() -> find(screen, TextField.class).stream()
                 .filter(CaptureTour::visible)
                 .findFirst());
         if (field.isEmpty()) {
             return;
         }
-        this.fx(() -> {
+        fx(() -> {
             TextField f = field.get();
             f.setText("ed2k://|file|Sintel.2010.1080p.x264.mkv|1245822976|…|/");
             f.requestFocus();
@@ -580,16 +580,16 @@ class CaptureTour {
             f.fireEvent(new ContextMenuEvent(
                     ContextMenuEvent.CONTEXT_MENU_REQUESTED, 40, 10, b.getMinX() + 40, b.getMinY() + 10, false, null));
         });
-        this.shot("transfers-textfield-ctx", "Standard context menu of a text field");
-        this.fx(() -> {
+        shot("transfers-textfield-ctx", "Standard context menu of a text field");
+        fx(() -> {
             closePopups();
             field.get().clear();
         });
     }
 
     private void settingsPage() throws Exception {
-        this.fx(() -> this.window.show("settings"));
-        Parent screen = this.screenRoot();
+        fx(() -> this.window.show("settings"));
+        Parent screen = screenRoot();
         Optional<ScrollPane> scroll = FxTesting.onFx(() -> find(screen, ScrollPane.class).stream()
                 .filter(CaptureTour::visible)
                 .findFirst());
@@ -598,10 +598,10 @@ class CaptureTour {
         }
         for (int i = 0; i <= 10; i++) {
             double v = i / 10.0;
-            this.fx(() -> scroll.get().setVvalue(v));
-            this.shot(String.format(Locale.ROOT, "settings-scroll-%02d", i), "Options scrolled to " + i + "/10");
+            fx(() -> scroll.get().setVvalue(v));
+            shot(String.format(Locale.ROOT, "settings-scroll-%02d", i), "Options scrolled to " + i + "/10");
         }
-        this.fx(() -> scroll.get().setVvalue(0));
+        fx(() -> scroll.get().setVvalue(0));
         // The whole page at once: the content of the scroll pane on the screen's own background.
         FxTesting.onFx(() -> {
             BufferedImage base = image(this.stage.getScene());
@@ -609,15 +609,15 @@ class CaptureTour {
             SnapshotParameters params = new SnapshotParameters();
             params.setFill(javafx.scene.paint.Color.rgb(bg.getRed(), bg.getGreen(), bg.getBlue()));
             WritableImage page = scroll.get().getContent().snapshot(params, null);
-            this.save("settings-full-page", toBuffered(page), "Options: the whole page");
+            save("settings-full-page", toBuffered(page), "Options: the whole page");
             return null;
         });
     }
 
     private void liveSearch() throws Exception {
-        this.fx(() -> this.window.show("search"));
-        Parent root = this.screenRoot();
-        this.fx(() -> {
+        fx(() -> this.window.show("search"));
+        Parent root = screenRoot();
+        fx(() -> {
             ComboBox<?> query = root.lookupAll(".combo-box").stream()
                     .filter(n -> n instanceof ComboBox<?> box && box.isEditable())
                     .map(n -> (ComboBox<?>) n)
@@ -632,28 +632,28 @@ class CaptureTour {
         });
         Thread.sleep(400);
         this.model.onNext(new EngineEvent.SearchResults(CaptureDemo.LIVE_SEARCH, CaptureDemo.liveResults()));
-        this.shot("search-live", "A search running, with its first results");
+        shot("search-live", "A search running, with its first results");
     }
 
     private void transfersDetails() throws Exception {
-        this.fx(() -> this.window.show("transfers"));
-        Parent transfers = this.screenRoot();
-        this.fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
-        this.shot("transfers-details-none", "Transfers with the details open, nothing chosen");
-        this.select(transfers, 0, 0);
-        this.shot("transfers-details", "Transfers with the details of the download chosen");
-        this.fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
+        fx(() -> this.window.show("transfers"));
+        Parent transfers = screenRoot();
+        fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
+        shot("transfers-details-none", "Transfers with the details open, nothing chosen");
+        select(transfers, 0, 0);
+        shot("transfers-details", "Transfers with the details of the download chosen");
+        fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
     }
 
     // ---------------------------------------------------------------- dialogs
 
     private void dialogs() throws Exception {
-        this.window("dialog-about", "About njMule", () -> new AboutDialog(this.gui, this.stage).show(), w -> {});
+        window("dialog-about", "About njMule", () -> new AboutDialog(this.gui, this.stage).show(), w -> {});
         Path emule = Files.createDirectories(this.dir.resolve("eMule").resolve("config"));
         // The first start, page by page, with an eMule found.
         for (int page = 0; page < 5; page++) {
             int nexts = page;
-            this.window(
+            window(
                     "dialog-wizard-" + (page + 1),
                     "First start wizard, page " + (page + 1),
                     () -> new FirstRunWizard(
@@ -665,25 +665,24 @@ class CaptureTour {
                             .show(),
                     w -> {
                         for (int i = 0; i < nexts; i++) {
-                            this.button(w.getScene().getRoot(), "nj.wizard.next")
-                                    .fire();
+                            button(w.getScene().getRoot(), "nj.wizard.next").fire();
                         }
                     });
         }
-        this.window(
+        window(
                 "dialog-import",
                 "Import from eMule, as it opens",
                 () -> new ImportDialog(this.gui, this.stage).show(),
                 w -> find(w.getScene().getRoot(), TextField.class).getFirst().setText(emule.toString()));
-        this.window(
+        window(
                 "dialog-import-report",
                 "Import from eMule after Check",
                 () -> new ImportDialog(this.gui, this.stage).show(),
                 w -> {
                     find(w.getScene().getRoot(), TextField.class).getFirst().setText(emule.toString());
-                    this.button(w.getScene().getRoot(), "nj.import.check").fire();
+                    button(w.getScene().getRoot(), "nj.import.check").fire();
                 });
-        this.window(
+        window(
                 "dialog-categories",
                 "Categories",
                 () -> new CategoriesDialog(this.gui, this.stage).show(),
@@ -691,72 +690,71 @@ class CaptureTour {
                         .getFirst()
                         .getSelectionModel()
                         .select(1));
-        this.window(
+        window(
                 "dialog-shared-folders",
                 "Shared folders",
                 () -> new SharedFoldersDialog(this.gui, this.stage).show(),
                 w -> {});
 
-        this.fx(() -> this.window.show("transfers"));
-        Parent transfers = this.screenRoot();
-        TableView<?> downloads = this.select(transfers, 0, 1);
-        this.waiting(
+        fx(() -> this.window.show("transfers"));
+        Parent transfers = screenRoot();
+        TableView<?> downloads = select(transfers, 0, 1);
+        waiting(
                 "dialog-transfers-cancel",
                 "Cancel a download",
-                () -> this.item(downloads.getContextMenu(), "IDS_CANCEL").fire());
-        this.waiting(
+                () -> item(downloads.getContextMenu(), "IDS_CANCEL").fire());
+        waiting(
                 "dialog-transfers-add-source",
                 "Add a source by hand",
-                () -> this.item(downloads.getContextMenu(), "IDS_ADDSRCMANUALLY")
-                        .fire());
-        this.window(
+                () -> item(downloads.getContextMenu(), "IDS_ADDSRCMANUALLY").fire());
+        window(
                 "dialog-comments-download",
                 "Comments of a download",
-                () -> this.item(downloads.getContextMenu(), "IDS_CMT_ADD").fire(),
+                () -> item(downloads.getContextMenu(), "IDS_CMT_ADD").fire(),
                 w -> {});
         TabPane lower = FxTesting.onFx(() -> find(transfers, TabPane.class).getFirst());
-        this.fx(() -> lower.getSelectionModel().select(0));
+        fx(() -> lower.getSelectionModel().select(0));
         TableView<?> uploads =
                 FxTesting.onFx(() -> (TableView<?>) lower.getTabs().getFirst().getContent());
-        this.fx(() -> uploads.getSelectionModel().select(0));
-        this.window(
+        fx(() -> uploads.getSelectionModel().select(0));
+        window(
                 "dialog-client-files",
                 "The files a client shares",
-                () -> this.item(uploads.getContextMenu(), "IDS_VIEWFILES").fire(),
+                () -> item(uploads.getContextMenu(), "IDS_VIEWFILES").fire(),
                 w -> {});
 
-        this.fx(() -> this.window.show("servers"));
-        TableView<?> servers = this.select(this.screenRoot(), 0, 0);
-        this.waiting(
+        fx(() -> this.window.show("servers"));
+        TableView<?> servers = select(screenRoot(), 0, 0);
+        waiting(
                 "dialog-servers-remove-all",
                 "Remove every server",
-                () -> this.item(servers.getContextMenu(), "IDS_REMOVEALL").fire());
+                () -> item(servers.getContextMenu(), "IDS_REMOVEALL").fire());
 
-        this.fx(() -> this.window.show("shared"));
-        TableView<?> shared = this.select(this.screenRoot(), 0, 1);
-        this.waiting(
+        fx(() -> this.window.show("shared"));
+        TableView<?> shared = select(screenRoot(), 0, 1);
+        waiting(
                 "dialog-shared-rename",
                 "Rename a shared file",
-                () -> this.item(shared.getContextMenu(), "IDS_RENAME").fire());
-        this.window(
+                () -> item(shared.getContextMenu(), "IDS_RENAME").fire());
+        window(
                 "dialog-comments-shared",
                 "Comment of a shared file",
-                () -> this.item(shared.getContextMenu(), "IDS_CMT_ADD").fire(),
+                () -> item(shared.getContextMenu(), "IDS_CMT_ADD").fire(),
                 w -> {});
         SharedScreen sharedScreen = (SharedScreen) this.window.screen("shared").orElseThrow();
-        this.waiting(
+        waiting(
                 "dialog-share-folder",
                 "Share a folder",
                 () -> CaptureAccess.confirmShare(sharedScreen, Path.of("D:\\Shared\\Films")));
-        this.waiting(
+        waiting(
                 "dialog-share-sensitive",
                 "Share a whole drive",
                 () -> CaptureAccess.confirmShare(sharedScreen, Path.of("D:\\")));
 
-        this.fx(() -> this.window.show("settings"));
+        fx(() -> this.window.show("settings"));
         SettingsScreen settings =
                 (SettingsScreen) this.window.screen("settings").orElseThrow();
-        this.waiting(
+        waiting(
                 "dialog-server-list-addresses",
                 "Addresses of the server lists",
                 () -> CaptureAccess.editServerListAddresses(settings));
@@ -765,7 +763,7 @@ class CaptureTour {
     // Chooses one row of the table at {@code which} under root, alone.
     private TableView<?> select(Parent root, int which, int row) throws Exception {
         TableView<?> table = FxTesting.onFx(() -> find(root, TableView.class).get(which));
-        this.fx(() -> {
+        fx(() -> {
             table.getSelectionModel().clearSelection();
             table.getSelectionModel().select(row);
         });
@@ -775,7 +773,7 @@ class CaptureTour {
     // A window that does not wait: shown, pictured alone and over the main window, closed.
     private void window(String slug, String what, Runnable open, Consumer<Window> fill) throws Exception {
         Set<Window> before = FxTesting.onFx(() -> Set.copyOf(Window.getWindows()));
-        this.fx(open);
+        fx(open);
         Thread.sleep(500);
         Optional<Window> shown = FxTesting.onFx(() -> Window.getWindows().stream()
                 .filter(w -> w instanceof Stage && w.isShowing() && !before.contains(w))
@@ -784,14 +782,14 @@ class CaptureTour {
             this.missed.add(this.set + ": " + slug);
             return;
         }
-        this.fx(() -> fill.accept(shown.get()));
+        fx(() -> fill.accept(shown.get()));
         Thread.sleep(500);
         FxTesting.onFx(() -> {
-            this.save(slug, image(shown.get().getScene()), what + " (alone)");
-            this.save(slug + "-over", this.composite(), what + " (over the main window)");
+            save(slug, image(shown.get().getScene()), what + " (alone)");
+            save(slug + "-over", composite(), what + " (over the main window)");
             return null;
         });
-        this.fx(() -> List.copyOf(Window.getWindows()).stream()
+        fx(() -> List.copyOf(Window.getWindows()).stream()
                 .filter(w -> !before.contains(w))
                 .forEach(Window::hide));
     }
@@ -800,7 +798,7 @@ class CaptureTour {
     private void waiting(String slug, String what, Runnable open) throws Exception {
         Set<Window> before = FxTesting.onFx(() -> Set.copyOf(Window.getWindows()));
         CompletableFuture<Boolean> done = new CompletableFuture<>();
-        Thread watcher = Thread.ofVirtual().start(() -> this.watch(slug, what, before, done));
+        Thread watcher = Thread.ofVirtual().start(() -> watch(slug, what, before, done));
         FxTesting.onFx(open);
         watcher.join();
         if (!done.get()) {
@@ -815,7 +813,7 @@ class CaptureTour {
             while (System.nanoTime() < deadline) {
                 Thread.sleep(400);
                 CompletableFuture<Boolean> got = new CompletableFuture<>();
-                Platform.runLater(() -> got.complete(this.pictureAndCancel(slug, what, before)));
+                Platform.runLater(() -> got.complete(pictureAndCancel(slug, what, before)));
                 if (got.get(10, TimeUnit.SECONDS)) {
                     done.complete(true);
                     return;
@@ -838,8 +836,8 @@ class CaptureTour {
             return false;
         }
         try {
-            this.save(slug, image(shown.get().getScene()), what + " (alone)");
-            this.save(slug + "-over", this.composite(), what + " (over the main window)");
+            save(slug, image(shown.get().getScene()), what + " (alone)");
+            save(slug + "-over", composite(), what + " (over the main window)");
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -863,9 +861,9 @@ class CaptureTour {
     // ---------------------------------------------------------------- other states
 
     private void invalidInputs() throws Exception {
-        this.fx(() -> this.window.show("transfers"));
-        Parent transfers = this.screenRoot();
-        this.fx(() -> {
+        fx(() -> this.window.show("transfers"));
+        Parent transfers = screenRoot();
+        fx(() -> {
             TextField link = find(transfers, TextField.class).stream()
                     .filter(f -> f.getPromptText() != null && f.getPromptText().startsWith("ed2k://"))
                     .findFirst()
@@ -873,11 +871,11 @@ class CaptureTour {
             link.requestFocus();
             link.setText("ed2k://|file|broken|");
         });
-        this.fx(() -> this.window.root().requestFocus());
-        this.shot("transfers-invalid-link", "The link field with a wrong link");
-        this.fx(() -> this.window.show("settings"));
-        Parent settings = this.screenRoot();
-        this.fx(() -> {
+        fx(() -> this.window.root().requestFocus());
+        shot("transfers-invalid-link", "The link field with a wrong link");
+        fx(() -> this.window.show("settings"));
+        Parent settings = screenRoot();
+        fx(() -> {
             TextField port = find(settings, TextField.class).stream()
                     .filter(f ->
                             f.getTooltip() != null && f.getTooltip().getText().contains("65535"))
@@ -886,24 +884,24 @@ class CaptureTour {
             port.requestFocus();
             port.setText("99999");
         });
-        this.fx(() -> this.window.root().requestFocus());
-        this.shot("settings-invalid-field", "Options with a port out of range");
-        this.fx(() -> find(settings, Button.class).stream()
+        fx(() -> this.window.root().requestFocus());
+        shot("settings-invalid-field", "Options with a port out of range");
+        fx(() -> find(settings, Button.class).stream()
                 .filter(b -> b.getStyleClass().contains("accent"))
                 .findFirst()
                 .ifPresent(Button::fire));
-        this.shot("settings-apply-invalid", "Options: Apply with a port out of range");
-        this.fx(() -> this.button(settings, "IDS_PW_RESET").fire());
+        shot("settings-apply-invalid", "Options: Apply with a port out of range");
+        fx(() -> button(settings, "IDS_PW_RESET").fire());
     }
 
     private void toasts() throws Exception {
-        this.fx(() -> this.window.show("transfers"));
-        this.fx(() -> {
+        fx(() -> this.window.show("transfers"));
+        fx(() -> {
             this.window.success(this.gui.f("nj.transfers.completed", "LibreOffice_25.8.1_Win_x86-64.msi"));
             this.window.message(this.gui.f("nj.chat.from", "Owl"));
             this.window.problem("203.0.113.11:4232: connection refused");
         });
-        this.shot("toasts", "A success, a piece of news and a problem, stacked");
+        shot("toasts", "A success, a piece of news and a problem, stacked");
     }
 
     private void trayWindows() throws Exception {
@@ -932,10 +930,10 @@ class CaptureTour {
                 // Pictured only.
             }
         }));
-        this.fx(() -> menu.show(1100, 700));
+        fx(() -> menu.show(1100, 700));
         Thread.sleep(400);
-        this.newWindows("tray-menu", "Menu of the notification-area icon (right click)", before);
-        this.fx(menu::hide);
+        newWindows("tray-menu", "Menu of the notification-area icon (right click)", before);
+        fx(menu::hide);
         Set<Window> beforeMini = FxTesting.onFx(() -> Set.copyOf(Window.getWindows()));
         MiniMule mini = FxTesting.onFx(() -> new MiniMule(this.gui, owner, () -> this.dir, new MiniMule.Actions() {
             @Override
@@ -953,13 +951,13 @@ class CaptureTour {
                 // Pictured only.
             }
         }));
-        this.fx(() -> {
+        fx(() -> {
             mini.show();
             mini.refresh();
         });
         Thread.sleep(400);
-        this.newWindows("minimule", "MiniMule (click on the notification-area icon)", beforeMini);
-        this.fx(() -> {
+        newWindows("minimule", "MiniMule (click on the notification-area icon)", beforeMini);
+        fx(() -> {
             mini.hide();
             owner.hide();
         });
@@ -970,7 +968,7 @@ class CaptureTour {
             int i = 0;
             for (Window w : Window.getWindows()) {
                 if (w.isShowing() && !before.contains(w) && w.getScene() != null) {
-                    this.save(slug + (i++ == 0 ? "" : "-" + i), image(w.getScene()), what);
+                    save(slug + (i++ == 0 ? "" : "-" + i), image(w.getScene()), what);
                 }
             }
             return null;
@@ -995,10 +993,10 @@ class CaptureTour {
         });
         this.stage = small;
         for (String id : List.of("transfers", "search", "servers", "settings")) {
-            this.fx(() -> this.window.show(id));
-            this.shot(id + "-small-900x600", "A 900×600 window");
+            fx(() -> this.window.show(id));
+            shot(id + "-small-900x600", "A 900×600 window");
         }
-        this.fx(() -> {
+        fx(() -> {
             Parent root = small.getScene().getRoot();
             small.getScene().setRoot(new Region());
             small.hide();
@@ -1193,7 +1191,7 @@ class CaptureTour {
     private void shot(String slug, String what) throws Exception {
         Thread.sleep(SETTLE);
         FxTesting.onFx(() -> {
-            this.save(slug, this.composite(), what);
+            save(slug, composite(), what);
             return null;
         });
     }

@@ -44,20 +44,20 @@ class RoutingTableClosestTest {
             @ForAll long seed,
             @ForAll @IntRange(min = 0, max = 300) int contacts,
             @ForAll @IntRange(max = 60) int count) {
-        this.givenATableOfRandomContacts(seed, contacts);
-        this.givenARandomTargetNearOrFarFromUs();
+        givenATableOfRandomContacts(seed, contacts);
+        givenARandomTargetNearOrFarFromUs();
 
-        this.whenTheClosestAreAskedFor(count);
+        whenTheClosestAreAskedFor(count);
 
-        this.thenTheyAreTheFirstOfAFullSort(count);
+        thenTheyAreTheFirstOfAFullSort(count);
     }
 
     private void givenATableOfRandomContacts(long seed, int contacts) {
         this.random = new Random(seed);
-        this.table = new RoutingTable(this.randomId(), ip -> false);
+        this.table = new RoutingTable(randomId(), ip -> false);
         for (int i = 0; i < contacts; i++) {
             KadContact c = new KadContact(
-                    this.randomId(), Ipv4.of(20 + i / 200, i % 200, this.random.nextInt(4), 1), PORT, 4662, 8, 0);
+                    randomId(), Ipv4.of(20 + i / 200, i % 200, this.random.nextInt(4), 1), PORT, 4662, 8, 0);
             c.setVerified(this.random.nextInt(5) > 0);
             if (this.random.nextBoolean()) {
                 c.alive(0);
@@ -75,7 +75,7 @@ class RoutingTableClosestTest {
         this.target = switch (this.random.nextInt(3)) {
             case 0 -> own;
             case 1 -> own.xor(new UInt128(0, this.random.nextLong()));
-            default -> this.randomId();
+            default -> randomId();
         };
     }
 

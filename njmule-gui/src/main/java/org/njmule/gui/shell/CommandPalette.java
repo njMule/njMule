@@ -63,13 +63,13 @@ final class CommandPalette {
         this.commands = commands;
         this.typed = typed;
         this.field.setPromptText(prompt);
-        this.field.textProperty().addListener((o, was, now) -> this.filter(now));
+        this.field.textProperty().addListener((o, was, now) -> filter(now));
         this.field.setOnKeyPressed(e -> {
             switch (e.getCode()) {
-                case ESCAPE -> this.hide();
-                case ENTER -> this.run();
-                case DOWN -> this.move(1);
-                case UP -> this.move(-1);
+                case ESCAPE -> hide();
+                case ENTER -> run();
+                case DOWN -> move(1);
+                case UP -> move(-1);
                 default -> {
                     return;
                 }
@@ -78,14 +78,14 @@ final class CommandPalette {
         });
         this.list.setCellFactory(l -> new CommandCell());
         this.list.setFocusTraversable(false);
-        this.list.setOnMouseClicked(e -> this.run());
+        this.list.setOnMouseClicked(e -> run());
         VBox box = new VBox(6, this.field, this.list);
         box.getStyleClass().addAll("command-palette", "elevated-2");
         box.setMaxWidth(560);
         box.setMaxHeight(Region.USE_PREF_SIZE);
         Region scrim = new Region();
         scrim.getStyleClass().add("command-scrim");
-        scrim.setOnMouseClicked(e -> this.hide());
+        scrim.setOnMouseClicked(e -> hide());
         this.view = new StackPane(scrim, box);
         StackPane.setAlignment(box, Pos.TOP_CENTER);
         StackPane.setMargin(box, new Insets(64, 16, 16, 16));
@@ -102,7 +102,7 @@ final class CommandPalette {
 
     void show() {
         this.field.clear();
-        this.filter("");
+        filter("");
         this.view.setVisible(true);
         this.field.requestFocus();
     }
@@ -153,7 +153,7 @@ final class CommandPalette {
     private void run() {
         Command chosen = this.list.getSelectionModel().getSelectedItem();
         if (chosen != null) {
-            this.hide();
+            hide();
             chosen.action().run();
         }
     }
@@ -163,8 +163,8 @@ final class CommandPalette {
         protected void updateItem(Command command, boolean empty) {
             super.updateItem(command, empty);
             if (empty || command == null) {
-                this.setText(null);
-                this.setGraphic(null);
+                setText(null);
+                setGraphic(null);
                 return;
             }
             Label text = new Label(command.text());
@@ -177,8 +177,8 @@ final class CommandPalette {
                 row.getChildren().add(keys);
             }
             row.setAlignment(Pos.CENTER_LEFT);
-            this.setText(null);
-            this.setGraphic(row);
+            setText(null);
+            setGraphic(row);
         }
     }
 }

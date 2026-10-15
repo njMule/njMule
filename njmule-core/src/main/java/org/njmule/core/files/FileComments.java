@@ -89,7 +89,7 @@ public final class FileComments {
         } else if (comment.equals(this.comments.put(file, comment))) {
             return;
         }
-        this.save();
+        save();
     }
 
     private void save() throws IOException {

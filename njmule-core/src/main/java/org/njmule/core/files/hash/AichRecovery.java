@@ -169,19 +169,18 @@ public final class AichRecovery {
                 long partSize,
                 List<Node> out) {
             if (start == partStart && dataSize == partSize) {
-                this.lowest(dataSize, left, base, start, ident, out);
+                lowest(dataSize, left, base, start, ident, out);
                 return;
             }
             long id = ident << 1 | (left ? 1 : 0);
             long leftSize = leftSize(dataSize, left, base);
             long rightSize = dataSize - leftSize;
             if (partStart < start + leftSize) {
-                out.add(new Node(id << 1, this.hash(rightSize, false, start + leftSize)));
-                this.down(leftSize, true, AichTree.baseSize(leftSize), start, id, partStart, partSize, out);
+                out.add(new Node(id << 1, hash(rightSize, false, start + leftSize)));
+                down(leftSize, true, AichTree.baseSize(leftSize), start, id, partStart, partSize, out);
             } else {
-                out.add(new Node(id << 1 | 1, this.hash(leftSize, true, start)));
-                this.down(
-                        rightSize, false, AichTree.baseSize(rightSize), start + leftSize, id, partStart, partSize, out);
+                out.add(new Node(id << 1 | 1, hash(leftSize, true, start)));
+                down(rightSize, false, AichTree.baseSize(rightSize), start + leftSize, id, partStart, partSize, out);
             }
         }
 
@@ -192,8 +191,8 @@ public final class AichRecovery {
                 return;
             }
             long leftSize = leftSize(dataSize, left, base);
-            this.lowest(leftSize, true, AichTree.baseSize(leftSize), start, id, out);
-            this.lowest(dataSize - leftSize, false, AichTree.baseSize(dataSize - leftSize), start + leftSize, id, out);
+            lowest(leftSize, true, AichTree.baseSize(leftSize), start, id, out);
+            lowest(dataSize - leftSize, false, AichTree.baseSize(dataSize - leftSize), start + leftSize, id, out);
         }
 
         private Hash20 hash(long dataSize, boolean left, long start) {
@@ -202,10 +201,7 @@ public final class AichRecovery {
                 return this.leaves.get(leaf(start));
             }
             long leftSize = leftSize(dataSize, left, base);
-            return combine(
-                    this.sha1,
-                    this.hash(leftSize, true, start),
-                    this.hash(dataSize - leftSize, false, start + leftSize));
+            return combine(this.sha1, hash(leftSize, true, start), hash(dataSize - leftSize, false, start + leftSize));
         }
     }
 
@@ -232,7 +228,7 @@ public final class AichRecovery {
                 return Optional.empty();
             }
             if (start == partStart && dataSize == partSize) {
-                return this.part(dataSize, left, base, start, ident);
+                return part(dataSize, left, base, start, ident);
             }
             long id = ident << 1 | (left ? 1 : 0);
             long leftSize = leftSize(dataSize, left, base);
@@ -240,11 +236,11 @@ public final class AichRecovery {
             if (partStart < start + leftSize) {
                 Hash20 right = this.byIdent.get(id << 1);
                 Optional<Hash20> below =
-                        this.up(leftSize, true, AichTree.baseSize(leftSize), start, id, partStart, partSize, level + 1);
+                        up(leftSize, true, AichTree.baseSize(leftSize), start, id, partStart, partSize, level + 1);
                 return right == null ? Optional.empty() : below.map(l -> combine(this.sha1, l, right));
             }
             Hash20 leftHash = this.byIdent.get(id << 1 | 1);
-            Optional<Hash20> below = this.up(
+            Optional<Hash20> below = up(
                     rightSize,
                     false,
                     AichTree.baseSize(rightSize),
@@ -267,9 +263,9 @@ public final class AichRecovery {
                 return Optional.ofNullable(block);
             }
             long leftSize = leftSize(dataSize, left, base);
-            Optional<Hash20> l = this.part(leftSize, true, AichTree.baseSize(leftSize), start, id);
+            Optional<Hash20> l = part(leftSize, true, AichTree.baseSize(leftSize), start, id);
             Optional<Hash20> r =
-                    this.part(dataSize - leftSize, false, AichTree.baseSize(dataSize - leftSize), start + leftSize, id);
+                    part(dataSize - leftSize, false, AichTree.baseSize(dataSize - leftSize), start + leftSize, id);
             return l.isPresent() && r.isPresent()
                     ? Optional.of(combine(this.sha1, l.get(), r.get()))
                     : Optional.empty();

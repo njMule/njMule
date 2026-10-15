@@ -86,132 +86,132 @@ class KadNotesTest {
 
     @Test
     void shouldKeepEachPublishersLatestNote() throws Exception {
-        this.givenASearchFor(FILM);
-        this.givenKadFinds(FILM, note(1, "Film.avi", "first words", 2), note(2, "film.avi", "", 4));
-        this.givenKadFinds(FILM, note(1, "Film.avi", "second thoughts", 5));
+        givenASearchFor(FILM);
+        givenKadFinds(FILM, note(1, "Film.avi", "first words", 2), note(2, "film.avi", "", 4));
+        givenKadFinds(FILM, note(1, "Film.avi", "second thoughts", 5));
 
-        this.whenTheSearchEnds(FILM);
+        whenTheSearchEnds(FILM);
 
-        this.thenTheSearchGives(
+        thenTheSearchGives(
                 new KadNote(publisher(2), "film.avi", FileComment.of("", 4)),
                 new KadNote(publisher(1), "Film.avi", FileComment.of("second thoughts", 5)));
     }
 
     @Test
     void shouldLeaveOutWhatTheCommentFilterHoldsInTheCommentOrTheName() throws Exception {
-        this.givenASearchFor(FILM);
-        this.givenKadFindsNotesWithSpam();
+        givenASearchFor(FILM);
+        givenKadFindsNotesWithSpam();
 
-        this.whenTheSearchEnds(FILM);
+        whenTheSearchEnds(FILM);
 
-        this.thenTheSearchGives(new KadNote(publisher(3), "Film.avi", FileComment.of("fine", 3)));
+        thenTheSearchGives(new KadNote(publisher(3), "Film.avi", FileComment.of("fine", 3)));
     }
 
     @Test
     void shouldShowWhatAChangedFilterNoLongerHolds() {
-        this.givenASearchFor(FILM);
-        this.givenKadFindsNotesWithSpam();
-        this.givenTheSearchEnded(FILM);
+        givenASearchFor(FILM);
+        givenKadFindsNotesWithSpam();
+        givenTheSearchEnded(FILM);
 
-        this.whenTheFilterBecomes("");
+        whenTheFilterBecomes("");
 
-        this.thenTheFileHasNotes(FILM, 3);
+        thenTheFileHasNotes(FILM, 3);
     }
 
     @Test
     void shouldJoinTheSearchRunningForTheFile() throws Exception {
-        this.givenASearchFor(FILM);
-        this.givenTheFileIsSearchedAgain(FILM);
+        givenASearchFor(FILM);
+        givenTheFileIsSearchedAgain(FILM);
 
-        this.whenTheSearchEnds(FILM);
+        whenTheSearchEnds(FILM);
 
-        this.thenKadWasAskedOnlyOnce();
-        this.thenBothSearchesEnded();
+        thenKadWasAskedOnlyOnce();
+        thenBothSearchesEnded();
     }
 
     @Test
     void shouldFailWhenKadIsNotConnected() {
-        this.givenKadIsNotConnected();
+        givenKadIsNotConnected();
 
-        this.whenTheFileIsSearched(FILM);
+        whenTheFileIsSearched(FILM);
 
-        this.thenTheSearchFails("Kad is not connected");
+        thenTheSearchFails("Kad is not connected");
     }
 
     @Test
     void shouldFailWhenKadIsBusyWithTheFile() {
-        this.givenKadIsBusy();
+        givenKadIsBusy();
 
-        this.whenTheFileIsSearched(FILM);
+        whenTheFileIsSearched(FILM);
 
-        this.thenTheSearchFails("busy");
+        thenTheSearchFails("busy");
     }
 
     @Test
     void shouldSearchEachRunningDownloadOnceARunOneAtATime() {
-        this.givenADownload(FILM);
-        this.givenADownload(SONG);
+        givenADownload(FILM);
+        givenADownload(SONG);
 
-        this.whenTimePasses(Duration.ofSeconds(1));
+        whenTimePasses(Duration.ofSeconds(1));
 
-        this.thenKadWasAskedFor(FILM);
+        thenKadWasAskedFor(FILM);
     }
 
     @Test
     void shouldSearchTheNextDownloadOnlyAfterAPause() {
-        this.givenADownload(FILM);
-        this.givenADownload(SONG);
-        this.givenTimePasses(Duration.ofSeconds(1));
-        this.givenTheSearchEnded(FILM);
-        this.givenTimePasses(Duration.ofSeconds(3));
+        givenADownload(FILM);
+        givenADownload(SONG);
+        givenTimePasses(Duration.ofSeconds(1));
+        givenTheSearchEnded(FILM);
+        givenTimePasses(Duration.ofSeconds(3));
 
-        this.whenTimePasses(KadNotes.AUTOMATIC_EVERY);
+        whenTimePasses(KadNotes.AUTOMATIC_EVERY);
 
-        this.thenKadWasAskedFor(FILM, SONG);
+        thenKadWasAskedFor(FILM, SONG);
     }
 
     @Test
     void shouldNotSearchForDownloadsBeforeKadKnowsTheNetwork() {
-        this.givenADownload(FILM);
-        this.givenKadIsNotReady();
+        givenADownload(FILM);
+        givenKadIsNotReady();
 
-        this.whenTimePasses(Duration.ofSeconds(30));
+        whenTimePasses(Duration.ofSeconds(30));
 
-        this.thenKadWasAskedFor();
+        thenKadWasAskedFor();
     }
 
     @Test
     void shouldEndTheSearchesWhenKadStops() throws Exception {
-        this.givenASearchFor(FILM);
-        this.givenKadFinds(FILM, note(1, "Film.avi", "good", 4));
+        givenASearchFor(FILM);
+        givenKadFinds(FILM, note(1, "Film.avi", "good", 4));
 
-        this.whenKadStops();
+        whenKadStops();
 
-        this.thenTheSearchGives(new KadNote(publisher(1), "Film.avi", FileComment.of("good", 4)));
+        thenTheSearchGives(new KadNote(publisher(1), "Film.avi", FileComment.of("good", 4)));
     }
 
     @Test
     void shouldKeepAtMostItsShareOfNotesForAFile() {
-        this.givenASearchFor(FILM);
+        givenASearchFor(FILM);
 
-        this.whenKadFindsSoManyNotes(FILM, KadNotes.MAX_NOTES_PER_FILE + 10);
+        whenKadFindsSoManyNotes(FILM, KadNotes.MAX_NOTES_PER_FILE + 10);
 
-        this.thenTheFileHasNotes(FILM, KadNotes.MAX_NOTES_PER_FILE);
+        thenTheFileHasNotes(FILM, KadNotes.MAX_NOTES_PER_FILE);
     }
 
     @Test
     void shouldForgetTheNotesOfTheFileSearchedLongestAgo() {
-        this.givenASearchFor(FILM);
-        this.givenKadFinds(FILM, note(1, "Film.avi", "good", 4));
-        this.givenTheSearchEnded(FILM);
+        givenASearchFor(FILM);
+        givenKadFinds(FILM, note(1, "Film.avi", "good", 4));
+        givenTheSearchEnded(FILM);
 
-        this.whenSoManyOtherFilesAreSearched(KadNotes.MAX_FILES);
+        whenSoManyOtherFilesAreSearched(KadNotes.MAX_FILES);
 
-        this.thenTheFileHasNotes(FILM, 0);
+        thenTheFileHasNotes(FILM, 0);
     }
 
     private void givenASearchFor(Hash16 file) {
-        this.whenTheFileIsSearched(file);
+        whenTheFileIsSearched(file);
     }
 
     private void givenKadFinds(Hash16 file, KadNode.Note... found) {
@@ -219,7 +219,7 @@ class KadNotesTest {
     }
 
     private void givenTheSearchEnded(Hash16 file) {
-        this.whenTheSearchEnds(file);
+        whenTheSearchEnds(file);
     }
 
     private void givenKadIsNotConnected() {
@@ -239,11 +239,11 @@ class KadNotesTest {
     }
 
     private void givenTimePasses(Duration time) {
-        this.whenTimePasses(time);
+        whenTimePasses(time);
     }
 
     private void givenKadFindsNotesWithSpam() {
-        this.givenKadFinds(
+        givenKadFinds(
                 FILM,
                 note(1, "Film.avi", "see http://spam.example", 1),
                 note(2, "HTTP://spam.example Film.avi", "fine", 1),
@@ -271,8 +271,8 @@ class KadNotesTest {
             bytes[1] = (byte) i;
             bytes[2] = 1;
             Hash16 other = Hash16.of(bytes);
-            this.whenTheFileIsSearched(other);
-            this.whenTheSearchEnds(other);
+            whenTheFileIsSearched(other);
+            whenTheSearchEnds(other);
         }
     }
 

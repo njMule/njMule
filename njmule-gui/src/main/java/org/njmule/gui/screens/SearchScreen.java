@@ -189,7 +189,7 @@ public final class SearchScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -202,7 +202,7 @@ public final class SearchScreen implements Screen {
         this.query.setPromptText(this.gui.t("IDS_SEARCH_TEXT"));
         this.gui.settings().seedHistory(HISTORY, this.gui.directories().config().resolve(EMULE_HISTORY));
         this.query.getItems().setAll(this.gui.settings().history(HISTORY));
-        this.query.getEditor().setOnAction(e -> this.start());
+        this.query.getEditor().setOnAction(e -> start());
         this.queryInput = inputs.searchExpression(this.query.getEditor(), this.gui.t("IDS_SEARCH_TEXT"))
                 .quietWhenEmpty();
         // The box's skin binds the editor's tooltip to the box's own: the hint must be there.
@@ -217,7 +217,7 @@ public final class SearchScreen implements Screen {
         stop.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
         download.disableProperty().bind(this.noneChosen);
-        this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.followChoice());
+        this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> followChoice());
         // Two rows: what to look for, then where and with what, beside what acts on the results.
         HBox.setHgrow(this.query, Priority.ALWAYS);
         var tools = Fx.toolRow(this.query, start);
@@ -225,34 +225,34 @@ public final class SearchScreen implements Screen {
                 Fx.toolRow(this.method.node(), this.parametersButton, Fx.toolGap(), more, stop, Fx.spacer(), download);
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded, shared or marked since shows so in every list.
-        this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> this.refreshAll());
-        this.gui.subscriptions().onChange(this.gui.model().historyProperty(), (was, now) -> this.refreshAll());
+        this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> refreshAll());
+        this.gui.subscriptions().onChange(this.gui.model().historyProperty(), (was, now) -> refreshAll());
         this.gui.subscriptions().onListChange(this.gui.model().downloads().rows(), this::knownChanged);
         this.gui.subscriptions().onListChange(this.gui.model().sharedFiles().rows(), this::knownChanged);
         // The tabs left open at the last exit come back with the results they had.
         if (this.gui.model().preferencesProperty().get().storeSearches()) {
             this.gui.model().savedSearches(saved -> {
                 for (SavedSearch s : saved) {
-                    this.opened(this.gui.model().restored(s), s.title());
+                    opened(this.gui.model().restored(s), s.title());
                 }
             });
         }
-        this.parameters = this.parameters(inputs);
+        this.parameters = parameters(inputs);
         this.content.getChildren().setAll(this.tabs);
         VBox.setVgrow(this.tabs, Priority.ALWAYS);
         // The parameters fold away until wanted; the button counts those in use, and they show when any is.
         this.parametersButton.setGraphic(Fx.icon(Material2MZ.TUNE));
         this.parametersButton.setId("search-parameters");
-        this.parametersButton.setOnAction(e -> this.showParameters(this.parametersButton.isSelected()));
+        this.parametersButton.setOnAction(e -> showParameters(this.parametersButton.isSelected()));
         for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
-            f.textProperty().addListener((o, was, now) -> this.countParameters());
+            f.textProperty().addListener((o, was, now) -> countParameters());
         }
-        this.type.valueProperty().addListener((o, was, now) -> this.countParameters());
-        this.countParameters();
-        this.showParameters(this.parametersInUse() > 0);
+        this.type.valueProperty().addListener((o, was, now) -> countParameters());
+        countParameters();
+        showParameters(parametersInUse() > 0);
         VBox below = new VBox(where, this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
-        return Fx.screen(this.title(), tools, below);
+        return Fx.screen(title(), tools, below);
     }
 
     // The search parameters: the type and the attributes the server or Kad filter on.
@@ -271,7 +271,7 @@ public final class SearchScreen implements Screen {
                 inputs.optionalNumber(this.maxSize, this.gui.t("IDS_SEARCHMAXSIZE"), this::lowestMaxSize, MAX_SIZE_MB);
         this.minSize.textProperty().addListener((o, was, now) -> {
             this.maxSizeInput.check();
-            this.maxSize.getTooltip().setText(this.gui.f("nj.input.optionalNumber", this.lowestMaxSize(), MAX_SIZE_MB));
+            this.maxSize.getTooltip().setText(this.gui.f("nj.input.optionalNumber", lowestMaxSize(), MAX_SIZE_MB));
         });
         this.availabilityInput =
                 inputs.optionalNumber(this.availability, this.gui.t("IDS_SEARCHAVAIL"), 1, MAX_SOURCES);
@@ -281,12 +281,12 @@ public final class SearchScreen implements Screen {
         FlowPane row = new FlowPane(
                 14,
                 6,
-                this.labelled("IDS_TYPE", this.type),
-                this.labelled("IDS_SEARCHMINSIZE", this.minSize),
-                this.labelled("IDS_SEARCHMAXSIZE", this.maxSize),
-                this.labelled("IDS_SEARCHAVAIL", this.availability),
-                this.labelled("IDS_COMPLSOURCES", this.complete),
-                this.labelled("IDS_SEARCHEXTENTION", this.extension),
+                labelled("IDS_TYPE", this.type),
+                labelled("IDS_SEARCHMINSIZE", this.minSize),
+                labelled("IDS_SEARCHMAXSIZE", this.maxSize),
+                labelled("IDS_SEARCHAVAIL", this.availability),
+                labelled("IDS_COMPLSOURCES", this.complete),
+                labelled("IDS_SEARCHEXTENTION", this.extension),
                 Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::resetParameters));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("search-parameters");
@@ -327,7 +327,7 @@ public final class SearchScreen implements Screen {
     }
 
     private void countParameters() {
-        int used = this.parametersInUse();
+        int used = parametersInUse();
         String name = this.gui.t("IDS_SEARCHPARAMS");
         this.parametersButton.setText(used == 0 ? name : name + " (" + used + ")");
     }
@@ -399,9 +399,9 @@ public final class SearchScreen implements Screen {
 
     /** Searches the network for {@code words}, as typed in the search box and started. */
     public void searchFor(String words) {
-        this.view();
+        view();
         this.query.getEditor().setText(words);
-        this.start();
+        start();
     }
 
     void start() {
@@ -438,12 +438,12 @@ public final class SearchScreen implements Screen {
             this.gui.warn().accept(e.getMessage());
             return;
         }
-        Optional<SearchRequest.Scope> scope = this.scope();
+        Optional<SearchRequest.Scope> scope = scope();
         if (scope.isEmpty()) {
             this.gui.warn().accept(this.gui.t("IDS_NOTCONNECTEDANY"));
             return;
         }
-        this.remember(words.strip());
+        remember(words.strip());
         this.gui.model().search(new SearchRequest(expression, scope.get()), this::opened);
     }
 
@@ -486,7 +486,7 @@ public final class SearchScreen implements Screen {
     }
 
     private void opened(EngineModel.Search search) {
-        this.opened(search, "");
+        opened(search, "");
     }
 
     private void opened(EngineModel.Search search, String ownTitle) {
@@ -495,7 +495,7 @@ public final class SearchScreen implements Screen {
         TableView<LiveList.Row<SearchResult>> table =
                 Fx.table(search.results(), this.gui.t("nj.search.waiting"), shown);
         TableColumn<LiveList.Row<SearchResult>, Known> known =
-                Fx.column(this.gui.t("nj.search.known"), 130, r -> this.known(r));
+                Fx.column(this.gui.t("nj.search.known"), 130, r -> known(r));
         known.setCellFactory(c -> new KnownCell());
         TableColumn<LiveList.Row<SearchResult>, String> fileId = Fx.leftToRight(Fx.column(
                 this.gui.t("IDS_FILEID"), 220, (SearchResult r) -> r.hash().toHex()));
@@ -560,8 +560,8 @@ public final class SearchScreen implements Screen {
         MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
         MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Material2AL.CODE, this::copyHtml);
         MenuItem related = Fx.menuItem(this.gui.t("IDS_SEARCHRELATED"), Material2MZ.SEARCH, this::searchRelated);
-        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Material2AL.BLOCK, () -> this.markSpam(true));
-        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Material2AL.CHECK, () -> this.markSpam(false));
+        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Material2AL.BLOCK, () -> markSpam(true));
+        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Material2AL.CHECK, () -> markSpam(false));
         ContextMenu menu = new ContextMenu(download, copy, html, related, new SeparatorMenuItem(), spam, notSpam);
         menu.setOnShowing(e -> {
             List<SearchResult> selected = Fx.selected(table);
@@ -612,10 +612,10 @@ public final class SearchScreen implements Screen {
         running.visibleProperty().bind(search.runningProperty());
         running.managedProperty().bind(search.runningProperty());
         tab.setGraphic(running);
-        tab.setOnClosed(e -> this.closed(tab));
+        tab.setOnClosed(e -> closed(tab));
         this.results.put(tab, new Results(search, table, ownTitle));
         table.getSelectionModel().getSelectedItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>)
-                c -> this.followChoice());
+                c -> followChoice());
         this.tabs.getTabs().add(tab);
         this.tabs.getSelectionModel().select(tab);
     }
@@ -658,7 +658,7 @@ public final class SearchScreen implements Screen {
             membership |= change.wasAdded() || change.wasRemoved();
         }
         if (membership) {
-            this.refreshAll();
+            refreshAll();
         }
     }
 
@@ -680,27 +680,27 @@ public final class SearchScreen implements Screen {
     }
 
     private void followChoice() {
-        Results current = this.current();
+        Results current = current();
         this.noneChosen.set(
                 current == null || current.table().getSelectionModel().isEmpty());
     }
 
     void more() {
-        Results current = this.current();
+        Results current = current();
         if (current != null) {
             this.gui.model().moreResults(current.search());
         }
     }
 
     void stop() {
-        Results current = this.current();
+        Results current = current();
         if (current != null) {
             this.gui.model().stopSearch(current.search());
         }
     }
 
     void downloadSelected() {
-        Results current = this.current();
+        Results current = current();
         if (current != null) {
             Fx.selected(current.table()).forEach(r -> this.gui.model().addDownload(r.link()));
         }
@@ -708,7 +708,7 @@ public final class SearchScreen implements Screen {
 
     /** Related search: the server finds files people download along with the selected ones. */
     void searchRelated() {
-        Results current = this.current();
+        Results current = current();
         if (current == null) {
             return;
         }
@@ -724,22 +724,22 @@ public final class SearchScreen implements Screen {
     }
 
     void markSpam(boolean isSpam) {
-        Results current = this.current();
+        Results current = current();
         if (current != null && !Fx.selected(current.table()).isEmpty()) {
             this.gui.model().markSpam(Fx.selected(current.table()), isSpam);
         }
     }
 
     void copyLinks() {
-        this.copy(Ed2kLink.FileLink::toUri);
+        copy(Ed2kLink.FileLink::toUri);
     }
 
     void copyHtml() {
-        this.copy(Ed2kLink.FileLink::toHtml);
+        copy(Ed2kLink.FileLink::toHtml);
     }
 
     private void copy(Function<Ed2kLink.FileLink, String> form) {
-        Results current = this.current();
+        Results current = current();
         if (current == null) {
             return;
         }
@@ -796,7 +796,7 @@ public final class SearchScreen implements Screen {
         @Override
         protected void updateItem(FileType item, boolean empty) {
             super.updateItem(item, empty);
-            this.setText(empty || item == null ? null : SearchScreen.this.gui.t(item.text));
+            setText(empty || item == null ? null : SearchScreen.this.gui.t(item.text));
         }
     }
 
@@ -843,12 +843,12 @@ public final class SearchScreen implements Screen {
         @Override
         protected void updateItem(Known item, boolean empty) {
             super.updateItem(item, empty);
-            this.getStyleClass()
+            getStyleClass()
                     .removeAll(
                             "known-downloading", "known-shared", "known-downloaded", "known-cancelled", "known-spam");
             if (empty || item == null || item == Known.NONE) {
-                this.setText(null);
-                this.setGraphic(null);
+                setText(null);
+                setGraphic(null);
                 return;
             }
             FontIcon icon = Fx.icon(
@@ -860,8 +860,8 @@ public final class SearchScreen implements Screen {
                         case SPAM, NONE -> Material2MZ.REPORT;
                     });
             icon.getStyleClass().add("known-icon");
-            this.setGraphic(icon);
-            this.setText(SearchScreen.this.gui.t(
+            setGraphic(icon);
+            setText(SearchScreen.this.gui.t(
                     switch (item) {
                         case DOWNLOADING -> "IDS_DOWNLOADING";
                         case SHARED -> "IDS_SHARED";
@@ -869,7 +869,7 @@ public final class SearchScreen implements Screen {
                         case CANCELLED -> "IDS_CANCELLED";
                         case SPAM, NONE -> "IDS_SPAM";
                     }));
-            this.getStyleClass()
+            getStyleClass()
                     .add(
                             switch (item) {
                                 case DOWNLOADING -> "known-downloading";

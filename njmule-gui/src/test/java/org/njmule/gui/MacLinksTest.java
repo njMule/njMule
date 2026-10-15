@@ -39,93 +39,93 @@ class MacLinksTest {
 
     @Test
     void shouldTakeTheLinksOfMacOs() {
-        this.givenADesktopThatOpensLinks();
+        givenADesktopThatOpensLinks();
 
-        this.whenTheHandlerIsInstalledOn("Mac OS X");
+        whenTheHandlerIsInstalledOn("Mac OS X");
 
-        this.thenTheHandlerIsSet();
+        thenTheHandlerIsSet();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"Windows 11", "Linux", "FreeBSD", ""})
     void shouldLeaveTheDesktopAloneElsewhere(String osName) {
-        this.givenADesktopThatOpensLinks();
+        givenADesktopThatOpensLinks();
 
-        this.whenTheHandlerIsInstalledOn(osName);
+        whenTheHandlerIsInstalledOn(osName);
 
-        this.thenTheDesktopWasNeverAsked();
+        thenTheDesktopWasNeverAsked();
     }
 
     @Test
     void shouldSetNothingWhereTheDesktopOpensNoLinks() {
-        this.givenADesktopWithoutLinks();
+        givenADesktopWithoutLinks();
 
-        this.whenTheHandlerIsInstalledOn("Mac OS X");
+        whenTheHandlerIsInstalledOn("Mac OS X");
 
-        this.thenNoHandlerIsSet();
+        thenNoHandlerIsSet();
     }
 
     @Test
     void shouldGoOnWhenTheDesktopFails() {
-        this.givenADesktopThatFails();
+        givenADesktopThatFails();
 
-        this.whenTheHandlerIsInstalledOn("Mac OS X");
+        whenTheHandlerIsInstalledOn("Mac OS X");
 
-        this.thenNoHandlerIsSet();
+        thenNoHandlerIsSet();
     }
 
     @Test
     void shouldKeepTheLinksThatCameBeforeTheWindow() {
-        this.givenTheHandlerInstalledOnMacOs();
-        this.givenMacOsOpened(FILE_LINK);
-        this.givenMacOsOpened(SERVER_LINK);
+        givenTheHandlerInstalledOnMacOs();
+        givenMacOsOpened(FILE_LINK);
+        givenMacOsOpened(SERVER_LINK);
 
-        this.whenTheWindowTakesTheLinks();
+        whenTheWindowTakesTheLinks();
 
-        this.thenTheWindowReceived(List.of(FILE_LINK, SERVER_LINK));
+        thenTheWindowReceived(List.of(FILE_LINK, SERVER_LINK));
     }
 
     @Test
     void shouldHandTheLaterLinksAtOnce() {
-        this.givenTheHandlerInstalledOnMacOs();
-        this.givenTheWindowTookTheLinks();
+        givenTheHandlerInstalledOnMacOs();
+        givenTheWindowTookTheLinks();
 
-        this.whenMacOsOpens(FILE_LINK);
+        whenMacOsOpens(FILE_LINK);
 
-        this.thenTheWindowReceived(List.of(FILE_LINK));
+        thenTheWindowReceived(List.of(FILE_LINK));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"njmule:exit", "https://example.org/", "magnet:?xt=urn:btih:abc", "ed2k://|nothing|/"})
     void shouldLeaveOutWhatIsNoEd2kLink(String uri) {
-        this.givenTheHandlerInstalledOnMacOs();
-        this.givenTheWindowTookTheLinks();
+        givenTheHandlerInstalledOnMacOs();
+        givenTheWindowTookTheLinks();
 
-        this.whenMacOsOpens(uri);
+        whenMacOsOpens(uri);
 
-        this.thenTheWindowReceivedNothing();
+        thenTheWindowReceivedNothing();
     }
 
     @Test
     void shouldKeepTheLinksForTheNextWindowOnceOneClosed() {
-        this.givenTheHandlerInstalledOnMacOs();
-        this.givenTheWindowTookTheLinks();
-        this.givenTheWindowClosed();
-        this.givenMacOsOpened(FILE_LINK);
+        givenTheHandlerInstalledOnMacOs();
+        givenTheWindowTookTheLinks();
+        givenTheWindowClosed();
+        givenMacOsOpened(FILE_LINK);
 
-        this.whenTheWindowTakesTheLinks();
+        whenTheWindowTakesTheLinks();
 
-        this.thenTheWindowReceived(List.of(FILE_LINK));
+        thenTheWindowReceived(List.of(FILE_LINK));
     }
 
     @Test
     void shouldKeepAtMostTheLinksALaterStartMayHandOver() {
-        this.givenTheHandlerInstalledOnMacOs();
-        this.givenMacOsOpenedManyLinks(MacLinks.MAX_WAITING + 10);
+        givenTheHandlerInstalledOnMacOs();
+        givenMacOsOpenedManyLinks(MacLinks.MAX_WAITING + 10);
 
-        this.whenTheWindowTakesTheLinks();
+        whenTheWindowTakesTheLinks();
 
-        this.thenTheWindowReceivedLinks(MacLinks.MAX_WAITING);
+        thenTheWindowReceivedLinks(MacLinks.MAX_WAITING);
     }
 
     private void givenADesktopThatOpensLinks() {
@@ -141,22 +141,22 @@ class MacLinksTest {
     }
 
     private void givenTheHandlerInstalledOnMacOs() {
-        this.givenADesktopThatOpensLinks();
-        this.whenTheHandlerIsInstalledOn("Mac OS X");
+        givenADesktopThatOpensLinks();
+        whenTheHandlerIsInstalledOn("Mac OS X");
     }
 
     private void givenMacOsOpened(String uri) {
-        this.whenMacOsOpens(uri);
+        whenMacOsOpens(uri);
     }
 
     private void givenMacOsOpenedManyLinks(int count) {
         for (int i = 0; i < count; i++) {
-            this.whenMacOsOpens(String.format("ed2k://|file|f%d.bin|10|%032X|/", i, i));
+            whenMacOsOpens(String.format("ed2k://|file|f%d.bin|10|%032X|/", i, i));
         }
     }
 
     private void givenTheWindowTookTheLinks() {
-        this.whenTheWindowTakesTheLinks();
+        whenTheWindowTakesTheLinks();
     }
 
     private void givenTheWindowClosed() {

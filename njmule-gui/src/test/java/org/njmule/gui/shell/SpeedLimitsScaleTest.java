@@ -31,32 +31,32 @@ class SpeedLimitsScaleTest {
     @ParameterizedTest
     @CsvSource({"0", "5", "50", "300", "1200", "12000", "120000"})
     void aLimitSetIsTheLimitItsPositionGivesBack(int kib) {
-        this.whenTheLimitIsPlaced(kib, FIBRE);
-        this.whenTheLimitIsRead(FIBRE);
-        this.thenTheLimitIs(kib);
+        whenTheLimitIsPlaced(kib, FIBRE);
+        whenTheLimitIsRead(FIBRE);
+        thenTheLimitIs(kib);
     }
 
     @ParameterizedTest
     @CsvSource({"0, 0", "1000, " + FIBRE})
     void theEndsAreNoLimitAndTheTop(double position, int kib) {
-        this.givenThePosition(position);
-        this.whenTheLimitIsRead(FIBRE);
-        this.thenTheLimitIs(kib);
+        givenThePosition(position);
+        whenTheLimitIsRead(FIBRE);
+        thenTheLimitIs(kib);
     }
 
     @ParameterizedTest
     @CsvSource({"1234, 1200", "98765, 99000"})
     void aDraggedLimitKeepsTwoDigits(int kib, int expected) {
-        this.whenTheLimitIsPlaced(kib, FIBRE);
-        this.whenTheLimitIsRead(FIBRE);
-        this.thenTheLimitIs(expected);
+        whenTheLimitIsPlaced(kib, FIBRE);
+        whenTheLimitIsRead(FIBRE);
+        thenTheLimitIs(expected);
     }
 
     @ParameterizedTest
     @CsvSource({"50", "500", "5000", "50000"})
     void aLowerLimitSitsLowerOnTheSlider(int kib) {
-        this.whenTheLimitIsPlaced(kib, FIBRE);
-        this.thenThePositionIsBelow(SpeedLimits.position(kib * 2, FIBRE));
+        whenTheLimitIsPlaced(kib, FIBRE);
+        thenThePositionIsBelow(SpeedLimits.position(kib * 2, FIBRE));
     }
 
     private void givenThePosition(double position) {

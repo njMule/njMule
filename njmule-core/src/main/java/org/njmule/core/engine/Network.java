@@ -324,10 +324,10 @@ final class Network {
         this.cancelled = loadCancelled(configDir.resolve(CancelledFiles.FILE_NAME), random);
         this.comments = loadComments(configDir.resolve(FileComments.FILE_NAME));
         if (!preferences.get().rememberCancelledFiles()) {
-            this.forgetCancelled();
+            forgetCancelled();
         }
         this.ipFilter = loadIpFilter(configDir.resolve(IPFILTER_FILE), preferences.get());
-        this.servers.filter(ip -> this.ipFilter.blocks(ip) || this.isFilteredLan(ip));
+        this.servers.filter(ip -> this.ipFilter.blocks(ip) || isFilteredLan(ip));
         // A profile that never had a server list starts from the shipped one; an emptied list stays empty.
         if (newProfile && DefaultLists.enabled()) {
             this.servers.addAll(DefaultLists.servers());
@@ -346,7 +346,7 @@ final class Network {
                 this.session,
                 this.servers,
                 () -> Optional.ofNullable(this.udp),
-                () -> Optional.ofNullable(this.kad).map(k -> this.kadSearches(k)),
+                () -> Optional.ofNullable(this.kad).map(k -> kadSearches(k)),
                 new SearchEvents());
         this.pinger = new ServerPinger(
                 loop,
@@ -365,7 +365,7 @@ final class Network {
                 this::isOurServer,
                 random);
         this.links = new PeerLinks(loop, identities, this::uploadSide);
-        this.links.onGreeted(hello -> this.loop.post(() -> this.serverOf(hello)));
+        this.links.onGreeted(hello -> this.loop.post(() -> serverOf(hello)));
         this.buddyLink = new BuddyLink(
                 loop,
                 this.links,
@@ -385,7 +385,7 @@ final class Network {
                     return new DownloadManager.Settings(
                             prefs.obfuscation(),
                             prefs.maxSourcesPerFile(),
-                            this.listenPort(),
+                            listenPort(),
                             prefs.minFreeSpaceMiB() * 1024L * 1024L,
                             prefs.filterLanAddresses(),
                             prefs.previewFirst(),
@@ -398,7 +398,7 @@ final class Network {
                 Ticker.systemTicker(),
                 this.links,
                 this.credits::downloaded,
-                () -> Optional.ofNullable(this.kad).map(k -> this.kadSources(k)),
+                () -> Optional.ofNullable(this.kad).map(k -> kadSources(k)),
                 () -> this.categories,
                 new DownloadEvents());
         this.kadNotes = new KadNotes(
@@ -484,7 +484,7 @@ final class Network {
         this.guard = new ConnectionGuard(
                 () -> this.ipFilter,
                 // Refusing the server or a Kad node that checks our port would leave us a LowID or firewalled.
-                ip -> this.isOurServer(ip) || this.kadAwaits(ip),
+                ip -> isOurServer(ip) || kadAwaits(ip),
                 ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
                 () -> new ConnectionGuard.Limits(
                         this.preferences.get().maxConnections(),
@@ -493,20 +493,20 @@ final class Network {
                         ConnectionGuard.Limits.DEFAULT.rateWindow()),
                 Ticker.systemTicker());
         this.links.countIn(this.guard);
-        this.listen(this.preferences.get().tcpPort());
+        listen(this.preferences.get().tcpPort());
         try {
-            this.udp = this.openServerUdp(this.preferences.get().udpPort());
+            this.udp = openServerUdp(this.preferences.get().udpPort());
         } catch (IOException e) {
             this.userLog.log(LogLine.Level.WARNING, "No server UDP socket: global searches are off");
         }
         this.shares = SharedFiles.open(
-                this.loop, this.configDir, this::incomingDirs, () -> List.of(this.tempDir()), new ShareEvents());
+                this.loop, this.configDir, this::incomingDirs, () -> List.of(tempDir()), new ShareEvents());
         this.shares.rememberDownloaded(this.preferences.get().rememberDownloadedFiles());
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
-            this.startKad();
+            startKad();
         }
-        this.restartForwarding();
+        restartForwarding();
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
                 "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
@@ -516,7 +516,7 @@ final class Network {
                 this.ipFilter.rangeCount(),
                 this.userHash);
         if (this.automaticConnections) {
-            this.connectAtStart();
+            connectAtStart();
         }
     }
 
@@ -532,7 +532,7 @@ final class Network {
 
     // Any free port but the one Kad and clients use, which the preferences may give later.
     private ServerUdp openServerUdp(int kadPort) throws SocketException {
-        return ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> this.datagram(from, packet)));
+        return ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> datagram(from, packet)));
     }
 
     // The server socket took the port Kad now wants: it moves to another.
@@ -542,7 +542,7 @@ final class Network {
             return;
         }
         try {
-            this.udp = this.openServerUdp(kadPort);
+            this.udp = openServerUdp(kadPort);
             current.close();
             logger.info("Server UDP socket moved to port {}: Kad takes port {}", this.udp.port(), kadPort);
         } catch (IOException e) {
@@ -558,7 +558,7 @@ final class Network {
     List<ServerInfo> servers() {
         List<ServerInfo> all = new ArrayList<>();
         for (ServerMet.Server server : this.servers.all()) {
-            all.add(this.info(server));
+            all.add(info(server));
         }
         return all;
     }
@@ -568,7 +568,7 @@ final class Network {
     }
 
     boolean removeServer(ServerList.Address address) {
-        return this.removeServers(List.of(address)) == 1;
+        return removeServers(List.of(address)) == 1;
     }
 
     /** Removes the known ones of {@code addresses}, from the static list too; returns how many. */
@@ -582,19 +582,19 @@ final class Network {
             }
         }
         if (removed > 0) {
-            this.saveServers();
+            saveServers();
         }
         if (statics) {
-            this.saveStatics();
+            saveStatics();
         }
         return removed;
     }
 
     /** Adds a server without connecting to it; false when known or not usable. */
     boolean addServer(ServerList.Address address) {
-        boolean added = this.servers.add(this.byHand(address));
+        boolean added = this.servers.add(byHand(address));
         if (added) {
-            this.saveServers();
+            saveServers();
         }
         return added;
     }
@@ -612,9 +612,9 @@ final class Network {
         if (!this.servers.setPriority(address, priority)) {
             return false;
         }
-        this.saveServers();
+        saveServers();
         if (this.servers.isStatic(address)) {
-            this.saveStatics();
+            saveStatics();
         }
         this.servers.get(address).ifPresent(this::serverChanged);
         return true;
@@ -626,14 +626,14 @@ final class Network {
             return false;
         }
         if (this.servers.setStatic(address, isStatic)) {
-            this.saveStatics();
+            saveStatics();
             this.servers.get(address).ifPresent(this::serverChanged);
         }
         return true;
     }
 
     private void serverChanged(ServerMet.Server server) {
-        this.publish.accept(new EngineEvent.ServerUpdated(this.info(server)));
+        this.publish.accept(new EngineEvent.ServerUpdated(info(server)));
     }
 
     EngineStatus status() {
@@ -643,7 +643,7 @@ final class Network {
                 id.map(ServerMessages.IdChange::clientId).orElse(0L),
                 id.map(ServerMessages.IdChange::isLowId).orElse(false),
                 this.session.isObfuscated(),
-                this.kadInfo(),
+                kadInfo(),
                 this.downloads.rate(),
                 this.uploads.rate(),
                 this.downloads.downloaded(),
@@ -655,13 +655,13 @@ final class Network {
                 LongMath.saturatedAdd(this.totals.downloaded(), this.downloads.downloaded()),
                 LongMath.saturatedAdd(this.totals.uploaded(), this.uploads.uploaded()),
                 LongMath.saturatedAdd(this.totals.sessions(), 1),
-                this.sessionSeconds(),
-                LongMath.saturatedAdd(this.totals.seconds(), this.sessionSeconds()),
+                sessionSeconds(),
+                LongMath.saturatedAdd(this.totals.seconds(), sessionSeconds()),
                 id.map(ServerMessages.IdChange::publicIp)
                         .filter(ip -> ip != 0)
                         .map(Ipv4::format)
                         .orElse(""),
-                this.listenPort(),
+                listenPort(),
                 id.map(i -> (i.serverFlags() & ServerMessages.TCP_RELATED_SEARCH) != 0)
                         .orElse(false));
     }
@@ -671,7 +671,7 @@ final class Network {
     }
 
     private void saveTotals() {
-        this.totals.save(this.downloads.downloaded(), this.uploads.uploaded(), this.sessionSeconds());
+        this.totals.save(this.downloads.downloaded(), this.uploads.uploaded(), sessionSeconds());
     }
 
     List<UploadInfo> uploads() {
@@ -760,7 +760,7 @@ final class Network {
 
     /** Adds the servers of another client's server.met; returns how many were new. */
     int addServers(Path file) throws IOException {
-        return this.addServers(ServerMet.read(Files.readAllBytes(file)));
+        return addServers(ServerMet.read(Files.readAllBytes(file)));
     }
 
     int addServers(List<ServerMet.Server> read) throws IOException {
@@ -782,14 +782,13 @@ final class Network {
         }
         // A server known by its name is checked once the name resolves.
         int ip = address.get().ip();
-        if (ip != 0 && (this.ipFilter.blocks(ip) || this.isFilteredLan(ip))) {
+        if (ip != 0 && (this.ipFilter.blocks(ip) || isFilteredLan(ip))) {
             throw new IllegalArgumentException(
-                    (this.isFilteredLan(ip) ? "LAN addresses are filtered: " : "The IP filter blocks ")
-                            + address.get());
+                    (isFilteredLan(ip) ? "LAN addresses are filtered: " : "The IP filter blocks ") + address.get());
         }
-        ServerMet.Server server = this.servers.get(address.get()).orElseGet(() -> this.byHand(address.get()));
+        ServerMet.Server server = this.servers.get(address.get()).orElseGet(() -> byHand(address.get()));
         if (this.servers.add(server)) {
-            this.saveServers();
+            saveServers();
         }
         this.session.connect(Optional.of(server));
     }
@@ -901,7 +900,7 @@ final class Network {
             }
         }
         if (cancelled && running) {
-            this.startNext(category);
+            startNext(category);
         }
         return cancelled;
     }
@@ -1009,7 +1008,7 @@ final class Network {
         Preferences now = this.preferences.get();
         this.ipFilter = IpFilter.of(ranges, now.ipFilterLevel()).allowing(IpWhitelist.ranges(now.ipFilterWhitelist()));
         this.userLog.log(LogLine.Level.INFO, this.ipFilter.rangeCount() + " IP filter ranges");
-        this.filtersChanged();
+        filtersChanged();
         return this.ipFilter.rangeCount();
     }
 
@@ -1018,7 +1017,7 @@ final class Network {
         // A server known by its name has no address while the name resolves; it is checked once it has one.
         Optional<ServerMet.Server> server = this.session.server();
         int serverAt = server.map(ServerMet.Server::ip).orElse(0);
-        if (serverAt != 0 && (this.ipFilter.blocks(serverAt) || this.isFilteredLan(serverAt))) {
+        if (serverAt != 0 && (this.ipFilter.blocks(serverAt) || isFilteredLan(serverAt))) {
             this.userLog.log(
                     LogLine.Level.INFO,
                     "Leaving the server " + ServerList.addressOf(server.get()) + ": it is now filtered");
@@ -1122,7 +1121,7 @@ final class Network {
             try {
                 TcpConnection connection =
                         TcpConnector.connectToClient(peer, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.greet(connection, answer))) {
+                if (!this.loop.postOutcome(() -> greet(connection, answer))) {
                     connection.close();
                 }
             } catch (IOException e) {
@@ -1135,7 +1134,7 @@ final class Network {
     private void greet(TcpConnection connection, CompletableFuture<PeerInfo> answer) {
         Greeting greeting = new Greeting(connection, answer);
         connection.start(greeting, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-        connection.send(this.ourHello().encode(false));
+        connection.send(ourHello().encode(false));
         this.loop.schedule("hello identification", PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT), greeting::settle);
     }
 
@@ -1156,7 +1155,7 @@ final class Network {
             if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 c.setFrameLimit(FrameLimits.CLIENT);
             }
-            if (!Network.this.loop.post(() -> this.received(packet))) {
+            if (!Network.this.loop.post(() -> received(packet))) {
                 c.close();
             }
         }
@@ -1168,7 +1167,7 @@ final class Network {
                     this.answer.completeExceptionally(
                             cause.orElseGet(() -> new IOException("closed before the hello")));
                 } else {
-                    this.settle();
+                    settle();
                 }
             });
         }
@@ -1189,7 +1188,7 @@ final class Network {
                     this.connection.send(Network.this.ourHello().encode(true));
                 }
                 if (this.identity != null && this.identity.isSettled()) {
-                    this.settle();
+                    settle();
                 }
             } catch (IOException e) {
                 logger.debug("Bad packet from {}: {}", this.connection.remoteAddress(), e.getMessage());
@@ -1244,9 +1243,9 @@ final class Network {
         boolean tcp = was.tcpPort() != now.tcpPort();
         boolean udp = was.udpPort() != now.udpPort();
         if (tcp) {
-            this.closeListener();
-            this.listen(now.tcpPort());
-            this.userLog.log(LogLine.Level.INFO, "Listening on TCP port " + this.listenPort());
+            closeListener();
+            listen(now.tcpPort());
+            this.userLog.log(LogLine.Level.INFO, "Listening on TCP port " + listenPort());
             // The server learnt our port at login and checks it to give a HighID.
             Optional<ServerMet.Server> server = this.session.server();
             if (server.isPresent() && now.ed2kEnabled()) {
@@ -1255,23 +1254,23 @@ final class Network {
         }
         // Only turning Kad off stops it: a Kad connected by hand stays while other settings change.
         if (was.kadEnabled() && !now.kadEnabled()) {
-            this.stopKad();
+            stopKad();
         } else if (this.kad != null) {
             if (tcp || udp) {
                 // Kad tells other nodes our TCP port and listens on the UDP one.
-                this.stopKad();
-                this.startKad();
+                stopKad();
+                startKad();
             }
         } else if (now.kadEnabled() && (!was.kadEnabled() || ((tcp || udp) && !this.kadStoppedByHand))) {
             // Turned on, or new ports for a Kad that could not start; never against a stop by hand.
             this.kadStoppedByHand = false;
-            this.startKad();
+            startKad();
         }
         if (was.ed2kEnabled() && !now.ed2kEnabled()) {
             this.session.disconnect();
         }
         if (tcp || udp || was.upnp() != now.upnp()) {
-            this.restartForwarding();
+            restartForwarding();
         }
         boolean level = was.ipFilterLevel() != now.ipFilterLevel();
         boolean whitelist = !was.ipFilterWhitelist().equals(now.ipFilterWhitelist());
@@ -1287,10 +1286,10 @@ final class Network {
             this.userLog.log(LogLine.Level.INFO, allowed.size() + " addresses or ranges always allowed");
         }
         if (level || whitelist || was.filterLanAddresses() != now.filterLanAddresses()) {
-            this.filtersChanged();
+            filtersChanged();
         }
         if (was.rememberCancelledFiles() && !now.rememberCancelledFiles()) {
-            this.forgetCancelled();
+            forgetCancelled();
         }
         if (this.shares != null) {
             this.shares.rememberDownloaded(now.rememberDownloadedFiles());
@@ -1304,10 +1303,10 @@ final class Network {
             return;
         }
         this.forwardingWanted = wanted;
-        int tcp = this.listenPort();
+        int tcp = listenPort();
         OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
-        this.changeMappings(() -> {
-            this.unmap();
+        changeMappings(() -> {
+            unmap();
             if (wanted && !this.closed) {
                 this.forwarding = PortForwarding.start(
                         this.upnp.orElseThrow(),
@@ -1343,12 +1342,12 @@ final class Network {
     void connectKad() {
         this.kadStoppedByHand = false;
         if (this.kad == null) {
-            this.startKad();
+            startKad();
         } else {
             this.kad.lookForContacts();
         }
         if (this.kad != null) {
-            this.restartForwarding();
+            restartForwarding();
         }
     }
 
@@ -1356,7 +1355,7 @@ final class Network {
     void disconnectKad() {
         this.kadStoppedByHand = true;
         if (this.kad != null) {
-            this.stopKad();
+            stopKad();
             this.userLog.log(LogLine.Level.INFO, "Kad stopped");
         }
     }
@@ -1393,7 +1392,7 @@ final class Network {
     @CanIgnoreReturnValue
     CompletableFuture<Void> close() {
         this.closed = true;
-        this.saveTotals();
+        saveTotals();
         this.messaging.close();
         this.buddyLink.release();
         if (this.kad != null) {
@@ -1418,8 +1417,8 @@ final class Network {
         if (this.udp != null) {
             this.udp.close();
         }
-        this.saveServers();
-        this.changeMappings(this::unmap);
+        saveServers();
+        changeMappings(this::unmap);
         return this.upnpChanges;
     }
 
@@ -1454,7 +1453,7 @@ final class Network {
         Hello hello = Hello.of(
                 this.userHash,
                 ourClientId(server, node),
-                this.listenPort(),
+                listenPort(),
                 prefs.nick(),
                 kadPort,
                 kadPort,
@@ -1596,7 +1595,7 @@ final class Network {
 
     private void startKad() {
         Preferences prefs = this.preferences.get();
-        this.freeForKad(prefs.udpPort());
+        freeForKad(prefs.udpPort());
         try {
             KadIdentity identity = KadIdentity.loadOrCreate(this.configDir, this.random);
             this.kadSocket = KadSocket.open(
@@ -1606,7 +1605,7 @@ final class Network {
                     this.kadSocket,
                     new KadHost(),
                     new KadNode.Settings(
-                            this.listenPort(),
+                            listenPort(),
                             this.userHash,
                             cryptOptions(prefs.obfuscation()) >>> 7,
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
@@ -1683,10 +1682,10 @@ final class Network {
                         address, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
                 UdpCheck check = new UdpCheck(node, ip, request);
                 connection.start(check, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-                connection.send(this.ourHello().encode(false));
+                connection.send(ourHello().encode(false));
             } catch (IOException e) {
                 logger.debug("UDP test helper {} unreachable: {}", address, e.getMessage());
-                this.loop.post(() -> this.udpCheckEnded(node, ip, false));
+                this.loop.post(() -> udpCheckEnded(node, ip, false));
             }
         });
     }
@@ -1749,7 +1748,7 @@ final class Network {
         if (!Ipv4.isUnicastPublicCandidate(ip)
                 || address.getPort() == 0
                 || this.ipFilter.blocks(ip)
-                || this.isFilteredLan(ip)
+                || isFilteredLan(ip)
                 || this.uploads.isBanned(address.getAddress())) {
             logger.debug("Ignoring a callback request to {} ({})", address, why);
             return;
@@ -1766,7 +1765,7 @@ final class Network {
             try {
                 TcpConnection connection =
                         TcpConnector.connectToClient(address, obfuscateFor, PeerGreetings.HELLO_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.calledBack(address, connection, why))) {
+                if (!this.loop.postOutcome(() -> calledBack(address, connection, why))) {
                     connection.close();
                 }
             } catch (IOException e) {
@@ -1797,18 +1796,18 @@ final class Network {
             }
         });
         connection.start(link, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-        connection.send(this.ourHello().encode(false));
+        connection.send(ourHello().encode(false));
     }
 
     // Our buddy relays a client's callback request: for a file we share or download, we connect to it.
     private void relayedCallback(LowIdMessages.Callback callback) {
         KadNode node = this.kad;
         Hash16 file = callback.file().toHash16();
-        if (node == null || !node.isOurBuddyId(callback.buddyId()) || !this.offersFile(file)) {
+        if (node == null || !node.isOurBuddyId(callback.buddyId()) || !offersFile(file)) {
             logger.debug("Ignoring a callback relayed for {}", file);
             return;
         }
-        this.callBack(
+        callBack(
                 new InetSocketAddress(Ipv4.format(callback.requesterIp()), callback.requesterPort()),
                 Optional.empty(),
                 "through our buddy");
@@ -1836,7 +1835,7 @@ final class Network {
             LowIdMessages.DirectCallbackRequest request = LowIdMessages.DirectCallbackRequest.decode(packet);
             boolean obfuscate = (request.connectOptions() & CRYPT_REQUESTED_OR_REQUIRED) != 0
                     && this.preferences.get().obfuscation() != ObfuscationMode.DISABLED;
-            this.callBack(
+            callBack(
                     new InetSocketAddress(Ipv4.format(ip), request.tcpPort()),
                     obfuscate ? Optional.of(request.userHash()) : Optional.empty(),
                     "direct callback");
@@ -1857,7 +1856,7 @@ final class Network {
                 TcpConnection connection =
                         TcpConnector.connectToClient(address, obfuscateFor, PeerGreetings.HELLO_TIMEOUT, this.random);
                 connection.start(new ReachabilityCheck(), frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-                connection.send(this.ourHello().encode(false));
+                connection.send(ourHello().encode(false));
                 this.loop.schedule("Kad check close", PeerGreetings.HELLO_TIMEOUT, connection::close);
             } catch (IOException e) {
                 logger.debug("Kad check of {} failed: {}", address, e.getMessage());
@@ -1951,16 +1950,15 @@ final class Network {
                 || source.userHash().isEmpty()
                 || !Ipv4.isUnicastPublicCandidate(ip)
                 || this.ipFilter.blocks(ip)
-                || this.isFilteredLan(ip)) {
+                || isFilteredLan(ip)) {
             return false;
         }
         ObfuscationMode mode = this.preferences.get().obfuscation();
         boolean obfuscate = (source.cryptOptions() & CRYPT_SUPPORTED) != 0
                 && mode != ObfuscationMode.DISABLED
                 && ((source.cryptOptions() & CRYPT_REQUESTED) != 0 || mode != ObfuscationMode.SUPPORTED);
-        Packet request = new LowIdMessages.DirectCallbackRequest(
-                        this.listenPort(), this.userHash, cryptOptions(mode) >>> 7)
-                .encode();
+        Packet request =
+                new LowIdMessages.DirectCallbackRequest(listenPort(), this.userHash, cryptOptions(mode) >>> 7).encode();
         this.kadSocket.sendClient(
                 ip, route.udpPort(), request, obfuscate ? source.userHash() : Optional.empty(), node.publicIp());
         return true;
@@ -2044,8 +2042,8 @@ final class Network {
     }
 
     private void serverUpdated(ServerMet.Server server) {
-        this.publish.accept(new EngineEvent.ServerUpdated(this.info(server)));
-        this.saveServersSoon();
+        this.publish.accept(new EngineEvent.ServerUpdated(info(server)));
+        saveServersSoon();
     }
 
     private void saveServersSoon() {
@@ -2057,18 +2055,18 @@ final class Network {
     // A server that failed as many times in a row as the preferences allow leaves the list;
     // static servers and the one we are on stay.
     private void deadServer(ServerMet.Server server) {
-        this.removeDead(List.of(ServerList.addressOf(server)));
+        removeDead(List.of(ServerList.addressOf(server)));
     }
 
     private void removeDeadServers() {
-        this.removeDead(this.servers.dead(this.preferences.get().deadServerRetries()));
+        removeDead(this.servers.dead(this.preferences.get().deadServerRetries()));
     }
 
     private void removeDead(List<ServerList.Address> dead) {
         Optional<ServerList.Address> current = this.session.server().map(ServerList::addressOf);
         List<ServerList.Address> gone =
                 dead.stream().filter(a -> !current.equals(Optional.of(a))).toList();
-        int removed = gone.isEmpty() ? 0 : this.removeServers(gone);
+        int removed = gone.isEmpty() ? 0 : removeServers(gone);
         if (removed > 0) {
             this.userLog.log(
                     LogLine.Level.INFO, removed == 1 ? "1 dead server removed" : removed + " dead servers removed");
@@ -2093,7 +2091,7 @@ final class Network {
             }
         }
         if (added > 0) {
-            this.saveServersSoon();
+            saveServersSoon();
             this.userLog.log(
                     LogLine.Level.INFO, (added == 1 ? "1 new server" : added + " new servers") + " from " + from);
             this.publish.accept(new EngineEvent.ServersChanged(this.servers.size()));
@@ -2102,7 +2100,7 @@ final class Network {
 
     private void serverOf(Hello hello) {
         if (this.preferences.get().addServersFromClients() && hello.serverIp() != 0 && hello.serverPort() != 0) {
-            this.serversLearnt(List.of(new ServerMessages.Endpoint(hello.serverIp(), hello.serverPort())), "a client");
+            serversLearnt(List.of(new ServerMessages.Endpoint(hello.serverIp(), hello.serverPort())), "a client");
         }
     }
 

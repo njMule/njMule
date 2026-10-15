@@ -75,8 +75,8 @@ public final class Input<T> {
             return kept;
         }));
         field.setTooltip(new Tooltip(hint));
-        field.textProperty().addListener((o, was, now) -> this.check());
-        this.check();
+        field.textProperty().addListener((o, was, now) -> check());
+        check();
     }
 
     /**
@@ -109,21 +109,21 @@ public final class Input<T> {
     /** Leaves the field unmarked while empty: for a box that waits for something to act on, not a setting. */
     public Input<T> quietWhenEmpty() {
         this.quietWhenEmpty = true;
-        this.check();
+        check();
         return this;
     }
 
     /** Hands the text to the parser as typed, spaces and all: for passwords. */
     public Input<T> keepSpaces() {
         this.strip = false;
-        this.check();
+        check();
         return this;
     }
 
     /** The value; when there is none, the exception names the field and what it takes. */
     public T value() {
         try {
-            return this.parser.parse(this.text());
+            return this.parser.parse(text());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(this.name + ": " + this.hint, e);
         }
@@ -145,7 +145,7 @@ public final class Input<T> {
     public void check() {
         boolean ok;
         try {
-            this.parser.parse(this.text());
+            this.parser.parse(text());
             ok = true;
         } catch (IllegalArgumentException e) {
             ok = false;

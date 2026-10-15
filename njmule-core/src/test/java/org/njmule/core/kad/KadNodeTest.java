@@ -66,41 +66,35 @@ class KadNodeTest {
 
     @Test
     void learnsContactsOnlyFromAnAnswerToOneOfItsLookups() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
         int blockedIp = Ipv4.of(50, 1, 1, 1);
         this.blocked.add(blockedIp);
 
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
                 .isPresent();
-        this.answer(
-                node,
-                UInt128.random(this.random),
-                this.contact(Ipv4.of(30, 1, 1, 1)),
-                this.contact(Ipv4.of(40, 1, 1, 1)));
+        answer(node, UInt128.random(this.random), contact(Ipv4.of(30, 1, 1, 1)), contact(Ipv4.of(40, 1, 1, 1)));
         assertThat(node.contacts()).as("an answer for another target").isEqualTo(1);
 
-        assertThat(node.findSources(this.hash(), 1000, sources -> {})).isTrue();
-        KadMessages.Request request = this.lastRequest();
+        assertThat(node.findSources(hash(), 1000, sources -> {})).isTrue();
+        KadMessages.Request request = lastRequest();
         List<KadMessages.Contact> tooMany = new ArrayList<>();
         for (int i = 0; i <= request.count(); i++) {
-            tooMany.add(this.contact(Ipv4.of(60 + i, 1, 1, 1)));
+            tooMany.add(contact(Ipv4.of(60 + i, 1, 1, 1)));
         }
-        this.answer(node, request.target(), tooMany.toArray(KadMessages.Contact[]::new));
+        answer(node, request.target(), tooMany.toArray(KadMessages.Contact[]::new));
         assertThat(node.contacts()).as("more contacts than asked for").isEqualTo(1);
 
-        assertThat(node.findSources(this.hash(), 1000, sources -> {})).isTrue();
-        this.answer(node, this.lastRequest().target(), this.contact(Ipv4.of(30, 1, 1, 1)), this.contact(blockedIp));
+        assertThat(node.findSources(hash(), 1000, sources -> {})).isTrue();
+        answer(node, lastRequest().target(), contact(Ipv4.of(30, 1, 1, 1)), contact(blockedIp));
         assertThat(node.contacts()).as("the filtered address is left out").isEqualTo(2);
     }
 
     @Test
     void listsItsContactsClosestFirstAndItsLookups() throws Exception {
-        KadNode node = this.node();
+        KadNode node = node();
         node.addContacts(new NodesDat.Contents(
-                2,
-                false,
-                List.of(this.record(PEER), this.record(Ipv4.of(70, 1, 1, 1)), this.record(Ipv4.of(71, 1, 1, 1)))));
+                2, false, List.of(record(PEER), record(Ipv4.of(70, 1, 1, 1)), record(Ipv4.of(71, 1, 1, 1)))));
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
                 .isPresent();
 
@@ -121,8 +115,8 @@ class KadNodeTest {
 
     @Test
     void aStoppedKeywordSearchCanStartAgainAtOnce() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
 
         Optional<Runnable> search = node.searchKeyword("ubuntu", Optional.empty(), results -> {});
         assertThat(search).isPresent();
@@ -135,8 +129,8 @@ class KadNodeTest {
 
     @Test
     void stoppingAnOldSearchLeavesANewerOneForTheSameKeyword() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
         Runnable first =
                 node.searchKeyword("ubuntu", Optional.empty(), results -> {}).orElseThrow();
         first.run();
@@ -151,9 +145,8 @@ class KadNodeTest {
 
     @Test
     void contactsAFilterNowRefusesAreDropped() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(
-                new NodesDat.Contents(2, false, List.of(this.record(PEER), this.record(Ipv4.of(70, 1, 1, 1)))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER), record(Ipv4.of(70, 1, 1, 1)))));
         this.blocked.add(PEER);
 
         node.filtersChanged();
@@ -163,8 +156,8 @@ class KadNodeTest {
 
     @Test
     void aNodeAskedToConnectToUsIsAwaitedUntilItDid() throws Exception {
-        KadNode node = this.node();
-        this.hello(node, PEER);
+        KadNode node = node();
+        hello(node, PEER);
 
         assertThat(node.awaitsConnectionFrom(PEER)).isTrue();
         assertThat(node.awaitsConnectionFrom(Ipv4.of(21, 1, 1, 1))).isFalse();
@@ -174,9 +167,9 @@ class KadNodeTest {
 
     @Test
     void aRecheckDuringAnotherKeepsTheLastOutcome() throws Exception {
-        KadNode node = this.node();
+        KadNode node = node();
         for (int ip : new int[] {PEER, Ipv4.of(21, 1, 1, 1)}) {
-            this.hello(node, ip);
+            hello(node, ip);
             node.reachableConfirmed(ip);
         }
         assertThat(node.isFirewalled()).isFalse();
@@ -184,7 +177,7 @@ class KadNodeTest {
         node.recheckFirewall();
         node.tick();
         assertThat(node.isFirewalled()).as("while the check runs").isFalse();
-        this.hello(node, Ipv4.of(22, 1, 1, 1));
+        hello(node, Ipv4.of(22, 1, 1, 1));
         node.reachableConfirmed(Ipv4.of(22, 1, 1, 1));
         node.recheckFirewall();
         node.tick();
@@ -196,14 +189,14 @@ class KadNodeTest {
 
     @Test
     void anAnswerThatComesAfterTheLastRequestStillReachesTheSearch() throws Exception {
-        KadNode node = this.node();
+        KadNode node = node();
         UInt128 target = Keywords.id("ubuntu");
         node.addContacts(new NodesDat.Contents(
                 2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
         List<KadNode.FileResult> found = new ArrayList<>();
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), found::addAll))
                 .isPresent();
-        this.answer(node, target);
+        answer(node, target);
         this.time.addAndGet(4 * SECOND);
         node.tick();
         this.time.addAndGet(4 * SECOND);
@@ -221,13 +214,13 @@ class KadNodeTest {
 
     @Test
     void unusableResultsDoNotEndAKeywordSearch() throws Exception {
-        KadNode node = this.node();
+        KadNode node = node();
         UInt128 target = Keywords.id("ubuntu");
         node.addContacts(new NodesDat.Contents(
                 2, false, List.of(new NodesDat.Contact(target, PEER, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true))));
         assertThat(node.searchKeyword("ubuntu", Optional.empty(), results -> {}))
                 .isPresent();
-        this.answer(node, target);
+        answer(node, target);
         this.time.addAndGet(4 * SECOND);
         node.tick();
         assertThat(this.sentToPeer).extracting(Packet::opcode).contains(Opcodes.Kad.SEARCH_KEY_REQ.code());
@@ -253,8 +246,8 @@ class KadNodeTest {
 
     @Test
     void aFewContactsDoNotReplaceASavedNodesDat() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
         Path file = this.dir.resolve(KadNode.NODES_FILE);
 
         node.saveNodes();
@@ -262,7 +255,7 @@ class KadNodeTest {
 
         List<NodesDat.Contact> many = new ArrayList<>();
         for (int i = 0; i < KadNode.MIN_SAVED_CONTACTS; i++) {
-            many.add(this.record(Ipv4.of(70 + i, 1, 1, 1)));
+            many.add(record(Ipv4.of(70 + i, 1, 1, 1)));
         }
         Files.write(file, NodesDat.write(many));
         node.saveNodes();
@@ -271,8 +264,8 @@ class KadNodeTest {
 
     @Test
     void isNoLongerConnectedWhenNothingArrivesForTwentyMinutes() throws Exception {
-        KadNode node = this.node();
-        node.addContacts(new NodesDat.Contents(2, false, List.of(this.record(PEER))));
+        KadNode node = node();
+        node.addContacts(new NodesDat.Contents(2, false, List.of(record(PEER))));
         node.received(PEER, PORT, Packet.of(Protocol.KAD, Opcodes.Kad.PING.code(), new byte[0]), false, 0, 0);
         assertThat(node.isConnected()).isTrue();
 

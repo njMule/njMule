@@ -69,7 +69,7 @@ public final class IpFilter {
 
     /** Whether {@code ip} ({@link org.njmule.core.util.Ipv4} form) is blocked; 0 never is. */
     public boolean blocks(int ip) {
-        return this.match(ip).isPresent();
+        return match(ip).isPresent();
     }
 
     /** The description of the range blocking {@code ip}, if any. */

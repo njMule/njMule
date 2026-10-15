@@ -114,26 +114,26 @@ final class Api {
 
     void handle(Exchange exchange) throws IOException {
         try {
-            this.route(exchange);
+            route(exchange);
         } catch (Failure e) {
-            this.error(exchange, e.status, e.getMessage());
+            error(exchange, e.status, e.getMessage());
         } catch (IllegalArgumentException e) {
-            this.error(exchange, 400, String.valueOf(e.getMessage()));
+            error(exchange, 400, String.valueOf(e.getMessage()));
         } catch (RuntimeException e) {
             logger.warn("API request failed", e);
-            this.error(exchange, 500, "The request failed.");
+            error(exchange, 500, "The request failed.");
         }
     }
 
     // No Host check: browsers never send the token by themselves, so a page reaching us through DNS rebinding cannot
     // act, and other computers may use any name of this one.
     private void route(Exchange exchange) throws IOException {
-        this.authorize(exchange);
+        authorize(exchange);
         String method = exchange.method();
         List<String> path = segments(exchange.rawPath());
         if (path.isEmpty()) {
-            this.only(method, GET);
-            this.reply(exchange, 200, g -> {
+            only(method, GET);
+            reply(exchange, 200, g -> {
                 g.writeStartObject();
                 g.writeStringProperty("name", NjMuleInfo.NAME);
                 g.writeStringProperty("version", NjMuleInfo.version());
@@ -144,23 +144,23 @@ final class Api {
         }
         List<String> rest = path.subList(1, path.size());
         switch (path.getFirst()) {
-            case "status" -> this.status(exchange, method, rest);
-            case "downloads" -> this.downloads(exchange, method, rest);
-            case "sources" -> this.list(exchange, method, rest, this.engine::sources, ApiJson::source);
-            case "uploads" -> this.list(exchange, method, rest, this.engine::uploads, ApiJson::upload);
-            case "shared" -> this.shared(exchange, method, rest);
-            case "servers" -> this.servers(exchange, method, rest);
-            case "kad" -> this.kad(exchange, method, rest);
-            case "searches" -> this.searches(exchange, method, rest);
-            case "categories" -> this.list(exchange, method, rest, this.engine::categories, ApiJson::category);
-            case "friends" -> this.list(exchange, method, rest, this.engine::friends, ApiJson::friend);
-            case "messages" -> this.messages(exchange, method, rest);
-            case "bans" -> this.bans(exchange, method, rest);
-            case "limits" -> this.limits(exchange, method, rest);
-            case "ipfilter" -> this.ipFilter(exchange, method, rest);
-            case "log" -> this.log(exchange, method, rest);
-            case "events" -> this.events(exchange, method, rest);
-            case "shutdown" -> this.shutdown(exchange, method, rest);
+            case "status" -> status(exchange, method, rest);
+            case "downloads" -> downloads(exchange, method, rest);
+            case "sources" -> list(exchange, method, rest, this.engine::sources, ApiJson::source);
+            case "uploads" -> list(exchange, method, rest, this.engine::uploads, ApiJson::upload);
+            case "shared" -> shared(exchange, method, rest);
+            case "servers" -> servers(exchange, method, rest);
+            case "kad" -> kad(exchange, method, rest);
+            case "searches" -> searches(exchange, method, rest);
+            case "categories" -> list(exchange, method, rest, this.engine::categories, ApiJson::category);
+            case "friends" -> list(exchange, method, rest, this.engine::friends, ApiJson::friend);
+            case "messages" -> messages(exchange, method, rest);
+            case "bans" -> bans(exchange, method, rest);
+            case "limits" -> limits(exchange, method, rest);
+            case "ipfilter" -> ipFilter(exchange, method, rest);
+            case "log" -> log(exchange, method, rest);
+            case "events" -> events(exchange, method, rest);
+            case "shutdown" -> shutdown(exchange, method, rest);
             default -> throw notFound();
         }
     }
@@ -193,10 +193,10 @@ final class Api {
     }
 
     private void status(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, GET);
-        var status = this.await(this.engine.status());
-        this.reply(exchange, 200, g -> ApiJson.status(g, status));
+        noMore(rest);
+        only(method, GET);
+        var status = await(this.engine.status());
+        reply(exchange, 200, g -> ApiJson.status(g, status));
     }
 
     private <T> void list(
@@ -206,17 +206,17 @@ final class Api {
             Supplier<CompletableFuture<List<T>>> items,
             ApiJson.Writer<T> each)
             throws IOException {
-        this.noMore(rest);
-        this.only(method, GET);
-        List<T> all = this.await(items.get());
-        this.reply(exchange, 200, g -> ApiJson.array(g, all, each));
+        noMore(rest);
+        only(method, GET);
+        List<T> all = await(items.get());
+        reply(exchange, 200, g -> ApiJson.array(g, all, each));
     }
 
     private void downloads(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             switch (method) {
-                case GET -> this.list(exchange, method, rest, this.engine::downloads, ApiJson::download);
-                case POST -> this.addDownloads(exchange);
+                case GET -> list(exchange, method, rest, this.engine::downloads, ApiJson::download);
+                case POST -> addDownloads(exchange);
                 default -> throw notAllowed();
             }
             return;
@@ -225,57 +225,57 @@ final class Api {
         if (rest.size() == 1) {
             switch (method) {
                 case GET -> {
-                    DownloadInfo d = this.download(file);
-                    this.reply(exchange, 200, g -> ApiJson.download(g, d));
+                    DownloadInfo d = download(file);
+                    reply(exchange, 200, g -> ApiJson.download(g, d));
                 }
                 case DELETE -> {
-                    this.known(this.await(this.engine.cancelDownload(file)));
-                    this.done(exchange);
+                    known(await(this.engine.cancelDownload(file)));
+                    done(exchange);
                 }
                 default -> throw notAllowed();
             }
             return;
         }
-        this.noMore(rest.subList(2, rest.size()));
-        Map<String, Object> body = this.body(exchange);
+        noMore(rest.subList(2, rest.size()));
+        Map<String, Object> body = body(exchange);
         boolean known = switch (rest.get(1)) {
-            case "pause" -> this.action(method, () -> this.engine.pauseDownload(file));
-            case "resume" -> this.action(method, () -> this.engine.resumeDownload(file));
-            case "stop" -> this.action(method, () -> this.engine.stopDownload(file));
+            case "pause" -> action(method, () -> this.engine.pauseDownload(file));
+            case "resume" -> action(method, () -> this.engine.resumeDownload(file));
+            case "stop" -> action(method, () -> this.engine.stopDownload(file));
             case PRIORITY -> {
-                this.only(method, PUT);
-                yield this.await(
+                only(method, PUT);
+                yield await(
                         this.engine.setDownloadPriority(file, enumValue(DownloadPriority.class, text(body, PRIORITY))));
             }
             case "category" -> {
-                this.only(method, PUT);
-                yield this.await(this.engine.setDownloadCategory(file, (int) number(body, "category")));
+                only(method, PUT);
+                yield await(this.engine.setDownloadCategory(file, (int) number(body, "category")));
             }
             case "sources" -> {
-                this.only(method, POST);
-                yield this.await(this.engine.addSource(file, address(text(body, ADDRESS))));
+                only(method, POST);
+                yield await(this.engine.addSource(file, address(text(body, ADDRESS))));
             }
             default -> throw notFound();
         };
-        this.known(known);
-        DownloadInfo d = this.download(file);
-        this.reply(exchange, 200, g -> ApiJson.download(g, d));
+        known(known);
+        DownloadInfo d = download(file);
+        reply(exchange, 200, g -> ApiJson.download(g, d));
     }
 
     private boolean action(String method, Supplier<CompletableFuture<Boolean>> work) {
-        this.only(method, POST);
-        return this.await(work.get());
+        only(method, POST);
+        return await(work.get());
     }
 
     private DownloadInfo download(Hash16 hash) {
-        return this.await(this.engine.downloads()).stream()
+        return await(this.engine.downloads()).stream()
                 .filter(d -> d.hash().equals(hash))
                 .findFirst()
                 .orElseThrow(Api::notFound);
     }
 
     private void addDownloads(Exchange exchange) throws IOException {
-        Map<String, Object> body = this.body(exchange);
+        Map<String, Object> body = body(exchange);
         List<Ed2kLink.FileLink> links = new ArrayList<>();
         for (String text : strings(body, "links")) {
             if (!(Ed2kLink.tryParse(text.strip()).orElse(null) instanceof Ed2kLink.FileLink link)) {
@@ -290,82 +290,81 @@ final class Api {
                 body.get("category") == null ? Optional.empty() : Optional.of((int) number(body, "category"));
         List<DownloadInfo> added = new ArrayList<>();
         for (Ed2kLink.FileLink link : links) {
-            DownloadInfo d = this.await(this.engine.addDownload(link));
+            DownloadInfo d = await(this.engine.addDownload(link));
             if (category.isPresent()) {
-                this.await(this.engine.setDownloadCategory(d.hash(), category.get()));
+                await(this.engine.setDownloadCategory(d.hash(), category.get()));
             }
             added.add(d);
         }
-        this.reply(exchange, 201, g -> ApiJson.array(g, added, ApiJson::download));
+        reply(exchange, 201, g -> ApiJson.array(g, added, ApiJson::download));
     }
 
     private void shared(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
-            this.list(exchange, method, rest, this.engine::sharedFiles, ApiJson::shared);
+            list(exchange, method, rest, this.engine::sharedFiles, ApiJson::shared);
             return;
         }
         if (rest.equals(List.of("directories"))) {
-            this.list(exchange, method, List.of(), this.engine::sharedDirectories, ApiJson::directory);
+            list(exchange, method, List.of(), this.engine::sharedDirectories, ApiJson::directory);
             return;
         }
         if (rest.size() != 2 || !rest.get(1).equals(PRIORITY)) {
             throw notFound();
         }
-        this.only(method, PUT);
+        only(method, PUT);
         Hash16 hash = hash(rest.getFirst());
-        Map<String, Object> body = this.body(exchange);
-        this.known(
-                this.await(this.engine.setUploadPriority(hash, enumValue(UploadPriority.class, text(body, PRIORITY)))));
-        this.done(exchange);
+        Map<String, Object> body = body(exchange);
+        known(await(this.engine.setUploadPriority(hash, enumValue(UploadPriority.class, text(body, PRIORITY)))));
+        done(exchange);
     }
 
     private void servers(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
             switch (method) {
-                case GET -> this.list(exchange, method, rest, this.engine::servers, ApiJson::server);
+                case GET -> list(exchange, method, rest, this.engine::servers, ApiJson::server);
                 case POST -> {
-                    ServerAddress server = address(text(this.body(exchange), ADDRESS));
-                    if (!this.await(this.engine.addServer(server))) {
+                    ServerAddress server = address(text(body(exchange), ADDRESS));
+                    if (!await(this.engine.addServer(server))) {
                         throw new Failure(409, "That server is known already.");
                     }
-                    this.done(exchange, 201);
+                    done(exchange, 201);
                 }
                 default -> throw notAllowed();
             }
             return;
         }
-        this.noMore(rest.subList(1, rest.size()));
+        noMore(rest.subList(1, rest.size()));
         switch (rest.getFirst()) {
             case "connect" -> {
-                this.only(method, POST);
-                Object address = this.body(exchange).get(ADDRESS);
-                this.await(this.engine.connect(
+                only(method, POST);
+                Object address = body(exchange).get(ADDRESS);
+                await(this.engine.connect(
                         address == null ? Optional.empty() : Optional.of(address(String.valueOf(address)))));
-                this.done(exchange);
+                done(exchange);
             }
             case "disconnect" -> {
-                this.only(method, POST);
-                this.await(this.engine.disconnect());
-                this.done(exchange);
+                only(method, POST);
+                await(this.engine.disconnect());
+                done(exchange);
             }
             case "import" -> {
-                this.only(method, POST);
-                int added = this.await(this.engine.addServers(url(text(this.body(exchange), "url"))));
-                this.count(exchange, added);
+                only(method, POST);
+                int added = await(this.engine.addServers(url(text(body(exchange), "url"))));
+                count(exchange, added);
             }
             default -> {
-                this.only(method, DELETE);
-                this.known(this.await(this.engine.removeServer(address(rest.getFirst()))));
-                this.done(exchange);
+                only(method, DELETE);
+                known(await(this.engine.removeServer(address(rest.getFirst()))));
+                done(exchange);
             }
         }
     }
 
     private void kad(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
-            this.only(method, GET);
-            var kad = this.await(this.engine.kad());
-            this.reply(exchange, 200, g -> {
+            only(method, GET);
+            var kad = await(this.engine.kad());
+            reply(exchange, 200, g -> {
                 if (kad.isPresent()) {
                     ApiJson.kad(g, kad.get());
                 } else {
@@ -374,35 +373,35 @@ final class Api {
             });
             return;
         }
-        this.noMore(rest.subList(1, rest.size()));
+        noMore(rest.subList(1, rest.size()));
         switch (rest.getFirst()) {
-            case "contacts" -> this.list(exchange, method, List.of(), this.engine::kadContacts, ApiJson::kadContact);
-            case "searches" -> this.list(exchange, method, List.of(), this.engine::kadSearches, ApiJson::kadSearch);
+            case "contacts" -> list(exchange, method, List.of(), this.engine::kadContacts, ApiJson::kadContact);
+            case "searches" -> list(exchange, method, List.of(), this.engine::kadSearches, ApiJson::kadSearch);
             case "connect" -> {
-                this.only(method, POST);
-                this.await(this.engine.connectKad());
-                this.done(exchange);
+                only(method, POST);
+                await(this.engine.connectKad());
+                done(exchange);
             }
             case "disconnect" -> {
-                this.only(method, POST);
-                this.await(this.engine.disconnectKad());
-                this.done(exchange);
+                only(method, POST);
+                await(this.engine.disconnectKad());
+                done(exchange);
             }
             case "recheck" -> {
-                this.only(method, POST);
-                if (!this.await(this.engine.recheckKadFirewall())) {
+                only(method, POST);
+                if (!await(this.engine.recheckKadFirewall())) {
                     throw new Failure(409, "Kad is not connected.");
                 }
-                this.done(exchange);
+                done(exchange);
             }
             case "bootstrap" -> {
-                this.only(method, POST);
-                this.await(this.engine.kadBootstrap(address(text(this.body(exchange), ADDRESS))));
-                this.done(exchange);
+                only(method, POST);
+                await(this.engine.kadBootstrap(address(text(body(exchange), ADDRESS))));
+                done(exchange);
             }
             case "nodes" -> {
-                this.only(method, POST);
-                this.count(exchange, this.await(this.engine.addKadContacts(url(text(this.body(exchange), "url")))));
+                only(method, POST);
+                count(exchange, await(this.engine.addKadContacts(url(text(body(exchange), "url")))));
             }
             default -> throw notFound();
         }
@@ -410,16 +409,16 @@ final class Api {
 
     private void searches(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
-            this.only(method, POST);
-            Map<String, Object> body = this.body(exchange);
+            only(method, POST);
+            Map<String, Object> body = body(exchange);
             String expression = text(body, "query").strip();
             SearchRequest.checkExpression(expression);
             SearchRequest.Scope scope = body.get("scope") == null
                     ? SearchRequest.Scope.SERVER
                     : enumValue(SearchRequest.Scope.class, text(body, "scope"));
-            SearchId id = this.await(this.engine.search(new SearchRequest(expression, scope)));
+            SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
             this.searches.started(id.value());
-            this.reply(exchange, 201, g -> {
+            reply(exchange, 201, g -> {
                 g.writeStartObject();
                 g.writeNumberProperty("id", id.value());
                 g.writeEndObject();
@@ -432,7 +431,7 @@ final class Api {
                 case GET -> {
                     List<SearchResult> found = this.searches.results(id).orElseThrow(Api::notFound);
                     found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
-                    this.reply(exchange, 200, g -> {
+                    reply(exchange, 200, g -> {
                         g.writeStartObject();
                         g.writeNumberProperty("id", id);
                         g.writeName("results");
@@ -441,33 +440,33 @@ final class Api {
                     });
                 }
                 case DELETE -> {
-                    this.searchKnown(id);
-                    this.await(this.engine.stopSearch(new SearchId(id)));
+                    searchKnown(id);
+                    await(this.engine.stopSearch(new SearchId(id)));
                     this.searches.forget(id);
-                    this.done(exchange);
+                    done(exchange);
                 }
                 default -> throw notAllowed();
             }
             return;
         }
-        this.noMore(rest.subList(2, rest.size()));
-        this.searchKnown(id);
+        noMore(rest.subList(2, rest.size()));
+        searchKnown(id);
         switch (rest.get(1)) {
             case "more" -> {
-                this.only(method, POST);
-                if (!this.await(this.engine.moreResults(new SearchId(id)))) {
+                only(method, POST);
+                if (!await(this.engine.moreResults(new SearchId(id)))) {
                     throw new Failure(409, "That search cannot get more results.");
                 }
-                this.done(exchange);
+                done(exchange);
             }
             case "download" -> {
-                this.only(method, POST);
-                Hash16 hash = hash(text(this.body(exchange), HASH));
+                only(method, POST);
+                Hash16 hash = hash(text(body(exchange), HASH));
                 SearchResult result = this.searches
                         .result(id, hash)
                         .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
-                DownloadInfo d = this.await(this.engine.addDownload(result.link()));
-                this.reply(exchange, 201, g -> ApiJson.download(g, d));
+                DownloadInfo d = await(this.engine.addDownload(result.link()));
+                reply(exchange, 201, g -> ApiJson.download(g, d));
             }
             default -> throw notFound();
         }
@@ -480,31 +479,31 @@ final class Api {
     }
 
     private void messages(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, POST);
-        Map<String, Object> body = this.body(exchange);
-        this.await(this.engine.sendMessage(address(text(body, "to")), text(body, "text")));
-        this.done(exchange);
+        noMore(rest);
+        only(method, POST);
+        Map<String, Object> body = body(exchange);
+        await(this.engine.sendMessage(address(text(body, "to")), text(body, "text")));
+        done(exchange);
     }
 
     private void bans(Exchange exchange, String method, List<String> rest) throws IOException {
         if (rest.isEmpty()) {
-            this.list(exchange, method, rest, this.engine::bans, ApiJson::ban);
+            list(exchange, method, rest, this.engine::bans, ApiJson::ban);
             return;
         }
-        this.noMore(rest.subList(1, rest.size()));
-        this.only(method, DELETE);
-        this.known(this.await(this.engine.unban(rest.getFirst())));
-        this.done(exchange);
+        noMore(rest.subList(1, rest.size()));
+        only(method, DELETE);
+        known(await(this.engine.unban(rest.getFirst())));
+        done(exchange);
     }
 
     private void limits(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
+        noMore(rest);
         Preferences now = switch (method) {
             case GET -> this.engine.preferences();
             case PUT -> {
-                Map<String, Object> body = this.body(exchange);
-                yield this.await(this.engine.updatePreferences(p -> {
+                Map<String, Object> body = body(exchange);
+                yield await(this.engine.updatePreferences(p -> {
                     Preferences.Builder b = p.toBuilder();
                     if (body.get("uploadKiBps") != null) {
                         b.maxUploadKiBps(rate(body, "uploadKiBps"));
@@ -517,7 +516,7 @@ final class Api {
             }
             default -> throw notAllowed();
         };
-        this.reply(exchange, 200, g -> {
+        reply(exchange, 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("uploadKiBps", now.maxUploadKiBps());
             g.writeNumberProperty("downloadKiBps", now.maxDownloadKiBps());
@@ -526,14 +525,14 @@ final class Api {
     }
 
     private void ipFilter(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, POST);
-        this.count(exchange, this.await(this.engine.updateIpFilter(url(text(this.body(exchange), "url")))));
+        noMore(rest);
+        only(method, POST);
+        count(exchange, await(this.engine.updateIpFilter(url(text(body(exchange), "url")))));
     }
 
     private void log(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, GET);
+        noMore(rest);
+        only(method, GET);
         String after = query(exchange).get("after");
         long seen;
         try {
@@ -542,12 +541,12 @@ final class Api {
             throw new Failure(400, "after must be a number.");
         }
         List<RecentLog.Entry> lines = this.log.after(seen);
-        this.reply(exchange, 200, g -> ApiJson.array(g, lines, (w, e) -> ApiJson.log(w, e.sequence(), e.line())));
+        reply(exchange, 200, g -> ApiJson.array(g, lines, (w, e) -> ApiJson.log(w, e.sequence(), e.line())));
     }
 
     private void events(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, GET);
+        noMore(rest);
+        only(method, GET);
         String types = query(exchange).getOrDefault("types", "");
         List<String> wanted = Arrays.stream(types.split(",", -1))
                 .map(String::strip)
@@ -559,10 +558,10 @@ final class Api {
     }
 
     private void shutdown(Exchange exchange, String method, List<String> rest) throws IOException {
-        this.noMore(rest);
-        this.only(method, POST);
+        noMore(rest);
+        only(method, POST);
         Runnable stop = this.exit.orElseThrow(() -> new Failure(501, "This njMule cannot be stopped from here."));
-        this.done(exchange, 202);
+        done(exchange, 202);
         logger.info("Exiting as the remote-control API asked");
         // Out of the server's threads, which the exit stops.
         Thread.ofVirtual().name("njmule-api-exit").start(stop);
@@ -661,15 +660,15 @@ final class Api {
     // Answers.
 
     private void reply(Exchange exchange, int status, Consumer<JsonGenerator> body) throws IOException {
-        this.send(exchange, status, ApiJson.write(body));
+        send(exchange, status, ApiJson.write(body));
     }
 
     private void done(Exchange exchange) throws IOException {
-        this.done(exchange, 200);
+        done(exchange, 200);
     }
 
     private void done(Exchange exchange, int status) throws IOException {
-        this.reply(exchange, status, g -> {
+        reply(exchange, status, g -> {
             g.writeStartObject();
             g.writeBooleanProperty("ok", true);
             g.writeEndObject();
@@ -677,7 +676,7 @@ final class Api {
     }
 
     private void count(Exchange exchange, int added) throws IOException {
-        this.reply(exchange, 200, g -> {
+        reply(exchange, 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("added", added);
             g.writeEndObject();
@@ -686,7 +685,7 @@ final class Api {
 
     private void error(Exchange exchange, int status, String message) throws IOException {
         if (!exchange.started()) {
-            this.send(exchange, status, ApiJson.write(g -> {
+            send(exchange, status, ApiJson.write(g -> {
                 g.writeStartObject();
                 g.writeStringProperty("error", message);
                 g.writeEndObject();

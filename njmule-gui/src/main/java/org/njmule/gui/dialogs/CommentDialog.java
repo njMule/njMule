@@ -107,7 +107,7 @@ public final class CommentDialog {
         if (download) {
             gui.model().peerComments(file, found -> {
                 this.peers = found;
-                this.showHeard();
+                showHeard();
             });
         }
         gui.model().kadNotes(file, this::kadNotes);
@@ -146,7 +146,7 @@ public final class CommentDialog {
                 .searchKadNotes(
                         this.file,
                         found -> {
-                            this.kadNotes(found);
+                            kadNotes(found);
                             this.searchKad.setDisable(false);
                             this.kadState.setText(
                                     found.isEmpty()
@@ -161,7 +161,7 @@ public final class CommentDialog {
 
     private void kadNotes(List<KadNote> found) {
         this.notes = found;
-        this.showHeard();
+        showHeard();
     }
 
     private void showHeard() {
@@ -181,9 +181,8 @@ public final class CommentDialog {
     }
 
     private String line(Heard c) {
-        String rated = c.comment().rating() == 0
-                ? ""
-                : "[" + this.ratingName(c.comment().rating()) + "] ";
+        String rated =
+                c.comment().rating() == 0 ? "" : "[" + ratingName(c.comment().rating()) + "] ";
         return this.gui.i18n().embed(c.who()) + ": " + rated
                 + this.gui.i18n().embed(c.comment().text());
     }
@@ -194,14 +193,14 @@ public final class CommentDialog {
         protected void updateItem(Heard item, boolean empty) {
             super.updateItem(item, empty);
             if (empty || item == null) {
-                this.setText(null);
-                this.setGraphic(null);
-                this.setTooltip(null);
+                setText(null);
+                setGraphic(null);
+                setTooltip(null);
                 return;
             }
-            this.setText(CommentDialog.this.line(item));
-            this.setGraphic(item.kad() ? Fx.icon(Material2AL.DEVICE_HUB) : null);
-            this.setTooltip(
+            setText(CommentDialog.this.line(item));
+            setGraphic(item.kad() ? Fx.icon(Material2AL.DEVICE_HUB) : null);
+            setTooltip(
                     item.fileName().isEmpty()
                             ? null
                             : new Tooltip(CommentDialog.this.gui.t("IDS_DL_FILENAME") + ": "
@@ -213,7 +212,7 @@ public final class CommentDialog {
         @Override
         protected void updateItem(Integer item, boolean empty) {
             super.updateItem(item, empty);
-            this.setText(empty || item == null ? null : CommentDialog.this.ratingName(item));
+            setText(empty || item == null ? null : CommentDialog.this.ratingName(item));
         }
     }
 

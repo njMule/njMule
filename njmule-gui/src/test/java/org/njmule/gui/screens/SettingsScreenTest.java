@@ -110,88 +110,88 @@ class SettingsScreenTest {
 
     @Test
     void shouldSaveTheEventCommandTheUserTyped() throws Exception {
-        this.givenTheSettingsShow();
+        givenTheSettingsShow();
 
-        this.whenTheUserTurnsOnTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME done\"");
-        this.whenTheUserApplies();
+        whenTheUserTurnsOnTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME done\"");
+        whenTheUserApplies();
 
-        this.thenTheEngineRunsOn(
+        thenTheEngineRunsOn(
                 EventCommands.Event.DOWNLOAD_COMPLETED, new EventCommands.Command(true, "notify \"%NAME done\""));
     }
 
     @Test
     void shouldNotSaveACommandWithAQuoteLeftOpen() throws Exception {
-        this.givenTheSettingsShow();
+        givenTheSettingsShow();
 
-        this.whenTheUserTurnsOnTheCommand(EventCommands.Event.CHAT_MESSAGE, "say \"%MESSAGE");
-        this.whenTheUserApplies();
+        whenTheUserTurnsOnTheCommand(EventCommands.Event.CHAT_MESSAGE, "say \"%MESSAGE");
+        whenTheUserApplies();
 
-        this.thenTheUserIsToldItWasNotSaved();
-        this.thenTheEngineHasNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
+        thenTheUserIsToldItWasNotSaved();
+        thenTheEngineHasNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
     }
 
     @Test
     void shouldPlayTheTypedSoundFileForATest() throws Exception {
-        this.givenTheSettingsShow();
+        givenTheSettingsShow();
 
-        this.whenTheUserTypesTheSoundFile(this.ding());
-        this.whenTheUserTestsTheSound();
+        whenTheUserTypesTheSoundFile(ding());
+        whenTheUserTestsTheSound();
 
-        this.thenThePlayedSoundsAre(this.ding());
-        this.thenTheEngineHasNoSoundFile();
+        thenThePlayedSoundsAre(ding());
+        thenTheEngineHasNoSoundFile();
     }
 
     @Test
     void shouldSaveTheNotificationSound() throws Exception {
-        this.givenTheSettingsShow();
+        givenTheSettingsShow();
 
-        this.whenTheUserTurnsTheSoundOn();
-        this.whenTheUserTypesTheSoundFile(this.ding());
-        this.whenTheUserApplies();
+        whenTheUserTurnsTheSoundOn();
+        whenTheUserTypesTheSoundFile(ding());
+        whenTheUserApplies();
 
-        this.thenTheEnginePlays(this.ding());
+        thenTheEnginePlays(ding());
     }
 
     @Test
     void shouldOfferNoStartAtLoginOutsideTheInstalledProgram() throws Exception {
-        this.givenTheSettingsShow();
+        givenTheSettingsShow();
 
-        this.thenTheStartAtLoginBoxIsOff();
-        this.thenTheStartAtLoginBoxSaysWhy();
+        thenTheStartAtLoginBoxIsOff();
+        thenTheStartAtLoginBoxSaysWhy();
     }
 
     @Test
     void shouldShowTheStartAtLoginAsTheSystemHasIt() throws Exception {
-        this.givenTheSystemStartsNjMuleAtLogin(true);
-        this.givenTheSettingsShowWithTheStartAtLogin();
+        givenTheSystemStartsNjMuleAtLogin(true);
+        givenTheSettingsShowWithTheStartAtLogin();
 
-        this.thenTheStartAtLoginBoxShows(true);
+        thenTheStartAtLoginBoxShows(true);
     }
 
     @Test
     void shouldTurnTheStartAtLoginOnWhenApplied() throws Exception {
-        this.givenTheSystemStartsNjMuleAtLogin(false);
-        this.givenTheSettingsShowWithTheStartAtLogin();
+        givenTheSystemStartsNjMuleAtLogin(false);
+        givenTheSettingsShowWithTheStartAtLogin();
 
-        this.whenTheUserTicksTheStartAtLogin(true);
-        this.whenTheUserApplies();
+        whenTheUserTicksTheStartAtLogin(true);
+        whenTheUserApplies();
 
-        this.thenTheSystemStartsNjMuleAtLogin(true);
+        thenTheSystemStartsNjMuleAtLogin(true);
     }
 
     @Test
     void shouldLeaveTheSystemAloneWhenTheStartAtLoginDidNotChange() throws Exception {
-        this.givenTheSystemStartsNjMuleAtLogin(true);
-        this.givenTheSettingsShowWithTheStartAtLogin();
+        givenTheSystemStartsNjMuleAtLogin(true);
+        givenTheSettingsShowWithTheStartAtLogin();
 
-        this.whenTheUserApplies();
+        whenTheUserApplies();
 
-        this.thenTheSystemWasNotChanged();
+        thenTheSystemWasNotChanged();
     }
 
     private void givenTheSettingsShow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.showTheSettings();
+        showTheSettings();
     }
 
     private void givenTheSystemStartsNjMuleAtLogin(boolean on) {
@@ -200,7 +200,7 @@ class SettingsScreenTest {
 
     private void givenTheSettingsShowWithTheStartAtLogin() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"), Optional.of(this.system));
-        this.showTheSettings();
+        showTheSettings();
         FxTesting.await(
                 "the system was asked", () -> !this.screen.autostartBox().isDisabled());
     }

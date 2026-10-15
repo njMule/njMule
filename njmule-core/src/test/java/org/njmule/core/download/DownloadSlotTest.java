@@ -89,7 +89,7 @@ class DownloadSlotTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -103,71 +103,71 @@ class DownloadSlotTest {
 
     @Test
     void shouldLeaveASlotWhoseBlocksBringNoDataForTooLongWhateverElseTheSourceSends() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceTalksWithoutSendingDataFor(DownloadSession.DATA_TIMEOUT);
+        whenTheSourceTalksWithoutSendingDataFor(DownloadSession.DATA_TIMEOUT);
 
-        this.thenWeCancelTheTransfer();
-        this.thenTheConnectionCloses();
+        thenWeCancelTheTransfer();
+        thenTheConnectionCloses();
     }
 
     @Test
     void shouldKeepASlotWhoseBlocksBringDataInTime() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
-        this.whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
+        whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
+        whenTheSourceSendsSomeDataAfter(DownloadSession.DATA_TIMEOUT.minusSeconds(10));
 
-        this.thenTheSlotIsKept();
+        thenTheSlotIsKept();
     }
 
     @Test
     void shouldCancelATransferThatBringsBlocksWeDidNotAskFor() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceSendsDataWeDidNotAskFor(DownloadSession.MAX_UNEXPECTED);
+        whenTheSourceSendsDataWeDidNotAskFor(DownloadSession.MAX_UNEXPECTED);
 
-        this.thenWeCancelTheTransfer();
-        this.thenTheConnectionCloses();
+        thenWeCancelTheTransfer();
+        thenTheConnectionCloses();
     }
 
     @Test
     void shouldBearDataWeDidNotAskForThatComesNowAndThen() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceSendsDataWeDidNotAskForEvery(
+        whenTheSourceSendsDataWeDidNotAskForEvery(
                 DownloadSession.UNEXPECTED_GAP.plusSeconds(1), DownloadSession.MAX_UNEXPECTED);
 
-        this.thenTheSlotIsKept();
+        thenTheSlotIsKept();
     }
 
     @Test
     void shouldAskAgainForABlockWhoseCompressedDataDoesNotInflateAndDropTheRestOfItQuietly() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 4);
+        whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 4);
 
-        this.thenTheBlockIsAskedForAgain(0);
-        this.thenTheSlotIsKept();
+        thenTheBlockIsAskedForAgain(0);
+        thenTheSlotIsKept();
     }
 
     @Test
     void shouldDropASourceWhoseCompressedDataDoesNotInflateAgainAndAgain() throws Exception {
-        this.givenASourceThatGaveUsASlot();
+        givenASourceThatGaveUsASlot();
 
-        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 1);
-        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(1, 1);
-        this.whenTheSourceSendsACompressedBlockThatDoesNotInflate(2, 1);
+        whenTheSourceSendsACompressedBlockThatDoesNotInflate(0, 1);
+        whenTheSourceSendsACompressedBlockThatDoesNotInflate(1, 1);
+        whenTheSourceSendsACompressedBlockThatDoesNotInflate(2, 1);
 
-        this.thenTheConnectionCloses();
-        this.thenTheDownloadHasNoSource();
+        thenTheConnectionCloses();
+        thenTheDownloadHasNoSource();
     }
 
     private void givenASourceThatGaveUsASlot() throws Exception {
         this.source = new ScriptedSource(PEER, 0, 0);
         this.resources.add(this.source);
-        this.manager = this.open();
-        this.onLoop(() -> this.manager.add(this.source.link("slot.bin", this.data.length, this.hash)));
+        this.manager = open();
+        onLoop(() -> this.manager.add(this.source.link("slot.bin", this.data.length, this.hash)));
         this.link = this.source.accept();
         this.link.until(Opcodes.Client.SETREQFILEID);
         this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
@@ -198,7 +198,7 @@ class DownloadSlotTest {
                         Arrays.copyOfRange(this.data, (int) start, (int) start + CHUNK))
                 .encode(false));
         this.sent += CHUNK;
-        this.await("the data received", () -> this.theSource().received() == this.sent);
+        await("the data received", () -> theSource().received() == this.sent);
     }
 
     // A chunk of the last block, which is not asked for while the first three are.
@@ -213,9 +213,9 @@ class DownloadSlotTest {
 
     private void whenTheSourceSendsDataWeDidNotAskForEvery(Duration gap, int times) throws Exception {
         for (int i = 0; i < times; i++) {
-            this.whenTheSourceSendsDataWeDidNotAskFor(1);
+            whenTheSourceSendsDataWeDidNotAskFor(1);
             // Data asked for, behind it, tells when it was read.
-            this.whenTheSourceSendsSomeDataAfter(Duration.ZERO);
+            whenTheSourceSendsSomeDataAfter(Duration.ZERO);
             this.now.addAndGet(gap.toNanos());
         }
     }
@@ -236,7 +236,7 @@ class DownloadSlotTest {
     }
 
     private void thenTheDownloadHasNoSource() throws Exception {
-        this.await("no source", () -> this.manager.sources().isEmpty());
+        await("no source", () -> this.manager.sources().isEmpty());
     }
 
     private void thenWeCancelTheTransfer() throws Exception {
@@ -249,7 +249,7 @@ class DownloadSlotTest {
 
     private void thenTheSlotIsKept() throws Exception {
         Thread.sleep(QUIET.toMillis());
-        assertThat(this.onLoop(() -> this.theSource().state())).isEqualTo(SourceInfo.State.DOWNLOADING);
+        assertThat(onLoop(() -> theSource().state())).isEqualTo(SourceInfo.State.DOWNLOADING);
     }
 
     private SourceInfo theSource() {
@@ -265,7 +265,7 @@ class DownloadSlotTest {
                 Optional::empty,
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
-        return this.onLoop(() -> DownloadManager.open(
+        return onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -285,7 +285,7 @@ class DownloadSlotTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + ScriptedSource.WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

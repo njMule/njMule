@@ -117,7 +117,7 @@ public record Gui(
     /** Styles {@code scene} with the theme and lays it out in the direction of the interface. */
     public Scene attach(Scene scene) {
         this.themes.attach(scene);
-        scene.setNodeOrientation(this.orientation());
+        scene.setNodeOrientation(orientation());
         return scene;
     }
 
@@ -127,7 +127,7 @@ public record Gui(
      * words, and no header repeating the kind of alert. A header or picture set afterwards stays.
      */
     public <D extends Dialog<?>> D dialog(D dialog) {
-        dialog.getDialogPane().setNodeOrientation(this.orientation());
+        dialog.getDialogPane().setNodeOrientation(orientation());
         if (dialog instanceof TextInputDialog
                 || (dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION)) {
             dialog.setGraphic(null);

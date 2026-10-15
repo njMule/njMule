@@ -81,15 +81,11 @@ class TransfersScreenTest {
             screen.downloads().getSelectionModel().select(0);
             ContextMenu menu = screen.downloads().getContextMenu();
             menu.getOnShowing().handle(null);
-            assertThat(this.item(menu, "IDS_DL_PREVIEW").isDisable())
-                    .as("preview")
-                    .isTrue();
-            assertThat(this.item(menu, "IDS_ADDSRCMANUALLY").isDisable())
+            assertThat(item(menu, "IDS_DL_PREVIEW").isDisable()).as("preview").isTrue();
+            assertThat(item(menu, "IDS_ADDSRCMANUALLY").isDisable())
                     .as("add a source")
                     .isTrue();
-            assertThat(this.item(menu, "IDS_CMT_ADD").isDisable())
-                    .as("comments")
-                    .isFalse();
+            assertThat(item(menu, "IDS_CMT_ADD").isDisable()).as("comments").isFalse();
         });
     }
 

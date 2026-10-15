@@ -44,73 +44,73 @@ class RightToLeftTextsTest {
     @ParameterizedTest
     @MethodSource("languages")
     void onlyArabicPersianAndHebrewAreWrittenRightToLeft(Locale language) {
-        this.whenTheTextsOfALanguageAreLoaded(language);
+        whenTheTextsOfALanguageAreLoaded(language);
 
-        this.thenTheyAreWrittenRightToLeft(WRITTEN_RIGHT_TO_LEFT.contains(language.getLanguage()));
+        thenTheyAreWrittenRightToLeft(WRITTEN_RIGHT_TO_LEFT.contains(language.getLanguage()));
     }
 
     @Test
     void aFileNameInAnArabicSentenceKeepsItsOwnDirection() {
-        this.givenTheTextsOf(Locale.of("ar"));
+        givenTheTextsOf(Locale.of("ar"));
 
-        this.whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track (live).mp3");
+        whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track (live).mp3");
 
-        this.thenTheTextShows(LRE + "01 - Track (live).mp3" + PDF);
+        thenTheTextShows(LRE + "01 - Track (live).mp3" + PDF);
     }
 
     @Test
     void aNameInHebrewLettersKeepsItsOwnDirectionToo() {
-        this.givenTheTextsOf(Locale.of("he"));
+        givenTheTextsOf(Locale.of("he"));
 
-        this.whenTheTextIsFilledIn("nj.chat.from", "דני 2");
+        whenTheTextIsFilledIn("nj.chat.from", "דני 2");
 
-        this.thenTheTextShows(RLE + "דני 2" + PDF);
+        thenTheTextShows(RLE + "דני 2" + PDF);
     }
 
     @Test
     void eachLineKeepsTheDirectionOfItsOwnFirstLetters() {
-        this.givenTheTextsOf(Locale.of("ar"));
+        givenTheTextsOf(Locale.of("ar"));
 
-        this.whenTheTextIsEmbedded("movie.mkv\nفيلم 2\n");
+        whenTheTextIsEmbedded("movie.mkv\nفيلم 2\n");
 
-        this.thenTheTextIs(LRE + "movie.mkv" + PDF + "\n" + RLE + "فيلم 2" + PDF + "\n");
+        thenTheTextIs(LRE + "movie.mkv" + PDF + "\n" + RLE + "فيلم 2" + PDF + "\n");
     }
 
     @Test
     void aNumberIsFilledInAsItIs() {
-        this.givenTheTextsOf(Locale.of("ar"));
+        givenTheTextsOf(Locale.of("ar"));
 
-        this.whenTheTextIsFilledIn("nj.a4af.swapped", 12);
+        whenTheTextIsFilledIn("nj.a4af.swapped", 12);
 
-        this.thenTheTextEndsWith(": 12");
-        this.thenTheTextHasNoDirectionalEmbedding();
+        thenTheTextEndsWith(": 12");
+        thenTheTextHasNoDirectionalEmbedding();
     }
 
     @Test
     void anEnglishSentenceTakesTheFileNameUnchanged() {
-        this.givenTheTextsOf(Locale.ENGLISH);
+        givenTheTextsOf(Locale.ENGLISH);
 
-        this.whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track.mp3");
+        whenTheTextIsFilledIn("nj.transfers.completed", "01 - Track.mp3");
 
-        this.thenTheTextIs("Download finished: 01 - Track.mp3");
+        thenTheTextIs("Download finished: 01 - Track.mp3");
     }
 
     @Test
     void persianWritesNumbersWithLatinDigits() {
-        this.givenTheTextsOf(Locale.of("fa"));
+        givenTheTextsOf(Locale.of("fa"));
 
-        this.whenTheTextIsFilledIn("nj.input.number", 1, 65535);
+        whenTheTextIsFilledIn("nj.input.number", 1, 65535);
 
-        this.thenTheTextShows("65535");
+        thenTheTextShows("65535");
     }
 
     @Test
     void persianSizesHaveLatinDigits() {
-        this.givenTheTextsOf(Locale.of("fa"));
+        givenTheTextsOf(Locale.of("fa"));
 
-        this.whenASizeIsShown(1_234_567);
+        whenASizeIsShown(1_234_567);
 
-        this.thenTheTextIs("1.18 MB");
+        thenTheTextIs("1.18 MB");
     }
 
     private void givenTheTextsOf(Locale language) {

@@ -159,11 +159,11 @@ class ServerPingerTest {
 
     @Test
     void aServerLastPingedInTheFutureIsCheckedAgain() {
-        this.givenAServerThatFailedOftenAndWasLastPingedIn(Duration.ofDays(30));
+        givenAServerThatFailedOftenAndWasLastPingedIn(Duration.ofDays(30));
 
-        this.whenTheNextServerIsPinged();
+        whenTheNextServerIsPinged();
 
-        this.thenThatServerIsReportedDead();
+        thenThatServerIsReportedDead();
     }
 
     private void givenAServerThatFailedOftenAndWasLastPingedIn(Duration fromNow) {

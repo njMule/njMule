@@ -46,82 +46,82 @@ class RateFieldTest {
 
     @Test
     void aLimitOfAThousandKBAndMoreShowsInMB() throws Exception {
-        this.givenALimit();
-        this.whenShown(1536);
-        this.thenItReads("1.5", RateField.Unit.MB);
-        this.thenTheValueIs(1536);
+        givenALimit();
+        whenShown(1536);
+        thenItReads("1.5", RateField.Unit.MB);
+        thenTheValueIs(1536);
     }
 
     @Test
     void aSmallLimitShowsInKB() throws Exception {
-        this.givenALimit();
-        this.whenShown(300);
-        this.thenItReads("300", RateField.Unit.KB);
+        givenALimit();
+        whenShown(300);
+        thenItReads("300", RateField.Unit.KB);
     }
 
     @Test
     void aLimitTypedInMBWithDecimalsIsKeptInKiB() throws Exception {
-        this.givenALimit();
-        this.whenShown(100);
-        this.whenTheUnitIs(RateField.Unit.MB);
-        this.whenTyped("2,5");
-        this.thenTheValueIs(2560);
+        givenALimit();
+        whenShown(100);
+        whenTheUnitIs(RateField.Unit.MB);
+        whenTyped("2,5");
+        thenTheValueIs(2560);
     }
 
     @Test
     void anUntouchedFieldGivesBackTheExactValueShown() throws Exception {
-        this.givenALimit();
-        this.whenShown(122_070);
-        this.thenItReads("119.21", RateField.Unit.MB);
-        this.thenTheValueIs(122_070);
+        givenALimit();
+        whenShown(122_070);
+        thenItReads("119.21", RateField.Unit.MB);
+        thenTheValueIs(122_070);
     }
 
     @Test
     void anotherUnitKeepsTheSpeedTyped() throws Exception {
-        this.givenALimit();
-        this.whenShown(2048);
-        this.whenTheUnitIs(RateField.Unit.KB);
-        this.thenItReads("2048", RateField.Unit.KB);
-        this.thenTheValueIs(2048);
+        givenALimit();
+        whenShown(2048);
+        whenTheUnitIs(RateField.Unit.KB);
+        thenItReads("2048", RateField.Unit.KB);
+        thenTheValueIs(2048);
     }
 
     @Test
     void noLimitIsZeroAndTurnsTheFieldOff() throws Exception {
-        this.givenALimit();
-        this.whenShown(0);
-        this.thenTheValueIs(0);
-        this.thenTheFieldIsOff(true);
-        this.whenNoLimitIs(false);
-        this.whenTyped("50");
-        this.thenTheValueIs(50);
-        this.thenTheFieldIsOff(false);
+        givenALimit();
+        whenShown(0);
+        thenTheValueIs(0);
+        thenTheFieldIsOff(true);
+        whenNoLimitIs(false);
+        whenTyped("50");
+        thenTheValueIs(50);
+        thenTheFieldIsOff(false);
     }
 
     @Test
     void aLimitBelowOneKBIsNotTaken() throws Exception {
-        this.givenALimit();
-        this.whenShown(10);
-        this.whenTyped("0.4");
-        this.thenItIsValid(false);
+        givenALimit();
+        whenShown(10);
+        whenTyped("0.4");
+        thenItIsValid(false);
     }
 
     @Test
     void aLineIsTypedInMbitAndToldInBytesToo() throws Exception {
-        this.givenALine();
-        this.whenShown(12_207);
-        this.thenItReads("100", RateField.Unit.MBIT);
-        this.thenItIsAbout("≈ " + this.test.gui.formats().rate(12_207 * 1024L));
-        this.whenTyped("1000");
-        this.thenTheValueIs(122_070);
+        givenALine();
+        whenShown(12_207);
+        thenItReads("100", RateField.Unit.MBIT);
+        thenItIsAbout("≈ " + this.test.gui.formats().rate(12_207 * 1024L));
+        whenTyped("1000");
+        thenTheValueIs(122_070);
     }
 
     @Test
     void anOptionalLimitIsNothingWhenEmpty() throws Exception {
-        this.givenAnOptionalLimit();
-        this.whenTheOptionalIsShown(OptionalInt.empty());
-        this.thenTheOptionalIs(OptionalInt.empty());
-        this.whenTheOptionalIsShown(OptionalInt.of(0));
-        this.thenTheOptionalIs(OptionalInt.of(0));
+        givenAnOptionalLimit();
+        whenTheOptionalIsShown(OptionalInt.empty());
+        thenTheOptionalIs(OptionalInt.empty());
+        whenTheOptionalIsShown(OptionalInt.of(0));
+        thenTheOptionalIs(OptionalInt.of(0));
     }
 
     private void givenALimit() throws Exception {

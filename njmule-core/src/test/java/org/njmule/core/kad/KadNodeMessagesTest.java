@@ -99,12 +99,11 @@ class KadNodeMessagesTest {
 
     @Test
     void answersABootstrapAndTakesOnlyTheAnswerToItsOwnRequest() throws Exception {
-        this.node.addContacts(contents(this.record(Ipv4.of(70, 1, 1, 1)), this.record(Ipv4.of(71, 1, 1, 1))));
+        this.node.addContacts(contents(record(Ipv4.of(70, 1, 1, 1)), record(Ipv4.of(71, 1, 1, 1))));
 
-        this.receive(PEER, KadMessages.bootstrapRequest());
+        receive(PEER, KadMessages.bootstrapRequest());
 
-        KadMessages.BootstrapAnswer ours =
-                KadMessages.BootstrapAnswer.decode(this.last(PEER, Opcodes.Kad.BOOTSTRAP_RES));
+        KadMessages.BootstrapAnswer ours = KadMessages.BootstrapAnswer.decode(last(PEER, Opcodes.Kad.BOOTSTRAP_RES));
         assertThat(ours.sender().id()).isEqualTo(this.node.id());
         assertThat(ours.sender().tcpPort()).isEqualTo(4662);
         assertThat(ours.contacts()).hasSize(2);
@@ -114,16 +113,16 @@ class KadNodeMessagesTest {
         Packet answer = new KadMessages.BootstrapAnswer(
                         new KadMessages.Self(helperId, 4662, 8),
                         List.of(
-                                this.contact(Ipv4.of(30, 1, 1, 1)),
-                                this.contact(Ipv4.of(192, 168, 1, 9)),
+                                contact(Ipv4.of(30, 1, 1, 1)),
+                                contact(Ipv4.of(192, 168, 1, 9)),
                                 new KadMessages.Contact(UInt128.random(this.random), Ipv4.of(31, 1, 1, 1), PORT, 0, 1)))
                 .encode();
-        this.receive(helper, answer);
+        receive(helper, answer);
         assertThat(this.node.contacts()).as("an answer nobody asked for").isEqualTo(2);
 
         this.node.bootstrap(helper, PORT);
-        assertThat(this.last(helper, Opcodes.Kad.BOOTSTRAP_REQ)).isNotNull();
-        this.receive(helper, answer);
+        assertThat(last(helper, Opcodes.Kad.BOOTSTRAP_REQ)).isNotNull();
+        receive(helper, answer);
 
         assertThat(this.node.contacts())
                 .as("the helper and its one usable contact, not a LAN address or an old version")
@@ -137,12 +136,11 @@ class KadNodeMessagesTest {
     void aHelloIsAnsweredAndANodeThatAcknowledgesBecomesVerified() throws Exception {
         UInt128 peerId = UInt128.random(this.random);
 
-        this.receive(
-                PEER, new KadMessages.Hello(new KadMessages.Self(peerId, 4662, 8), List.of()).encode(false), 0, 77);
+        receive(PEER, new KadMessages.Hello(new KadMessages.Self(peerId, 4662, 8), List.of()).encode(false), 0, 77);
 
         assertThat(this.node.contacts()).isEqualTo(1);
         assertThat(this.node.verifiedContacts()).isZero();
-        Sent reply = this.sentWith(PEER, Opcodes.Kad.HELLO_RES);
+        Sent reply = sentWith(PEER, Opcodes.Kad.HELLO_RES);
         assertThat(reply.receiverId()).as("obfuscated with its id").contains(peerId);
         assertThat(reply.receiverKey()).as("and the key it sent").isEqualTo(77);
         KadMessages.Hello hello = KadMessages.Hello.decode(reply.packet());
@@ -150,14 +148,14 @@ class KadNodeMessagesTest {
         assertThat(Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS))
                 .as("TCP-firewalled, UDP not known to be firewalled yet, and asking for an acknowledgement")
                 .hasValue(0x02 | 0x04);
-        assertThat(this.last(PEER, Opcodes.Kad.FIREWALLED2_REQ))
+        assertThat(last(PEER, Opcodes.Kad.FIREWALLED2_REQ))
                 .as("a recent node is asked to check our port")
                 .isNotNull();
 
         // An acknowledgement without our key proves nothing.
-        this.receive(PEER, KadMessages.helloAck(peerId), 0, 0);
+        receive(PEER, KadMessages.helloAck(peerId), 0, 0);
         assertThat(this.node.verifiedContacts()).isZero();
-        this.receive(PEER, KadMessages.helloAck(peerId), this.identity.verifyKey(PEER), 0);
+        receive(PEER, KadMessages.helloAck(peerId), this.identity.verifyKey(PEER), 0);
 
         assertThat(this.node.verifiedContacts()).isEqualTo(1);
     }
@@ -165,28 +163,28 @@ class KadNodeMessagesTest {
     @Test
     void anOldNodeOrOneBehindAFirewallIsAnsweredButNotAlwaysTaken() throws Exception {
         int old = Ipv4.of(21, 1, 1, 1);
-        this.receive(
+        receive(
                 old,
                 new KadMessages.Hello(new KadMessages.Self(UInt128.random(this.random), 4662, 5), List.of())
                         .encode(false));
 
-        Sent plain = this.sentWith(old, Opcodes.Kad.HELLO_RES);
+        Sent plain = sentWith(old, Opcodes.Kad.HELLO_RES);
         assertThat(plain.receiverId()).as("too old for obfuscation").isEmpty();
         assertThat(KadMessages.Hello.decode(plain.packet()).tags()).isEmpty();
         assertThat(this.node.contacts()).isEqualTo(1);
-        assertThat(this.last(old, Opcodes.Kad.FIREWALLED2_REQ))
+        assertThat(last(old, Opcodes.Kad.FIREWALLED2_REQ))
                 .as("too old to check our port")
                 .isNull();
 
         int firewalled = Ipv4.of(22, 1, 1, 1);
         Tag udpFirewalled = new Tag.IntTag(TagName.id(FileTag.KADMISCOPTIONS), 0x01);
-        this.receive(
+        receive(
                 firewalled,
                 new KadMessages.Hello(
                                 new KadMessages.Self(UInt128.random(this.random), 4662, 8), List.of(udpFirewalled))
                         .encode(false));
 
-        assertThat(this.sentWith(firewalled, Opcodes.Kad.HELLO_RES)).isNotNull();
+        assertThat(sentWith(firewalled, Opcodes.Kad.HELLO_RES)).isNotNull();
         assertThat(this.node.contacts())
                 .as("a node others cannot reach is no contact")
                 .isEqualTo(1);
@@ -195,11 +193,11 @@ class KadNodeMessagesTest {
     @Test
     void anOldestContactIsCheckedEachMinuteAndDroppedWhenSilent() throws Exception {
         int quiet = Ipv4.of(70, 1, 1, 1);
-        this.node.addContacts(contents(this.record(quiet)));
+        this.node.addContacts(contents(record(quiet)));
 
         this.time.addAndGet(MINUTE);
         this.node.tick();
-        assertThat(this.last(quiet, Opcodes.Kad.HELLO_REQ))
+        assertThat(last(quiet, Opcodes.Kad.HELLO_REQ))
                 .as("asked whether it is still there")
                 .isNotNull();
 
@@ -222,17 +220,15 @@ class KadNodeMessagesTest {
                         List.of(new Tag.IntTag(TagName.id(FileTag.KADMISCOPTIONS), 0x04)))
                 .encode(true);
 
-        this.receive(alive, answer, 0, 99);
-        assertThat(this.last(alive, Opcodes.Kad.HELLO_RES_ACK))
-                .as("not asked for")
-                .isNull();
+        receive(alive, answer, 0, 99);
+        assertThat(last(alive, Opcodes.Kad.HELLO_RES_ACK)).as("not asked for").isNull();
 
         this.time.addAndGet(MINUTE);
         this.node.tick();
-        assertThat(this.last(alive, Opcodes.Kad.HELLO_REQ)).isNotNull();
-        this.receive(alive, answer, 0, 99);
+        assertThat(last(alive, Opcodes.Kad.HELLO_REQ)).isNotNull();
+        receive(alive, answer, 0, 99);
 
-        Sent ack = this.sentWith(alive, Opcodes.Kad.HELLO_RES_ACK);
+        Sent ack = sentWith(alive, Opcodes.Kad.HELLO_RES_ACK);
         assertThat(KadMessages.decodeHelloAck(ack.packet())).isEqualTo(this.node.id());
         assertThat(ack.receiverKey()).isEqualTo(99);
         for (int i = 0; i < 3; i++) {
@@ -246,15 +242,15 @@ class KadNodeMessagesTest {
 
     @Test
     void aLookupForUsIsAnsweredAndOneForAnotherNodeIsNot() throws Exception {
-        this.node.addContacts(contents(this.record(Ipv4.of(70, 1, 1, 1))));
+        this.node.addContacts(contents(record(Ipv4.of(70, 1, 1, 1))));
         UInt128 target = UInt128.random(this.random);
 
-        this.receive(PEER, new KadMessages.Request(2, target, UInt128.random(this.random)).encode());
-        assertThat(this.last(PEER, Opcodes.Kad.RES)).isNull();
+        receive(PEER, new KadMessages.Request(2, target, UInt128.random(this.random)).encode());
+        assertThat(last(PEER, Opcodes.Kad.RES)).isNull();
 
-        this.receive(PEER, new KadMessages.Request(2, target, this.node.id()).encode());
+        receive(PEER, new KadMessages.Request(2, target, this.node.id()).encode());
 
-        assertThat(KadMessages.Answer.decode(this.last(PEER, Opcodes.Kad.RES)).target())
+        assertThat(KadMessages.Answer.decode(last(PEER, Opcodes.Kad.RES)).target())
                 .isEqualTo(target);
     }
 
@@ -263,28 +259,27 @@ class KadNodeMessagesTest {
         UInt128 keyword = this.node.id();
         KadMessages.Entry file = entry(UInt128.random(this.random), "ubuntu desktop.iso", 4000);
 
-        this.receive(PEER, new KadMessages.KeywordPublish(keyword, List.of(file)).encode());
+        receive(PEER, new KadMessages.KeywordPublish(keyword, List.of(file)).encode());
 
-        KadMessages.PublishAnswer load = KadMessages.PublishAnswer.decode(this.last(PEER, Opcodes.Kad.PUBLISH_RES));
+        KadMessages.PublishAnswer load = KadMessages.PublishAnswer.decode(last(PEER, Opcodes.Kad.PUBLISH_RES));
         assertThat(load.target()).isEqualTo(keyword);
         assertThat(this.node.indexed()[0]).isEqualTo(1);
 
         int searcher = Ipv4.of(23, 1, 1, 1);
-        this.receive(searcher, new KadMessages.KeywordSearch(keyword, 0, new byte[0]).encode());
-        assertThat(KadMessages.SearchAnswer.decode(this.last(searcher, Opcodes.Kad.SEARCH_RES))
+        receive(searcher, new KadMessages.KeywordSearch(keyword, 0, new byte[0]).encode());
+        assertThat(KadMessages.SearchAnswer.decode(last(searcher, Opcodes.Kad.SEARCH_RES))
                         .results())
                 .extracting(KadMessages.Entry::id)
                 .containsExactly(file.id());
 
         int other = Ipv4.of(24, 1, 1, 1);
-        this.receive(other, new KadMessages.KeywordSearch(keyword, 0, tree(new SearchExpr.Keyword("ubuntu"))).encode());
-        assertThat(this.last(other, Opcodes.Kad.SEARCH_RES))
+        receive(other, new KadMessages.KeywordSearch(keyword, 0, tree(new SearchExpr.Keyword("ubuntu"))).encode());
+        assertThat(last(other, Opcodes.Kad.SEARCH_RES))
                 .as("the expression matches")
                 .isNotNull();
         int nobody = Ipv4.of(26, 1, 1, 1);
-        this.receive(
-                nobody, new KadMessages.KeywordSearch(keyword, 0, tree(new SearchExpr.Keyword("windows"))).encode());
-        assertThat(this.last(nobody, Opcodes.Kad.SEARCH_RES))
+        receive(nobody, new KadMessages.KeywordSearch(keyword, 0, tree(new SearchExpr.Keyword("windows"))).encode());
+        assertThat(last(nobody, Opcodes.Kad.SEARCH_RES))
                 .as("nothing found, nothing sent")
                 .isNull();
     }
@@ -294,11 +289,11 @@ class KadNodeMessagesTest {
         UInt128 far = farFrom(this.node.id());
         int other = Ipv4.of(27, 1, 1, 1);
 
-        this.receive(PEER, new KadMessages.KeywordPublish(far, List.of(entry(far, "far away.iso", 10))).encode());
-        this.receive(other, new KadMessages.SourcePublish(far, UInt128.random(this.random), sourceTags(1)).encode());
+        receive(PEER, new KadMessages.KeywordPublish(far, List.of(entry(far, "far away.iso", 10))).encode());
+        receive(other, new KadMessages.SourcePublish(far, UInt128.random(this.random), sourceTags(1)).encode());
 
-        assertThat(this.last(PEER, Opcodes.Kad.PUBLISH_RES)).isNull();
-        assertThat(this.last(other, Opcodes.Kad.PUBLISH_RES)).isNull();
+        assertThat(last(PEER, Opcodes.Kad.PUBLISH_RES)).isNull();
+        assertThat(last(other, Opcodes.Kad.PUBLISH_RES)).isNull();
         assertThat(this.node.indexed()).containsExactly(0, 0);
     }
 
@@ -307,20 +302,20 @@ class KadNodeMessagesTest {
         UInt128 file = this.node.id();
         UInt128 source = UInt128.random(this.random);
 
-        this.receive(PEER, new KadMessages.SourcePublish(file, source, sourceTags(1)).encode());
-        assertThat(KadMessages.PublishAnswer.decode(this.last(PEER, Opcodes.Kad.PUBLISH_RES))
+        receive(PEER, new KadMessages.SourcePublish(file, source, sourceTags(1)).encode());
+        assertThat(KadMessages.PublishAnswer.decode(last(PEER, Opcodes.Kad.PUBLISH_RES))
                         .target())
                 .isEqualTo(file);
         int untyped = Ipv4.of(28, 1, 1, 1);
-        this.receive(untyped, new KadMessages.SourcePublish(file, UInt128.random(this.random), List.of()).encode());
-        assertThat(this.last(untyped, Opcodes.Kad.PUBLISH_RES))
+        receive(untyped, new KadMessages.SourcePublish(file, UInt128.random(this.random), List.of()).encode());
+        assertThat(last(untyped, Opcodes.Kad.PUBLISH_RES))
                 .as("a source of no type")
                 .isNull();
 
         int searcher = Ipv4.of(23, 1, 1, 1);
-        this.receive(searcher, new KadMessages.SourceSearch(file, 0, 0).encode());
+        receive(searcher, new KadMessages.SourceSearch(file, 0, 0).encode());
 
-        List<KadMessages.Entry> found = KadMessages.SearchAnswer.decode(this.last(searcher, Opcodes.Kad.SEARCH_RES))
+        List<KadMessages.Entry> found = KadMessages.SearchAnswer.decode(last(searcher, Opcodes.Kad.SEARCH_RES))
                 .results();
         assertThat(found).extracting(KadMessages.Entry::id).containsExactly(source);
         assertThat(Tags.intValue(found.getFirst().tags(), FileTag.SOURCEIP)).hasValue(Integer.toUnsignedLong(PEER));
@@ -330,19 +325,19 @@ class KadNodeMessagesTest {
     void aFirewallCheckIsAnsweredOnlyForAddressesThatCouldBeReal() throws Exception {
         UInt128 asker = UInt128.random(this.random);
 
-        this.receive(PEER, new KadMessages.FirewallCheck(5000, asker, 1).encode());
+        receive(PEER, new KadMessages.FirewallCheck(5000, asker, 1).encode());
 
-        assertThat(KadMessages.decodeFirewallAnswer(this.last(PEER, Opcodes.Kad.FIREWALLED_RES)))
+        assertThat(KadMessages.decodeFirewallAnswer(last(PEER, Opcodes.Kad.FIREWALLED_RES)))
                 .isEqualTo(PEER);
         assertThat(this.checks).containsExactly(new Check(PEER, 5000, asker.toHash16(), 1));
 
         int lan = Ipv4.of(192, 168, 1, 9);
-        this.receive(lan, new KadMessages.FirewallCheck(5000, asker, 1).encode());
+        receive(lan, new KadMessages.FirewallCheck(5000, asker, 1).encode());
         int noPort = Ipv4.of(29, 1, 1, 1);
-        this.receive(noPort, new KadMessages.FirewallCheck(0, asker, 1).encode());
+        receive(noPort, new KadMessages.FirewallCheck(0, asker, 1).encode());
 
-        assertThat(this.last(lan, Opcodes.Kad.FIREWALLED_RES)).isNull();
-        assertThat(this.last(noPort, Opcodes.Kad.FIREWALLED_RES)).isNull();
+        assertThat(last(lan, Opcodes.Kad.FIREWALLED_RES)).isNull();
+        assertThat(last(noPort, Opcodes.Kad.FIREWALLED_RES)).isNull();
         assertThat(this.checks).hasSize(1);
     }
 
@@ -352,25 +347,25 @@ class KadNodeMessagesTest {
         int second = Ipv4.of(81, 1, 1, 1);
         int[] helpers = {Ipv4.of(21, 1, 1, 1), Ipv4.of(22, 1, 1, 1), Ipv4.of(23, 1, 1, 1), Ipv4.of(24, 1, 1, 1)};
         for (int helper : helpers) {
-            this.hello(helper, 8);
+            hello(helper, 8);
         }
         // From a node never asked.
-        this.receive(Ipv4.of(25, 1, 1, 1), KadMessages.firewallAnswer(first));
+        receive(Ipv4.of(25, 1, 1, 1), KadMessages.firewallAnswer(first));
         assertThat(this.node.publicIp()).isZero();
 
-        this.receive(helpers[0], KadMessages.firewallAnswer(first));
+        receive(helpers[0], KadMessages.firewallAnswer(first));
         assertThat(this.node.publicIp()).isEqualTo(first);
-        this.receive(helpers[1], KadMessages.firewallAnswer(second));
+        receive(helpers[1], KadMessages.firewallAnswer(second));
         assertThat(this.node.publicIp()).as("one report is not enough").isEqualTo(first);
-        this.receive(helpers[2], KadMessages.firewallAnswer(second));
+        receive(helpers[2], KadMessages.firewallAnswer(second));
         assertThat(this.node.publicIp()).isEqualTo(second);
-        this.receive(helpers[3], KadMessages.firewallAnswer(second));
+        receive(helpers[3], KadMessages.firewallAnswer(second));
         assertThat(this.node.publicIp()).isEqualTo(second);
 
         // Four reports: no further node is asked until the next check.
         int late = Ipv4.of(26, 1, 1, 1);
-        this.hello(late, 8);
-        assertThat(this.last(late, Opcodes.Kad.FIREWALLED2_REQ)).isNull();
+        hello(late, 8);
+        assertThat(last(late, Opcodes.Kad.FIREWALLED2_REQ)).isNull();
         assertThat(this.node.isFirewalled()).as("no node connected to us").isTrue();
     }
 
@@ -378,8 +373,8 @@ class KadNodeMessagesTest {
     void aCheckThatEndsWithoutTwoConnectionsLeavesUsFirewalled() {
         int[] helpers = {Ipv4.of(21, 1, 1, 1), Ipv4.of(22, 1, 1, 1), Ipv4.of(23, 1, 1, 1), Ipv4.of(24, 1, 1, 1)};
         for (int helper : helpers) {
-            this.hello(helper, 8);
-            this.receive(helper, KadMessages.firewallAnswer(Ipv4.of(80, 1, 1, 1)));
+            hello(helper, 8);
+            receive(helper, KadMessages.firewallAnswer(Ipv4.of(80, 1, 1, 1)));
         }
         this.node.reachableConfirmed(helpers[0]);
         this.node.reachableConfirmed(Ipv4.of(99, 1, 1, 1));
@@ -402,32 +397,32 @@ class KadNodeMessagesTest {
     void aPingIsAnsweredWithThePortItCameFromAndAFloodIsBanned() throws Exception {
         Packet ping = KadMessages.ping();
         this.node.received(PEER, 5555, ping, false, 0, 0);
-        assertThat(KadMessages.decodePong(this.last(PEER, Opcodes.Kad.PONG))).isEqualTo(5555);
+        assertThat(KadMessages.decodePong(last(PEER, Opcodes.Kad.PONG))).isEqualTo(5555);
         // A pong nobody waits for changes nothing.
-        this.receive(PEER, KadMessages.pong(PORT));
+        receive(PEER, KadMessages.pong(PORT));
 
         for (int i = 0; i < 20; i++) {
-            this.receive(PEER, ping);
+            receive(PEER, ping);
         }
-        int pongs = this.count(PEER, Opcodes.Kad.PONG);
+        int pongs = count(PEER, Opcodes.Kad.PONG);
         assertThat(pongs).as("only a few are answered").isLessThan(5);
 
-        this.receive(PEER, KadMessages.bootstrapRequest());
-        assertThat(this.last(PEER, Opcodes.Kad.BOOTSTRAP_RES))
+        receive(PEER, KadMessages.bootstrapRequest());
+        assertThat(last(PEER, Opcodes.Kad.BOOTSTRAP_RES))
                 .as("banned for everything")
                 .isNull();
 
         this.time.addAndGet(121 * MINUTE);
-        this.receive(PEER, ping);
-        assertThat(this.count(PEER, Opcodes.Kad.PONG)).as("the ban ends").isEqualTo(pongs + 1);
+        receive(PEER, ping);
+        assertThat(count(PEER, Opcodes.Kad.PONG)).as("the ban ends").isEqualTo(pongs + 1);
     }
 
     @Test
     void unknownBuddyAndMalformedPacketsAreDropped() {
-        this.receive(PEER, Packet.of(Protocol.KAD, 0xEE, new byte[0]));
-        this.receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.FINDBUDDY_REQ.code(), new byte[20]));
-        this.receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.HELLO_REQ.code(), new byte[3]));
-        this.receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.FIREWALLED_RES.code(), new byte[3]));
+        receive(PEER, Packet.of(Protocol.KAD, 0xEE, new byte[0]));
+        receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.FINDBUDDY_REQ.code(), new byte[20]));
+        receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.HELLO_REQ.code(), new byte[3]));
+        receive(PEER, Packet.of(Protocol.KAD, Opcodes.Kad.FIREWALLED_RES.code(), new byte[3]));
 
         assertThat(this.sent).isEmpty();
         assertThat(this.node.contacts()).isZero();
@@ -435,18 +430,17 @@ class KadNodeMessagesTest {
 
     @Test
     void aSourceSearchKeepsOnlyClientsThatCanBeReachedDirectly() throws Exception {
-        Hash16 hash = this.hash();
+        Hash16 hash = hash();
         UInt128 target = UInt128.of(hash);
-        this.contactAt(target);
+        contactAt(target);
         List<KadNode.Source> found = new ArrayList<>();
 
         assertThat(this.node.findSources(hash, 1000, found::addAll)).isTrue();
         assertThat(this.node.findSources(hash, 1000, found::addAll))
                 .as("already running")
                 .isFalse();
-        this.answerAndWait(target);
-        KadMessages.SourceSearch request =
-                KadMessages.SourceSearch.decode(this.last(PEER, Opcodes.Kad.SEARCH_SOURCE_REQ));
+        answerAndWait(target);
+        KadMessages.SourceSearch request = KadMessages.SourceSearch.decode(last(PEER, Opcodes.Kad.SEARCH_SOURCE_REQ));
         assertThat(request.size()).isEqualTo(1000);
 
         UInt128 direct = UInt128.random(this.random);
@@ -457,7 +451,7 @@ class KadNodeMessagesTest {
                 new KadMessages.Entry(UInt128.random(this.random), source(3, Ipv4.of(92, 1, 1, 1), 4662, 0)),
                 new KadMessages.Entry(UInt128.random(this.random), source(1, 0, 4662, 0)),
                 new KadMessages.Entry(UInt128.random(this.random), source(1, Ipv4.of(93, 1, 1, 1), 0, 0)));
-        this.receive(PEER, new KadMessages.SearchAnswer(target, target, entries).encode());
+        receive(PEER, new KadMessages.SearchAnswer(target, target, entries).encode());
 
         assertThat(found)
                 .containsExactly(
@@ -468,15 +462,14 @@ class KadNodeMessagesTest {
     @Test
     void aKeywordSearchKeepsOnlyFilesThatMatchAllItsWords() throws Exception {
         UInt128 target = Keywords.id("ubuntu");
-        this.contactAt(target);
+        contactAt(target);
         List<KadNode.FileResult> found = new ArrayList<>();
         SearchExpr expression = new SearchExpr.Keyword("ubuntu desktop");
 
         assertThat(this.node.searchKeyword("ubuntu desktop", Optional.of(expression), found::addAll))
                 .isPresent();
-        this.answerAndWait(target);
-        KadMessages.KeywordSearch request =
-                KadMessages.KeywordSearch.decode(this.last(PEER, Opcodes.Kad.SEARCH_KEY_REQ));
+        answerAndWait(target);
+        KadMessages.KeywordSearch request = KadMessages.KeywordSearch.decode(last(PEER, Opcodes.Kad.SEARCH_KEY_REQ));
         assertThat(request.expression()).as("the expression goes along").isEqualTo(tree(expression));
 
         UInt128 good = UInt128.random(this.random);
@@ -494,7 +487,7 @@ class KadNodeMessagesTest {
                 entry(UInt128.random(this.random), "ubuntu desktop.iso", 0),
                 new KadMessages.Entry(
                         UInt128.random(this.random), List.of(new Tag.IntTag(TagName.id(FileTag.FILESIZE), 5))));
-        this.receive(PEER, new KadMessages.SearchAnswer(target, target, entries).encode());
+        receive(PEER, new KadMessages.SearchAnswer(target, target, entries).encode());
 
         assertThat(found)
                 .containsExactly(new KadNode.FileResult(
@@ -506,7 +499,7 @@ class KadNodeMessagesTest {
                         new SearchResult.Media("", "", "Noble Numbat", 95, 0, "")));
         // Results for a search nobody runs.
         UInt128 other = Keywords.id("debian");
-        this.receive(PEER, new KadMessages.SearchAnswer(other, other, entries).encode());
+        receive(PEER, new KadMessages.SearchAnswer(other, other, entries).encode());
         assertThat(found).hasSize(1);
     }
 
@@ -518,8 +511,8 @@ class KadNodeMessagesTest {
         assertThat(this.node.searchKeyword("ubuntu", Optional.empty(), r -> {}))
                 .as("nobody to ask")
                 .isEmpty();
-        assertThat(this.node.findSources(this.hash(), 10, s -> {})).isFalse();
-        assertThat(this.node.publishSource(this.hash(), 10)).isFalse();
+        assertThat(this.node.findSources(hash(), 10, s -> {})).isFalse();
+        assertThat(this.node.publishSource(hash(), 10)).isFalse();
         assertThat(this.node.publishKeyword("ubuntu", List.of(entry(UInt128.random(this.random), "ubuntu.iso", 1))))
                 .isFalse();
         assertThat(this.node.runningLookups()).isZero();
@@ -528,7 +521,7 @@ class KadNodeMessagesTest {
     @Test
     void keywordsArePublishedInBatchesAndTheirAnswersCounted() throws Exception {
         UInt128 target = Keywords.id("ubuntu");
-        this.contactAt(target);
+        contactAt(target);
         List<KadMessages.Entry> files = new ArrayList<>();
         for (int i = 0; i < KadMessages.MAX_PUBLISHED_FILES + 10; i++) {
             files.add(entry(UInt128.random(this.random), "ubuntu " + i + ".iso", 1000 + i));
@@ -543,30 +536,30 @@ class KadNodeMessagesTest {
                 .isFalse();
         assertThat(this.node.runningKeywordPublishes()).isEqualTo(1);
         assertThat(this.node.runningSourcePublishes()).isZero();
-        this.answerAndWait(target);
+        answerAndWait(target);
 
-        assertThat(this.count(PEER, Opcodes.Kad.PUBLISH_KEY_REQ)).isEqualTo(2);
-        assertThat(KadMessages.KeywordPublish.decode(this.last(PEER, Opcodes.Kad.PUBLISH_KEY_REQ))
+        assertThat(count(PEER, Opcodes.Kad.PUBLISH_KEY_REQ)).isEqualTo(2);
+        assertThat(KadMessages.KeywordPublish.decode(last(PEER, Opcodes.Kad.PUBLISH_KEY_REQ))
                         .files())
                 .hasSize(10);
 
-        this.receive(PEER, new KadMessages.PublishAnswer(target, 3).encode());
+        receive(PEER, new KadMessages.PublishAnswer(target, 3).encode());
         assertThat(this.node.lookupInfos()).singleElement().satisfies(l -> {
             assertThat(l.kind()).isEqualTo(KadSearchInfo.Kind.STORE_KEYWORD);
             assertThat(l.answers()).isEqualTo(1);
         });
         // An answer to no request.
-        this.receive(Ipv4.of(70, 1, 1, 1), new KadMessages.PublishAnswer(target, 3).encode());
+        receive(Ipv4.of(70, 1, 1, 1), new KadMessages.PublishAnswer(target, 3).encode());
         assertThat(this.node.lookupInfos().getFirst().answers()).isEqualTo(1);
     }
 
     @Test
     void weArePublishedAsASourceWithOurPortAndTheKindOfSize() throws Exception {
-        Hash16 hash = this.hash();
+        Hash16 hash = hash();
         UInt128 target = UInt128.of(hash);
-        this.contactAt(target);
+        contactAt(target);
         long size = 5_000_000_000L;
-        this.reachableThroughTcp();
+        reachableThroughTcp();
 
         assertThat(this.node.publishSource(hash, size)).isTrue();
         assertThat(this.node.publishSource(hash, size)).as("already running").isFalse();
@@ -574,10 +567,10 @@ class KadNodeMessagesTest {
         assertThat(this.node.lookupInfos())
                 .singleElement()
                 .satisfies(l -> assertThat(l.kind()).isEqualTo(KadSearchInfo.Kind.STORE_SOURCE));
-        this.answerAndWait(target);
+        answerAndWait(target);
 
         KadMessages.SourcePublish publish =
-                KadMessages.SourcePublish.decode(this.last(PEER, Opcodes.Kad.PUBLISH_SOURCE_REQ));
+                KadMessages.SourcePublish.decode(last(PEER, Opcodes.Kad.PUBLISH_SOURCE_REQ));
         assertThat(publish.file()).isEqualTo(target);
         assertThat(publish.source()).isEqualTo(UInt128.of(USER));
         assertThat(Tags.intValue(publish.tags(), FileTag.SOURCETYPE))
@@ -590,8 +583,8 @@ class KadNodeMessagesTest {
 
     @Test
     void theLookupsShowWhatTheyLookFor() {
-        Hash16 hash = this.hash();
-        this.aliveContact(PEER);
+        Hash16 hash = hash();
+        aliveContact(PEER);
 
         assertThat(this.node.findSources(hash, 10, s -> {})).isTrue();
         assertThat(this.node.searchKeyword("ubuntu", Optional.empty(), r -> {})).isPresent();
@@ -606,12 +599,12 @@ class KadNodeMessagesTest {
 
     @Test
     void theFirstLookupOfOurOwnIdMakesTheNodeReady() throws Exception {
-        this.aliveContact(PEER);
+        aliveContact(PEER);
         assertThat(this.node.isReady()).isFalse();
 
         this.time.addAndGet(3 * MINUTE);
         this.node.tick();
-        assertThat(this.requestedTargets()).as("our own id is looked up").contains(this.node.id());
+        assertThat(requestedTargets()).as("our own id is looked up").contains(this.node.id());
         assertThat(this.node.isReady()).isFalse();
         this.time.addAndGet(MINUTE);
         this.node.tick();
@@ -621,7 +614,7 @@ class KadNodeMessagesTest {
 
     @Test
     void aQuietNodeLooksForContactsAgain() throws Exception {
-        this.aliveContact(PEER);
+        aliveContact(PEER);
         this.time.addAndGet(11 * SECOND);
         this.node.tick();
         this.time.addAndGet(10 * SECOND);
@@ -631,7 +624,7 @@ class KadNodeMessagesTest {
         this.time.addAndGet(16 * MINUTE);
         this.node.tick();
 
-        assertThat(this.requestedTargets())
+        assertThat(requestedTargets())
                 .as("a zone is looked up again, besides our own id")
                 .anyMatch(target -> !target.equals(this.node.id()));
         assertThat(this.node.isConnected())
@@ -656,7 +649,7 @@ class KadNodeMessagesTest {
 
     @Test
     void contactsThatCannotBeSavedStayInTheTable() throws Exception {
-        this.node.addContacts(contents(this.record(PEER)));
+        this.node.addContacts(contents(record(PEER)));
         Path tmp = this.dir.resolve(KadNode.NODES_FILE + ".tmp");
         Files.createDirectories(tmp);
         Files.writeString(tmp.resolve("keep"), "x");
@@ -672,8 +665,8 @@ class KadNodeMessagesTest {
         int stranger = Ipv4.of(40, 1, 1, 1);
         UInt128 target = Keywords.id("ubuntu");
 
-        this.receive(stranger, new KadMessages.Answer(target, List.of(this.contact(Ipv4.of(41, 1, 1, 1)))).encode());
-        this.receive(
+        receive(stranger, new KadMessages.Answer(target, List.of(contact(Ipv4.of(41, 1, 1, 1)))).encode());
+        receive(
                 stranger,
                 new KadMessages.SearchAnswer(target, target, List.of(entry(target, "ubuntu.iso", 10))).encode());
 
@@ -684,21 +677,21 @@ class KadNodeMessagesTest {
     @Test
     void contactsAnAnswerCannotVouchForAreLeftOut() {
         UInt128 target = Keywords.id("ubuntu");
-        this.contactAt(target);
+        contactAt(target);
         assertThat(this.node.publishKeyword("ubuntu", List.of(entry(UInt128.random(this.random), "ubuntu.iso", 10))))
                 .isTrue();
 
-        this.receive(
+        receive(
                 PEER,
                 new KadMessages.Answer(
                                 target,
                                 List.of(
                                         new KadMessages.Contact(
                                                 UInt128.random(this.random), Ipv4.of(41, 1, 1, 1), PORT, 0, 1),
-                                        this.contact(Ipv4.of(192, 168, 7, 7)),
+                                        contact(Ipv4.of(192, 168, 7, 7)),
                                         new KadMessages.Contact(
                                                 UInt128.random(this.random), Ipv4.of(42, 1, 1, 1), 53, 0, 5),
-                                        this.contact(Ipv4.of(43, 1, 1, 1))))
+                                        contact(Ipv4.of(43, 1, 1, 1))))
                         .encode());
 
         assertThat(this.node.contactInfos())
@@ -708,39 +701,39 @@ class KadNodeMessagesTest {
 
     @Test
     void aNodeOnThisMachineIsAnsweredButNotTaken() throws Exception {
-        this.hello(Ipv4.of(127, 0, 0, 1), 8);
+        hello(Ipv4.of(127, 0, 0, 1), 8);
 
-        assertThat(this.sentWith(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.HELLO_RES)).isNotNull();
+        assertThat(sentWith(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.HELLO_RES)).isNotNull();
         assertThat(this.node.contacts()).isZero();
-        assertThat(this.last(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.FIREWALLED2_REQ))
+        assertThat(last(Ipv4.of(127, 0, 0, 1), Opcodes.Kad.FIREWALLED2_REQ))
                 .as("it could not check our port")
                 .isNull();
     }
 
     @Test
     void ourOwnIdIsNotLookedUpTwiceAtOnce() throws Exception {
-        this.aliveContact(PEER);
+        aliveContact(PEER);
         assertThat(this.node.findSources(this.node.id().toHash16(), 10, s -> {}))
                 .isTrue();
 
         this.node.lookForContacts();
         this.node.tick();
 
-        assertThat(this.requestedTargets()).filteredOn(this.node.id()::equals).hasSize(1);
+        assertThat(requestedTargets()).filteredOn(this.node.id()::equals).hasSize(1);
         assertThat(this.node.isReady()).isFalse();
     }
 
     // Two nodes connected to our TCP port and said so: the node is open.
     private void reachableThroughTcp() {
         for (int ip : new int[] {Ipv4.of(26, 1, 1, 1), Ipv4.of(27, 1, 1, 1)}) {
-            this.hello(ip, 8);
+            hello(ip, 8);
             this.node.reachableConfirmed(ip);
         }
     }
 
     // Lets the lookup towards target ask the contact at that very id, which then gets the request.
     private void answerAndWait(UInt128 target) {
-        this.receive(PEER, new KadMessages.Answer(target, List.of()).encode());
+        receive(PEER, new KadMessages.Answer(target, List.of()).encode());
         this.time.addAndGet(4 * SECOND);
         this.node.tick();
     }
@@ -749,7 +742,7 @@ class KadNodeMessagesTest {
     private void aliveContact(int ip) {
         UInt128 id = UInt128.random(this.random);
         this.node.addContacts(contents(new NodesDat.Contact(id, ip, PORT, 4662, 8, 0, NodesDat.UdpKey.NONE, true)));
-        this.receive(ip, new KadMessages.Hello(new KadMessages.Self(id, 4662, 8), List.of()).encode(false));
+        receive(ip, new KadMessages.Hello(new KadMessages.Self(id, 4662, 8), List.of()).encode(false));
     }
 
     private List<UInt128> requestedTargets() throws Exception {
@@ -767,14 +760,14 @@ class KadNodeMessagesTest {
     }
 
     private void hello(int ip, int version) {
-        this.receive(
+        receive(
                 ip,
                 new KadMessages.Hello(new KadMessages.Self(UInt128.random(this.random), 4662, version), List.of())
                         .encode(false));
     }
 
     private void receive(int ip, Packet packet) {
-        this.receive(ip, packet, 0, 0);
+        receive(ip, packet, 0, 0);
     }
 
     private void receive(int ip, Packet packet, int receiverKey, int senderKey) {
@@ -782,12 +775,12 @@ class KadNodeMessagesTest {
     }
 
     private Packet last(int ip, Opcodes.Kad opcode) {
-        Sent s = this.lastSent(ip, opcode);
+        Sent s = lastSent(ip, opcode);
         return s == null ? null : s.packet();
     }
 
     private Sent sentWith(int ip, Opcodes.Kad opcode) {
-        Sent s = this.lastSent(ip, opcode);
+        Sent s = lastSent(ip, opcode);
         assertThat(s).as("%s sent to %s", opcode, Ipv4.format(ip)).isNotNull();
         return s;
     }

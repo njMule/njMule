@@ -55,55 +55,55 @@ class LookupResponseTimeTest {
 
     @Test
     void shouldMoveOnSoonerWhileNodesAnswerFast() {
-        this.givenNodesAnsweredIn(100, 50 * MILLI);
-        this.givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
+        givenNodesAnsweredIn(100, 50 * MILLI);
+        givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
 
-        this.whenSecondsPass(1);
+        whenSecondsPass(1);
 
-        this.thenNodesAsked(4);
+        thenNodesAsked(4);
     }
 
     @Test
     void shouldWaitNoLongerThanThreeSecondsWhileNodesAnswerSlowly() {
-        this.givenNodesAnsweredIn(100, 10 * SECOND);
-        this.givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
+        givenNodesAnsweredIn(100, 10 * SECOND);
+        givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
 
-        this.whenSecondsPass(2);
+        whenSecondsPass(2);
 
-        this.thenNodesAsked(3);
+        thenNodesAsked(3);
 
-        this.whenSecondsPass(1);
+        whenSecondsPass(1);
 
-        this.thenNodesAsked(4);
+        thenNodesAsked(4);
     }
 
     @Test
     void shouldWaitThreeSecondsUntilEnoughAnswersWereTimed() {
-        this.givenNodesAnsweredIn(5, 50 * MILLI);
-        this.givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
+        givenNodesAnsweredIn(5, 50 * MILLI);
+        givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
 
-        this.whenSecondsPass(2);
+        whenSecondsPass(2);
 
-        this.thenNodesAsked(3);
+        thenNodesAsked(3);
     }
 
     @Test
     void shouldAlwaysGiveAPublishThreeSeconds() {
-        this.givenNodesAnsweredIn(100, 50 * MILLI);
-        this.givenALookupOfSilentNodes(Lookup.Kind.STORE_KEYWORD);
+        givenNodesAnsweredIn(100, 50 * MILLI);
+        givenALookupOfSilentNodes(Lookup.Kind.STORE_KEYWORD);
 
-        this.whenSecondsPass(2);
+        whenSecondsPass(2);
 
-        this.thenNodesAsked(3);
+        thenNodesAsked(3);
     }
 
     @Test
     void shouldTimeTheAnswersOfTheNodesItAsked() {
-        this.givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
+        givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
 
-        this.whenTheAskedNodesAnswerAfter(200 * MILLI);
+        whenTheAskedNodesAnswerAfter(200 * MILLI);
 
-        this.thenAnswersTimed(3);
+        thenAnswersTimed(3);
     }
 
     private void givenNodesAnsweredIn(int nodes, long nanos) {

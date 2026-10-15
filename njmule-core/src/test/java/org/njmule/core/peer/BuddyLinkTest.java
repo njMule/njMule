@@ -146,7 +146,7 @@ class BuddyLinkTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.buddies.release();
             return null;
         });
@@ -159,96 +159,96 @@ class BuddyLinkTest {
 
     @Test
     void aNodeThatOfferedBecomesOurBuddyAndIsPingedEveryTenMinutes() throws Exception {
-        this.givenABuddyListening();
+        givenABuddyListening();
 
-        this.whenItOffersToBeOurBuddy();
-        this.whenItAnswersOurHelloAs(BUDDY, 4675);
+        whenItOffersToBeOurBuddy();
+        whenItAnswersOurHelloAs(BUDDY, 4675);
 
-        this.thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
-        this.thenOurBuddyIsAt(LOOPBACK, 4675);
+        thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
+        thenOurBuddyIsAt(LOOPBACK, 4675);
 
-        this.whenMinutesPass(10);
+        whenMinutesPass(10);
 
-        this.thenTheBuddyGets(Opcodes.Extended.BUDDYPING);
+        thenTheBuddyGets(Opcodes.Extended.BUDDYPING);
     }
 
     @Test
     void ourBuddyRelaysTheCallbacksOfOtherClients() throws Exception {
-        this.givenABuddyListening();
-        this.givenItIsOurBuddy();
+        givenABuddyListening();
+        givenItIsOurBuddy();
 
-        this.whenTheBuddyRelaysACallbackFrom(Ipv4.of(1, 2, 3, 4), 4711);
+        whenTheBuddyRelaysACallbackFrom(Ipv4.of(1, 2, 3, 4), 4711);
 
-        this.thenACallbackArrivesFrom(Ipv4.of(1, 2, 3, 4), 4711);
+        thenACallbackArrivesFrom(Ipv4.of(1, 2, 3, 4), 4711);
     }
 
     @Test
     void aClientThatAnswersWithAnotherHashIsNoBuddy() throws Exception {
-        this.givenABuddyListening();
+        givenABuddyListening();
 
-        this.whenItOffersToBeOurBuddy();
-        this.whenItAnswersOurHelloAs(FIREWALLED, 4675);
+        whenItOffersToBeOurBuddy();
+        whenItAnswersOurHelloAs(FIREWALLED, 4675);
 
-        this.thenTheStateBecomes(KadNode.Buddies.State.NONE);
-        this.thenOurBuddyIsAt(0, 0);
+        thenTheStateBecomes(KadNode.Buddies.State.NONE);
+        thenOurBuddyIsAt(0, 0);
     }
 
     @Test
     void aFirewalledNodeWeAgreedToServeIsTakenAndGetsTheCallbacksForItsId() throws Exception {
-        this.givenWeAgreedToServe(FIREWALLED);
+        givenWeAgreedToServe(FIREWALLED);
 
-        this.whenItConnectsAs(FIREWALLED);
+        whenItConnectsAs(FIREWALLED);
 
-        this.thenTheStateBecomes(KadNode.Buddies.State.SERVING);
+        thenTheStateBecomes(KadNode.Buddies.State.SERVING);
 
-        this.whenACallbackIsRelayed(this.buddyId);
+        whenACallbackIsRelayed(this.buddyId);
 
-        this.thenTheRelayWent(true);
-        this.thenTheFirewalledNodeGetsTheCallback();
+        thenTheRelayWent(true);
+        thenTheFirewalledNodeGetsTheCallback();
     }
 
     @Test
     void aCallbackForAnotherIdIsNotRelayed() throws Exception {
-        this.givenWeAgreedToServe(FIREWALLED);
-        this.givenItConnectedAs(FIREWALLED);
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
 
-        this.whenACallbackIsRelayed(UInt128.random(new SecureRandom()));
+        whenACallbackIsRelayed(UInt128.random(new SecureRandom()));
 
-        this.thenTheRelayWent(false);
+        thenTheRelayWent(false);
     }
 
     @Test
     void aClientWeDidNotAgreeToServeIsNotTaken() throws Exception {
-        this.givenWeAgreedToServe(FIREWALLED);
+        givenWeAgreedToServe(FIREWALLED);
 
-        this.whenItConnectsAs(BUDDY);
+        whenItConnectsAs(BUDDY);
 
-        this.thenTheConnectionCloses();
-        this.thenTheStateStays(KadNode.Buddies.State.NONE);
+        thenTheConnectionCloses();
+        thenTheStateStays(KadNode.Buddies.State.NONE);
     }
 
     @Test
     void theNodeWeServeIsAnsweredAtMostOnceInThirteenMinutes() throws Exception {
-        this.givenWeAgreedToServe(FIREWALLED);
-        this.givenItConnectedAs(FIREWALLED);
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
 
-        this.whenMinutesPass(13);
-        this.whenItPings();
-        this.whenItPings();
+        whenMinutesPass(13);
+        whenItPings();
+        whenItPings();
 
-        this.thenItGets(Opcodes.Extended.BUDDYPONG);
-        this.thenItGetsNothingMore();
+        thenItGets(Opcodes.Extended.BUDDYPONG);
+        thenItGetsNothingMore();
     }
 
     @Test
     void aReleasedLinkCloses() throws Exception {
-        this.givenABuddyListening();
-        this.givenItIsOurBuddy();
+        givenABuddyListening();
+        givenItIsOurBuddy();
 
-        this.whenTheLinkIsReleased();
+        whenTheLinkIsReleased();
 
-        this.thenTheConnectionCloses();
-        this.thenTheStateStays(KadNode.Buddies.State.NONE);
+        thenTheConnectionCloses();
+        thenTheStateStays(KadNode.Buddies.State.NONE);
     }
 
     // Steps.
@@ -259,23 +259,23 @@ class BuddyLinkTest {
     }
 
     private void givenItIsOurBuddy() throws Exception {
-        this.whenItOffersToBeOurBuddy();
-        this.whenItAnswersOurHelloAs(BUDDY, 4675);
-        this.thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
+        whenItOffersToBeOurBuddy();
+        whenItAnswersOurHelloAs(BUDDY, 4675);
+        thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
     }
 
     private void givenWeAgreedToServe(Hash16 userHash) throws Exception {
-        assertThat(this.onLoop(() -> this.buddies.asked(LOOPBACK, 4663, 4676, userHash, this.buddyId)))
+        assertThat(onLoop(() -> this.buddies.asked(LOOPBACK, 4663, 4676, userHash, this.buddyId)))
                 .isTrue();
     }
 
     private void givenItConnectedAs(Hash16 userHash) throws Exception {
-        this.whenItConnectsAs(userHash);
-        this.thenTheStateBecomes(KadNode.Buddies.State.SERVING);
+        whenItConnectsAs(userHash);
+        thenTheStateBecomes(KadNode.Buddies.State.SERVING);
     }
 
     private void whenItOffersToBeOurBuddy() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.buddies.offered(LOOPBACK, this.buddyListener.getLocalPort(), 4673, BUDDY, 0);
             return null;
         });
@@ -305,7 +305,7 @@ class BuddyLinkTest {
     }
 
     private void whenACallbackIsRelayed(UInt128 id) throws Exception {
-        this.relayed = this.onLoop(() -> this.buddies.relay(id, UInt128.ZERO, Ipv4.of(5, 6, 7, 8), 4711));
+        this.relayed = onLoop(() -> this.buddies.relay(id, UInt128.ZERO, Ipv4.of(5, 6, 7, 8), 4711));
     }
 
     private void whenItPings() throws IOException {
@@ -314,14 +314,14 @@ class BuddyLinkTest {
 
     private void whenMinutesPass(int minutes) throws Exception {
         this.now.addAndGet(Duration.ofMinutes(minutes).toNanos());
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.buddies.tick();
             return null;
         });
     }
 
     private void whenTheLinkIsReleased() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.buddies.release();
             return null;
         });
@@ -330,7 +330,7 @@ class BuddyLinkTest {
     private void thenTheStateBecomes(KadNode.Buddies.State state) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(this.buddies::state) == state) {
+            if (onLoop(this.buddies::state) == state) {
                 return;
             }
             Thread.sleep(20);
@@ -339,16 +339,16 @@ class BuddyLinkTest {
     }
 
     private void thenTheStateStays(KadNode.Buddies.State state) throws Exception {
-        assertThat(this.onLoop(this.buddies::state)).isEqualTo(state);
+        assertThat(onLoop(this.buddies::state)).isEqualTo(state);
     }
 
     private void thenOurBuddyIsAt(int ip, int port) throws Exception {
-        assertThat(this.onLoop(this.buddies::buddyIp)).isEqualTo(ip);
-        assertThat(this.onLoop(this.buddies::buddyUdpPort)).isEqualTo(port);
+        assertThat(onLoop(this.buddies::buddyIp)).isEqualTo(ip);
+        assertThat(onLoop(this.buddies::buddyUdpPort)).isEqualTo(port);
     }
 
     private void thenTheBuddyGets(Opcodes.Extended opcode) throws IOException {
-        this.thenItGets(opcode);
+        thenItGets(opcode);
     }
 
     private void thenItGets(Opcodes.Extended opcode) throws IOException {
@@ -419,7 +419,7 @@ class BuddyLinkTest {
         boolean silentFor(Duration wait) throws IOException {
             this.socket.setSoTimeout((int) wait.toMillis());
             try {
-                this.next();
+                next();
                 return false;
             } catch (SocketTimeoutException e) {
                 return true;
@@ -432,7 +432,7 @@ class BuddyLinkTest {
             this.socket.setSoTimeout((int) wait.toMillis());
             try {
                 while (true) {
-                    this.next();
+                    next();
                 }
             } catch (EOFException | SocketException e) {
                 return true;

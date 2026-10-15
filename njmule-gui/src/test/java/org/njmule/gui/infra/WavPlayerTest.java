@@ -51,46 +51,46 @@ class WavPlayerTest {
 
     @Test
     void shouldBeReadyAgainAfterAFileThatIsNoSound() throws IOException {
-        this.givenAFileThatIsNoSound();
+        givenAFileThatIsNoSound();
 
-        this.whenTheFileIsPlayed();
+        whenTheFileIsPlayed();
 
-        this.thenThePlayerIsReadyAgain();
+        thenThePlayerIsReadyAgain();
     }
 
     @Test
     void shouldBeReadyAgainAfterAMissingFile() {
-        this.givenAMissingFile();
+        givenAMissingFile();
 
-        this.whenTheFileIsPlayed();
+        whenTheFileIsPlayed();
 
-        this.thenThePlayerIsReadyAgain();
+        thenThePlayerIsReadyAgain();
     }
 
     @Test
     void shouldNotKeepTheCallerWaiting() throws IOException {
-        this.givenAFileThatIsNoSound();
+        givenAFileThatIsNoSound();
 
-        this.whenTheFileIsPlayed();
+        whenTheFileIsPlayed();
 
-        this.thenTheCallReturnedAtOnce();
-        this.thenThePlayerIsReadyAgain();
+        thenTheCallReturnedAtOnce();
+        thenThePlayerIsReadyAgain();
     }
 
     @Test
     void shouldGiveTheSoundSystemEmptySettingsWhereThereIsNoJavaHome() throws IOException {
-        this.whenTheSettingsAreAskedFor(null, null);
+        whenTheSettingsAreAskedFor(null, null);
 
-        this.thenTheSettingsAreAnEmptyFileInTheCache();
+        thenTheSettingsAreAnEmptyFileInTheCache();
     }
 
     @Test
     void shouldLeaveTheSoundSystemAloneWithAJavaHomeOrNamedSettings() throws IOException {
-        this.whenTheSettingsAreAskedFor("/opt/jdk", null);
-        this.thenNoSettingsAreGiven();
+        whenTheSettingsAreAskedFor("/opt/jdk", null);
+        thenNoSettingsAreGiven();
 
-        this.whenTheSettingsAreAskedFor(null, "/etc/sound.properties");
-        this.thenNoSettingsAreGiven();
+        whenTheSettingsAreAskedFor(null, "/etc/sound.properties");
+        thenNoSettingsAreGiven();
     }
 
     private void givenAFileThatIsNoSound() throws IOException {

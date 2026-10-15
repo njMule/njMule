@@ -50,20 +50,20 @@ class MessageKindsTest {
 
     @Test
     void aProblemLooksLikeOneAndASuccessLikeOne() throws Exception {
-        this.givenTheWindow();
-        this.whenShown(List.of("saved"), List.of("finished"), List.of("refused"));
-        this.thenTheMessagesAre("saved", "finished", "refused");
-        this.thenTheStyleOf("saved", null);
-        this.thenTheStyleOf("finished", Styles.SUCCESS);
-        this.thenTheStyleOf("refused", Styles.DANGER);
+        givenTheWindow();
+        whenShown(List.of("saved"), List.of("finished"), List.of("refused"));
+        thenTheMessagesAre("saved", "finished", "refused");
+        thenTheStyleOf("saved", null);
+        thenTheStyleOf("finished", Styles.SUCCESS);
+        thenTheStyleOf("refused", Styles.DANGER);
     }
 
     @Test
     void theMessagesStackInTheBottomCornerAndTheOldestMakeRoom() throws Exception {
-        this.givenTheWindow();
-        this.whenShown(List.of("one", "two", "three"), List.of(), List.of("four", "five"));
-        this.thenTheMessagesAre("two", "three", "four", "five");
-        this.thenTheyStackAt(Pos.BOTTOM_RIGHT);
+        givenTheWindow();
+        whenShown(List.of("one", "two", "three"), List.of(), List.of("four", "five"));
+        thenTheMessagesAre("two", "three", "four", "five");
+        thenTheyStackAt(Pos.BOTTOM_RIGHT);
     }
 
     private void givenTheWindow() throws Exception {

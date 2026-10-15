@@ -50,14 +50,13 @@ class EventCommandRunnerTest {
 
     @Test
     void shouldFillTheDownloadInsideItsArgumentsWhenADownloadCompletes() {
-        this.givenTheCommand(
-                EventCommands.Event.DOWNLOAD_COMPLETED, "notify --file=%FILE \"%NAME (%SIZE bytes)\" %HASH");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify --file=%FILE \"%NAME (%SIZE bytes)\" %HASH");
+        givenTheRunner();
 
-        this.whenTheEngineSays(this.completed("My Holiday.avi"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(completed("My Holiday.avi"));
+        whenTheWaitingCommandsRun();
 
-        this.thenTheCommandLaunchedIs(List.of(
+        thenTheCommandLaunchedIs(List.of(
                 "notify",
                 "--file=" + this.dir.resolve("My Holiday.avi").toAbsolutePath(),
                 "My Holiday.avi (1234 bytes)",
@@ -66,108 +65,108 @@ class EventCommandRunnerTest {
 
     @Test
     void shouldRunNothingForACommandThatIsOff() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
-        this.givenTheCommandIsTurnedOff(EventCommands.Event.DOWNLOAD_COMPLETED);
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
+        givenTheCommandIsTurnedOff(EventCommands.Event.DOWNLOAD_COMPLETED);
+        givenTheRunner();
 
-        this.whenTheEngineSays(this.completed("a.iso"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(completed("a.iso"));
+        whenTheWaitingCommandsRun();
 
-        this.thenNothingWasLaunched();
+        thenNothingWasLaunched();
     }
 
     @Test
     void shouldTellTheReasonWhenADownloadFails() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_FAILED, "alert %NAME %MESSAGE %FILE");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DOWNLOAD_FAILED, "alert %NAME %MESSAGE %FILE");
+        givenTheRunner();
 
-        this.whenTheEngineSays(new EngineEvent.DownloadFailed(this.download("b.iso"), "disk full"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(new EngineEvent.DownloadFailed(download("b.iso"), "disk full"));
+        whenTheWaitingCommandsRun();
 
-        this.thenTheCommandLaunchedIs(List.of("alert", "b.iso", "disk full", ""));
+        thenTheCommandLaunchedIs(List.of("alert", "b.iso", "disk full", ""));
     }
 
     @Test
     void shouldNameTheSenderOrItsAddressForAChatMessage() {
-        this.givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %SENDER: %MESSAGE");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %SENDER: %MESSAGE");
+        givenTheRunner();
 
-        this.whenTheEngineSays(this.message(Optional.of("ann"), "hello there"));
-        this.whenTheEngineSays(this.message(Optional.empty(), "hi"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(message(Optional.of("ann"), "hello there"));
+        whenTheEngineSays(message(Optional.empty(), "hi"));
+        whenTheWaitingCommandsRun();
 
-        this.thenTheCommandsLaunchedAre(
+        thenTheCommandsLaunchedAre(
                 List.of(List.of("say", "ann:", "hello there"), List.of("say", "192.0.2.7:4662:", "hi")));
     }
 
     @Test
     void shouldKeepAQuoteInAMessageFromSplittingTheWindowsCommandLine() {
-        this.givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %MESSAGE");
-        this.givenTheSystemIsWindows();
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %MESSAGE");
+        givenTheSystemIsWindows();
+        givenTheRunner();
 
-        this.whenTheEngineSays(this.message(Optional.of("eve"), "x\" --delete-all \"y"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(message(Optional.of("eve"), "x\" --delete-all \"y"));
+        whenTheWaitingCommandsRun();
 
-        this.thenTheCommandLaunchedIs(List.of("say", "x' --delete-all 'y"));
+        thenTheCommandLaunchedIs(List.of("say", "x' --delete-all 'y"));
     }
 
     @Test
     void shouldRunTheDiskCommandOnlyWhenSpaceRunsShort() {
-        this.givenTheCommand(EventCommands.Event.DISK_SPACE_SHORT, "warn %FILE");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DISK_SPACE_SHORT, "warn %FILE");
+        givenTheRunner();
 
-        this.whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, true));
-        this.whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, false));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, true));
+        whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, false));
+        whenTheWaitingCommandsRun();
 
-        this.thenTheCommandLaunchedIs(List.of("warn", this.dir.toAbsolutePath().toString()));
+        thenTheCommandLaunchedIs(List.of("warn", this.dir.toAbsolutePath().toString()));
     }
 
     @Test
     void shouldRunNothingForACommandWithAQuoteLeftOpen() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME");
+        givenTheRunner();
 
-        this.whenTheEngineSays(this.completed("c.iso"));
-        this.whenTheWaitingCommandsRun();
+        whenTheEngineSays(completed("c.iso"));
+        whenTheWaitingCommandsRun();
 
-        this.thenNothingWasLaunched();
+        thenNothingWasLaunched();
     }
 
     @Test
     void shouldRunOnlyAFewCommandsAtOnce() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
-        this.givenTheRunner();
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
+        givenTheRunner();
 
-        this.whenDownloadsComplete(EventCommandRunner.MAX_RUNNING + 2);
+        whenDownloadsComplete(EventCommandRunner.MAX_RUNNING + 2);
 
-        this.thenCommandsAreWaitingToRun(EventCommandRunner.MAX_RUNNING);
+        thenCommandsAreWaitingToRun(EventCommandRunner.MAX_RUNNING);
     }
 
     @Test
     void shouldRunAgainOnceACommandHasEnded() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
-        this.givenTheRunner();
-        this.givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
+        givenTheRunner();
+        givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
 
-        this.whenTheWaitingCommandsRun();
-        this.whenDownloadsComplete(1);
+        whenTheWaitingCommandsRun();
+        whenDownloadsComplete(1);
 
-        this.thenCommandsAreWaitingToRun(1);
+        thenCommandsAreWaitingToRun(1);
     }
 
     @Test
     void shouldFreeTheSlotOfACommandThatCannotStart() {
-        this.givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "missing-program %NAME");
-        this.givenTheLauncherFails();
-        this.givenTheRunner();
-        this.givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
+        givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "missing-program %NAME");
+        givenTheLauncherFails();
+        givenTheRunner();
+        givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
 
-        this.whenTheWaitingCommandsRun();
-        this.whenDownloadsComplete(EventCommandRunner.MAX_RUNNING);
+        whenTheWaitingCommandsRun();
+        whenDownloadsComplete(EventCommandRunner.MAX_RUNNING);
 
-        this.thenCommandsAreWaitingToRun(EventCommandRunner.MAX_RUNNING);
+        thenCommandsAreWaitingToRun(EventCommandRunner.MAX_RUNNING);
     }
 
     private void givenTheCommand(EventCommands.Event event, String commandLine) {
@@ -201,7 +200,7 @@ class EventCommandRunnerTest {
     }
 
     private void givenDownloadsCompleted(int count) {
-        this.whenDownloadsComplete(count);
+        whenDownloadsComplete(count);
     }
 
     private void whenTheEngineSays(EngineEvent event) {
@@ -210,7 +209,7 @@ class EventCommandRunnerTest {
 
     private void whenDownloadsComplete(int count) {
         for (int i = 0; i < count; i++) {
-            this.runner.handle(this.completed("file" + i));
+            this.runner.handle(completed("file" + i));
         }
     }
 
@@ -237,7 +236,7 @@ class EventCommandRunnerTest {
     }
 
     private EngineEvent completed(String name) {
-        return new EngineEvent.DownloadCompleted(this.download(name), this.dir.resolve(name));
+        return new EngineEvent.DownloadCompleted(download(name), this.dir.resolve(name));
     }
 
     private DownloadInfo download(String name) {

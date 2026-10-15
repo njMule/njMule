@@ -40,7 +40,7 @@ class AppDirectoriesTest {
     void windowsUsesRoamingForConfigAndLocalForBulkData() {
         Path roaming = this.home.resolve("AppData/Roaming");
         Path local = this.home.resolve("AppData/Local");
-        AppDirectories d = this.resolve(
+        AppDirectories d = resolve(
                 OsFamily.WINDOWS,
                 Map.of(
                         "APPDATA", roaming.toString(),
@@ -59,13 +59,13 @@ class AppDirectoriesTest {
 
     @Test
     void windowsFallsBackToTheProfileWhenVariablesAreMissing() {
-        AppDirectories d = this.resolve(OsFamily.WINDOWS, Map.of());
+        AppDirectories d = resolve(OsFamily.WINDOWS, Map.of());
         assertThat(d.config()).isEqualTo(this.home.resolve("AppData/Roaming/njMule/config"));
     }
 
     @Test
     void macosUsesTheLibrary() {
-        AppDirectories d = this.resolve(OsFamily.MACOS, Map.of());
+        AppDirectories d = resolve(OsFamily.MACOS, Map.of());
 
         Path support = this.home.resolve("Library/Application Support/njMule");
         assertThat(d.config()).isEqualTo(support.resolve("config"));
@@ -77,7 +77,7 @@ class AppDirectoriesTest {
 
     @Test
     void linuxFollowsXdgDefaults() {
-        AppDirectories d = this.resolve(OsFamily.LINUX, Map.of());
+        AppDirectories d = resolve(OsFamily.LINUX, Map.of());
 
         assertThat(d.config()).isEqualTo(this.home.resolve(".config/njmule"));
         assertThat(d.data()).isEqualTo(this.home.resolve(".local/share/njmule"));
@@ -90,8 +90,7 @@ class AppDirectoriesTest {
     @Test
     void linuxHonoursAbsoluteXdgVariablesAndIgnoresRelativeOnes() {
         Path cfg = this.home.resolve("cfg");
-        AppDirectories d =
-                this.resolve(OsFamily.LINUX, Map.of("XDG_CONFIG_HOME", cfg.toString(), "XDG_CACHE_HOME", "rel"));
+        AppDirectories d = resolve(OsFamily.LINUX, Map.of("XDG_CONFIG_HOME", cfg.toString(), "XDG_CACHE_HOME", "rel"));
 
         assertThat(d.config()).isEqualTo(cfg.resolve("njmule"));
         assertThat(d.cache()).isEqualTo(this.home.resolve(".cache/njmule"));
@@ -106,7 +105,7 @@ class AppDirectoriesTest {
                 XDG_DOWNLOAD_DIR="$HOME/Scaricati"
                 """);
 
-        AppDirectories d = this.resolve(OsFamily.LINUX, Map.of());
+        AppDirectories d = resolve(OsFamily.LINUX, Map.of());
         assertThat(d.downloads()).isEqualTo(this.home.resolve("Scaricati/njMule"));
     }
 

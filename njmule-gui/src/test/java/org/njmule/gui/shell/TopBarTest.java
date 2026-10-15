@@ -56,42 +56,42 @@ class TopBarTest {
 
     @Test
     void connectTakesTheAccentOnlyWhileThereIsNoConnection() throws Exception {
-        this.givenTheWindow();
-        this.thenConnectIsTheAccent(true);
-        this.whenTheServerIsTried();
-        this.thenConnectIsTheAccent(false);
+        givenTheWindow();
+        thenConnectIsTheAccent(true);
+        whenTheServerIsTried();
+        thenConnectIsTheAccent(false);
     }
 
     @Test
     void theChipsOpenTheNetworkWhereTheyTell() throws Exception {
-        this.givenTheWindow();
-        this.whenClicked(this.window.kadChip());
-        this.thenTheScreenIs("kad");
-        this.whenClicked(this.window.ed2kChip());
-        this.thenTheScreenIs("servers");
+        givenTheWindow();
+        whenClicked(this.window.kadChip());
+        thenTheScreenIs("kad");
+        whenClicked(this.window.ed2kChip());
+        thenTheScreenIs("servers");
     }
 
     @Test
     void theLastLineOfTheLogOpensTheLog() throws Exception {
-        this.givenTheWindow();
-        this.whenClicked(this.lastLog());
-        this.thenTheScreenIs("servers");
-        this.thenTheLogIsInFront();
+        givenTheWindow();
+        whenClicked(lastLog());
+        thenTheScreenIs("servers");
+        thenTheLogIsInFront();
     }
 
     @Test
     void theToolsOpenTheIncomingFolderAndTheOptions() throws Exception {
-        this.givenTheWindow();
-        this.thenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
-        this.whenTheToolIsChosen("options");
-        this.thenTheScreenIs("settings");
+        givenTheWindow();
+        thenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
+        whenTheToolIsChosen("options");
+        thenTheScreenIs("settings");
     }
 
     @Test
     void theRatesOpenTheLimitsAsTheyAre() throws Exception {
-        this.givenTheWindow();
-        this.whenTheRatesArePressed();
-        this.thenTheLimitsShow(
+        givenTheWindow();
+        whenTheRatesArePressed();
+        thenTheLimitsShow(
                 this.test.engine.preferences().maxDownloadKiBps(),
                 this.test.engine.preferences().maxUploadKiBps());
     }
@@ -117,7 +117,7 @@ class TopBarTest {
                 .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .speed-value").stream())
                 .map(n -> ((javafx.scene.control.Label) n).getText())
                 .toList());
-        assertThat(values).containsExactly(this.limit(down), this.limit(up));
+        assertThat(values).containsExactly(limit(down), limit(up));
     }
 
     private String limit(int kib) {
@@ -153,7 +153,7 @@ class TopBarTest {
     }
 
     private void whenTheToolIsChosen(String id) throws Exception {
-        FxTesting.onFx(() -> this.tools().stream()
+        FxTesting.onFx(() -> tools().stream()
                 .filter(i -> id.equals(i.getId()))
                 .findFirst()
                 .orElseThrow()
@@ -181,8 +181,7 @@ class TopBarTest {
     }
 
     private void thenTheToolsAre(String... ids) throws Exception {
-        assertThat(FxTesting.onFx(
-                        () -> this.tools().stream().map(MenuItem::getId).toList()))
+        assertThat(FxTesting.onFx(() -> tools().stream().map(MenuItem::getId).toList()))
                 .containsExactly(ids);
     }
 

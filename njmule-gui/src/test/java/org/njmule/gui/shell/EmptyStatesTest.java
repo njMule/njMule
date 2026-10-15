@@ -47,10 +47,10 @@ class EmptyStatesTest {
 
     @Test
     void anEmptyListOfDownloadsSaysHowToFillItAndLeadsThere() throws Exception {
-        this.givenTheWindowWithoutDownloads();
-        this.thenTheEmptyListOffers("Search", "Paste eD2K Links");
-        this.whenTheEmptyListsButtonIsPressed("Search");
-        this.thenTheScreenIs("search");
+        givenTheWindowWithoutDownloads();
+        thenTheEmptyListOffers("Search", "Paste eD2K Links");
+        whenTheEmptyListsButtonIsPressed("Search");
+        thenTheScreenIs("search");
     }
 
     private void givenTheWindowWithoutDownloads() throws Exception {
@@ -61,7 +61,7 @@ class EmptyStatesTest {
     }
 
     private void whenTheEmptyListsButtonIsPressed(String text) throws Exception {
-        FxTesting.onFx(() -> this.buttons().stream()
+        FxTesting.onFx(() -> buttons().stream()
                 .filter(b -> text.equals(b.getText()))
                 .findFirst()
                 .orElseThrow()
@@ -69,8 +69,7 @@ class EmptyStatesTest {
     }
 
     private void thenTheEmptyListOffers(String... texts) throws Exception {
-        assertThat(FxTesting.onFx(
-                        () -> this.buttons().stream().map(Button::getText).toList()))
+        assertThat(FxTesting.onFx(() -> buttons().stream().map(Button::getText).toList()))
                 .containsExactly(texts);
     }
 

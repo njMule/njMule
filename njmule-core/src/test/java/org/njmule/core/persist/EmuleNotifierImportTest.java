@@ -37,43 +37,43 @@ class EmuleNotifierImportTest {
 
     @Test
     void shouldTakeTheSoundFileEmulePlaysWithItsNotifications() {
-        this.givenEmuleSays("NotifierUseSound", "1");
-        this.givenEmuleSays("NotifierSoundPath", this.dir.resolve("ding.wav").toString());
+        givenEmuleSays("NotifierUseSound", "1");
+        givenEmuleSays("NotifierSoundPath", this.dir.resolve("ding.wav").toString());
 
-        this.whenTheEmulePreferencesAreImported();
+        whenTheEmulePreferencesAreImported();
 
-        this.thenTheSoundIsOn(true);
-        this.thenTheSoundFileIs(Optional.of(this.dir.resolve("ding.wav")));
+        thenTheSoundIsOn(true);
+        thenTheSoundFileIs(Optional.of(this.dir.resolve("ding.wav")));
     }
 
     @Test
     void shouldKeepTheSoundOffWhenEmuleSpeaksInstead() {
-        this.givenOurSoundIsOn();
-        this.givenEmuleSays("NotifierUseSound", "2");
+        givenOurSoundIsOn();
+        givenEmuleSays("NotifierUseSound", "2");
 
-        this.whenTheEmulePreferencesAreImported();
+        whenTheEmulePreferencesAreImported();
 
-        this.thenTheSoundIsOn(false);
+        thenTheSoundIsOn(false);
     }
 
     @Test
     void shouldLeaveOutARelativeSoundFile() {
-        this.givenEmuleSays("NotifierUseSound", "1");
-        this.givenEmuleSays("NotifierSoundPath", "sounds\\ding.wav");
+        givenEmuleSays("NotifierUseSound", "1");
+        givenEmuleSays("NotifierSoundPath", "sounds\\ding.wav");
 
-        this.whenTheEmulePreferencesAreImported();
+        whenTheEmulePreferencesAreImported();
 
-        this.thenTheSoundIsOn(true);
-        this.thenTheSoundFileIs(Optional.empty());
+        thenTheSoundIsOn(true);
+        thenTheSoundFileIs(Optional.empty());
     }
 
     @Test
     void shouldKeepOurSoundWhenEmuleSaysNothingOfIt() {
-        this.givenOurSoundIsOn();
+        givenOurSoundIsOn();
 
-        this.whenTheEmulePreferencesAreImported();
+        whenTheEmulePreferencesAreImported();
 
-        this.thenTheSoundIsOn(true);
+        thenTheSoundIsOn(true);
     }
 
     private void givenEmuleSays(String key, String value) {

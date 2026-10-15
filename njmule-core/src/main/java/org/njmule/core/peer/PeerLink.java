@@ -134,7 +134,7 @@ public final class PeerLink implements TcpConnection.Handler {
 
     /** Where the client listens: its address and the TCP port of its hello. */
     public Optional<InetSocketAddress> peerAddress() {
-        return this.peer().map(p -> new InetSocketAddress(this.remoteAddress().getAddress(), p.tcpPort()));
+        return peer().map(p -> new InetSocketAddress(remoteAddress().getAddress(), p.tcpPort()));
     }
 
     public boolean isOpen() {
@@ -165,7 +165,7 @@ public final class PeerLink implements TcpConnection.Handler {
     void greet(Hello hello, Identities identities) {
         this.peer = hello;
         this.identity = identities.start(
-                hello, this.remoteAddress().getAddress(), this.connection.localAddress(), this.connection::send);
+                hello, remoteAddress().getAddress(), this.connection.localAddress(), this.connection::send);
         this.links.register(this);
     }
 
@@ -175,14 +175,14 @@ public final class PeerLink implements TcpConnection.Handler {
         if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
             c.setFrameLimit(FrameLimits.CLIENT);
         }
-        if (!this.loop.post(() -> this.received(packet))) {
+        if (!this.loop.post(() -> received(packet))) {
             c.close();
         }
     }
 
     @Override
     public void onClosed(TcpConnection c, Optional<IOException> cause) {
-        this.loop.postOutcome(() -> this.closed(cause.map(IOException::getMessage)));
+        this.loop.postOutcome(() -> closed(cause.map(IOException::getMessage)));
     }
 
     private void received(Packet packet) {
@@ -191,7 +191,7 @@ public final class PeerLink implements TcpConnection.Handler {
         }
         try {
             if (this.peer == null) {
-                this.greeting(packet);
+                greeting(packet);
                 return;
             }
             boolean settled = this.identity.isSettled();
@@ -204,7 +204,7 @@ public final class PeerLink implements TcpConnection.Handler {
                 return;
             }
         } catch (DecodeException e) {
-            logger.debug("Bad packet from {}: {}", this.remoteAddress(), e.getMessage());
+            logger.debug("Bad packet from {}: {}", remoteAddress(), e.getMessage());
             this.connection.close();
             return;
         }
@@ -215,7 +215,7 @@ public final class PeerLink implements TcpConnection.Handler {
             role = this.links.uploads().attach(this).orElse(null);
         }
         if (role == null) {
-            logger.debug("Nothing on {} takes opcode {}", this.remoteAddress(), packet.opcode());
+            logger.debug("Nothing on {} takes opcode {}", remoteAddress(), packet.opcode());
             return;
         }
         role.received(packet);
@@ -226,7 +226,7 @@ public final class PeerLink implements TcpConnection.Handler {
         if (packet.protocol() != Protocol.EDONKEY || packet.opcode() != Opcodes.Client.HELLOANSWER.code()) {
             return;
         }
-        this.greet(Hello.decode(packet), this.links.identities());
+        greet(Hello.decode(packet), this.links.identities());
         this.opener.greeted(this);
     }
 
@@ -255,7 +255,7 @@ public final class PeerLink implements TcpConnection.Handler {
         if (this.sides.isEmpty()) {
             this.connection.close();
         } else {
-            this.applyTimeout();
+            applyTimeout();
         }
     }
 
@@ -314,12 +314,12 @@ public final class PeerLink implements TcpConnection.Handler {
 
         @Override
         public boolean send(Packet packet) {
-            return this.isCurrent() && PeerLink.this.connection.send(packet);
+            return isCurrent() && PeerLink.this.connection.send(packet);
         }
 
         @Override
         public boolean sendData(Packet packet) {
-            return this.isCurrent() && PeerLink.this.connection.sendData(packet);
+            return isCurrent() && PeerLink.this.connection.sendData(packet);
         }
 
         @Override
@@ -334,12 +334,12 @@ public final class PeerLink implements TcpConnection.Handler {
 
         @Override
         public boolean isOpen() {
-            return this.isCurrent() && PeerLink.this.isOpen();
+            return isCurrent() && PeerLink.this.isOpen();
         }
 
         @Override
         public void setReadTimeout(Duration timeout) {
-            if (this.isCurrent()) {
+            if (isCurrent()) {
                 PeerLink.this.timeouts.put(this.side, timeout);
                 PeerLink.this.applyTimeout();
             }
@@ -352,7 +352,7 @@ public final class PeerLink implements TcpConnection.Handler {
 
         @Override
         public void disconnect() {
-            if (this.isCurrent()) {
+            if (isCurrent()) {
                 PeerLink.this.connection.close();
             }
         }

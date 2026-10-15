@@ -37,49 +37,49 @@ class MediaTagsTest {
 
     @Test
     void shouldReadTheMediaTagsAServerSendsByName() throws Exception {
-        this.givenAStringTag("Artist", "Some Band");
-        this.givenAStringTag("ALBUM", "First Album");
-        this.givenAStringTag("title", "Opening Song");
-        this.givenAStringTag("length", "3:25");
-        this.givenAnIntTag("bitrate", 192);
-        this.givenAStringTag("Codec", "mp3");
+        givenAStringTag("Artist", "Some Band");
+        givenAStringTag("ALBUM", "First Album");
+        givenAStringTag("title", "Opening Song");
+        givenAStringTag("length", "3:25");
+        givenAnIntTag("bitrate", 192);
+        givenAStringTag("Codec", "mp3");
 
-        this.whenAServerAnswerWithTheTagsIsRead();
+        whenAServerAnswerWithTheTagsIsRead();
 
-        this.thenTheMediaIs(new SearchResult.Media("Some Band", "First Album", "Opening Song", 205, 192, "mp3"));
+        thenTheMediaIs(new SearchResult.Media("Some Band", "First Album", "Opening Song", 205, 192, "mp3"));
     }
 
     @Test
     void shouldTakeTheFirstNonEmptyTagOfEachDetailByNumberOrName() {
-        this.givenAStringTag("Artist", "Named");
-        this.givenAStringTag(FileTag.MEDIA_ARTIST, "Numbered");
-        this.givenAStringTag(FileTag.MEDIA_TITLE, "  ");
-        this.givenAStringTag("Title", "Named title");
-        this.givenAnIntTag(FileTag.MEDIA_BITRATE, 0);
-        this.givenAnIntTag("bitrate", 320);
-        this.givenAnIntTag(FileTag.MEDIA_LENGTH, 61);
+        givenAStringTag("Artist", "Named");
+        givenAStringTag(FileTag.MEDIA_ARTIST, "Numbered");
+        givenAStringTag(FileTag.MEDIA_TITLE, "  ");
+        givenAStringTag("Title", "Named title");
+        givenAnIntTag(FileTag.MEDIA_BITRATE, 0);
+        givenAnIntTag("bitrate", 320);
+        givenAnIntTag(FileTag.MEDIA_LENGTH, 61);
 
-        this.whenTheTagsAreRead();
+        whenTheTagsAreRead();
 
-        this.thenTheMediaIs(new SearchResult.Media("Named", "", "Named title", 61, 320, ""));
+        thenTheMediaIs(new SearchResult.Media("Named", "", "Named title", 61, 320, ""));
     }
 
     @Test
     void shouldTakeUnsignedHugeNumbersAsTheLargestOnes() {
-        this.givenAnIntTag(FileTag.MEDIA_LENGTH, -1);
-        this.givenAnIntTag(FileTag.MEDIA_BITRATE, 0x1_0000_0000L);
+        givenAnIntTag(FileTag.MEDIA_LENGTH, -1);
+        givenAnIntTag(FileTag.MEDIA_BITRATE, 0x1_0000_0000L);
 
-        this.whenTheTagsAreRead();
+        whenTheTagsAreRead();
 
-        this.thenTheMediaIs(new SearchResult.Media("", "", "", Integer.MAX_VALUE, Integer.MAX_VALUE, ""));
+        thenTheMediaIs(new SearchResult.Media("", "", "", Integer.MAX_VALUE, Integer.MAX_VALUE, ""));
     }
 
     @ParameterizedTest
     @CsvSource({"'1:02:03', 3723", "' 4 : 05 ', 245", "'17 s', 17", "'12:ab', 12"})
     void shouldReadLengthTextsAsHoursMinutesAndSeconds(String text, int expected) {
-        this.whenTheLengthTextIsRead(text);
+        whenTheLengthTextIsRead(text);
 
-        this.thenTheLengthIs(expected);
+        thenTheLengthIs(expected);
     }
 
     @ParameterizedTest
@@ -91,39 +91,39 @@ class MediaTagsTest {
                 "1:2:3 and then a long explanation of the length that goes beyond the cap"
             })
     void shouldRefuseLengthTextsThatAreNoLength(String text) {
-        this.whenTheLengthTextIsRead(text);
+        whenTheLengthTextIsRead(text);
 
-        this.thenTheLengthIs(0);
+        thenTheLengthIs(0);
     }
 
     @Test
     void shouldCleanAndCutTheTextsOfOtherUsers() {
-        this.givenAStringTag(FileTag.MEDIA_ARTIST, " Bad\u0007\nArtist ");
-        this.givenAStringTag(FileTag.MEDIA_ALBUM, "a".repeat(1000));
+        givenAStringTag(FileTag.MEDIA_ARTIST, " Bad\u0007\nArtist ");
+        givenAStringTag(FileTag.MEDIA_ALBUM, "a".repeat(1000));
 
-        this.whenTheTagsAreRead();
+        whenTheTagsAreRead();
 
-        this.thenTheArtistIs("Bad  Artist");
-        this.thenTheAlbumHasCharacters(SearchResult.Media.MAX_TEXT);
+        thenTheArtistIs("Bad  Artist");
+        thenTheAlbumHasCharacters(SearchResult.Media.MAX_TEXT);
     }
 
     @Test
     void shouldWriteTheMediaBackAsNumericTags() {
-        this.givenAStringTag("Artist", "Some Band");
-        this.givenAnIntTag("length", 200);
-        this.givenAStringTag(FileTag.MEDIA_CODEC, "flac");
+        givenAStringTag("Artist", "Some Band");
+        givenAnIntTag("length", 200);
+        givenAStringTag(FileTag.MEDIA_CODEC, "flac");
 
-        this.whenTheTagsAreRead();
-        this.whenTheMediaIsWrittenAndReadAgain();
+        whenTheTagsAreRead();
+        whenTheMediaIsWrittenAndReadAgain();
 
-        this.thenTheMediaIs(new SearchResult.Media("Some Band", "", "", 200, 0, "flac"));
+        thenTheMediaIs(new SearchResult.Media("Some Band", "", "", 200, 0, "flac"));
     }
 
     @Test
     void shouldGiveNothingForAFileWithoutTags() {
-        this.whenTheTagsAreRead();
+        whenTheTagsAreRead();
 
-        this.thenTheMediaIs(SearchResult.Media.NONE);
+        thenTheMediaIs(SearchResult.Media.NONE);
     }
 
     private void givenAStringTag(String name, String value) {

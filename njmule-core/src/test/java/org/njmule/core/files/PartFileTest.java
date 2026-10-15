@@ -56,7 +56,7 @@ class PartFileTest {
 
     @Test
     void handsOutEachMissingBlockOnceUntilItIsWrittenOrReleased() {
-        PartFile file = this.small(500_000);
+        PartFile file = small(500_000);
         BitSet all = all(file);
 
         List<Block> first = file.nextBlocks(all, 3);
@@ -199,7 +199,7 @@ class PartFileTest {
 
     @Test
     void aReleasedRangeIsHandedOutAgain() {
-        PartFile file = this.small(500_000);
+        PartFile file = small(500_000);
         BitSet all = all(file);
         assertThat(file.nextBlocks(all, 3)).hasSize(3);
 
@@ -284,7 +284,7 @@ class PartFileTest {
 
     @Test
     void mapsWhatIsMissingRequestedAndAvailable() {
-        PartFile file = this.small(500_000);
+        PartFile file = small(500_000);
         BitSet all = all(file);
         file.written(0, 100_000);
         List<Block> asked = file.nextBlocks(all, 1);

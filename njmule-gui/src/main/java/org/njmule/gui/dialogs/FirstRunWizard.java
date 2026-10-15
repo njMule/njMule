@@ -155,10 +155,10 @@ public final class FirstRunWizard {
         if (emule.isPresent()) {
             this.pages.add(Page.EMULE);
         }
-        this.back = Fx.button(gui.t("nj.wizard.back"), Material2AL.ARROW_BACK, () -> this.go(-1));
+        this.back = Fx.button(gui.t("nj.wizard.back"), Material2AL.ARROW_BACK, () -> go(-1));
         this.next = Fx.primary(Fx.button(gui.t("nj.wizard.next"), Material2AL.ARROW_FORWARD, this::nextOrFinish));
-        this.load();
-        this.build();
+        load();
+        build();
     }
 
     public void show() {
@@ -215,8 +215,8 @@ public final class FirstRunWizard {
         Button skip = Fx.button(this.gui.t("nj.wizard.skip"), Material2MZ.SKIP_NEXT, this.stage::close);
         skip.getStyleClass().add(Styles.FLAT);
         this.back.disableProperty().bind(this.at.isEqualTo(0));
-        this.next.disableProperty().bind(this.pageValid().not());
-        this.at.addListener((o, was, now) -> this.showPage());
+        this.next.disableProperty().bind(pageValid().not());
+        this.at.addListener((o, was, now) -> showPage());
         HBox buttons = Fx.toolRow(skip, Fx.spacer(), this.back, this.next);
         this.steps.getStyleClass().add("wizard-steps");
         this.shown.setAlignment(Pos.TOP_LEFT);
@@ -227,7 +227,7 @@ public final class FirstRunWizard {
         Scene scene = new Scene(root, 680, 500);
         this.gui.attach(scene);
         this.stage.setScene(scene);
-        this.showPage();
+        showPage();
     }
 
     // Next works when the fields of the page shown are right; the other pages keep theirs.
@@ -256,14 +256,14 @@ public final class FirstRunWizard {
         Page page = this.pages.get(this.at.get());
         this.steps.getChildren().clear();
         for (int i = 0; i < this.pages.size(); i++) {
-            Label step = new Label((i + 1) + "  " + this.stepName(this.pages.get(i)));
+            Label step = new Label((i + 1) + "  " + stepName(this.pages.get(i)));
             step.getStyleClass().add("wizard-step");
             if (i == this.at.get()) {
                 step.getStyleClass().add("current");
             }
             this.steps.getChildren().add(step);
         }
-        this.shown.getChildren().setAll(this.page(page));
+        this.shown.getChildren().setAll(page(page));
         boolean last = this.at.get() == this.pages.size() - 1;
         this.next.setText(this.gui.t(last ? "nj.wizard.finish" : "nj.wizard.next"));
     }
@@ -281,23 +281,23 @@ public final class FirstRunWizard {
     private Node page(Page page) {
         return switch (page) {
             case START ->
-                this.page(
+                page(
                         this.gui.t("nj.wizard.welcome"),
                         this.gui.t("nj.wizard.intro"),
-                        this.grid(
+                        grid(
                                 List.of(this.gui.t("IDS_PW_LANG"), this.gui.t("nj.settings.theme")),
                                 List.of(this.language, this.mode)),
                         hint(this.gui.t("nj.wizard.languageHint")));
             case NICK ->
-                this.page(
-                        this.stepName(page),
+                page(
+                        stepName(page),
                         this.gui.t("nj.wizard.nickHint"),
-                        this.grid(List.of(this.gui.t("IDS_PW_NICK")), List.of(this.nick)));
-            case FOLDERS -> this.page(this.stepName(page), this.gui.t("nj.wizard.foldersHint"), this.folders());
-            case CONNECTION -> this.page(this.stepName(page), this.gui.t("nj.wizard.portsHint"), this.connection());
+                        grid(List.of(this.gui.t("IDS_PW_NICK")), List.of(this.nick)));
+            case FOLDERS -> page(stepName(page), this.gui.t("nj.wizard.foldersHint"), folders());
+            case CONNECTION -> page(stepName(page), this.gui.t("nj.wizard.portsHint"), connection());
             case EMULE ->
-                this.page(
-                        this.stepName(page),
+                page(
+                        stepName(page),
                         this.gui.t("nj.wizard.emuleHint"),
                         new Label(this.emule.map(Path::toString).orElse("")),
                         this.importEmule);
@@ -316,14 +316,13 @@ public final class FirstRunWizard {
         Button browse = Fx.button(
                 this.gui.t("IDS_PW_BROWSE"),
                 Material2AL.FOLDER_OPEN,
-                () -> this.choose().ifPresent(dir -> this.incoming.setText(dir.toString())));
+                () -> choose().ifPresent(dir -> this.incoming.setText(dir.toString())));
         HBox incomingRow = new HBox(8, this.incoming, browse);
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
         Button add = Fx.button(
                 this.gui.t("nj.shared.share"),
                 Material2AL.CREATE_NEW_FOLDER,
-                () -> this.choose()
-                        .filter(dir -> !this.shared.getItems().contains(dir))
+                () -> choose().filter(dir -> !this.shared.getItems().contains(dir))
                         .ifPresent(this.shared.getItems()::add));
         Button remove = Fx.button(
                 this.gui.t("IDS_REMOVE"),
@@ -335,7 +334,7 @@ public final class FirstRunWizard {
                 .bind(Bindings.isEmpty(this.shared.getSelectionModel().getSelectedItems()));
         this.shared.setPrefHeight(120);
         VBox sharedBox = new VBox(6, this.shared, new HBox(8, add, remove));
-        return this.grid(
+        return grid(
                 List.of(this.gui.t("IDS_PW_INCOMING"), this.gui.t("IDS_SHAREDFOLDERS")),
                 List.of(incomingRow, sharedBox));
     }
@@ -347,7 +346,7 @@ public final class FirstRunWizard {
         ports.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(
                 12,
-                this.grid(
+                grid(
                         List.of(
                                 this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)",
                                 this.gui.t("nj.wizard.line"),
@@ -383,9 +382,9 @@ public final class FirstRunWizard {
 
     private void nextOrFinish() {
         if (this.at.get() < this.pages.size() - 1) {
-            this.go(1);
+            go(1);
         } else {
-            this.finish();
+            finish();
         }
     }
 

@@ -65,31 +65,31 @@ class IpWhitelistLiveTest {
 
     @Test
     void shouldRefuseABlockedServerWithoutWhitelist() throws Exception {
-        this.givenAnEngineWhoseFilterBlocksTheLoopbackServer("");
+        givenAnEngineWhoseFilterBlocksTheLoopbackServer("");
 
-        this.whenTheServerIsConnected();
+        whenTheServerIsConnected();
 
-        this.thenTheConnectionIsRefused();
+        thenTheConnectionIsRefused();
     }
 
     @Test
     void shouldConnectToABlockedServerOnceItIsAlwaysAllowed() throws Exception {
-        this.givenAnEngineWhoseFilterBlocksTheLoopbackServer("");
-        this.givenTheWhitelistIsSetTo("127.0.0.0/30");
+        givenAnEngineWhoseFilterBlocksTheLoopbackServer("");
+        givenTheWhitelistIsSetTo("127.0.0.0/30");
 
-        this.whenTheServerIsConnected();
+        whenTheServerIsConnected();
 
-        this.thenTheEngineConnects();
+        thenTheEngineConnects();
     }
 
     @Test
     void shouldLeaveTheServerOnceTheWhitelistNoLongerHoldsIt() throws Exception {
-        this.givenAnEngineWhoseFilterBlocksTheLoopbackServer("127.0.0.1");
-        this.givenTheServerIsConnected();
+        givenAnEngineWhoseFilterBlocksTheLoopbackServer("127.0.0.1");
+        givenTheServerIsConnected();
 
-        this.whenTheWhitelistIsSetTo("# nobody now");
+        whenTheWhitelistIsSetTo("# nobody now");
 
-        this.thenTheServerIsLeft();
+        thenTheServerIsLeft();
     }
 
     private void givenAnEngineWhoseFilterBlocksTheLoopbackServer(String whitelist) throws Exception {
@@ -128,12 +128,12 @@ class IpWhitelistLiveTest {
     }
 
     private void givenTheWhitelistIsSetTo(String whitelist) throws Exception {
-        this.whenTheWhitelistIsSetTo(whitelist);
+        whenTheWhitelistIsSetTo(whitelist);
     }
 
     private void givenTheServerIsConnected() throws Exception {
-        this.whenTheServerIsConnected();
-        this.thenTheEngineConnects();
+        whenTheServerIsConnected();
+        thenTheEngineConnects();
     }
 
     private void whenTheWhitelistIsSetTo(String whitelist) throws Exception {
@@ -159,11 +159,11 @@ class IpWhitelistLiveTest {
 
     private void thenTheEngineConnects() throws Exception {
         assertThat(this.failure).isNull();
-        assertThat(this.next(EngineEvent.ServerConnecting.class)).isTrue();
+        assertThat(next(EngineEvent.ServerConnecting.class)).isTrue();
     }
 
     private void thenTheServerIsLeft() throws Exception {
-        assertThat(this.next(EngineEvent.ServerDisconnected.class)).isTrue();
+        assertThat(next(EngineEvent.ServerDisconnected.class)).isTrue();
     }
 
     private boolean next(Class<? extends EngineEvent> type) throws InterruptedException {

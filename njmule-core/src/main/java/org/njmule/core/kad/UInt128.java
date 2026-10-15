@@ -96,7 +96,7 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
     }
 
     public Hash16 toHash16() {
-        return Hash16.of(this.toBigEndian());
+        return Hash16.of(toBigEndian());
     }
 
     public UInt128 xor(UInt128 other) {
@@ -141,6 +141,6 @@ public record UInt128(long high, long low) implements Comparable<UInt128> {
 
     @Override
     public String toString() {
-        return this.toHex();
+        return toHex();
     }
 }

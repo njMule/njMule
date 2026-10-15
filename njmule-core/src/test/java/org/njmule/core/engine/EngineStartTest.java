@@ -57,7 +57,7 @@ class EngineStartTest {
 
     @Test
     void theLogOfTheStartReachesThoseWhoListenLater() throws Exception {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             Lines lines = new Lines(engine);
 
             assertThat(lines.await(line -> line.contains("started"))).isTrue();
@@ -66,13 +66,13 @@ class EngineStartTest {
 
     @Test
     void aRuleThatHoldsAtTheStartActsOnce() throws Exception {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
             engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
             engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
             engine.updateSchedule(new Schedule(List.of(always("night", 1)))).get(5, TimeUnit.SECONDS);
         }
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             Lines lines = new Lines(engine);
             assertThat(lines.await(line -> line.contains("started"))).isTrue();
 
@@ -84,7 +84,7 @@ class EngineStartTest {
 
     @Test
     void editingTheRuleInForceDoesNotRunItsActionsAgain() throws Exception {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.setCategories(List.of(category(1))).get(5, TimeUnit.SECONDS);
             engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
             engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
@@ -101,7 +101,7 @@ class EngineStartTest {
 
     @Test
     void aDeletedCategoryLeavesTheRules() throws Exception {
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
             Schedule.Rule rule = new Schedule.Rule(
                     "later",

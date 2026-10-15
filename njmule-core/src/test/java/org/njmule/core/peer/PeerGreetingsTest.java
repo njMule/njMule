@@ -71,23 +71,23 @@ class PeerGreetingsTest {
 
     @Test
     void shouldAnswerAClientThatGreetsUsWithOurOwnUserHashButTakeNothingFromIt() throws Exception {
-        this.givenWeListen();
+        givenWeListen();
 
-        this.whenAClientGreetsUsWith(OURS);
+        whenAClientGreetsUsWith(OURS);
 
-        this.thenItGetsOurAnswer();
-        this.thenTheConnectionCloses();
-        this.thenNothingTakesTheConnection();
+        thenItGetsOurAnswer();
+        thenTheConnectionCloses();
+        thenNothingTakesTheConnection();
     }
 
     @Test
     void shouldHandOverAClientThatGreetsUsWithItsOwnUserHash() throws Exception {
-        this.givenWeListen();
+        givenWeListen();
 
-        this.whenAClientGreetsUsWith(PEER);
+        whenAClientGreetsUsWith(PEER);
 
-        this.thenItGetsOurAnswer();
-        this.thenTheConnectionIsHandedOverFor(PEER);
+        thenItGetsOurAnswer();
+        thenTheConnectionIsHandedOverFor(PEER);
     }
 
     private void givenWeListen() throws Exception {

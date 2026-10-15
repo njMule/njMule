@@ -77,7 +77,7 @@ class NetworkCommandsTest {
         Path music = this.dir.resolve("music");
         Path films = this.dir.resolve("films");
 
-        assertThat(this.run(
+        assertThat(run(
                         "--add-servers",
                         "server.met",
                         "--share",
@@ -87,7 +87,7 @@ class NetworkCommandsTest {
                         "10.0.0.9:4672"))
                 .isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains(
                         "Added 3 servers from server.met",
                         "Sharing " + music,
@@ -100,21 +100,21 @@ class NetworkCommandsTest {
     void aServerAloneIsOnlyConnectedTo() throws Exception {
         this.fake.answerWith("connect", null);
 
-        assertThat(this.run("--connect-server", SERVER)).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--connect-server", SERVER)).isEqualTo(Main.EXIT_OK);
 
         assertThat(this.fake.calls).containsExactly("connect[Optional[" + SERVER + "]]");
-        assertThat(this.out()).isEmpty();
+        assertThat(out()).isEmpty();
     }
 
     @Test
     void aFailedCommandEndsTheRunWithItsReason() throws Exception {
         this.fake.answer("addServers", args -> CompletableFuture.failedFuture(new IOException("no such file")));
-        assertThat(this.run("--add-servers", "missing.met")).isEqualTo(Main.EXIT_FAILURE);
-        assertThat(this.err()).contains("Failed: no such file");
+        assertThat(run("--add-servers", "missing.met")).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(err()).contains("Failed: no such file");
 
         this.fake.answer("addServers", args -> CompletableFuture.failedFuture(new IllegalStateException()));
-        assertThat(this.run("--add-servers", "missing.met")).isEqualTo(Main.EXIT_FAILURE);
-        assertThat(this.err())
+        assertThat(run("--add-servers", "missing.met")).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(err())
                 .as("a failure without a message is named by its kind")
                 .contains("Failed: IllegalStateException");
     }
@@ -130,9 +130,9 @@ class NetworkCommandsTest {
                                 new ImportReport.Item("cryptkey.dat", ImportReport.Outcome.SKIPPED, "not asked"))));
         Path emule = this.dir.resolve("emule");
 
-        assertThat(this.run("--import-emule", emule.toString())).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--import-emule", emule.toString())).isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains("Importing from " + emule)
                 .containsPattern("  imported +server\\.met +12 servers")
                 .containsPattern("  skipped +cryptkey\\.dat +not asked");
@@ -164,9 +164,9 @@ class NetworkCommandsTest {
         });
         this.fake.answerWith("stopSearch", null);
 
-        assertThat(this.run("--hello", "10.0.0.2:4662", "--search", "iso")).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--hello", "10.0.0.2:4662", "--search", "iso")).isEqualTo(Main.EXIT_OK);
 
-        String printed = this.out();
+        String printed = out();
         assertThat(printed)
                 .contains(
                         "Hello answered by 10.0.0.2:4662: eMule, \"peer\", obfuscated, user hash "
@@ -194,16 +194,16 @@ class NetworkCommandsTest {
             this.fake.answerWith(
                     "hello", new PeerInfo("10.0.0.2:4662", USER, Optional.empty(), "aMule", false, outcome));
 
-            assertThat(this.run("--hello", "10.0.0.2:4662", "--search", "iso")).isEqualTo(Main.EXIT_FAILURE);
+            assertThat(run("--hello", "10.0.0.2:4662", "--search", "iso")).isEqualTo(Main.EXIT_FAILURE);
         }
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains(
                         "Hello answered by 10.0.0.2:4662: aMule, user hash " + USER.toHex() + ", identity NOT verified",
                         "identity not offered",
                         "identity not proven in time")
                 .doesNotContain("\"", "obfuscated");
-        assertThat(this.err()).contains("Failed: no server");
+        assertThat(err()).contains("Failed: no server");
     }
 
     @Test
@@ -212,7 +212,7 @@ class NetworkCommandsTest {
                 "hello",
                 new PeerInfo(
                         "10.0.0.2:4662", USER, Optional.empty(), "aMule", false, PeerInfo.Identification.VERIFIED));
-        NetworkCommands commands = this.commands();
+        NetworkCommands commands = commands();
         LaunchOptions.NetworkTasks tasks =
                 LaunchOptions.parse("--hello", "10.0.0.2:4662").network();
         AtomicReference<Throwable> ended = new AtomicReference<>();
@@ -225,13 +225,13 @@ class NetworkCommandsTest {
         });
 
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (!this.out().contains("Keeping the connection open") && System.nanoTime() < deadline) {
+        while (!out().contains("Keeping the connection open") && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
         run.interrupt();
         run.join(Duration.ofSeconds(10));
 
-        assertThat(this.out()).contains("Keeping the connection open for " + NetworkCommands.HELLO_HOLD.toSeconds());
+        assertThat(out()).contains("Keeping the connection open for " + NetworkCommands.HELLO_HOLD.toSeconds());
         assertThat(ended.get()).as("waiting for the peer").isInstanceOf(InterruptedException.class);
     }
 
@@ -243,16 +243,16 @@ class NetworkCommandsTest {
             return CompletableFuture.completedFuture(null);
         });
 
-        assertThat(this.run("--connect-server", SERVER, "--search", "iso")).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(run("--connect-server", SERVER, "--search", "iso")).isEqualTo(Main.EXIT_FAILURE);
 
-        assertThat(this.out()).contains("Connecting to Fake (" + SERVER + ")");
-        assertThat(this.err()).contains("Not connected: refused");
+        assertThat(out()).contains("Connecting to Fake (" + SERVER + ")");
+        assertThat(err()).contains("Not connected: refused");
         assertThat(this.fake.calls).noneMatch(call -> call.startsWith("search"));
     }
 
     @Test
     void aGlobalSearchEndsWhenTheServerGoes() throws Exception {
-        this.connectsWithHighId();
+        connectsWithHighId();
         this.fake.answer("search", args -> {
             SearchId id = new SearchId(3);
             this.fake.events.submit(new EngineEvent.SearchResults(id, List.of(result("kept.iso", 4))));
@@ -262,22 +262,22 @@ class NetworkCommandsTest {
         });
         this.fake.answerWith("stopSearch", null);
 
-        assertThat(this.run("--connect-server", SERVER, "--search", "iso", "--global"))
+        assertThat(run("--connect-server", SERVER, "--search", "iso", "--global"))
                 .isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains(
                         "Connected to " + SERVER + " with HighID 99\n",
                         "on every known server",
                         "kept.iso",
                         "1 results");
-        assertThat(this.err()).contains("Disconnected: connection lost");
+        assertThat(err()).contains("Disconnected: connection lost");
         assertThat(this.fake.calls).anyMatch(call -> call.contains("scope=GLOBAL"));
     }
 
     @Test
     void aServerSearchEndsOnceItsResultsStop() throws Exception {
-        this.connectsWithHighId();
+        connectsWithHighId();
         this.fake.answer("search", args -> {
             this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(4), List.of(result("only.iso", 1))));
             return CompletableFuture.completedFuture(new SearchId(4));
@@ -285,21 +285,21 @@ class NetworkCommandsTest {
         this.fake.answerWith("stopSearch", null);
         long start = System.nanoTime();
 
-        assertThat(this.run("--connect-server", SERVER, "--search", "iso")).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--connect-server", SERVER, "--search", "iso")).isEqualTo(Main.EXIT_OK);
 
         assertThat(Duration.ofNanos(System.nanoTime() - start))
                 .isGreaterThanOrEqualTo(NetworkCommands.SEARCH_QUIET)
                 .isLessThan(NetworkCommands.SEARCH_WAIT);
-        assertThat(this.out()).contains("only.iso", "1 results");
+        assertThat(out()).contains("only.iso", "1 results");
     }
 
     @Test
     void aKadSearchNeedsKadRunning() throws Exception {
         this.fake.answerWith("kad", Optional.empty());
 
-        assertThat(this.run("--search", "iso", "--kad")).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(run("--search", "iso", "--kad")).isEqualTo(Main.EXIT_FAILURE);
 
-        assertThat(this.err()).contains("Kad is not running");
+        assertThat(err()).contains("Kad is not running");
         assertThat(this.fake.calls).noneMatch(call -> call.startsWith("search"));
     }
 
@@ -319,12 +319,11 @@ class NetworkCommandsTest {
         });
         this.fake.answerWith("stopSearch", null);
         Ed2kLink.FileLink link = Ed2kLink.FileLink.of("found.iso", 4096, Hash16.parseHex("AB".repeat(16)));
-        this.completesDownloads();
+        completesDownloads();
 
-        assertThat(this.run("--search", "iso", "--kad", "--download", link.toUri()))
-                .isEqualTo(Main.EXIT_OK);
+        assertThat(run("--search", "iso", "--kad", "--download", link.toUri())).isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains(
                         "Kad: 3 contacts, 0 verified, firewalled",
                         "Kad: 40 contacts, " + NetworkCommands.KAD_CONTACTS + " verified, connected, reachable",
@@ -347,9 +346,9 @@ class NetworkCommandsTest {
         });
         this.fake.answerWith("stopSearch", null);
 
-        assertThat(this.run("--search", "iso", "--kad")).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--search", "iso", "--kad")).isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out()).contains("Searching \"iso\" on Kad", "kad.iso", "1 results");
+        assertThat(out()).contains("Searching \"iso\" on Kad", "kad.iso", "1 results");
         assertThat(this.fake.calls)
                 .anyMatch(call -> call.contains("scope=KAD"))
                 .noneMatch(call -> call.startsWith("connect"));
@@ -357,14 +356,13 @@ class NetworkCommandsTest {
 
     @Test
     void aServerAndDownloadsWaitForTheLoginOnly() throws Exception {
-        this.connectsWithHighId();
-        this.completesDownloads();
+        connectsWithHighId();
+        completesDownloads();
         Ed2kLink.FileLink link = Ed2kLink.FileLink.of("direct.iso", 2048, Hash16.parseHex("FA".repeat(16)));
 
-        assertThat(this.run("--connect-server", SERVER, "--download", link.toUri()))
-                .isEqualTo(Main.EXIT_OK);
+        assertThat(run("--connect-server", SERVER, "--download", link.toUri())).isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out()).contains("Connected to " + SERVER, "Finished direct.iso");
+        assertThat(out()).contains("Connected to " + SERVER, "Finished direct.iso");
         assertThat(this.fake.calls).noneMatch(call -> call.startsWith("search"));
     }
 
@@ -388,45 +386,45 @@ class NetworkCommandsTest {
             return CompletableFuture.completedFuture(download(link, link.equals(bad) ? 3 : 1));
         });
 
-        assertThat(this.run("--download", good.toUri(), bad.toUri())).isEqualTo(Main.EXIT_FAILURE);
+        assertThat(run("--download", good.toUri(), bad.toUri())).isEqualTo(Main.EXIT_FAILURE);
 
-        assertThat(this.out())
+        assertThat(out())
                 .contains(
                         "Downloading good.bin (1000 B, 1 source)",
                         "Downloading bad.bin (3.0 MiB, 3 sources)",
                         "Connected to " + SERVER,
                         "Finished good.bin: good.bin")
                 .doesNotContain("other.bin");
-        assertThat(this.err())
+        assertThat(err())
                 .contains("Failed bad.bin: disk full", "Disconnected from the server: lost")
                 .doesNotContain("not ours");
     }
 
     @Test
     void searchesThenDownloadsWhatWasAsked() throws Exception {
-        this.connectsWithHighId();
+        connectsWithHighId();
         this.fake.answer("search", args -> {
             this.fake.events.submit(new EngineEvent.SearchEnded(new SearchId(6), 0));
             return CompletableFuture.completedFuture(new SearchId(6));
         });
         this.fake.answerWith("stopSearch", null);
-        this.completesDownloads();
+        completesDownloads();
         Ed2kLink.FileLink link = Ed2kLink.FileLink.of("wanted.iso", 2048, Hash16.parseHex("DD".repeat(16)));
 
-        assertThat(this.run("--connect-server", SERVER, "--search", "iso", "--download", link.toUri()))
+        assertThat(run("--connect-server", SERVER, "--search", "iso", "--download", link.toUri()))
                 .isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out()).contains("0 results", "Finished wanted.iso");
+        assertThat(out()).contains("0 results", "Finished wanted.iso");
     }
 
     @Test
     void downloadsAloneNeedNoServer() throws Exception {
-        this.completesDownloads();
+        completesDownloads();
         Ed2kLink.FileLink link = Ed2kLink.FileLink.of("alone.iso", 2048, Hash16.parseHex("EE".repeat(16)));
 
-        assertThat(this.run("--download", link.toUri())).isEqualTo(Main.EXIT_OK);
+        assertThat(run("--download", link.toUri())).isEqualTo(Main.EXIT_OK);
 
-        assertThat(this.out()).contains("Finished alone.iso");
+        assertThat(out()).contains("Finished alone.iso");
         assertThat(this.fake.calls).noneMatch(call -> call.startsWith("connect"));
     }
 
@@ -471,11 +469,11 @@ class NetworkCommandsTest {
 
     @Test
     void theKadLineTellsTheTestedUdpStateAndTheBuddy() {
-        this.givenKadFirewalledOnBothPortsWithABuddy();
+        givenKadFirewalledOnBothPortsWithABuddy();
 
-        this.whenTheKadLineIsWritten();
+        whenTheKadLineIsWritten();
 
-        this.thenTheKadLineIs("Kad: 5 contacts, 4 verified, connected, firewalled, UDP firewalled, with a buddy");
+        thenTheKadLineIs("Kad: 5 contacts, 4 verified, connected, firewalled, UDP firewalled, with a buddy");
     }
 
     private void givenKadFirewalledOnBothPortsWithABuddy() {
@@ -492,11 +490,11 @@ class NetworkCommandsTest {
 
     @Test
     void ignoresTheEndOfTheEventStream() {
-        NetworkCommands commands = this.commands();
+        NetworkCommands commands = commands();
         commands.onError(new IOException("closed"));
         commands.onComplete();
-        assertThat(this.out()).isEmpty();
-        assertThat(this.err()).isEmpty();
+        assertThat(out()).isEmpty();
+        assertThat(err()).isEmpty();
     }
 
     // The login of every search test: a server that takes us with a HighID.
@@ -517,7 +515,7 @@ class NetworkCommandsTest {
     }
 
     private int run(String... args) throws Exception {
-        return this.commands().run(LaunchOptions.parse(args).network());
+        return commands().run(LaunchOptions.parse(args).network());
     }
 
     private NetworkCommands commands() {

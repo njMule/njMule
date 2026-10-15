@@ -44,7 +44,7 @@ public final class AichVotes {
         if (before == null || before.equals(hash)) {
             this.signers.computeIfAbsent(hash, h -> new TreeSet<>()).add(network);
         }
-        return this.trusted();
+        return trusted();
     }
 
     public Optional<Hash20> trusted() {

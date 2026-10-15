@@ -83,50 +83,50 @@ class KadNodeUnusableContactsTest {
 
     @Test
     void shouldDropAPlainPacketFromTheDnsPort() {
-        this.whenAPingArrivesFrom(PEER, 53, 0);
+        whenAPingArrivesFrom(PEER, 53, 0);
 
-        this.thenNothingWentTo(PEER);
+        thenNothingWentTo(PEER);
     }
 
     @Test
     void shouldAnswerAnObfuscatedPacketFromTheDnsPort() {
-        this.whenAPingArrivesFrom(PEER, 53, 77);
+        whenAPingArrivesFrom(PEER, 53, 77);
 
-        this.thenAPongWentTo(PEER, 53);
+        thenAPongWentTo(PEER, 53);
     }
 
     @Test
     void shouldNotAskAContactWithoutAUdpPort() {
-        this.givenAContactAt(PEER, this.farFromTarget());
-        this.givenASourceSearch();
+        givenAContactAt(PEER, farFromTarget());
+        givenASourceSearch();
 
-        this.whenTheContactAnswersWith(
-                new KadMessages.Contact(this.nearTarget(1), Ipv4.of(30, 1, 1, 1), 0, 4662, 8),
-                new KadMessages.Contact(this.nearTarget(2), Ipv4.of(31, 1, 1, 1), PORT, 4662, 8));
+        whenTheContactAnswersWith(
+                new KadMessages.Contact(nearTarget(1), Ipv4.of(30, 1, 1, 1), 0, 4662, 8),
+                new KadMessages.Contact(nearTarget(2), Ipv4.of(31, 1, 1, 1), PORT, 4662, 8));
 
-        this.thenNothingWentTo(Ipv4.of(30, 1, 1, 1));
-        this.thenALookupRequestWentTo(Ipv4.of(31, 1, 1, 1));
+        thenNothingWentTo(Ipv4.of(30, 1, 1, 1));
+        thenALookupRequestWentTo(Ipv4.of(31, 1, 1, 1));
     }
 
     @Test
     void shouldNotAskAContactAtTheAddressOfAnotherOfOurContacts() throws DecodeException {
-        this.givenAContactAt(PEER, this.farFromTarget());
-        this.givenAContactAt(OTHER, this.farFromTarget());
-        this.givenASourceSearch();
+        givenAContactAt(PEER, farFromTarget());
+        givenAContactAt(OTHER, farFromTarget());
+        givenASourceSearch();
 
-        this.whenTheContactAnswersWith(new KadMessages.Contact(this.nearTarget(1), OTHER, PORT, 4662, 8));
+        whenTheContactAnswersWith(new KadMessages.Contact(nearTarget(1), OTHER, PORT, 4662, 8));
 
-        this.thenNoLookupRequestWentToTheId(OTHER, this.nearTarget(1));
+        thenNoLookupRequestWentToTheId(OTHER, nearTarget(1));
     }
 
     @Test
     void shouldTakeAnAvailabilityBeyondAnyRealOneAsUnknown() {
-        this.givenAContactAt(PEER, Keywords.id("ubuntu"));
-        this.givenAKeywordSearchThatAskedTheContact("ubuntu");
+        givenAContactAt(PEER, Keywords.id("ubuntu"));
+        givenAKeywordSearchThatAskedTheContact("ubuntu");
 
-        this.whenTheContactFindsFilesWithSources(70_000, 65_500);
+        whenTheContactFindsFilesWithSources(70_000, 65_500);
 
-        this.thenTheSourcesFoundAre(0, 65_500);
+        thenTheSourcesFoundAre(0, 65_500);
     }
 
     private void givenAContactAt(int ip, UInt128 id) {

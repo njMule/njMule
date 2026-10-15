@@ -56,10 +56,10 @@ public final class SharedFoldersDialog {
             protected void updateItem(SharedDirectory item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
-                    this.setText(null);
+                    setText(null);
                 } else {
                     String path = item.path().toString();
-                    this.setText(
+                    setText(
                             item.subdirectories()
                                     ? gui.f("nj.shared.withSubfolders", path)
                                     : gui.i18n().embed(path));
@@ -76,7 +76,7 @@ public final class SharedFoldersDialog {
             // The folder chooser and the question take the focus; back here, the list may have grown.
             this.stage.focusedProperty().addListener((o, was, now) -> {
                 if (now) {
-                    this.load();
+                    load();
                 }
             });
         }
@@ -86,7 +86,7 @@ public final class SharedFoldersDialog {
         Scene scene = new Scene(root, 620, 360);
         gui.attach(scene);
         this.stage.setScene(scene);
-        this.load();
+        load();
     }
 
     public void show() {

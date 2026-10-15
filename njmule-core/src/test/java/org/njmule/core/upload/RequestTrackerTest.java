@@ -37,29 +37,29 @@ class RequestTrackerTest {
 
     @Test
     void aReAskJustShortOfTheShortestTimeIsNotCounted() {
-        this.givenTheClientAskedForTheFile();
+        givenTheClientAskedForTheFile();
 
-        this.whenItAsksAgainAfter(MIN_ASK.minusSeconds(5));
+        whenItAsksAgainAfter(MIN_ASK.minusSeconds(5));
 
-        this.thenTheCountIs(0);
+        thenTheCountIs(0);
     }
 
     @Test
     void idleSlotsOutsideTheWindowNoLongerCount() {
-        this.givenIdleSlots(3);
+        givenIdleSlots(3);
 
-        this.whenItLeavesASlotIdleAfter(WINDOW);
+        whenItLeavesASlotIdleAfter(WINDOW);
 
-        this.thenTheCountIs(1);
+        thenTheCountIs(1);
     }
 
     @Test
     void aClientNotHeardOfWithinTheWindowIsForgotten() {
-        this.givenIdleSlots(2);
+        givenIdleSlots(2);
 
-        this.whenTheTrackerIsPurgedAfter(WINDOW);
+        whenTheTrackerIsPurgedAfter(WINDOW);
 
-        this.thenNoClientIsKept();
+        thenNoClientIsKept();
     }
 
     private void givenTheClientAskedForTheFile() {

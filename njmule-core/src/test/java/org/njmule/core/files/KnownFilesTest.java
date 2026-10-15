@@ -68,106 +68,106 @@ class KnownFilesTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.closeShares();
+        closeShares();
         this.loop.close();
     }
 
     @Test
     void aDamagedKnown2IsReadFromItsBackup() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin");
-        this.givenKnownMetRecords("a.bin");
-        this.givenTheBackupOfKnown2HoldsTheTreeOf("a.bin");
-        this.givenKnown2Is(new byte[] {9, 9, 9});
+        givenTheIncomingDirectoryHolds("a.bin");
+        givenKnownMetRecords("a.bin");
+        givenTheBackupOfKnown2HoldsTheTreeOf("a.bin");
+        givenKnown2Is(new byte[] {9, 9, 9});
 
-        this.whenTheSharesOpenAndCloseAtOnce();
+        whenTheSharesOpenAndCloseAtOnce();
 
-        this.thenKnown2HoldsOnlyTheTreesOf("a.bin");
+        thenKnown2HoldsOnlyTheTreesOf("a.bin");
     }
 
     @Test
     void aKnown2CutShortKeepsTheTreesBeforeTheCut() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin", "b.bin");
-        this.givenKnownMetRecords("a.bin", "b.bin");
-        this.givenKnown2HoldsTheTreesOfCutShort("a.bin", "b.bin");
+        givenTheIncomingDirectoryHolds("a.bin", "b.bin");
+        givenKnownMetRecords("a.bin", "b.bin");
+        givenKnown2HoldsTheTreesOfCutShort("a.bin", "b.bin");
 
-        this.whenTheSharesOpenAndCloseAtOnce();
+        whenTheSharesOpenAndCloseAtOnce();
 
-        this.thenKnown2HoldsOnlyTheTreesOf("a.bin");
+        thenKnown2HoldsOnlyTheTreesOf("a.bin");
     }
 
     @Test
     void aKnownMetCutShortKeepsTheRecordsBeforeTheCut() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin", "b.bin");
-        this.givenKnownMetCutShortRecords("a.bin", "b.bin");
+        givenTheIncomingDirectoryHolds("a.bin", "b.bin");
+        givenKnownMetCutShortRecords("a.bin", "b.bin");
 
-        this.whenTheSharesOpenAndCloseAtOnce();
+        whenTheSharesOpenAndCloseAtOnce();
 
-        this.thenKnownMetRecords("a.bin");
+        thenKnownMetRecords("a.bin");
     }
 
     @Test
     void aFileWhoseDateChangesKeepsOneRecord() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin");
-        this.givenTheFilesAreSharedAndRecorded();
+        givenTheIncomingDirectoryHolds("a.bin");
+        givenTheFilesAreSharedAndRecorded();
 
-        this.whenTheDateOfChangesAndItIsHashedAgain("a.bin");
+        whenTheDateOfChangesAndItIsHashedAgain("a.bin");
 
-        this.thenKnownMetHoldsOneRecordOfAtTheDateItHasNow("a.bin");
+        thenKnownMetHoldsOneRecordOfAtTheDateItHasNow("a.bin");
     }
 
     @Test
     void aTreeNoRecordNeedsIsDropped() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin");
-        this.givenKnownMetRecords("a.bin");
-        this.givenKnown2HoldsTheTreesOf("a.bin");
-        this.givenKnown2HoldsATreeNoRecordNeeds();
+        givenTheIncomingDirectoryHolds("a.bin");
+        givenKnownMetRecords("a.bin");
+        givenKnown2HoldsTheTreesOf("a.bin");
+        givenKnown2HoldsATreeNoRecordNeeds();
 
-        this.whenTheFilesAreSharedAndSaved();
+        whenTheFilesAreSharedAndSaved();
 
-        this.thenKnown2HoldsOnlyTheTreesOf("a.bin");
+        thenKnown2HoldsOnlyTheTreesOf("a.bin");
     }
 
     @Test
     void aFileUnsharedForOverAMonthKeepsItsRecordButNotItsTree() throws Exception {
-        this.givenTheIncomingDirectoryHolds();
-        this.givenKnownMetRecordsAFileLastSharedDaysAgo("old.bin", 40);
-        this.givenKnownMetRecordsAFileLastSharedDaysAgo("recent.bin", 10);
+        givenTheIncomingDirectoryHolds();
+        givenKnownMetRecordsAFileLastSharedDaysAgo("old.bin", 40);
+        givenKnownMetRecordsAFileLastSharedDaysAgo("recent.bin", 10);
 
-        this.whenTheFilesAreSharedAndSaved();
+        whenTheFilesAreSharedAndSaved();
 
-        this.thenKnownMetRecords("old.bin", "recent.bin");
-        this.thenKnown2HoldsOnlyTheTreesOf("recent.bin");
+        thenKnownMetRecords("old.bin", "recent.bin");
+        thenKnown2HoldsOnlyTheTreesOf("recent.bin");
     }
 
     @Test
     void aKnownFileSharedWithoutItsTreeIsHashedForIt() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin");
-        this.givenKnownMetRecords("a.bin");
+        givenTheIncomingDirectoryHolds("a.bin");
+        givenKnownMetRecords("a.bin");
 
-        this.whenTheFilesAreShared();
+        whenTheFilesAreShared();
 
-        this.thenTheAichTreeOfIsKnownSoon("a.bin");
+        thenTheAichTreeOfIsKnownSoon("a.bin");
     }
 
     @Test
     void theTreesAreWrittenOnlyWhenTheyChange() throws Exception {
-        this.givenTheIncomingDirectoryHolds("a.bin");
-        this.givenTheFilesAreSharedAndRecorded();
-        this.givenKnown2WasLastWrittenLongAgo();
+        givenTheIncomingDirectoryHolds("a.bin");
+        givenTheFilesAreSharedAndRecorded();
+        givenKnown2WasLastWrittenLongAgo();
 
-        this.whenOnlyTheUploadPriorityOfChanges("a.bin");
+        whenOnlyTheUploadPriorityOfChanges("a.bin");
 
-        this.thenKnown2WasNotWrittenAgain();
+        thenKnown2WasNotWrittenAgain();
     }
 
     @Test
     void aFinishedDownloadIsNotRecordedWithTheAichHashOfItsLinkBeforeItsOwnTreeIsBuilt() throws Exception {
-        this.givenTheIncomingDirectoryHolds("done.bin");
-        this.givenADownloadOfWhoseLinkGaveAnotherAichHash("done.bin");
+        givenTheIncomingDirectoryHolds("done.bin");
+        givenADownloadOfWhoseLinkGaveAnotherAichHash("done.bin");
 
-        this.whenItFinishesAndTheSharesCloseAtOnce("done.bin");
+        whenItFinishesAndTheSharesCloseAtOnce("done.bin");
 
-        this.thenKnownMetRecordsWithoutAnAichHash("done.bin");
+        thenKnownMetRecordsWithoutAnAichHash("done.bin");
     }
 
     private void givenTheIncomingDirectoryHolds(String... names) throws Exception {
@@ -182,14 +182,14 @@ class KnownFilesTest {
 
     private void givenKnownMetRecords(String... names) throws Exception {
         for (String name : names) {
-            this.records.add(this.record(name, this.hashes.get(name).ed2k().fileHash(), System.currentTimeMillis()));
+            this.records.add(record(name, this.hashes.get(name).ed2k().fileHash(), System.currentTimeMillis()));
         }
         Files.write(this.config.resolve(SharedFiles.KNOWN_MET), KnownMet.write(this.records));
     }
 
     private void givenKnownMetCutShortRecords(String... names) throws Exception {
         for (String name : names) {
-            this.records.add(this.record(name, this.hashes.get(name).ed2k().fileHash(), System.currentTimeMillis()));
+            this.records.add(record(name, this.hashes.get(name).ed2k().fileHash(), System.currentTimeMillis()));
         }
         byte[] data = KnownMet.write(this.records);
         Files.write(this.config.resolve(SharedFiles.KNOWN_MET), Arrays.copyOf(data, data.length - 5));
@@ -201,7 +201,7 @@ class KnownFilesTest {
                 FileHasher.hash(Channels.newChannel(new ByteArrayInputStream(content)), content.length, done -> {});
         this.hashes.put(name, result);
         long lastShared = System.currentTimeMillis() - Duration.ofDays(days).toMillis();
-        this.records.add(this.record(name, result, 1_700_000_000L, lastShared));
+        this.records.add(record(name, result, 1_700_000_000L, lastShared));
         this.trees.add(entry(result));
         Files.write(this.config.resolve(SharedFiles.KNOWN_MET), KnownMet.write(this.records));
         Files.write(this.config.resolve(SharedFiles.KNOWN2_MET), Known2Met.write(this.trees));
@@ -250,11 +250,11 @@ class KnownFilesTest {
     }
 
     private void givenTheFilesAreSharedAndRecorded() throws Exception {
-        this.whenTheFilesAreShared();
-        this.awaitShared(this.hashes.keySet().size());
-        this.closeShares();
-        this.shares = this.open();
-        this.awaitShared(this.hashes.keySet().size());
+        whenTheFilesAreShared();
+        awaitShared(this.hashes.keySet().size());
+        closeShares();
+        this.shares = open();
+        awaitShared(this.hashes.keySet().size());
     }
 
     private void givenKnown2WasLastWrittenLongAgo() throws Exception {
@@ -264,7 +264,7 @@ class KnownFilesTest {
 
     // No scan runs: what was read is saved again as it is.
     private void whenTheSharesOpenAndCloseAtOnce() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             SharedFiles.open(
                             this.loop,
                             this.config,
@@ -284,9 +284,9 @@ class KnownFilesTest {
 
     // The hashing of its own tree cannot report before the close.
     private void whenItFinishesAndTheSharesCloseAtOnce(String name) throws Exception {
-        this.shares = this.open();
+        this.shares = open();
         Path file = this.incoming.resolve(name);
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.shares.finished(file, this.finished);
             this.shares.close();
             return null;
@@ -295,41 +295,41 @@ class KnownFilesTest {
     }
 
     private void whenTheFilesAreShared() throws Exception {
-        this.shares = this.open();
+        this.shares = open();
     }
 
     private void whenTheFilesAreSharedAndSaved() throws Exception {
-        this.shares = this.open();
-        this.awaitShared(this.namesOnDisk());
-        this.closeShares();
+        this.shares = open();
+        awaitShared(namesOnDisk());
+        closeShares();
     }
 
     private void whenTheDateOfChangesAndItIsHashedAgain(String name) throws Exception {
         Path file = this.incoming.resolve(name);
         FileTime date = FileTime.fromMillis(Files.getLastModifiedTime(file).toMillis() + 100_000);
         Files.setLastModifiedTime(file, date);
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.shares.scan();
             return null;
         });
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> this.shares.all().getFirst().mtime()) != date.toMillis() / 1000) {
+        while (onLoop(() -> this.shares.all().getFirst().mtime()) != date.toMillis() / 1000) {
             assertThat(System.nanoTime()).as("hashed again").isLessThan(deadline);
             Thread.sleep(20);
         }
-        this.closeShares();
+        closeShares();
     }
 
     private void whenOnlyTheUploadPriorityOfChanges(String name) throws Exception {
         Hash16 hash = this.hashes.get(name).ed2k().fileHash();
-        this.onLoop(() -> this.shares.setPriority(hash, UploadPriority.HIGH));
-        this.closeShares();
+        onLoop(() -> this.shares.setPriority(hash, UploadPriority.HIGH));
+        closeShares();
     }
 
     private void thenTheAichTreeOfIsKnownSoon(String name) throws Exception {
         Hash16 hash = this.hashes.get(name).ed2k().fileHash();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> this.shares.aichTree(hash)).isEmpty()) {
+        while (onLoop(() -> this.shares.aichTree(hash)).isEmpty()) {
             assertThat(System.nanoTime()).as("hashed for its tree").isLessThan(deadline);
             Thread.sleep(20);
         }
@@ -337,21 +337,21 @@ class KnownFilesTest {
 
     private void thenKnownMetHoldsOneRecordOfAtTheDateItHasNow(String name) throws Exception {
         long date = Files.getLastModifiedTime(this.incoming.resolve(name)).toMillis() / 1000;
-        assertThat(this.knownMet())
+        assertThat(knownMet())
                 .filteredOn(r -> r.name().equals(Optional.of(name)))
                 .singleElement()
                 .satisfies(r -> assertThat(r.mtime()).isEqualTo(date));
     }
 
     private void thenKnownMetRecordsWithoutAnAichHash(String name) throws Exception {
-        assertThat(this.knownMet())
+        assertThat(knownMet())
                 .filteredOn(r -> r.name().equals(Optional.of(name)))
                 .singleElement()
                 .satisfies(r -> assertThat(r.aichHash()).isEmpty());
     }
 
     private void thenKnownMetRecords(String... names) throws Exception {
-        assertThat(this.knownMet()).extracting(r -> r.name().orElseThrow()).containsExactlyInAnyOrder(names);
+        assertThat(knownMet()).extracting(r -> r.name().orElseThrow()).containsExactlyInAnyOrder(names);
     }
 
     private void thenKnown2HoldsOnlyTheTreesOf(String... names) throws Exception {
@@ -367,7 +367,7 @@ class KnownFilesTest {
     private void thenKnown2WasNotWrittenAgain() throws Exception {
         assertThat(Files.getLastModifiedTime(this.config.resolve(SharedFiles.KNOWN2_MET)))
                 .isEqualTo(this.treesDate);
-        assertThat(this.knownMet())
+        assertThat(knownMet())
                 .singleElement()
                 .satisfies(r -> assertThat(r.uploadPriority()).isPresent());
     }
@@ -384,7 +384,7 @@ class KnownFilesTest {
 
     private void awaitShared(int count) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (this.onLoop(() -> this.shares.all().size()) < count) {
+        while (onLoop(() -> this.shares.all().size()) < count) {
             assertThat(System.nanoTime()).as("shared").isLessThan(deadline);
             Thread.sleep(20);
         }
@@ -426,7 +426,7 @@ class KnownFilesTest {
     }
 
     private SharedFiles open() throws Exception {
-        return this.onLoop(() -> SharedFiles.open(
+        return onLoop(() -> SharedFiles.open(
                 this.loop,
                 this.config,
                 () -> List.of(this.incoming),
@@ -442,7 +442,7 @@ class KnownFilesTest {
 
     private void closeShares() throws Exception {
         if (this.shares != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.shares.close();
                 return null;
             });

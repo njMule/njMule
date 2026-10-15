@@ -120,13 +120,13 @@ class KadPublisherTurnsTest {
 
     @Test
     void shouldGiveTheNextPublishesTheirTurnWhenTheNodeRefusesOne() {
-        this.givenTheNodeRefusesPublishes();
+        givenTheNodeRefusesPublishes();
 
-        this.whenTheTurnsPass(1);
-        this.whenTheNodeTakesPublishesAgain();
-        this.whenTheTurnsPass(3);
+        whenTheTurnsPass(1);
+        whenTheNodeTakesPublishesAgain();
+        whenTheTurnsPass(3);
 
-        this.thenTheNodeWasAskedFor(
+        thenTheNodeWasAskedFor(
                 new Asked("great", false),
                 new Asked(MOVIE.toHex(), false),
                 new Asked("note " + MOVIE.toHex(), false),
@@ -143,23 +143,23 @@ class KadPublisherTurnsTest {
 
     @Test
     void shouldStartNoPublishWhileTheNodeIsBusy() {
-        this.givenTheNodeIsBusy();
+        givenTheNodeIsBusy();
 
-        this.whenTheTurnsPass(3);
+        whenTheTurnsPass(3);
 
-        this.thenTheNodeWasAskedFor();
+        thenTheNodeWasAskedFor();
     }
 
     @Test
     void shouldRotateTheFilesOfAKeywordWithMoreThanItsShare() {
-        this.givenFilesWithOneKeyword(KadPublisher.FILES_PER_KEYWORD + 10);
+        givenFilesWithOneKeyword(KadPublisher.FILES_PER_KEYWORD + 10);
 
-        this.whenTheTurnsPass(1);
-        this.whenADayPasses();
-        this.whenTheTurnsPass(1);
+        whenTheTurnsPass(1);
+        whenADayPasses();
+        whenTheTurnsPass(1);
 
-        this.thenTheKeywordCarriedTheFiles(0, 0, KadPublisher.FILES_PER_KEYWORD);
-        this.thenTheKeywordCarriedTheFiles(1, KadPublisher.FILES_PER_KEYWORD, KadPublisher.FILES_PER_KEYWORD);
+        thenTheKeywordCarriedTheFiles(0, 0, KadPublisher.FILES_PER_KEYWORD);
+        thenTheKeywordCarriedTheFiles(1, KadPublisher.FILES_PER_KEYWORD, KadPublisher.FILES_PER_KEYWORD);
     }
 
     private void givenTheNodeRefusesPublishes() {

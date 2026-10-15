@@ -80,36 +80,36 @@ class KadNodePublishLoadTest {
 
     @Test
     void shouldLeaveAHeavilyLoadedKeywordAloneForDays() {
-        this.givenAKeywordPublishWhoseNodeReportsTheLoad(60);
+        givenAKeywordPublishWhoseNodeReportsTheLoad(60);
 
-        this.whenTheKeywordIsPublishedAgainAfter(Duration.ofDays(4));
+        whenTheKeywordIsPublishedAgainAfter(Duration.ofDays(4));
 
-        this.thenThePublishStarted(false);
+        thenThePublishStarted(false);
 
-        this.whenTheKeywordIsPublishedAgainAfter(Duration.ofHours(5));
+        whenTheKeywordIsPublishedAgainAfter(Duration.ofHours(5));
 
-        this.thenThePublishStarted(true);
+        thenThePublishStarted(true);
     }
 
     @Test
     void shouldPublishALightlyLoadedKeywordAgainAtOnce() {
-        this.givenAKeywordPublishWhoseNodeReportsTheLoad(20);
+        givenAKeywordPublishWhoseNodeReportsTheLoad(20);
 
-        this.whenTheKeywordIsPublishedAgainAfter(Duration.ZERO);
+        whenTheKeywordIsPublishedAgainAfter(Duration.ZERO);
 
-        this.thenThePublishStarted(true);
+        thenThePublishStarted(true);
     }
 
     private void givenAKeywordPublishWhoseNodeReportsTheLoad(int load) {
         UInt128 target = Keywords.id(WORD);
         assertThat(this.node.publishKeyword(WORD, List.of(file()))).isTrue();
         this.node.received(PEER, PORT, new KadMessages.Answer(target, List.of()).encode(), false, 0, 0);
-        this.seconds(4);
+        seconds(4);
         assertThat(this.sent)
                 .as("the publish")
                 .anySatisfy(p -> assertThat(p.opcode()).isEqualTo(Opcodes.Kad.PUBLISH_KEY_REQ.code()));
         this.node.received(PEER, PORT, new KadMessages.PublishAnswer(target, load).encode(), false, 0, 0);
-        this.seconds(30);
+        seconds(30);
         assertThat(this.node.runningKeywordPublishes()).as("the publish ended").isZero();
     }
 

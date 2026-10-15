@@ -73,55 +73,55 @@ class RemoteControlFlowTest {
 
     @Test
     void shouldConnectSearchDownloadAndStopARunningNjMuleFromTheCommandLine() throws Exception {
-        this.givenAServerWithFiles();
-        this.givenNjMuleRunningWithTheApi();
+        givenAServerWithFiles();
+        givenNjMuleRunningWithTheApi();
 
-        this.whenRunRemotely("connect", "127.0.0.1:" + this.server.port());
-        this.thenItPrints("Connecting.");
-        this.thenTheStatusSoonShows("HighID");
+        whenRunRemotely("connect", "127.0.0.1:" + this.server.port());
+        thenItPrints("Connecting.");
+        thenTheStatusSoonShows("HighID");
 
-        this.whenRunRemotely("search", "linux");
-        String hash = this.thenAResultIsListed();
-        String search = this.thenTheSearchIsNamed();
+        whenRunRemotely("search", "linux");
+        String hash = thenAResultIsListed();
+        String search = thenTheSearchIsNamed();
 
-        this.whenRunRemotely("get", search, hash);
-        this.thenItPrints("Downloading linux web.iso");
+        whenRunRemotely("get", search, hash);
+        thenItPrints("Downloading linux web.iso");
 
-        this.whenRunRemotely("downloads");
-        this.thenItPrints(hash, "linux web.iso");
+        whenRunRemotely("downloads");
+        thenItPrints(hash, "linux web.iso");
 
-        this.whenRunRemotely("pause", hash);
-        this.thenItPrints("linux web.iso: paused");
+        whenRunRemotely("pause", hash);
+        thenItPrints("linux web.iso: paused");
 
-        this.whenRunRemotely("limits", "50", "0");
-        this.thenItPrints("Upload:   50 KiB/s", "Download: unlimited");
+        whenRunRemotely("limits", "50", "0");
+        thenItPrints("Upload:   50 KiB/s", "Download: unlimited");
 
-        this.whenRunRemotely("shutdown");
-        this.thenItPrints("saving and exiting");
-        this.thenNjMuleWasAskedToExit();
+        whenRunRemotely("shutdown");
+        thenItPrints("saving and exiting");
+        thenNjMuleWasAskedToExit();
     }
 
     @Test
     void shouldSayWhenThereAreNoServers() throws Exception {
-        this.givenNjMuleRunningWithTheApi();
+        givenNjMuleRunningWithTheApi();
 
-        this.whenRunRemotely("servers");
+        whenRunRemotely("servers");
 
-        this.thenItPrints("No servers.");
+        thenItPrints("No servers.");
     }
 
     @Test
     void shouldSayWhenTheApiIsOff() throws Exception {
-        this.whenRunRemotely("status");
+        whenRunRemotely("status");
 
-        this.thenItFailsSaying("remote-control API", "is off");
+        thenItFailsSaying("remote-control API", "is off");
     }
 
     @Test
     void shouldListItsCommands() throws Exception {
-        this.whenRunRemotely("help");
+        whenRunRemotely("help");
 
-        this.thenItPrints("search [server|global|kad] <expression>", "shutdown");
+        thenItPrints("search [server|global|kad] <expression>", "shutdown");
     }
 
     // Given
@@ -183,17 +183,17 @@ class RemoteControlFlowTest {
     private void thenTheStatusSoonShows(String text) throws InterruptedException {
         long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         do {
-            this.whenRunRemotely("status");
+            whenRunRemotely("status");
             if (this.printed.contains(text)) {
                 break;
             }
             Thread.sleep(100);
         } while (System.nanoTime() < end);
-        this.thenItPrints(text);
+        thenItPrints(text);
     }
 
     private String thenAResultIsListed() {
-        this.thenItPrints("linux.txt");
+        thenItPrints("linux.txt");
         Matcher m = RESULT.matcher(this.printed);
         assertThat(m.find()).as(this.printed).isTrue();
         return m.group(1);

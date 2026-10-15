@@ -96,7 +96,7 @@ public final class ClientMessages {
         public BitSet dataParts(long size) {
             BitSet result = new BitSet();
             for (int part = 0; part < Ed2k.partCount(size); part++) {
-                if (this.has(part)) {
+                if (has(part)) {
                     result.set(part);
                 }
             }

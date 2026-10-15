@@ -77,7 +77,7 @@ class DownloadManagerTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -87,22 +87,22 @@ class DownloadManagerTest {
 
     @Test
     void aSourceFoundSendingCorruptDataIsDroppedAndReportedForABan() throws Exception {
-        this.givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
+        givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
 
-        this.whenTheSourceIsFoundSendingCorruptData(CORRUPT);
+        whenTheSourceIsFoundSendingCorruptData(CORRUPT);
 
-        this.thenItsSourcesAre(HONEST);
-        this.thenTheBannedAre(CORRUPT);
+        thenItsSourcesAre(HONEST);
+        thenTheBannedAre(CORRUPT);
     }
 
     @Test
     void aSourceFoundSendingCorruptDataIsNotTakenAgain() throws Exception {
-        this.givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
-        this.givenTheSourceWasFoundSendingCorruptData(CORRUPT);
+        givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
+        givenTheSourceWasFoundSendingCorruptData(CORRUPT);
 
-        this.whenKadFindsTheSourcesAgain(CORRUPT, HONEST);
+        whenKadFindsTheSourcesAgain(CORRUPT, HONEST);
 
-        this.thenItsSourcesAre(HONEST);
+        thenItsSourcesAre(HONEST);
     }
 
     private void givenAPausedDownloadWithTheKadSources(int... ips) throws Exception {
@@ -113,19 +113,19 @@ class DownloadManagerTest {
                 banned.add(ip.getHostAddress());
             }
         };
-        DownloadManager manager = this.manager();
-        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("corrupt.bin", 5000, CORRUPT_FILE)));
+        DownloadManager manager = manager();
+        onLoop(() -> manager.add(Ed2kLink.FileLink.of("corrupt.bin", 5000, CORRUPT_FILE)));
         this.kadFound = this.kadSearch.get(30, TimeUnit.SECONDS);
-        this.onLoop(() -> manager.pause(CORRUPT_FILE));
-        this.whenKadFindsTheSourcesAgain(ips);
+        onLoop(() -> manager.pause(CORRUPT_FILE));
+        whenKadFindsTheSourcesAgain(ips);
     }
 
     private void givenTheSourceWasFoundSendingCorruptData(int ip) throws Exception {
-        this.whenTheSourceIsFoundSendingCorruptData(ip);
+        whenTheSourceIsFoundSendingCorruptData(ip);
     }
 
     private void whenTheSourceIsFoundSendingCorruptData(int ip) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.banCorruptSender(ip);
             return null;
         });
@@ -136,7 +136,7 @@ class DownloadManagerTest {
         for (int ip : ips) {
             addresses.add(address(ip, PORT));
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.kadFound.accept(direct(addresses.toArray(InetSocketAddress[]::new)));
             return null;
         });
@@ -147,7 +147,7 @@ class DownloadManagerTest {
         for (int ip : ips) {
             expected.add(Ipv4.format(ip) + ":" + PORT);
         }
-        assertThat(this.onLoop(() -> this.manager.sources().stream()
+        assertThat(onLoop(() -> this.manager.sources().stream()
                         .filter(s -> s.file().equals(CORRUPT_FILE))
                         .map(SourceInfo::address)
                         .toList()))
@@ -164,12 +164,12 @@ class DownloadManagerTest {
 
     @Test
     void keepsOnlyUsableSourcesFromKad() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("12".repeat(16));
-        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
+        onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
         Consumer<List<DownloadManager.KadSource>> found = this.kadSearch.get(30, TimeUnit.SECONDS);
 
-        DownloadInfo info = this.onLoop(() -> {
+        DownloadInfo info = onLoop(() -> {
             manager.pause(hash);
             found.accept(direct(
                     address(Ipv4.of(127, 0, 0, 1), PORT),
@@ -188,37 +188,37 @@ class DownloadManagerTest {
 
     @Test
     void takesTheLinkSourcesTheIpFilterAllows() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|link.bin|5000|" + "34".repeat(16)
                 + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + ",172.20.0.9:" + PORT
                 + "|/");
 
-        DownloadInfo info = this.onLoop(() -> {
+        DownloadInfo info = onLoop(() -> {
             DownloadInfo added = manager.add(link);
             manager.pause(link.hash());
             return added;
         });
 
         assertThat(info.sources()).as("the user chose them, LAN or loopback").isEqualTo(2);
-        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
+        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
                 .isTrue();
-        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
+        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
                 .as("known already")
                 .isFalse();
-        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(BLOCKED_IP, PORT))))
+        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(BLOCKED_IP, PORT))))
                 .as("the IP filter still applies")
                 .isFalse();
-        assertThat(this.onLoop(() -> manager.download(link.hash()).orElseThrow().sources()))
+        assertThat(onLoop(() -> manager.download(link.hash()).orElseThrow().sources()))
                 .isEqualTo(3);
     }
 
     @Test
     void stoppingForgetsTheSourcesAndKeepsThePriority() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
                 "ed2k://|file|stop.bin|5000|" + "56".repeat(16) + "|/|sources,192.0.2.10:" + PORT + "|/");
 
-        DownloadInfo stopped = this.onLoop(() -> {
+        DownloadInfo stopped = onLoop(() -> {
             manager.add(link);
             manager.setPriority(link.hash(), DownloadPriority.HIGH);
             manager.stop(link.hash());
@@ -228,26 +228,25 @@ class DownloadManagerTest {
         assertThat(stopped.status()).isEqualTo(DownloadInfo.Status.STOPPED);
         assertThat(stopped.sources()).isZero();
         assertThat(stopped.priority()).isEqualTo(DownloadPriority.HIGH);
-        DownloadInfo resumed = this.onLoop(() -> {
+        DownloadInfo resumed = onLoop(() -> {
             manager.resume(link.hash());
             DownloadInfo info = manager.download(link.hash()).orElseThrow();
             manager.pause(link.hash());
             return info;
         });
         assertThat(resumed.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
-        assertThat(this.onLoop(() -> manager.stop(Hash16.parseHex("00".repeat(16)))))
-                .isFalse();
+        assertThat(onLoop(() -> manager.stop(Hash16.parseHex("00".repeat(16))))).isFalse();
     }
 
     @Test
     void resumesThePausedDownloadOfHighestPriorityAsAsked() throws Exception {
         this.categories =
                 List.of(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false));
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 film = Hash16.parseHex("a1".repeat(16));
         Hash16 urgent = Hash16.parseHex("a2".repeat(16));
         Hash16 later = Hash16.parseHex("a3".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, film));
             manager.add(Ed2kLink.FileLink.of("urgent.txt", 5000, urgent));
             manager.add(Ed2kLink.FileLink.of("later.txt", 5000, later));
@@ -260,22 +259,22 @@ class DownloadManagerTest {
             return null;
         });
 
-        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.NONE))).isEmpty();
-        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
+        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.NONE))).isEmpty();
+        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
                 .map(DownloadInfo::hash)
                 .as("the category's, though of low priority")
                 .contains(film);
-        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY)))
+        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY)))
                 .as("none left in the category")
                 .isEmpty();
-        assertThat(this.onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
+        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
                 .map(DownloadInfo::hash)
                 .as("then any, a stopped one too")
                 .contains(urgent);
-        assertThat(this.onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
+        assertThat(onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
                 .map(DownloadInfo::status)
                 .contains(DownloadInfo.Status.DOWNLOADING);
-        assertThat(this.onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
+        assertThat(onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
                 .isEmpty();
     }
 
@@ -284,45 +283,45 @@ class DownloadManagerTest {
         this.categories = List.of(
                 new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "*.mkv", false),
                 new Category(2, "Video", Optional.empty(), "", 0, DownloadPriority.AUTO, "mkv|avi", false));
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 film = Hash16.parseHex("bc".repeat(16));
         Hash16 other = Hash16.parseHex("cd".repeat(16));
 
-        DownloadInfo added = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("Film.MKV", 5000, film)));
-        DownloadInfo plain = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("notes.txt", 5000, other)));
+        DownloadInfo added = onLoop(() -> manager.add(Ed2kLink.FileLink.of("Film.MKV", 5000, film)));
+        DownloadInfo plain = onLoop(() -> manager.add(Ed2kLink.FileLink.of("notes.txt", 5000, other)));
 
         assertThat(added.category()).isEqualTo(1);
         assertThat(added.priority()).as("the category's priority").isEqualTo(DownloadPriority.HIGH);
         assertThat(plain.category()).isEqualTo(Category.NONE);
-        assertThat(this.onLoop(() -> manager.setCategory(other, 2))).isTrue();
-        assertThat(this.onLoop(() -> manager.setCategory(other, 9)))
+        assertThat(onLoop(() -> manager.setCategory(other, 2))).isTrue();
+        assertThat(onLoop(() -> manager.setCategory(other, 9)))
                 .as("no such category")
                 .isFalse();
-        assertThat(this.onLoop(() -> manager.download(other).orElseThrow().category()))
+        assertThat(onLoop(() -> manager.download(other).orElseThrow().category()))
                 .isEqualTo(2);
 
         this.categories = List.of(this.categories.getFirst());
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.categoriesChanged();
             manager.pause(film);
             manager.pause(other);
             return null;
         });
-        assertThat(this.onLoop(() -> manager.download(other).orElseThrow().category()))
+        assertThat(onLoop(() -> manager.download(other).orElseThrow().category()))
                 .as("its category is gone")
                 .isEqualTo(Category.NONE);
-        assertThat(this.onLoop(() -> manager.download(film).orElseThrow().category()))
+        assertThat(onLoop(() -> manager.download(film).orElseThrow().category()))
                 .isEqualTo(1);
     }
 
     @Test
     void higherPrioritiesAskTheServerFirst() throws Exception {
         HighIdServer server = new HighIdServer(true);
-        DownloadManager manager = this.manager(server);
+        DownloadManager manager = manager(server);
         Hash16 low = Hash16.parseHex("78".repeat(16));
         Hash16 high = Hash16.parseHex("9a".repeat(16));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("low.bin", 5000, low));
             manager.setPriority(low, DownloadPriority.LOW);
             manager.add(Ed2kLink.FileLink.of("high.bin", 5000, high));
@@ -339,30 +338,28 @@ class DownloadManagerTest {
     @Test
     void resumingARunningDownloadChangesNothing() throws Exception {
         HighIdServer server = new HighIdServer(true);
-        DownloadManager manager = this.manager(server);
+        DownloadManager manager = manager(server);
         Hash16 hash = Hash16.parseHex("bd".repeat(16));
-        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("running.bin", 5000, hash)));
+        onLoop(() -> manager.add(Ed2kLink.FileLink.of("running.bin", 5000, hash)));
         for (int i = 0; i < 100 && server.asked.isEmpty(); i++) {
             Thread.sleep(100);
         }
         assertThat(server.asked).hasSize(1);
 
-        assertThat(this.onLoop(() -> manager.resume(hash)))
-                .as("it runs already")
-                .isFalse();
+        assertThat(onLoop(() -> manager.resume(hash))).as("it runs already").isFalse();
         Thread.sleep(2500);
 
         assertThat(server.asked).as("not asked again before its time").hasSize(1);
-        this.onLoop(() -> manager.pause(hash));
+        onLoop(() -> manager.pause(hash));
     }
 
     @Test
     void theFirstAddedStaysFirstAfterARestart() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 gone = Hash16.parseHex("e1".repeat(16));
         Hash16 first = Hash16.parseHex("e2".repeat(16));
         Hash16 second = Hash16.parseHex("e3".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
             manager.add(Ed2kLink.FileLink.of("first.bin", 5000, first));
             manager.cancel(gone);
@@ -374,22 +371,22 @@ class DownloadManagerTest {
             return null;
         });
 
-        DownloadManager again = this.manager();
+        DownloadManager again = manager();
 
-        assertThat(this.onLoop(() -> again.resumeNext(Category.NONE, NextDownload.ANY)))
+        assertThat(onLoop(() -> again.resumeNext(Category.NONE, NextDownload.ANY)))
                 .map(DownloadInfo::hash)
                 .contains(first);
-        this.onLoop(() -> again.pause(first));
+        onLoop(() -> again.pause(first));
     }
 
     @Test
     void refusesSourcesNoClientCanHave() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|odd.bin|5000|" + "4a".repeat(16)
                 + "|/|sources,0.1.2.3:" + PORT + ",224.0.0.251:" + PORT + ",240.1.2.3:" + PORT
                 + ",255.255.255.255:" + PORT + "|/");
 
-        DownloadInfo info = this.onLoop(() -> {
+        DownloadInfo info = onLoop(() -> {
             DownloadInfo added = manager.add(link);
             manager.pause(link.hash());
             return added;
@@ -397,11 +394,11 @@ class DownloadManagerTest {
 
         assertThat(info.sources()).isZero();
         for (int ip : new int[] {0, Ipv4.of(0, 0, 0, 1), Ipv4.of(239, 255, 255, 250), -1}) {
-            assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(ip, PORT))))
+            assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(ip, PORT))))
                     .as(Ipv4.format(ip))
                     .isFalse();
         }
-        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(127, 0, 0, 1), PORT))))
+        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(127, 0, 0, 1), PORT))))
                 .as("loopback, as the user chose")
                 .isTrue();
     }
@@ -417,10 +414,10 @@ class DownloadManagerTest {
                 added.add(download);
             }
         };
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("4b".repeat(16));
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, hash));
             return manager.pause(hash);
         });
@@ -433,50 +430,46 @@ class DownloadManagerTest {
 
     @Test
     void aLinkAddedAgainGivesSourcesOnlyWhenItIsOfTheSameFile() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("4c".repeat(16));
         Hash20 aich = Hash20.parseBase32("A".repeat(32));
         Hash20 other = Hash20.parseBase32("B".repeat(32));
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("same.bin", 5000, hash));
             return manager.pause(hash);
         });
 
-        DownloadInfo bigger = this.onLoop(() -> manager.add(link(hash, 6000, Optional.empty(), Ipv4.of(192, 0, 2, 1))));
+        DownloadInfo bigger = onLoop(() -> manager.add(link(hash, 6000, Optional.empty(), Ipv4.of(192, 0, 2, 1))));
         assertThat(bigger.sources()).as("another size").isZero();
-        DownloadInfo withAich =
-                this.onLoop(() -> manager.add(link(hash, 5000, Optional.of(aich), Ipv4.of(192, 0, 2, 2))));
+        DownloadInfo withAich = onLoop(() -> manager.add(link(hash, 5000, Optional.of(aich), Ipv4.of(192, 0, 2, 2))));
         assertThat(withAich.sources()).isEqualTo(1);
-        assertThat(this.onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
+        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
                 .as("the link's AICH hash is taken")
                 .contains(aich);
-        DownloadInfo otherAich =
-                this.onLoop(() -> manager.add(link(hash, 5000, Optional.of(other), Ipv4.of(192, 0, 2, 3))));
+        DownloadInfo otherAich = onLoop(() -> manager.add(link(hash, 5000, Optional.of(other), Ipv4.of(192, 0, 2, 3))));
         assertThat(otherAich.sources()).as("another AICH hash").isEqualTo(1);
     }
 
     @Test
     void aPreviewNeedsTheStartOfTheFile() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("4d".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("film.avi", 100_000, hash));
             return manager.pause(hash);
         });
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.find(hash).orElseThrow().file().written(16 * 1024, 100_000);
             return null;
         });
-        assertThat(this.onLoop(() -> manager.dataFile(hash)))
-                .as("all but the start")
-                .isEmpty();
+        assertThat(onLoop(() -> manager.dataFile(hash))).as("all but the start").isEmpty();
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.find(hash).orElseThrow().file().written(0, 16 * 1024);
             return null;
         });
-        assertThat(this.onLoop(() -> manager.dataFile(hash))).isPresent();
+        assertThat(onLoop(() -> manager.dataFile(hash))).isPresent();
     }
 
     private static Ed2kLink.FileLink link(Hash16 hash, long size, Optional<Hash20> aich, int source) {
@@ -491,7 +484,7 @@ class DownloadManagerTest {
     }
 
     private DownloadManager manager() throws Exception {
-        return this.manager(new HighIdServer(false));
+        return manager(new HighIdServer(false));
     }
 
     private DownloadManager manager(HighIdServer server) throws Exception {
@@ -504,7 +497,7 @@ class DownloadManagerTest {
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
         DownloadManager.KadSources kad = (file, size, sources) -> this.kadSearch.complete(sources);
-        this.manager = this.onLoop(() -> DownloadManager.open(
+        this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),

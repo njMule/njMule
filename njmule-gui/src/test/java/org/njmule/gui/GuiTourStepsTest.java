@@ -36,14 +36,14 @@ class GuiTourStepsTest {
 
     @Test
     void theSoundOfTheTourIsAShortSilenceForThePlayer() throws Exception {
-        this.whenTheTourPlaysItsSound();
-        this.thenThePlayerGotAWaveFileOfATenthOfASecond();
+        whenTheTourPlaysItsSound();
+        thenThePlayerGotAWaveFileOfATenthOfASecond();
     }
 
     @Test
     void aTourWithoutWebInterfaceGoesOn() {
-        this.whenTheTourAsksTheWebInterfaceOf(this.dir);
-        this.thenNoExceptionOccurred();
+        whenTheTourAsksTheWebInterfaceOf(this.dir);
+        thenNoExceptionOccurred();
     }
 
     private void whenTheTourPlaysItsSound() {

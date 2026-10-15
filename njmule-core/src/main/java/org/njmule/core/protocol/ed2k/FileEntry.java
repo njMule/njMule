@@ -62,7 +62,7 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
 
     /** Writes the entry with the new tag encoding, as servers do. */
     public void write(PacketWriter out) {
-        this.write(out, Ed2kTagFormat.NEW);
+        write(out, Ed2kTagFormat.NEW);
     }
 
     /** Writes the entry with {@code format} tags; strings are UTF-8. */
@@ -86,11 +86,11 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
     }
 
     public int sources() {
-        return this.count(FileTag.SOURCES);
+        return count(FileTag.SOURCES);
     }
 
     public int completeSources() {
-        return this.count(FileTag.COMPLETE_SOURCES);
+        return count(FileTag.COMPLETE_SOURCES);
     }
 
     // Counts are unsigned on the wire: a 64-bit value with the top bit set is huge, not negative.

@@ -96,7 +96,7 @@ class DownloadCallbackTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -110,12 +110,12 @@ class DownloadCallbackTest {
 
     @Test
     void aSourceThatCallsBackWhileWeWaitInItsQueueTakesTheSessionOver() throws Exception {
-        ScriptedSource asking = this.source();
-        ScriptedSource queuing = this.source();
-        this.start();
+        ScriptedSource asking = source();
+        ScriptedSource queuing = source();
+        start();
         Hash16 paused = Hash16.parseHex("41".repeat(16));
         Hash16 hash = Hash16.parseHex("42".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.add(Ed2kLink.FileLink.of("paused.bin", 5000, paused));
             this.manager.pause(paused);
             return this.manager.add(link("taken.bin", hash, asking, queuing));
@@ -129,9 +129,9 @@ class DownloadCallbackTest {
 
         // One still being asked cannot call back; one keeping us queued can, with a slot.
         ScriptedSource.Link early = ScriptedSource.call(this.port, asking.hello());
-        assertThat(this.routedAs(asking)).isEqualTo("refused");
+        assertThat(routedAs(asking)).isEqualTo("refused");
         ScriptedSource.Link slot = ScriptedSource.call(this.port, queuing.hello());
-        assertThat(this.routedAs(queuing)).isEqualTo("adopted");
+        assertThat(routedAs(queuing)).isEqualTo("adopted");
 
         assertThat(queued.closesWithin(WAIT)).as("the queued connection ends").isTrue();
         slot.until(Opcodes.Client.SETREQFILEID);
@@ -141,31 +141,31 @@ class DownloadCallbackTest {
         assertThat(request)
                 .as("no request for a slot it gave")
                 .noneMatch(p -> p.opcode() == Opcodes.Client.STARTUPLOADREQ.code());
-        this.onLoop(() -> this.manager.pause(hash));
+        onLoop(() -> this.manager.pause(hash));
         early.close();
     }
 
     @Test
     void aClientConnectedToUsIsAskedOverItsOwnConnection() throws Exception {
-        ScriptedSource client = this.source();
-        this.start();
+        ScriptedSource client = source();
+        start();
         ScriptedSource.Link link = ScriptedSource.call(this.port, client.hello());
-        assertThat(this.routedAs(client)).isEqualTo("refused");
+        assertThat(routedAs(client)).isEqualTo("refused");
         Hash16 hash = Hash16.parseHex("43".repeat(16));
 
-        this.onLoop(() -> this.manager.add(client.link("asked.bin", 5000, hash)));
+        onLoop(() -> this.manager.add(client.link("asked.bin", 5000, hash)));
 
         assertThat(names(link.until(Opcodes.Client.SETREQFILEID))).contains("REQUESTFILENAME");
-        this.onLoop(() -> this.manager.pause(hash));
+        onLoop(() -> this.manager.pause(hash));
     }
 
     @Test
     void aFirewalledSourceCallsBackOnlyWithItsServerAndHashAndIsAskedThroughTheServerAgain() throws Exception {
-        ScriptedSource firewalled = this.source();
-        this.start();
+        ScriptedSource firewalled = source();
+        start();
         Hash16 hash = Hash16.parseHex("44".repeat(16));
         Hash16 gone = Hash16.parseHex("45".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.add(Ed2kLink.FileLink.of("lowid.bin", 5000, hash));
             this.manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
             this.manager.foundSources(new ServerMessages.FoundSources(
@@ -174,8 +174,8 @@ class DownloadCallbackTest {
                     gone, List.of(new ServerMessages.Source(6000, PORT, 0, Optional.empty()))));
             return null;
         });
-        this.await("both asked through the server", () -> this.callbacks.size() >= 2);
-        this.onLoop(() -> this.manager.pause(gone));
+        await("both asked through the server", () -> this.callbacks.size() >= 2);
+        onLoop(() -> this.manager.pause(gone));
 
         // Only the client with the LowID, the server and the user hash the server told calls back.
         ScriptedSource.call(this.port, firewalled.hello(PEER, 5000, 0)).close();
@@ -184,57 +184,57 @@ class DownloadCallbackTest {
         ScriptedSource.call(this.port, firewalled.hello(Hash16.parseHex("46".repeat(16)), 5000, SERVER_IP))
                 .close();
         ScriptedSource.call(this.port, firewalled.hello(PEER, 6000, SERVER_IP)).close();
-        this.await("four calls routed", () -> this.routed.size() == 4);
+        await("four calls routed", () -> this.routed.size() == 4);
         assertThat(this.routed).containsOnly("refused");
         this.routed.clear();
         ScriptedSource.Link link = ScriptedSource.call(this.port, firewalled.hello(PEER, 5000, SERVER_IP));
-        assertThat(this.routedAs(firewalled)).isEqualTo("adopted");
+        assertThat(routedAs(firewalled)).isEqualTo("adopted");
 
         link.until(Opcodes.Client.SETREQFILEID);
         link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         link.until(Opcodes.Client.STARTUPLOADREQ);
         link.close();
-        this.awaitWaiting(hash);
-        this.advance(DownloadManager.REASK_INTERVAL);
-        this.await("asked through the server again", () -> this.callbacks.size() >= 3);
+        awaitWaiting(hash);
+        advance(DownloadManager.REASK_INTERVAL);
+        await("asked through the server again", () -> this.callbacks.size() >= 3);
         assertThat(this.callbacks).containsExactly(5000L, 6000L, 5000L);
-        this.onLoop(() -> this.manager.pause(hash));
+        onLoop(() -> this.manager.pause(hash));
     }
 
     @Test
     void aSourceAskedObfuscatedStaysConnectingUntilItAnswers() throws Exception {
         ScriptedSource source = new ScriptedSource(PEER, 0, Hello.MISC2_SUPPORTS_CRYPT);
         this.resources.add(source);
-        this.start();
+        start();
         Hash16 hash = Hash16.parseHex("47".repeat(16));
-        this.onLoop(() -> this.manager.add(source.link("crypt.bin", 5000, hash)));
+        onLoop(() -> this.manager.add(source.link("crypt.bin", 5000, hash)));
         ScriptedSource.Link plain = source.accept();
         plain.until(Opcodes.Client.SETREQFILEID);
         plain.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         plain.until(Opcodes.Client.STARTUPLOADREQ);
         plain.close();
-        this.awaitWaiting(hash);
+        awaitWaiting(hash);
 
         // Its user hash and its taste for obfuscation known now, it is asked again obfuscated.
-        this.advance(DownloadManager.REASK_INTERVAL);
+        advance(DownloadManager.REASK_INTERVAL);
         Socket silent = source.acceptSilently();
-        this.await("connecting", () -> this.manager.sources().getFirst().state() == SourceInfo.State.CONNECTING);
+        await("connecting", () -> this.manager.sources().getFirst().state() == SourceInfo.State.CONNECTING);
         Thread.sleep(1200);
-        this.onLoop(() -> this.manager.pause(hash));
+        onLoop(() -> this.manager.pause(hash));
         silent.close();
 
-        assertThat(this.onLoop(() -> this.manager.sources().getFirst().state())).isEqualTo(SourceInfo.State.WAITING);
-        assertThat(this.onLoop(() -> this.manager.download(hash).orElseThrow().status()))
+        assertThat(onLoop(() -> this.manager.sources().getFirst().state())).isEqualTo(SourceInfo.State.WAITING);
+        assertThat(onLoop(() -> this.manager.download(hash).orElseThrow().status()))
                 .isEqualTo(DownloadInfo.Status.PAUSED);
     }
 
     private String routedAs(ScriptedSource source) throws Exception {
-        this.await("routed " + source.port(), () -> !this.routed.isEmpty());
+        await("routed " + source.port(), () -> !this.routed.isEmpty());
         return this.routed.removeLast();
     }
 
     private void awaitWaiting(Hash16 hash) throws Exception {
-        this.await(
+        await(
                 "waiting",
                 () -> this.manager.sources().stream()
                         .filter(s -> s.file().equals(hash))
@@ -273,7 +273,7 @@ class DownloadCallbackTest {
                 random);
         Hello hello = Hello.of(OURS, Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
         PeerLinks links = new PeerLinks(this.loop, identities, link -> Optional.empty());
-        this.manager = this.onLoop(() -> DownloadManager.open(
+        this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -334,7 +334,7 @@ class DownloadCallbackTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

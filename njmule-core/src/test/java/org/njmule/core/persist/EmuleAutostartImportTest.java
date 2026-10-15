@@ -43,45 +43,45 @@ class EmuleAutostartImportTest {
 
     @Test
     void shouldTellThatEmuleStartsAtLogin() throws IOException {
-        this.givenEmulePreferences("[eMule]\nNick=Tester\nAutoStart=1\n");
+        givenEmulePreferences("[eMule]\nNick=Tester\nAutoStart=1\n");
 
-        this.whenTheProfileIsChecked();
+        whenTheProfileIsChecked();
 
-        this.thenTheReportSaysItStartsAtLogin(true);
-        this.thenThePreferencesDetailContains("start at login");
+        thenTheReportSaysItStartsAtLogin(true);
+        thenThePreferencesDetailContains("start at login");
     }
 
     @Test
     void shouldNotTellItWhenEmuleDoesNotStartAtLogin() throws IOException {
-        this.givenEmulePreferences("[eMule]\nNick=Tester\nAutoStart=0\n");
+        givenEmulePreferences("[eMule]\nNick=Tester\nAutoStart=0\n");
 
-        this.whenTheProfileIsChecked();
+        whenTheProfileIsChecked();
 
-        this.thenTheReportSaysItStartsAtLogin(false);
+        thenTheReportSaysItStartsAtLogin(false);
     }
 
     @Test
     void shouldNotTellItWithoutEmulePreferences() throws IOException {
-        this.givenNoEmulePreferences();
+        givenNoEmulePreferences();
 
-        this.whenTheProfileIsChecked();
+        whenTheProfileIsChecked();
 
-        this.thenTheReportSaysItStartsAtLogin(false);
+        thenTheReportSaysItStartsAtLogin(false);
     }
 
     private void givenEmulePreferences(String text) throws IOException {
-        Files.createDirectories(this.emule());
-        Files.writeString(this.emule().resolve("preferences.ini"), text, StandardCharsets.US_ASCII);
+        Files.createDirectories(emule());
+        Files.writeString(emule().resolve("preferences.ini"), text, StandardCharsets.US_ASCII);
     }
 
     private void givenNoEmulePreferences() throws IOException {
-        Files.createDirectories(this.emule());
+        Files.createDirectories(emule());
     }
 
     private void whenTheProfileIsChecked() throws IOException {
         Path ours = Files.createDirectories(this.dir.resolve("njmule"));
         this.report = new EmuleImporter(
-                        this.emule(), new ImportOptions(true, false, false), new Untouched(ours), () -> false)
+                        emule(), new ImportOptions(true, false, false), new Untouched(ours), () -> false)
                 .run();
     }
 

@@ -135,7 +135,7 @@ public final class TransfersScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -144,7 +144,7 @@ public final class TransfersScreen implements Screen {
         var formats = this.gui.formats();
         this.downloads = Fx.table(this.gui.model().downloads(), this.gui.t("nj.transfers.none"), this.shown);
         this.gui.subscriptions().onListChange(this.gui.model().categories(), c -> {
-            this.showCategories();
+            showCategories();
             this.downloads.refresh();
         });
         TableColumn<LiveList.Row<DownloadInfo>, Double> progress =
@@ -162,7 +162,7 @@ public final class TransfersScreen implements Screen {
                                 Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
-                        this.statusColumn(),
+                        statusColumn(),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
                         Fx.ownDirection(
                                 Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
@@ -173,36 +173,36 @@ public final class TransfersScreen implements Screen {
                                 s -> s < 0 ? "?" : formats.duration(s)))));
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
         MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"), Fx.icon(Material2MZ.PAUSE));
-        pause.setOnAction(e -> this.pauseSelected());
+        pause.setOnAction(e -> pauseSelected());
         MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"), Fx.icon(Material2MZ.PLAY_ARROW));
-        resume.setOnAction(e -> this.resumeSelected());
+        resume.setOnAction(e -> resumeSelected());
         MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"), Fx.icon(Material2MZ.STOP));
-        stop.setOnAction(e -> this.stopSelected());
+        stop.setOnAction(e -> stopSelected());
         MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"), Fx.icon(Material2AL.DELETE));
-        cancel.setOnAction(e -> this.cancelSelected());
+        cancel.setOnAction(e -> cancelSelected());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
-        copy.setOnAction(e -> this.copyLinks());
+        copy.setOnAction(e -> copyLinks());
         MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
-        html.setOnAction(e -> this.copyHtml());
+        html.setOnAction(e -> copyHtml());
         MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"), Fx.icon(Material2AL.CLEAR_ALL));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
         MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"), Fx.icon(Material2MZ.PERSON_ADD));
-        addSource.setOnAction(e -> this.addSourceToSelected());
+        addSource.setOnAction(e -> addSourceToSelected());
         MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"), Fx.icon(Material2MZ.RATE_REVIEW));
-        comments.setOnAction(e -> this.commentSelected());
+        comments.setOnAction(e -> commentSelected());
         MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"), Fx.icon(Material2MZ.PREVIEW));
-        preview.setOnAction(e -> this.previewSelected());
+        preview.setOnAction(e -> previewSelected());
         CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
         previewFirst.setOnAction(e -> Fx.selected(this.downloads)
                 .forEach(d -> this.gui.model().setPreviewFirst(d.hash(), previewFirst.isSelected())));
         // A client that is a source of several downloads is asked for one: the others list it as A4AF.
         MenuItem swapHere = new MenuItem(this.gui.t("nj.a4af.toThis"));
-        swapHere.setOnAction(e -> this.swapSourcesHere());
+        swapHere.setOnAction(e -> swapSourcesHere());
         CheckMenuItem autoSwap = new CheckMenuItem(this.gui.t("nj.a4af.auto"));
         autoSwap.setOnAction(e -> Fx.selected(this.downloads)
                 .forEach(d -> this.gui.model().setAutoSwap(d.hash(), autoSwap.isSelected())));
         MenuItem swapAway = new MenuItem(this.gui.t("nj.a4af.toOther"));
-        swapAway.setOnAction(e -> this.swapSourcesAway());
+        swapAway.setOnAction(e -> swapSourcesAway());
         Menu sourceHandling =
                 new Menu(this.gui.t("IDS_A4AF"), Fx.icon(Material2MZ.SWAP_HORIZ), swapHere, autoSwap, swapAway);
         Menu category = new Menu(this.gui.t("IDS_CAT"), Fx.icon(Material2AL.LABEL));
@@ -217,7 +217,7 @@ public final class TransfersScreen implements Screen {
                 comments,
                 addSource,
                 sourceHandling,
-                this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY))),
+                priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY))),
                 category,
                 new SeparatorMenuItem(),
                 copy,
@@ -237,7 +237,7 @@ public final class TransfersScreen implements Screen {
                 Fx.emptyState(Material2AL.CLOUD_DOWNLOAD, this.gui.t("nj.transfers.none"), search, paste));
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
-        this.link.setOnAction(e -> this.addLink());
+        this.link.setOnAction(e -> addLink());
         this.linkInput = new Inputs(this.gui)
                 .fileLinks(this.link, this.gui.t("IDS_DOWNLOAD"))
                 .quietWhenEmpty();
@@ -247,7 +247,7 @@ public final class TransfersScreen implements Screen {
         Button resumeButton = Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected);
         Button stopButton = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected);
         Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected);
-        MenuButton priorityButton = this.priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY)));
+        MenuButton priorityButton = priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY)));
         Button copyButton = Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
         Fx.needSelection(
                 this.downloads, pauseButton, resumeButton, stopButton, cancelButton, priorityButton, copyButton);
@@ -267,21 +267,21 @@ public final class TransfersScreen implements Screen {
                 add);
 
         // The lower lists: the clients we upload to, those waiting, those we download from, and the banned.
-        this.uploads = this.uploadTable(UploadInfo.State.UPLOADING, "uploads");
-        this.queue = this.uploadTable(UploadInfo.State.QUEUED, "queue");
-        this.sources = this.sourceTable();
-        this.bans = this.banTable();
+        this.uploads = uploadTable(UploadInfo.State.UPLOADING, "uploads");
+        this.queue = uploadTable(UploadInfo.State.QUEUED, "queue");
+        this.sources = sourceTable();
+        this.bans = banTable();
         TabPane lowerTabs = new TabPane(
-                this.counted(this.gui.t("IDS_UPLOADING"), this.uploads),
-                this.counted(this.gui.t("IDS_ONQUEUE"), this.queue),
-                this.counted(this.gui.t("IDS_DOWNLOADING"), this.sources),
-                this.counted(this.gui.t("IDS_BANNED"), this.bans));
+                counted(this.gui.t("IDS_UPLOADING"), this.uploads),
+                counted(this.gui.t("IDS_ONQUEUE"), this.queue),
+                counted(this.gui.t("IDS_DOWNLOADING"), this.sources),
+                counted(this.gui.t("IDS_BANNED"), this.bans));
         lowerTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         this.lowerTabs = lowerTabs;
         VBox lower = new VBox(4, lowerTabs);
         VBox.setVgrow(lowerTabs, Priority.ALWAYS);
         this.downloads.getContextMenu().setOnShowing(e -> {
-            category.getItems().setAll(this.categoryItems());
+            category.getItems().setAll(categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
             // A finished download has left the engine: there is nothing to preview or to fetch any more.
             boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
@@ -299,10 +299,10 @@ public final class TransfersScreen implements Screen {
             autoSwap.setSelected(unfinished && selected.stream().allMatch(DownloadInfo::autoSwap));
         });
         this.categoryBar.getStyleClass().add("category-bar");
-        this.showCategories();
+        showCategories();
         this.filter.setPromptText(this.gui.t("nj.transfers.filter"));
         this.filter.setPrefColumnCount(16);
-        this.filter.textProperty().addListener((o, was, now) -> this.showCategory(this.shownCategory));
+        this.filter.textProperty().addListener((o, was, now) -> showCategory(this.shownCategory));
         this.filter.setOnKeyPressed(e -> {
             if (e.getCode() == KeyCode.ESCAPE) {
                 this.filter.clear();
@@ -313,21 +313,21 @@ public final class TransfersScreen implements Screen {
         // The sources below are those of the download chosen, or of all when none or several are.
         this.downloads.getSelectionModel().getSelectedItems().addListener((ListChangeListener<
                         LiveList.Row<DownloadInfo>>)
-                c -> this.showSourcesOfSelected());
+                c -> showSourcesOfSelected());
         VBox upper = new VBox(head, this.downloads);
         VBox.setVgrow(this.downloads, Priority.ALWAYS);
-        this.buildDetails(upper);
+        buildDetails(upper);
         SplitPane split = new SplitPane(this.upperSplit, lower);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.6);
-        VBox screen = Fx.screen(this.title(), tools, split);
+        VBox screen = Fx.screen(title(), tools, split);
         // Ctrl+F (Cmd+F) narrows the downloads by name; Alt+Enter opens the details of the chosen one.
         screen.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.isShortcutDown() && e.getCode() == KeyCode.F) {
                 this.filter.requestFocus();
                 e.consume();
             } else if (e.isAltDown() && e.getCode() == KeyCode.ENTER) {
-                this.showDetails(true);
+                showDetails(true);
                 e.consume();
             }
         });
@@ -341,14 +341,14 @@ public final class TransfersScreen implements Screen {
         ToggleButton all = new ToggleButton(this.gui.t("IDS_ALL"));
         all.setToggleGroup(group);
         all.setUserData(SHOW_ALL);
-        all.setOnAction(e -> this.showCategory(SHOW_ALL));
+        all.setOnAction(e -> showCategory(SHOW_ALL));
         buttons.add(all);
         boolean found = this.shownCategory == SHOW_ALL;
         for (Category c : this.gui.model().categories()) {
             ToggleButton button = new ToggleButton(c.name(), Fx.categoryDot(c.color()));
             button.setToggleGroup(group);
             button.setUserData(c.id());
-            button.setOnAction(e -> this.showCategory(c.id()));
+            button.setOnAction(e -> showCategory(c.id()));
             if (c.id() == this.shownCategory) {
                 button.setSelected(true);
                 found = true;
@@ -356,7 +356,7 @@ public final class TransfersScreen implements Screen {
             buttons.add(button);
         }
         if (!found) {
-            this.showCategory(SHOW_ALL);
+            showCategory(SHOW_ALL);
         }
         all.setSelected(this.shownCategory == SHOW_ALL);
         // A click on the chosen button keeps it chosen.
@@ -382,11 +382,11 @@ public final class TransfersScreen implements Screen {
     private List<MenuItem> categoryItems() {
         List<MenuItem> items = new ArrayList<>();
         MenuItem none = new MenuItem(this.gui.t("IDS_CAT_UNASSIGN"));
-        none.setOnAction(e -> this.categorize(Category.NONE));
+        none.setOnAction(e -> categorize(Category.NONE));
         items.add(none);
         for (Category c : this.gui.model().categories()) {
             MenuItem item = new MenuItem(c.name(), Fx.categoryDot(c.color()));
-            item.setOnAction(e -> this.categorize(c.id()));
+            item.setOnAction(e -> categorize(c.id()));
             items.add(item);
         }
         return items;
@@ -410,13 +410,13 @@ public final class TransfersScreen implements Screen {
     }
 
     private Menu priorityMenu(Menu menu) {
-        menu.getItems().setAll(this.priorityItems());
+        menu.getItems().setAll(priorityItems());
         return menu;
     }
 
     // On the tool row the button shows only its icon.
     private MenuButton priorityMenu(MenuButton button) {
-        button.getItems().setAll(this.priorityItems());
+        button.getItems().setAll(priorityItems());
         button.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
         button.setAccessibleText(this.gui.t("IDS_PRIORITY"));
         return button;
@@ -426,8 +426,8 @@ public final class TransfersScreen implements Screen {
     private List<MenuItem> priorityItems() {
         List<MenuItem> items = new ArrayList<>();
         for (DownloadPriority priority : DownloadPriority.values()) {
-            MenuItem item = new MenuItem(this.priorityName(priority));
-            item.setOnAction(e -> this.prioritize(priority));
+            MenuItem item = new MenuItem(priorityName(priority));
+            item.setOnAction(e -> prioritize(priority));
             items.add(item);
         }
         return items;
@@ -463,7 +463,7 @@ public final class TransfersScreen implements Screen {
 
     private String priorityText(ShownPriority shown) {
         if (!shown.auto()) {
-            return this.priorityName(shown.effective());
+            return priorityName(shown.effective());
         }
         return switch (shown.effective()) {
             case LOW -> this.gui.t("IDS_PRIOAUTOLOW");
@@ -510,9 +510,9 @@ public final class TransfersScreen implements Screen {
         this.details = new DownloadDetails(
                 this.gui,
                 new DownloadDetails.Words(
-                        d -> this.shownText(shown(d)),
-                        d -> this.priorityText(shownPriority(d)),
-                        d -> this.categoryName(d.category()),
+                        d -> shownText(shown(d)),
+                        d -> priorityText(shownPriority(d)),
+                        d -> categoryName(d.category()),
                         d -> remaining(d) < 0 ? "?" : formats.duration(remaining(d))),
                 this::copyLinks,
                 this::commentSelected);
@@ -520,15 +520,15 @@ public final class TransfersScreen implements Screen {
         this.detailsButton.setGraphic(Fx.icon(Material2AL.INFO));
         this.detailsButton.setId("details");
         Fx.whole(this.detailsButton);
-        this.detailsButton.setOnAction(e -> this.showDetails(this.detailsButton.isSelected()));
+        this.detailsButton.setOnAction(e -> showDetails(this.detailsButton.isSelected()));
         this.upperSplit.getItems().setAll(upper);
         SplitPane.setResizableWithParent(this.details.view(), false);
-        this.showDetails(this.gui.settings().transfersDetails());
+        showDetails(this.gui.settings().transfersDetails());
         this.downloads.getSelectionModel().getSelectedItems().addListener((ListChangeListener<
                         LiveList.Row<DownloadInfo>>)
-                c -> this.refreshDetails());
+                c -> refreshDetails());
         // The figures move with each second's news.
-        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.refreshDetails());
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> refreshDetails());
     }
 
     void showDetails(boolean on) {
@@ -547,7 +547,7 @@ public final class TransfersScreen implements Screen {
             items.remove(this.details.view());
         }
         this.gui.settings().setTransfersDetails(on);
-        this.refreshDetails();
+        refreshDetails();
     }
 
     private void refreshDetails() {
@@ -585,11 +585,11 @@ public final class TransfersScreen implements Screen {
             case DOWNLOADING -> this.gui.t("IDS_DOWNLOADING");
             case WAITING -> this.gui.t("IDS_WAITING");
             case NO_SOURCES -> this.gui.t("nj.transfers.stateNoSources");
-            case PAUSED -> this.status(DownloadInfo.Status.PAUSED);
-            case STOPPED -> this.status(DownloadInfo.Status.STOPPED);
-            case NO_SPACE -> this.status(DownloadInfo.Status.NO_SPACE);
-            case ERROR -> this.status(DownloadInfo.Status.ERROR);
-            case COMPLETE -> this.status(DownloadInfo.Status.COMPLETE);
+            case PAUSED -> status(DownloadInfo.Status.PAUSED);
+            case STOPPED -> status(DownloadInfo.Status.STOPPED);
+            case NO_SPACE -> status(DownloadInfo.Status.NO_SPACE);
+            case ERROR -> status(DownloadInfo.Status.ERROR);
+            case COMPLETE -> status(DownloadInfo.Status.COMPLETE);
         };
     }
 
@@ -611,17 +611,17 @@ public final class TransfersScreen implements Screen {
         protected void updateItem(Shown shown, boolean empty) {
             super.updateItem(shown, empty);
             if (empty || shown == null) {
-                this.setText(null);
-                this.setGraphic(null);
+                setText(null);
+                setGraphic(null);
                 return;
             }
-            this.setText(TransfersScreen.this.shownText(shown));
+            setText(TransfersScreen.this.shownText(shown));
             FontIcon icon = Fx.icon(shownIcon(shown));
             icon.getStyleClass()
                     .addAll(
                             "download-state",
                             shown.name().toLowerCase(Locale.ROOT).replace('_', '-'));
-            this.setGraphic(icon);
+            setGraphic(icon);
         }
     }
 
@@ -680,7 +680,7 @@ public final class TransfersScreen implements Screen {
         ButtonType go =
                 Fx.answers(confirm, this.gui.t("nj.transfers.cancelYes"), this.gui.t("nj.transfers.cancelNo"), true);
         confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(go::equals).ifPresent(b -> this.cancel(selected));
+        confirm.showAndWait().filter(go::equals).ifPresent(b -> cancel(selected));
     }
 
     void cancel(List<DownloadInfo> selected) {
@@ -784,11 +784,11 @@ public final class TransfersScreen implements Screen {
     }
 
     void copyLinks() {
-        this.copy(Ed2kLink.FileLink::toUri);
+        copy(Ed2kLink.FileLink::toUri);
     }
 
     void copyHtml() {
-        this.copy(Ed2kLink.FileLink::toHtml);
+        copy(Ed2kLink.FileLink::toHtml);
     }
 
     private void copy(Function<Ed2kLink.FileLink, String> form) {
@@ -856,7 +856,7 @@ public final class TransfersScreen implements Screen {
                                 UploadInfo::waitingSeconds,
                                 formats::duration))));
         TableLayout.remember(table, layout, this.gui.settings());
-        this.browseMenu(table, UploadInfo::address, u -> u.nick().orElse(u.address()));
+        browseMenu(table, UploadInfo::address, u -> u.nick().orElse(u.address()));
         return table;
     }
 
@@ -906,7 +906,7 @@ public final class TransfersScreen implements Screen {
                         Fx.leftToRight(
                                 Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size))));
         TableLayout.remember(table, "sources", this.gui.settings());
-        this.browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
+        browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
         MenuItem swap = Fx.menuItem(this.gui.t("nj.a4af.swapToThis"), Material2MZ.SWAP_HORIZ, this::swapSelectedSource);
         ContextMenu menu = table.getContextMenu();
         menu.getItems().add(swap);
@@ -974,19 +974,19 @@ public final class TransfersScreen implements Screen {
         protected void updateItem(SourceInfo.State state, boolean empty) {
             super.updateItem(state, empty);
             LiveList.Row<SourceInfo> row =
-                    this.getTableRow() == null ? null : this.getTableRow().getItem();
+                    getTableRow() == null ? null : getTableRow().getItem();
             if (empty || state == null) {
-                this.setText(null);
-                this.setGraphic(null);
-                this.setTooltip(null);
+                setText(null);
+                setGraphic(null);
+                setTooltip(null);
                 return;
             }
-            this.setText(TransfersScreen.this.sourceState(state));
+            setText(TransfersScreen.this.sourceState(state));
             FontIcon icon = Fx.icon(sourceIcon(state));
             icon.getStyleClass().addAll("source-state", state.name().toLowerCase(Locale.ROOT));
-            this.setGraphic(icon);
+            setGraphic(icon);
             String other = row == null ? "" : row.get().askedForName();
-            this.setTooltip(state == SourceInfo.State.A4AF && !other.isEmpty() ? new Tooltip(other) : null);
+            setTooltip(state == SourceInfo.State.A4AF && !other.isEmpty() ? new Tooltip(other) : null);
         }
     }
 
@@ -1007,15 +1007,15 @@ public final class TransfersScreen implements Screen {
         protected void updateItem(Double value, boolean empty) {
             super.updateItem(value, empty);
             LiveList.Row<DownloadInfo> row =
-                    this.getTableRow() == null ? null : this.getTableRow().getItem();
+                    getTableRow() == null ? null : getTableRow().getItem();
             if (empty || value == null || row == null) {
-                this.setGraphic(null);
+                setGraphic(null);
                 return;
             }
             DownloadInfo d = row.get();
             this.bar.set(d.parts(), d.completed());
             this.text.setText(TransfersScreen.this.gui.formats().percent(d.completed(), d.size()));
-            this.setGraphic(this.box);
+            setGraphic(this.box);
         }
     }
 }

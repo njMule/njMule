@@ -14,11 +14,16 @@
     <property name="fileExtensions" value="java"/>
 
     <module name="TreeWalker">
-        <!-- Project convention: instance fields and methods are always referenced through "this.". -->
+        <!-- Project convention: instance fields are always referenced through "this.", own methods never. -->
         <module name="RequireThis">
             <property name="checkFields" value="true"/>
-            <property name="checkMethods" value="true"/>
+            <property name="checkMethods" value="false"/>
             <property name="validateOnlyOverlapping" value="false"/>
+        </module>
+        <module name="RegexpSinglelineJava">
+            <property name="format" value="(?&lt;![\w.$])this\.[A-Za-z_$][\w$]*\s*\("/>
+            <property name="ignoreComments" value="true"/>
+            <property name="message" value="Call own methods without &quot;this.&quot;."/>
         </module>
         <module name="AvoidStarImport"/>
         <module name="NeedBraces"/>

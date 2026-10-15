@@ -164,13 +164,13 @@ class KadPublisherTest {
     @Test
     void nothingIsPublishedUnlessTheNodeIsReadyAndReachable() {
         this.node.firewalled = true;
-        this.tickTwice();
+        tickTwice();
         this.node.firewalled = false;
         this.node.connected = false;
-        this.tickTwice();
+        tickTwice();
         this.node.connected = true;
         this.node.ready = false;
-        this.tickTwice();
+        tickTwice();
 
         assertThat(this.node.keywords).isEmpty();
         assertThat(this.node.sources).isEmpty();

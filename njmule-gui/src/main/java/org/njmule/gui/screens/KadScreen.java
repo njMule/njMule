@@ -96,7 +96,7 @@ public final class KadScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
@@ -104,11 +104,11 @@ public final class KadScreen implements Screen {
     private Node build() {
         this.node.setPromptText(this.gui.i18n().embed(this.gui.t("nj.kad.nodePrompt")));
         this.node.setPrefColumnCount(20);
-        this.node.setOnAction(e -> this.bootstrap());
+        this.node.setOnAction(e -> bootstrap());
         this.nodeInput = new Inputs(this.gui)
                 .address(this.node, this.gui.t("IDS_BOOTSTRAP"))
                 .quietWhenEmpty();
-        this.connect.setOnAction(e -> this.connectOrDisconnect());
+        this.connect.setOnAction(e -> connectOrDisconnect());
         this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
         this.recheck.setGraphic(new FontIcon(Material2MZ.SECURITY));
         this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
@@ -129,10 +129,10 @@ public final class KadScreen implements Screen {
         this.say.getStyleClass().add("kad-say");
         this.join.setText(this.gui.t("nj.kad.join"));
         this.join.getStyleClass().add(Styles.DENSE);
-        this.join.setContent(this.ways());
-        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
-        this.show(this.gui.model().statusProperty().get());
-        TabPane lists = this.lists();
+        this.join.setContent(ways());
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> show(now));
+        show(this.gui.model().statusProperty().get());
+        TabPane lists = lists();
         VBox content = new VBox(16, this.say, cards, this.join, lists);
         VBox.setVgrow(lists, Priority.ALWAYS);
         // Shown under the network, which gives the title.
@@ -190,7 +190,7 @@ public final class KadScreen implements Screen {
     private Node ways() {
         this.nodes = new UrlBox(this.gui, "nodesDat", this.gui.t("IDS_BOOTSRAPNODESDAT"));
         this.nodes.node().setPromptText("https://\u2026/nodes.dat");
-        this.nodes.node().getEditor().setOnAction(e -> this.nodesFromUrl());
+        this.nodes.node().getEditor().setOnAction(e -> nodesFromUrl());
         this.nodes.node().setMaxWidth(Double.MAX_VALUE);
         Button take = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::nodesFromUrl);
         take.disableProperty().bind(this.nodes.input().validProperty().not());
@@ -244,7 +244,7 @@ public final class KadScreen implements Screen {
 
     private void show(EngineStatus status) {
         boolean running = status.kad().isPresent();
-        this.say(status);
+        say(status);
         // Open while Kad is not connected, closed once it is; in between, as the user leaves it.
         boolean connected = status.kad().map(KadInfo::connected).orElse(false);
         if (!Boolean.valueOf(connected).equals(this.wasConnected)) {

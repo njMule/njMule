@@ -89,7 +89,7 @@ class DownloadObfuscationTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -103,49 +103,49 @@ class DownloadObfuscationTest {
 
     @Test
     void shouldAskASourceThatCannotObfuscateAgainWhileObfuscationIsOnlySupported() throws Exception {
-        this.givenASourceAskedOnceThatAnnounces(0);
+        givenASourceAskedOnceThatAnnounces(0);
 
-        this.whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.SUPPORTED);
+        whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.SUPPORTED);
 
-        this.thenTheSourceIsConnectedTo(true);
+        thenTheSourceIsConnectedTo(true);
     }
 
     @Test
     void shouldNotConnectPlainToASourceThatCannotObfuscateWhenObfuscationIsRequired() throws Exception {
-        this.givenASourceAskedOnceThatAnnounces(0);
+        givenASourceAskedOnceThatAnnounces(0);
 
-        this.whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.REQUIRED);
+        whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.REQUIRED);
 
-        this.thenTheSourceIsConnectedTo(false);
+        thenTheSourceIsConnectedTo(false);
     }
 
     @Test
     void shouldNotConnectToASourceThatRequiresObfuscationWhenObfuscationIsDisabled() throws Exception {
-        this.givenASourceAskedOnceThatAnnounces(REQUIRES_OBFUSCATION);
+        givenASourceAskedOnceThatAnnounces(REQUIRES_OBFUSCATION);
 
-        this.whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.DISABLED);
+        whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode.DISABLED);
 
-        this.thenTheSourceIsConnectedTo(false);
+        thenTheSourceIsConnectedTo(false);
     }
 
     @Test
     void shouldAskAFirewalledSourceAbleToObfuscateToCallBackWhenObfuscationIsRequired() throws Exception {
-        this.givenObfuscation(ObfuscationMode.REQUIRED);
-        this.givenADownload();
+        givenObfuscation(ObfuscationMode.REQUIRED);
+        givenADownload();
 
-        this.whenTheServerFindsAFirewalledSourceWithTheConnectOptions(SUPPORTS);
+        whenTheServerFindsAFirewalledSourceWithTheConnectOptions(SUPPORTS);
 
-        this.thenTheServerIsAskedForCallbacks(1);
+        thenTheServerIsAskedForCallbacks(1);
     }
 
     @Test
     void shouldNotAskAFirewalledSourceThatCannotObfuscateToCallBackWhenObfuscationIsRequired() throws Exception {
-        this.givenObfuscation(ObfuscationMode.REQUIRED);
-        this.givenADownload();
+        givenObfuscation(ObfuscationMode.REQUIRED);
+        givenADownload();
 
-        this.whenTheServerFindsAFirewalledSourceWithTheConnectOptions(0);
+        whenTheServerFindsAFirewalledSourceWithTheConnectOptions(0);
 
-        this.thenTheServerIsAskedForCallbacks(0);
+        thenTheServerIsAskedForCallbacks(0);
     }
 
     private void givenObfuscation(ObfuscationMode wanted) {
@@ -153,16 +153,16 @@ class DownloadObfuscationTest {
     }
 
     private void givenADownload() throws Exception {
-        this.manager = this.open();
-        this.onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("firewalled.bin", 5000, FILE)));
+        this.manager = open();
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("firewalled.bin", 5000, FILE)));
     }
 
     // Asked once, plain: it queues us and the connection closes, leaving its user hash and connect options known.
     private void givenASourceAskedOnceThatAnnounces(int misc2) throws Exception {
         this.source = new ScriptedSource(PEER, 0, misc2);
         this.resources.add(this.source);
-        this.manager = this.open();
-        this.onLoop(() -> this.manager.add(this.source.link("plain.bin", 5000, FILE)));
+        this.manager = open();
+        onLoop(() -> this.manager.add(this.source.link("plain.bin", 5000, FILE)));
         try (ScriptedSource.Link link = this.source.accept()) {
             link.until(Opcodes.Client.SETREQFILEID);
             link.send(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
@@ -171,9 +171,9 @@ class DownloadObfuscationTest {
                     Protocol.EMULE,
                     Opcodes.Extended.QUEUERANKING.code(),
                     new PacketWriter().u16(5).bytes(new byte[10])));
-            this.await("queued", () -> this.sourceIs(SourceInfo.State.QUEUED));
+            await("queued", () -> sourceIs(SourceInfo.State.QUEUED));
         }
-        this.await("waiting", () -> this.sourceIs(SourceInfo.State.WAITING));
+        await("waiting", () -> sourceIs(SourceInfo.State.WAITING));
     }
 
     private void whenTheSourceIsDueAgainWithObfuscation(ObfuscationMode wanted) {
@@ -182,7 +182,7 @@ class DownloadObfuscationTest {
     }
 
     private void whenTheServerFindsAFirewalledSourceWithTheConnectOptions(int cryptOptions) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.foundSources(new ServerMessages.FoundSources(
                     FILE, List.of(new ServerMessages.Source(FIREWALLED, PORT, cryptOptions, Optional.of(PEER)))));
             return null;
@@ -196,7 +196,7 @@ class DownloadObfuscationTest {
 
     private void thenTheServerIsAskedForCallbacks(int count) throws Exception {
         if (count > 0) {
-            this.await(count + " callbacks", () -> this.callbacks.size() >= count);
+            await(count + " callbacks", () -> this.callbacks.size() >= count);
         } else {
             Thread.sleep(QUIET.toMillis());
         }
@@ -216,7 +216,7 @@ class DownloadObfuscationTest {
                 Optional::empty,
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
-        return this.onLoop(() -> DownloadManager.open(
+        return onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -236,7 +236,7 @@ class DownloadObfuscationTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + ScriptedSource.WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

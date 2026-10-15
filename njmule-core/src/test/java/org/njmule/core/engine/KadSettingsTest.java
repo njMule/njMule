@@ -39,7 +39,7 @@ class KadSettingsTest {
 
     @Test
     void kadConnectedByHandSurvivesOtherSettings() throws Exception {
-        try (NjMuleEngine engine = this.start(freeUdpPort(), false)) {
+        try (NjMuleEngine engine = start(freeUdpPort(), false)) {
             engine.connectKad().get(10, TimeUnit.SECONDS);
             assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
 
@@ -54,7 +54,7 @@ class KadSettingsTest {
     @Test
     void kadThatCouldNotTakeItsPortStartsOnTheNextOne() throws Exception {
         try (DatagramSocket taken = new DatagramSocket(0);
-                NjMuleEngine engine = this.start(taken.getLocalPort(), true)) {
+                NjMuleEngine engine = start(taken.getLocalPort(), true)) {
             assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
             int free = freeUdpPort();
 
@@ -66,7 +66,7 @@ class KadSettingsTest {
 
     @Test
     void kadStoppedByHandStaysStoppedWhenThePortChanges() throws Exception {
-        try (NjMuleEngine engine = this.start(freeUdpPort(), true)) {
+        try (NjMuleEngine engine = start(freeUdpPort(), true)) {
             assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
             engine.disconnectKad().get(10, TimeUnit.SECONDS);
             int free = freeUdpPort();

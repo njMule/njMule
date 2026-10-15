@@ -67,12 +67,12 @@ class TcpConnectionTest {
 
     @Test
     void talksToAPlainServer() throws Exception {
-        this.exchangeWithServer(false);
+        exchangeWithServer(false);
     }
 
     @Test
     void talksToAnObfuscatedServer() throws Exception {
-        this.exchangeWithServer(true);
+        exchangeWithServer(true);
     }
 
     @Test
@@ -228,12 +228,12 @@ class TcpConnectionTest {
     @Test
     void aPacketSentWhileFileDataWaitsGoesOutBeforeIt() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            this.givenAConnectionToAPeerThatReadsNothingYet(server);
-            this.givenMuchFileDataQueued();
+            givenAConnectionToAPeerThatReadsNothingYet(server);
+            givenMuchFileDataQueued();
 
-            this.whenAPacketIsSent();
+            whenAPacketIsSent();
 
-            this.thenThePeerReadsItBeforeTheDataStillQueued();
+            thenThePeerReadsItBeforeTheDataStillQueued();
         }
     }
 

@@ -157,10 +157,10 @@ public final class MainWindow {
             this.screens.put(screen.id(), screen);
         }
         this.network = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
-        this.banner = new Banner(gui, this::connectIfOff, () -> this.show("settings"));
+        this.banner = new Banner(gui, this::connectIfOff, () -> show("settings"));
         VBox center = new VBox(this.banner.view(), this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
-        BorderPane frame = new BorderPane(center, this.topBar(), null, this.statusStrip(), this.navRail());
+        BorderPane frame = new BorderPane(center, topBar(), null, statusStrip(), navRail());
         // Messages stack in the bottom corner, above the status strip: never over the tool rows.
         this.messages.setAlignment(Pos.BOTTOM_RIGHT);
         this.messages.setPickOnBounds(false);
@@ -172,7 +172,7 @@ public final class MainWindow {
         this.root = new StackPane(frame, this.messages, this.palette.view());
         this.root.getStyleClass().add("njmule");
         // A screen's button can lead to another screen, such as Search from an empty list of downloads.
-        this.root.addEventHandler(Navigate.TO_SCREEN, e -> this.show(e.screen()));
+        this.root.addEventHandler(Navigate.TO_SCREEN, e -> show(e.screen()));
         // eD2K links dragged from a page or a text onto the window become downloads.
         this.root.setOnDragOver(e -> {
             if (!ClipboardWatch.fileLinks(dragged(e.getDragboard())).isEmpty()) {
@@ -181,7 +181,7 @@ public final class MainWindow {
             e.consume();
         });
         this.root.setOnDragDropped(e -> {
-            e.setDropCompleted(this.dropped(dragged(e.getDragboard())) > 0);
+            e.setDropCompleted(dropped(dragged(e.getDragboard())) > 0);
             e.consume();
         });
         this.root.setNodeOrientation(gui.orientation());
@@ -189,10 +189,10 @@ public final class MainWindow {
         this.root.setOnKeyPressed(e -> {
             int index = DIGITS.indexOf(e.getCode());
             if (e.isShortcutDown() && index >= 0 && index < PLACES.size()) {
-                this.open(PLACES.get(index));
+                open(PLACES.get(index));
                 e.consume();
             } else if (e.getCode() == KeyCode.F1) {
-                this.showShortcuts();
+                showShortcuts();
                 e.consume();
             } else if (e.isShortcutDown() && e.getCode() == KeyCode.K) {
                 this.palette.show();
@@ -200,32 +200,29 @@ public final class MainWindow {
             }
         });
         EngineModel model = gui.model();
-        gui.subscriptions().onChange(model.connectionProperty(), (was, now) -> this.showConnection());
-        gui.subscriptions().onChange(model.serverNameProperty(), (was, now) -> this.showConnection());
-        gui.subscriptions().onChange(model.statusProperty(), (was, now) -> this.showStatus(now));
+        gui.subscriptions().onChange(model.connectionProperty(), (was, now) -> showConnection());
+        gui.subscriptions().onChange(model.serverNameProperty(), (was, now) -> showConnection());
+        gui.subscriptions().onChange(model.statusProperty(), (was, now) -> showStatus(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> {
-            this.success(gui.f("nj.transfers.completed", d.name()));
-            this.chime();
+            success(gui.f("nj.transfers.completed", d.name()));
+            chime();
         });
-        gui.subscriptions().onListChange(model.downloads().rows(), c -> this.showActive());
+        gui.subscriptions().onListChange(model.downloads().rows(), c -> showActive());
         model.chats().onMessage(chat -> {
             if (!this.current.equals("messages")) {
                 this.unread++;
-                this.showUnread();
+                showUnread();
                 String who = chat.nickProperty().get().isEmpty()
                         ? chat.address()
                         : chat.nickProperty().get();
-                this.message(gui.f("nj.chat.from", who));
-                this.chime();
+                message(gui.f("nj.chat.from", who));
+                chime();
             }
         });
-        this.showConnection();
-        this.showStatus(model.statusProperty().get());
-        this.show(
-                this.screens.containsKey(gui.settings().screen())
-                        ? gui.settings().screen()
-                        : "transfers");
+        showConnection();
+        showStatus(model.statusProperty().get());
+        show(this.screens.containsKey(gui.settings().screen()) ? gui.settings().screen() : "transfers");
     }
 
     public Parent root() {
@@ -239,17 +236,17 @@ public final class MainWindow {
 
     /** Shows a short message for a few seconds. */
     public void message(String text) {
-        this.show(text, new FontIcon(Material2AL.INFO), null, true);
+        show(text, new FontIcon(Material2AL.INFO), null, true);
     }
 
     /** Shows for a few seconds that something went well, such as a finished download. */
     public void success(String text) {
-        this.show(text, new FontIcon(Material2AL.CHECK_CIRCLE_OUTLINE), Styles.SUCCESS, true);
+        show(text, new FontIcon(Material2AL.CHECK_CIRCLE_OUTLINE), Styles.SUCCESS, true);
     }
 
     /** Shows a problem, which stays until the user closes it. */
     public void problem(String text) {
-        this.show(text, new FontIcon(Material2AL.ERROR_OUTLINE), Styles.DANGER, false);
+        show(text, new FontIcon(Material2AL.ERROR_OUTLINE), Styles.DANGER, false);
     }
 
     private void show(String text, FontIcon icon, String style, boolean fades) {
@@ -293,14 +290,14 @@ public final class MainWindow {
             return;
         }
         this.current = id;
-        this.content.getChildren().setAll(this.viewOf(id));
-        this.rail.get(this.placeOf(id)).setSelected(true);
+        this.content.getChildren().setAll(viewOf(id));
+        this.rail.get(placeOf(id)).setSelected(true);
         if (this.network.holds(id)) {
             this.lastNetwork = id;
         }
         if (id.equals("messages")) {
             this.unread = 0;
-            this.showUnread();
+            showUnread();
         }
         screen.shown();
         this.gui.settings().setScreen(id);
@@ -308,7 +305,7 @@ public final class MainWindow {
 
     // A place of the rail: a screen, or the network at the part last shown.
     private void open(String place) {
-        this.show(place.equals(NETWORK) ? this.lastNetwork : place);
+        show(place.equals(NETWORK) ? this.lastNetwork : place);
     }
 
     private String placeOf(String id) {
@@ -333,14 +330,14 @@ public final class MainWindow {
         double width = 0;
         double height = 0;
         for (String id : this.screens.keySet()) {
-            this.content.getChildren().setAll(this.viewOf(id));
+            this.content.getChildren().setAll(viewOf(id));
             this.root.applyCss();
             this.root.layout();
             width = Math.max(width, this.root.minWidth(-1));
             height = Math.max(height, this.root.minHeight(-1));
         }
         if (this.screens.containsKey(this.current)) {
-            this.content.getChildren().setAll(this.viewOf(this.current));
+            this.content.getChildren().setAll(viewOf(this.current));
         }
         return new Dimension2D(Math.ceil(width), Math.ceil(height));
     }
@@ -365,7 +362,7 @@ public final class MainWindow {
 
     private Node topBar() {
         this.connect.setId("connect");
-        this.connect.setOnAction(e -> this.toggleConnection());
+        this.connect.setOnAction(e -> toggleConnection());
         Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Material2AL.BRIGHTNESS_MEDIUM, this::toggleTheme);
         MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Material2AL.INPUT));
         importer.setOnAction(
@@ -376,17 +373,17 @@ public final class MainWindow {
         importer.setId("import");
         about.setId("about");
         MenuItem incoming = new MenuItem(this.gui.t("IDS_OPENINC"), Fx.icon(Material2AL.FOLDER_OPEN));
-        incoming.setOnAction(e -> this.openIncoming());
+        incoming.setOnAction(e -> openIncoming());
         incoming.setId("incoming");
         MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Material2MZ.SETTINGS));
-        options.setOnAction(e -> this.show("settings"));
+        options.setOnAction(e -> show("settings"));
         options.setId("options");
         MenuItem shortcuts = new MenuItem(this.gui.t("nj.shortcuts.title"), Fx.icon(Material2AL.KEYBOARD));
         shortcuts.setAccelerator(new KeyCodeCombination(KeyCode.F1));
-        shortcuts.setOnAction(e -> this.showShortcuts());
+        shortcuts.setOnAction(e -> showShortcuts());
         shortcuts.setId("shortcuts");
         MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Material2AL.ASSISTANT));
-        wizard.setOnAction(e -> this.showWizard());
+        wizard.setOnAction(e -> showWizard());
         wizard.setId("wizard");
         MenuButton tools = new MenuButton(
                 this.gui.t("nj.top.tools"),
@@ -404,13 +401,13 @@ public final class MainWindow {
         rates.getStyleClass().addAll(Styles.FLAT, "rates");
         rates.setTooltip(new Tooltip(this.gui.t("nj.tray.speed")));
         rates.setAccessibleText(this.gui.t("nj.tray.speed"));
-        rates.setOnAction(e -> this.showLimits(rates));
+        rates.setOnAction(e -> showLimits(rates));
         for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, rates, tools)) {
             Fx.whole(whole);
         }
         // The chips open the network, at the part they tell of.
-        this.opens(this.ed2k, "servers");
-        this.opens(this.kad, "kad");
+        opens(this.ed2k, "servers");
+        opens(this.kad, "kad");
         HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), rates, tools, theme);
         bar.getStyleClass().add("top-bar");
         return bar;
@@ -457,14 +454,14 @@ public final class MainWindow {
             button.setToggleGroup(group);
             button.setId("rail-" + place);
             // A rail button stays selected while its place shows.
-            button.setOnAction(e -> this.open(place));
+            button.setOnAction(e -> open(place));
             button.setMaxWidth(Double.MAX_VALUE);
             this.rail.put(place, button);
             box.getChildren().add(button);
         }
         this.networkDot.getStyleClass().add("network-dot");
-        this.showActive();
-        this.showUnread();
+        showActive();
+        showUnread();
         return box;
     }
 
@@ -473,12 +470,12 @@ public final class MainWindow {
         long active = this.gui.model().downloads().rows().stream()
                 .filter(r -> r.get().status() == DownloadInfo.Status.DOWNLOADING)
                 .count();
-        this.count(this.activeBadge, this.rail.get("transfers"), active, "nj.rail.active");
+        count(this.activeBadge, this.rail.get("transfers"), active, "nj.rail.active");
     }
 
     // The messages that came while the messages did not show, on their place.
     private void showUnread() {
-        this.count(this.unreadBadge, this.rail.get("messages"), this.unread, "nj.rail.unread");
+        count(this.unreadBadge, this.rail.get("messages"), this.unread, "nj.rail.unread");
     }
 
     private void count(Label badge, ToggleButton button, long value, String key) {
@@ -496,7 +493,7 @@ public final class MainWindow {
         Fx.leftToRight(this.lastLog);
         // The last line of the log opens the whole log; the version is in About and in the title.
         this.lastLog.setOnMouseClicked(e -> {
-            this.show("servers");
+            show("servers");
             this.servers.showLog();
         });
         this.lastLog.setCursor(Cursor.HAND);
@@ -510,7 +507,7 @@ public final class MainWindow {
     int dropped(String text) {
         List<Ed2kLink.FileLink> links = ClipboardWatch.fileLinks(text);
         for (Ed2kLink.FileLink link : links) {
-            this.gui.model().addDownload(link, added -> this.message(this.gui.f("nj.transfers.added", added.name())));
+            this.gui.model().addDownload(link, added -> message(this.gui.f("nj.transfers.added", added.name())));
         }
         return links.size();
     }
@@ -525,7 +522,7 @@ public final class MainWindow {
     // The banner's way out of being offline: what Connect does then.
     private void connectIfOff() {
         if (this.gui.model().connectionProperty().get() == EngineModel.Connection.DISCONNECTED) {
-            this.toggleConnection();
+            toggleConnection();
         }
     }
 
@@ -585,12 +582,12 @@ public final class MainWindow {
             case CONNECTING -> this.gui.t("IDS_CONNECTING") + " " + name;
             case CONNECTED -> name;
         };
-        this.state(
+        state(
                 this.ed2k,
                 "eD2K: " + text,
                 state == EngineModel.Connection.CONNECTED,
                 state == EngineModel.Connection.CONNECTING);
-        this.showNetwork();
+        showNetwork();
         this.banner.update(state, this.gui.model().statusProperty().get());
     }
 
@@ -599,7 +596,7 @@ public final class MainWindow {
         this.down.setText(formats.rate(status.downloadBytesPerSecond()));
         this.up.setText(formats.rate(status.uploadBytesPerSecond()));
         if (this.gui.model().connectionProperty().get() == EngineModel.Connection.CONNECTED) {
-            this.state(
+            state(
                     this.ed2k,
                     "eD2K: "
                             + this.gui
@@ -613,9 +610,9 @@ public final class MainWindow {
         }
         Optional<KadInfo> kadInfo = status.kad();
         if (kadInfo.isEmpty()) {
-            this.state(this.kad, "Kad: " + this.gui.t("nj.kad.off"), false, false);
+            state(this.kad, "Kad: " + this.gui.t("nj.kad.off"), false, false);
         } else if (!kadInfo.get().connected()) {
-            this.state(this.kad, "Kad: " + this.gui.t("IDS_NOTCONNECTED"), false, true);
+            state(this.kad, "Kad: " + this.gui.t("IDS_NOTCONNECTED"), false, true);
         } else {
             KadInfo k = kadInfo.get();
             boolean firewalled = k.firewalled();
@@ -623,7 +620,7 @@ public final class MainWindow {
             String udp = firewalled && (k.udpVerified() || k.udpFirewalled())
                     ? ", " + this.gui.t(k.udpFirewalled() ? "nj.kad.udpFirewalled" : "nj.kad.udpOpen")
                     : "";
-            this.state(
+            state(
                     this.kad,
                     "Kad: " + (firewalled ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN")) + udp,
                     !firewalled,
@@ -634,8 +631,8 @@ public final class MainWindow {
                 .orElse(""));
         this.counts.setText(this.gui.f(
                 "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
-        this.showNetwork();
-        this.showActive();
+        showNetwork();
+        showActive();
         this.banner.update(this.gui.model().connectionProperty().get(), status);
     }
 
@@ -705,7 +702,7 @@ public final class MainWindow {
     }
 
     private void opens(Label chip, String screen) {
-        chip.setOnMouseClicked(e -> this.show(screen));
+        chip.setOnMouseClicked(e -> show(screen));
         chip.setCursor(Cursor.HAND);
         chip.setTooltip(new Tooltip(this.gui.t("IDS_NETWORK")));
     }
@@ -719,7 +716,7 @@ public final class MainWindow {
         try {
             Folders.open(preferences.effectiveIncomingDir(this.gui.directories()));
         } catch (IOException e) {
-            this.problem(e.getMessage());
+            problem(e.getMessage());
         }
     }
 
@@ -749,7 +746,7 @@ public final class MainWindow {
             String title = place.equals(NETWORK)
                     ? this.gui.t("IDS_NETWORK")
                     : this.screens.get(place).title();
-            all.add(new CommandPalette.Command(title, shortcut(i), () -> this.open(place)));
+            all.add(new CommandPalette.Command(title, shortcut(i), () -> open(place)));
         }
         all.add(new CommandPalette.Command(this.connect.getText(), "", this::toggleConnection));
         all.add(new CommandPalette.Command(this.gui.t("IDS_OPENINC"), "", this::openIncoming));
@@ -776,14 +773,14 @@ public final class MainWindow {
         if (!links.isEmpty()) {
             String names = String.join(
                     ", ", links.stream().map(Ed2kLink.FileLink::name).toList());
-            return List.of(new CommandPalette.Command(
-                    this.gui.t("IDS_DOWNLOAD") + ": " + names, "", () -> this.dropped(text)));
+            return List.of(
+                    new CommandPalette.Command(this.gui.t("IDS_DOWNLOAD") + ": " + names, "", () -> dropped(text)));
         }
         if (text.regionMatches(true, 0, "ed2k://", 0, 7)) {
             return List.of();
         }
         return List.of(new CommandPalette.Command(this.gui.f("nj.palette.search", text), "", () -> {
-            this.show("search");
+            show("search");
             ((SearchScreen) this.screens.get("search")).searchFor(text);
         }));
     }

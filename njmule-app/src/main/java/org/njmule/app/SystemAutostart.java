@@ -121,12 +121,12 @@ abstract sealed class SystemAutostart implements Autostart {
         // user disabled in the Task Manager stays, with a flag beside it.
         @Override
         public boolean isOn() throws IOException {
-            return this.export(KEY)
+            return export(KEY)
                             .flatMap(Windows::value)
                             .filter(value ->
                                     value.toLowerCase(Locale.ROOT).contains(this.program.toLowerCase(Locale.ROOT)))
                             .isPresent()
-                    && !this.export(APPROVED_KEY).map(Windows::disabled).orElse(false);
+                    && !export(APPROVED_KEY).map(Windows::disabled).orElse(false);
         }
 
         @Override
@@ -134,22 +134,22 @@ abstract sealed class SystemAutostart implements Autostart {
             Path file = Files.createTempFile(this.configDir, "autostart-", ".reg");
             try {
                 // reg import takes version 5 files in UTF-16 with a byte order mark.
-                Files.writeString(file, this.reg(), StandardCharsets.UTF_16LE);
-                this.check(List.of("reg", "import", file.toString()));
+                Files.writeString(file, reg(), StandardCharsets.UTF_16LE);
+                check(List.of("reg", "import", file.toString()));
             } finally {
                 Files.deleteIfExists(file);
             }
             // Without its flag the value counts as enabled again.
-            if (this.export(APPROVED_KEY).map(Windows::disabled).orElse(false)) {
-                this.check(List.of("reg", "delete", APPROVED_KEY, "/v", VALUE, "/f"));
+            if (export(APPROVED_KEY).map(Windows::disabled).orElse(false)) {
+                check(List.of("reg", "delete", APPROVED_KEY, "/v", VALUE, "/f"));
             }
             logger.info("njMule now starts when the user logs in");
         }
 
         @Override
         public void turnOff() throws IOException {
-            if (this.export(KEY).flatMap(Windows::value).isPresent()) {
-                this.check(List.of("reg", "delete", KEY, "/v", VALUE, "/f"));
+            if (export(KEY).flatMap(Windows::value).isPresent()) {
+                check(List.of("reg", "delete", KEY, "/v", VALUE, "/f"));
             }
             logger.info("njMule no longer starts when the user logs in");
         }
@@ -171,7 +171,7 @@ abstract sealed class SystemAutostart implements Autostart {
         String reg() {
             return (char) 0xFEFF + "Windows Registry Editor Version 5.00\r\n\r\n"
                     + "[" + KEY_PATH + "]\r\n"
-                    + "\"" + VALUE + "\"=" + LinkAssociation.Windows.regString(this.commandLine()) + "\r\n";
+                    + "\"" + VALUE + "\"=" + LinkAssociation.Windows.regString(commandLine()) + "\r\n";
         }
 
         // reg query prints in the console's code page, which may lack letters of the program's path; an export is in
@@ -255,7 +255,7 @@ abstract sealed class SystemAutostart implements Autostart {
 
         @Override
         public void turnOn() throws IOException {
-            write(this.entry, this.desktopEntry());
+            write(this.entry, desktopEntry());
             logger.info("njMule now starts when the user logs in: {}", this.entry);
         }
 
@@ -313,7 +313,7 @@ abstract sealed class SystemAutostart implements Autostart {
 
         @Override
         public void turnOn() throws IOException {
-            write(this.agent, this.plist());
+            write(this.agent, plist());
             logger.info("njMule now starts when the user logs in: {}", this.agent);
         }
 

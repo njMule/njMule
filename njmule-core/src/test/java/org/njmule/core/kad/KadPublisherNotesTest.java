@@ -117,61 +117,61 @@ class KadPublisherNotesTest {
 
     @Test
     void shouldPublishTheCommentOfEachCommentedFileOnce() {
-        this.givenOurComment(MOVIE, FileComment.of("great", 5));
-        this.givenOurComment(PARTIAL, FileComment.of("", 1));
+        givenOurComment(MOVIE, FileComment.of("great", 5));
+        givenOurComment(PARTIAL, FileComment.of("", 1));
 
-        this.whenTimePasses(Duration.ofSeconds(20));
+        whenTimePasses(Duration.ofSeconds(20));
 
-        this.thenNotesWerePublishedFor(MOVIE, PARTIAL);
-        this.thenTheFirstNoteIs(MOVIE, "Great Movie.avi", 700_000_000L, FileComment.of("great", 5));
+        thenNotesWerePublishedFor(MOVIE, PARTIAL);
+        thenTheFirstNoteIs(MOVIE, "Great Movie.avi", 700_000_000L, FileComment.of("great", 5));
     }
 
     @Test
     void shouldPublishACommentAgainAfterADay() {
-        this.givenOurComment(MOVIE, FileComment.of("great", 5));
-        this.givenTimePasses(Duration.ofSeconds(20));
-        this.givenTimePasses(KadPublisher.NOTE_EVERY.minusMinutes(1));
+        givenOurComment(MOVIE, FileComment.of("great", 5));
+        givenTimePasses(Duration.ofSeconds(20));
+        givenTimePasses(KadPublisher.NOTE_EVERY.minusMinutes(1));
 
-        this.whenTimePasses(Duration.ofMinutes(2));
+        whenTimePasses(Duration.ofMinutes(2));
 
-        this.thenNotesWerePublishedFor(MOVIE, MOVIE);
+        thenNotesWerePublishedFor(MOVIE, MOVIE);
     }
 
     @Test
     void shouldPublishAChangedCommentAtOnce() {
-        this.givenOurComment(MOVIE, FileComment.of("great", 5));
-        this.givenTimePasses(Duration.ofSeconds(20));
-        this.givenOurComment(MOVIE, FileComment.of("a fake", 1));
+        givenOurComment(MOVIE, FileComment.of("great", 5));
+        givenTimePasses(Duration.ofSeconds(20));
+        givenOurComment(MOVIE, FileComment.of("a fake", 1));
 
-        this.whenTimePasses(Duration.ofSeconds(4));
+        whenTimePasses(Duration.ofSeconds(4));
 
-        this.thenNotesWerePublishedFor(MOVIE, MOVIE);
-        this.thenTheLastNoteSays(FileComment.of("a fake", 1));
+        thenNotesWerePublishedFor(MOVIE, MOVIE);
+        thenTheLastNoteSays(FileComment.of("a fake", 1));
     }
 
     @Test
     void shouldNoLongerPublishACommentTakenAway() {
-        this.givenOurComment(MOVIE, FileComment.of("great", 5));
-        this.givenTimePasses(Duration.ofSeconds(20));
-        this.givenOurCommentIsTakenAway(MOVIE);
+        givenOurComment(MOVIE, FileComment.of("great", 5));
+        givenTimePasses(Duration.ofSeconds(20));
+        givenOurCommentIsTakenAway(MOVIE);
 
-        this.whenTimePasses(KadPublisher.NOTE_EVERY.plusMinutes(1));
+        whenTimePasses(KadPublisher.NOTE_EVERY.plusMinutes(1));
 
-        this.thenNotesWerePublishedFor(MOVIE);
-        this.thenTheFirstPublishNowReadsNoComment();
+        thenNotesWerePublishedFor(MOVIE);
+        thenTheFirstPublishNowReadsNoComment();
     }
 
     @Test
     void shouldPublishOneNoteAtATimeAndOnlyWhenReachable() {
-        this.givenOurComment(MOVIE, FileComment.of("great", 5));
-        this.givenANotePublishRunsAlready();
-        this.givenTimePasses(Duration.ofSeconds(20));
-        this.givenNoNotePublishRuns();
-        this.givenTheNodeIsFirewalled();
+        givenOurComment(MOVIE, FileComment.of("great", 5));
+        givenANotePublishRunsAlready();
+        givenTimePasses(Duration.ofSeconds(20));
+        givenNoNotePublishRuns();
+        givenTheNodeIsFirewalled();
 
-        this.whenTimePasses(Duration.ofSeconds(20));
+        whenTimePasses(Duration.ofSeconds(20));
 
-        this.thenNoNoteWasPublished();
+        thenNoNoteWasPublished();
     }
 
     private void givenOurComment(Hash16 file, FileComment comment) {
@@ -195,7 +195,7 @@ class KadPublisherNotesTest {
     }
 
     private void givenTimePasses(Duration time) {
-        this.whenTimePasses(time);
+        whenTimePasses(time);
     }
 
     // The publisher runs every second, as the engine runs it.

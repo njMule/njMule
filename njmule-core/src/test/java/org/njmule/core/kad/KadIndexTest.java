@@ -102,30 +102,27 @@ class KadIndexTest {
             this.index.publishKeyword(this.keyword, new KadMessages.Entry(UInt128.random(this.random), tags), IP, NOW);
         }
 
-        assertThat(this.search(new SearchExpr.Keyword("Linux ISO"))).hasSize(5);
-        assertThat(this.search(new SearchExpr.Keyword("windows"))).isEmpty();
-        assertThat(this.search(new SearchExpr.StringAttr(FileTag.FILEFORMAT, "ISO")))
-                .hasSize(5);
-        assertThat(this.search(new SearchExpr.StringAttr(FileTag.FILEFORMAT, "avi")))
-                .isEmpty();
-        assertThat(this.search(new SearchExpr.StringAttr(FileTag.MEDIA_ARTIST, "even")))
+        assertThat(search(new SearchExpr.Keyword("Linux ISO"))).hasSize(5);
+        assertThat(search(new SearchExpr.Keyword("windows"))).isEmpty();
+        assertThat(search(new SearchExpr.StringAttr(FileTag.FILEFORMAT, "ISO"))).hasSize(5);
+        assertThat(search(new SearchExpr.StringAttr(FileTag.FILEFORMAT, "avi"))).isEmpty();
+        assertThat(search(new SearchExpr.StringAttr(FileTag.MEDIA_ARTIST, "even")))
                 .hasSize(3);
-        assertThat(this.search(new SearchExpr.StringAttr(FileTag.DESCRIPTION, "x")))
-                .isEmpty();
-        assertThat(this.search(size(Comparison.EQUAL, 2_000))).hasSize(1);
-        assertThat(this.search(size(Comparison.GREATER, 2_000))).hasSize(3);
-        assertThat(this.search(size(Comparison.LESS, 2_000))).hasSize(1);
-        assertThat(this.search(size(Comparison.GREATER_EQUAL, 2_000))).hasSize(4);
-        assertThat(this.search(size(Comparison.LESS_EQUAL, 2_000))).hasSize(2);
-        assertThat(this.search(size(Comparison.NOT_EQUAL, 2_000))).hasSize(4);
+        assertThat(search(new SearchExpr.StringAttr(FileTag.DESCRIPTION, "x"))).isEmpty();
+        assertThat(search(size(Comparison.EQUAL, 2_000))).hasSize(1);
+        assertThat(search(size(Comparison.GREATER, 2_000))).hasSize(3);
+        assertThat(search(size(Comparison.LESS, 2_000))).hasSize(1);
+        assertThat(search(size(Comparison.GREATER_EQUAL, 2_000))).hasSize(4);
+        assertThat(search(size(Comparison.LESS_EQUAL, 2_000))).hasSize(2);
+        assertThat(search(size(Comparison.NOT_EQUAL, 2_000))).hasSize(4);
         SearchExpr bitrate = new SearchExpr.NumericAttr(FileTag.MEDIA_BITRATE, Comparison.GREATER, 300);
-        assertThat(this.search(bitrate)).hasSize(3);
-        assertThat(this.search(new SearchExpr.NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 0)))
+        assertThat(search(bitrate)).hasSize(3);
+        assertThat(search(new SearchExpr.NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 0)))
                 .isEmpty();
         SearchExpr even = new SearchExpr.StringAttr(FileTag.MEDIA_ARTIST, "Even");
-        assertThat(this.search(new SearchExpr.And(even, bitrate))).hasSize(2);
-        assertThat(this.search(new SearchExpr.Or(even, bitrate))).hasSize(4);
-        assertThat(this.search(new SearchExpr.Not(new SearchExpr.Keyword("linux"), even)))
+        assertThat(search(new SearchExpr.And(even, bitrate))).hasSize(2);
+        assertThat(search(new SearchExpr.Or(even, bitrate))).hasSize(4);
+        assertThat(search(new SearchExpr.Not(new SearchExpr.Keyword("linux"), even)))
                 .hasSize(2);
         assertThat(this.index.searchKeyword(this.keyword, Optional.empty(), 3, NOW))
                 .hasSize(2);
@@ -262,9 +259,9 @@ class KadIndexTest {
     void aTermWithoutAnyWordMatchesNothing() {
         this.index.publishKeyword(this.keyword, entry(UInt128.random(this.random), "linux.iso", 10), IP, NOW);
 
-        assertThat(this.search(new SearchExpr.Keyword("-._"))).isEmpty();
-        assertThat(this.search(new SearchExpr.Keyword("\"\""))).isEmpty();
-        assertThat(this.search(new SearchExpr.Keyword("(linux)"))).hasSize(1);
+        assertThat(search(new SearchExpr.Keyword("-._"))).isEmpty();
+        assertThat(search(new SearchExpr.Keyword("\"\""))).isEmpty();
+        assertThat(search(new SearchExpr.Keyword("(linux)"))).hasSize(1);
     }
 
     @Test
@@ -275,14 +272,14 @@ class KadIndexTest {
         for (int i = 0; i < 5; i++) {
             this.index.publishKeyword(this.keyword, entry(file, "Pushed.avi", 10), IP + 2, NOW);
         }
-        assertThat(this.name(file)).as("one address publishing again").isEqualTo("Popular.avi");
+        assertThat(name(file)).as("one address publishing again").isEqualTo("Popular.avi");
 
         // Switching names back and forth does not add up either.
         for (int i = 0; i < 5; i++) {
             this.index.publishKeyword(this.keyword, entry(file, "Pushed.avi", 10), IP + 3, NOW);
             this.index.publishKeyword(this.keyword, entry(file, "Other.avi", 10), IP + 3, NOW);
         }
-        assertThat(this.name(file)).isEqualTo("Popular.avi");
+        assertThat(name(file)).isEqualTo("Popular.avi");
 
         for (int i = 0; i < 1_000; i++) {
             this.index.publishKeyword(this.keyword, entry(file, "name " + i + ".avi", 10), IP + 10 + i, NOW);
@@ -295,7 +292,7 @@ class KadIndexTest {
                         FileTag.PUBLISHINFO)
                 .orElseThrow();
         assertThat(info >>> 24).as("distinct names kept").isLessThanOrEqualTo(255);
-        assertThat(this.name(file)).isEqualTo("Popular.avi");
+        assertThat(name(file)).isEqualTo("Popular.avi");
     }
 
     @Test
@@ -337,8 +334,8 @@ class KadIndexTest {
 
         assertThat(this.index.searchKeyword(this.keyword, Optional.empty(), 5, NOW))
                 .isEmpty();
-        assertThat(this.search(new SearchExpr.Keyword("ÜBER"))).hasSize(1);
-        assertThat(this.search(new SearchExpr.Keyword("\"über alles\""))).hasSize(1);
+        assertThat(search(new SearchExpr.Keyword("ÜBER"))).hasSize(1);
+        assertThat(search(new SearchExpr.Keyword("\"über alles\""))).hasSize(1);
     }
 
     private String name(UInt128 file) {

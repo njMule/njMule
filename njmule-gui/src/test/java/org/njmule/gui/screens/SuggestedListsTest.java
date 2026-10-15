@@ -50,32 +50,32 @@ class SuggestedListsTest {
 
     @Test
     void shouldFillInAWellKnownServerListWhileNoneWasUsed() throws Exception {
-        this.givenNjMuleStarted();
+        givenNjMuleStarted();
 
-        this.whenTheServersAreShown();
+        whenTheServersAreShown();
 
-        this.thenTheBoxHolds(SERVER_MET);
-        this.thenNothingIsRemembered("serverMet");
+        thenTheBoxHolds(SERVER_MET);
+        thenNothingIsRemembered("serverMet");
     }
 
     @Test
     void shouldFillInAWellKnownNodesListWhileNoneWasUsed() throws Exception {
-        this.givenNjMuleStarted();
+        givenNjMuleStarted();
 
-        this.whenKadIsShown();
+        whenKadIsShown();
 
-        this.thenTheBoxHolds(NODES_DAT);
-        this.thenNothingIsRemembered("nodesDat");
+        thenTheBoxHolds(NODES_DAT);
+        thenNothingIsRemembered("nodesDat");
     }
 
     @Test
     void shouldOfferTheListsUsedBeforeInsteadOfTheWellKnownOne() throws Exception {
-        this.givenNjMuleStarted();
-        this.givenTheServerListUsedBefore("https://example.org/server.met");
+        givenNjMuleStarted();
+        givenTheServerListUsedBefore("https://example.org/server.met");
 
-        this.whenTheServersAreShown();
+        whenTheServersAreShown();
 
-        this.thenTheBoxOffersOnly("https://example.org/server.met");
+        thenTheBoxOffersOnly("https://example.org/server.met");
     }
 
     private void givenNjMuleStarted() throws Exception {

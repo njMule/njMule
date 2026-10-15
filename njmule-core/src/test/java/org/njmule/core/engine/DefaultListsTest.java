@@ -31,16 +31,16 @@ class DefaultListsTest {
 
     @Test
     void theShippedServersAreServersOnPublicAddresses() {
-        this.whenTheShippedServersAreRead();
-        this.thenThereAreServers();
-        this.thenEveryServerHasAPublicAddressAndAPort();
+        whenTheShippedServersAreRead();
+        thenThereAreServers();
+        thenEveryServerHasAPublicAddressAndAPort();
     }
 
     @Test
     void theShippedContactsAreOnlyToBootstrapFrom() {
-        this.whenTheShippedContactsAreRead();
-        this.thenTheyAreOnlyToBootstrapFrom();
-        this.thenEveryContactHasAPublicAddressAndAPort();
+        whenTheShippedContactsAreRead();
+        thenTheyAreOnlyToBootstrapFrom();
+        thenEveryContactHasAPublicAddressAndAPort();
     }
 
     private void whenTheShippedServersAreRead() {

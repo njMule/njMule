@@ -60,7 +60,7 @@ public final class Known2Met {
 
         /** The leaves, unpacked anew at each call. */
         public List<Hash20> blockHashes() {
-            List<Hash20> hashes = new ArrayList<>(this.blockCount());
+            List<Hash20> hashes = new ArrayList<>(blockCount());
             for (int at = 0; at < this.leaves.length; at += Hash20.LENGTH) {
                 hashes.add(Hash20.of(this.leaves, at));
             }
@@ -85,7 +85,7 @@ public final class Known2Met {
 
         @Override
         public String toString() {
-            return "Entry[" + this.masterHash.toBase32() + ", " + this.blockCount() + " leaves]";
+            return "Entry[" + this.masterHash.toBase32() + ", " + blockCount() + " leaves]";
         }
     }
 

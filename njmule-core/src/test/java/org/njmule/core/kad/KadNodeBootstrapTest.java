@@ -83,49 +83,49 @@ class KadNodeBootstrapTest {
 
     @Test
     void shouldAskOnlyTheFiftyClosestUsableContactsOneByOne() {
-        this.givenABootstrapListOfGoodAndBadContacts(60);
+        givenABootstrapListOfGoodAndBadContacts(60);
 
-        this.whenSecondsPass(10);
+        whenSecondsPass(10);
 
-        this.thenBootstrapRequestsWent(5);
+        thenBootstrapRequestsWent(5);
 
-        this.whenSecondsPass(200);
+        whenSecondsPass(200);
 
-        this.thenBootstrapRequestsWentToTheClosestGoodContacts(KadNode.BOOTSTRAP_CONTACTS);
-        this.thenNoBadContactWasAsked();
-        this.thenTheNodeHasContacts(0);
+        thenBootstrapRequestsWentToTheClosestGoodContacts(KadNode.BOOTSTRAP_CONTACTS);
+        thenNoBadContactWasAsked();
+        thenTheNodeHasContacts(0);
     }
 
     @Test
     void shouldObfuscateTheRequestForANodeThatTakesIt() {
-        this.givenABootstrapListOfGoodAndBadContacts(1);
+        givenABootstrapListOfGoodAndBadContacts(1);
 
-        this.whenSecondsPass(1);
+        whenSecondsPass(1);
 
-        this.thenTheRequestIsObfuscatedFor(this.good.getFirst().id());
+        thenTheRequestIsObfuscatedFor(this.good.getFirst().id());
     }
 
     @Test
     void shouldStopAskingOnceConnectedAndNeverTakeTheNodeThatAnswered() {
-        this.givenABootstrapListOfGoodAndBadContacts(10);
-        this.givenSecondsPass(1);
+        givenABootstrapListOfGoodAndBadContacts(10);
+        givenSecondsPass(1);
 
-        this.whenTheAskedNodeAnswersWithContacts(3);
-        this.whenSecondsPass(60);
+        whenTheAskedNodeAnswersWithContacts(3);
+        whenSecondsPass(60);
 
-        this.thenBootstrapRequestsWent(1);
-        this.thenTheNodeHasContacts(3);
-        this.thenTheAnsweringNodeIsNoContact();
+        thenBootstrapRequestsWent(1);
+        thenTheNodeHasContacts(3);
+        thenTheAnsweringNodeIsNoContact();
     }
 
     @Test
     void shouldTellWhetherThereWasANodesDatToLoad() throws IOException {
-        this.whenTheNodesAreLoaded();
-        this.thenThereWasNoNodesDat();
+        whenTheNodesAreLoaded();
+        thenThereWasNoNodesDat();
 
-        this.givenANodesDat();
-        this.whenTheNodesAreLoaded();
-        this.thenThereWasANodesDat();
+        givenANodesDat();
+        whenTheNodesAreLoaded();
+        thenThereWasANodesDat();
     }
 
     private void givenANodesDat() throws IOException {
@@ -160,7 +160,7 @@ class KadNodeBootstrapTest {
     }
 
     private void givenSecondsPass(int seconds) {
-        this.whenSecondsPass(seconds);
+        whenSecondsPass(seconds);
     }
 
     private void whenSecondsPass(int seconds) {
@@ -171,7 +171,7 @@ class KadNodeBootstrapTest {
     }
 
     private void whenTheAskedNodeAnswersWithContacts(int count) {
-        Sent request = this.bootstrapRequests().getFirst();
+        Sent request = bootstrapRequests().getFirst();
         List<KadMessages.Contact> contacts = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             contacts.add(new KadMessages.Contact(UInt128.random(this.random), Ipv4.of(70 + i, 1, 1, 1), PORT, 4662, 8));
@@ -187,7 +187,7 @@ class KadNodeBootstrapTest {
     }
 
     private void thenBootstrapRequestsWent(int count) {
-        assertThat(this.bootstrapRequests()).hasSize(count);
+        assertThat(bootstrapRequests()).hasSize(count);
     }
 
     private void thenBootstrapRequestsWentToTheClosestGoodContacts(int count) {
@@ -197,7 +197,7 @@ class KadNodeBootstrapTest {
                 .limit(count)
                 .map(NodesDat.Contact::ip)
                 .toList();
-        assertThat(this.bootstrapRequests()).extracting(Sent::ip).containsExactlyElementsOf(closest);
+        assertThat(bootstrapRequests()).extracting(Sent::ip).containsExactlyElementsOf(closest);
     }
 
     private void thenNoBadContactWasAsked() {
@@ -206,7 +206,7 @@ class KadNodeBootstrapTest {
     }
 
     private void thenTheRequestIsObfuscatedFor(UInt128 id) {
-        assertThat(this.bootstrapRequests())
+        assertThat(bootstrapRequests())
                 .singleElement()
                 .satisfies(s -> assertThat(s.receiverId()).contains(id));
     }
@@ -216,7 +216,7 @@ class KadNodeBootstrapTest {
     }
 
     private void thenTheAnsweringNodeIsNoContact() {
-        int answering = this.bootstrapRequests().getFirst().ip();
+        int answering = bootstrapRequests().getFirst().ip();
         assertThat(this.node.contactInfos())
                 .extracting(c -> c.address())
                 .doesNotContain(Ipv4.format(answering) + ":" + PORT);

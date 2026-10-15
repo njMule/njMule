@@ -58,7 +58,7 @@ class ServerControlTest {
 
     @Test
     void aServerTheFiltersRefuseIsNotConnectedTo() throws Exception {
-        AppDirectories dirs = this.dirs("security.filterLan=true\n");
+        AppDirectories dirs = dirs("security.filterLan=true\n");
         Files.write(
                 dirs.config().resolve(Network.IPFILTER_FILE),
                 IpFilterDat.write(List.of(
@@ -79,7 +79,7 @@ class ServerControlTest {
 
     @Test
     void serversThatCanBeFoundAreRemovedWhenOthersCannot() throws Exception {
-        AppDirectories dirs = this.dirs("");
+        AppDirectories dirs = dirs("");
         Path met = this.dir.resolve("other.met");
         Files.write(met, ServerMet.write(List.of(new ServerMet.Server(Ipv4.of(81, 2, 3, 4), 4661, List.of()))));
         try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
@@ -97,7 +97,7 @@ class ServerControlTest {
 
     @Test
     void datagramsFromIpv6AddressesAreIgnored() throws Exception {
-        AppDirectories dirs = this.dirs("");
+        AppDirectories dirs = dirs("");
         Preferences prefs = Preferences.defaults();
         try (EngineLoop loop = EngineLoop.start()) {
             Network network = loop.submit(() -> new Network(

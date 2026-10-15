@@ -32,24 +32,24 @@ class LoginThrottleTest {
 
     @Test
     void shouldCountTheAddressesOfOneIpv6NetworkTogether() {
-        this.givenFailedAttemptsFromAddressesOf("2001:db8:1:2::", Sessions.MAX_FAILURES);
+        givenFailedAttemptsFromAddressesOf("2001:db8:1:2::", Sessions.MAX_FAILURES);
 
-        this.whenAnAttemptComesFrom("2001:db8:1:2:abcd::99");
+        whenAnAttemptComesFrom("2001:db8:1:2:abcd::99");
 
-        this.thenTheAttemptIsAllowed(false);
+        thenTheAttemptIsAllowed(false);
 
-        this.whenAnAttemptComesFrom("2001:db8:1:3::1");
+        whenAnAttemptComesFrom("2001:db8:1:3::1");
 
-        this.thenTheAttemptIsAllowed(true);
+        thenTheAttemptIsAllowed(true);
     }
 
     @Test
     void shouldCountEachIpv4AddressOnItsOwn() {
-        this.givenFailedAttemptsFromAddressesOf("192.0.2.", Sessions.MAX_FAILURES);
+        givenFailedAttemptsFromAddressesOf("192.0.2.", Sessions.MAX_FAILURES);
 
-        this.whenAnAttemptComesFrom("192.0.2.200");
+        whenAnAttemptComesFrom("192.0.2.200");
 
-        this.thenTheAttemptIsAllowed(true);
+        thenTheAttemptIsAllowed(true);
     }
 
     private void givenFailedAttemptsFromAddressesOf(String prefix, int count) {

@@ -80,27 +80,27 @@ class DownloadDetailsTest {
 
     @Test
     void aPartWithAnyByteMissingIsNotComplete() {
-        this.whenTheCompletePartsAreCounted(FILM.parts(), 4);
-        this.thenTheyAre(2);
+        whenTheCompletePartsAreCounted(FILM.parts(), 4);
+        thenTheyAre(2);
     }
 
     @Test
     void theDetailsOpenFromTheirButtonAndShowTheDownloadChosen() throws Exception {
-        this.givenTheTransfersWith(FILM);
-        this.thenTheDetailsAre(false);
-        this.whenTheDetailsButtonIsPressed();
-        this.thenTheDetailsAre(true);
-        this.thenTheDetailsTell("Choose one download");
-        this.whenTheDownloadIsChosen();
-        this.thenTheDetailsTell("film.mkv", "2 / 4", "7", "High");
-        this.thenTheSettingsRemember(true);
+        givenTheTransfersWith(FILM);
+        thenTheDetailsAre(false);
+        whenTheDetailsButtonIsPressed();
+        thenTheDetailsAre(true);
+        thenTheDetailsTell("Choose one download");
+        whenTheDownloadIsChosen();
+        thenTheDetailsTell("film.mkv", "2 / 4", "7", "High");
+        thenTheSettingsRemember(true);
     }
 
     @Test
     void altEnterOpensTheDetails() throws Exception {
-        this.givenTheTransfersWith(FILM);
-        this.whenAltEnterIsPressed();
-        this.thenTheDetailsAre(true);
+        givenTheTransfersWith(FILM);
+        whenAltEnterIsPressed();
+        thenTheDetailsAre(true);
     }
 
     private void givenTheTransfersWith(DownloadInfo download) throws Exception {

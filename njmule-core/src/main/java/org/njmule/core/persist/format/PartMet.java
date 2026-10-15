@@ -104,7 +104,7 @@ public final class PartMet {
          * the end are dropped; overlaps are left for the gap list to merge.
          */
         public List<Gap> gaps() {
-            long size = this.size().orElse(0);
+            long size = size().orElse(0);
             Map<String, long[]> pairs = new HashMap<>();
             for (Tag tag : this.tags) {
                 String raw = tag.name().raw();

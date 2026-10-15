@@ -207,7 +207,7 @@ public final class PartFileStorage implements AutoCloseable {
                         try {
                             AtomicFiles.move(this.path, target);
                         } catch (AtomicMoveNotSupportedException e) {
-                            this.copyTo(target);
+                            copyTo(target);
                         } catch (IOException e) {
                             Files.deleteIfExists(target);
                             throw e;
@@ -245,7 +245,7 @@ public final class PartFileStorage implements AutoCloseable {
     /** Closes the file after the queued operations; closing it again does nothing. */
     @Override
     public void close() {
-        this.closeThen(true, () -> {});
+        closeThen(true, () -> {});
     }
 
     /** Closes the file after the queued operations, then deletes it and {@code others}, as for a cancelled download. */
@@ -253,7 +253,7 @@ public final class PartFileStorage implements AutoCloseable {
         List<Path> files = new ArrayList<>();
         files.add(this.path);
         files.addAll(List.of(others));
-        this.closeThen(false, () -> {
+        closeThen(false, () -> {
             for (Path file : files) {
                 try {
                     Files.deleteIfExists(file);

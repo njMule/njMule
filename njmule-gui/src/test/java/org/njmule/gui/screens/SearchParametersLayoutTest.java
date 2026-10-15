@@ -50,11 +50,11 @@ class SearchParametersLayoutTest {
 
     @Test
     void shouldShowTheFrenchLabelsWholeInANarrowWindow() throws Exception {
-        this.givenTheSearchScreenIn(Locale.FRENCH);
+        givenTheSearchScreenIn(Locale.FRENCH);
 
-        this.whenTheWindowIsNarrowedTo(640);
+        whenTheWindowIsNarrowedTo(640);
 
-        this.thenNoParameterLabelIsCut();
+        thenNoParameterLabelIsCut();
     }
 
     private void givenTheSearchScreenIn(Locale language) throws Exception {

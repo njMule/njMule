@@ -57,40 +57,40 @@ class KadWordsTest {
 
     @Test
     void kadOffSaysHowToStartItAndOpensTheWaysIn() throws Exception {
-        this.givenTheKadScreen();
-        this.thenKadSays("Kad is off. It finds sources and files without servers: connect to start it.");
-        this.thenTheWaysInAreOpen(true);
+        givenTheKadScreen();
+        thenKadSays("Kad is off. It finds sources and files without servers: connect to start it.");
+        thenTheWaysInAreOpen(true);
     }
 
     @Test
     void kadOnClosesTheWaysInAndSaysOthersReachUs() throws Exception {
-        this.givenTheKadScreen();
-        this.whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
-        this.thenKadSays("Kad is on, and other nodes can reach you.");
-        this.thenTheToneIs("success");
-        this.thenTheWaysInAreOpen(false);
+        givenTheKadScreen();
+        whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
+        thenKadSays("Kad is on, and other nodes can reach you.");
+        thenTheToneIs("success");
+        thenTheWaysInAreOpen(false);
     }
 
     @Test
     void kadBehindAFirewallNamesThePortToOpen() throws Exception {
-        this.givenTheKadScreen();
-        this.whenKadIs(Statuses.kad(true, true, "192.0.2.7"));
-        this.thenKadSays("Kad is on, but other nodes cannot reach you on port 4662: open it in your router, or turn"
+        givenTheKadScreen();
+        whenKadIs(Statuses.kad(true, true, "192.0.2.7"));
+        thenKadSays("Kad is on, but other nodes cannot reach you on port 4662: open it in your router, or turn"
                 + " on UPnP in the options.");
-        this.thenTheToneIs("warning");
+        thenTheToneIs("warning");
     }
 
     @Test
     void theWaysInStayAsTheUserLeftThemUntilKadConnectsOrStops() throws Exception {
-        this.givenTheKadScreen();
-        this.whenKadIs(new KadInfo(false, 3, 0, false, "", "", 4672));
-        this.thenKadSays("Kad is looking for the nodes it knows. If it finds none, give it some below.");
-        this.whenTheUserClosesTheWaysIn();
-        this.whenKadIs(new KadInfo(false, 5, 1, false, "", "", 4672));
-        this.thenTheWaysInAreOpen(false);
-        this.whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
-        this.whenKadStops();
-        this.thenTheWaysInAreOpen(true);
+        givenTheKadScreen();
+        whenKadIs(new KadInfo(false, 3, 0, false, "", "", 4672));
+        thenKadSays("Kad is looking for the nodes it knows. If it finds none, give it some below.");
+        whenTheUserClosesTheWaysIn();
+        whenKadIs(new KadInfo(false, 5, 1, false, "", "", 4672));
+        thenTheWaysInAreOpen(false);
+        whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
+        whenKadStops();
+        thenTheWaysInAreOpen(true);
     }
 
     private void givenTheKadScreen() throws Exception {
@@ -100,15 +100,15 @@ class KadWordsTest {
                         real, Map.of("status", args -> CompletableFuture.completedFuture(this.status.get()))));
         this.screen = FxTesting.onFx(() -> new KadScreen(this.test.gui));
         this.test.show(FxTesting.onFx(this.screen::view));
-        this.status(this.status.get());
+        status(this.status.get());
     }
 
     private void whenKadIs(KadInfo kad) throws Exception {
-        this.status(Statuses.kadOnly(Optional.of(kad), PORT));
+        status(Statuses.kadOnly(Optional.of(kad), PORT));
     }
 
     private void whenKadStops() throws Exception {
-        this.status(Statuses.kadOnly(Optional.empty(), PORT));
+        status(Statuses.kadOnly(Optional.empty(), PORT));
     }
 
     private void whenTheUserClosesTheWaysIn() throws Exception {

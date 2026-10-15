@@ -109,7 +109,7 @@ public final class Messaging implements AutoCloseable {
     private final Map<Hash16, ChatFilter.State> filterStates = new LinkedHashMap<>(16, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Hash16, ChatFilter.State> eldest) {
-            return this.size() > MAX_FILTER_STATES;
+            return size() > MAX_FILTER_STATES;
         }
     };
 
@@ -138,18 +138,18 @@ public final class Messaging implements AutoCloseable {
         if (text.isBlank()) {
             return;
         }
-        this.prune();
+        prune();
         Conversation c = this.conversations.computeIfAbsent(to, a -> new Conversation());
         c.wrote = true;
         if (c.isOpen()) {
-            this.filterState(c.peer.userHash()).wrote();
+            filterState(c.peer.userHash()).wrote();
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
             return;
         }
         c.pending.add(text);
         if (!c.connecting) {
             c.connecting = true;
-            this.connect(to, c);
+            connect(to, c);
         }
     }
 
@@ -168,22 +168,22 @@ public final class Messaging implements AutoCloseable {
             return false;
         }
         InetSocketAddress address = new InetSocketAddress(connection.getAddress(), peer.tcpPort());
-        this.prune();
+        prune();
         Conversation c = this.conversations.computeIfAbsent(address, a -> new Conversation());
         if (!c.isOpen() || c.own == null) {
             c.peer = peer;
             c.sender = reply;
             c.open = open;
             c.overOwn = false;
-            this.flush(address, c);
+            flush(address, c);
         }
-        this.handle(address, peer, proven, packet);
+        handle(address, peer, proven, packet);
         return true;
     }
 
     /** The clients we chat with now. */
     public int conversations() {
-        this.prune();
+        prune();
         return this.conversations.size();
     }
 
@@ -211,11 +211,11 @@ public final class Messaging implements AutoCloseable {
             try {
                 TcpConnection connection =
                         TcpConnector.connectToClient(to, Optional.empty(), CONNECT_TIMEOUT, this.random);
-                if (!this.loop.postOutcome(() -> this.connected(to, c, connection))) {
+                if (!this.loop.postOutcome(() -> connected(to, c, connection))) {
                     connection.close();
                 }
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.unreachable(to, c, String.valueOf(e.getMessage())));
+                this.loop.postOutcome(() -> unreachable(to, c, String.valueOf(e.getMessage())));
             }
         });
     }
@@ -230,7 +230,7 @@ public final class Messaging implements AutoCloseable {
             connection.setReadTimeout(IDLE);
         } catch (SocketException e) {
             connection.close();
-            this.unreachable(to, c, String.valueOf(e.getMessage()));
+            unreachable(to, c, String.valueOf(e.getMessage()));
             return;
         }
         connection.start(new Handler(to, c), Messaging::unpack);
@@ -250,7 +250,7 @@ public final class Messaging implements AutoCloseable {
 
     private void flush(InetSocketAddress to, Conversation c) {
         if (!c.pending.isEmpty()) {
-            this.filterState(c.peer.userHash()).wrote();
+            filterState(c.peer.userHash()).wrote();
         }
         for (String text : c.pending) {
             c.sender.accept(ChatMessages.message(text, unicode(c.peer)));
@@ -267,7 +267,7 @@ public final class Messaging implements AutoCloseable {
             if (packet.protocol() == Protocol.EDONKEY) {
                 String text = ChatMessages.text(packet);
                 boolean friend = proven && this.friends.test(peer.userHash());
-                if (!this.filter.get().shows(this.filterState(peer.userHash()), friend, text)) {
+                if (!this.filter.get().shows(filterState(peer.userHash()), friend, text)) {
                     logger.debug("Filtered a message from {}", address);
                     return;
                 }
@@ -317,7 +317,7 @@ public final class Messaging implements AutoCloseable {
             if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.HELLOANSWER.code()) {
                 connection.setFrameLimit(FrameLimits.CLIENT);
             }
-            if (!Messaging.this.loop.post(() -> this.received(connection, packet))) {
+            if (!Messaging.this.loop.post(() -> received(connection, packet))) {
                 connection.close();
             }
         }

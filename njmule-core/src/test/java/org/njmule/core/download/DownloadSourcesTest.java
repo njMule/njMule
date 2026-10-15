@@ -115,7 +115,7 @@ class DownloadSourcesTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -129,18 +129,18 @@ class DownloadSourcesTest {
 
     @Test
     void aSourceTellsItsCommentAndOtherSourcesAndKeepsUsInItsQueue() throws Exception {
-        ScriptedSource source = this.source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
-        DownloadManager manager = this.manager();
+        ScriptedSource source = source(1 << Hello.MISC1_AICH_SHIFT, Hello.MISC2_SOURCE_EXCHANGE2);
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("31".repeat(16));
-        this.onLoop(() -> manager.add(source.link("talk.bin", 5000, hash)));
+        onLoop(() -> manager.add(source.link("talk.bin", 5000, hash)));
 
         ScriptedSource.Link link = source.accept();
         assertThat(names(link.until(Opcodes.Extended.REQUESTSOURCES2)))
                 .as("a source able to is asked for the AICH hash and for other sources")
                 .containsExactly("REQUESTFILENAME", "SETREQFILEID", "AICHFILEHASHREQ", "REQUESTSOURCES2");
-        SourceInfo asking = this.awaitSource(source, s -> s.state() == SourceInfo.State.ASKING);
+        SourceInfo asking = awaitSource(source, s -> s.state() == SourceInfo.State.ASKING);
         assertThat(asking.nick()).contains("scripted");
-        assertThat(this.onLoop(manager::describe)).contains("talk.bin missing 5000:", "REQUESTING");
+        assertThat(onLoop(manager::describe)).contains("talk.bin missing 5000:", "REQUESTING");
 
         // From now on only sources known to take obfuscation are asked: none of those it tells of, nor this one.
         this.settings = settings(ObfuscationMode.REQUIRED, 100, 0);
@@ -166,43 +166,41 @@ class DownloadSourcesTest {
         link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(3)));
 
         // Queued from the upload request on; the rank comes after.
-        SourceInfo queued = this.awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() != 0);
+        SourceInfo queued = awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED && s.queueRank() != 0);
         assertThat(queued.queueRank()).isEqualTo(3);
         assertThat(queued.parts()).isEqualTo(1);
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().sources()))
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().sources()))
                 .as("the public sources it told of, not the LowID, the blocked or the LAN one, nor those of an answer"
                         + " not asked for")
                 .isEqualTo(3);
-        assertThat(this.onLoop(() -> manager.comments(hash))).singleElement().satisfies(c -> {
+        assertThat(onLoop(() -> manager.comments(hash))).singleElement().satisfies(c -> {
             assertThat(c.user()).isEqualTo("scripted");
             assertThat(c.comment()).isEqualTo(FileComment.of("a fine copy", 4));
         });
-        assertThat(this.onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
+        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
                 .as("one source alone is no reason to trust a hash")
                 .isEmpty();
-        assertThat(this.onLoop(() -> manager.exchangeable(hash)))
+        assertThat(onLoop(() -> manager.exchangeable(hash)))
                 .as("a source counts once it said which parts it has")
                 .isEmpty();
 
         // The connection closes while queued: the place in the queue stays, and the source can be passed on.
         link.close();
-        this.awaitSource(source, s -> s.state() == SourceInfo.State.WAITING);
-        assertThat(this.onLoop(() -> manager.exchangeable(hash)))
-                .singleElement()
-                .satisfies(s -> {
-                    assertThat(s.port()).isEqualTo(source.port());
-                    assertThat(s.userHash()).contains(PEER);
-                });
+        awaitSource(source, s -> s.state() == SourceInfo.State.WAITING);
+        assertThat(onLoop(() -> manager.exchangeable(hash))).singleElement().satisfies(s -> {
+            assertThat(s.port()).isEqualTo(source.port());
+            assertThat(s.userHash()).contains(PEER);
+        });
 
         // Asked again in time, plain once allowed: not for more sources, asked for less than 40 minutes ago.
         this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
-        this.advance(DownloadManager.REASK_INTERVAL);
+        advance(DownloadManager.REASK_INTERVAL);
         ScriptedSource.Link again = source.accept();
         List<Packet> request = new ArrayList<>(again.until(Opcodes.Client.SETREQFILEID));
         again.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         request.addAll(again.until(Opcodes.Client.STARTUPLOADREQ));
         assertThat(names(request)).doesNotContain("REQUESTSOURCES2");
-        this.onLoop(() -> manager.pause(hash));
+        onLoop(() -> manager.pause(hash));
         assertThat(again.closesWithin(WAIT)).isTrue();
     }
 
@@ -212,9 +210,9 @@ class DownloadSourcesTest {
         Hash16 hash = Ed2k.md4(data, 0, data.length);
         Path blocker = Files.writeString(this.dir.resolve("blocker"), "a file where the directory should be");
         this.incoming = blocker;
-        ScriptedSource source = this.source(0, 0);
-        DownloadManager manager = this.manager();
-        this.onLoop(() -> manager.add(source.link("data.bin", data.length, hash)));
+        ScriptedSource source = source(0, 0);
+        DownloadManager manager = manager();
+        onLoop(() -> manager.add(source.link("data.bin", data.length, hash)));
 
         ScriptedSource.Link link = source.accept();
         link.until(Opcodes.Client.SETREQFILEID);
@@ -222,13 +220,13 @@ class DownloadSourcesTest {
         link.until(Opcodes.Client.STARTUPLOADREQ);
         link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
         assertThat(requested(link)).containsExactly(new ClientMessages.Range(0, data.length));
-        this.awaitSource(source, s -> s.state() == SourceInfo.State.DOWNLOADING);
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().transferring()))
+        awaitSource(source, s -> s.state() == SourceInfo.State.DOWNLOADING);
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().transferring()))
                 .isEqualTo(1);
-        assertThat(this.onLoop(manager::describe)).contains("DOWNLOADING [0-5000 missing");
+        assertThat(onLoop(manager::describe)).contains("DOWNLOADING [0-5000 missing");
 
         link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.OUTOFPARTREQS.code()));
-        this.awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED);
+        awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED);
         link.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
         assertThat(requested(link))
                 .as("the blocks let go are asked for again")
@@ -238,25 +236,24 @@ class DownloadSourcesTest {
         link.send(new ClientMessages.SendingPart(hash, 4990, 5010, new byte[20]).encode(false));
         link.send(new ClientMessages.SendingPart(hash, 0, data.length, data).encode(true));
 
-        assertThat(this.await("failed")).contains("cannot move");
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().status()))
-                .isEqualTo(DownloadInfo.Status.ERROR);
+        assertThat(await("failed")).contains("cannot move");
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.ERROR);
         assertThat(link.closesWithin(WAIT)).as("its sessions end").isTrue();
 
         Files.delete(blocker);
-        assertThat(this.onLoop(() -> manager.resume(hash))).isTrue();
-        Path done = Path.of(this.await("completed ").substring("completed ".length()));
+        assertThat(onLoop(() -> manager.resume(hash))).isTrue();
+        Path done = Path.of(await("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(done)).isEqualTo(data);
-        assertThat(this.onLoop(() -> manager.download(hash))).isEmpty();
+        assertThat(onLoop(() -> manager.download(hash))).isEmpty();
     }
 
     @Test
     void aSourceIgnoresWhatDoesNotFitUntilItBreaksTheProtocol() throws Exception {
         byte[] data = random(5000, 4);
         Hash16 hash = Ed2k.md4(data, 0, data.length);
-        ScriptedSource source = this.source(0, 0);
-        DownloadManager manager = this.manager();
-        this.onLoop(() -> manager.add(source.link("odd.bin", data.length, hash)));
+        ScriptedSource source = source(0, 0);
+        DownloadManager manager = manager();
+        onLoop(() -> manager.add(source.link("odd.bin", data.length, hash)));
         ScriptedSource.Link link = source.accept();
         link.until(Opcodes.Client.SETREQFILEID);
 
@@ -273,10 +270,10 @@ class DownloadSourcesTest {
         link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         link.until(Opcodes.Client.STARTUPLOADREQ);
-        assertThat(this.awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED)
+        assertThat(awaitSource(source, s -> s.state() == SourceInfo.State.QUEUED)
                         .queueRank())
                 .isZero();
-        assertThat(this.onLoop(() -> manager.find(hash).orElseThrow().file().partHashes()))
+        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().partHashes()))
                 .isEmpty();
 
         // Neither does the end of a slot not given yet, nor data of no block asked for.
@@ -288,7 +285,7 @@ class DownloadSourcesTest {
                 new ClientMessages.CompressedPart(Hash16.parseHex("37".repeat(16)), 0, 10, new byte[10]).encode(false));
         link.send(new ClientMessages.SendingPart(hash, 0, 0, new byte[0]).encode(false));
         link.send(new ClientMessages.SendingPart(hash, 0, 1000, Arrays.copyOf(data, 1000)).encode(false));
-        this.await(
+        await(
                 "the first bytes written",
                 () -> manager.download(hash).orElseThrow().completed() == 1000);
 
@@ -298,14 +295,14 @@ class DownloadSourcesTest {
                 Opcodes.Client.FILESTATUS.code(),
                 new PacketWriter().hash16(hash).u16(5)));
         assertThat(link.closesWithin(WAIT)).isTrue();
-        this.awaitSources(hash, 0);
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().completed()))
+        awaitSources(hash, 0);
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().completed()))
                 .isEqualTo(1000);
     }
 
     @Test
     void aCorruptBlockIsRecoveredWithTheAichDataOfASourceThatComesLater() throws Exception {
-        Recovery recovery = this.recovery(5);
+        Recovery recovery = recovery(5);
         ScriptedSource.Link second = recovery.helper.accept();
         second.until(Opcodes.Client.SETREQFILEID);
         second.send(new ClientMessages.FileStatus(recovery.link.hash(), 0, new BitSet()).encode());
@@ -320,14 +317,14 @@ class DownloadSourcesTest {
                 .as("only the corrupt block is downloaded again")
                 .containsExactly(new ClientMessages.Range(2L * Ed2k.EMBLOCKSIZE, recovery.data.length));
         sendBlocks(recovery.first, recovery.link.hash(), recovery.data, 2L * Ed2k.EMBLOCKSIZE, recovery.data.length);
-        Path done = Path.of(this.await("completed ").substring("completed ".length()));
+        Path done = Path.of(await("completed ").substring("completed ".length()));
         assertThat(Files.readAllBytes(done)).isEqualTo(recovery.data);
-        assertThat(this.onLoop(() -> this.manager.find(recovery.link.hash()))).isEmpty();
+        assertThat(onLoop(() -> this.manager.find(recovery.link.hash()))).isEmpty();
     }
 
     @Test
     void recoveryDataThatProvesNothingHasThePartDownloadedAgainWhole() throws Exception {
-        Recovery recovery = this.recovery(6);
+        Recovery recovery = recovery(6);
         ScriptedSource.Link second = recovery.helper.accept();
         second.until(Opcodes.Client.SETREQFILEID);
         second.send(new ClientMessages.FileStatus(recovery.link.hash(), 0, new BitSet()).encode());
@@ -346,7 +343,7 @@ class DownloadSourcesTest {
         corrupt[0] ^= 0x55;
         sendBlocks(recovery.first, recovery.link.hash(), corrupt, 0, recovery.data.length);
         assertThat(requested(recovery.first)).containsExactlyElementsOf(whole);
-        this.onLoop(() -> this.manager.pause(recovery.link.hash()));
+        onLoop(() -> this.manager.pause(recovery.link.hash()));
     }
 
     /**
@@ -358,8 +355,8 @@ class DownloadSourcesTest {
         Path file = Files.write(this.dir.resolve("original.bin"), data);
         Ed2kLink.FileLink hashed = FileHashing.link(file, bytes -> {});
         AichTree tree = FileHasher.hash(file).aich().orElseThrow();
-        ScriptedSource first = this.source(0, 0);
-        ScriptedSource helper = this.source(1 << Hello.MISC1_AICH_SHIFT, 0);
+        ScriptedSource first = source(0, 0);
+        ScriptedSource helper = source(1 << Hello.MISC1_AICH_SHIFT, 0);
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
                 "recover.bin",
                 data.length,
@@ -368,8 +365,8 @@ class DownloadSourcesTest {
                 hashed.partHashes(),
                 List.of(new Ed2kLink.Source("127.0.0.1", first.port())),
                 List.of());
-        DownloadManager manager = this.manager();
-        this.onLoop(() -> manager.add(link));
+        DownloadManager manager = manager();
+        onLoop(() -> manager.add(link));
         ScriptedSource.Link served = first.accept();
         served.until(Opcodes.Client.SETREQFILEID);
         served.send(new ClientMessages.FileStatus(link.hash(), 0, new BitSet()).encode());
@@ -379,10 +376,10 @@ class DownloadSourcesTest {
         byte[] corrupt = data.clone();
         corrupt[data.length - 1] ^= 0x55;
         sendBlocks(served, link.hash(), corrupt, 0, data.length);
-        this.await(
+        await(
                 "the corrupt part held for its recovery data",
                 () -> manager.find(link.hash()).orElseThrow().file().isHeld(0));
-        assertThat(this.onLoop(() -> manager.addSourceByHand(link.hash(), helper.address())))
+        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), helper.address())))
                 .isTrue();
         return new Recovery(data, link, tree, served, helper);
     }
@@ -423,15 +420,15 @@ class DownloadSourcesTest {
 
     @Test
     void sourcesWithoutTheFileOrOutOfReachAreDropped() throws Exception {
-        ScriptedSource missing = this.source(0, 0);
-        ScriptedSource odd = this.source(0, 0);
-        ScriptedSource useless = this.source(0, 0);
-        ScriptedSource silent = this.source(0, 0);
+        ScriptedSource missing = source(0, 0);
+        ScriptedSource odd = source(0, 0);
+        ScriptedSource useless = source(0, 0);
+        ScriptedSource silent = source(0, 0);
         int closed;
         try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             closed = probe.getLocalPort();
         }
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("34".repeat(16));
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
                 "gone.bin",
@@ -446,7 +443,7 @@ class DownloadSourcesTest {
                         new Ed2kLink.Source("127.0.0.1", silent.port()),
                         new Ed2kLink.Source("127.0.0.1", closed)),
                 List.of());
-        this.onLoop(() -> manager.add(link));
+        onLoop(() -> manager.add(link));
 
         ScriptedSource.Link noFile = missing.accept();
         noFile.until(Opcodes.Client.SETREQFILEID);
@@ -465,33 +462,33 @@ class DownloadSourcesTest {
         assertThat(noFile.closesWithin(WAIT)).isTrue();
         assertThat(tooMany.closesWithin(WAIT)).isTrue();
         assertThat(nothing.closesWithin(WAIT)).as("it has no part we need").isTrue();
-        this.awaitSources(hash, 3);
-        assertThat(this.onLoop(() ->
+        awaitSources(hash, 3);
+        assertThat(onLoop(() ->
                         manager.sources().stream().map(SourceInfo::address).toList()))
                 .containsExactlyInAnyOrder(
                         "127.0.0.1:" + useless.port(), "127.0.0.1:" + silent.port(), "127.0.0.1:" + closed);
 
         // Three failures in a row drop a source; the one without parts we need waits its time. Each round waits for
         // both failures: a refused connection takes Windows a couple of seconds.
-        this.awaitFailures(manager, 1, silent.port(), closed);
-        this.advance(DownloadManager.MIN_REASK);
+        awaitFailures(manager, 1, silent.port(), closed);
+        advance(DownloadManager.MIN_REASK);
         silent.refuseNext();
-        this.awaitFailures(manager, 2, silent.port(), closed);
-        this.advance(DownloadManager.MIN_REASK);
+        awaitFailures(manager, 2, silent.port(), closed);
+        advance(DownloadManager.MIN_REASK);
         silent.refuseNext();
-        this.awaitSources(hash, 1);
-        assertThat(this.onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + useless.port());
-        this.onLoop(() -> manager.pause(hash));
+        awaitSources(hash, 1);
+        assertThat(onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + useless.port());
+        onLoop(() -> manager.pause(hash));
     }
 
     @Test
     void firewalledSourcesAreAskedThroughTheServerOneAtATime() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("36".repeat(16));
-        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("lowid.bin", 5000, hash)));
+        onLoop(() -> manager.add(Ed2kLink.FileLink.of("lowid.bin", 5000, hash)));
         this.server.refused.add(6000L);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.foundSources(new ServerMessages.FoundSources(
                     hash,
                     List.of(
@@ -506,26 +503,26 @@ class DownloadSourcesTest {
             return null;
         });
 
-        this.await("both asked for", () -> this.server.callbacks.size() >= 2);
+        await("both asked for", () -> this.server.callbacks.size() >= 2);
         assertThat(this.server.callbacks).as("one a tick, each once").containsExactly(5000L, 6000L);
         // One the server could not ask is forgotten, and may be asked for again.
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.foundSources(new ServerMessages.FoundSources(
                     hash, List.of(new ServerMessages.Source(6000, PORT, 0, Optional.empty()))));
             return null;
         });
-        this.await("asked again", () -> this.server.callbacks.size() >= 3);
+        await("asked again", () -> this.server.callbacks.size() >= 3);
         // One that does not call back in time is forgotten too: the server names it again, and it is asked again.
-        this.advance(DownloadManager.CALLBACK_WAIT);
-        this.await("asked once more", () -> {
+        advance(DownloadManager.CALLBACK_WAIT);
+        await("asked once more", () -> {
             manager.foundSources(new ServerMessages.FoundSources(
                     hash, List.of(new ServerMessages.Source(5000, PORT, 0, Optional.of(PEER)))));
             return this.server.callbacks.lastIndexOf(5000L) > 0;
         });
 
-        this.onLoop(() -> manager.pause(hash));
+        onLoop(() -> manager.pause(hash));
         int asked = this.server.callbacks.size();
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.foundSources(new ServerMessages.FoundSources(
                     hash, List.of(new ServerMessages.Source(8000, PORT, 0, Optional.empty()))));
             return null;
@@ -537,17 +534,17 @@ class DownloadSourcesTest {
     @Test
     void aFullSourceListTakesNoMoreFirewalledSources() throws Exception {
         this.settings = settings(ObfuscationMode.SUPPORTED, 1, 0);
-        ScriptedSource source = this.source(0, Hello.MISC2_SOURCE_EXCHANGE2);
-        DownloadManager manager = this.manager();
+        ScriptedSource source = source(0, Hello.MISC2_SOURCE_EXCHANGE2);
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("38".repeat(16));
-        this.onLoop(() -> manager.add(source.link("full.bin", 5000, hash)));
+        onLoop(() -> manager.add(source.link("full.bin", 5000, hash)));
         ScriptedSource.Link link = source.accept();
         List<Packet> asked = new ArrayList<>(link.until(Opcodes.Client.SETREQFILEID));
         link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         asked.addAll(link.until(Opcodes.Client.STARTUPLOADREQ));
         assertThat(names(asked)).as("a full list wants no more sources").doesNotContain("REQUESTSOURCES2");
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.foundSources(new ServerMessages.FoundSources(
                     hash, List.of(new ServerMessages.Source(5000, PORT, 0, Optional.empty()))));
             return null;
@@ -555,7 +552,7 @@ class DownloadSourcesTest {
         Thread.sleep(1500);
 
         assertThat(this.server.callbacks).isEmpty();
-        assertThat(this.onLoop(() -> manager.addSourceByHand(
+        assertThat(onLoop(() -> manager.addSourceByHand(
                         hash, new InetSocketAddress(InetAddresses.forString("127.0.0.2"), PORT))))
                 .isFalse();
         link.close();
@@ -563,8 +560,8 @@ class DownloadSourcesTest {
 
     @Test
     void aSourceNamedByItsHostIsLookedUp() throws Exception {
-        ScriptedSource source = this.source(0, 0);
-        DownloadManager manager = this.manager();
+        ScriptedSource source = source(0, 0);
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("3d".repeat(16));
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
                 "named.bin",
@@ -575,11 +572,11 @@ class DownloadSourcesTest {
                 List.of(new Ed2kLink.Source("localhost", source.port())),
                 List.of());
 
-        this.onLoop(() -> manager.add(link));
+        onLoop(() -> manager.add(link));
 
         assertThat(source.accept()).isNotNull();
-        assertThat(this.onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + source.port());
-        this.onLoop(() -> manager.pause(hash));
+        assertThat(onLoop(() -> manager.sources().getFirst().address())).isEqualTo("127.0.0.1:" + source.port());
+        onLoop(() -> manager.pause(hash));
     }
 
     @Test
@@ -602,10 +599,10 @@ class DownloadSourcesTest {
             @Override
             public void removed(Hash16 hash) {}
         };
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("3e".repeat(16));
 
-        DownloadInfo info = this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("held.bin", 5000, hash)));
+        DownloadInfo info = onLoop(() -> manager.add(Ed2kLink.FileLink.of("held.bin", 5000, hash)));
 
         assertThat(info.status()).isEqualTo(DownloadInfo.Status.NO_SPACE);
         assertThat(DownloadManager.passesOn(Ipv4.of(10, 0, 0, 1), InetAddresses.forString("::1")))
@@ -620,12 +617,12 @@ class DownloadSourcesTest {
             found.compareAndSet(null, sources);
             return true;
         });
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("39".repeat(16));
-        this.onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
-        this.await("Kad searched", () -> found.get() != null);
+        onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
+        await("Kad searched", () -> found.get() != null);
 
-        int sources = this.onLoop(() -> {
+        int sources = onLoop(() -> {
             manager.stop(hash);
             found.get()
                     .accept(List.of(DownloadManager.KadSource.direct(
@@ -638,15 +635,15 @@ class DownloadSourcesTest {
 
     @Test
     void unknownDownloadsChangeNothing() throws Exception {
-        DownloadManager manager = this.manager();
+        DownloadManager manager = manager();
         Hash16 unknown = Hash16.parseHex("3a".repeat(16));
         Hash16 hash = Hash16.parseHex("3b".repeat(16));
-        this.onLoop(() -> {
+        onLoop(() -> {
             manager.add(Ed2kLink.FileLink.of("known.bin", 5000, hash));
             return manager.pause(hash);
         });
 
-        assertThat(this.onLoop(() -> List.of(
+        assertThat(onLoop(() -> List.of(
                         manager.stopBySchedule(unknown),
                         manager.setPriority(unknown, DownloadPriority.HIGH),
                         manager.cancel(unknown),
@@ -658,46 +655,44 @@ class DownloadSourcesTest {
                         manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("::1"), PORT)),
                         manager.addSourceByHand(hash, new InetSocketAddress(InetAddresses.forString("127.0.0.1"), 0)))))
                 .containsOnly(false);
-        assertThat(this.onLoop(() -> manager.comments(unknown))).isEmpty();
-        assertThat(this.onLoop(() -> manager.exchangeable(unknown))).isEmpty();
-        assertThat(this.onLoop(() -> manager.exchangeable(hash))).as("paused").isEmpty();
+        assertThat(onLoop(() -> manager.comments(unknown))).isEmpty();
+        assertThat(onLoop(() -> manager.exchangeable(unknown))).isEmpty();
+        assertThat(onLoop(() -> manager.exchangeable(hash))).as("paused").isEmpty();
 
-        assertThat(this.onLoop(() -> manager.setPreviewFirst(hash, true))).isTrue();
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().previewFirst()))
+        assertThat(onLoop(() -> manager.setPreviewFirst(hash, true))).isTrue();
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().previewFirst()))
                 .isTrue();
-        assertThat(this.onLoop(() -> manager.stopBySchedule(hash))).isTrue();
-        assertThat(this.onLoop(() -> manager.stopBySchedule(hash)))
+        assertThat(onLoop(() -> manager.stopBySchedule(hash))).isTrue();
+        assertThat(onLoop(() -> manager.stopBySchedule(hash)))
                 .as("stopped already")
                 .isTrue();
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().status()))
-                .isEqualTo(DownloadInfo.Status.STOPPED);
-        assertThat(this.onLoop(() -> manager.setCategory(hash, Category.NONE))).isTrue();
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.STOPPED);
+        assertThat(onLoop(() -> manager.setCategory(hash, Category.NONE))).isTrue();
     }
 
     @Test
     void downloadsWaitWhileTheDiskIsShortOfSpace() throws Exception {
-        ScriptedSource source = this.source(0, 0);
-        DownloadManager manager = this.manager();
+        ScriptedSource source = source(0, 0);
+        DownloadManager manager = manager();
         Hash16 hash = Hash16.parseHex("3c".repeat(16));
-        this.onLoop(() -> manager.add(source.link("space.bin", 5000, hash)));
+        onLoop(() -> manager.add(source.link("space.bin", 5000, hash)));
         ScriptedSource.Link link = source.accept();
         link.until(Opcodes.Client.SETREQFILEID);
         link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
         link.until(Opcodes.Client.STARTUPLOADREQ);
 
         this.settings = settings(ObfuscationMode.SUPPORTED, 100, Long.MAX_VALUE);
-        assertThat(this.await("space ")).isEqualTo("space short");
+        assertThat(await("space ")).isEqualTo("space short");
         assertThat(link.closesWithin(WAIT)).as("the sessions end").isTrue();
-        assertThat(this.onLoop(() -> manager.download(hash).orElseThrow().status()))
-                .isEqualTo(DownloadInfo.Status.NO_SPACE);
+        assertThat(onLoop(() -> manager.download(hash).orElseThrow().status())).isEqualTo(DownloadInfo.Status.NO_SPACE);
 
         this.settings = settings(ObfuscationMode.SUPPORTED, 100, 0);
-        assertThat(this.await("space ")).isEqualTo("space enough");
+        assertThat(await("space ")).isEqualTo("space enough");
         // With room again, the source is asked as soon as it allows, not after the whole wait of a queued one.
-        this.advance(DownloadManager.EARLIEST_REASK);
+        advance(DownloadManager.EARLIEST_REASK);
         ScriptedSource.Link again = source.accept();
         again.until(Opcodes.Client.SETREQFILEID);
-        this.onLoop(() -> manager.pause(hash));
+        onLoop(() -> manager.pause(hash));
     }
 
     private static SourceExchange.Source exchanged(int ip) {
@@ -733,12 +728,12 @@ class DownloadSourcesTest {
 
     @Test
     void aSourceWaitsWhileOurConnectionsAreAtTheirLimit() throws Exception {
-        this.givenOurConnectionsAtTheirLimit();
-        this.givenADownloadWhoseSourceIsNotCalled();
+        givenOurConnectionsAtTheirLimit();
+        givenADownloadWhoseSourceIsNotCalled();
 
-        this.whenAConnectionOfOursCloses();
+        whenAConnectionOfOursCloses();
 
-        this.thenTheSourceIsCalled();
+        thenTheSourceIsCalled();
     }
 
     private void givenOurConnectionsAtTheirLimit() {
@@ -748,9 +743,9 @@ class DownloadSourcesTest {
     }
 
     private void givenADownloadWhoseSourceIsNotCalled() throws Exception {
-        this.waitingSource = this.source(0, 0);
-        DownloadManager downloads = this.manager();
-        this.onLoop(() -> downloads.add(this.waitingSource.link("waits.bin", 5000, Hash16.parseHex("36".repeat(16)))));
+        this.waitingSource = source(0, 0);
+        DownloadManager downloads = manager();
+        onLoop(() -> downloads.add(this.waitingSource.link("waits.bin", 5000, Hash16.parseHex("36".repeat(16)))));
         assertThat(this.waitingSource.calledWithin(Duration.ofSeconds(2))).isFalse();
     }
 
@@ -784,7 +779,7 @@ class DownloadSourcesTest {
                 random);
         Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
         this.incoming = this.incoming == null ? this.dir.resolve("incoming") : this.incoming;
-        this.manager = this.onLoop(() -> DownloadManager.open(
+        this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.incoming,
@@ -794,7 +789,7 @@ class DownloadSourcesTest {
                 ip -> ip == BLOCKED_IP,
                 random,
                 this.ticker,
-                this.links(identities),
+                links(identities),
                 (hash, bytes) -> {},
                 () -> this.kad,
                 List::of,
@@ -817,7 +812,7 @@ class DownloadSourcesTest {
     private SourceInfo awaitSource(ScriptedSource source, Predicate<SourceInfo> wanted) throws Exception {
         String address = "127.0.0.1:" + source.port();
         AtomicReference<SourceInfo> seen = new AtomicReference<>();
-        this.await("source " + address, () -> {
+        await("source " + address, () -> {
             for (SourceInfo info : this.manager.sources()) {
                 if (info.address().equals(address) && wanted.test(info)) {
                     seen.set(info);
@@ -830,14 +825,14 @@ class DownloadSourcesTest {
     }
 
     private void awaitFailures(DownloadManager manager, int failures, int... ports) throws Exception {
-        this.await(failures + " failures of " + Arrays.toString(ports), () -> {
+        await(failures + " failures of " + Arrays.toString(ports), () -> {
             String now = manager.describe();
             return Arrays.stream(ports).allMatch(p -> now.contains("127.0.0.1:" + p + " (failed " + failures + ")"));
         });
     }
 
     private void awaitSources(Hash16 hash, int count) throws Exception {
-        this.await(
+        await(
                 count + " sources",
                 () -> this.manager.download(hash).orElseThrow().sources() == count);
     }
@@ -845,7 +840,7 @@ class DownloadSourcesTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

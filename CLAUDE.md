@@ -160,9 +160,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   required by cmd.exe). Spotless rewrites Java sources with LF; `.gitattributes` normalises the rest.
 - Enforced by Spotless in the `validate` phase: the build fails on unformatted code or a missing
   license header. Fix with `./mvnw spotless:apply` before committing.
-- Always qualify instance members with `this.` (fields **and** method calls, e.g.
-  `this.queue.offer(task)`, `this.publish(event)`), also where it is not needed to disambiguate.
-  Checkstyle `RequireThis` enforces it (`config/checkstyle/checkstyle.xml`).
+- Always qualify instance fields with `this.` (e.g. `this.queue.offer(task)`), also where it is not
+  needed to disambiguate, and call the object's own methods without it (`publish(event)`, not
+  `this.publish(event)`). Checkstyle enforces both (`RequireThis` and a regexp check in
+  `config/checkstyle/checkstyle.xml`).
 - Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotless:check`).
 - IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
 - Markdown is wrapped at ~100 columns.

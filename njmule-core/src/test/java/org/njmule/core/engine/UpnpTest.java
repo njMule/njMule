@@ -55,7 +55,7 @@ class UpnpTest {
         try (FakeGateway gateway = FakeGateway.start(IP, "/ctl")) {
             // A router that takes long to answer must not hold the saves back.
             gateway.delayDeletes(Duration.ofSeconds(8));
-            AppDirectories dirs = this.dirs();
+            AppDirectories dirs = dirs();
             Engine engine = Engine.start(new EngineConfig(dirs), () -> false, Optional.of(gateway.ssdp()));
             assertThat(await(() -> gateway.actions("AddPortMapping").size() == 1))
                     .isTrue();
@@ -72,7 +72,7 @@ class UpnpTest {
     @Test
     void portsChangedTwiceInARowLeaveNoMappingBehind() throws Exception {
         try (FakeGateway gateway = FakeGateway.start(IP, "/ctl")) {
-            AppDirectories dirs = this.dirs();
+            AppDirectories dirs = dirs();
             Engine engine = Engine.start(new EngineConfig(dirs), () -> false, Optional.of(gateway.ssdp()));
             assertThat(await(() -> gateway.actions("AddPortMapping").size() == 1))
                     .isTrue();

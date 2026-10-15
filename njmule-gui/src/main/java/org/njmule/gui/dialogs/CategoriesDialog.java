@@ -106,11 +106,11 @@ public final class CategoriesDialog {
             @Override
             protected void updateItem(Category item, boolean empty) {
                 super.updateItem(item, empty);
-                this.setText(empty || item == null ? null : item.name());
-                this.setGraphic(empty || item == null ? null : Fx.categoryDot(item.color()));
+                setText(empty || item == null ? null : item.name());
+                setGraphic(empty || item == null ? null : Fx.categoryDot(item.color()));
             }
         });
-        this.list.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.edit(now));
+        this.list.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> edit(now));
         this.list.setPrefWidth(200);
         this.list.setMinWidth(180);
 
@@ -120,7 +120,7 @@ public final class CategoriesDialog {
         int row = 0;
         // The names keep their whole width; the long one wraps rather than being cut.
         form.addRow(row++, Fx.whole(new Label(gui.t("IDS_TITLE"))), this.name);
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PW_INCOMING"))), new HBox(6, this.incoming, this.browse()));
+        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PW_INCOMING"))), new HBox(6, this.incoming, browse()));
         form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COMMENT"))), this.comment);
         form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COLOR"))), this.color);
         form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PRIORITY"))), this.priority);
@@ -154,7 +154,7 @@ public final class CategoriesDialog {
         Scene scene = new Scene(root, 760, 380);
         gui.attach(scene);
         this.stage.setScene(scene);
-        this.fresh();
+        fresh();
     }
 
     public void show() {
@@ -210,7 +210,7 @@ public final class CategoriesDialog {
         }
         all.removeIf(c -> c.id() == id);
         all.add(category);
-        this.gui.model().setCategories(all, () -> this.select(id));
+        this.gui.model().setCategories(all, () -> select(id));
     }
 
     void remove() {
@@ -272,11 +272,11 @@ public final class CategoriesDialog {
         protected void updateItem(Integer item, boolean empty) {
             super.updateItem(item, empty);
             if (empty || item == null) {
-                this.setText(null);
-                this.setGraphic(null);
+                setText(null);
+                setGraphic(null);
             } else {
-                this.setText(CategoriesDialog.this.gui.t(COLOR_NAMES.get(item)));
-                this.setGraphic(Fx.categoryDot(item));
+                setText(CategoriesDialog.this.gui.t(COLOR_NAMES.get(item)));
+                setGraphic(Fx.categoryDot(item));
             }
         }
     }
@@ -292,7 +292,7 @@ public final class CategoriesDialog {
         @Override
         protected void updateItem(T item, boolean empty) {
             super.updateItem(item, empty);
-            this.setText(empty || item == null ? null : this.text.apply(item));
+            setText(empty || item == null ? null : this.text.apply(item));
         }
     }
 }

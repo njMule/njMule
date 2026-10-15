@@ -59,9 +59,9 @@ class DownloadDiskSpaceTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.release();
+        release();
         if (this.queue != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.queue.close();
                 return null;
             });
@@ -72,28 +72,28 @@ class DownloadDiskSpaceTest {
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void aWriteThatFailsOnADiskOutOfSpaceMakesTheDownloadsWaitInsteadOfFailing() throws Exception {
-        this.givenADownload();
-        this.givenItsDataCannotBeWritten();
+        givenADownload();
+        givenItsDataCannotBeWritten();
 
-        this.whenDataArrivesWhileTheDiskIsOutOfSpace();
+        whenDataArrivesWhileTheDiskIsOutOfSpace();
 
-        this.thenTheDownloadsWaitForSpaceInsteadOfFailing();
+        thenTheDownloadsWaitForSpaceInsteadOfFailing();
     }
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void aDownloadThatWaitsForRoomAfterAFailedWriteGoesOnByItself() throws Exception {
-        this.givenADownload();
-        this.givenItsDataCannotBeWritten();
-        this.givenDataArrivedWhileTheDiskWasOutOfSpace();
+        givenADownload();
+        givenItsDataCannotBeWritten();
+        givenDataArrivedWhileTheDiskWasOutOfSpace();
 
-        this.whenThereIsRoomAgain();
+        whenThereIsRoomAgain();
 
-        this.thenTheDownloadGoesOnAndAsksForTheDataAgain();
+        thenTheDownloadGoesOnAndAsksForTheDataAgain();
     }
 
     private void givenADownload() throws Exception {
-        this.queue = this.onLoop(() -> DownloadQueue.load(
+        this.queue = onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
                 file -> this.dir.resolve("incoming"),
@@ -118,10 +118,10 @@ class DownloadDiskSpaceTest {
                         DownloadDiskSpaceTest.this.events.add("failed " + reason);
                     }
                 }));
-        this.download = this.onLoop(
+        this.download = onLoop(
                 () -> this.queue.add(Ed2kLink.FileLink.of("full.bin", 400_000, Hash16.parseHex("d1".repeat(16)))));
         this.allParts.set(0);
-        this.onLoop(() -> this.download.file().nextBlocks(this.allParts, 1));
+        onLoop(() -> this.download.file().nextBlocks(this.allParts, 1));
     }
 
     // Windows refuses writes into a range another handle locked, as it refuses those to a full disk.
@@ -131,12 +131,12 @@ class DownloadDiskSpaceTest {
     }
 
     private void givenDataArrivedWhileTheDiskWasOutOfSpace() throws Exception {
-        this.whenDataArrivesWhileTheDiskIsOutOfSpace();
+        whenDataArrivesWhileTheDiskIsOutOfSpace();
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isNotNull();
     }
 
     private void whenDataArrivesWhileTheDiskIsOutOfSpace() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.minFree.set(Long.MAX_VALUE);
             this.queue.received(this.download, 0, new byte[Ed2k.EMBLOCKSIZE]);
             return null;
@@ -145,13 +145,13 @@ class DownloadDiskSpaceTest {
 
     private void thenTheDownloadsWaitForSpaceInsteadOfFailing() throws Exception {
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("space short");
-        assertThat(this.onLoop(() -> this.download.file().status())).isEqualTo(PartFile.Status.DOWNLOADING);
-        assertThat(this.onLoop(this.download::isActive)).isFalse();
+        assertThat(onLoop(() -> this.download.file().status())).isEqualTo(PartFile.Status.DOWNLOADING);
+        assertThat(onLoop(this.download::isActive)).isFalse();
     }
 
     private void whenThereIsRoomAgain() throws Exception {
-        this.release();
-        this.onLoop(() -> {
+        release();
+        onLoop(() -> {
             this.minFree.set(1);
             this.queue.checkSpace();
             return null;
@@ -160,8 +160,8 @@ class DownloadDiskSpaceTest {
 
     private void thenTheDownloadGoesOnAndAsksForTheDataAgain() throws Exception {
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("space enough");
-        assertThat(this.onLoop(this.download::isActive)).isTrue();
-        assertThat(this.onLoop(() -> this.download.file().nextBlocks(this.allParts, 1)))
+        assertThat(onLoop(this.download::isActive)).isTrue();
+        assertThat(onLoop(() -> this.download.file().nextBlocks(this.allParts, 1)))
                 .isEqualTo(List.of(new PartFile.Block(0, Ed2k.EMBLOCKSIZE)));
     }
 

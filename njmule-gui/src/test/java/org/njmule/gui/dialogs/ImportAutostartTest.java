@@ -54,33 +54,33 @@ class ImportAutostartTest {
 
     @Test
     void shouldStartAtLoginAfterImportingAnEmuleThatDid() throws Exception {
-        this.givenAnEmuleProfile("AutoStart=1");
-        this.givenTheImportDialog();
+        givenAnEmuleProfile("AutoStart=1");
+        givenTheImportDialog();
 
-        this.whenTheProfileIsImported();
+        whenTheProfileIsImported();
 
-        this.thenNjMuleStartsAtLogin();
-        this.thenTheUserIsTold("njMule now starts when you log in");
+        thenNjMuleStartsAtLogin();
+        thenTheUserIsTold("njMule now starts when you log in");
     }
 
     @Test
     void shouldLeaveTheStartAtLoginAloneWhenEmuleDidNotStartAtLogin() throws Exception {
-        this.givenAnEmuleProfile("AutoStart=0");
-        this.givenTheImportDialog();
+        givenAnEmuleProfile("AutoStart=0");
+        givenTheImportDialog();
 
-        this.whenTheProfileIsImported();
+        whenTheProfileIsImported();
 
-        this.thenTheSystemWasNotChanged();
+        thenTheSystemWasNotChanged();
     }
 
     @Test
     void shouldLeaveTheStartAtLoginAloneInACheck() throws Exception {
-        this.givenAnEmuleProfile("AutoStart=1");
-        this.givenTheImportDialog();
+        givenAnEmuleProfile("AutoStart=1");
+        givenTheImportDialog();
 
-        this.whenTheProfileIsChecked();
+        whenTheProfileIsChecked();
 
-        this.thenTheSystemWasNotChanged();
+        thenTheSystemWasNotChanged();
     }
 
     private void givenAnEmuleProfile(String autoStart) throws Exception {

@@ -78,19 +78,18 @@ class SearchFlowTest {
     @Test
     void aNewGlobalSearchEndsTheOneBeforeSoUdpAnswersReachTheNewOne() throws Exception {
         InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer connected = this.server(local, new FakeServer.Config(highId(local), "", List.of()));
+        FakeServer connected = server(local, new FakeServer.Config(highId(local), "", List.of()));
         connected.answerSearches(expression -> List.of(
                 FakeServer.file(expression.toString().contains("first") ? "first.bin" : "second.bin", 1000, 1)));
-        FakeServer other =
-                this.server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
-        NjMuleEngine engine = this.engine();
+        FakeServer other = server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
-        this.knows(engine, local, other.port(), List.of());
-        this.connect(engine, events, local, connected);
+        knows(engine, local, other.port(), List.of());
+        connect(engine, events, local, connected);
 
         SearchId first = engine.search(new SearchRequest("first", SearchRequest.Scope.GLOBAL))
                 .get();
-        this.waitFor(() -> other.udpSearches().size() == 1);
+        waitFor(() -> other.udpSearches().size() == 1);
         SearchId second = engine.search(new SearchRequest("second", SearchRequest.Scope.GLOBAL))
                 .get();
 
@@ -118,12 +117,12 @@ class SearchFlowTest {
     @Test
     void moreResultsAreAskedOnlyForTheLatestServerSearch() throws Exception {
         InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer server = this.server(local, new FakeServer.Config(highId(local), "", List.of()));
+        FakeServer server = server(local, new FakeServer.Config(highId(local), "", List.of()));
         server.answerSearches(expression -> List.of(FakeServer.file(expression + ".bin", 1000, 1)));
         server.announceMoreResults(true);
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
-        this.connect(engine, events, local, server);
+        connect(engine, events, local, server);
 
         SearchId first = engine.search(new SearchRequest("first", SearchRequest.Scope.SERVER))
                 .get();
@@ -134,22 +133,21 @@ class SearchFlowTest {
 
         assertThat(engine.moreResults(first).get()).isFalse();
         assertThat(engine.moreResults(second).get()).isTrue();
-        this.waitFor(() -> server.moreRequests().size() == 1);
+        waitFor(() -> server.moreRequests().size() == 1);
         assertThat(server.moreRequests().getFirst().toString()).contains("second");
     }
 
     @Test
     void aGlobalSearchSkipsServersWithoutAUdpPort() throws Exception {
         InetAddress local = ServerFlowTest.lanAddress();
-        FakeServer connected = this.server(local, new FakeServer.Config(highId(local), "", List.of()));
-        FakeServer other =
-                this.server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
-        NjMuleEngine engine = this.engine();
+        FakeServer connected = server(local, new FakeServer.Config(highId(local), "", List.of()));
+        FakeServer other = server(local, new FakeServer.Config(1, "", List.of(FakeServer.file("udp.bin", 2000, 1))));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         // Asked first for its high priority; its UDP port, TCP port + 4, does not exist.
-        this.knows(engine, local, 65_533, List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1)));
-        this.knows(engine, local, other.port(), List.of());
-        this.connect(engine, events, local, connected);
+        knows(engine, local, 65_533, List.of(new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1)));
+        knows(engine, local, other.port(), List.of());
+        connect(engine, events, local, connected);
 
         // The engine survives a failing timer job and only logs it, so the log (on the console) is what tells.
         ByteArrayOutputStream log = new ByteArrayOutputStream();

@@ -64,12 +64,12 @@ public final class ProxyRoute extends Authenticator {
     @Override
     protected PasswordAuthentication getPasswordAuthentication() {
         ProxySettings proxy = this.settings.get();
-        String protocol = this.getRequestingProtocol();
+        String protocol = getRequestingProtocol();
         boolean socks = protocol != null && protocol.startsWith("SOCKS");
         if (proxy.type() != ProxySettings.Type.SOCKS
                 || !socks
                 || proxy.user().isEmpty()
-                || !proxy.host().equalsIgnoreCase(this.getRequestingHost())) {
+                || !proxy.host().equalsIgnoreCase(getRequestingHost())) {
             return null;
         }
         return new PasswordAuthentication(proxy.user(), proxy.password().toCharArray());

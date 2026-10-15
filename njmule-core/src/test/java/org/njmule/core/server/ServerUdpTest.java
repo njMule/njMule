@@ -33,8 +33,8 @@ class ServerUdpTest {
 
     @Test
     void aClosedSocketLeavesItsPortFreeAtOnce() throws Exception {
-        this.whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
-        this.thenThePortWasBusyTimes(0);
+        whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
+        thenThePortWasBusyTimes(0);
     }
 
     // Each socket receives (its reader waits on it) when it closes, as when Kad takes the port of the server socket.

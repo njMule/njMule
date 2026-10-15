@@ -54,7 +54,7 @@ class StartNextDownloadTest {
         Ed2kLink.FileLink waiting = Ed2kLink.FileLink.of("waiting.bin", 5000, Hash16.parseHex("b1".repeat(16)));
         Ed2kLink.FileLink paused = Ed2kLink.FileLink.of("paused.bin", 5000, Hash16.parseHex("b2".repeat(16)));
         Ed2kLink.FileLink running = Ed2kLink.FileLink.of("running.bin", 5000, Hash16.parseHex("b3".repeat(16)));
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.addDownload(waiting).get(5, TimeUnit.SECONDS);
             engine.addDownload(paused).get(5, TimeUnit.SECONDS);
             engine.pauseDownload(waiting.hash()).get(5, TimeUnit.SECONDS);
@@ -90,7 +90,7 @@ class StartNextDownloadTest {
                 OptionalInt.empty(),
                 OptionalInt.of(1),
                 OptionalInt.empty());
-        try (NjMuleEngine engine = this.start()) {
+        try (NjMuleEngine engine = start()) {
             engine.setCategories(List.of(
                             new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "", false),
                             new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.LOW, "", false)))

@@ -72,35 +72,35 @@ public final class TrayMenu {
         this.stage.initOwner(owner);
         this.stage.setAlwaysOnTop(true);
         this.stage.setResizable(false);
-        this.connect = this.item(
+        this.connect = item(
                 gui.t("IDS_MAIN_BTN_CONNECT"),
                 Material2AL.LINK,
                 () -> gui.model().connect(Optional.empty()));
-        this.disconnect = this.item(
+        this.disconnect = item(
                 gui.t("IDS_MAIN_BTN_DISCONNECT"),
                 Material2AL.LINK_OFF,
                 () -> gui.model().disconnect());
-        Button restore = this.item(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore);
+        Button restore = item(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore);
         restore.getStyleClass().add("tray-default");
         VBox items = new VBox(
-                this.title(),
+                title(),
                 this.limits.view(),
-                this.item(
+                item(
                         gui.t("IDS_PW_UA"),
                         Material2MZ.SPEED,
                         () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps())),
-                this.item(gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1)),
+                item(gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1)),
                 new Separator(),
                 this.connect,
                 this.disconnect,
                 new Separator(),
-                this.item(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
+                item(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
                 new Separator(),
                 restore,
                 new Separator(),
-                this.item(gui.t("IDS_EXIT"), Material2AL.EXIT_TO_APP, actions::exit));
+                item(gui.t("IDS_EXIT"), Material2AL.EXIT_TO_APP, actions::exit));
         items.getStyleClass().add("tray-items");
-        HBox root = new HBox(this.band(), items);
+        HBox root = new HBox(band(), items);
         root.getStyleClass().addAll("njmule", "tray-menu");
         Scene scene = new Scene(root);
         gui.attach(scene);

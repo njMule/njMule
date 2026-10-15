@@ -32,41 +32,41 @@ class IpFilterLevelsTest {
 
     @Test
     void aBlockedRangeInsideAnAllowedOneStaysBlocked() {
-        this.givenAFilterList("""
+        givenAFilterList("""
                 10.0.0.0 - 10.0.0.255 , 200 , allowed
                 10.0.0.100 - 10.0.1.255 , 000 , blocked
                 """);
 
-        this.whenTheListIsRead();
+        whenTheListIsRead();
 
-        this.thenTheFilterBlocks("10.0.0.150", "10.0.1.10");
-        this.thenTheFilterLetsThrough("10.0.0.50");
+        thenTheFilterBlocks("10.0.0.150", "10.0.1.10");
+        thenTheFilterLetsThrough("10.0.0.50");
     }
 
     @Test
     void aBlockedRangeDoesNotGrowOverAnAllowedOne() {
-        this.givenAFilterList("""
+        givenAFilterList("""
                 10.0.0.0 - 10.0.0.255 , 000 , blocked
                 10.0.0.200 - 10.0.3.255 , 200 , allowed
                 """);
 
-        this.whenTheListIsRead();
+        whenTheListIsRead();
 
-        this.thenTheFilterBlocks("10.0.0.10", "10.0.0.220");
-        this.thenTheFilterLetsThrough("10.0.2.1");
+        thenTheFilterBlocks("10.0.0.10", "10.0.0.220");
+        thenTheFilterLetsThrough("10.0.2.1");
     }
 
     @Test
     void overlappingRangesOfOneLevelBecomeOne() {
-        this.givenAFilterList("""
+        givenAFilterList("""
                 10.0.0.100 - 10.0.1.255 , 000 , second
                 10.0.0.0 - 10.0.0.255 , 000 , first
                 10.0.0.50 - 10.0.0.60 , 200 , apart
                 """);
 
-        this.whenTheListIsRead();
+        whenTheListIsRead();
 
-        this.thenTheRangesAre(
+        thenTheRangesAre(
                 new Range(Ipv4.parse("10.0.0.0"), Ipv4.parse("10.0.1.255"), 0, "first"),
                 new Range(Ipv4.parse("10.0.0.50"), Ipv4.parse("10.0.0.60"), 200, "apart"));
     }

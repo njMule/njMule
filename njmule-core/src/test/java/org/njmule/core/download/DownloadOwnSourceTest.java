@@ -85,7 +85,7 @@ class DownloadOwnSourceTest {
     @AfterEach
     void stop() throws Exception {
         if (this.manager != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.manager.close();
                 return null;
             });
@@ -99,78 +99,78 @@ class DownloadOwnSourceTest {
 
     @Test
     void shouldLeaveOutAServerSourceWithOurUserHash() throws Exception {
-        this.givenADownload();
+        givenADownload();
 
-        this.whenTheServerFindsSources(
+        whenTheServerFindsSources(
                 new ServerMessages.Source(Ipv4.toEd2k(Ipv4.of(192, 0, 2, 71)), PORT, 0, Optional.of(OURS)),
                 new ServerMessages.Source(Ipv4.toEd2k(THEIR_IP), PORT, 0, Optional.of(PEER)));
 
-        this.thenTheSourcesOfTheDownloadAre(at(THEIR_IP, PORT));
+        thenTheSourcesOfTheDownloadAre(at(THEIR_IP, PORT));
     }
 
     @Test
     void shouldLeaveOutAKadSourceWithOurUserHashOrAtOurAddress() throws Exception {
-        this.givenADownload();
-        this.givenKadSearchesForItsSources();
+        givenADownload();
+        givenKadSearchesForItsSources();
 
-        this.whenKadFindsSources(
+        whenKadFindsSources(
                 kadSource(Ipv4.of(192, 0, 2, 72), PORT, OURS),
                 kadSource(OUR_KAD_IP, PORT, PEER),
                 kadSource(OUR_KAD_IP, PORT + 1, PEER),
                 kadSource(THEIR_IP, PORT, PEER));
 
-        this.thenTheSourcesOfTheDownloadAre(at(OUR_KAD_IP, PORT + 1), at(THEIR_IP, PORT));
+        thenTheSourcesOfTheDownloadAre(at(OUR_KAD_IP, PORT + 1), at(THEIR_IP, PORT));
     }
 
     @Test
     void shouldLeaveOutAnExchangedSourceWithOurUserHash() throws Exception {
-        this.givenASourceOf(PEER, Hello.MISC2_SOURCE_EXCHANGE2);
+        givenASourceOf(PEER, Hello.MISC2_SOURCE_EXCHANGE2);
 
-        this.whenTheSourceTellsOfSources(exchanged(Ipv4.of(192, 0, 2, 73), OURS), exchanged(THEIR_IP, PEER));
+        whenTheSourceTellsOfSources(exchanged(Ipv4.of(192, 0, 2, 73), OURS), exchanged(THEIR_IP, PEER));
 
-        this.thenTheSourcesOfTheDownloadAre(this.source.address(), at(THEIR_IP, PORT));
+        thenTheSourcesOfTheDownloadAre(this.source.address(), at(THEIR_IP, PORT));
     }
 
     @Test
     void shouldDropASourceThatTurnsOutToBeOurselvesFromEveryDownload() throws Exception {
-        this.givenASourceOf(OURS, 0);
-        this.givenTheSourceIsASourceOfAnotherDownloadToo();
+        givenASourceOf(OURS, 0);
+        givenTheSourceIsASourceOfAnotherDownloadToo();
 
-        this.whenTheSourceAnswersOurHello();
+        whenTheSourceAnswersOurHello();
 
-        this.thenTheConnectionCloses();
-        this.thenNoDownloadHasASource();
+        thenTheConnectionCloses();
+        thenNoDownloadHasASource();
     }
 
     private void givenADownload() throws Exception {
-        this.manager = this.open();
-        this.onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("ours.bin", 5000, FILE)));
+        this.manager = open();
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("ours.bin", 5000, FILE)));
     }
 
     private void givenKadSearchesForItsSources() throws Exception {
-        this.await("Kad searched", () -> this.kadSearch.get() != null);
+        await("Kad searched", () -> this.kadSearch.get() != null);
     }
 
     private void givenASourceOf(Hash16 userHash, int misc2) throws Exception {
         this.source = new ScriptedSource(userHash, 0, misc2);
         this.resources.add(this.source);
-        this.manager = this.open();
-        this.onLoop(() -> this.manager.add(this.source.link("ours.bin", 5000, FILE)));
+        this.manager = open();
+        onLoop(() -> this.manager.add(this.source.link("ours.bin", 5000, FILE)));
     }
 
     private void givenTheSourceIsASourceOfAnotherDownloadToo() throws Exception {
-        this.onLoop(() -> this.manager.add(this.source.link("other.bin", 5000, OTHER_FILE)));
+        onLoop(() -> this.manager.add(this.source.link("other.bin", 5000, OTHER_FILE)));
     }
 
     private void whenTheServerFindsSources(ServerMessages.Source... found) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.manager.foundSources(new ServerMessages.FoundSources(FILE, List.of(found)));
             return null;
         });
     }
 
     private void whenKadFindsSources(DownloadManager.KadSource... found) throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.kadSearch.get().accept(List.of(found));
             return null;
         });
@@ -194,8 +194,8 @@ class DownloadOwnSourceTest {
         for (InetSocketAddress address : expected) {
             addresses.add(address.getAddress().getHostAddress() + ":" + address.getPort());
         }
-        this.await(addresses + " as sources", () -> this.manager.sources().size() == expected.length);
-        assertThat(this.onLoop(() ->
+        await(addresses + " as sources", () -> this.manager.sources().size() == expected.length);
+        assertThat(onLoop(() ->
                         this.manager.sources().stream().map(SourceInfo::address).toList()))
                 .containsExactlyInAnyOrderElementsOf(addresses);
     }
@@ -205,7 +205,7 @@ class DownloadOwnSourceTest {
     }
 
     private void thenNoDownloadHasASource() throws Exception {
-        this.await("no source", () -> this.manager.sources().isEmpty());
+        await("no source", () -> this.manager.sources().isEmpty());
     }
 
     private static InetSocketAddress at(int ip, int port) {
@@ -241,7 +241,7 @@ class DownloadOwnSourceTest {
                 return OUR_KAD_IP;
             }
         };
-        return this.onLoop(() -> DownloadManager.open(
+        return onLoop(() -> DownloadManager.open(
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
@@ -261,7 +261,7 @@ class DownloadOwnSourceTest {
     private void await(String what, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + ScriptedSource.WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            if (this.onLoop(condition)) {
+            if (onLoop(condition)) {
                 return;
             }
             Thread.sleep(20);

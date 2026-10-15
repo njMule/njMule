@@ -77,16 +77,16 @@ class DownloadRecoveryFlowTest {
     @Test
     void aSourceWithASlotTakesTheBlocksOfOneThatLeft() throws Exception {
         byte[] data = content(5 * BLOCK - 1000, 21);
-        Path shared = this.share(data);
-        FakePeer silent = this.peer(shared, new FakePeer.Config(hash(21), false, FakePeer.Slot.NOW, 0, Set.of()));
+        Path shared = share(data);
+        FakePeer silent = peer(shared, new FakePeer.Config(hash(21), false, FakePeer.Slot.NOW, 0, Set.of()));
         silent.stall();
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         DownloadInfo added = engine.addDownload(silent.link()).get(10, TimeUnit.SECONDS);
         await(() -> silent.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
 
         // The second source gets the two blocks left, then has nothing to ask for.
-        FakePeer second = this.peer(shared, new FakePeer.Config(hash(22), false, FakePeer.Slot.NOW, 0, Set.of()));
+        FakePeer second = peer(shared, new FakePeer.Config(hash(22), false, FakePeer.Slot.NOW, 0, Set.of()));
         assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
                         .get(10, TimeUnit.SECONDS))
                 .isTrue();
@@ -101,7 +101,7 @@ class DownloadRecoveryFlowTest {
     @Test
     void aSourceWithASlotTakesTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
         byte[] data = content(5 * BLOCK - 1000, 28);
-        Path shared = this.share(data);
+        Path shared = share(data);
         FakePeer filtered = FakePeer.start(
                 InetAddress.getByName("127.0.0.2"),
                 shared,
@@ -110,11 +110,11 @@ class DownloadRecoveryFlowTest {
         filtered.stall();
         // The range blocks only once the filter level is raised above its own.
         NjMuleEngine engine =
-                this.engine(List.of(new IpFilterDat.Range(Ipv4.of(127, 0, 0, 2), Ipv4.of(127, 0, 0, 2), 150, "test")));
+                engine(List.of(new IpFilterDat.Range(Ipv4.of(127, 0, 0, 2), Ipv4.of(127, 0, 0, 2), 150, "test")));
         Events events = new Events(engine);
         DownloadInfo added = engine.addDownload(filtered.link()).get(10, TimeUnit.SECONDS);
         await(() -> filtered.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
-        FakePeer second = this.peer(shared, new FakePeer.Config(hash(29), false, FakePeer.Slot.NOW, 0, Set.of()));
+        FakePeer second = peer(shared, new FakePeer.Config(hash(29), false, FakePeer.Slot.NOW, 0, Set.of()));
         assertThat(engine.addSource(added.hash(), new ServerAddress("127.0.0.1", second.port()))
                         .get(10, TimeUnit.SECONDS))
                 .isTrue();
@@ -130,9 +130,8 @@ class DownloadRecoveryFlowTest {
     @Test
     void aPartWithoutRecoveryDataIsDownloadedAgainAtOnce() throws Exception {
         byte[] data = content(2 * PART + 1000, 23);
-        FakePeer peer =
-                this.peer(this.share(data), new FakePeer.Config(hash(23), false, FakePeer.Slot.NOW, 0, Set.of(1)));
-        NjMuleEngine engine = this.engine();
+        FakePeer peer = peer(share(data), new FakePeer.Config(hash(23), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
         // A master hash the source does not know: it answers that it has no recovery data.
         Ed2kLink.FileLink link = peer.link();
@@ -155,9 +154,9 @@ class DownloadRecoveryFlowTest {
     @Test
     void theRestOfABlockWhoseCompressedStreamEndsEarlyIsAskedForAtOnce() throws Exception {
         byte[] data = content(3 * BLOCK, 26);
-        FakePeer peer = this.peer(this.share(data), FakePeer.Config.simple(hash(26)));
+        FakePeer peer = peer(share(data), FakePeer.Config.simple(hash(26)));
         peer.truncateNextBlock();
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
 
         DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
@@ -169,9 +168,8 @@ class DownloadRecoveryFlowTest {
     @Test
     void aFileOfOnePartRecoversItsCorruptBlock() throws Exception {
         byte[] data = content(PART - 1000, 27);
-        FakePeer peer =
-                this.peer(this.share(data), new FakePeer.Config(hash(27), false, FakePeer.Slot.NOW, 0, Set.of(0)));
-        NjMuleEngine engine = this.engine();
+        FakePeer peer = peer(share(data), new FakePeer.Config(hash(27), false, FakePeer.Slot.NOW, 0, Set.of(0)));
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
 
         DownloadInfo added = engine.addDownload(peer.link()).get(10, TimeUnit.SECONDS);
@@ -185,15 +183,15 @@ class DownloadRecoveryFlowTest {
     @Test
     void aFileDownloadedAgainRecoversItsCorruptPartsAgain() throws Exception {
         byte[] data = content(3 * PART + 1000, 24);
-        Path shared = this.share(data);
-        NjMuleEngine engine = this.engine();
+        Path shared = share(data);
+        NjMuleEngine engine = engine();
         Events events = new Events(engine);
-        FakePeer first = this.peer(shared, new FakePeer.Config(hash(24), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+        FakePeer first = peer(shared, new FakePeer.Config(hash(24), false, FakePeer.Slot.NOW, 0, Set.of(1)));
         DownloadInfo once = engine.addDownload(first.link()).get(10, TimeUnit.SECONDS);
         events.completed(once.hash(), WAIT);
         assertThat(first.received()).contains("AICHREQUEST");
 
-        FakePeer again = this.peer(shared, new FakePeer.Config(hash(25), false, FakePeer.Slot.NOW, 0, Set.of(1)));
+        FakePeer again = peer(shared, new FakePeer.Config(hash(25), false, FakePeer.Slot.NOW, 0, Set.of(1)));
         DownloadInfo twice = engine.addDownload(again.link()).get(10, TimeUnit.SECONDS);
 
         Path file = events.completed(twice.hash(), WAIT).file();
@@ -216,7 +214,7 @@ class DownloadRecoveryFlowTest {
     }
 
     private NjMuleEngine engine() throws IOException {
-        return this.engine(List.of());
+        return engine(List.of());
     }
 
     private NjMuleEngine engine(List<IpFilterDat.Range> ipFilter) throws IOException {

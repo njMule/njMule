@@ -76,36 +76,36 @@ class WebUiPagesTest {
 
     @Test
     void shouldListTheSharedFilesAndSetTheirPriority() throws Exception {
-        this.givenALoggedInUser();
-        this.givenTheEngineShares("talk.bin", "/files");
+        givenALoggedInUser();
+        givenTheEngineShares("talk.bin", "/files");
 
-        this.whenThePageIsAsked("/shared");
-        this.thenThePageShows("talk.bin", Path.of("/files") + " (with subfolders)", "value=\"high\" selected");
+        whenThePageIsAsked("/shared");
+        thenThePageShows("talk.bin", Path.of("/files") + " (with subfolders)", "value=\"high\" selected");
 
-        this.whenPosted("/shared", Map.of("action", "priority", "hash", HASH, "priority", "release"));
-        this.thenTheEngineWasAsked("upload priority " + HASH + " RELEASE");
+        whenPosted("/shared", Map.of("action", "priority", "hash", HASH, "priority", "release"));
+        thenTheEngineWasAsked("upload priority " + HASH + " RELEASE");
     }
 
     @Test
     void shouldShowKadAndBootstrapIt() throws Exception {
-        this.givenALoggedInUser();
-        this.givenKadConnectedAndFirewalled();
+        givenALoggedInUser();
+        givenKadConnectedAndFirewalled();
 
-        this.whenThePageIsAsked("/kad");
-        this.thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall", "Buddy");
+        whenThePageIsAsked("/kad");
+        thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall", "Buddy");
 
-        this.whenPosted("/kad", Map.of("action", "bootstrap", "address", "10.0.0.5:4672"));
-        this.thenTheEngineWasAsked("bootstrap 10.0.0.5:4672");
+        whenPosted("/kad", Map.of("action", "bootstrap", "address", "10.0.0.5:4672"));
+        thenTheEngineWasAsked("bootstrap 10.0.0.5:4672");
     }
 
     @Test
     void shouldShowTheLatestLogLinesNewestFirst() throws Exception {
-        this.givenALoggedInUser();
-        this.givenTheEngineLogged("first line", "second <line>");
+        givenALoggedInUser();
+        givenTheEngineLogged("first line", "second <line>");
 
-        this.whenTheLogShows("second &lt;line&gt;");
+        whenTheLogShows("second &lt;line&gt;");
 
-        this.thenTheNewestLineComesFirst("second &lt;line&gt;", "first line");
+        thenTheNewestLineComesFirst("second &lt;line&gt;", "first line");
     }
 
     // Given
@@ -113,7 +113,7 @@ class WebUiPagesTest {
     private void givenALoggedInUser() throws Exception {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
-        HttpResponse<String> in = this.post("/login", Map.of("password", PASSWORD));
+        HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
         this.cookie = set.substring(0, set.indexOf(';'));
@@ -154,20 +154,20 @@ class WebUiPagesTest {
     // When
 
     private void whenThePageIsAsked(String path) throws Exception {
-        this.answer = this.get(path);
+        this.answer = get(path);
     }
 
     private void whenPosted(String path, Map<String, String> fields) throws Exception {
         Map<String, String> all = new HashMap<>(fields);
-        all.put("csrf", this.csrf());
-        this.answer = this.post(path, all);
+        all.put("csrf", csrf());
+        this.answer = post(path, all);
     }
 
     // Delivered on the publisher's threads.
     private void whenTheLogShows(String text) throws Exception {
         long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         do {
-            this.whenThePageIsAsked("/log");
+            whenThePageIsAsked("/log");
         } while (!this.answer.body().contains(text) && System.nanoTime() < end);
     }
 
@@ -190,13 +190,13 @@ class WebUiPagesTest {
     }
 
     private String csrf() throws Exception {
-        Matcher m = CSRF.matcher(this.get("/search").body());
+        Matcher m = CSRF.matcher(get("/search").body());
         assertThat(m.find()).isTrue();
         return m.group(1);
     }
 
     private HttpResponse<String> get(String path) throws Exception {
-        return this.http.send(this.request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
@@ -206,9 +206,7 @@ class WebUiPagesTest {
                         + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
         return this.http.send(
-                this.request(path)
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
-                        .build(),
+                request(path).POST(HttpRequest.BodyPublishers.ofString(body)).build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 

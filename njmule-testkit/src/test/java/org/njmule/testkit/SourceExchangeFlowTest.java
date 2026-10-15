@@ -66,7 +66,7 @@ class SourceExchangeFlowTest {
         Path uploaderRoot = this.dir.resolve("uploader");
         Files.write(Files.createDirectories(uploaderRoot.resolve("incoming")).resolve("x.bin"), data);
         // Slow, so the first downloader is still there when the second asks.
-        NjMuleEngine uploader = this.engine(uploaderRoot, "limits.uploadKiBps=1\n");
+        NjMuleEngine uploader = engine(uploaderRoot, "limits.uploadKiBps=1\n");
         SharedFileInfo shared = awaitShared(uploader);
         Ed2kLink.FileLink link =
                 (Ed2kLink.FileLink) Ed2kLink.parse(shared.link().toUri()
@@ -76,11 +76,11 @@ class SourceExchangeFlowTest {
                         + uploader.preferences().tcpPort()
                         + "|/");
 
-        NjMuleEngine first = this.engine(this.dir.resolve("first"), "");
+        NjMuleEngine first = engine(this.dir.resolve("first"), "");
         first.addDownload(link).get(10, TimeUnit.SECONDS);
-        this.awaitDownloading(first);
+        awaitDownloading(first);
 
-        NjMuleEngine second = this.engine(this.dir.resolve("second"), "");
+        NjMuleEngine second = engine(this.dir.resolve("second"), "");
         DownloadInfo added = second.addDownload(link).get(10, TimeUnit.SECONDS);
         assertThat(added.sources()).isEqualTo(1);
 

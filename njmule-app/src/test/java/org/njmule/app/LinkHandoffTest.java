@@ -202,7 +202,7 @@ class LinkHandoffTest {
     @Test
     void aProgramWithoutTheSecretGetsNoAnswer() throws Exception {
         try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            int port = this.port();
+            int port = port();
             // Only the first line, which ends the exchange: nothing is left unread to reset the connection.
             for (String sent : new String[] {"", "not hex\n", "ab\n"}) {
                 try (Socket client = new Socket(InetAddress.getLoopbackAddress(), port)) {
@@ -218,7 +218,7 @@ class LinkHandoffTest {
     @Test
     void takesAtMostSoManyLinksAndTheLastOneWithoutItsLineEnd() throws Exception {
         try (LinkHandoff _ = LinkHandoff.listen(this.dir, this.received::add)) {
-            StringBuilder sent = new StringBuilder(this.secret()).append('\n');
+            StringBuilder sent = new StringBuilder(secret()).append('\n');
             for (int i = 0; i < LinkHandoff.MAX_LINKS + 10; i++) {
                 sent.append("ed2k://|file|")
                         .append(i)
@@ -226,12 +226,12 @@ class LinkHandoffTest {
                         .append("ab".repeat(16))
                         .append("|/\n");
             }
-            assertThat(this.exchange(sent.toString())).startsWith("OK");
+            assertThat(exchange(sent.toString())).startsWith("OK");
             List<String> links = this.received.poll(5, TimeUnit.SECONDS);
             assertThat(links).hasSize(LinkHandoff.MAX_LINKS);
             assertThat(links.getFirst()).contains("|0.iso|");
 
-            assertThat(this.exchange(this.secret() + "\n" + LINK)).startsWith("OK");
+            assertThat(exchange(secret() + "\n" + LINK)).startsWith("OK");
             assertThat(this.received.poll(5, TimeUnit.SECONDS)).containsExactly(LINK);
         }
     }
@@ -242,7 +242,7 @@ class LinkHandoffTest {
             // One character too many, and no more: nothing is left unread to reset the connection.
             String tooLong = "ed2k://" + "a".repeat(LinkHandoff.MAX_LINE - 6);
 
-            assertThat(this.exchange(this.secret() + "\n" + tooLong)).isEmpty();
+            assertThat(exchange(secret() + "\n" + tooLong)).isEmpty();
             assertThat(this.received.poll(300, TimeUnit.MILLISECONDS)).isNull();
             assertThat(LinkHandoff.deliver(this.dir, List.of(LINK)))
                     .as("still listening")
@@ -292,7 +292,7 @@ class LinkHandoffTest {
 
     // Sends text as a later start would, and returns the answer.
     private String exchange(String text) throws IOException {
-        try (Socket client = new Socket(InetAddress.getLoopbackAddress(), this.port())) {
+        try (Socket client = new Socket(InetAddress.getLoopbackAddress(), port())) {
             client.getOutputStream().write(text.getBytes(StandardCharsets.UTF_8));
             client.shutdownOutput();
             return new String(client.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

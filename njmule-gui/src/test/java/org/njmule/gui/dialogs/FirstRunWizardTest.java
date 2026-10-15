@@ -55,64 +55,64 @@ class FirstRunWizardTest {
 
     @Test
     void finishAppliesTheAnswersOfEveryPage() throws Exception {
-        this.givenTheWizard();
-        this.whenTheNickIs("Tester");
-        this.whenNextIsPressed(3);
-        this.thenTheButtonReads("Finish");
-        this.whenNextIsPressed(1);
-        this.thenTheNickBecomes("Tester");
-        this.thenTheOutcomeIs(new FirstRunWizard.Outcome(false, false));
+        givenTheWizard();
+        whenTheNickIs("Tester");
+        whenNextIsPressed(3);
+        thenTheButtonReads("Finish");
+        whenNextIsPressed(1);
+        thenTheNickBecomes("Tester");
+        thenTheOutcomeIs(new FirstRunWizard.Outcome(false, false));
     }
 
     @Test
     void aNickThatIsNotRightHoldsNextBack() throws Exception {
-        this.givenTheWizard();
-        this.whenNextIsPressed(1);
-        this.whenTheNickIs("");
-        this.thenNextIsOff(true);
-        this.whenTheNickIs("Someone");
-        this.thenNextIsOff(false);
+        givenTheWizard();
+        whenNextIsPressed(1);
+        whenTheNickIs("");
+        thenNextIsOff(true);
+        whenTheNickIs("Someone");
+        thenNextIsOff(false);
     }
 
     @Test
     void skippingChangesNothing() throws Exception {
-        this.givenTheWizard();
-        this.whenTheNickIs("Tester");
-        this.whenTheWindowIsClosed();
-        this.thenTheNickStays("njMule");
-        this.thenThereIsNoOutcome();
+        givenTheWizard();
+        whenTheNickIs("Tester");
+        whenTheWindowIsClosed();
+        thenTheNickStays("njMule");
+        thenThereIsNoOutcome();
     }
 
     @Test
     void anEmuleOnThisComputerAddsItsPage() throws Exception {
-        this.givenAnEmule();
-        this.givenTheWizard();
-        this.thenThePagesAre(5);
+        givenAnEmule();
+        givenTheWizard();
+        thenThePagesAre(5);
     }
 
     @Test
     void thePortsAreThoseOfTheSettings() throws Exception {
-        this.givenAnEmule();
-        this.givenTheWizard();
-        this.thenThePortsAre(
+        givenAnEmule();
+        givenTheWizard();
+        thenThePortsAre(
                 this.test.engine.preferences().tcpPort(),
                 this.test.engine.preferences().udpPort());
     }
 
     @Test
     void aLineFillsTheCapacitiesOfTheLine() throws Exception {
-        this.givenTheWizard();
-        this.whenTheLineIs(1);
-        this.thenTheCapacitiesAre("100", "20");
+        givenTheWizard();
+        whenTheLineIs(1);
+        thenTheCapacitiesAre("100", "20");
     }
 
     @Test
     void theFoldersAddedAreSharedWithTheirSubfolders() throws Exception {
         Path music = Files.createDirectories(this.dir.resolve("music"));
-        this.givenTheWizard();
-        this.whenTheFolderIsAdded(music);
-        this.whenFinished();
-        this.thenTheSharedFoldersInclude(music);
+        givenTheWizard();
+        whenTheFolderIsAdded(music);
+        whenFinished();
+        thenTheSharedFoldersInclude(music);
     }
 
     private void givenAnEmule() throws Exception {

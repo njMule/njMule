@@ -89,7 +89,7 @@ class EngineModelTest {
 
     // A direct executor: the model's state changes on the engine's threads, which tests poll.
     private EngineModel start() throws Exception {
-        return this.start(UnaryOperator.identity());
+        return start(UnaryOperator.identity());
     }
 
     // A model that hears no event of the engine: on this executor they would run beside the test's own.
@@ -111,7 +111,7 @@ class EngineModelTest {
 
     @Test
     void aConnectionThatCannotStartKeepsTheServerWeHad() throws Exception {
-        EngineModel m = this.start(real -> Engines.overriding(
+        EngineModel m = start(real -> Engines.overriding(
                 real,
                 Map.of(
                         "connect",
@@ -133,7 +133,7 @@ class EngineModelTest {
     @Test
     void anUnrelatedFailureLeavesAConnectionBeingMade() throws Exception {
         CompletableFuture<Void> connecting = new CompletableFuture<>();
-        EngineModel m = this.start(real -> Engines.overriding(
+        EngineModel m = start(real -> Engines.overriding(
                 real,
                 Map.of(
                         "connect",
@@ -152,7 +152,7 @@ class EngineModelTest {
 
     @Test
     void anErrorWithoutAMessageShowsItsName() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
 
         m.onError((Throwable) new IllegalStateException());
 
@@ -161,7 +161,7 @@ class EngineModelTest {
 
     @Test
     void aDownloadIsToldAddedOnlyOnceTheEngineTookIt() throws Exception {
-        EngineModel m = this.start(real -> Engines.overriding(
+        EngineModel m = start(real -> Engines.overriding(
                 real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException("disk full")))));
         List<String> added = new CopyOnWriteArrayList<>();
 
@@ -175,7 +175,7 @@ class EngineModelTest {
 
     @Test
     void pollsTheStatusAndKeepsTheRates() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
 
         until(() -> m.rates().size() == 1);
         m.tick();
@@ -189,7 +189,7 @@ class EngineModelTest {
 
     @Test
     void downloadsAreAddedPausedAndCancelled() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
 
         List<String> added = new CopyOnWriteArrayList<>();
         m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
@@ -206,7 +206,7 @@ class EngineModelTest {
 
     @Test
     void failuresReachTheErrorSink() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
 
         AtomicReference<EngineModel.Search> started = new AtomicReference<>();
         m.search(new SearchRequest("ubuntu", SearchRequest.Scope.SERVER), started::set);
@@ -219,7 +219,7 @@ class EngineModelTest {
 
     @Test
     void eventsUpdateTheState() throws Exception {
-        EngineModel m = this.notListening();
+        EngineModel m = notListening();
         ServerInfo server = new ServerInfo(
                 "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
 
@@ -300,7 +300,7 @@ class EngineModelTest {
 
     @Test
     void searchResultsGoToTheirSearch() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
         SearchId id = new SearchId(7);
         // As if the engine had accepted the search.
         EngineModel.Search search = m.open(id, new SearchRequest("x", SearchRequest.Scope.KAD));
@@ -322,14 +322,14 @@ class EngineModelTest {
 
     @Test
     void resultsThatComeBeforeTheirSearchOpensGoToItOnceItDoes() throws Exception {
-        this.givenAModel();
-        this.whenResultsAndTheEndOfASearchComeBeforeItsId(new SearchId(9));
-        this.whenTheSearchOpens(new SearchId(9));
-        this.thenTheSearchHasTheResultsAndHasEnded();
+        givenAModel();
+        whenResultsAndTheEndOfASearchComeBeforeItsId(new SearchId(9));
+        whenTheSearchOpens(new SearchId(9));
+        thenTheSearchHasTheResultsAndHasEnded();
     }
 
     private void givenAModel() throws Exception {
-        this.model = this.start();
+        this.model = start();
     }
 
     private void whenResultsAndTheEndOfASearchComeBeforeItsId(SearchId id) {
@@ -349,15 +349,15 @@ class EngineModelTest {
 
     @Test
     void aLateAnswerToAnEarlierPollDoesNotHideANewerState() throws Exception {
-        this.givenAModelWhoseEngineAnswersStatusPollsWhenTold();
-        this.whenTheModelPollsAgain();
-        this.whenTheSecondPollIsAnsweredFirst(KAD_ONLY);
-        this.whenTheFirstPollIsAnswered(NOTHING);
-        this.thenTheModelShows(KAD_ONLY);
+        givenAModelWhoseEngineAnswersStatusPollsWhenTold();
+        whenTheModelPollsAgain();
+        whenTheSecondPollIsAnsweredFirst(KAD_ONLY);
+        whenTheFirstPollIsAnswered(NOTHING);
+        thenTheModelShows(KAD_ONLY);
     }
 
     private void givenAModelWhoseEngineAnswersStatusPollsWhenTold() throws Exception {
-        this.start(real -> Engines.overriding(real, Map.of("status", args -> {
+        start(real -> Engines.overriding(real, Map.of("status", args -> {
             CompletableFuture<EngineStatus> answer = new CompletableFuture<>();
             this.statusPolls.add(answer);
             return answer;
@@ -382,7 +382,7 @@ class EngineModelTest {
 
     @Test
     void sharesPreferencesAndImports() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
         Path folder = Files.createDirectories(this.dir.resolve("share"));
         Files.write(folder.resolve("b.txt"), new byte[100]);
         Path emule = Files.createDirectories(this.dir.resolve("emule"));
@@ -408,7 +408,7 @@ class EngineModelTest {
 
     @Test
     void theCategoriesStillTellTheirChangesAfterAGarbageCollection() throws Exception {
-        EngineModel m = this.start();
+        EngineModel m = start();
         List<String> added = new CopyOnWriteArrayList<>();
         m.categories().addListener((ListChangeListener<Category>) c -> {
             while (c.next()) {

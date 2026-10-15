@@ -109,14 +109,14 @@ public final class ServerList {
     }
 
     public void save(Path file) throws IOException {
-        AtomicFiles.writeBytes(file, ServerMet.write(this.all()));
+        AtomicFiles.writeBytes(file, ServerMet.write(all()));
     }
 
     /** Adds the servers not known yet; returns how many were added. */
     public int addAll(Collection<ServerMet.Server> others) {
         int added = 0;
         for (ServerMet.Server server : others) {
-            if (this.add(server)) {
+            if (add(server)) {
                 added++;
             }
         }
@@ -180,7 +180,7 @@ public final class ServerList {
         for (TextFiles.StaticServer entry : AtomicFiles.read(file, in -> TextFiles.staticServers(in.readAllBytes()))) {
             ServerMet.Server server = serverOf(entry);
             Address address = addressOf(server);
-            this.add(server);
+            add(server);
             if (this.servers.containsKey(address)) {
                 this.servers.computeIfPresent(address, (key, s) -> {
                     ServerMet.Server kept = s.with(preferenceTag(entry.priority()));
@@ -287,12 +287,12 @@ public final class ServerList {
 
     /** The servers at a usable address, to ask over UDP: high priority first, then those that failed least. */
     public List<ServerMet.Server> candidates() {
-        return this.sorted(s -> this.accepts(s.ip()));
+        return sorted(s -> accepts(s.ip()));
     }
 
     /** As {@link #candidates()}, with the servers known by host name too, resolved when connecting. */
     public List<ServerMet.Server> connectable() {
-        return this.sorted(s -> this.accepts(s.ip()) || s.dynamicIp().isPresent());
+        return sorted(s -> accepts(s.ip()) || s.dynamicIp().isPresent());
     }
 
     /** Whether a server may be at {@code ip}: a usable address the filters let through. */

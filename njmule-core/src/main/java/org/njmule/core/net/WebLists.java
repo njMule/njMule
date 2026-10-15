@@ -92,7 +92,7 @@ public final class WebLists {
      * @throws IOException when the address is refused, the server fails, the body is too large or late
      */
     public byte[] fetch(URI uri) throws IOException {
-        return this.fetch(uri, false);
+        return fetch(uri, false);
     }
 
     /**
@@ -100,7 +100,7 @@ public final class WebLists {
      * length given first, must end with a line break, as a list cut short would lose its last lines unseen.
      */
     public byte[] fetchText(URI uri) throws IOException {
-        return this.fetch(uri, true);
+        return fetch(uri, true);
     }
 
     private byte[] fetch(URI uri, boolean lines) throws IOException {
@@ -118,7 +118,7 @@ public final class WebLists {
         }
         try {
             for (int hop = 0; ; hop++) {
-                this.check(current);
+                check(current);
                 // The whole answer, within the size and the time left: the next hop starts after this one is done.
                 Request request =
                         http.newRequest(current).timeout(left(deadline).toNanos(), TimeUnit.NANOSECONDS);

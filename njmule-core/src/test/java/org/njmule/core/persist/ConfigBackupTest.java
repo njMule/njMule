@@ -119,12 +119,11 @@ class ConfigBackupTest {
 
     @Test
     void shouldLeaveTheKadIndexOutOfTheCopy() throws Exception {
-        this.givenAConfigurationWith(
-                "nodes.dat", "key_index.dat", "src_index.dat", "notes_index.dat", "load_index.dat");
+        givenAConfigurationWith("nodes.dat", "key_index.dat", "src_index.dat", "notes_index.dat", "load_index.dat");
 
-        this.whenACopyIsWritten();
+        whenACopyIsWritten();
 
-        this.thenTheCopyHolds("nodes.dat");
+        thenTheCopyHolds("nodes.dat");
     }
 
     private void givenAConfigurationWith(String... files) throws Exception {

@@ -108,7 +108,7 @@ public final class Chats {
 
     /** The conversation with {@code address}, which the user opens; started if new. */
     public Chat with(String address) {
-        Chat chat = this.open(address);
+        Chat chat = open(address);
         chat.ours = true;
         return chat;
     }
@@ -118,7 +118,7 @@ public final class Chats {
     }
 
     void received(String address, Hash16 userHash, Optional<String> nick, String text) {
-        Chat chat = this.open(address);
+        Chat chat = open(address);
         chat.userHash.set(userHash);
         nick.filter(n -> !n.isBlank()).ifPresent(chat.nick::set);
         chat.add(Author.THEM, text, "");
@@ -127,20 +127,20 @@ public final class Chats {
     }
 
     void sent(String address, String text) {
-        Chat chat = this.with(address);
+        Chat chat = with(address);
         chat.add(Author.US, text, "");
         chat.captcha.set(null);
         trim(chat);
     }
 
     void notice(String address, String key, String detail) {
-        Chat chat = this.open(address);
+        Chat chat = open(address);
         chat.add(Author.NOTICE, key, detail);
         trim(chat);
     }
 
     void captcha(String address, Hash16 userHash, byte[] image) {
-        Chat chat = this.open(address);
+        Chat chat = open(address);
         chat.userHash.set(userHash);
         chat.captcha.set(image);
     }
@@ -159,7 +159,7 @@ public final class Chats {
         chat.lastActive = ++this.clock;
         if (started) {
             this.chats.add(chat);
-            this.forgetStrangers();
+            forgetStrangers();
         }
         return chat;
     }

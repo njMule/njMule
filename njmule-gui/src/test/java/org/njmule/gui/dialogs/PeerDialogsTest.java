@@ -70,23 +70,23 @@ class PeerDialogsTest {
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
                         real, Map.of("browseSharedFiles", args -> CompletableFuture.completedFuture(List.of(film)))));
-        ClientFilesDialog dialog = this.browse();
+        ClientFilesDialog dialog = browse();
 
-        FxTesting.await("the list", () -> this.table(dialog).getItems().size() == 1);
-        assertThat(FxTesting.onFx(() -> this.state(dialog))).isEqualTo("1 shared files");
+        FxTesting.await("the list", () -> table(dialog).getItems().size() == 1);
+        assertThat(FxTesting.onFx(() -> state(dialog))).isEqualTo("1 shared files");
         assertThat(FxTesting.onFx(() -> dialog.stage().getTitle())).isEqualTo("View Shared Files: Peer");
-        assertThat(FxTesting.onFx(() -> this.button(dialog, "Download").isDisabled()))
+        assertThat(FxTesting.onFx(() -> button(dialog, "Download").isDisabled()))
                 .as("nothing chosen")
                 .isTrue();
         FxTesting.onFx(() -> {
-            this.table(dialog).getSelectionModel().select(0);
-            this.button(dialog, "Download").fire();
+            table(dialog).getSelectionModel().select(0);
+            button(dialog, "Download").fire();
         });
         FxTesting.await("the download", () -> this.test.model.downloads().size() == 1);
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
                 .extracting(DownloadInfo::name)
                 .containsExactly("film.mkv");
-        FxTesting.onFx(() -> this.button(dialog, "Close").fire());
+        FxTesting.onFx(() -> button(dialog, "Close").fire());
         assertThat(FxTesting.onFx(() -> dialog.stage().isShowing())).isFalse();
     }
 
@@ -98,13 +98,13 @@ class PeerDialogsTest {
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(real, Map.of("browseSharedFiles", args -> answer.get())));
 
-        ClientFilesDialog empty = this.browse();
-        FxTesting.await("told", () -> this.state(empty).equals("The client shows no files"));
+        ClientFilesDialog empty = browse();
+        FxTesting.await("told", () -> state(empty).equals("The client shows no files"));
         FxTesting.onFx(() -> empty.stage().close());
 
         answer.set(CompletableFuture.failedFuture(new IOException("the client refused")));
-        ClientFilesDialog refused = this.browse();
-        FxTesting.await("told", () -> this.state(refused).equals("No list: the client refused"));
+        ClientFilesDialog refused = browse();
+        FxTesting.await("told", () -> state(refused).equals("No list: the client refused"));
         FxTesting.onFx(() -> refused.stage().close());
     }
 

@@ -82,22 +82,22 @@ class SourceExchangeAnswerTest {
     void aSourceOnThisMachineIsPassedOnlyToClientsOnThisMachine() throws Exception {
         Optional<InetAddress> lan = lanAddress();
         assumeTrue(lan.isPresent(), "a LAN address to ask from");
-        NjMuleEngine engine = this.engine();
+        NjMuleEngine engine = engine();
         SharedFileInfo file = awaitShared(engine);
-        Client downloader = this.client(InetAddress.getLoopbackAddress(), engine, 1);
+        Client downloader = client(InetAddress.getLoopbackAddress(), engine, 1);
         downloader.send(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, file.hash()));
         downloader.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file.hash()));
         downloader.poll(Duration.ofSeconds(1));
 
         // Clients ask for the file before they ask for its sources.
-        Client fromLan = this.client(lan.get(), engine, 2);
+        Client fromLan = client(lan.get(), engine, 2);
         fromLan.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
         fromLan.send(SourceExchange.request(file.hash()));
         assertThat(fromLan.answer(Duration.ofSeconds(2)))
                 .as("a loopback address means nothing to another machine")
                 .isEmpty();
 
-        Client local = this.client(InetAddress.getLoopbackAddress(), engine, 3);
+        Client local = client(InetAddress.getLoopbackAddress(), engine, 3);
         local.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, file.hash()));
         local.send(SourceExchange.request(file.hash()));
         assertThat(local.answer(WAIT).orElseThrow().sources())
@@ -211,7 +211,7 @@ class SourceExchangeAnswerTest {
             int old = this.socket.getSoTimeout();
             this.socket.setSoTimeout((int) wait.toMillis());
             try {
-                return Optional.of(this.next());
+                return Optional.of(next());
             } catch (SocketTimeoutException e) {
                 return Optional.empty();
             } finally {
@@ -223,7 +223,7 @@ class SourceExchangeAnswerTest {
         Optional<SourceExchange.Answer> answer(Duration wait) throws Exception {
             long deadline = System.nanoTime() + wait.toNanos();
             while (System.nanoTime() < deadline) {
-                Optional<Packet> packet = this.poll(Duration.ofMillis(200));
+                Optional<Packet> packet = poll(Duration.ofMillis(200));
                 if (packet.isEmpty()) {
                     continue;
                 }

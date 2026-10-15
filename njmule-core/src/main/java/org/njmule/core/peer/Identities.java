@@ -132,7 +132,7 @@ public final class Identities {
 
     /** Starts the identification with a peer whose hello we have, asking it to sign our challenge. */
     public Session start(Hello peer, InetAddress address, Consumer<Packet> send) {
-        return this.start(peer, address, Optional.empty(), send);
+        return start(peer, address, Optional.empty(), send);
     }
 
     /** As {@link #start(Hello, InetAddress, Consumer)}, over a connection from {@code local}, our address on it. */

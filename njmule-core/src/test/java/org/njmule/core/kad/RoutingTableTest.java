@@ -41,9 +41,9 @@ class RoutingTableTest {
 
     @Test
     void aContactMayMoveInsideItsOwnFullSubnet() {
-        List<KadContact> subnet = this.fillSubnet(Ipv4.of(9, 9, 9, 0));
+        List<KadContact> subnet = fillSubnet(Ipv4.of(9, 9, 9, 0));
         assertThat(subnet).hasSize(10);
-        assertThat(this.add(this.contact(Ipv4.of(9, 9, 9, 251)), false))
+        assertThat(add(contact(Ipv4.of(9, 9, 9, 251)), false))
                 .as("the /24 is full")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
 
@@ -51,55 +51,54 @@ class RoutingTableTest {
         int before = moving.ip();
         KadContact moved = new KadContact(moving.id(), Ipv4.of(9, 9, 9, 251), PORT, 4662, 8, 0);
 
-        assertThat(this.add(moved, true)).isEqualTo(RoutingTable.Outcome.UPDATED);
+        assertThat(add(moved, true)).isEqualTo(RoutingTable.Outcome.UPDATED);
         assertThat(this.table.byAddress(Ipv4.of(9, 9, 9, 251))).containsSame(moving);
         assertThat(this.table.byAddress(before)).isEmpty();
     }
 
     @Test
     void unusableContactsAreRefused() {
-        assertThat(this.add(new KadContact(this.table.own(), Ipv4.of(1, 1, 1, 1), PORT, 4662, 8, 0), false))
+        assertThat(add(new KadContact(this.table.own(), Ipv4.of(1, 1, 1, 1), PORT, 4662, 8, 0), false))
                 .as("ourselves")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(UInt128.random(this.random), Ipv4.of(1, 1, 1, 2), PORT, 4662, 1, 0), false))
+        assertThat(add(new KadContact(UInt128.random(this.random), Ipv4.of(1, 1, 1, 2), PORT, 4662, 1, 0), false))
                 .as("version 1")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(UInt128.random(this.random), Ipv4.of(1, 1, 1, 3), 53, 4662, 5, 0), false))
+        assertThat(add(new KadContact(UInt128.random(this.random), Ipv4.of(1, 1, 1, 3), 53, 4662, 5, 0), false))
                 .as("port 53 of an old client")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(UInt128.random(this.random), Ipv4.of(2, 1, 1, 3), 53, 4662, 6, 0), false))
+        assertThat(add(new KadContact(UInt128.random(this.random), Ipv4.of(2, 1, 1, 3), 53, 4662, 6, 0), false))
                 .isEqualTo(RoutingTable.Outcome.ADDED);
-        assertThat(this.add(
-                        new KadContact(UInt128.random(this.random), Ipv4.of(3, 1, 1, 3), 0xFFFF, 4662, 8, 0), false))
+        assertThat(add(new KadContact(UInt128.random(this.random), Ipv4.of(3, 1, 1, 3), 0xFFFF, 4662, 8, 0), false))
                 .isEqualTo(RoutingTable.Outcome.ADDED);
     }
 
     @Test
     void aKnownContactChangesOnlyAsAnUpdateAndNeverOntoAnotherOnesAddress() {
-        KadContact first = this.contact(Ipv4.of(1, 1, 1, 1));
-        KadContact second = this.contact(Ipv4.of(2, 2, 2, 2));
-        this.add(first, false);
-        this.add(second, false);
+        KadContact first = contact(Ipv4.of(1, 1, 1, 1));
+        KadContact second = contact(Ipv4.of(2, 2, 2, 2));
+        add(first, false);
+        add(second, false);
 
-        assertThat(this.add(new KadContact(first.id(), Ipv4.of(4, 4, 4, 4), PORT, 4662, 8, 0), false))
+        assertThat(add(new KadContact(first.id(), Ipv4.of(4, 4, 4, 4), PORT, 4662, 8, 0), false))
                 .as("not an update")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(first.id(), Ipv4.of(2, 2, 2, 2), PORT, 4662, 8, 0), true))
+        assertThat(add(new KadContact(first.id(), Ipv4.of(2, 2, 2, 2), PORT, 4662, 8, 0), true))
                 .as("onto another contact's address")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(first.id(), Ipv4.of(1, 1, 1, 1), PORT, 4662, 7, 0), true))
+        assertThat(add(new KadContact(first.id(), Ipv4.of(1, 1, 1, 1), PORT, 4662, 7, 0), true))
                 .as("an older version")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
         assertThat(this.table.byAddress(Ipv4.of(1, 1, 1, 1))).containsSame(first);
         assertThat(this.table.byAddress(Ipv4.of(2, 2, 2, 2))).containsSame(second);
 
         KadContact old = new KadContact(UInt128.random(this.random), Ipv4.of(5, 5, 5, 5), PORT, 4662, 5, 0);
-        this.add(old, false);
+        add(old, false);
         old.setHelloReceived();
-        assertThat(this.add(new KadContact(old.id(), Ipv4.of(5, 5, 5, 5), PORT + 1, 4662, 5, 0), true))
+        assertThat(add(new KadContact(old.id(), Ipv4.of(5, 5, 5, 5), PORT + 1, 4662, 5, 0), true))
                 .as("an old client that said hello keeps its port")
                 .isEqualTo(RoutingTable.Outcome.REFUSED);
-        assertThat(this.add(new KadContact(old.id(), Ipv4.of(5, 5, 5, 5), PORT, 4662, 5, 0), true))
+        assertThat(add(new KadContact(old.id(), Ipv4.of(5, 5, 5, 5), PORT, 4662, 5, 0), true))
                 .isEqualTo(RoutingTable.Outcome.UPDATED);
     }
 
@@ -108,18 +107,18 @@ class RoutingTableTest {
         RoutingTable lan = new RoutingTable(UInt128.random(this.random), Ipv4::isLan);
         int added = 0;
         for (int i = 1; i <= 30; i++) {
-            KadContact c = this.contact(Ipv4.of(192, 168, 1, i));
+            KadContact c = contact(Ipv4.of(192, 168, 1, i));
             if (lan.add(c, false, NodesDat.UdpKey.NONE, 0, 0) == RoutingTable.Outcome.ADDED) {
                 added++;
             }
         }
         assertThat(added).isGreaterThan(10);
 
-        KadContact c = this.contact(Ipv4.of(7, 7, 7, 7));
-        this.add(c, false);
+        KadContact c = contact(Ipv4.of(7, 7, 7, 7));
+        add(c, false);
         this.table.remove(c);
         assertThat(this.table.byAddress(c.ip())).isEmpty();
-        assertThat(this.add(this.contact(Ipv4.of(7, 7, 7, 7)), false)).isEqualTo(RoutingTable.Outcome.ADDED);
+        assertThat(add(contact(Ipv4.of(7, 7, 7, 7)), false)).isEqualTo(RoutingTable.Outcome.ADDED);
     }
 
     @Test
@@ -127,10 +126,10 @@ class RoutingTableTest {
         UInt128 target = UInt128.random(this.random);
         assertThat(this.table.closest(target, 3, 5)).isEmpty();
         KadContact exact = new KadContact(target, Ipv4.of(1, 1, 1, 1), PORT, 4662, 8, 0);
-        KadContact unverified = this.contact(Ipv4.of(2, 2, 2, 2));
-        KadContact other = this.contact(Ipv4.of(3, 3, 3, 3));
+        KadContact unverified = contact(Ipv4.of(2, 2, 2, 2));
+        KadContact other = contact(Ipv4.of(3, 3, 3, 3));
         for (KadContact c : List.of(exact, unverified, other)) {
-            this.add(c, false);
+            add(c, false);
         }
         exact.setVerified(true);
         other.setVerified(true);
@@ -145,28 +144,28 @@ class RoutingTableTest {
 
     @Test
     void shouldLetALookupAskOnlyContactsThatAgreeWithTheTable() {
-        KadContact verified = this.givenAContactOfTheTable(Ipv4.of(1, 1, 1, 1), true);
-        KadContact unverified = this.givenAContactOfTheTable(Ipv4.of(2, 2, 2, 2), false);
-        this.givenAFullSubnet(Ipv4.of(9, 9, 9, 0));
+        KadContact verified = givenAContactOfTheTable(Ipv4.of(1, 1, 1, 1), true);
+        KadContact unverified = givenAContactOfTheTable(Ipv4.of(2, 2, 2, 2), false);
+        givenAFullSubnet(Ipv4.of(9, 9, 9, 0));
 
-        this.thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT, true);
-        this.thenALookupMayAsk(verified.id(), Ipv4.of(5, 5, 5, 5), PORT, false);
-        this.thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT + 1, false);
-        this.thenALookupMayAsk(unverified.id(), Ipv4.of(5, 5, 5, 5), PORT, true);
-        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(2, 2, 2, 2), PORT, false);
-        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(9, 9, 9, 251), PORT, false);
-        this.thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(5, 5, 5, 5), PORT, true);
+        thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT, true);
+        thenALookupMayAsk(verified.id(), Ipv4.of(5, 5, 5, 5), PORT, false);
+        thenALookupMayAsk(verified.id(), Ipv4.of(1, 1, 1, 1), PORT + 1, false);
+        thenALookupMayAsk(unverified.id(), Ipv4.of(5, 5, 5, 5), PORT, true);
+        thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(2, 2, 2, 2), PORT, false);
+        thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(9, 9, 9, 251), PORT, false);
+        thenALookupMayAsk(UInt128.random(this.random), Ipv4.of(5, 5, 5, 5), PORT, true);
     }
 
     private KadContact givenAContactOfTheTable(int ip, boolean verified) {
-        KadContact c = this.contact(ip);
+        KadContact c = contact(ip);
         c.setVerified(verified);
-        assertThat(this.add(c, false)).isEqualTo(RoutingTable.Outcome.ADDED);
+        assertThat(add(c, false)).isEqualTo(RoutingTable.Outcome.ADDED);
         return c;
     }
 
     private void givenAFullSubnet(int subnet) {
-        assertThat(this.fillSubnet(subnet)).hasSize(10);
+        assertThat(fillSubnet(subnet)).hasSize(10);
     }
 
     private void thenALookupMayAsk(UInt128 id, int ip, int port, boolean acceptable) {
@@ -232,12 +231,12 @@ class RoutingTableTest {
     // Spreads contacts over many zones, then adds contacts of one /24 until it holds the most allowed.
     private List<KadContact> fillSubnet(int subnet) {
         for (int i = 0; i < 80; i++) {
-            this.add(this.contact(Ipv4.of(30 + i, 1, 1, 1)), false);
+            add(contact(Ipv4.of(30 + i, 1, 1, 1)), false);
         }
         List<KadContact> added = new ArrayList<>();
         for (int i = 1; i < 10_000 && added.size() < 10; i++) {
-            KadContact c = this.contact(subnet | (i % 250 + 1));
-            if (this.add(c, false) == RoutingTable.Outcome.ADDED) {
+            KadContact c = contact(subnet | (i % 250 + 1));
+            if (add(c, false) == RoutingTable.Outcome.ADDED) {
                 added.add(c);
             }
         }

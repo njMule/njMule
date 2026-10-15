@@ -53,62 +53,52 @@ class EmuleProfileTest {
 
     @Test
     void readsEveryDataFile() throws IOException {
-        report("server.met", ServerMet.read(this.read("server.met")).size());
-        List<KnownMet.KnownFile> known = KnownMet.read(this.read("known.met"));
+        report("server.met", ServerMet.read(read("server.met")).size());
+        List<KnownMet.KnownFile> known = KnownMet.read(read("known.met"));
         long consistent =
                 known.stream().filter(KnownMet.KnownFile::isConsistent).count();
         report("known.met", known.size() + " (" + consistent + " consistent)");
         assertThat(consistent).isEqualTo(known.size());
-        report("known2_64.met", Known2Met.read(this.read("known2_64.met")).size());
-        report(
-                "cancelled.met",
-                CancelledMet.read(this.read("cancelled.met")).keys().size());
-        report("clients.met", ClientsMet.read(this.read("clients.met")).size());
-        report("emfriends.met", FriendsMet.read(this.read("emfriends.met")).size());
-        report("nodes.dat", NodesDat.read(this.read("nodes.dat")).contacts().size());
+        report("known2_64.met", Known2Met.read(read("known2_64.met")).size());
+        report("cancelled.met", CancelledMet.read(read("cancelled.met")).keys().size());
+        report("clients.met", ClientsMet.read(read("clients.met")).size());
+        report("emfriends.met", FriendsMet.read(read("emfriends.met")).size());
+        report("nodes.dat", NodesDat.read(read("nodes.dat")).contacts().size());
         report(
                 "preferencesKad.dat",
-                PreferencesKadDat.read(this.read("preferencesKad.dat")).kadId().isZero() ? "zero id" : "ok");
+                PreferencesKadDat.read(read("preferencesKad.dat")).kadId().isZero() ? "zero id" : "ok");
         report(
                 "preferences.dat",
-                PreferencesDat.isMarkedUserHash(PreferencesDat.read(this.read("preferences.dat"))
-                                .userHash())
+                PreferencesDat.isMarkedUserHash(
+                                PreferencesDat.read(read("preferences.dat")).userHash())
                         ? "marked hash"
                         : "unmarked hash");
         report(
                 "load_index.dat",
-                KadIndexFiles.readLoad(this.read("load_index.dat")).loads().size());
+                KadIndexFiles.readLoad(read("load_index.dat")).loads().size());
         report(
                 "src_index.dat",
-                KadIndexFiles.readSources(this.read("src_index.dat")).keys().size());
+                KadIndexFiles.readSources(read("src_index.dat")).keys().size());
         report(
                 "key_index.dat",
-                KadIndexFiles.readKeywords(this.read("key_index.dat"))
-                        .keywords()
-                        .size());
+                KadIndexFiles.readKeywords(read("key_index.dat")).keywords().size());
         report(
                 "StoredSearches.met",
-                SearchFiles.readStored(this.read("StoredSearches.met")).size());
-        report(
-                "SearchSpam.met",
-                SearchFiles.readSpam(this.read("SearchSpam.met")).size());
+                SearchFiles.readStored(read("StoredSearches.met")).size());
+        report("SearchSpam.met", SearchFiles.readSpam(read("SearchSpam.met")).size());
         report(
                 "staticservers.dat",
-                TextFiles.staticServers(this.read("staticservers.dat")).size());
-        report("shareddir.dat", TextFiles.entries(this.read("shareddir.dat")).size());
-        report(
-                "sharedfiles.dat",
-                TextFiles.sharedFiles(this.read("sharedfiles.dat")).size());
-        report("addresses.dat", TextFiles.entries(this.read("addresses.dat")).size());
+                TextFiles.staticServers(read("staticservers.dat")).size());
+        report("shareddir.dat", TextFiles.entries(read("shareddir.dat")).size());
+        report("sharedfiles.dat", TextFiles.sharedFiles(read("sharedfiles.dat")).size());
+        report("addresses.dat", TextFiles.entries(read("addresses.dat")).size());
         report(
                 "preferences.ini",
-                IniFile.parse(this.read("preferences.ini")).sections().size() + " sections");
-        report(
-                "Category.ini",
-                IniFile.parse(this.read("Category.ini")).sections().size() + " sections");
+                IniFile.parse(read("preferences.ini")).sections().size() + " sections");
+        report("Category.ini", IniFile.parse(read("Category.ini")).sections().size() + " sections");
         report(
                 "statistics.ini",
-                IniFile.parse(this.read("statistics.ini")).sections().size() + " sections");
+                IniFile.parse(read("statistics.ini")).sections().size() + " sections");
     }
 
     @Test

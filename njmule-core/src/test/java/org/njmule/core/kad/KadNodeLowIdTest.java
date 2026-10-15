@@ -117,146 +117,146 @@ class KadNodeLowIdTest {
 
     @Test
     void helpersFoundByALookupAreAskedOnceOurPortIsKnownAndOneDatagramProvesUdpOpen() throws Exception {
-        this.givenAConnectedNode();
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
 
-        this.whenALookupFindsHelpers();
+        whenALookupFindsHelpers();
 
-        this.thenHelpersAreAsked(2);
-        this.thenTheHelpersAreAskedForOurPortsWithOurKey();
+        thenHelpersAreAsked(2);
+        thenTheHelpersAreAskedForOurPortsWithOurKey();
 
-        this.whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
 
-        this.thenUdpIs(false, true);
+        thenUdpIs(false, true);
     }
 
     @Test
     void twoHelpersWhoseDatagramsNeverCameMakeUdpFirewalled() throws Exception {
-        this.givenAConnectedNode();
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
-        this.givenALookupFoundHelpers();
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
 
-        this.whenTheHelpersLinksEndWithoutADatagram();
+        whenTheHelpersLinksEndWithoutADatagram();
 
-        this.thenUdpIs(true, true);
-        this.thenOurHelloSaysUdpFirewalled();
+        thenUdpIs(true, true);
+        thenOurHelloSaysUdpFirewalled();
     }
 
     @Test
     void aDatagramFromANodeNotAskedOrWithoutOurKeyProvesNothing() throws Exception {
-        this.givenAConnectedNode();
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
-        this.givenALookupFoundHelpers();
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
 
-        this.whenAHelperSendsItsDatagram(Ipv4.of(70, 1, 1, 1), PORT, true);
-        this.whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, false);
+        whenAHelperSendsItsDatagram(Ipv4.of(70, 1, 1, 1), PORT, true);
+        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, false);
 
-        this.thenUdpIs(false, false);
+        thenUdpIs(false, false);
     }
 
     @Test
     void aHelperThatCouldNotBeAskedIsReplacedByAnother() throws Exception {
-        this.givenAConnectedNode();
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
-        this.givenALookupFoundHelpers();
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
 
-        this.whenAHelperCouldNotBeAsked(this.udpChecks.getFirst().ip());
+        whenAHelperCouldNotBeAsked(this.udpChecks.getFirst().ip());
 
-        this.thenHelpersAreAsked(3);
-        this.thenUdpIs(false, false);
+        thenHelpersAreAsked(3);
+        thenUdpIs(false, false);
     }
 
     @Test
     void aTcpFirewalledNodeWithoutAnOutcomeCountsAsUdpFirewalledAfterSixMinutes() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
 
-        this.whenMinutesPass(7);
+        whenMinutesPass(7);
 
-        this.thenUdpIs(true, false);
+        thenUdpIs(true, false);
     }
 
     @Test
     void aClientsUdpTestGetsOneDatagramPerPortAndOnlyOnceInAWhile() throws Exception {
         int client = Ipv4.of(80, 1, 1, 1);
 
-        this.whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
-        this.whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
+        whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
+        whenAClientAsksForItsUdpTest(client, 4673, 5000, 77);
 
-        this.thenDatagramsForTheUdpTestWentTo(client, List.of(4673, 5000), 0, 77);
+        thenDatagramsForTheUdpTestWentTo(client, List.of(4673, 5000), 0, 77);
     }
 
     @Test
     void aClientOfOursIsToldItsUdpTestIsWorthless() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         int contact = CONTACTS.getFirst();
 
-        this.whenAClientAsksForItsUdpTest(contact, 4673, 0, 77);
+        whenAClientAsksForItsUdpTest(contact, 4673, 0, 77);
 
-        this.thenDatagramsForTheUdpTestWentTo(contact, List.of(4673), 1, 77);
+        thenDatagramsForTheUdpTestWentTo(contact, List.of(4673), 1, 77);
     }
 
     @Test
     void aNodeFirewalledOnBothPortsAsksTheNodesNearItsComplementToBeItsBuddy() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         int near = Ipv4.of(30, 1, 1, 1);
-        this.givenAContactAt(near, this.complement());
-        this.givenUdpIsFirewalled();
+        givenAContactAt(near, complement());
+        givenUdpIsFirewalled();
 
-        this.whenTheBuddySearchAsks(near);
+        whenTheBuddySearchAsks(near);
 
-        this.thenABuddyRequestWentTo(near);
+        thenABuddyRequestWentTo(near);
 
-        this.whenTheNodeOffersToBeOurBuddy(near, this.complement());
+        whenTheNodeOffersToBeOurBuddy(near, complement());
 
-        this.thenTheOfferIsTakenFrom(near);
+        thenTheOfferIsTakenFrom(near);
     }
 
     @Test
     void anOfferForAnotherIdOrNotAskedForIsLeftOut() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         int near = Ipv4.of(30, 1, 1, 1);
-        this.givenAContactAt(near, this.complement());
-        this.givenUdpIsFirewalled();
-        this.givenTheBuddySearchAsked(near);
+        givenAContactAt(near, complement());
+        givenUdpIsFirewalled();
+        givenTheBuddySearchAsked(near);
 
-        this.whenTheNodeOffersToBeOurBuddy(near, UInt128.random(this.random));
-        this.whenTheNodeOffersToBeOurBuddy(Ipv4.of(31, 1, 1, 1), this.complement());
+        whenTheNodeOffersToBeOurBuddy(near, UInt128.random(this.random));
+        whenTheNodeOffersToBeOurBuddy(Ipv4.of(31, 1, 1, 1), complement());
 
-        this.thenNoOfferIsTaken();
+        thenNoOfferIsTaken();
     }
 
     @Test
     void anOpenNodeOffersToBeTheBuddyOfAFirewalledNode() throws Exception {
-        this.givenAnOpenNodeOnBothPorts();
+        givenAnOpenNodeOnBothPorts();
         int firewalled = Ipv4.of(40, 1, 1, 1);
         UInt128 buddyId = UInt128.random(this.random);
 
-        this.whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, buddyId, 55);
+        whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, buddyId, 55);
 
-        this.thenWeAreAsked(firewalled, buddyId);
-        this.thenOurOfferWentTo(firewalled, buddyId, OptionalInt.of(3));
+        thenWeAreAsked(firewalled, buddyId);
+        thenOurOfferWentTo(firewalled, buddyId, OptionalInt.of(3));
     }
 
     @Test
     void aFirewalledNodeOrOneServingAlreadyIsNoBuddy() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         int firewalled = Ipv4.of(40, 1, 1, 1);
 
-        this.whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, UInt128.random(this.random), 55);
+        whenAFirewalledNodeAsksUsToBeItsBuddy(firewalled, UInt128.random(this.random), 55);
 
-        this.thenNoOfferWentTo(firewalled);
+        thenNoOfferWentTo(firewalled);
     }
 
     @Test
     void aCallbackRequestIsRelayedToTheNodeWeServe() throws Exception {
-        this.givenWeServeABuddy();
+        givenWeServeABuddy();
         int requester = Ipv4.of(50, 1, 1, 1);
         UInt128 buddyId = UInt128.random(this.random);
         UInt128 file = UInt128.random(this.random);
 
-        this.whenACallbackRequestComes(requester, buddyId, file, 4711);
+        whenACallbackRequestComes(requester, buddyId, file, 4711);
 
-        this.thenTheCallbackIsRelayed(new Relay(buddyId, file, requester, 4711));
+        thenTheCallbackIsRelayed(new Relay(buddyId, file, requester, 4711));
     }
 
     @Test
@@ -265,9 +265,9 @@ class KadNodeLowIdTest {
         UInt128 buddyId = UInt128.random(this.random);
         Hash16 file = Hash16.parseHex("aa".repeat(16));
 
-        this.whenTheBuddyOfASourceIsAskedForACallback(new KadNode.Buddy(buddyIp, 4673, buddyId), file);
+        whenTheBuddyOfASourceIsAskedForACallback(new KadNode.Buddy(buddyIp, 4673, buddyId), file);
 
-        this.thenAPlainCallbackRequestWentTo(buddyIp, 4673, buddyId, file);
+        thenAPlainCallbackRequestWentTo(buddyIp, 4673, buddyId, file);
     }
 
     @Test
@@ -276,14 +276,14 @@ class KadNodeLowIdTest {
         UInt128 viaBuddy = UInt128.random(this.random);
         UInt128 direct = UInt128.random(this.random);
 
-        this.whenASearchFinds(List.of(
+        whenASearchFinds(List.of(
                 new KadMessages.Entry(viaBuddy, buddySource(5, Ipv4.of(91, 1, 1, 1), Ipv4.of(92, 1, 1, 1), buddyId)),
                 new KadMessages.Entry(direct, directCallbackSource(0x08 | 0x01)),
                 new KadMessages.Entry(UInt128.random(this.random), directCallbackSource(0x01)),
                 new KadMessages.Entry(
                         UInt128.random(this.random), List.of(new Tag.IntTag(TagName.id(FileTag.SOURCETYPE), 3)))));
 
-        this.thenTheSourcesFoundAre(
+        thenTheSourcesFoundAre(
                 new KadNode.Source(
                         viaBuddy.toHash16(),
                         Ipv4.of(91, 1, 1, 1),
@@ -297,56 +297,56 @@ class KadNodeLowIdTest {
 
     @Test
     void aFirewalledNodeWithABuddyIsPublishedAsASourceReachedThroughIt() throws Exception {
-        this.givenAConnectedNode();
-        this.givenUdpIsFirewalled();
-        this.givenOurBuddyIsAt(Ipv4.of(44, 1, 1, 1), 4673);
+        givenAConnectedNode();
+        givenUdpIsFirewalled();
+        givenOurBuddyIsAt(Ipv4.of(44, 1, 1, 1), 4673);
 
-        this.whenWeArePublishedAsASource(1000);
+        whenWeArePublishedAsASource(1000);
 
-        this.thenTheSourceTypeIs(3);
-        this.thenTheSourceNamesOurBuddy(Ipv4.of(44, 1, 1, 1), 4673);
+        thenTheSourceTypeIs(3);
+        thenTheSourceNamesOurBuddy(Ipv4.of(44, 1, 1, 1), 4673);
     }
 
     @Test
     void aFirewalledNodeWithAnOpenUdpPortIsPublishedForDirectCallbacks() throws Exception {
-        this.givenAConnectedNode();
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
-        this.givenALookupFoundHelpers();
-        this.whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+        givenAConnectedNode();
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
+        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
 
-        this.whenWeArePublishedAsASource(1000);
+        whenWeArePublishedAsASource(1000);
 
-        this.thenTheSourceTypeIs(6);
-        this.thenTheConnectOptionsAre(0x08 | 3);
-        this.thenTheNodeTakesDirectCallbacks();
+        thenTheSourceTypeIs(6);
+        thenTheConnectOptionsAre(0x08 | 3);
+        thenTheNodeTakesDirectCallbacks();
     }
 
     @Test
     void aNodeFirewalledOnUdpKeepsNoNoteOfOthers() throws Exception {
-        this.givenAConnectedNode();
-        this.givenUdpIsFirewalled();
+        givenAConnectedNode();
+        givenUdpIsFirewalled();
 
-        this.whenANoteOnAFileNearUsIsPublished();
+        whenANoteOnAFileNearUsIsPublished();
 
-        this.thenNoNoteIsKept();
+        thenNoNoteIsKept();
     }
 
     @Test
     void aFirewalledNodeNobodyCanReachIsNotPublishedAsASource() throws Exception {
-        this.givenAConnectedNode();
-        this.givenUdpIsFirewalled();
+        givenAConnectedNode();
+        givenUdpIsFirewalled();
 
-        this.whenWeArePublishedAsASource(1000);
+        whenWeArePublishedAsASource(1000);
 
-        this.thenNoSourcePublishWent();
-        this.thenTheNodeIsNotReachable();
+        thenNoSourcePublishWent();
+        thenTheNodeIsNotReachable();
     }
 
     // Steps.
 
     private void givenAConnectedNode() {
         for (int ip : CONTACTS) {
-            this.givenAContactAt(ip, UInt128.random(this.random));
+            givenAContactAt(ip, UInt128.random(this.random));
         }
     }
 
@@ -366,8 +366,8 @@ class KadNodeLowIdTest {
     private void givenTheNodesSeeOurUdpPortAs(int port) throws Exception {
         List<Integer> answered = new ArrayList<>();
         for (int round = 0; round < 40 && answered.size() < 2; round++) {
-            this.tick(15);
-            Sent ping = this.lastSent(Opcodes.Kad.PING);
+            tick(15);
+            Sent ping = lastSent(Opcodes.Kad.PING);
             if (ping != null && !answered.contains(ping.ip())) {
                 answered.add(ping.ip());
                 this.node.received(ping.ip(), PORT, KadMessages.pong(port), true, 0, 0);
@@ -377,38 +377,38 @@ class KadNodeLowIdTest {
     }
 
     private void givenALookupFoundHelpers() throws Exception {
-        this.whenALookupFindsHelpers();
-        this.thenHelpersAreAsked(2);
+        whenALookupFindsHelpers();
+        thenHelpersAreAsked(2);
     }
 
     // A TCP-firewalled node whose test brings no outcome: right when it times out.
     private void givenUdpIsFirewalled() {
         for (int s = 0; s < 8 * 60 && !this.node.isFirewalledUdp(); s++) {
-            this.tick(1);
+            tick(1);
         }
-        this.thenUdpIs(true, false);
+        thenUdpIs(true, false);
     }
 
     private void givenAnOpenNodeOnBothPorts() throws Exception {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         for (int ip : new int[] {Ipv4.of(26, 1, 1, 1), Ipv4.of(27, 1, 1, 1)}) {
-            this.givenAContactAt(ip, UInt128.random(this.random));
+            givenAContactAt(ip, UInt128.random(this.random));
             this.node.reachableConfirmed(ip);
         }
-        this.givenTheNodesSeeOurUdpPortAs(PORT);
-        this.givenALookupFoundHelpers();
-        this.whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
+        givenTheNodesSeeOurUdpPortAs(PORT);
+        givenALookupFoundHelpers();
+        whenAHelperSendsItsDatagram(this.udpChecks.getFirst().ip(), PORT, true);
         assertThat(this.node.isFirewalled()).isFalse();
-        this.thenUdpIs(false, true);
+        thenUdpIs(false, true);
     }
 
     private void givenTheBuddySearchAsked(int near) throws Exception {
-        this.whenTheBuddySearchAsks(near);
-        this.thenABuddyRequestWentTo(near);
+        whenTheBuddySearchAsks(near);
+        thenABuddyRequestWentTo(near);
     }
 
     private void givenWeServeABuddy() {
-        this.givenAConnectedNode();
+        givenAConnectedNode();
         this.buddyState = KadNode.Buddies.State.SERVING;
     }
 
@@ -418,7 +418,7 @@ class KadNodeLowIdTest {
     }
 
     private void whenALookupFindsHelpers() throws Exception {
-        this.tick(1);
+        tick(1);
         Optional<UInt128> running = this.node.udpHelpersTarget();
         assertThat(running).as("a lookup for helpers").isPresent();
         UInt128 target = running.get();
@@ -454,7 +454,7 @@ class KadNodeLowIdTest {
 
     private void whenMinutesPass(int minutes) {
         for (int s = 0; s < minutes * 60; s += 10) {
-            this.tick(10);
+            tick(10);
         }
     }
 
@@ -463,20 +463,20 @@ class KadNodeLowIdTest {
     }
 
     private void whenTheBuddySearchAsks(int near) throws Exception {
-        this.tick(1);
+        tick(1);
         Sent request = null;
         for (Sent s : this.sent) {
             if (s.ip() == near
                     && s.packet().opcode() == Opcodes.Kad.REQ.code()
-                    && KadMessages.Request.decode(s.packet()).target().equals(this.complement())) {
+                    && KadMessages.Request.decode(s.packet()).target().equals(complement())) {
                 request = s;
             }
         }
         assertThat(request)
                 .as("the buddy search asks the node near our complement")
                 .isNotNull();
-        this.node.received(near, PORT, new KadMessages.Answer(this.complement(), List.of()).encode(), false, 0, 0);
-        this.tick(4);
+        this.node.received(near, PORT, new KadMessages.Answer(complement(), List.of()).encode(), false, 0, 0);
+        tick(4);
     }
 
     private void whenTheNodeOffersToBeOurBuddy(int ip, UInt128 buddyId) {
@@ -531,10 +531,10 @@ class KadNodeLowIdTest {
         Hash16 hash = Hash16.parseHex("dd".repeat(16));
         UInt128 target = UInt128.of(hash);
         int holder = Ipv4.of(35, 1, 1, 1);
-        this.givenAContactAt(holder, target);
+        givenAContactAt(holder, target);
         this.published = this.node.publishSource(hash, size);
         this.node.received(holder, PORT, new KadMessages.Answer(target, List.of()).encode(), false, 0, 0);
-        this.tick(4);
+        tick(4);
     }
 
     private void thenHelpersAreAsked(int count) {
@@ -560,9 +560,9 @@ class KadNodeLowIdTest {
 
     private void thenOurHelloSaysUdpFirewalled() throws Exception {
         int ip = Ipv4.of(28, 1, 1, 1);
-        this.givenAContactAt(ip, UInt128.random(this.random));
+        givenAContactAt(ip, UInt128.random(this.random));
         KadMessages.Hello hello =
-                KadMessages.Hello.decode(this.lastSent(Opcodes.Kad.HELLO_RES).packet());
+                KadMessages.Hello.decode(lastSent(Opcodes.Kad.HELLO_RES).packet());
         assertThat(Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS).orElse(0) & 0x03)
                 .as("UDP and TCP firewalled")
                 .isEqualTo(0x03);
@@ -582,11 +582,11 @@ class KadNodeLowIdTest {
     }
 
     private void thenABuddyRequestWentTo(int ip) throws Exception {
-        Sent request = this.lastSent(Opcodes.Kad.FINDBUDDY_REQ);
+        Sent request = lastSent(Opcodes.Kad.FINDBUDDY_REQ);
         assertThat(request).isNotNull();
         assertThat(request.ip()).isEqualTo(ip);
         KadMessages.FindBuddy findBuddy = KadMessages.FindBuddy.decode(request.packet());
-        assertThat(findBuddy.buddyId()).isEqualTo(this.complement());
+        assertThat(findBuddy.buddyId()).isEqualTo(complement());
         assertThat(findBuddy.userHash()).isEqualTo(UInt128.of(USER));
         assertThat(findBuddy.tcpPort()).isEqualTo(TCP);
     }
@@ -606,7 +606,7 @@ class KadNodeLowIdTest {
     }
 
     private void thenOurOfferWentTo(int ip, UInt128 buddyId, OptionalInt options) throws Exception {
-        Sent answer = this.lastSent(Opcodes.Kad.FINDBUDDY_RES);
+        Sent answer = lastSent(Opcodes.Kad.FINDBUDDY_RES);
         assertThat(answer).isNotNull();
         assertThat(answer.ip()).isEqualTo(ip);
         KadMessages.BuddyOffer offer = KadMessages.BuddyOffer.decode(answer.packet());
@@ -623,7 +623,7 @@ class KadNodeLowIdTest {
     }
 
     private void thenAPlainCallbackRequestWentTo(int ip, int port, UInt128 buddyId, Hash16 file) throws Exception {
-        Sent request = this.lastSent(Opcodes.Kad.CALLBACK_REQ);
+        Sent request = lastSent(Opcodes.Kad.CALLBACK_REQ);
         assertThat(request).isNotNull();
         assertThat(request.ip()).isEqualTo(ip);
         assertThat(request.port()).isEqualTo(port);
@@ -643,23 +643,21 @@ class KadNodeLowIdTest {
 
     private void thenTheSourceTypeIs(int type) throws Exception {
         assertThat(this.published).as("the publish started").isTrue();
-        assertThat(Tags.intValue(this.sourcePublish().tags(), FileTag.SOURCETYPE))
-                .hasValue(type);
+        assertThat(Tags.intValue(sourcePublish().tags(), FileTag.SOURCETYPE)).hasValue(type);
     }
 
     private void thenTheSourceNamesOurBuddy(int ip, int port) throws Exception {
-        List<Tag> tags = this.sourcePublish().tags();
+        List<Tag> tags = sourcePublish().tags();
         assertThat(Tags.intValue(tags, FileTag.SERVERIP)).hasValue(Ipv4.toEd2k(ip));
         assertThat(Tags.intValue(tags, FileTag.SERVERPORT)).hasValue(port);
         assertThat(Tags.stringValue(tags, FileTag.BUDDYHASH).flatMap(KadNode::parseBuddyHash))
                 .as("the hash names our complement")
-                .contains(this.complement());
+                .contains(complement());
         assertThat(this.node.isReachable()).isTrue();
     }
 
     private void thenTheConnectOptionsAre(int options) throws Exception {
-        assertThat(Tags.intValue(this.sourcePublish().tags(), FileTag.ENCRYPTION))
-                .hasValue(options);
+        assertThat(Tags.intValue(sourcePublish().tags(), FileTag.ENCRYPTION)).hasValue(options);
     }
 
     private void thenTheNodeTakesDirectCallbacks() {
@@ -668,7 +666,7 @@ class KadNodeLowIdTest {
     }
 
     private void thenNoSourcePublishWent() {
-        assertThat(this.lastSent(Opcodes.Kad.PUBLISH_SOURCE_REQ)).isNull();
+        assertThat(lastSent(Opcodes.Kad.PUBLISH_SOURCE_REQ)).isNull();
     }
 
     private void thenTheNodeIsNotReachable() {
@@ -682,7 +680,7 @@ class KadNodeLowIdTest {
     }
 
     private KadMessages.SourcePublish sourcePublish() throws Exception {
-        Sent publish = this.lastSent(Opcodes.Kad.PUBLISH_SOURCE_REQ);
+        Sent publish = lastSent(Opcodes.Kad.PUBLISH_SOURCE_REQ);
         assertThat(publish).as("a source publish").isNotNull();
         return KadMessages.SourcePublish.decode(publish.packet());
     }

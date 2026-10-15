@@ -50,9 +50,9 @@ class SharedFoldersShareTest {
 
     @Test
     void theFoldersCanGrowFromTheirOwnWindow() throws Exception {
-        this.givenTheSharedFoldersWithAWayToShare();
-        this.whenTheButtonIsPressed("Share Directory");
-        this.thenAFolderWasAskedFor();
+        givenTheSharedFoldersWithAWayToShare();
+        whenTheButtonIsPressed("Share Directory");
+        thenAFolderWasAskedFor();
     }
 
     private void givenTheSharedFoldersWithAWayToShare() throws Exception {

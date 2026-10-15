@@ -54,15 +54,15 @@ class ShortcutsTest {
 
     @Test
     void f1ListsTheShortcutsWithWhatTheyDo() throws Exception {
-        this.givenTheWindow();
-        this.whenF1IsPressed();
-        this.thenTheShortcutsShow(MainWindow.shortcut(0), "Transfers", MainWindow.shortcut(4), "Network", "F1");
+        givenTheWindow();
+        whenF1IsPressed();
+        thenTheShortcutsShow(MainWindow.shortcut(0), "Transfers", MainWindow.shortcut(4), "Network", "F1");
     }
 
     @Test
     void eachPlaceOfTheRailTellsItsShortcut() throws Exception {
-        this.givenTheWindow();
-        this.thenTheTooltipOf("Search", "Search  " + MainWindow.shortcut(1));
+        givenTheWindow();
+        thenTheTooltipOf("Search", "Search  " + MainWindow.shortcut(1));
     }
 
     private void givenTheWindow() throws Exception {

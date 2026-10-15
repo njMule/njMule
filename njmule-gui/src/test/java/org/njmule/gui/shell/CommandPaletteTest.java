@@ -47,30 +47,30 @@ class CommandPaletteTest {
 
     @Test
     void ctrlKOpensThePaletteAndEnterRunsTheCommandFound() throws Exception {
-        this.givenTheWindow();
-        this.whenTheShortcutIsPressed(KeyCode.K);
-        this.thenThePaletteShows(true);
-        this.whenTyped("stat");
-        this.thenTheFirstCommandIs("Statistics");
-        this.whenEnterIsPressed();
-        this.thenThePaletteShows(false);
-        this.thenTheScreenIs("statistics");
+        givenTheWindow();
+        whenTheShortcutIsPressed(KeyCode.K);
+        thenThePaletteShows(true);
+        whenTyped("stat");
+        thenTheFirstCommandIs("Statistics");
+        whenEnterIsPressed();
+        thenThePaletteShows(false);
+        thenTheScreenIs("statistics");
     }
 
     @Test
     void wordsTypedOfferASearchOfTheNetwork() throws Exception {
-        this.givenTheWindow();
-        this.whenTheShortcutIsPressed(KeyCode.K);
-        this.whenTyped("big buck bunny");
-        this.thenTheFirstCommandIs("Search the network for \u201cbig buck bunny\u201d");
+        givenTheWindow();
+        whenTheShortcutIsPressed(KeyCode.K);
+        whenTyped("big buck bunny");
+        thenTheFirstCommandIs("Search the network for \u201cbig buck bunny\u201d");
     }
 
     @Test
     void aLinkTypedOffersItsDownload() throws Exception {
-        this.givenTheWindow();
-        this.whenTheShortcutIsPressed(KeyCode.K);
-        this.whenTyped(LINK);
-        this.thenTheFirstCommandIs("Download: film.mkv");
+        givenTheWindow();
+        whenTheShortcutIsPressed(KeyCode.K);
+        whenTyped(LINK);
+        thenTheFirstCommandIs("Download: film.mkv");
     }
 
     private void givenTheWindow() throws Exception {

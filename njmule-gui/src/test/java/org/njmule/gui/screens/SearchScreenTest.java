@@ -44,23 +44,23 @@ class SearchScreenTest {
 
     @Test
     void theExtensionIsOneWordWithAtMostALeadingDot() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
 
-        assertThat(this.extension(screen, "tar gz"))
+        assertThat(extension(screen, "tar gz"))
                 .as("no space, which would make a keyword of gz")
                 .isEqualTo("targz");
-        assertThat(this.extensionValid(screen, ".mkv")).isTrue();
-        assertThat(this.extensionValid(screen, "mkv")).isTrue();
-        assertThat(this.extensionValid(screen, "")).isTrue();
-        assertThat(this.extensionValid(screen, "tar.gz")).isFalse();
-        assertThat(this.extensionValid(screen, "..mkv")).isFalse();
-        assertThat(this.extensionValid(screen, ".")).isFalse();
-        assertThat(this.extension(screen, "@size")).isEqualTo("size");
+        assertThat(extensionValid(screen, ".mkv")).isTrue();
+        assertThat(extensionValid(screen, "mkv")).isTrue();
+        assertThat(extensionValid(screen, "")).isTrue();
+        assertThat(extensionValid(screen, "tar.gz")).isFalse();
+        assertThat(extensionValid(screen, "..mkv")).isFalse();
+        assertThat(extensionValid(screen, ".")).isFalse();
+        assertThat(extension(screen, "@size")).isEqualTo("size");
     }
 
     @Test
     void aMinimumSizeAboveTheMaximumIsFlagged() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
 
         FxTesting.onFx(() -> {
             screen.minSizeField().setText("100");
@@ -81,7 +81,7 @@ class SearchScreenTest {
 
     @Test
     void enterOnAWrongExpressionTellsWhatTheBoxTakes() throws Exception {
-        SearchScreen screen = this.screen();
+        SearchScreen screen = screen();
 
         FxTesting.onFx(() -> {
             screen.queryField().setText("(film");

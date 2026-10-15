@@ -56,49 +56,49 @@ class LookupStoppingTest {
 
     @Test
     void shouldSendNothingInTheLastTwentySecondsOfASearch() {
-        this.givenASearchWithSilentNodes(Lookup.Kind.SOURCES, 80);
+        givenASearchWithSilentNodes(Lookup.Kind.SOURCES, 80);
 
-        this.whenSecondsPass(25);
+        whenSecondsPass(25);
 
-        this.thenItStillSends();
+        thenItStillSends();
 
-        this.whenSecondsPass(14);
+        whenSecondsPass(14);
 
-        this.thenItSentNothingMore();
-        this.thenItRuns();
+        thenItSentNothingMore();
+        thenItRuns();
 
-        this.whenSecondsPass(1);
+        whenSecondsPass(1);
 
-        this.thenItHasEnded();
+        thenItHasEnded();
     }
 
     @Test
     void shouldStillTakeAnswersOnceItHasAllItWants() {
-        this.givenASearchWithSilentNodes(Lookup.Kind.KEYWORD, 3);
+        givenASearchWithSilentNodes(Lookup.Kind.KEYWORD, 3);
 
-        this.whenValuesArrive(300);
-        this.whenTheClosestNodeAnswersWithCloserContacts();
-        this.whenSecondsPass(14);
+        whenValuesArrive(300);
+        whenTheClosestNodeAnswersWithCloserContacts();
+        whenSecondsPass(14);
 
-        this.thenItSentNothingMore();
-        this.thenItRuns();
+        thenItSentNothingMore();
+        thenItRuns();
 
-        this.whenSecondsPass(1);
+        whenSecondsPass(1);
 
-        this.thenItHasEnded();
+        thenItHasEnded();
     }
 
     @Test
     void shouldKeepAPublishWhoseNodesAnswerGoingUntilTwentySecondsBeforeItsEnd() {
-        this.givenASearchWithSilentNodes(Lookup.Kind.STORE_SOURCE, 2);
+        givenASearchWithSilentNodes(Lookup.Kind.STORE_SOURCE, 2);
 
-        this.whenANodeAnswersEverySecondFor(Lookup.Kind.STORE_SOURCE.lifetime().toSeconds() - 6);
+        whenANodeAnswersEverySecondFor(Lookup.Kind.STORE_SOURCE.lifetime().toSeconds() - 6);
 
-        this.thenItRuns();
+        thenItRuns();
 
-        this.whenANodeAnswersEverySecondFor(1);
+        whenANodeAnswersEverySecondFor(1);
 
-        this.thenItHasEnded();
+        thenItHasEnded();
     }
 
     private void givenASearchWithSilentNodes(Lookup.Kind kind, int nodes) {

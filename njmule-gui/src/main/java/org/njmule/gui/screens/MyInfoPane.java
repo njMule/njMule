@@ -73,10 +73,10 @@ final class MyInfoPane {
         this.box.getStyleClass().add("my-info");
         ScrollPane scroll = new ScrollPane(this.box);
         scroll.setFitToWidth(true);
-        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.refresh());
-        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.refresh());
-        this.readWebUi();
-        this.refresh();
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> refresh());
+        this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> refresh());
+        readWebUi();
+        refresh();
         return scroll;
     }
 
@@ -84,11 +84,11 @@ final class MyInfoPane {
     void readWebUi() {
         this.web = WebUiSettings.load(this.gui.directories().config());
         this.lanAddress = this.web.lan() ? lanAddress().orElse("") : "";
-        this.refresh();
+        refresh();
     }
 
     void refresh() {
-        List<Line> lines = this.lines();
+        List<Line> lines = lines();
         if (lines.equals(this.shown)) {
             return;
         }

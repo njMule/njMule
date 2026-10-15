@@ -59,32 +59,32 @@ class KadNotesEngineTest {
 
     @Test
     void shouldNotSearchWhileKadDoesNotRun() throws Exception {
-        this.givenAnEngineWithKad(false);
-        this.givenADownloadOf(FILM);
+        givenAnEngineWithKad(false);
+        givenADownloadOf(FILM);
 
-        this.whenKadIsSearchedFor(FILM);
+        whenKadIsSearchedFor(FILM);
 
-        this.thenTheSearchFailsBecause("Kad is not connected");
-        this.thenTheFileHasNoNotes(FILM);
+        thenTheSearchFailsBecause("Kad is not connected");
+        thenTheFileHasNoNotes(FILM);
     }
 
     @Test
     void shouldNotSearchWhileKadKnowsNoNode() throws Exception {
-        this.givenAnEngineWithKad(true);
-        this.givenADownloadOf(FILM);
+        givenAnEngineWithKad(true);
+        givenADownloadOf(FILM);
 
-        this.whenKadIsSearchedFor(FILM);
+        whenKadIsSearchedFor(FILM);
 
-        this.thenTheSearchFailsBecause("Kad is not connected");
+        thenTheSearchFailsBecause("Kad is not connected");
     }
 
     @Test
     void shouldNotSearchForAFileItNeitherDownloadsNorShares() throws Exception {
-        this.givenAnEngineWithKad(false);
+        givenAnEngineWithKad(false);
 
-        this.whenKadIsSearchedFor(FILM);
+        whenKadIsSearchedFor(FILM);
 
-        this.thenTheSearchFailsBecause("Neither downloaded nor shared");
+        thenTheSearchFailsBecause("Neither downloaded nor shared");
     }
 
     private void givenAnEngineWithKad(boolean kad) throws Exception {

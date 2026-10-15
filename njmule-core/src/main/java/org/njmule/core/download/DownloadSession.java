@@ -355,11 +355,11 @@ final class DownloadSession implements PeerLink.Role {
             try {
                 TcpConnection opened =
                         TcpConnector.connectToClient(this.address, obfuscateFor, HANDSHAKE_TIMEOUT, random);
-                if (!this.loop.postOutcome(() -> this.opened(opened))) {
+                if (!this.loop.postOutcome(() -> opened(opened))) {
                     opened.close();
                 }
             } catch (IOException e) {
-                this.loop.postOutcome(() -> this.end(Outcome.UNREACHABLE, "cannot connect: " + e.getMessage()));
+                this.loop.postOutcome(() -> end(Outcome.UNREACHABLE, "cannot connect: " + e.getMessage()));
             }
         });
     }
@@ -386,7 +386,7 @@ final class DownloadSession implements PeerLink.Role {
         if (this.state == State.DOWNLOADING && this.connection != null) {
             this.connection.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.CANCELTRANSFER.code()));
         }
-        this.end(Outcome.LATER, reason);
+        end(Outcome.LATER, reason);
     }
 
     /** Leaves a slot whose blocks brought no data for {@link #DATA_TIMEOUT}, telling the source. */
@@ -394,14 +394,14 @@ final class DownloadSession implements PeerLink.Role {
         if (this.state == State.DOWNLOADING
                 && !this.pending.isEmpty()
                 && now - this.progressAt >= DATA_TIMEOUT.toNanos()) {
-            this.close("no data for " + DATA_TIMEOUT.toSeconds() + " s");
+            close("no data for " + DATA_TIMEOUT.toSeconds() + " s");
         }
     }
 
     /** The download changed (data written, a part found corrupt): ask for blocks if idle. */
     void wake() {
         if (this.state == State.DOWNLOADING && this.pending.isEmpty()) {
-            this.requestBlocks();
+            requestBlocks();
         }
     }
 
@@ -441,11 +441,11 @@ final class DownloadSession implements PeerLink.Role {
         this.peerHash = Optional.of(hello.userHash());
         this.identity = greeting.identity();
         if (hello.userHash().equals(this.ourHello.get().userHash())) {
-            this.end(Outcome.GONE, "the source is ourselves");
+            end(Outcome.GONE, "the source is ourselves");
             return;
         }
         this.state = State.REQUESTING;
-        this.requestFile();
+        requestFile();
     }
 
     @Override
@@ -455,17 +455,17 @@ final class DownloadSession implements PeerLink.Role {
         }
         try {
             if (packet.protocol() == Protocol.EMULE) {
-                this.receivedExtended(packet);
+                receivedExtended(packet);
             } else if (packet.protocol() == Protocol.EDONKEY) {
-                this.receivedBasic(packet);
+                receivedBasic(packet);
             }
         } catch (DecodeException | IllegalArgumentException e) {
             logger.debug("Bad packet from {}: {}", this.address, e.getMessage());
-            this.end(Outcome.GONE, "protocol error: " + e.getMessage());
+            end(Outcome.GONE, "protocol error: " + e.getMessage());
         } catch (RuntimeException e) {
             // A lost packet would stall the session: end it, the source is asked again later.
             logger.warn("Failed handling a packet from {}", this.address, e);
-            this.end(Outcome.LATER, "internal error: " + e);
+            end(Outcome.LATER, "internal error: " + e);
         }
     }
 
@@ -483,25 +483,25 @@ final class DownloadSession implements PeerLink.Role {
                     return;
                 }
                 if (status.fits(size)) {
-                    this.setParts(status.dataParts(size));
+                    setParts(status.dataParts(size));
                 } else {
-                    this.end(Outcome.GONE, "the source sent " + status.partCount() + " parts for the file");
+                    end(Outcome.GONE, "the source sent " + status.partCount() + " parts for the file");
                 }
             }
             case FILEREQANSNOFIL -> {
-                if (ClientMessages.fileOf(packet).equals(file) && !this.askForAnother(false)) {
-                    this.end(Outcome.GONE, "the source does not have the file");
+                if (ClientMessages.fileOf(packet).equals(file) && !askForAnother(false)) {
+                    end(Outcome.GONE, "the source does not have the file");
                 }
             }
-            case HASHSETANSWER -> this.hashSet(ClientMessages.HashSet.decode(packet));
+            case HASHSETANSWER -> hashSet(ClientMessages.HashSet.decode(packet));
             case ACCEPTUPLOADREQ -> {
                 this.accepted = true;
-                this.startDownloading();
+                startDownloading();
             }
-            case QUEUERANK -> this.queued((int) ClientMessages.decodeQueueRank(packet));
-            case SENDINGPART -> this.data(ClientMessages.SendingPart.decode(packet));
-            case OUTOFPARTREQS -> this.backToQueue("the source ended our upload session");
-            case CANCELTRANSFER -> this.backToQueue("the source cancelled the transfer");
+            case QUEUERANK -> queued((int) ClientMessages.decodeQueueRank(packet));
+            case SENDINGPART -> data(ClientMessages.SendingPart.decode(packet));
+            case OUTOFPARTREQS -> backToQueue("the source ended our upload session");
+            case CANCELTRANSFER -> backToQueue("the source cancelled the transfer");
             default -> {
                 // File names and other messages need nothing from us.
             }
@@ -514,10 +514,10 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         switch (opcode.get()) {
-            case QUEUERANKING -> this.queued((int) ClientMessages.decodeQueueRank(packet));
-            case SENDINGPART_I64 -> this.data(ClientMessages.SendingPart.decode(packet));
-            case COMPRESSEDPART, COMPRESSEDPART_I64 -> this.compressed(ClientMessages.CompressedPart.decode(packet));
-            case AICHANSWER -> this.aichAnswer(packet);
+            case QUEUERANKING -> queued((int) ClientMessages.decodeQueueRank(packet));
+            case SENDINGPART_I64 -> data(ClientMessages.SendingPart.decode(packet));
+            case COMPRESSEDPART, COMPRESSEDPART_I64 -> compressed(ClientMessages.CompressedPart.decode(packet));
+            case AICHANSWER -> aichAnswer(packet);
             case FILEDESC -> this.listener.commented(this, FileDescription.decode(packet));
             case AICHFILEHASHANS -> {
                 PacketReader in = packet.reader();
@@ -580,7 +580,7 @@ final class DownloadSession implements PeerLink.Role {
                 next.get().file().name(),
                 this.download.file().name());
         this.download = next.get();
-        this.requestFile();
+        requestFile();
         return true;
     }
 
@@ -592,19 +592,19 @@ final class DownloadSession implements PeerLink.Role {
         this.sourceParts = parts;
         file.addAvailability(parts, 1);
         this.listener.partsKnown(this);
-        if (!this.hasNeededParts()) {
-            if (!this.askForAnother(true)) {
-                this.close("the source has no part we need");
+        if (!hasNeededParts()) {
+            if (!askForAnother(true)) {
+                close("the source has no part we need");
             }
             return;
         }
         if (!this.uploadRequested) {
             this.uploadRequested = true;
             this.state = State.QUEUED;
-            this.setReadTimeout(QUEUED_TIMEOUT);
+            setReadTimeout(QUEUED_TIMEOUT);
             this.connection.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, this.download.hash()));
         }
-        this.startDownloading();
+        startDownloading();
     }
 
     // The hash set of a download asked for before a swap to another still counts, while the download is ours.
@@ -631,9 +631,9 @@ final class DownloadSession implements PeerLink.Role {
         }
         this.state = State.DOWNLOADING;
         this.queueRank = 0;
-        this.setReadTimeout(DATA_TIMEOUT);
+        setReadTimeout(DATA_TIMEOUT);
         logger.debug("Downloading {} from {}", this.download.file().name(), this.address);
-        this.requestBlocks();
+        requestBlocks();
     }
 
     private void requestBlocks() {
@@ -641,14 +641,14 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         if (!this.download.isActive()) {
-            this.close("the download is not active");
+            close("the download is not active");
             return;
         }
         int wanted = ClientMessages.BLOCKS_PER_REQUEST - this.pending.size();
         int allowed = wanted > 0 ? this.listener.allowance(this, wanted) : 0;
         if (wanted > 0 && allowed == 0) {
             // Over the download limit: woken once there is budget again, and not idle meanwhile.
-            this.stopIdle();
+            stopIdle();
             return;
         }
         List<PartFile.Block> next =
@@ -660,17 +660,17 @@ final class DownloadSession implements PeerLink.Role {
                     if (this.state != State.DOWNLOADING || !this.pending.isEmpty()) {
                         return;
                     }
-                    if (this.hasHeldPart()) {
+                    if (hasHeldPart()) {
                         // The slot stays while a part it has waits for its recovery data.
-                        this.requestBlocks();
+                        requestBlocks();
                     } else {
-                        this.close("nothing more to download from this source");
+                        close("nothing more to download from this source");
                     }
                 });
             }
             return;
         }
-        this.stopIdle();
+        stopIdle();
         List<ClientMessages.Range> ranges = new ArrayList<>(ClientMessages.BLOCKS_PER_REQUEST);
         boolean wide = false;
         long bytes = 0;
@@ -690,11 +690,11 @@ final class DownloadSession implements PeerLink.Role {
 
     private void data(ClientMessages.SendingPart part) {
         if (!part.file().equals(this.download.hash())) {
-            this.unexpected(part.start());
+            unexpected(part.start());
             return;
         }
         byte[] data = part.data();
-        this.accept(part.start(), data, data.length);
+        accept(part.start(), data, data.length);
     }
 
     private void compressed(ClientMessages.CompressedPart part) throws DecodeException {
@@ -703,12 +703,12 @@ final class DownloadSession implements PeerLink.Role {
         }
         byte[] chunk = part.chunk();
         boolean ours = part.file().equals(this.download.hash());
-        if (ours && this.dropsBroken(part.blockStart(), chunk.length)) {
+        if (ours && dropsBroken(part.blockStart(), chunk.length)) {
             return;
         }
         Pending block = this.pending.get(part.blockStart());
         if (block == null || !ours) {
-            this.unexpected(part.blockStart());
+            unexpected(part.blockStart());
             return;
         }
         if (block.inflater == null) {
@@ -722,11 +722,11 @@ final class DownloadSession implements PeerLink.Role {
         try {
             data = block.inflater.inflate(chunk);
         } catch (DecodeException e) {
-            this.corrupt(block, part.compressedSize(), e);
+            corrupt(block, part.compressedSize(), e);
             return;
         }
         boolean ended = block.inflater.finished();
-        this.accept(position, data, chunk.length);
+        accept(position, data, chunk.length);
         // A stream that ended before its block did brings nothing more: the rest is asked for again now.
         if (ended && this.state == State.DOWNLOADING && this.pending.get(block.block.start()) == block) {
             this.pending.remove(block.block.start());
@@ -734,7 +734,7 @@ final class DownloadSession implements PeerLink.Role {
             for (Range<Long> rest : block.missing.asRanges()) {
                 this.download.file().release(rest.lowerEndpoint(), rest.upperEndpoint());
             }
-            this.requestBlocks();
+            requestBlocks();
         }
     }
 
@@ -754,7 +754,7 @@ final class DownloadSession implements PeerLink.Role {
         if (left > 0) {
             this.broken.put(block.block.start(), left);
         }
-        this.requestBlocks();
+        requestBlocks();
     }
 
     // Whether the chunk belongs to the rest of a stream that failed.
@@ -790,17 +790,17 @@ final class DownloadSession implements PeerLink.Role {
             }
         }
         if (target == null) {
-            this.unexpected(start);
+            unexpected(start);
             return;
         }
         this.progressAt = this.ticker.read();
-        this.queue.received(this.download, start, data, this.sourceIp());
+        this.queue.received(this.download, start, data, sourceIp());
         this.listener.received(this, data.length, transferred);
         target.missing.remove(Range.closedOpen(start, end));
         if (target.missing.isEmpty()) {
             target.dispose();
             this.pending.remove(target.block.start());
-            this.requestBlocks();
+            requestBlocks();
         }
     }
 
@@ -816,7 +816,7 @@ final class DownloadSession implements PeerLink.Role {
         }
         this.unexpectedAt = now;
         if (++this.unexpected >= MAX_UNEXPECTED) {
-            this.close("the source sends data we did not ask for");
+            close("the source sends data we did not ask for");
         }
     }
 
@@ -826,11 +826,11 @@ final class DownloadSession implements PeerLink.Role {
         }
         logger.debug("{}: {}", this.address, reason);
         boolean hadBlocks = !this.pending.isEmpty();
-        this.releaseBlocks();
-        this.stopIdle();
+        releaseBlocks();
+        stopIdle();
         this.accepted = false;
         this.state = State.QUEUED;
-        this.setReadTimeout(QUEUED_TIMEOUT);
+        setReadTimeout(QUEUED_TIMEOUT);
         if (hadBlocks) {
             this.listener.released(this);
         }
@@ -847,9 +847,7 @@ final class DownloadSession implements PeerLink.Role {
             case DOWNLOADING -> Outcome.LATER;
             default -> Outcome.UNREACHABLE;
         };
-        this.end(
-                outcome,
-                "the connection closed" + cause.map(c -> " (" + c + ")").orElse(""));
+        end(outcome, "the connection closed" + cause.map(c -> " (" + c + ")").orElse(""));
     }
 
     private void end(Outcome outcome, String reason) {
@@ -857,8 +855,8 @@ final class DownloadSession implements PeerLink.Role {
             return;
         }
         this.state = State.ENDED;
-        this.stopIdle();
-        this.releaseBlocks();
+        stopIdle();
+        releaseBlocks();
         if (this.sourceParts != null) {
             this.download.file().addAvailability(this.sourceParts, -1);
         }

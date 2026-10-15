@@ -55,7 +55,7 @@ final class RequestTracker {
 
     /** Counts an ask for {@code file}; returns how many asks for it came too soon with no slower one between. */
     int asked(Key client, Hash16 file, long now) {
-        History history = this.history(client, now);
+        History history = history(client, now);
         Ask ask = history.asks.get(file);
         if (ask == null) {
             history.asks.put(file, new Ask(now));
@@ -71,7 +71,7 @@ final class RequestTracker {
 
     /** A slot ended because its client asked for nothing; returns how many did within the window. */
     int idleSlot(Key client, long now) {
-        History history = this.history(client, now);
+        History history = history(client, now);
         if (history.idleSlots == 0 || now - history.firstIdle >= this.window) {
             history.idleSlots = 0;
             history.firstIdle = now;

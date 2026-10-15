@@ -73,7 +73,7 @@ public final class ClipboardWatch implements AutoCloseable {
         this.confirm = Objects.requireNonNull(confirm, "confirm");
         this.later = Objects.requireNonNull(later, "later");
         this.found = Objects.requireNonNull(found, "found");
-        this.timeline = new Timeline(new KeyFrame(Duration.seconds(1), e -> this.tick()));
+        this.timeline = new Timeline(new KeyFrame(Duration.seconds(1), e -> tick()));
         this.timeline.setCycleCount(Animation.INDEFINITE);
     }
 

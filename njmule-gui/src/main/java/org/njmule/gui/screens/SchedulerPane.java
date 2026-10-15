@@ -100,13 +100,13 @@ final class SchedulerPane extends VBox {
                                 gui.t("nj.scheduler.from"), 70, r -> r.start().toString())),
                         Fx.leftToRight(column(
                                 gui.t("nj.scheduler.to"), 70, r -> r.end().toString())),
-                        Fx.leftToRight(column(gui.t("nj.settings.upload"), 90, r -> this.rate(r.uploadKiBps()))),
-                        Fx.leftToRight(column(gui.t("nj.settings.download"), 90, r -> this.rate(r.downloadKiBps()))),
+                        Fx.leftToRight(column(gui.t("nj.settings.upload"), 90, r -> rate(r.uploadKiBps()))),
+                        Fx.leftToRight(column(gui.t("nj.settings.download"), 90, r -> rate(r.downloadKiBps()))),
                         column(gui.t("nj.scheduler.enabled"), 70, r -> r.enabled() ? "✓" : "")));
         this.rules.setPrefHeight(160);
         this.rules.setPlaceholder(new Label(gui.t("nj.scheduler.none")));
         this.rules.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        this.rules.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.edit(now));
+        this.rules.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> edit(now));
         FlowPane dayBoxes = new FlowPane(8, 4);
         for (DayOfWeek day : DayOfWeek.values()) {
             CheckBox box =
@@ -153,8 +153,8 @@ final class SchedulerPane extends VBox {
         for (ComboBox<OptionalInt> box : List.of(this.stopCategory, this.resumeCategory)) {
             box.setCellFactory(l -> new CategoryCell());
             box.setButtonCell(new CategoryCell());
-            box.setOnShowing(e -> this.fillCategories(box));
-            this.fillCategories(box);
+            box.setOnShowing(e -> fillCategories(box));
+            fillCategories(box);
             box.setValue(OptionalInt.empty());
         }
         form.addRow(7, new Label(gui.t("IDS_SCHED_CATSTOP")), this.stopCategory);
@@ -170,14 +170,14 @@ final class SchedulerPane extends VBox {
                 Fx.button(gui.t("nj.scheduler.save"), Material2MZ.SAVE, this::save),
                 Fx.spacer(),
                 this.active);
-        this.getChildren().addAll(this.rules, form, tools);
-        this.load();
+        getChildren().addAll(this.rules, form, tools);
+        load();
     }
 
     /** Shows the engine's rules and the one that applies now. */
     void load() {
         this.rules.getItems().setAll(this.gui.model().engine().schedule().rules());
-        this.showActive();
+        showActive();
     }
 
     private void showActive() {
@@ -190,13 +190,13 @@ final class SchedulerPane extends VBox {
     }
 
     void add() {
-        this.read().ifPresent(rule -> this.rules.getItems().add(rule));
+        read().ifPresent(rule -> this.rules.getItems().add(rule));
     }
 
     void replace() {
         int index = this.rules.getSelectionModel().getSelectedIndex();
         if (index >= 0) {
-            this.read().ifPresent(rule -> this.rules.getItems().set(index, rule));
+            read().ifPresent(rule -> this.rules.getItems().set(index, rule));
         }
     }
 
@@ -209,7 +209,7 @@ final class SchedulerPane extends VBox {
 
     void save() {
         this.gui.model().updateSchedule(new Schedule(List.copyOf(this.rules.getItems())), s -> {
-            this.showActive();
+            showActive();
             this.gui.inform().accept(this.gui.t("nj.settings.saved"));
         });
     }
@@ -260,7 +260,7 @@ final class SchedulerPane extends VBox {
         @Override
         protected void updateItem(OptionalInt item, boolean empty) {
             super.updateItem(item, empty);
-            this.setText(empty ? null : SchedulerPane.this.categoryName(item));
+            setText(empty ? null : SchedulerPane.this.categoryName(item));
         }
     }
 

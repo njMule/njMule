@@ -324,7 +324,7 @@ public final class KadMessages {
         /** Bytes the entry takes in a packet. */
         int size() {
             PacketWriter out = new PacketWriter();
-            this.write(out);
+            write(out);
             return out.size();
         }
     }

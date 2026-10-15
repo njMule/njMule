@@ -70,7 +70,7 @@ class StatsAndInfoTest {
     void theStatisticsCountTheClientsServersAndFiles() throws Exception {
         this.status.set(status(Optional.empty(), 0, false, false, "", Optional.empty(), 1000, 2500, 0, 500));
         this.sources.set(List.of(source("10.0.0.1:4662", "eMule"), source("10.0.0.2:4662", "")));
-        this.start();
+        start();
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("the clients", () -> this.test.model.uploads().size() == 2);
         StatsTree tree = FxTesting.onFx(() -> new StatsTree(this.test.gui));
@@ -79,9 +79,9 @@ class StatsAndInfoTest {
         assertThat(texts(entries.getFirst()))
                 .containsExactly("Session UL:DL Ratio: 1 : 2.50", "Cumulative UL:DL Ratio: 0 : 1");
         // The same client as source and upload counts once, by the software it has now.
-        assertThat(this.entry(entries, "Clients").text()).isEqualTo("Clients (3)");
-        assertThat(texts(this.entry(entries, "Clients"))).containsExactly("aMule: 2 (66.7 %)", "?: 1 (33.3 %)");
-        assertThat(texts(this.entry(entries, "Servers")))
+        assertThat(entry(entries, "Clients").text()).isEqualTo("Clients (3)");
+        assertThat(texts(entry(entries, "Clients"))).containsExactly("aMule: 2 (66.7 %)", "?: 1 (33.3 %)");
+        assertThat(texts(entry(entries, "Servers")))
                 .containsExactly(
                         "Working Servers: 2",
                         "Failed Servers: 1",
@@ -90,7 +90,7 @@ class StatsAndInfoTest {
                         "Files on Working Servers: 34,000",
                         "Total Users: 1,350",
                         "Total Files: 34,000");
-        assertThat(texts(this.entry(entries, "Shared Files")))
+        assertThat(texts(entry(entries, "Shared Files")))
                 .containsExactly(
                         "Total: 2",
                         "Total size of Shared Files: 2.93 KB",
@@ -104,14 +104,14 @@ class StatsAndInfoTest {
 
         // Fewer clients: the tree drops the lines that went.
         FxTesting.onFx(tree::refresh);
-        TreeItem<String> clients = FxTesting.onFx(() -> this.item(tree, "Clients"));
+        TreeItem<String> clients = FxTesting.onFx(() -> item(tree, "Clients"));
         assertThat(FxTesting.onFx(() -> clients.getChildren().size())).isEqualTo(2);
         this.sources.set(List.of());
         FxTesting.onFx(this.test.model::tick);
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("one client left", () -> this.test.model.sources().size() == 0);
         FxTesting.onFx(tree::refresh);
-        assertThat(FxTesting.onFx(() -> this.item(tree, "Clients").getChildren().stream()
+        assertThat(FxTesting.onFx(() -> item(tree, "Clients").getChildren().stream()
                         .map(TreeItem::getValue)
                         .toList()))
                 .containsExactly("aMule: 2 (100.0 %)");
@@ -123,12 +123,12 @@ class StatsAndInfoTest {
                 .save(this.dir.resolve("njmule").resolve("config"));
         this.status.set(
                 status(Optional.of(BIG), 7, true, true, "", Optional.of(Statuses.kad(false, false, "")), 0, 0, 0, 0));
-        this.start();
+        start();
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 7, true, true)));
         MyInfoPane pane = new MyInfoPane(this.test.gui);
         this.test.show(FxTesting.onFx(pane::node));
 
-        List<String> lines = this.lines(pane);
+        List<String> lines = lines(pane);
         assertThat(lines)
                 .contains(
                         "Status: Connected",
@@ -142,7 +142,7 @@ class StatsAndInfoTest {
                         "Status: Enabled",
                         "URL: http://127.0.0.1:4712/");
 
-        this.status(status(
+        status(status(
                 Optional.of(BIG),
                 7,
                 false,
@@ -153,7 +153,7 @@ class StatsAndInfoTest {
                 0,
                 0,
                 0));
-        assertThat(this.lines(pane))
+        assertThat(lines(pane))
                 .contains(
                         "IP:Port: 5.6.7.8:4662",
                         this.test.gui.t("IDS_IDHIGH"),
@@ -162,15 +162,15 @@ class StatsAndInfoTest {
                         "UDP Status: " + this.test.gui.t("IDS_UNKNOWN"),
                         "IP:Port: 1.2.3.4:4672",
                         "ID: 16909060");
-        this.status(status(
+        status(status(
                 Optional.of(BIG), 7, false, false, "5.6.7.8", Optional.of(Statuses.kad(true, false, "")), 0, 0, 0, 0));
-        assertThat(this.lines(pane)).contains("Status: Open", "ID:");
+        assertThat(lines(pane)).contains("Status: Open", "ID:");
 
         // On the LAN the address is this computer's own, when it has one.
         new WebUiSettings(true, 4712, true, "hash")
                 .save(this.dir.resolve("njmule").resolve("config"));
         FxTesting.onFx(pane::readWebUi);
-        assertThat(this.lines(pane)).anyMatch(l -> l.startsWith("URL: http://") && l.endsWith(":4712/"));
+        assertThat(lines(pane)).anyMatch(l -> l.startsWith("URL: http://") && l.endsWith(":4712/"));
     }
 
     private void start() throws Exception {

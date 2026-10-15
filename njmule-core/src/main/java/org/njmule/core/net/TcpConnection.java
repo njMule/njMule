@@ -106,8 +106,8 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         }
         this.handler = handler;
         this.unpacker = unpacker;
-        if (!this.isOpen()) {
-            this.report();
+        if (!isOpen()) {
+            report();
             return;
         }
         String name = "njmule-tcp-" + this.remote;
@@ -127,13 +127,13 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
      */
     @Override
     public boolean send(Packet packet) {
-        return this.enqueue(packet, false);
+        return enqueue(packet, false);
     }
 
     /** As {@link #send(Packet)}, for file data: it goes out after the other packets waiting. */
     @Override
     public boolean sendData(Packet packet) {
-        return this.enqueue(packet, true);
+        return enqueue(packet, true);
     }
 
     /** Bytes of file data waiting to be written. */
@@ -143,12 +143,12 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private boolean enqueue(Packet packet, boolean fileData) {
-        if (!this.isOpen()) {
+        if (!isOpen()) {
             return false;
         }
         byte[] frame = TcpFraming.encode(packet);
         if (this.queued.addAndGet(frame.length) > OUTBOX_BYTES || this.frames.incrementAndGet() > OUTBOX_CAPACITY) {
-            this.fail(new IOException("send queue full, peer not reading"));
+            fail(new IOException("send queue full, peer not reading"));
             return false;
         }
         if (fileData) {
@@ -194,16 +194,16 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     /** Closes the connection once the packets already queued are sent, within a few seconds. */
     @Override
     public void close() {
-        this.shutdown(Optional.empty());
+        shutdown(Optional.empty());
     }
 
     @Override
     public void disconnect() {
-        this.close();
+        close();
     }
 
     private void fail(IOException cause) {
-        this.shutdown(Optional.of(cause));
+        shutdown(Optional.of(cause));
     }
 
     private void shutdown(Optional<IOException> cause) {
@@ -215,7 +215,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
             this.control.clear();
             this.data.clear();
             this.ready.release();
-            this.closeSocket();
+            closeSocket();
         } else {
             // The writer sends what is queued, then closes; a peer that does not read is cut off.
             this.ready.release();
@@ -225,10 +225,10 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                this.closeSocket();
+                closeSocket();
             });
         }
-        this.report();
+        report();
     }
 
     // Tells the handler once, when there is one.
@@ -250,55 +250,55 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
 
     private void readLoop() {
         try {
-            while (this.isOpen()) {
+            while (isOpen()) {
                 Packet frame = TcpFraming.read(this.in, this.frameLimit);
                 // The handler heard of the close: nothing more for it.
-                if (!this.isOpen()) {
+                if (!isOpen()) {
                     return;
                 }
                 this.handler.onPacket(this, this.unpacker.unpack(frame));
             }
         } catch (EOFException e) {
-            this.close();
+            close();
         } catch (IOException e) {
-            this.fail(e);
+            fail(e);
         } catch (RuntimeException e) {
             // A handler bug must not leave a half-dead connection behind.
-            this.fail(new IOException("packet handler failed", e));
+            fail(new IOException("packet handler failed", e));
         }
     }
 
     private void writeLoop() {
         try {
-            for (byte[] frame = this.nextFrame(); frame != null; frame = this.nextFrame()) {
+            for (byte[] frame = nextFrame(); frame != null; frame = nextFrame()) {
                 this.out.write(frame);
                 if (this.frames.get() == 0) {
                     this.out.flush();
                 }
             }
         } catch (IOException e) {
-            this.fail(e);
+            fail(e);
         }
-        this.closeSocket();
+        closeSocket();
     }
 
     // The next frame to write; null once closed and the queues are empty. What is queued when a clean close comes still
     // goes out.
     private byte[] nextFrame() {
-        while (this.isOpen()) {
+        while (isOpen()) {
             try {
                 this.ready.acquire();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return null;
             }
-            byte[] frame = this.poll();
+            byte[] frame = poll();
             if (frame != null) {
                 return frame;
             }
             // The close's permit, which comes with no frame.
         }
-        return this.ready.tryAcquire() ? this.poll() : null;
+        return this.ready.tryAcquire() ? poll() : null;
     }
 
     // A frame stands behind every permit but the close's, unless a failure emptied the queues.

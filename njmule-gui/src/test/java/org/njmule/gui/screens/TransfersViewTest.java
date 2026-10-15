@@ -74,44 +74,44 @@ class TransfersViewTest {
     })
     void aRunningDownloadTellsWhetherDataComesOrNoSourceIsKnown(
             DownloadInfo.Status status, int sources, int transferring, TransfersScreen.Shown expected) {
-        this.whenADownloadIs(status, sources, transferring);
-        this.thenItShowsAs(expected);
+        whenADownloadIs(status, sources, transferring);
+        thenItShowsAs(expected);
     }
 
     @Test
     void theFilterKeepsTheDownloadsWhoseNameHoldsEveryWord() throws Exception {
-        this.givenTheDownloads("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
-        this.whenTheFilterReads("DEBIAN iso");
-        this.thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso");
-        this.whenTheFilterReads("dvd debian");
-        this.thenTheDownloadsShownAre("Debian 13 DVD.iso");
-        this.whenTheFilterReads("");
-        this.thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
+        givenTheDownloads("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
+        whenTheFilterReads("DEBIAN iso");
+        thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso");
+        whenTheFilterReads("dvd debian");
+        thenTheDownloadsShownAre("Debian 13 DVD.iso");
+        whenTheFilterReads("");
+        thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
     }
 
     @Test
     void theSourcesBelowAreThoseOfTheDownloadChosen() throws Exception {
-        this.givenTheDownloads("first.bin", "second.bin");
-        this.thenTheSourcesShownAre(3);
-        this.whenTheDownloadIsChosen(1);
-        this.thenTheSourcesShownAre(1);
-        this.whenTheDownloadIsChosen(0);
-        this.thenTheSourcesShownAre(2);
+        givenTheDownloads("first.bin", "second.bin");
+        thenTheSourcesShownAre(3);
+        whenTheDownloadIsChosen(1);
+        thenTheSourcesShownAre(1);
+        whenTheDownloadIsChosen(0);
+        thenTheSourcesShownAre(2);
     }
 
     @Test
     void theCommandsOnDownloadsWaitForOneChosen() throws Exception {
-        this.givenTheDownloads("first.bin", "second.bin");
-        this.thenTheCommandsOnTheChosenAreOff(true);
-        this.whenTheDownloadIsChosen(1);
-        this.thenTheCommandsOnTheChosenAreOff(false);
+        givenTheDownloads("first.bin", "second.bin");
+        thenTheCommandsOnTheChosenAreOff(true);
+        whenTheDownloadIsChosen(1);
+        thenTheCommandsOnTheChosenAreOff(false);
     }
 
     @Test
     void ctrlFPutsTheCursorInTheFilter() throws Exception {
-        this.givenTheDownloads("first.bin");
-        this.whenCtrlFIsPressed();
-        this.thenTheFilterHasTheCursor();
+        givenTheDownloads("first.bin");
+        whenCtrlFIsPressed();
+        thenTheFilterHasTheCursor();
     }
 
     private void givenTheDownloads(String... names) throws Exception {
@@ -143,7 +143,7 @@ class TransfersViewTest {
     }
 
     private void whenTheFilterReads(String text) throws Exception {
-        FxTesting.onFx(() -> this.filter().setText(text));
+        FxTesting.onFx(() -> filter().setText(text));
     }
 
     private void whenTheDownloadIsChosen(int index) throws Exception {
@@ -187,8 +187,7 @@ class TransfersViewTest {
     }
 
     private void thenTheFilterHasTheCursor() throws Exception {
-        assertThat(FxTesting.onFx(
-                        () -> this.filter().equals(this.filter().getScene().getFocusOwner())))
+        assertThat(FxTesting.onFx(() -> filter().equals(filter().getScene().getFocusOwner())))
                 .isTrue();
     }
 

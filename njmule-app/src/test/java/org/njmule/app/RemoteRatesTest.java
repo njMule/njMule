@@ -30,22 +30,22 @@ class RemoteRatesTest {
     @ParameterizedTest
     @CsvSource({"50, 50", "0, 0", "500K, 500", "500k, 500", "2M, 2048", "1.5M, 1536", "1G, 1048576", " 3m , 3072"})
     void aRateIsTypedInKiBOrWithAUnit(String typed, long kib) {
-        this.whenTyped(typed);
-        this.thenTheRateIs(kib);
+        whenTyped(typed);
+        thenTheRateIs(kib);
     }
 
     @ParameterizedTest
     @CsvSource({"-5", "1.5", "fast", "M", "2X", "''"})
     void anythingElseIsNoRate(String typed) {
-        this.whenTyped(typed);
-        this.thenItWasRefused();
+        whenTyped(typed);
+        thenItWasRefused();
     }
 
     @ParameterizedTest
     @CsvSource({"0, unlimited", "50, 50 KiB/s", "1536, 1.50 MiB/s", "1153434, 1.10 GiB/s"})
     void aLimitReadsInTheUnitThatSuitsIt(long kib, String text) {
-        this.whenTheLimitIsWritten(kib);
-        this.thenItReads(text);
+        whenTheLimitIsWritten(kib);
+        thenItReads(text);
     }
 
     private void whenTyped(String typed) {

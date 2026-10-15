@@ -153,20 +153,20 @@ class ClientMessagesTest {
 
     @Test
     void shouldReadANarrowRangeWhoseEndWrappedToZeroAsEndingAtFourGigabytes() throws DecodeException {
-        this.givenANarrowRequestOfTheRange(FOUR_GIB - Ed2k.EMBLOCKSIZE, 0);
+        givenANarrowRequestOfTheRange(FOUR_GIB - Ed2k.EMBLOCKSIZE, 0);
 
-        this.whenTheRequestIsDecoded();
+        whenTheRequestIsDecoded();
 
-        this.thenTheRequestedRangesAre(new ClientMessages.Range(FOUR_GIB - Ed2k.EMBLOCKSIZE, FOUR_GIB));
+        thenTheRequestedRangesAre(new ClientMessages.Range(FOUR_GIB - Ed2k.EMBLOCKSIZE, FOUR_GIB));
     }
 
     @Test
     void shouldReadANarrowRangeEndingBeforeItsStartAsNothing() throws DecodeException {
-        this.givenANarrowRequestOfTheRange(5000, 4000);
+        givenANarrowRequestOfTheRange(5000, 4000);
 
-        this.whenTheRequestIsDecoded();
+        whenTheRequestIsDecoded();
 
-        this.thenTheRequestedRangesAre();
+        thenTheRequestedRangesAre();
     }
 
     private void givenANarrowRequestOfTheRange(long start, long end) {

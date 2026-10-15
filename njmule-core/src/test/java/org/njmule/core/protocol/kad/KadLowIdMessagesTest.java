@@ -41,58 +41,58 @@ class KadLowIdMessagesTest {
 
     @Test
     void aBuddyRequestGivesTheBuddyIdTheUserHashAndThePort() throws Exception {
-        this.whenSent(new KadMessages.FindBuddy(ID, HASH, 4662).encode());
+        whenSent(new KadMessages.FindBuddy(ID, HASH, 4662).encode());
 
-        this.thenThePacketIs(Opcodes.Kad.FINDBUDDY_REQ, ID_WIRE + HASH_WIRE + "3612");
-        this.thenItReadsBackAs(KadMessages.FindBuddy::decode, new KadMessages.FindBuddy(ID, HASH, 4662));
+        thenThePacketIs(Opcodes.Kad.FINDBUDDY_REQ, ID_WIRE + HASH_WIRE + "3612");
+        thenItReadsBackAs(KadMessages.FindBuddy::decode, new KadMessages.FindBuddy(ID, HASH, 4662));
     }
 
     @Test
     void aBuddyOfferCarriesTheConnectOptionsWhenGiven() throws Exception {
-        this.whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.of(3)).encode());
+        whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.of(3)).encode());
 
-        this.thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612" + "03");
-        this.thenItReadsBackAs(
+        thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612" + "03");
+        thenItReadsBackAs(
                 KadMessages.BuddyOffer::decode, new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.of(3)));
     }
 
     @Test
     void aBuddyOfferOfAnOlderNodeHasNoConnectOptions() throws Exception {
-        this.whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.empty()).encode());
+        whenSent(new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.empty()).encode());
 
-        this.thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612");
-        this.thenItReadsBackAs(
+        thenThePacketIs(Opcodes.Kad.FINDBUDDY_RES, ID_WIRE + HASH_WIRE + "3612");
+        thenItReadsBackAs(
                 KadMessages.BuddyOffer::decode, new KadMessages.BuddyOffer(ID, HASH, 4662, OptionalInt.empty()));
     }
 
     @Test
     void aCallbackRequestGivesTheBuddyIdTheFileAndOurPort() throws Exception {
-        this.whenSent(new KadMessages.CallbackRequest(ID, HASH, 4662).encode());
+        whenSent(new KadMessages.CallbackRequest(ID, HASH, 4662).encode());
 
-        this.thenThePacketIs(Opcodes.Kad.CALLBACK_REQ, ID_WIRE + HASH_WIRE + "3612");
-        this.thenItReadsBackAs(KadMessages.CallbackRequest::decode, new KadMessages.CallbackRequest(ID, HASH, 4662));
+        thenThePacketIs(Opcodes.Kad.CALLBACK_REQ, ID_WIRE + HASH_WIRE + "3612");
+        thenItReadsBackAs(KadMessages.CallbackRequest::decode, new KadMessages.CallbackRequest(ID, HASH, 4662));
     }
 
     @Test
     void theUdpTestDatagramGivesTheErrorAndThePort() throws Exception {
-        this.whenSent(new KadMessages.FirewallUdp(1, 4672).encode());
+        whenSent(new KadMessages.FirewallUdp(1, 4672).encode());
 
-        this.thenThePacketIs(Opcodes.Kad.FIREWALLUDP, "01" + "4012");
-        this.thenItReadsBackAs(KadMessages.FirewallUdp::decode, new KadMessages.FirewallUdp(1, 4672));
+        thenThePacketIs(Opcodes.Kad.FIREWALLUDP, "01" + "4012");
+        thenItReadsBackAs(KadMessages.FirewallUdp::decode, new KadMessages.FirewallUdp(1, 4672));
     }
 
     @Test
     void aCallbackRequestTooShortIsRefused() {
-        this.whenACallbackRequestIsRead(new byte[33]);
+        whenACallbackRequestIsRead(new byte[33]);
 
-        this.thenExceptionOccurred(DecodeException.class);
+        thenExceptionOccurred(DecodeException.class);
     }
 
     @Test
     void aBuddyRequestTooShortIsRefused() {
-        this.whenABuddyRequestIsRead(new byte[33]);
+        whenABuddyRequestIsRead(new byte[33]);
 
-        this.thenExceptionOccurred(DecodeException.class);
+        thenExceptionOccurred(DecodeException.class);
     }
 
     private void whenSent(Packet sent) {

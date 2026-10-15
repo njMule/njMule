@@ -62,7 +62,7 @@ class DownloadCompletionTest {
             this.holder.close();
         }
         if (this.queue != null) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.queue.close();
                 return null;
             });
@@ -73,17 +73,17 @@ class DownloadCompletionTest {
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void aFinishedFileAnotherProgramHoldsForAWhileIsMovedOnceItIsFree() throws Exception {
-        this.givenADownload();
-        this.givenAnotherProgramHoldsItsDataFor(Duration.ofMillis(2500));
+        givenADownload();
+        givenAnotherProgramHoldsItsDataFor(Duration.ofMillis(2500));
 
-        this.whenItsLastDataArrives();
+        whenItsLastDataArrives();
 
-        this.thenItIsMovedToTheIncomingDirectoryWithoutFailing();
+        thenItIsMovedToTheIncomingDirectoryWithoutFailing();
     }
 
     private void givenADownload() throws Exception {
         new Random(7).nextBytes(this.data);
-        this.queue = this.onLoop(() -> DownloadQueue.load(
+        this.queue = onLoop(() -> DownloadQueue.load(
                 this.loop,
                 this.dir.resolve("temp"),
                 file -> this.dir.resolve("incoming"),
@@ -105,7 +105,7 @@ class DownloadCompletionTest {
                         DownloadCompletionTest.this.events.add("failed " + reason);
                     }
                 }));
-        this.download = this.onLoop(() -> this.queue.add(
+        this.download = onLoop(() -> this.queue.add(
                 Ed2kLink.FileLink.of("held.bin", this.data.length, Ed2k.md4(this.data, 0, this.data.length))));
     }
 
@@ -125,7 +125,7 @@ class DownloadCompletionTest {
     }
 
     private void whenItsLastDataArrives() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.queue.received(this.download, 0, this.data);
             return null;
         });

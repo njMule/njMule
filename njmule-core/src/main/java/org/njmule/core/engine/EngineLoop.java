@@ -108,7 +108,7 @@ public final class EngineLoop implements AutoCloseable {
     public <T> CompletableFuture<T> submit(Callable<T> task) {
         Objects.requireNonNull(task, "task");
         CompletableFuture<T> future = new CompletableFuture<>();
-        boolean queued = this.post(() -> {
+        boolean queued = post(() -> {
             try {
                 future.complete(task.call());
             } catch (Exception | Error e) {
@@ -123,7 +123,7 @@ public final class EngineLoop implements AutoCloseable {
 
     /** Like {@link #submit}, for a task that starts asynchronous work: the future completes as that work does. */
     public <T> CompletableFuture<T> submitAsync(Callable<? extends CompletionStage<T>> task) {
-        return this.submit(task).thenCompose(work -> work);
+        return submit(task).thenCompose(work -> work);
     }
 
     /** Runs {@code job} once after {@code delay}, from any thread. */
@@ -150,7 +150,7 @@ public final class EngineLoop implements AutoCloseable {
      */
     @SuppressWarnings("FutureReturnValueIgnored") // the follow-up reports its own failures
     public <T> void whenDone(CompletableFuture<T> work, BiConsumer<T, Throwable> then) {
-        work.whenComplete((value, failure) -> this.postOutcome(() -> then.accept(value, failure)));
+        work.whenComplete((value, failure) -> postOutcome(() -> then.accept(value, failure)));
     }
 
     public boolean isEngineThread() {
@@ -168,7 +168,7 @@ public final class EngineLoop implements AutoCloseable {
      */
     public boolean shutdown(Duration timeout) throws InterruptedException {
         this.executor.shutdown();
-        if (this.isEngineThread()) {
+        if (isEngineThread()) {
             return false;
         }
         return this.executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS);
@@ -177,7 +177,7 @@ public final class EngineLoop implements AutoCloseable {
     @Override
     public void close() {
         try {
-            if (!this.shutdown(Duration.ofSeconds(10))) {
+            if (!shutdown(Duration.ofSeconds(10))) {
                 logger.warn("Engine loop did not terminate within 10 seconds");
             }
         } catch (InterruptedException e) {

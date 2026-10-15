@@ -55,7 +55,7 @@ class DownloadLimitFlowTest {
                         InetAddress.getLoopbackAddress(),
                         shared,
                         new FakePeer.Config(Hash16.of(seed), false, FakePeer.Slot.NOW, 0, Set.of()));
-                NjMuleEngine engine = this.engine()) {
+                NjMuleEngine engine = engine()) {
             // Unlimited first, for a while, then limited.
             Thread.sleep(500);
             engine.updatePreferences(

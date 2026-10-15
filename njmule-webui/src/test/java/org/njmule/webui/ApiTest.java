@@ -87,43 +87,43 @@ class ApiTest {
 
     @Test
     void shouldRefuseACallWithoutTheToken() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("GET", "/api/v1/status", Optional.empty(), "");
+        whenCalled("GET", "/api/v1/status", Optional.empty(), "");
 
-        this.thenTheStatusIs(401);
-        this.thenTheAnswerAsksForABearerToken();
+        thenTheStatusIs(401);
+        thenTheAnswerAsksForABearerToken();
     }
 
     @Test
     void shouldLockOutAnAddressThatKeepsSendingWrongTokens() throws Exception {
-        this.givenTheApiRuns();
-        this.givenWrongTokensSent(Sessions.MAX_FAILURES);
+        givenTheApiRuns();
+        givenWrongTokensSent(Sessions.MAX_FAILURES);
 
-        this.whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
+        whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
 
-        this.thenTheStatusIs(429);
+        thenTheStatusIs(429);
     }
 
     @Test
     void shouldTellItsNameAndVersionToATokenHolder() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("GET", "/api/v1", "");
+        whenCalled("GET", "/api/v1", "");
 
-        this.thenTheStatusIs(200);
-        this.thenTheBodyContains("\"name\":\"njMule\"", "\"api\":1");
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"name\":\"njMule\"", "\"api\":1");
     }
 
     @Test
     void shouldListTheDownloadsAsJson() throws Exception {
-        this.givenTheApiRuns();
-        this.givenTheEngineDownloads(this.download());
+        givenTheApiRuns();
+        givenTheEngineDownloads(download());
 
-        this.whenCalled("GET", "/api/v1/downloads", "");
+        whenCalled("GET", "/api/v1/downloads", "");
 
-        this.thenTheStatusIs(200);
-        this.thenTheBodyContains(
+        thenTheStatusIs(200);
+        thenTheBodyContains(
                 "\"hash\":\"" + HASH + "\"",
                 "\"name\":\"talk.bin\"",
                 "\"status\":\"paused\"",
@@ -132,123 +132,123 @@ class ApiTest {
 
     @Test
     void shouldAddTheDownloadsOfTheLinksSent() throws Exception {
-        this.givenTheApiRuns();
-        this.givenTheEngineAddsDownloads();
+        givenTheApiRuns();
+        givenTheEngineAddsDownloads();
 
-        this.whenCalled("POST", "/api/v1/downloads", "{\"links\":[\"" + LINK + "\"]}");
+        whenCalled("POST", "/api/v1/downloads", "{\"links\":[\"" + LINK + "\"]}");
 
-        this.thenTheStatusIs(201);
-        this.thenTheEngineWasAsked("addDownload talk.bin");
+        thenTheStatusIs(201);
+        thenTheEngineWasAsked("addDownload talk.bin");
     }
 
     @Test
     void shouldRefuseABodyThatIsNotALink() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("POST", "/api/v1/downloads", "{\"links\":[\"http://example.org/\"]}");
+        whenCalled("POST", "/api/v1/downloads", "{\"links\":[\"http://example.org/\"]}");
 
-        this.thenTheStatusIs(400);
-        this.thenTheBodyContains("Not an eD2K file link");
+        thenTheStatusIs(400);
+        thenTheBodyContains("Not an eD2K file link");
     }
 
     @Test
     void shouldRefuseMalformedJson() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("POST", "/api/v1/downloads", "{\"links\":");
+        whenCalled("POST", "/api/v1/downloads", "{\"links\":");
 
-        this.thenTheStatusIs(400);
-        this.thenTheBodyContains("Malformed JSON");
+        thenTheStatusIs(400);
+        thenTheBodyContains("Malformed JSON");
     }
 
     @Test
     void shouldPauseAKnownDownloadAndReportAnUnknownOne() throws Exception {
-        this.givenTheApiRuns();
-        this.givenTheEngineDownloads(this.download());
-        this.givenTheEnginePausesOnly(HASH);
+        givenTheApiRuns();
+        givenTheEngineDownloads(download());
+        givenTheEnginePausesOnly(HASH);
 
-        this.whenCalled("POST", "/api/v1/downloads/" + HASH + "/pause", "");
-        this.thenTheStatusIs(200);
+        whenCalled("POST", "/api/v1/downloads/" + HASH + "/pause", "");
+        thenTheStatusIs(200);
 
-        this.whenCalled("POST", "/api/v1/downloads/" + "CD".repeat(16) + "/pause", "");
-        this.thenTheStatusIs(404);
+        whenCalled("POST", "/api/v1/downloads/" + "CD".repeat(16) + "/pause", "");
+        thenTheStatusIs(404);
     }
 
     @Test
     void shouldRefuseAMethodACallDoesNotTake() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("DELETE", "/api/v1/status", "");
+        whenCalled("DELETE", "/api/v1/status", "");
 
-        this.thenTheStatusIs(405);
+        thenTheStatusIs(405);
     }
 
     @Test
     void shouldGiveTheResultsOfASearchItStarted() throws Exception {
-        this.givenTheApiRuns();
-        this.givenTheEngineSearchesAs(7);
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
 
-        this.whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"kad\"}");
-        this.thenTheStatusIs(201);
-        this.thenTheBodyContains("\"id\":7");
+        whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"kad\"}");
+        thenTheStatusIs(201);
+        thenTheBodyContains("\"id\":7");
 
-        this.givenTheEngineFinds(7, "talk.bin");
-        this.whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
-        this.thenTheStatusIs(200);
-        this.thenTheBodyContains("\"name\":\"talk.bin\"");
-        this.thenTheEngineWasAsked("search talk KAD");
+        givenTheEngineFinds(7, "talk.bin");
+        whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"name\":\"talk.bin\"");
+        thenTheEngineWasAsked("search talk KAD");
     }
 
     @Test
     void shouldSetTheSpeedLimits() throws Exception {
-        this.givenTheApiRuns();
-        this.givenTheEngineKeepsPreferences();
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
 
-        this.whenCalled("PUT", "/api/v1/limits", "{\"uploadKiBps\":50,\"downloadKiBps\":0}");
+        whenCalled("PUT", "/api/v1/limits", "{\"uploadKiBps\":50,\"downloadKiBps\":0}");
 
-        this.thenTheStatusIs(200);
-        this.thenTheBodyContains("\"uploadKiBps\":50", "\"downloadKiBps\":0");
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"uploadKiBps\":50", "\"downloadKiBps\":0");
         assertThat(this.preferences.maxUploadKiBps()).isEqualTo(50);
     }
 
     @Test
     void shouldStreamTheEngineEvents() throws Exception {
-        this.givenTheApiRuns();
-        this.givenAnEventStreamOpen("download");
+        givenTheApiRuns();
+        givenAnEventStreamOpen("download");
 
-        this.whenTheEngineAnnounces(new EngineEvent.DownloadAdded(this.download()));
+        whenTheEngineAnnounces(new EngineEvent.DownloadAdded(download()));
 
-        this.thenTheStreamCarries("event: download.added", "\"name\":\"talk.bin\"");
+        thenTheStreamCarries("event: download.added", "\"name\":\"talk.bin\"");
     }
 
     @Test
     void shouldEndTheStreamsWhenTheInterfaceStops() throws Exception {
-        this.givenTheApiRuns();
-        this.givenAnEventStreamOpen("");
+        givenTheApiRuns();
+        givenAnEventStreamOpen("");
 
-        this.whenTheInterfaceStops();
+        whenTheInterfaceStops();
 
-        this.thenTheStreamEnds();
+        thenTheStreamEnds();
     }
 
     @Test
     void shouldStopNjMuleWhenAsked() throws Exception {
-        this.givenTheApiRuns();
+        givenTheApiRuns();
 
-        this.whenCalled("POST", "/api/v1/shutdown", "");
+        whenCalled("POST", "/api/v1/shutdown", "");
 
-        this.thenTheStatusIs(202);
-        this.thenNjMuleWasStopped();
+        thenTheStatusIs(202);
+        thenNjMuleWasStopped();
     }
 
     @Test
     void shouldAnswerNotFoundWhileTheApiIsOff() throws Exception {
-        this.givenTheWebInterfaceRunsWithoutTheApi();
+        givenTheWebInterfaceRunsWithoutTheApi();
 
-        this.whenCalled("GET", "/api/v1/status", Optional.of("anything"), "");
+        whenCalled("GET", "/api/v1/status", Optional.of("anything"), "");
 
-        this.thenTheStatusIs(404);
-        this.thenTheBodyContains("API is off");
+        thenTheStatusIs(404);
+        thenTheBodyContains("API is off");
     }
 
     // Given
@@ -271,8 +271,8 @@ class ApiTest {
 
     private void givenWrongTokensSent(int count) throws Exception {
         for (int i = 0; i < count; i++) {
-            this.whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
-            this.thenTheStatusIs(401);
+            whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
+            thenTheStatusIs(401);
         }
     }
 
@@ -284,7 +284,7 @@ class ApiTest {
         this.fake.answer("addDownload", args -> {
             Ed2kLink.FileLink link = (Ed2kLink.FileLink) args[0];
             this.calls.add("addDownload " + link.name());
-            return CompletableFuture.completedFuture(this.download());
+            return CompletableFuture.completedFuture(download());
         });
     }
 
@@ -317,7 +317,7 @@ class ApiTest {
 
     private void givenAnEventStreamOpen(String types) throws Exception {
         HttpResponse<InputStream> opened = this.http.send(
-                this.request("/api/v1/events?types=" + types, Optional.of(this.token))
+                request("/api/v1/events?types=" + types, Optional.of(this.token))
                         .GET()
                         .build(),
                 HttpResponse.BodyHandlers.ofInputStream());
@@ -335,21 +335,21 @@ class ApiTest {
     // When
 
     private void whenCalled(String method, String path, String body) throws Exception {
-        this.whenCalled(method, path, Optional.of(this.token), body);
+        whenCalled(method, path, Optional.of(this.token), body);
     }
 
     private void whenCalled(String method, String path, Optional<String> token, String body) throws Exception {
         HttpRequest.BodyPublisher content =
                 body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
         this.answer = this.http.send(
-                this.request(path, token).method(method, content).build(), HttpResponse.BodyHandlers.ofString());
+                request(path, token).method(method, content).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     // Results come through the engine's events, delivered on the publisher's threads.
     private void whenTheResultsAreAskedUntilTheyCome(String path, String name) throws Exception {
         long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         do {
-            this.whenCalled("GET", path, "");
+            whenCalled("GET", path, "");
         } while (!this.answer.body().contains(name) && System.nanoTime() < end);
     }
 

@@ -95,7 +95,7 @@ class TransfersMenusTest {
 
     @Test
     void theListsBelowShowTheClientsAndTheBans() throws Exception {
-        TransfersScreen screen = this.screen();
+        TransfersScreen screen = screen();
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("the lower lists", () -> screen.bans().getItems().size() == 1);
 
@@ -103,14 +103,14 @@ class TransfersMenusTest {
                         .map(t -> t.getText())
                         .toList()))
                 .containsExactly("Uploading (1)", "On Queue (1)", "Downloading (6)", "Banned (1)");
-        this.showTab(screen, 0);
+        showTab(screen, 0);
         FxTesting.await(
                 "the upload",
                 () -> FxTesting.cellTexts(screen.uploads()).containsAll(List.of("Peer", "eMule", "film.mkv")));
-        this.showTab(screen, 1);
+        showTab(screen, 1);
         FxTesting.await(
                 "the waiting client", () -> FxTesting.cellTexts(screen.queue()).contains("10.0.0.2:4662"));
-        this.showTab(screen, 2);
+        showTab(screen, 2);
         FxTesting.await(
                 "the sources", () -> FxTesting.cellTexts(screen.sources()).contains("Waiting"));
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(screen.sources())))
@@ -118,7 +118,7 @@ class TransfersMenusTest {
         FxTesting.onFx(() -> screen.sources().scrollTo(4));
         FxTesting.await(
                 "the last source", () -> FxTesting.cellTexts(screen.sources()).contains("Transferring"));
-        this.showTab(screen, 3);
+        showTab(screen, 3);
         FxTesting.await("the ban", () -> FxTesting.cellTexts(screen.bans()).contains("10.0.0.9"));
 
         FxTesting.onFx(() -> {
@@ -140,19 +140,19 @@ class TransfersMenusTest {
             assertThat(view.isDisable()).isFalse();
             view.fire();
         });
-        FxTesting.await("the client's files", () -> this.window("View Shared Files: Peer") != null);
+        FxTesting.await("the client's files", () -> window("View Shared Files: Peer") != null);
         assertThat(this.calls).contains("browse 10.0.0.1:4662");
         FxTesting.onFx(() -> {
-            this.window("View Shared Files: Peer").hide();
+            window("View Shared Files: Peer").hide();
             screen.sources().getSelectionModel().select(0);
             screen.sources().getContextMenu().getItems().getFirst().fire();
         });
-        FxTesting.await("the source's files", () -> this.window("View Shared Files: 10.0.0.3:4662") != null);
+        FxTesting.await("the source's files", () -> window("View Shared Files: 10.0.0.3:4662") != null);
     }
 
     @Test
     void theDownloadMenuActsOnTheSelectedDownloads() throws Exception {
-        TransfersScreen screen = this.screen();
+        TransfersScreen screen = screen();
         FxTesting.onFx(() -> this.test
                 .gui
                 .model()
@@ -171,43 +171,43 @@ class TransfersMenusTest {
         FxTesting.onFx(() -> {
             screen.downloads().getSelectionModel().select(0);
             menu.getOnShowing().handle(null);
-            Menu category = (Menu) this.item(menu, "IDS_CAT");
+            Menu category = (Menu) item(menu, "IDS_CAT");
             assertThat(category.getItems()).extracting(MenuItem::getText).containsExactly("(Unassign)", "Films");
             category.getItems().get(1).fire();
         });
-        FxTesting.await("in the category", () -> this.first(screen).category() == 1);
+        FxTesting.await("in the category", () -> first(screen).category() == 1);
         FxTesting.onFx(() -> {
-            CheckMenuItem first = (CheckMenuItem) this.item(menu, "IDS_DOWNLOADMOVIECHUNKS");
+            CheckMenuItem first = (CheckMenuItem) item(menu, "IDS_DOWNLOADMOVIECHUNKS");
             assertThat(first.isSelected()).isFalse();
             first.setSelected(true);
             first.fire();
         });
-        FxTesting.await("preview parts first", () -> this.first(screen).previewFirst());
+        FxTesting.await("preview parts first", () -> first(screen).previewFirst());
         FxTesting.onFx(() -> {
             menu.getOnShowing().handle(null);
-            assertThat(((CheckMenuItem) this.item(menu, "IDS_DOWNLOADMOVIECHUNKS")).isSelected())
+            assertThat(((CheckMenuItem) item(menu, "IDS_DOWNLOADMOVIECHUNKS")).isSelected())
                     .isTrue();
-            ((Menu) this.item(menu, "IDS_PRIORITY"))
+            ((Menu) item(menu, "IDS_PRIORITY"))
                     .getItems().stream()
                             .filter(i -> i.getText().equals("High"))
                             .findFirst()
                             .orElseThrow()
                             .fire();
         });
-        FxTesting.await("high", () -> this.first(screen).priority() == DownloadPriority.HIGH);
-        FxTesting.onFx(() -> this.item(menu, "IDS_DL_PAUSE").fire());
-        FxTesting.await("paused", () -> this.first(screen).status() == DownloadInfo.Status.PAUSED);
-        FxTesting.onFx(() -> this.item(menu, "IDS_DL_STOP").fire());
-        FxTesting.await("stopped", () -> this.first(screen).status() == DownloadInfo.Status.STOPPED);
-        FxTesting.onFx(() -> this.item(menu, "IDS_DL_RESUME").fire());
-        FxTesting.await("resumed", () -> this.first(screen).status() == DownloadInfo.Status.DOWNLOADING);
+        FxTesting.await("high", () -> first(screen).priority() == DownloadPriority.HIGH);
+        FxTesting.onFx(() -> item(menu, "IDS_DL_PAUSE").fire());
+        FxTesting.await("paused", () -> first(screen).status() == DownloadInfo.Status.PAUSED);
+        FxTesting.onFx(() -> item(menu, "IDS_DL_STOP").fire());
+        FxTesting.await("stopped", () -> first(screen).status() == DownloadInfo.Status.STOPPED);
+        FxTesting.onFx(() -> item(menu, "IDS_DL_RESUME").fire());
+        FxTesting.await("resumed", () -> first(screen).status() == DownloadInfo.Status.DOWNLOADING);
         FxTesting.onFx(() -> {
-            this.item(menu, "IDS_DL_LINK2").fire();
+            item(menu, "IDS_DL_LINK2").fire();
             assertThat(Clipboard.getSystemClipboard().getString())
                     .startsWith("<a href=\"ed2k://|file|test%20file.bin|");
-            this.item(menu, "nj.copyLink").fire();
+            item(menu, "nj.copyLink").fire();
             assertThat(Clipboard.getSystemClipboard().getString()).startsWith("ed2k://|file|test%20file.bin|");
-            this.item(menu, "IDS_DL_CLEAR").fire();
+            item(menu, "IDS_DL_CLEAR").fire();
         });
         assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size()))
                 .as("only finished downloads are cleared")
@@ -216,7 +216,7 @@ class TransfersMenusTest {
         // Cancel asks first.
         FxTesting.onFx(() -> {
             FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
-            this.item(menu, "IDS_CANCEL").fire();
+            item(menu, "IDS_CANCEL").fire();
         });
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS)).hasSize(1);
         FxTesting.onFx(() -> {
@@ -229,7 +229,7 @@ class TransfersMenusTest {
 
     @Test
     void aSourceIsAddedByHandAndCommentsOpen() throws Exception {
-        TransfersScreen screen = this.screen();
+        TransfersScreen screen = screen();
         FxTesting.onFx(() -> {
             screen.linkField().setText(LINK);
             screen.addLink();
@@ -238,19 +238,19 @@ class TransfersMenusTest {
         FxTesting.onFx(() -> {
             screen.addSourceToSelected();
             screen.downloads().getSelectionModel().select(0);
-            FxTesting.answer(ButtonType.OK, pane -> this.type(pane, "nowhere"));
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, "nowhere"));
             screen.addSourceToSelected();
         });
         assertThat(this.test.told).contains("Not an address of the form host:port: nowhere");
 
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> this.type(pane, " 10.0.0.5:4662 "));
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, " 10.0.0.5:4662 "));
             screen.addSourceToSelected();
         });
         FxTesting.await("added", () -> this.test.told.contains("Source 10.0.0.5:4662 added"));
         this.sourceTaken.set(false);
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> this.type(pane, "10.0.0.6:4662"));
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, "10.0.0.6:4662"));
             screen.addSourceToSelected();
         });
         FxTesting.await(
@@ -263,9 +263,9 @@ class TransfersMenusTest {
         });
         assertThat(this.calls).containsExactly("source 10.0.0.5:4662", "source 10.0.0.6:4662");
 
-        FxTesting.onFx(() ->
-                this.item(screen.downloads().getContextMenu(), "IDS_CMT_ADD").fire());
-        FxTesting.await("the comment window", () -> this.window("Comments: test file.bin") != null);
+        FxTesting.onFx(
+                () -> item(screen.downloads().getContextMenu(), "IDS_CMT_ADD").fire());
+        FxTesting.await("the comment window", () -> window("Comments: test file.bin") != null);
 
         FxTesting.onFx(() -> screen.view().lookupAll(".button").stream()
                 .filter(n -> n instanceof Button b && "Categories".equals(b.getAccessibleText()))
@@ -273,33 +273,33 @@ class TransfersMenusTest {
                 .findFirst()
                 .orElseThrow()
                 .fire());
-        FxTesting.await("the categories window", () -> this.window("Categories") != null);
+        FxTesting.await("the categories window", () -> window("Categories") != null);
     }
 
     @Test
     void shouldSwapSourcesWithTheSourceHandlingMenuOfADownload() throws Exception {
-        this.givenTheTransfersScreenWithADownload();
+        givenTheTransfersScreenWithADownload();
 
-        this.whenEveryA4afItemOfTheDownloadMenuIsUsed();
+        whenEveryA4afItemOfTheDownloadMenuIsUsed();
 
-        this.thenTheEngineIsAskedTo("sources here " + FILE, "sources away " + FILE);
-        this.thenTheUserIsTold("Sources swapped: 2", "Sources swapped: 1");
-        this.thenTheDownloadTakesA4afSourcesByItself();
+        thenTheEngineIsAskedTo("sources here " + FILE, "sources away " + FILE);
+        thenTheUserIsTold("Sources swapped: 2", "Sources swapped: 1");
+        thenTheDownloadTakesA4afSourcesByItself();
     }
 
     @Test
     void shouldShowAnA4afSourceWithTheFileItIsAskedForAndSwapIt() throws Exception {
-        this.givenTheListOfSourcesIsShown();
+        givenTheListOfSourcesIsShown();
 
-        this.whenTheA4afSourceIsSwappedToItsDownload();
+        whenTheA4afSourceIsSwappedToItsDownload();
 
-        this.thenTheSourcesShow("Asked for another file", "other.bin");
-        this.thenTheEngineIsAskedTo("source here 10.0.0.3:4667");
-        this.thenTheUserIsTold("The source cannot move now: it is being asked or sends data");
+        thenTheSourcesShow("Asked for another file", "other.bin");
+        thenTheEngineIsAskedTo("source here 10.0.0.3:4667");
+        thenTheUserIsTold("The source cannot move now: it is being asked or sends data");
     }
 
     private void givenTheTransfersScreenWithADownload() throws Exception {
-        this.transfers = this.screen();
+        this.transfers = screen();
         FxTesting.onFx(() -> {
             this.transfers.linkField().setText(LINK);
             this.transfers.addLink();
@@ -309,11 +309,11 @@ class TransfersMenusTest {
     }
 
     private void givenTheListOfSourcesIsShown() throws Exception {
-        this.transfers = this.screen();
+        this.transfers = screen();
         FxTesting.onFx(this.test.model::tick);
         FxTesting.onFx(this.test.model::tick);
-        this.showTab(this.transfers, 2);
-        FxTesting.await("the A4AF source", () -> this.a4afRow() >= 0);
+        showTab(this.transfers, 2);
+        FxTesting.await("the A4AF source", () -> a4afRow() >= 0);
     }
 
     private void whenEveryA4afItemOfTheDownloadMenuIsUsed() throws Exception {
@@ -321,26 +321,26 @@ class TransfersMenusTest {
         FxTesting.onFx(() -> {
             this.transfers.downloads().getSelectionModel().select(0);
             menu.getOnShowing().handle(null);
-            Menu handling = (Menu) this.item(menu, "IDS_A4AF");
-            MenuItem here = this.item(handling.getItems(), "nj.a4af.toThis");
+            Menu handling = (Menu) item(menu, "IDS_A4AF");
+            MenuItem here = item(handling.getItems(), "nj.a4af.toThis");
             assertThat(here.isDisable()).as("the download runs").isFalse();
             here.fire();
-            CheckMenuItem auto = (CheckMenuItem) this.item(handling.getItems(), "nj.a4af.auto");
+            CheckMenuItem auto = (CheckMenuItem) item(handling.getItems(), "nj.a4af.auto");
             assertThat(auto.isSelected()).isFalse();
             auto.setSelected(true);
             auto.fire();
-            this.item(handling.getItems(), "nj.a4af.toOther").fire();
+            item(handling.getItems(), "nj.a4af.toOther").fire();
         });
     }
 
     private void whenTheA4afSourceIsSwappedToItsDownload() throws Exception {
         FxTesting.onFx(() -> {
-            int row = this.a4afRow();
+            int row = a4afRow();
             this.transfers.sources().scrollTo(row);
             this.transfers.sources().getSelectionModel().clearAndSelect(row);
             ContextMenu menu = this.transfers.sources().getContextMenu();
             menu.getOnShowing().handle(null);
-            MenuItem swap = this.item(menu.getItems(), "nj.a4af.swapToThis");
+            MenuItem swap = item(menu.getItems(), "nj.a4af.swapToThis");
             assertThat(swap.isDisable()).as("an A4AF source").isFalse();
             swap.fire();
         });
@@ -355,12 +355,12 @@ class TransfersMenusTest {
     }
 
     private void thenTheDownloadTakesA4afSourcesByItself() throws Exception {
-        FxTesting.await("taking A4AF sources", () -> this.first(this.transfers).autoSwap());
+        FxTesting.await("taking A4AF sources", () -> first(this.transfers).autoSwap());
         FxTesting.onFx(() -> {
             ContextMenu menu = this.transfers.downloads().getContextMenu();
             menu.getOnShowing().handle(null);
-            Menu handling = (Menu) this.item(menu, "IDS_A4AF");
-            assertThat(((CheckMenuItem) this.item(handling.getItems(), "nj.a4af.auto")).isSelected())
+            Menu handling = (Menu) item(menu, "IDS_A4AF");
+            assertThat(((CheckMenuItem) item(handling.getItems(), "nj.a4af.auto")).isSelected())
                     .isTrue();
         });
     }
@@ -388,7 +388,7 @@ class TransfersMenusTest {
 
     @Test
     void aPreviewNeedsAPlayerAndTellsWhyItCannotStart() throws Exception {
-        TransfersScreen screen = this.screen();
+        TransfersScreen screen = screen();
         FxTesting.onFx(() -> {
             screen.linkField().setText(LINK);
             screen.addLink();
@@ -397,7 +397,7 @@ class TransfersMenusTest {
         FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
         FxTesting.onFx(() -> {
             screen.downloads().getSelectionModel().select(0);
-            this.item(screen.downloads().getContextMenu(), "IDS_DL_PREVIEW").fire();
+            item(screen.downloads().getContextMenu(), "IDS_DL_PREVIEW").fire();
         });
         assertThat(this.test.told).containsExactly("Choose a video player in the settings first");
 
@@ -419,11 +419,11 @@ class TransfersMenusTest {
     @Test
     void eachDownloadShowsItsStateAndPriority() throws Exception {
         this.downloads.set(List.of(
-                this.download("00000000000000000000000000000001", "paused.bin", DownloadInfo.Status.PAUSED, 5),
-                this.download("00000000000000000000000000000002", "stopped.bin", DownloadInfo.Status.STOPPED, 50),
-                this.download("00000000000000000000000000000003", "full.bin", DownloadInfo.Status.NO_SPACE, 500),
-                this.download("00000000000000000000000000000004", "broken.bin", DownloadInfo.Status.ERROR, 0)));
-        TransfersScreen screen = this.screen();
+                download("00000000000000000000000000000001", "paused.bin", DownloadInfo.Status.PAUSED, 5),
+                download("00000000000000000000000000000002", "stopped.bin", DownloadInfo.Status.STOPPED, 50),
+                download("00000000000000000000000000000003", "full.bin", DownloadInfo.Status.NO_SPACE, 500),
+                download("00000000000000000000000000000004", "broken.bin", DownloadInfo.Status.ERROR, 0)));
+        TransfersScreen screen = screen();
         FxTesting.onFx(this.test.model::tick);
 
         FxTesting.await(
@@ -461,15 +461,14 @@ class TransfersMenusTest {
                         List.of(new Category(
                                 3, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "*.mp3", false)),
                         () -> {}));
-        FxTesting.await(
-                "the category button", () -> this.categoryButtons(screen).size() == 2);
+        FxTesting.await("the category button", () -> categoryButtons(screen).size() == 2);
         FxTesting.onFx(() -> {
-            ToggleButton music = this.categoryButtons(screen).get(1);
+            ToggleButton music = categoryButtons(screen).get(1);
             music.fire();
             assertThat(screen.downloads().getItems()).isEmpty();
             music.setSelected(false);
             assertThat(music.isSelected()).as("still chosen").isTrue();
-            this.categoryButtons(screen).getFirst().fire();
+            categoryButtons(screen).getFirst().fire();
         });
         assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size())).isEqualTo(4);
 
@@ -488,9 +487,8 @@ class TransfersMenusTest {
                                             4, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false)),
                             () -> {});
         });
-        FxTesting.await(
-                "two category buttons", () -> this.categoryButtons(screen).size() == 3);
-        assertThat(FxTesting.onFx(() -> this.categoryButtons(screen).get(1).isSelected()))
+        FxTesting.await("two category buttons", () -> categoryButtons(screen).size() == 3);
+        assertThat(FxTesting.onFx(() -> categoryButtons(screen).get(1).isSelected()))
                 .isTrue();
         FxTesting.onFx(() -> screen.showCategory(3));
         FxTesting.onFx(() -> this.test.gui.model().setCategories(List.of(), () -> {}));
@@ -559,9 +557,8 @@ class TransfersMenusTest {
         });
         commands.put(
                 "downloadData", args -> CompletableFuture.completedFuture(Optional.of(this.dir.resolve("data.part"))));
-        this.swapCommands(commands);
-        this.test =
-                TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, this.with(real, commands)));
+        swapCommands(commands);
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, with(real, commands)));
         TransfersScreen screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(screen::view));
         return screen;
@@ -626,7 +623,7 @@ class TransfersMenusTest {
     }
 
     private MenuItem item(ContextMenu menu, String key) {
-        return this.item(menu.getItems(), key);
+        return item(menu.getItems(), key);
     }
 
     private MenuItem item(List<MenuItem> items, String key) {

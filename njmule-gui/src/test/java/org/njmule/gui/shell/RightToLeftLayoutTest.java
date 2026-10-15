@@ -60,34 +60,34 @@ class RightToLeftLayoutTest {
 
     @Test
     void inArabicTheWindowItsDialogsAndTheTrayWindowsRunRightToLeft() throws Exception {
-        this.givenTheInterfaceIn(ARABIC);
+        givenTheInterfaceIn(ARABIC);
 
-        this.whenTheMainWindowShows();
-        this.whenTheAboutDialogOpens();
-        this.whenTheWindowsOfTheNotificationAreaAreBuilt();
+        whenTheMainWindowShows();
+        whenTheAboutDialogOpens();
+        whenTheWindowsOfTheNotificationAreaAreBuilt();
 
-        this.thenEachRuns(NodeOrientation.RIGHT_TO_LEFT);
+        thenEachRuns(NodeOrientation.RIGHT_TO_LEFT);
     }
 
     @Test
     void inEnglishTheWindowItsDialogsAndTheTrayWindowsRunLeftToRight() throws Exception {
-        this.givenTheInterfaceIn(Locale.ENGLISH);
+        givenTheInterfaceIn(Locale.ENGLISH);
 
-        this.whenTheMainWindowShows();
-        this.whenTheAboutDialogOpens();
-        this.whenTheWindowsOfTheNotificationAreaAreBuilt();
+        whenTheMainWindowShows();
+        whenTheAboutDialogOpens();
+        whenTheWindowsOfTheNotificationAreaAreBuilt();
 
-        this.thenEachRuns(NodeOrientation.LEFT_TO_RIGHT);
+        thenEachRuns(NodeOrientation.LEFT_TO_RIGHT);
     }
 
     @Test
     void inArabicTheLinkAndAddressFieldsStayLeftToRight() throws Exception {
-        this.givenTheInterfaceIn(ARABIC);
+        givenTheInterfaceIn(ARABIC);
 
-        this.whenTheMainWindowShows();
+        whenTheMainWindowShows();
 
-        this.thenTheLinkFieldOfTheTransfersRunsLeftToRight();
-        this.thenTheAddressFieldOfTheServersRunsLeftToRight();
+        thenTheLinkFieldOfTheTransfersRunsLeftToRight();
+        thenTheAddressFieldOfTheServersRunsLeftToRight();
     }
 
     private void givenTheInterfaceIn(Locale language) throws Exception {
@@ -153,12 +153,12 @@ class RightToLeftLayoutTest {
     }
 
     private void thenTheLinkFieldOfTheTransfersRunsLeftToRight() throws Exception {
-        this.thenTheFieldPromptingRunsLeftToRightOnTheScreen("transfers", "ed2k://|file|…|/");
+        thenTheFieldPromptingRunsLeftToRightOnTheScreen("transfers", "ed2k://|file|…|/");
     }
 
     // The prompt is embedded in its own direction, as the field runs the other way.
     private void thenTheAddressFieldOfTheServersRunsLeftToRight() throws Exception {
-        this.thenTheFieldPromptingRunsLeftToRightOnTheScreen(
+        thenTheFieldPromptingRunsLeftToRightOnTheScreen(
                 "servers", this.test.gui.i18n().embed(this.test.gui.t("nj.servers.addressPrompt")));
     }
 

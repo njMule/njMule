@@ -41,26 +41,25 @@ class NotesMessagesTest {
 
     @Test
     void shouldWriteANotePublishAsFilePublisherAndTags() throws Exception {
-        this.givenANotePublish(List.of(
+        givenANotePublish(List.of(
                 new Tag.StringTag(TagName.id(FileTag.FILENAME), "a"),
                 new Tag.IntTag(TagName.id(FileTag.FILERATING), 5)));
 
-        this.whenItIsWrittenAndReadBack();
+        whenItIsWrittenAndReadBack();
 
-        this.thenThePacketIs(
+        thenThePacketIs(
                 Opcodes.Kad.PUBLISH_NOTES_REQ,
                 "0403020108070605" + "0c0b0a09100f0e0d"
                         + "1413121118171615" + "1c1b1a19201f1e1d"
                         + "02" + "02010001010061" + "090100f705");
-        this.thenTheReadNoteIsTheWrittenOne();
+        thenTheReadNoteIsTheWrittenOne();
     }
 
     @Test
     void shouldWriteANotesSearchAsFileAndSize() {
-        this.whenANotesSearchIsWritten(1_000);
+        whenANotesSearchIsWritten(1_000);
 
-        this.thenThePacketIs(
-                Opcodes.Kad.SEARCH_NOTES_REQ, "0403020108070605" + "0c0b0a09100f0e0d" + "e803000000000000");
+        thenThePacketIs(Opcodes.Kad.SEARCH_NOTES_REQ, "0403020108070605" + "0c0b0a09100f0e0d" + "e803000000000000");
     }
 
     private void givenANotePublish(List<Tag> tags) {

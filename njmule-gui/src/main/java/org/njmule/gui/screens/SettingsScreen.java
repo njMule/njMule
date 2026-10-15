@@ -224,14 +224,14 @@ public final class SettingsScreen implements Screen {
     @Override
     public Node view() {
         if (this.view == null) {
-            this.view = this.build();
+            this.view = build();
         }
         return this.view;
     }
 
     @Override
     public void shown() {
-        this.load(this.gui.model().preferencesProperty().get());
+        load(this.gui.model().preferencesProperty().get());
     }
 
     private Node build() {
@@ -304,7 +304,7 @@ public final class SettingsScreen implements Screen {
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
-        this.inputs();
+        inputs();
 
         GridPane grid = new GridPane();
         grid.setHgap(12);
@@ -318,7 +318,7 @@ public final class SettingsScreen implements Screen {
             grid.add(this.tray, 1, row++);
         }
         grid.add(this.startMinimized, 1, row++);
-        grid.add(this.autostartRow(), 1, row++);
+        grid.add(autostartRow(), 1, row++);
         grid.add(this.confirmExit, 1, row++);
         grid.add(this.watchClipboard, 1, row++);
         if (this.links.isPresent()) {
@@ -326,7 +326,7 @@ public final class SettingsScreen implements Screen {
         }
         row = section(grid, row, this.gui.t("IDS_PW_EKDEV_OPTIONS"));
         grid.add(this.sound, 1, row++);
-        row = field(grid, row, this.gui.t("nj.settings.soundFile"), this.soundRow());
+        row = field(grid, row, this.gui.t("nj.settings.soundFile"), soundRow());
         row = section(grid, row, this.gui.t("nj.settings.connection"));
         row = field(grid, row, this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcpPort);
         row = field(grid, row, "UDP", this.udpPort);
@@ -366,8 +366,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("nj.proxy.host"), new HBox(8, this.proxyHost, this.proxyPort));
         row = field(grid, row, this.gui.t("nj.proxy.user"), new HBox(8, this.proxyUser, this.proxyPassword));
         row = section(grid, row, this.gui.t("IDS_PW_DIR"));
-        row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), this.directory(this.incoming));
-        row = field(grid, row, this.gui.t("IDS_PW_TEMP"), this.directory(this.temp));
+        row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), directory(this.incoming));
+        row = field(grid, row, this.gui.t("IDS_PW_TEMP"), directory(this.temp));
         row = field(grid, row, this.gui.t("IDS_MINFREEDISKSPACE"), this.minFreeSpace);
         this.backups.setPrefColumnCount(4);
         row = field(grid, row, this.gui.t("nj.settings.backups"), this.backups);
@@ -382,7 +382,7 @@ public final class SettingsScreen implements Screen {
         next.setAlignment(Pos.CENTER_LEFT);
         grid.add(next, 1, row++);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
-        row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), this.ipFilterRow());
+        row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), ipFilterRow());
         this.filterLevel.setPrefColumnCount(4);
         row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
         grid.add(this.filterLan, 1, row++);
@@ -395,7 +395,7 @@ public final class SettingsScreen implements Screen {
         grid.add(this.friendsOnly, 1, row++);
         grid.add(this.spamFilter, 1, row++);
         row = section(grid, row, this.gui.t("nj.scheduler.title"));
-        grid.add(this.scheduler(), 0, row++, 2, 1);
+        grid.add(scheduler(), 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("nj.settings.events"));
         for (EventCommands.Event event : EventCommands.Event.values()) {
             grid.add(this.eventSwitches.get(event), 0, row);
@@ -456,12 +456,12 @@ public final class SettingsScreen implements Screen {
         var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
         this.scroll.setContent(grid);
         this.scroll.setFitToWidth(true);
-        this.load(this.gui.model().preferencesProperty().get());
+        load(this.gui.model().preferencesProperty().get());
         // Beside the long page, its sections and a box that finds an option by its words.
         this.index = new SettingsIndex(this.gui, grid, this.scroll);
         HBox body = new HBox(12, this.index.view(), this.scroll);
         HBox.setHgrow(this.scroll, Priority.ALWAYS);
-        return Fx.screen(this.title(), tools, body);
+        return Fx.screen(title(), tools, body);
     }
 
     // Each box takes only its kind of value, within the limits the engine accepts.
@@ -605,7 +605,7 @@ public final class SettingsScreen implements Screen {
     }
 
     SchedulerPane schedulerPane() {
-        return this.scheduler();
+        return scheduler();
     }
 
     // Only the installed program can start at login; elsewhere the box says why it is off. A disabled control shows
@@ -668,7 +668,7 @@ public final class SettingsScreen implements Screen {
             } catch (IOException e) {
                 Platform.runLater(() -> {
                     this.gui.warn().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage()));
-                    this.loadAutostart();
+                    loadAutostart();
                 });
             }
         });
@@ -799,8 +799,8 @@ public final class SettingsScreen implements Screen {
             this.eventSwitches.get(event).setSelected(command.enabled());
             this.eventInputs.get(event).field().setText(command.commandLine());
         }
-        this.loadLinks();
-        this.loadAutostart();
+        loadLinks();
+        loadAutostart();
     }
 
     // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile.
@@ -845,7 +845,7 @@ public final class SettingsScreen implements Screen {
             } catch (IOException e) {
                 Platform.runLater(() -> {
                     this.gui.warn().accept(this.gui.f("nj.settings.ed2kLinksFailed", e.getMessage()));
-                    this.loadLinks();
+                    loadLinks();
                 });
             }
         });
@@ -855,14 +855,14 @@ public final class SettingsScreen implements Screen {
     void apply() {
         Optional<Input<?>> wrong =
                 this.checked.stream().filter(i -> !i.isValid()).findFirst();
-        wrong.ifPresent(i -> this.reveal(i.field()));
+        wrong.ifPresent(i -> reveal(i.field()));
         Changes changes;
         Preferences shown;
         WebUiSettings web;
         try {
-            changes = this.read();
+            changes = read();
             shown = changes.over(this.loaded);
-            web = this.readWebUi(WebUiSettings.load(this.gui.directories().config()));
+            web = readWebUi(WebUiSettings.load(this.gui.directories().config()));
         } catch (IllegalArgumentException e) {
             this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
             return;
@@ -898,8 +898,8 @@ public final class SettingsScreen implements Screen {
         } catch (IOException e) {
             this.gui.warn().accept(e.getMessage());
         }
-        this.applyLinks();
-        this.applyAutostart();
+        applyLinks();
+        applyAutostart();
         if (relaunch) {
             this.gui.relaunch().run();
         }
@@ -907,7 +907,7 @@ public final class SettingsScreen implements Screen {
 
     // Each field of the form, against the preferences it was loaded from.
     private Changes read() {
-        Changes changes = this.readEngine();
+        Changes changes = readEngine();
         for (EventCommands.Event event : EventCommands.Event.values()) {
             changes.set(
                     p -> p.eventCommands().get(event),
@@ -1294,7 +1294,7 @@ public final class SettingsScreen implements Screen {
         @Override
         protected void updateItem(T item, boolean empty) {
             super.updateItem(item, empty);
-            this.setText(empty || item == null ? null : this.name.apply(item));
+            setText(empty || item == null ? null : this.name.apply(item));
         }
     }
 }

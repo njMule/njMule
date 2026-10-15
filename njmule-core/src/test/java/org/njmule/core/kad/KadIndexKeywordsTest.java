@@ -45,67 +45,67 @@ class KadIndexKeywordsTest {
 
     @Test
     void shouldForgetPublishersSilentForADaySoThatNewOnesCount() {
-        this.givenTheFileIsPublishedByAddresses(IP, 99, "Stale.avi", NOW);
-        this.givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW);
-        this.givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
+        givenTheFileIsPublishedByAddresses(IP, 99, "Stale.avi", NOW);
+        givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW);
+        givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
 
-        this.whenTheFileIsPublishedByAddresses(IP + 2_000, 1, "Kept.avi", NOW + 24 * HOUR + 1);
-        this.whenTheKeywordIsSearchedAt(NOW + 24 * HOUR + 2);
+        whenTheFileIsPublishedByAddresses(IP + 2_000, 1, "Kept.avi", NOW + 24 * HOUR + 1);
+        whenTheKeywordIsSearchedAt(NOW + 24 * HOUR + 2);
 
-        this.thenTheNameFoundIs("Kept.avi");
-        this.thenThePublishersCountedAre(2);
+        thenTheNameFoundIs("Kept.avi");
+        thenThePublishersCountedAre(2);
     }
 
     @Test
     void shouldForgetSilentPublishersWhenTheIndexIsCleaned() {
-        this.givenTheFileIsPublishedByAddresses(IP, 50, "Stale.avi", NOW);
-        this.givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
+        givenTheFileIsPublishedByAddresses(IP, 50, "Stale.avi", NOW);
+        givenTheFileIsPublishedByAddresses(IP + 1_000, 1, "Kept.avi", NOW + 12 * HOUR);
 
-        this.whenTheIndexIsCleanedAt(NOW + 24 * HOUR);
-        this.whenTheKeywordIsSearchedAt(NOW + 24 * HOUR);
+        whenTheIndexIsCleanedAt(NOW + 24 * HOUR);
+        whenTheKeywordIsSearchedAt(NOW + 24 * HOUR);
 
-        this.thenTheNameFoundIs("Kept.avi");
-        this.thenThePublishersCountedAre(1);
+        thenTheNameFoundIs("Kept.avi");
+        thenThePublishersCountedAre(1);
     }
 
     @Test
     void shouldKeepOfANameNoMoreThanAFileSystemTakes() {
-        this.givenTheFileIsPublishedByAddresses(IP, 1, "x".repeat(10_000) + ".avi", NOW);
+        givenTheFileIsPublishedByAddresses(IP, 1, "x".repeat(10_000) + ".avi", NOW);
 
-        this.whenTheKeywordIsSearchedAt(NOW);
+        whenTheKeywordIsSearchedAt(NOW);
 
-        this.thenTheNameFoundIs("x".repeat(KadIndex.MAX_KEYWORD_NAME));
+        thenTheNameFoundIs("x".repeat(KadIndex.MAX_KEYWORD_NAME));
     }
 
     @Test
     void shouldNotKeepAFileThatNoAnswerCouldCarry() {
-        this.givenTheFileIsPublishedWithTags(
+        givenTheFileIsPublishedWithTags(
                 List.of(new Tag.StringTag(TagName.id(FileTag.MEDIA_ARTIST), "a".repeat(2_000))));
 
-        this.whenTheKeywordIsSearchedAt(NOW);
+        whenTheKeywordIsSearchedAt(NOW);
 
-        this.thenNothingIsFound();
-        this.thenTheIndexHoldsKeywordEntries(0);
+        thenNothingIsFound();
+        thenTheIndexHoldsKeywordEntries(0);
     }
 
     @Test
     void shouldAnswerWithTheNameMostPublishersGiveWhileTheyChange() {
-        this.givenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW);
-        this.givenTheKeywordWasSearchedFor(new SearchExpr.Keyword("first"));
+        givenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW);
+        givenTheKeywordWasSearchedFor(new SearchExpr.Keyword("first"));
 
-        this.whenTheFileIsPublishedByAddresses(IP + 10, 2, "Second Name.avi", NOW + HOUR);
-        this.whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("second"), NOW + HOUR);
+        whenTheFileIsPublishedByAddresses(IP + 10, 2, "Second Name.avi", NOW + HOUR);
+        whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("second"), NOW + HOUR);
 
-        this.thenTheNameFoundIs("Second Name.avi");
+        thenTheNameFoundIs("Second Name.avi");
 
-        this.whenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW + 23 * HOUR);
-        this.whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("FIRST name"), NOW + 25 * HOUR);
+        whenTheFileIsPublishedByAddresses(IP, 1, "First Name.avi", NOW + 23 * HOUR);
+        whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("FIRST name"), NOW + 25 * HOUR);
 
-        this.thenTheNameFoundIs("First Name.avi");
+        thenTheNameFoundIs("First Name.avi");
     }
 
     private void givenTheKeywordWasSearchedFor(SearchExpr expression) {
-        this.whenTheKeywordIsSearchedFor(expression, NOW);
+        whenTheKeywordIsSearchedFor(expression, NOW);
         assertThat(this.found).hasSize(1);
     }
 
@@ -124,7 +124,7 @@ class KadIndexKeywordsTest {
     }
 
     private void whenTheFileIsPublishedByAddresses(int firstIp, int count, String name, long at) {
-        this.givenTheFileIsPublishedByAddresses(firstIp, count, name, at);
+        givenTheFileIsPublishedByAddresses(firstIp, count, name, at);
     }
 
     private void whenTheIndexIsCleanedAt(long at) {

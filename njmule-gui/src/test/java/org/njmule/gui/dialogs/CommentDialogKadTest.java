@@ -65,70 +65,70 @@ class CommentDialogKadTest {
 
     @Test
     void shouldShowKadNotesMarkedBesideWhatTheSourcesSaid() throws Exception {
-        this.givenTheSourcesSaid(new PeerComment("Bob", "film.mkv", FileComment.of("nice", 4)));
-        this.givenKadNodesSaid(NOTE);
+        givenTheSourcesSaid(new PeerComment("Bob", "film.mkv", FileComment.of("nice", 4)));
+        givenKadNodesSaid(NOTE);
 
-        this.whenTheDialogOpensFor(true);
+        whenTheDialogOpensFor(true);
 
-        this.thenTheLinesAre("Bob: [Good] nice", "Kad: [Excellent] the real thing");
-        this.thenOnlyTheKadLineHasTheKadIcon();
+        thenTheLinesAre("Bob: [Good] nice", "Kad: [Excellent] the real thing");
+        thenOnlyTheKadLineHasTheKadIcon();
     }
 
     @Test
     void shouldShowTheKadNotesOfASharedFile() throws Exception {
-        this.givenKadNodesSaid(NOTE);
+        givenKadNodesSaid(NOTE);
 
-        this.whenTheDialogOpensFor(false);
+        whenTheDialogOpensFor(false);
 
-        this.thenTheLinesAre("Kad: [Excellent] the real thing");
+        thenTheLinesAre("Kad: [Excellent] the real thing");
     }
 
     @Test
     void shouldTellWhileKadSearches() throws Exception {
-        this.givenKadNodesSaid();
-        this.givenTheDialogOpenedFor(true);
+        givenKadNodesSaid();
+        givenTheDialogOpenedFor(true);
 
-        this.whenKadIsSearched();
+        whenKadIsSearched();
 
-        this.thenKadStateSays("(Kad search in progress...)");
-        this.thenTheSearchButtonIsDisabled(true);
+        thenKadStateSays("(Kad search in progress...)");
+        thenTheSearchButtonIsDisabled(true);
     }
 
     @Test
     void shouldTellWhenKadHasNoNotes() throws Exception {
-        this.givenKadNodesSaid();
-        this.givenTheDialogOpenedFor(true);
-        this.givenKadIsSearched();
+        givenKadNodesSaid();
+        givenTheDialogOpenedFor(true);
+        givenKadIsSearched();
 
-        this.whenTheSearchEndsWith();
+        whenTheSearchEndsWith();
 
-        this.thenKadStateSays("Kad holds no notes on this file");
-        this.thenTheSearchButtonIsDisabled(false);
-        this.thenTheListShowsNothingHeard();
+        thenKadStateSays("Kad holds no notes on this file");
+        thenTheSearchButtonIsDisabled(false);
+        thenTheListShowsNothingHeard();
     }
 
     @Test
     void shouldShowTheNotesTheSearchFound() throws Exception {
-        this.givenKadNodesSaid();
-        this.givenTheDialogOpenedFor(false);
-        this.givenKadIsSearched();
+        givenKadNodesSaid();
+        givenTheDialogOpenedFor(false);
+        givenKadIsSearched();
 
-        this.whenTheSearchEndsWith(NOTE);
+        whenTheSearchEndsWith(NOTE);
 
-        this.thenKadStateSays("Notes from Kad: 1");
-        this.thenTheLinesAre("Kad: [Excellent] the real thing");
+        thenKadStateSays("Notes from Kad: 1");
+        thenTheLinesAre("Kad: [Excellent] the real thing");
     }
 
     @Test
     void shouldTellWhyKadCouldNotSearch() throws Exception {
-        this.givenKadNodesSaid();
-        this.givenTheDialogOpenedFor(true);
-        this.givenKadIsSearched();
+        givenKadNodesSaid();
+        givenTheDialogOpenedFor(true);
+        givenKadIsSearched();
 
-        this.whenTheSearchFails("Kad is not connected");
+        whenTheSearchFails("Kad is not connected");
 
-        this.thenKadStateSays("No Kad search: Kad is not connected");
-        this.thenTheSearchButtonIsDisabled(false);
+        thenKadStateSays("No Kad search: Kad is not connected");
+        thenTheSearchButtonIsDisabled(false);
     }
 
     private void givenTheSourcesSaid(PeerComment... comments) {
@@ -142,11 +142,11 @@ class CommentDialogKadTest {
     }
 
     private void givenTheDialogOpenedFor(boolean download) throws Exception {
-        this.whenTheDialogOpensFor(download);
+        whenTheDialogOpensFor(download);
     }
 
     private void givenKadIsSearched() throws Exception {
-        this.whenKadIsSearched();
+        whenKadIsSearched();
     }
 
     private void whenTheDialogOpensFor(boolean download) throws Exception {

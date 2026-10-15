@@ -72,7 +72,7 @@ class ServerSessionFlowTest {
 
     @AfterEach
     void stop() throws Exception {
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.disconnect();
             return null;
         });
@@ -87,12 +87,12 @@ class ServerSessionFlowTest {
         this.servers.add(malformed);
         this.servers.add(ipv6);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.empty());
             return null;
         });
 
-        assertThat(this.next("disconnected")).isEqualTo("disconnected no server accepted the connection");
+        assertThat(next("disconnected")).isEqualTo("disconnected no server accepted the connection");
         assertThat(this.servers.all())
                 .as("each failure counted")
                 .allSatisfy(s -> assertThat(s.failedCount()).hasValue(1));
@@ -111,20 +111,20 @@ class ServerSessionFlowTest {
         this.servers.add(notStatic);
         this.servers.setStatic(ServerList.addressOf(plain), true);
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.empty());
             return null;
         });
 
-        assertThat(this.next("disconnected")).isEqualTo("disconnected no server accepted the connection");
+        assertThat(next("disconnected")).isEqualTo("disconnected no server accepted the connection");
         assertThat(this.servers.all())
                 .allSatisfy(s -> assertThat(s.failedCount()).isEmpty());
 
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(new ServerMet.Server(Ipv4.parse("127.0.0.1"), 0, List.of())));
             return null;
         });
-        assertThat(this.next("disconnected"))
+        assertThat(next("disconnected"))
                 .as("no port to connect to")
                 .isEqualTo("disconnected no server accepted the connection");
         assertThat(this.seen).noneMatch(e -> e.startsWith("connecting"));
@@ -133,23 +133,23 @@ class ServerSessionFlowTest {
     @Test
     void aServerWithoutAnAddressOrThatRefusesFails() throws Exception {
         ServerMet.Server nowhere = new ServerMet.Server(Ipv4.parse("0.0.0.5"), 4661, List.of());
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(nowhere));
             return null;
         });
-        assertThat(this.next("disconnected")).isEqualTo("disconnected no address to connect to");
+        assertThat(next("disconnected")).isEqualTo("disconnected no address to connect to");
 
         int closed;
         try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             closed = probe.getLocalPort();
         }
-        this.onLoop(() -> {
+        onLoop(() -> {
             this.session.connect(Optional.of(new ServerMet.Server(Ipv4.parse("127.0.0.1"), closed, List.of())));
             return null;
         });
-        assertThat(this.next("connecting")).isEqualTo("connecting 127.0.0.1");
-        assertThat(this.next("disconnected")).startsWith("disconnected");
-        assertThat(this.onLoop(this.session::isConnected)).isFalse();
+        assertThat(next("connecting")).isEqualTo("connecting 127.0.0.1");
+        assertThat(next("disconnected")).startsWith("disconnected");
+        assertThat(onLoop(this.session::isConnected)).isFalse();
     }
 
     @Test
@@ -162,7 +162,7 @@ class ServerSessionFlowTest {
                     .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), ServerDatagrams.UDP_TCP_OBFUSCATION))
                     .with(new Tag.IntTag(TagName.id(ServerTag.TCPPORTOBFUSCATION), obfuscated.getLocalPort()));
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
@@ -174,20 +174,20 @@ class ServerSessionFlowTest {
                 assertThat(first).isNotNegative();
                 assertThat(Protocol.isTcp(first)).as("not a plain frame").isFalse();
             }
-            assertThat(this.next("disconnected")).startsWith("disconnected");
+            assertThat(next("disconnected")).startsWith("disconnected");
         }
     }
 
     @Test
     void whatTheServerSaysIsTakenAndWhatItCannotSayIsDropped() throws Exception {
         try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(new ServerMet.Server(server.ip(), server.port(), List.of())));
                 return null;
             });
-            assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
-            assertThat(this.onLoop(this.session::isObfuscated)).isFalse();
-            assertThat(this.onLoop(() -> this.session.send(ServerMessages.getServerList())))
+            assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
+            assertThat(onLoop(this.session::isObfuscated)).isFalse();
+            assertThat(onLoop(() -> this.session.send(ServerMessages.getServerList())))
                     .isTrue();
             assertThat(server.next(Opcodes.Server.GETSERVERLIST.code(), Duration.ofSeconds(10)))
                     .isPresent();
@@ -201,16 +201,16 @@ class ServerSessionFlowTest {
                     ServerMessages.serverList(List.of(new ServerMessages.Endpoint(Ipv4.parse("198.51.100.1"), 4661))),
                     new ServerMessages.ServerStatus(7, 8).encode());
 
-            assertThat(this.next("message")).isEqualTo("message first");
-            assertThat(this.next("message")).as("the blank line is left out").isEqualTo("message second");
-            assertThat(this.next("servers")).isEqualTo("servers 1");
-            assertThat(this.next("status")).isEqualTo("status 7/8");
+            assertThat(next("message")).isEqualTo("message first");
+            assertThat(next("message")).as("the blank line is left out").isEqualTo("message second");
+            assertThat(next("servers")).isEqualTo("servers 1");
+            assertThat(next("status")).isEqualTo("status 7/8");
 
             server.hangUp();
 
-            assertThat(this.next("disconnected")).startsWith("disconnected");
-            assertThat(this.onLoop(this.session::server)).isEmpty();
-            assertThat(this.onLoop(() -> this.session.send(ServerMessages.getServerList())))
+            assertThat(next("disconnected")).startsWith("disconnected");
+            assertThat(onLoop(this.session::server)).isEmpty();
+            assertThat(onLoop(() -> this.session.send(ServerMessages.getServerList())))
                     .as("no session")
                     .isFalse();
         }
@@ -226,12 +226,12 @@ class ServerSessionFlowTest {
                     .with(new Tag.IntTag(TagName.id(ServerTag.UDPFLAGS), ServerDatagrams.UDP_TCP_OBFUSCATION))
                     .with(new Tag.IntTag(TagName.id(ServerTag.TCPPORTOBFUSCATION), 9));
 
-            this.onLoop(() -> {
+            onLoop(() -> {
                 this.session.connect(Optional.of(target));
                 return null;
             });
 
-            assertThat(this.next("connected")).isEqualTo("connected " + HIGH_ID);
+            assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
             long other = Ipv4.toEd2k(Ipv4.parse("5.6.7.8"));
             server.send(
                     new ServerMessages.IdChange(other, 0, 0).encode(),
@@ -243,8 +243,8 @@ class ServerSessionFlowTest {
                                     Optional.empty())
                             .encode(),
                     new ServerMessages.ServerStatus(3, 4).encode());
-            assertThat(this.next("status")).isEqualTo("status 3/4");
-            assertThat(this.onLoop(() -> this.session.id().orElseThrow().clientId()))
+            assertThat(next("status")).isEqualTo("status 3/4");
+            assertThat(onLoop(() -> this.session.id().orElseThrow().clientId()))
                     .as("a new id while logged in")
                     .isEqualTo(other);
             assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
@@ -297,50 +297,50 @@ class ServerSessionFlowTest {
 
         @Override
         public void connecting(ServerMet.Server server) {
-            this.add("connecting " + Ipv4.format(server.ip()));
+            add("connecting " + Ipv4.format(server.ip()));
         }
 
         @Override
         public void connected(ServerMet.Server server, ServerMessages.IdChange id) {
-            this.add("connected " + id.clientId());
+            add("connected " + id.clientId());
         }
 
         @Override
         public void disconnected(Optional<ServerMet.Server> server, String reason) {
-            this.add("disconnected " + reason);
+            add("disconnected " + reason);
         }
 
         @Override
         public void message(ServerMet.Server server, String line) {
-            this.add("message " + line);
+            add("message " + line);
         }
 
         @Override
         public void updated(ServerMet.Server server) {
             if (server.users().isPresent()) {
-                this.add("status " + server.users().getAsLong() + "/"
+                add("status " + server.users().getAsLong() + "/"
                         + server.files().orElseThrow());
             }
         }
 
         @Override
         public void searchResults(ServerMet.Server server, ServerMessages.SearchResults results) {
-            this.add("results " + results.files().size());
+            add("results " + results.files().size());
         }
 
         @Override
         public void callbackRequested(ServerMessages.CallbackRequested request) {
-            this.add("callback");
+            add("callback");
         }
 
         @Override
         public void foundSources(ServerMessages.FoundSources sources) {
-            this.add("sources");
+            add("sources");
         }
 
         @Override
         public void serverList(ServerMet.Server server, List<ServerMessages.Endpoint> servers) {
-            this.add("servers " + servers.size());
+            add("servers " + servers.size());
         }
     }
 }
