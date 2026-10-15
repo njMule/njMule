@@ -16,6 +16,7 @@
  */
 package org.njmule.core.server;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetSocketAddress;
@@ -35,6 +36,7 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -46,7 +48,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Asks the known servers for their status over UDP: one server every {@link #INTERVAL}, each at most every
  * {@link #REPING_AFTER}. An answer counts only from the pinged server's UDP ports with the challenge that was sent; it
- * updates the server's load, limits, UDP capabilities and obfuscation key and ports. Engine thread only.
+ * updates the server's load, limits, UDP capabilities and obfuscation key and ports, and the server is then asked for
+ * its name, description and version, under the same conditions. Engine thread only.
  */
 public final class ServerPinger {
 
@@ -58,6 +61,8 @@ public final class ServerPinger {
     private static final long CHALLENGE_BASE = 0x55AA_0000L;
     // Servers that announce obfuscation without ports use these defaults.
     private static final int OBFUSCATED_UDP_OFFSET = 12;
+    private static final CharMatcher CONTROL = CharMatcher.javaIsoControl();
+    private static final int MAX_VERSION = 64;
 
     private record Pending(long challenge, long sentAt, long sentMillis) {}
 
@@ -71,6 +76,7 @@ public final class ServerPinger {
     private final SecureRandom random;
     private final Clock clock;
     private final Map<ServerList.Address, Pending> pending = new HashMap<>();
+    private final Map<ServerList.Address, Pending> descriptions = new HashMap<>();
     private ScheduledFuture<?> timer;
     private int cursor;
 
@@ -113,13 +119,18 @@ public final class ServerPinger {
             this.timer = null;
         }
         this.pending.clear();
+        this.descriptions.clear();
     }
 
-    /** A status answer received from {@code from}. */
+    /** A status or description answer received from {@code from}. */
     public void received(InetSocketAddress from, Packet packet) {
         // The socket takes IPv6 too; no server is known by an IPv6 address.
         if (!(from.getAddress() instanceof Inet4Address)) {
             logger.debug("Ignoring a status from {}", from);
+            return;
+        }
+        if (packet.opcode() == Opcodes.ServerUdp.SERVER_DESC_RES.code()) {
+            described(from, packet);
             return;
         }
         ServerDatagrams.Status status;
@@ -142,15 +153,59 @@ public final class ServerPinger {
                 this.servers.update(
                         address, s -> apply(s, status, this.publicIp.getAsInt()).with(intTag(ServerTag.PING, ping)));
                 this.servers.get(address).ifPresent(this.updated);
+                askDescription(server, address);
                 return;
             }
         }
         logger.debug("Unrequested status from {}", from);
     }
 
+    private void askDescription(ServerMet.Server server, ServerList.Address address) {
+        Optional<ServerUdp> socket = this.udp.get();
+        if (socket.isEmpty()) {
+            return;
+        }
+        long challenge = ServerDatagrams.descriptionChallenge(this.random.nextInt());
+        InetSocketAddress target =
+                new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+        try {
+            socket.get().send(target, ServerDatagrams.descriptionRequest(challenge));
+            this.descriptions.put(
+                    address, new Pending(challenge, this.clock.instant().getEpochSecond(), this.clock.millis()));
+        } catch (IOException e) {
+            logger.debug("Cannot ask {} for its description", target, e);
+        }
+    }
+
+    private void described(InetSocketAddress from, Packet packet) {
+        ServerDatagrams.Description description;
+        try {
+            description = ServerDatagrams.Description.decode(packet);
+        } catch (DecodeException e) {
+            logger.debug("Malformed description from {}", from, e);
+            return;
+        }
+        int ip = Ipv4.fromBytes(from.getAddress().getAddress());
+        for (ServerMet.Server server : this.servers.candidates()) {
+            ServerList.Address address = ServerList.addressOf(server);
+            Pending sent = this.descriptions.get(address);
+            if (sent != null
+                    && server.ip() == ip
+                    && isUdpPortOf(server, from.getPort())
+                    && sent.challenge() == description.challenge()) {
+                this.descriptions.remove(address);
+                this.servers.update(address, s -> describe(s, description.tags()));
+                this.servers.get(address).ifPresent(this.updated);
+                return;
+            }
+        }
+        logger.debug("Unrequested description from {}", from);
+    }
+
     void pingNext() {
         long now = this.clock.instant().getEpochSecond();
         this.pending.values().removeIf(p -> now - p.sentAt() > ANSWER_TIMEOUT.toSeconds());
+        this.descriptions.values().removeIf(p -> now - p.sentAt() > ANSWER_TIMEOUT.toSeconds());
         Optional<ServerUdp> socket = this.udp.get();
         List<ServerMet.Server> candidates = this.servers.candidates();
         if (socket.isEmpty() || candidates.isEmpty()) {
@@ -223,6 +278,31 @@ public final class ServerPinger {
                     .with(intTag(ServerTag.UDPKEYIP, Ipv4.toEd2k(ourIp)));
         }
         return updated;
+    }
+
+    // Names and descriptions are shown and printed: without control characters; blank ones keep what was known.
+    static ServerMet.Server describe(ServerMet.Server server, List<Tag> tags) {
+        ServerMet.Server described = server;
+        for (Tag tag : tags) {
+            int id = tag.name().isId() ? tag.name().id() : -1;
+            String text = switch (tag) {
+                case Tag.StringTag t
+                when id == ServerTag.SERVERNAME || id == ServerTag.DESCRIPTION ->
+                    CONTROL.removeFrom(t.value()).strip();
+                case Tag.StringTag t
+                when id == ServerTag.VERSION -> {
+                    String version = CONTROL.removeFrom(t.value()).strip();
+                    yield version.substring(0, Math.min(MAX_VERSION, version.length()));
+                }
+                case Tag.IntTag t
+                when id == ServerTag.VERSION -> ServerMet.Server.version(t.value() >>> 16, t.value() & 0xFFFF);
+                default -> "";
+            };
+            if (!text.isEmpty()) {
+                described = described.with(new Tag.StringTag(TagName.id(id), text));
+            }
+        }
+        return described;
     }
 
     private static Tag intTag(int id, long value) {

@@ -200,6 +200,19 @@ class ServerFlowTest {
     }
 
     @Test
+    void shouldNameAKnownServerAfterTheDescriptionItGivesOverUdp() throws Exception {
+        givenAServerOnTheLan("hi");
+        givenAnotherServerFinding();
+        givenTheOtherServerDescribesItselfAs("Other", "Second server", "17.15");
+        givenNjMuleRunning();
+        givenNjMuleKnowsTheOtherServer();
+
+        whenNjMuleConnectsToTheServer();
+
+        thenTheOtherServerIsSoonDescribedAs("Other", "Second server", "17.15");
+    }
+
+    @Test
     void shouldAnswerHellosAndReportTheAnswer() throws Exception {
         givenNjMuleRunning();
 
@@ -222,6 +235,10 @@ class ServerFlowTest {
 
     private void givenAnotherServerFinding(FileEntry... files) throws IOException {
         this.other = server(new FakeServer.Config(1, "", List.of(files)));
+    }
+
+    private void givenTheOtherServerDescribesItselfAs(String name, String description, String version) {
+        this.other.describeAs(name, description, version);
     }
 
     private void givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch() {
@@ -392,6 +409,16 @@ class ServerFlowTest {
     private void whenNjMuleSaysHelloToItself() throws Exception {
         int port = this.engine.preferences().tcpPort();
         this.answer = this.engine.hello(new ServerAddress("127.0.0.1", port)).get(10, TimeUnit.SECONDS);
+    }
+
+    private void thenTheOtherServerIsSoonDescribedAs(String name, String description, String version)
+            throws InterruptedException {
+        EngineEvent.ServerUpdated described = this.events.next(
+                EngineEvent.ServerUpdated.class,
+                e -> e.server().address().endsWith(":" + this.other.port())
+                        && e.server().name().equals(name));
+        assertThat(described.server().description()).isEqualTo(description);
+        assertThat(described.server().version()).isEqualTo(version);
     }
 
     private void thenTheSearchEndedWithResults(int count) {

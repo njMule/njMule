@@ -55,6 +55,7 @@ import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.protocol.packet.UdpFraming;
 import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.TagName;
@@ -101,6 +102,8 @@ public final class FakeServer implements AutoCloseable {
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> obfuscatedUdpSearches = new CopyOnWriteArrayList<>();
     private final List<Hash16> udpSourceRequests = new CopyOnWriteArrayList<>();
+    // The tags a description request is answered with; none: not answered.
+    private volatile List<Tag> description = List.of();
     // Set once obfuscated datagrams are taken: their socket and the key the status gives for them.
     private volatile DatagramSocket obfuscatedUdp;
     private volatile int udpKey;
@@ -199,6 +202,14 @@ public final class FakeServer implements AutoCloseable {
 
     public List<SearchExpr> udpSearches() {
         return List.copyOf(this.udpSearches);
+    }
+
+    /** From now on, answers description requests over UDP with these name, description and version. */
+    public void describeAs(String name, String text, String version) {
+        this.description = List.of(
+                new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), name),
+                new Tag.StringTag(TagName.id(ServerTag.DESCRIPTION), text),
+                new Tag.StringTag(TagName.id(ServerTag.VERSION), version));
     }
 
     /** The files whose sources were asked for over UDP, in order. */
@@ -443,6 +454,10 @@ public final class FakeServer implements AutoCloseable {
                     .encode();
         }
         PacketReader in = request.reader();
+        if (opcode == Opcodes.ServerUdp.SERVER_DESC_REQ.code()) {
+            List<Tag> tags = this.description;
+            return tags.isEmpty() ? null : new ServerDatagrams.Description(in.u32(), tags).encode();
+        }
         if (opcode == Opcodes.ServerUdp.GLOBGETSOURCES.code() || opcode == Opcodes.ServerUdp.GLOBGETSOURCES2.code()) {
             return answerSources(in, opcode == Opcodes.ServerUdp.GLOBGETSOURCES2.code());
         }

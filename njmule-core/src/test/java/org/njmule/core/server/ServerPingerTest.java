@@ -52,6 +52,7 @@ class ServerPingerTest {
     private final ServerPinger pinger;
     private ServerDatagrams.Status status;
     private ServerMet.Server applied;
+    private List<Tag> description = List.of();
     private Throwable exception;
 
     ServerPingerTest() throws Exception {
@@ -191,6 +192,51 @@ class ServerPingerTest {
     }
 
     @Test
+    void shouldChangeNothingOnADescriptionThatWasNotAsked() {
+        givenTheServer(server("192.0.2.1", 4661));
+
+        whenAPacketArrivesFrom(
+                new InetSocketAddress(InetAddress.ofLiteral("192.0.2.1"), 4665),
+                new ServerDatagrams.Description(
+                                ServerDatagrams.descriptionChallenge(1),
+                                List.of(new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "Spoofed")))
+                        .encode());
+
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
+    }
+
+    @Test
+    void shouldTakeTheNameDescriptionAndVersionOfADescriptionWithoutControlCharacters() {
+        givenTheDescriptionTags(
+                stringTag(ServerTag.SERVERNAME, "Evil\r\nServer"),
+                stringTag(ServerTag.DESCRIPTION, "\u001b[31mred"),
+                stringTag(ServerTag.VERSION, "17.15\u0007"));
+
+        whenTheDescriptionIsAppliedTo(server("192.0.2.1", 4661));
+
+        thenTheServerIsDescribedAs("EvilServer", "[31mred", "17.15");
+    }
+
+    @Test
+    void shouldWriteANumericVersionAsMajorDotMinor() {
+        givenTheDescriptionTags(new Tag.IntTag(TagName.id(ServerTag.VERSION), 17L << 16 | 9));
+
+        whenTheDescriptionIsAppliedTo(server("192.0.2.1", 4661));
+
+        thenTheVersionIs("17.09");
+    }
+
+    @Test
+    void shouldKeepTheKnownNameWhenADescriptionGivesABlankOne() {
+        givenTheDescriptionTags(stringTag(ServerTag.SERVERNAME, " \t "));
+
+        whenTheDescriptionIsAppliedTo(server("192.0.2.1", 4661).with(stringTag(ServerTag.SERVERNAME, "Known")));
+
+        thenTheNameIs("Known");
+    }
+
+    @Test
     void shouldStartAndStopTheTimerOnce() throws Exception {
         whenThePingerIsStartedTwiceAndStoppedTwice();
 
@@ -247,6 +293,10 @@ class ServerPingerTest {
         assertThatCode(() -> this.pinger.received(from, packet)).doesNotThrowAnyException();
     }
 
+    private void givenTheDescriptionTags(Tag... tags) {
+        this.description = List.of(tags);
+    }
+
     private void givenTheStatus(ServerDatagrams.Status announced) {
         this.status = announced;
     }
@@ -265,6 +315,10 @@ class ServerPingerTest {
 
     private void whenTheStatusIsAppliedFor(ServerMet.Server server, String ourAddress) {
         this.applied = ServerPinger.apply(server, this.status, Ipv4.parse(ourAddress));
+    }
+
+    private void whenTheDescriptionIsAppliedTo(ServerMet.Server server) {
+        this.applied = ServerPinger.describe(server, this.description);
     }
 
     private void whenThePingerIsStartedTwiceAndStoppedTwice() throws Exception {
@@ -335,12 +389,30 @@ class ServerPingerTest {
         assertThat(intValue(this.applied, ServerTag.UDPKEYIP)).isEqualTo(Ipv4.toEd2k(Ipv4.parse(address)));
     }
 
+    private void thenTheServerIsDescribedAs(String name, String description, String version) {
+        assertThat(this.applied.name()).hasValue(name);
+        assertThat(this.applied.description()).hasValue(description);
+        thenTheVersionIs(version);
+    }
+
+    private void thenTheVersionIs(String version) {
+        assertThat(this.applied.version()).hasValue(version);
+    }
+
+    private void thenTheNameIs(String name) {
+        assertThat(this.applied.name()).hasValue(name);
+    }
+
     private void thenTheServerHasNoKey() {
         assertThat(this.applied.tags()).noneMatch(t -> t.name().equals(TagName.id(ServerTag.UDPKEY)));
     }
 
     private static ServerMet.Server server(String ip, int port) {
         return new ServerMet.Server(Ipv4.parse(ip), port, List.of());
+    }
+
+    private static Tag stringTag(int id, String value) {
+        return new Tag.StringTag(TagName.id(id), value);
     }
 
     private static Tag failures(int count) {

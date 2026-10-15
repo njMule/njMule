@@ -351,6 +351,8 @@ All notable changes to this project are documented here. The format follows
   for the sources of the downloads that need more (up to 35 files per server, one request a
   second, then a pause of half an hour), and takes only the answers of a server it asked, for the
   files it asked about.
+- Server names, descriptions and versions over UDP: a server that answers the status ping is asked
+  for them, with a challenge its answer must carry, so the list shows them without connecting.
 - Obfuscated UDP with servers: a global search goes encrypted, to the server's obfuscated UDP
   port, to every server that takes it and gave a UDP key for our current address, and its
   answers are decrypted; with obfuscation required, servers that cannot take it are not asked.

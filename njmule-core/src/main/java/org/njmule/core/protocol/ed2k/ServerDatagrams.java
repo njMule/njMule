@@ -23,10 +23,14 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
+import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.tag.ClientTag;
+import org.njmule.core.protocol.tag.Ed2kTagFormat;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.TagType;
 import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchTreeCodec;
@@ -54,6 +58,10 @@ public final class ServerDatagrams {
     public static final int MAX_SOURCE_REQUEST = 510;
 
     private static final long MAX_32_BIT_SIZE = 0xFFFF_FFFFL;
+    // The low half of a description challenge, read first as the length of the old answer's name: no valid length, so
+    // the answer with the challenge is told from the old one.
+    private static final int DESCRIPTION_MARK = 0xF0FF;
+    private static final int MAX_DESCRIPTION_TAGS = 32;
 
     // Prefix of the third search request: one tag announcing that new tags and 64-bit sizes are
     // understood in the answer.
@@ -198,6 +206,43 @@ public final class ServerDatagrams {
             file.write(out, false);
         }
         return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBFOUNDSOURCES.code(), out);
+    }
+
+    /** A server's description: the challenge of the request it answers, and its name, description and version tags. */
+    public record Description(long challenge, List<Tag> tags) {
+        public Description {
+            tags = List.copyOf(tags);
+        }
+
+        public Packet encode() {
+            PacketWriter out = new PacketWriter().u32(this.challenge).u32(this.tags.size());
+            TagCodec.writeEd2kList(out, this.tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
+            return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.SERVER_DESC_RES.code(), out);
+        }
+
+        /**
+         * Decodes the answer to a request with a challenge; the old answer, which cannot be tied to one, is refused.
+         */
+        public static Description decode(Packet packet) throws DecodeException {
+            PacketReader in = packet.reader();
+            if (in.remaining() < 8) {
+                throw new DecodeException("server description of " + in.remaining() + " bytes");
+            }
+            long challenge = in.u32();
+            if ((challenge & 0xFFFF) != DESCRIPTION_MARK) {
+                throw new DecodeException("server description without a challenge");
+            }
+            return new Description(challenge, TagCodec.readEd2kList(in, in.u32(), MAX_DESCRIPTION_TAGS));
+        }
+    }
+
+    /** The challenge of a description request, from 16 random bits. */
+    public static long descriptionChallenge(int random) {
+        return (long) (random & 0xFFFF) << 16 | DESCRIPTION_MARK;
+    }
+
+    public static Packet descriptionRequest(long challenge) {
+        return Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.SERVER_DESC_REQ.code(), new PacketWriter().u32(challenge));
     }
 
     public static Packet statusRequest(long challenge) {

@@ -2192,7 +2192,8 @@ final class Network {
         if (!(from.getAddress() instanceof Inet4Address)) {
             return;
         }
-        if (packet.opcode() == Opcodes.ServerUdp.GLOBSERVSTATRES.code()) {
+        if (packet.opcode() == Opcodes.ServerUdp.GLOBSERVSTATRES.code()
+                || packet.opcode() == Opcodes.ServerUdp.SERVER_DESC_RES.code()) {
             this.pinger.received(from, packet);
             return;
         }
