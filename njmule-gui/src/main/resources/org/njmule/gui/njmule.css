@@ -19,7 +19,8 @@
     -nj-on-accent: #2E3440;
     -nj-bar-bg: #E5E9F0;
     -nj-bar-have: #4C566A;
-    -nj-bar-missing: #BF616A;
+    /* A part no source has: a soft rose, not an alarm; a download that just started is all of it. */
+    -nj-bar-missing: #E8AFB4;
     -nj-bar-sources-min: #B4C7E7;
     -nj-bar-sources-max: #5E81AC;
     -nj-bar-requested: #E0B85C;
@@ -45,7 +46,7 @@
     -nj-accent-soft: #4B3B2E;
     -nj-bar-bg: #3B4252;
     -nj-bar-have: #D8DEE9;
-    -nj-bar-missing: #E39CA3;
+    -nj-bar-missing: #A56A71;
     -nj-bar-sources-min: #56688A;
     -nj-bar-sources-max: #88C0D0;
     -nj-bar-requested: #EBCB8B;
