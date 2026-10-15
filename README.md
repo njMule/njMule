@@ -7,78 +7,73 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <h1 align="center">njMule</h1>
 
 <p align="center">
-    <a href="https://github.com/njMule/njMule/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/njMule/njMule/actions/workflows/build.yml/badge.svg?branch=main"></a>
-    <a href="https://sonarcloud.io/summary/new_code?id=njMule_njMule"><img alt="SonarQube Cloud quality gate" src="https://img.shields.io/sonar/quality_gate/njMule_njMule?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud&logoColor=white&labelColor=24427A"></a>
-    <a href="https://sonarcloud.io/summary/new_code?id=njMule_njMule"><img alt="SonarQube Cloud coverage" src="https://img.shields.io/sonar/coverage/njMule_njMule?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud&logoColor=white&labelColor=24427A"></a>
-    <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-F5A65B?labelColor=24427A"></a>
-    <a href="https://reuse.software"><img alt="REUSE compliant" src="https://img.shields.io/badge/REUSE-compliant-F5A65B?labelColor=24427A"></a>
-    <a href="https://github.com/njMule/njMule/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/njMule/njMule?color=F5A65B&labelColor=24427A"></a>
-    <br>
-    <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-F5A65B?logo=openjdk&logoColor=white&labelColor=24427A"></a>
-    <a href="https://www.graalvm.org/latest/reference-manual/native-image/"><img alt="GraalVM native image" src="https://img.shields.io/badge/GraalVM-native%20image-F5A65B?labelColor=24427A"></a>
-    <a href="#download-and-install"><img alt="Platforms: Windows, macOS, Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-F5A65B?labelColor=24427A"></a>
-    <br>
-    <a href="https://www.conventionalcommits.org/en/v1.0.0/"><img alt="Conventional Commits 1.0.0" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-F5A65B?logo=conventionalcommits&logoColor=white&labelColor=24427A"></a>
-    <a href="https://semver.org/spec/v2.0.0.html"><img alt="Semantic Versioning 2.0.0" src="https://img.shields.io/badge/SemVer-2.0.0-F5A65B?labelColor=24427A"></a>
-    <a href="https://github.com/palantir/palantir-java-format"><img alt="Code style: palantir-java-format" src="https://img.shields.io/badge/code%20style-palantir--java--format-F5A65B?labelColor=24427A"></a>
-    <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 2.1" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-F5A65B?labelColor=24427A"></a>
-    <a href="https://buymeacoffee.com/scoppolap"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-F5A65B?logo=buymeacoffee&logoColor=white&labelColor=24427A"></a>
+    <strong>Next generation Java Mule</strong> — a modern, open-source client for the eD2K and Kad
+    file-sharing networks, written in Java 25.
 </p>
 
-**njMule — Next generation Java Mule** is a modern, open-source client for the eD2K and Kad
-file-sharing networks, written in Java 25.
+<p align="center">
+    <a href="https://github.com/njMule/njMule/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/njMule/njMule/actions/workflows/build.yml/badge.svg?branch=main&style=flat-square"></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=njMule_njMule"><img alt="SonarQube Cloud quality gate" src="https://img.shields.io/sonar/quality_gate/njMule_njMule?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud&logoColor=white&labelColor=24427A&style=flat-square"></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=njMule_njMule"><img alt="SonarQube Cloud coverage" src="https://img.shields.io/sonar/coverage/njMule_njMule?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud&logoColor=white&labelColor=24427A&style=flat-square"></a>
+    <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-F5A65B?labelColor=24427A&style=flat-square"></a>
+    <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-F5A65B?logo=openjdk&logoColor=white&labelColor=24427A&style=flat-square"></a>
+    <a href="#download-and-install"><img alt="Platforms: Windows, macOS, Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-F5A65B?labelColor=24427A&style=flat-square"></a>
+</p>
 
-> **Status: pre-alpha (`0.0.1-alpha.1`).** No release has been published yet: the packages
-> described below are produced by the release workflow and will be attached to the first
+<p align="center">
+    <a href="#features">Features</a> ·
+    <a href="#download-and-install">Download</a> ·
+    <a href="#usage">Usage</a> ·
+    <a href="#building-from-source">Build</a> ·
+    <a href="#contributing">Contribute</a> ·
+    <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+> [!WARNING]
+> **Pre-alpha (`0.0.1-alpha.1`).** No release has been published yet: the packages described
+> below are produced by the release workflow and will be attached to the first
 > [GitHub release](https://github.com/njMule/njMule/releases). Features and settings may still
-> change before 1.0.0. See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
+> change before 1.0.0.
 
-## Contents
+## Why njMule?
 
-- [Features](#features)
-- [Download and install](#download-and-install)
-- [Usage](#usage)
-- [Building from source](#building-from-source)
-- [Project layout](#project-layout)
-- [Contributing](#contributing)
-- [License](#license)
+- 🔌 **Wire-compatible** — speaks eD2K and Kad 2, so it works with the existing eMule network.
+- 📦 **Nothing to install first** — GraalVM native executables and installers for Windows, macOS
+  and Linux; no Java runtime is required.
+- 🛡️ **Hardened by design** — size-limited parsers for all input from the network and from disk,
+  and crash-safe persistence.
+- 🖥️ **Desktop, headless or remote** — a JavaFX app, a command-line engine, a web interface and a
+  JSON API, all driving the same GUI-independent core built on virtual threads.
 
 ## Features
 
-- **eD2K** — server connections with optional protocol obfuscation, static servers and
-  `server.met` updates from a URL; searches on the connected server, on all known servers over UDP
-  or on Kad, filtered by file type, size, availability and extension; downloads verified part by
-  part, with corrupt parts repaired from AICH recovery data; uploads through a credit-scored
-  queue, with secure identification and source exchange.
-- **Kad 2** — routing table, keyword and source lookups, publishing of shared files, firewall
-  check, `nodes.dat` bootstrap from a URL.
-- **File management** — shared directories with recursive sharing and change monitoring; download
-  and upload priorities, categories, preview in an external video player, comments and ratings.
-- **Desktop application** — JavaFX with AtlantaFX themes (Nord light and dark by default,
-  following the system), in English, Catalan, Czech, Danish, German, Estonian, Spanish, French,
-  Galician, Italian, Latvian, Lithuanian, Hungarian, Dutch, Norwegian Bokmål, Polish, Brazilian and
-  European Portuguese, Romanian, Albanian, Slovenian, Finnish, Swedish, Vietnamese, Turkish, Greek,
-  Bulgarian, Russian, Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese,
-  Japanese and Korean (the right-to-left languages with a mirrored layout), system tray integration
-  and optional registration as the `ed2k://` link handler.
-- **Web interface** — status, transfers, searches and servers, protected by a password.
-- **Networking** — SOCKS 4/5 and HTTP CONNECT proxies, UPnP port forwarding, IP filtering
-  (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth
-  limits and categories.
-- **Messaging** — chat with CAPTCHA verification, a friends list and spam filters.
-- **Native builds** — GraalVM native executables and installers for Windows, macOS and Linux; no
-  Java runtime is required.
+| | |
+|---|---|
+| 🌐 **eD2K** | Server connections with optional protocol obfuscation, static servers and `server.met` updates from a URL. Searches on the connected server, on all known servers over UDP or on Kad, filtered by file type, size, availability and extension. Downloads verified part by part, with corrupt parts repaired from AICH recovery data. Uploads through a credit-scored queue, with secure identification and source exchange. |
+| 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, `nodes.dat` bootstrap from a URL. |
+| 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
+| 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
+| 🌍 **Web interface** | Status, transfers, searches and servers, protected by a password. |
+| 🔧 **Networking** | SOCKS 4/5 and HTTP CONNECT proxies, UPnP port forwarding, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
+| 💬 **Messaging** | Chat with CAPTCHA verification, a friends list and spam filters. |
 
-**Architecture** — a GUI-independent core built on virtual threads, crash-safe persistence and
-hardened, size-limited parsers for all input from the network and from disk.
+<details>
+<summary>The 36 languages of the desktop application</summary>
+
+English, Catalan, Czech, Danish, German, Estonian, Spanish, French, Galician, Italian, Latvian,
+Lithuanian, Hungarian, Dutch, Norwegian Bokmål, Polish, Brazilian and European Portuguese,
+Romanian, Albanian, Slovenian, Finnish, Swedish, Vietnamese, Turkish, Greek, Bulgarian, Russian,
+Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese and Korean.
+
+</details>
 
 ## Download and install
 
 | Operating system | Architecture | Formats |
 |---|---|---|
-| Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
-| Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive |
-| macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
+| 🪟 Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
+| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive |
+| 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
 
 Every package contains two executables: **`njmule-gui`**, the desktop application, and
 **`njmule`**, the command-line interface, which also runs the engine headless. Each release also
@@ -89,7 +84,8 @@ provides a `SHA256SUMS` file and a CycloneDX software bill of materials
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
-### Windows
+<details>
+<summary><strong>Windows</strong></summary>
 
 The MSI performs a per-user installation and requires no administrator rights. It installs the
 executables in `%LOCALAPPDATA%\Programs\njMule`, creates Start menu and desktop shortcuts and adds
@@ -106,7 +102,10 @@ The `.zip` archive contains the same executables and runs from any directory. Th
 not code-signed yet, so SmartScreen may require confirmation (*More info → Run anyway*). GraalVM
 and JavaFX do not support Windows on Arm yet; on those systems the x64 package runs under emulation.
 
-### Linux
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
 
 ```bash
 sudo apt install ./njmule_*_amd64.deb   # Debian, Ubuntu (arm64: *_arm64.deb)
@@ -131,7 +130,10 @@ journalctl --user -u njmule            # its log
 The unit and the desktop application share the configuration, so only one of them runs at a
 time; control the headless engine through the web interface.
 
-### macOS
+</details>
+
+<details>
+<summary><strong>macOS</strong></summary>
 
 Open the disk image and drag njMule into Applications. The application is ad-hoc signed but not
 notarized, so Gatekeeper blocks its first launch: allow it in *System Settings → Privacy &
@@ -143,7 +145,10 @@ xattr -dr com.apple.quarantine /Applications/njMule.app
 
 The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`.
 
-### Data and configuration directories
+</details>
+
+<details>
+<summary><strong>Data and configuration directories</strong>, portable mode</summary>
 
 njMule follows the conventions of each operating system (Known Folders on Windows, the Library
 on macOS, the XDG Base Directory specification on Linux). Default locations:
@@ -168,6 +173,8 @@ or `.tar.gz` archive keeps all data in a `data` directory beside them, for examp
 drive. The option `--config-dir <dir>` places all data below `<dir>` instead, for example to run a
 separate profile. In both cases the root contains `config`, `data`, `temp`, `cache`, `logs`, `gui`
 and `incoming`.
+
+</details>
 
 ## Usage
 
@@ -207,8 +214,10 @@ njmule --webui-password [--webui-port <port>] [--webui-lan]
 
 It starts together with the engine, headless or with the desktop application, on
 `http://localhost:4711/`. It listens on the loopback interface only, unless `--webui-lan` makes it
-listen on all interfaces. The interface is served over plain HTTP: enable LAN access only on a
-trusted network.
+listen on all interfaces.
+
+> [!CAUTION]
+> The interface is served over plain HTTP: enable LAN access only on a trusted network.
 
 ### Remote control
 
@@ -259,7 +268,8 @@ On Windows, use `.\mvnw.cmd` instead of `./mvnw`.
 `verify` checks formatting (Spotless) and license headers, runs Checkstyle, Error Prone, the
 tests, JaCoCo coverage (at least 70% of the lines of `njmule-core`) and SpotBugs with FindSecBugs.
 
-### Running from the build
+<details>
+<summary><strong>Running from the build</strong></summary>
 
 Command-line interface and headless engine (on Windows, separate the module path with `;`):
 
@@ -274,7 +284,10 @@ Desktop application:
 ./mvnw -pl njmule-gui -am install -DskipTests && ./mvnw -pl njmule-gui javafx:run
 ```
 
-### Native executables
+</details>
+
+<details>
+<summary><strong>Native executables</strong></summary>
 
 With a local GraalVM, for the host system:
 
@@ -302,7 +315,10 @@ the whole interface under GraalVM's tracing agent (`-Pnative-tour`) and stored i
 Linux, `tools/native-gui-docker.sh` records the metadata and builds both executables in an Ubuntu
 container (usage in the script header).
 
-### Packages
+</details>
+
+<details>
+<summary><strong>Packages</strong> and <strong>releases</strong></summary>
 
 The [release workflow](.github/workflows/release.yml) builds every package on its target system
 and is the reference for the exact steps. Locally, after the native build, the Windows MSI:
@@ -327,15 +343,16 @@ VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dis
 The macOS application bundle is assembled from `packaging/macos/Info.plist`, ad-hoc signed with
 `codesign` and packed into a disk image with `hdiutil`.
 
-### Releases
-
 Pushing an annotated tag `vX.Y.Z` that matches `<revision>` in the root `pom.xml` triggers the
 release workflow: native builds on every target system, the GUI tour as a smoke test, packaging,
 and finally a draft GitHub release with the packages, the SBOM, `SHA256SUMS` and the release notes
 of that version from `CHANGELOG.md`. Publishing the draft is a manual step. A manual run of the
 workflow only builds the packages, available as workflow artifacts.
 
-### Benchmarks
+</details>
+
+<details>
+<summary><strong>Benchmarks</strong></summary>
 
 JMH benchmarks of the hashing and cipher hot paths (one operation processes 1 MiB, so ops/s
 equals MiB/s):
@@ -344,6 +361,8 @@ equals MiB/s):
 ./mvnw -pl njmule-bench -am package -DskipTests
 java -jar njmule-bench/target/benchmarks.jar
 ```
+
+</details>
 
 ## Project layout
 
@@ -365,6 +384,18 @@ java -jar njmule-bench/target/benchmarks.jar
 Contributions are welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) (Conventional Commits,
 Developer Certificate of Origin sign-off, code style) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](SECURITY.md).
+
+| Standards | |
+|:--|:--|
+| **Process** | [![Conventional Commits 1.0.0](https://img.shields.io/badge/Conventional%20Commits-1.0.0-F5A65B?logo=conventionalcommits&logoColor=white&labelColor=24427A&style=flat-square)](https://www.conventionalcommits.org/en/v1.0.0/) [![Semantic Versioning 2.0.0](https://img.shields.io/badge/SemVer-2.0.0-F5A65B?labelColor=24427A&style=flat-square)](https://semver.org/spec/v2.0.0.html) [![Contributor Covenant 2.1](https://img.shields.io/badge/Contributor%20Covenant-2.1-F5A65B?labelColor=24427A&style=flat-square)](CODE_OF_CONDUCT.md) |
+| **Code** | [![Code style: palantir-java-format](https://img.shields.io/badge/code%20style-palantir--java--format-F5A65B?labelColor=24427A&style=flat-square)](https://github.com/palantir/palantir-java-format) [![GraalVM native image](https://img.shields.io/badge/GraalVM-native%20image-F5A65B?labelColor=24427A&style=flat-square)](https://www.graalvm.org/latest/reference-manual/native-image/) |
+| **Licensing** | [![REUSE compliant](https://img.shields.io/badge/REUSE-compliant-F5A65B?labelColor=24427A&style=flat-square)](https://reuse.software) |
+
+## Support the project
+
+If njMule is useful to you, you can support its development:
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-F5A65B?logo=buymeacoffee&logoColor=white&labelColor=24427A&style=for-the-badge)](https://buymeacoffee.com/scoppolap)
 
 ## License
 
