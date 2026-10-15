@@ -33,9 +33,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
-import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.crypto.Md4;
 import org.njmule.core.files.hash.AichTree;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
@@ -165,7 +165,7 @@ public final class PartFileStorage implements AutoCloseable {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
-                        MD4Digest md4 = new MD4Digest();
+                        Md4 md4 = new Md4();
                         ByteBuffer buffer = ByteBuffer.allocate(READ_CHUNK);
                         long at = Ed2k.partStart(part);
                         long end = at + Ed2k.partLength(size, part);
@@ -180,9 +180,7 @@ public final class PartFileStorage implements AutoCloseable {
                             md4.update(buffer.array(), 0, n);
                             at += n;
                         }
-                        byte[] out = new byte[Hash16.LENGTH];
-                        md4.doFinal(out, 0);
-                        return Hash16.of(out);
+                        return md4.digest();
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }

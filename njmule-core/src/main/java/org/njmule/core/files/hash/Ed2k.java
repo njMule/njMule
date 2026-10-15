@@ -17,8 +17,8 @@
 package org.njmule.core.files.hash;
 
 import java.util.List;
-import org.bouncycastle.crypto.digests.MD4Digest;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.crypto.Md4;
 
 /** eD2K file geometry and hash rules. */
 public final class Ed2k {
@@ -86,16 +86,7 @@ public final class Ed2k {
 
     /** MD4 (RFC 1320), the digest of eD2K part and file hashes. */
     public static Hash16 md4(byte[] data, int offset, int length) {
-        MD4Digest digest = new MD4Digest();
-        digest.update(data, offset, length);
-        return md4(digest);
-    }
-
-    /** Completes {@code digest}, which is reset for the next data. */
-    static Hash16 md4(MD4Digest digest) {
-        byte[] out = new byte[Hash16.LENGTH];
-        digest.doFinal(out, 0);
-        return Hash16.of(out);
+        return Md4.hash(data, offset, length);
     }
 
     public static void checkSize(long size) {

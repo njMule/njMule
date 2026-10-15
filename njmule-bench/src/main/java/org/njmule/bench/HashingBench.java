@@ -22,8 +22,8 @@ import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
 import org.bouncycastle.crypto.digests.MD4Digest;
 import org.bouncycastle.crypto.digests.SHA1Digest;
-import org.njmule.bench.alternatives.HandWrittenMd4;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.crypto.Md4;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -35,7 +35,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 
-/** The file hashes, library against hand-written; one operation is 1 MiB, so ops/s = MiB/s. */
+/** The file hashes, ours against the libraries; one operation is 1 MiB, so ops/s = MiB/s. */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -50,7 +50,7 @@ public class HashingBench {
     private final byte[] out = new byte[20];
     private final MD4Digest bcMd4 = new MD4Digest();
     private final SHA1Digest bcSha1 = new SHA1Digest();
-    private final HandWrittenMd4 handWrittenMd4 = new HandWrittenMd4();
+    private final Md4 md4 = new Md4();
     private MessageDigest jdkSha1;
 
     @Setup
@@ -68,8 +68,8 @@ public class HashingBench {
 
     @Benchmark
     public Hash16 md4HandWritten() {
-        this.handWrittenMd4.update(this.data, 0, SIZE);
-        return this.handWrittenMd4.digest();
+        this.md4.update(this.data, 0, SIZE);
+        return this.md4.digest();
     }
 
     @Benchmark

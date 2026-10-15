@@ -14,15 +14,19 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.bench.alternatives;
+package org.njmule.core.crypto;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
+import java.util.Objects;
 import org.njmule.core.api.Hash16;
 
-/** The hand-written MD4 (RFC 1320) that Bouncy Castle's MD4Digest replaced, kept to compare their speed. */
-public final class HandWrittenMd4 {
+/**
+ * MD4 (RFC 1320), the digest of eD2K part and file hashes. Our own: the JDK does not expose MD4, and Bouncy Castle's
+ * runs at 40 % of this speed in the native image (njmule-bench HashingBench). Not thread-safe.
+ */
+public final class Md4 {
 
     private static final VarHandle LE_INT = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
 
@@ -36,21 +40,17 @@ public final class HandWrittenMd4 {
     private int c;
     private int d;
 
-    public HandWrittenMd4() {
+    public Md4() {
         reset();
     }
 
-    public static Hash16 hash(byte[] data) {
-        return hash(data, 0, data.length);
-    }
-
     public static Hash16 hash(byte[] data, int offset, int length) {
-        HandWrittenMd4 md4 = new HandWrittenMd4();
+        Md4 md4 = new Md4();
         md4.update(data, offset, length);
         return md4.digest();
     }
 
-    public void reset() {
+    private void reset() {
         this.a = 0x67452301;
         this.b = 0xEFCDAB89;
         this.c = 0x98BADCFE;
@@ -59,12 +59,8 @@ public final class HandWrittenMd4 {
         this.totalLength = 0;
     }
 
-    public void update(byte[] data) {
-        update(data, 0, data.length);
-    }
-
     public void update(byte[] data, int offset, int length) {
-        java.util.Objects.checkFromIndexSize(offset, length, data.length);
+        Objects.checkFromIndexSize(offset, length, data.length);
         this.totalLength += length;
         int pos = offset;
         int end = offset + length;
