@@ -1889,6 +1889,19 @@
       ]
     },
     {
+      "type": "com.sun.scenario.effect.impl.prism.ps.PPSBlend_SRC_INPeer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "com.sun.scenario.effect.FilterContext",
+            "com.sun.scenario.effect.impl.Renderer",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
       "type": "com.sun.scenario.effect.impl.prism.ps.PPSLinearConvolveShadowPeer",
       "methods": [
         {
@@ -1919,6 +1932,19 @@
           "name": "createRenderer",
           "parameterTypes": [
             "com.sun.scenario.effect.FilterContext"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_INPeer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "com.sun.scenario.effect.FilterContext",
+            "com.sun.scenario.effect.impl.Renderer",
+            "java.lang.String"
           ]
         }
       ]
@@ -3033,6 +3059,9 @@
       "type": "javafx.animation.Interpolator"
     },
     {
+      "type": "javafx.animation.KeyValue"
+    },
+    {
       "type": "javafx.collections.transformation.SortedList$Element[]"
     },
     {
@@ -3129,6 +3158,12 @@
       "type": "javafx.scene.shape.Circle"
     },
     {
+      "type": "javafx.scene.shape.HLineTo"
+    },
+    {
+      "type": "javafx.scene.shape.Line"
+    },
+    {
       "type": "javafx.scene.shape.LineTo"
     },
     {
@@ -3141,6 +3176,9 @@
       "type": "javafx.scene.shape.PathElement"
     },
     {
+      "type": "javafx.scene.shape.QuadCurveTo"
+    },
+    {
       "type": "javafx.scene.shape.Rectangle"
     },
     {
@@ -3148,6 +3186,9 @@
     },
     {
       "type": "javafx.scene.shape.Shape"
+    },
+    {
+      "type": "javafx.scene.shape.VLineTo"
     },
     {
       "type": "javafx.scene.text.Font"
@@ -16301,6 +16342,10 @@
     {
       "module": "javafx.graphics",
       "glob": "com/sun/scenario/effect/impl/es2/glsl/LinearConvolveShadow_8.frag"
+    },
+    {
+      "module": "javafx.graphics",
+      "glob": "com/sun/scenario/effect/impl/hw/d3d/hlsl/Blend_SRC_IN.obj"
     },
     {
       "module": "javafx.graphics",
