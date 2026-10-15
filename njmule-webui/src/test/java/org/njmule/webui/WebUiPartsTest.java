@@ -173,6 +173,9 @@ class WebUiPartsTest {
         assertThat(Html.size(5L << 40)).isEqualTo("5.00 TB");
         assertThat(Html.size(2048L << 40)).as("no unit past TB").isEqualTo("2048.00 TB");
         assertThat(Html.rate(2048)).isEqualTo("2.0 KB/s");
+        assertThat(Html.rate(1_355_000)).isEqualTo("1.29 MB/s");
+        assertThat(Html.rate(100L << 20)).isEqualTo("100.0 MB/s");
+        assertThat(Html.rate(1_181_116_006)).isEqualTo("1.10 GB/s");
         assertThat(Html.hidden("a\"", "<b>")).isEqualTo("<input type=\"hidden\" name=\"a&quot;\" value=\"&lt;b&gt;\">");
         assertThat(Html.page("T<", "", "body")).contains("<h1>T&lt;</h1>").doesNotContain("nav");
         assertThat(Html.page("T", "tok", "body")).contains("<nav>", "value=\"tok\"");

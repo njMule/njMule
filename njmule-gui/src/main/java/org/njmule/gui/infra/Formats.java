@@ -39,8 +39,8 @@ public final class Formats {
     // Days, hours, minutes and seconds as eMule's texts name them, English when a language does not.
     private static final String[] TIME_UNITS = {"d", "h", "mins", "secs"};
     private static final String[] TIME_KEYS = {"IDS_DAYS", "IDS_HOURS", "IDS_MINS", "IDS_SECS"};
-    private static final String RATE = "KB/s";
-    private static final String RATE_KEY = "IDS_KBYTESPERSEC";
+    private static final String[] RATES = {"KB/s", "MB/s", "GB/s"};
+    private static final String[] RATE_KEYS = {"IDS_KBYTESPERSEC", "IDS_MBYTESPERSEC", "IDS_GBYTESPERSEC"};
     private static final long MINUTE = 60;
     private static final long HOUR = 60 * MINUTE;
     private static final long DAY = 24 * HOUR;
@@ -52,7 +52,7 @@ public final class Formats {
     private final DateTimeFormatter time;
     private final String[] units;
     private final String[] timeUnits;
-    private final String rateUnit;
+    private final String[] rateUnits;
 
     /** Formats with the English units. */
     public Formats(Locale locale) {
@@ -85,8 +85,13 @@ public final class Formats {
                 this.timeUnits[i] = named;
             }
         }
-        String rate = unit(text.apply(RATE_KEY));
-        this.rateUnit = rate == null ? RATE : rate;
+        this.rateUnits = RATES.clone();
+        for (int i = 0; i < RATE_KEYS.length; i++) {
+            String named = unit(text.apply(RATE_KEYS[i]));
+            if (named != null) {
+                this.rateUnits[i] = named;
+            }
+        }
         this.dateTime = dateTime(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         this.time = time(Locale.getDefault(Locale.Category.FORMAT), ZoneId.systemDefault());
         DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(locale);
@@ -147,9 +152,24 @@ public final class Formats {
         return format.format(value) + " " + this.units[unit];
     }
 
-    /** A rate in kilobytes per second with one decimal. */
+    /**
+     * A rate in the unit that suits it, binary as the sizes: 12.3 KB/s, from a thousand KB/s on 1.26 MB/s or 102.4
+     * MB/s, from a thousand MB/s on 1.05 GB/s.
+     */
     public String rate(long bytesPerSecond) {
-        return this.oneDecimal.format(Math.max(0, bytesPerSecond) / 1024.0) + " " + this.rateUnit;
+        double value = Math.max(0, bytesPerSecond) / 1024.0;
+        if (value < 999.95) {
+            return this.oneDecimal.format(value) + " " + this.rateUnits[0];
+        }
+        int unit = 1;
+        value /= 1024;
+        if (value >= 999.95) {
+            unit = 2;
+            value /= 1024;
+        }
+        // The form follows the rounded value: 99.995 shows as 100.0.
+        DecimalFormat format = value < 99.995 ? this.twoDecimals : this.oneDecimal;
+        return format.format(value) + " " + this.rateUnits[unit];
     }
 
     /** A ratio with up to two decimals: 2.5, 0.33. */

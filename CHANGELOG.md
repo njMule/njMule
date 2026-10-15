@@ -381,6 +381,9 @@ All notable changes to this project are documented here. The format follows
 - What was done with a search result (downloading, shared, downloaded, cancelled, spam) shows with
   an icon besides its tint and words.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.
+- Rates switch to MB/s from a thousand KB/s on, and to GB/s from a thousand MB/s, in the desktop
+  and the web interfaces, with the units of each language; the rate graph rounds its scale to whole
+  units of what it shows. The speed limits stay in KB/s.
 - Ctrl+K opens a command palette: typing finds a place or a command of the menus, searches the
   network for the words typed, or downloads the eD2K links pasted.
 - Kad tells its state in plain words with what to do about it, and the two ways to join it (a list

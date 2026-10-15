@@ -41,6 +41,7 @@ public final class RateGraph extends Region {
     public static final int SPAN = 600;
 
     private static final double FILL_OPACITY = 0.25;
+    private static final long GIB = 1L << 30;
 
     private final Canvas canvas = new Canvas();
     private final ObservableList<EngineModel.RateSample> samples;
@@ -108,14 +109,29 @@ public final class RateGraph extends Region {
         this.middle.relocate(6, Math.rint(h / 2.0) + 2);
     }
 
-    /** The top of the scale: the highest rate shown, rounded up to 1, 2 or 5 times a power of ten KB/s. */
+    /**
+     * The top of the scale: the highest rate shown, rounded up to 1, 2 or 5 times a power of ten KB/s, MB/s or GB/s.
+     */
     static long scale(long highest) {
-        long kib = Math.max(1, (highest + 1023) / 1024);
+        // From a thousand KB/s on the rates read in MB/s, and from a thousand MB/s in GB/s: the scale rounds whole
+        // units of what it shows.
+        long unit = 1024;
+        while (true) {
+            long top = roundUp(Math.max(1, (highest + unit - 1) / unit));
+            if (top < 1000 || unit == GIB) {
+                return top * unit;
+            }
+            unit *= 1024;
+        }
+    }
+
+    // Up to 1, 2 or 5 times a power of ten.
+    private static long roundUp(long value) {
         long step = 1;
         while (true) {
             for (long m : new long[] {1, 2, 5}) {
-                if (m * step >= kib) {
-                    return m * step * 1024;
+                if (m * step >= value) {
+                    return m * step;
                 }
             }
             step *= 10;

@@ -66,6 +66,38 @@ class FormatsUnitsTest {
         this.thenTheyRead("3.00 Mo", "1.0 KB/s");
     }
 
+    @Test
+    void shouldWriteFastRatesInMegabytesAndGigabytes() {
+        this.givenTheInterfaceIn(Locale.ENGLISH);
+
+        this.whenARateIsShown(1_355_000);
+        this.thenItReads("1.29 MB/s");
+        this.whenARateIsShown(100L << 20);
+        this.thenItReads("100.0 MB/s");
+        this.whenARateIsShown(1_181_116_006);
+        this.thenItReads("1.10 GB/s");
+    }
+
+    @Test
+    void shouldKeepKilobytesJustBelowAThousand() {
+        this.givenTheInterfaceIn(Locale.ENGLISH);
+
+        this.whenARateIsShown(999 * 1024);
+        this.thenItReads("999.0 KB/s");
+        this.whenARateIsShown(1000 * 1024);
+        this.thenItReads("0.98 MB/s");
+    }
+
+    @Test
+    void shouldWriteFastRatesWithTheUnitsOfTheLanguage() {
+        this.givenTheInterfaceIn(Locale.FRENCH);
+
+        this.whenARateIsShown(1_355_000);
+        this.thenItReads("1,29 Mo/s");
+        this.whenARateIsShown(1_181_116_006);
+        this.thenItReads("1,10 Go/s");
+    }
+
     private void givenTheInterfaceIn(Locale language) {
         this.formats = Formats.of(I18n.of(language));
     }
@@ -77,6 +109,14 @@ class FormatsUnitsTest {
     private void whenASizeAndARateAreShown(long bytes, long bytesPerSecond) {
         this.size = this.formats.size(bytes);
         this.rate = this.formats.rate(bytesPerSecond);
+    }
+
+    private void whenARateIsShown(long bytesPerSecond) {
+        this.rate = this.formats.rate(bytesPerSecond);
+    }
+
+    private void thenItReads(String rate) {
+        assertThat(this.rate).isEqualTo(rate);
     }
 
     private void thenTheyRead(String size, String rate) {

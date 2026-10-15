@@ -26,10 +26,18 @@ class RateGraphScaleTest {
     private long top;
 
     @ParameterizedTest
-    @CsvSource({"0, 1", "1024, 1", "1025, 2", "3000, 5", "9216, 10", "1355000, 2000", "51200000, 50000"})
-    void theScaleRoundsTheHighestRateUpToOneTwoOrFive(long highest, long expectedKib) {
+    @CsvSource({"0, 1", "1024, 1", "1025, 2", "3000, 5", "9216, 10", "512000, 500"})
+    void theScaleRoundsTheHighestRateUpToOneTwoOrFiveKilobytes(long highest, long expectedKib) {
         this.whenTheScaleIsTakenFor(highest);
         this.thenItsTopIsKib(expectedKib);
+    }
+
+    // From a thousand KB/s on, the rates read in MB/s (and GB/s): the scale rounds whole units of those.
+    @ParameterizedTest
+    @CsvSource({"614400, 1", "1355000, 2", "51200000, 50", "1073741824, 1024"})
+    void aboveAThousandKilobytesTheScaleRoundsMegabytes(long highest, long expectedMib) {
+        this.whenTheScaleIsTakenFor(highest);
+        this.thenItsTopIsKib(expectedMib * 1024);
     }
 
     private void whenTheScaleIsTakenFor(long highest) {

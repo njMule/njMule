@@ -131,7 +131,18 @@ final class Html {
         return String.format(Locale.ROOT, "%.2f %s", value, units[unit]);
     }
 
+    // As the desktop interface: KB/s, then MB/s and GB/s from a thousand of the smaller unit on.
     static String rate(long bytesPerSecond) {
-        return String.format(Locale.ROOT, "%.1f KB/s", bytesPerSecond / 1024.0);
+        double value = Math.max(0, bytesPerSecond) / 1024.0;
+        if (value < 999.95) {
+            return String.format(Locale.ROOT, "%.1f KB/s", value);
+        }
+        String unit = "MB/s";
+        value /= 1024;
+        if (value >= 999.95) {
+            unit = "GB/s";
+            value /= 1024;
+        }
+        return String.format(Locale.ROOT, value < 99.995 ? "%.2f %s" : "%.1f %s", value, unit);
     }
 }
