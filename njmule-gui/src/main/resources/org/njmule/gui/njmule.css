@@ -39,6 +39,8 @@
     -nj-graph-down: #5E81AC;
     -nj-graph-up: #A3BE8C;
     -nj-graph-grid: -color-border-muted;
+    /* The veil behind a box over the window. */
+    -nj-scrim: rgba(46, 52, 64, 0.18);
 }
 
 .root.dark {
@@ -63,6 +65,7 @@
     -nj-cat-8: #C98BAA;
     -nj-graph-down: #88C0D0;
     -nj-graph-up: #A3BE8C;
+    -nj-scrim: rgba(0, 0, 0, 0.35);
 }
 
 /* Navigation rail on the left. */
@@ -255,6 +258,23 @@
     -fx-border-radius: 4;
     -fx-background-radius: 4;
     -fx-padding: 1 6 1 6;
+}
+
+/* The command palette over the window, on a faint veil. */
+.command-scrim {
+    -fx-background-color: -nj-scrim;
+}
+
+.command-palette {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 10;
+}
+
+.command-palette .list-view .list-cell {
+    -fx-cell-size: 30;
 }
 
 /* Screens. */

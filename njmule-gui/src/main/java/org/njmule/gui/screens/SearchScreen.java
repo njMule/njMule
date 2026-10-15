@@ -387,6 +387,13 @@ public final class SearchScreen implements Screen {
         return kad ? Optional.of(SearchRequest.Scope.KAD) : Optional.empty();
     }
 
+    /** Searches the network for {@code words}, as typed in the search box and started. */
+    public void searchFor(String words) {
+        this.view();
+        this.query.getEditor().setText(words);
+        this.start();
+    }
+
     void start() {
         String words = this.query.getEditor().getText();
         if (words.isBlank()) {

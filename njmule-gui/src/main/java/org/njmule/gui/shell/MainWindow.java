@@ -20,6 +20,7 @@ import atlantafx.base.controls.Notification;
 import atlantafx.base.controls.Popover;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +116,7 @@ public final class MainWindow {
     private final NetworkPane network;
     private final ServersScreen servers;
     private final Banner banner;
+    private final CommandPalette palette;
     private SpeedLimits limits;
     private Popover limitsPopover;
     private final Label activeBadge = badge();
@@ -164,7 +166,8 @@ public final class MainWindow {
         this.messages.setMaxWidth(420);
         this.messages.setMaxHeight(Region.USE_PREF_SIZE);
         StackPane.setAlignment(this.messages, Pos.BOTTOM_RIGHT);
-        this.root = new StackPane(frame, this.messages);
+        this.palette = new CommandPalette(this::commands, this::typedCommands, gui.t("nj.palette.prompt"));
+        this.root = new StackPane(frame, this.messages, this.palette.view());
         this.root.getStyleClass().add("njmule");
         // A screen's button can lead to another screen, such as Search from an empty list of downloads.
         this.root.addEventHandler(Navigate.TO_SCREEN, e -> this.show(e.screen()));
@@ -188,6 +191,9 @@ public final class MainWindow {
                 e.consume();
             } else if (e.getCode() == KeyCode.F1) {
                 this.showShortcuts();
+                e.consume();
+            } else if (e.isShortcutDown() && e.getCode() == KeyCode.K) {
+                this.palette.show();
                 e.consume();
             }
         });
@@ -711,6 +717,57 @@ public final class MainWindow {
         }
     }
 
+    // What the palette offers: the places, then the commands of the bar and the menus.
+    private List<CommandPalette.Command> commands() {
+        List<CommandPalette.Command> all = new ArrayList<>();
+        for (int i = 0; i < PLACES.size(); i++) {
+            String place = PLACES.get(i);
+            String title = place.equals(NETWORK)
+                    ? this.gui.t("IDS_NETWORK")
+                    : this.screens.get(place).title();
+            all.add(new CommandPalette.Command(title, shortcut(i), () -> this.open(place)));
+        }
+        all.add(new CommandPalette.Command(this.connect.getText(), "", this::toggleConnection));
+        all.add(new CommandPalette.Command(this.gui.t("IDS_OPENINC"), "", this::openIncoming));
+        all.add(new CommandPalette.Command(
+                this.gui.t("nj.import.title"),
+                "",
+                () -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show()));
+        all.add(new CommandPalette.Command(this.gui.t("nj.top.theme"), "", this::toggleTheme));
+        all.add(new CommandPalette.Command(
+                this.gui.t("nj.shortcuts.title"),
+                new KeyCodeCombination(KeyCode.F1).getDisplayText(),
+                this::showShortcuts));
+        all.add(new CommandPalette.Command(
+                this.gui.t("nj.about.title"),
+                "",
+                () -> new AboutDialog(this.gui, this.root.getScene().getWindow()).show()));
+        return all;
+    }
+
+    // What the text typed is itself: eD2K links to download, or else words to search the network for.
+    private List<CommandPalette.Command> typedCommands(String text) {
+        List<Ed2kLink.FileLink> links = ClipboardWatch.fileLinks(text);
+        if (!links.isEmpty()) {
+            String names = String.join(
+                    ", ", links.stream().map(Ed2kLink.FileLink::name).toList());
+            return List.of(new CommandPalette.Command(
+                    this.gui.t("IDS_DOWNLOAD") + ": " + names, "", () -> this.dropped(text)));
+        }
+        if (text.regionMatches(true, 0, "ed2k://", 0, 7)) {
+            return List.of();
+        }
+        return List.of(new CommandPalette.Command(this.gui.f("nj.palette.search", text), "", () -> {
+            this.show("search");
+            ((SearchScreen) this.screens.get("search")).searchFor(text);
+        }));
+    }
+
+    /** The palette, for tests. */
+    CommandPalette palette() {
+        return this.palette;
+    }
+
     /** The shortcut of the place at {@code index} of the rail, as the platform writes it: Ctrl+1, or ⌘1. */
     static String shortcut(int index) {
         return new KeyCodeCombination(DIGITS.get(index), KeyCombination.SHORTCUT_DOWN).getDisplayText();
@@ -739,6 +796,11 @@ public final class MainWindow {
                 row,
                 new KeyCodeCombination(KeyCode.ENTER, KeyCombination.ALT_DOWN).getDisplayText(),
                 transfers + this.gui.t("IDS_DETAILS"));
+        row = shortcutRow(
+                grid,
+                row,
+                new KeyCodeCombination(KeyCode.K, KeyCombination.SHORTCUT_DOWN).getDisplayText(),
+                this.gui.t("nj.palette.prompt"));
         shortcutRow(grid, row, new KeyCodeCombination(KeyCode.F1).getDisplayText(), this.gui.t("nj.shortcuts.title"));
         Stage stage = new Stage();
         stage.initOwner(this.root.getScene().getWindow());

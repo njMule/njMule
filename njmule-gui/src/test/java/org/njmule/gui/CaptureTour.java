@@ -346,6 +346,27 @@ class CaptureTour {
         this.fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#rates")).fire());
         this.shot("topbar-limits", "The limits under the rates of the top bar");
         this.fx(CaptureTour::closePopups);
+        this.fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
+        this.shot("palette", "The command palette (Ctrl+K)");
+        this.fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))
+                .setText("big buck"));
+        this.shot("palette-search", "The command palette offering a search of the network");
+        this.fx(() -> this.stage
+                .getScene()
+                .getRoot()
+                .lookup(".command-palette .text-field")
+                .fireEvent(FxTesting.key(javafx.scene.input.KeyCode.ESCAPE, false)));
+        this.fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.F1, false)));
+        Thread.sleep(300);
+        FxTesting.onFx(() -> {
+            for (Window w : List.copyOf(Window.getWindows())) {
+                if (w instanceof Stage s && s != this.stage && s.isShowing()) {
+                    this.save("shortcuts", image(s.getScene()), "The keyboard shortcuts (F1)");
+                    s.hide();
+                }
+            }
+            return null;
+        });
         this.textFieldMenu();
         this.settingsPage();
         this.liveSearch();
