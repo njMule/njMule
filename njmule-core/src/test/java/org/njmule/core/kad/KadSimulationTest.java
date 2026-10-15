@@ -19,7 +19,10 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.jimfs.Configuration;
+import com.google.common.jimfs.Jimfs;
 import java.io.IOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
@@ -32,9 +35,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.kad.KadMessages;
 import org.njmule.core.protocol.packet.Packet;
@@ -53,8 +56,9 @@ class KadSimulationTest {
     private static final int PUBLISH_WAIT = 150;
     private static final int SEARCHES = 3;
 
-    @TempDir
-    Path dir;
+    // In memory: on a disk the saves of 200 nodes, every half hour of simulated time, took most of the run.
+    private final FileSystem files = Jimfs.newFileSystem(Configuration.unix());
+    private final Path dir = this.files.getPath("/kad");
 
     // A fixed seed: the same simulated network at every run, so that a failure can be looked into.
     private final SecureRandom random = seeded();
@@ -82,6 +86,11 @@ class KadSimulationTest {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    @AfterEach
+    void closeTheFiles() throws IOException {
+        this.files.close();
     }
 
     @Test

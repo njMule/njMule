@@ -20,6 +20,8 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testImplementation(libs.jqwik)
+    // In-memory file systems for simulations whose many nodes would otherwise wait on the disk.
+    testImplementation(libs.jimfs)
 }
 
 tasks.compileJava {

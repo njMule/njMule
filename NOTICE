@@ -52,7 +52,7 @@ versions is generated at release time in THIRD-PARTY.txt.
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
 
-Test-only dependencies (JUnit, AssertJ, jqwik) are not distributed.
+Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs) are not distributed.
 
 
 Shipped server list and Kad contacts
