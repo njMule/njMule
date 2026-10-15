@@ -94,6 +94,8 @@ class DownloadManagerTest {
     private Optional<DownloadInfo> next;
     private Optional<Path> preview;
     private Throwable exception;
+    private DownloadManager.Settings settings =
+            new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true);
 
     @AfterEach
     void stop() throws Exception {
@@ -408,6 +410,25 @@ class DownloadManagerTest {
         whenTheDownloadManagerIsClosedAndOpenedAgain();
 
         thenTheDownloadIsNamed(hashOf("f2"), "Debian 13.iso");
+    }
+
+    @Test
+    void shouldCleanUpTheNameOfANewDownloadWhenAsked() throws Exception {
+        givenTheNamesOfNewDownloadsCleanedUpOf("sponsored");
+        givenTheDownloadManager();
+
+        whenADownloadIsAdded("Big_Buck_Bunny.sponsored.[www.site.com].mkv", hashOf("f5"));
+
+        thenTheDownloadIsNamed(hashOf("f5"), "Big Buck Bunny.mkv");
+    }
+
+    @Test
+    void shouldKeepTheNameOfANewDownloadAsItComesByDefault() throws Exception {
+        givenTheDownloadManager();
+
+        whenADownloadIsAdded("Big_Buck_Bunny.mkv", hashOf("f6"));
+
+        thenTheDownloadIsNamed(hashOf("f6"), "Big_Buck_Bunny.mkv");
     }
 
     @Test
@@ -786,6 +807,11 @@ class DownloadManagerTest {
         this.answer = onLoop(() -> this.manager.setCategory(this.hash, category));
     }
 
+    private void givenTheNamesOfNewDownloadsCleanedUpOf(String words) {
+        this.settings =
+                new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true, false, "", 0, true, words);
+    }
+
     private void givenTheDownloadRenamed(String name) throws Exception {
         whenTheDownloadIsRenamed(name);
         thenItIsAccepted();
@@ -1002,7 +1028,7 @@ class DownloadManagerTest {
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
                 () -> hello,
-                () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true),
+                () -> this.settings,
                 server,
                 ip -> ip == BLOCKED_IP,
                 random,

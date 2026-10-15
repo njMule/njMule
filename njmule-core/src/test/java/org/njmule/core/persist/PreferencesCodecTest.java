@@ -226,6 +226,8 @@ class PreferencesCodecTest {
                 .uploadCapacityKiBps(512)
                 .minFreeSpaceMiB(2048)
                 .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
+                .nameCleanups("dvdrip|sponsored")
+                .cleanUpNewNames(true)
                 .build();
     }
 

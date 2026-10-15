@@ -414,7 +414,9 @@ final class Network {
                             prefs.filterLanAddresses(),
                             prefs.previewFirst(),
                             prefs.commentFilter(),
-                            prefs.maxDownloadKiBps());
+                            prefs.maxDownloadKiBps(),
+                            prefs.cleanUpNewNames(),
+                            prefs.nameCleanups());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),

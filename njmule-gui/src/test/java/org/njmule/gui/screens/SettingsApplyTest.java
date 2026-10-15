@@ -66,6 +66,29 @@ class SettingsApplyTest {
         thenApplyCanBePressed();
     }
 
+    @Test
+    void shouldSaveTheCleanUpOfTheNamesOfNewDownloads() throws Exception {
+        givenTheOptionsScrolledToTheBottom();
+        givenTheNamesOfNewDownloadsCleanedUpOf("dvdrip|sponsored");
+
+        whenApplyIsPressed();
+
+        thenTheNamesOfNewDownloadsAreCleanedUpOf("dvdrip|sponsored");
+    }
+
+    private void givenTheNamesOfNewDownloadsCleanedUpOf(String words) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.cleanUpNewNamesBox().setSelected(true);
+            this.screen.nameCleanupsField().setText(words);
+        });
+    }
+
+    private void thenTheNamesOfNewDownloadsAreCleanedUpOf(String words) throws Exception {
+        FxTesting.await(
+                "the preferences saved", () -> this.test.engine.preferences().cleanUpNewNames());
+        assertThat(this.test.engine.preferences().nameCleanups()).isEqualTo(words);
+    }
+
     private void givenTheOptionsScrolledToTheBottom() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.screen = new SettingsScreen(this.test.gui);

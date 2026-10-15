@@ -90,6 +90,8 @@ public record Preferences(
         String videoPlayer,
         String videoPlayerArgs,
         String commentFilter,
+        String nameCleanups,
+        boolean cleanUpNewNames,
         String ipFilterWhitelist,
         EventCommands eventCommands,
         boolean notificationSound,
@@ -130,6 +132,9 @@ public record Preferences(
     public static final int MAX_BIND_INTERFACE = 256;
     /** File comments holding one of these words, apart by {@code |}, are left out. */
     public static final String DEFAULT_COMMENT_FILTER = "http://|https://|ftp://|www.|ftp.";
+    /** Words, apart by {@code |}, a clean-up takes out of file names. */
+    public static final String DEFAULT_NAME_CLEANUPS =
+            "http|www.|.com|.de|.org|.net|shared|powered|sponsored|sharelive|filedonkey";
     /** Incoming connections taken in five seconds at most. */
     public static final int DEFAULT_NEW_CONNECTIONS = 20;
 
@@ -180,6 +185,10 @@ public record Preferences(
         Objects.requireNonNull(commentFilter, "commentFilter");
         if (commentFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("commentFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
+        }
+        Objects.requireNonNull(nameCleanups, "nameCleanups");
+        if (nameCleanups.length() > MAX_MESSAGE_FILTER) {
+            throw new IllegalArgumentException("nameCleanups must be at most " + MAX_MESSAGE_FILTER + " characters");
         }
         if (messageFilter.length() > MAX_MESSAGE_FILTER) {
             throw new IllegalArgumentException("messageFilter must be at most " + MAX_MESSAGE_FILTER + " characters");
@@ -259,6 +268,8 @@ public record Preferences(
                 "",
                 "",
                 DEFAULT_COMMENT_FILTER,
+                DEFAULT_NAME_CLEANUPS,
+                false,
                 "",
                 EventCommands.NONE,
                 false,
@@ -355,6 +366,8 @@ public record Preferences(
         private String videoPlayer;
         private String videoPlayerArgs;
         private String commentFilter;
+        private String nameCleanups;
+        private boolean cleanUpNewNames;
         private String ipFilterWhitelist;
         private EventCommands eventCommands;
         private boolean notificationSound;
@@ -409,6 +422,8 @@ public record Preferences(
             this.videoPlayer = p.videoPlayer;
             this.videoPlayerArgs = p.videoPlayerArgs;
             this.commentFilter = p.commentFilter;
+            this.nameCleanups = p.nameCleanups;
+            this.cleanUpNewNames = p.cleanUpNewNames;
             this.ipFilterWhitelist = p.ipFilterWhitelist;
             this.eventCommands = p.eventCommands;
             this.notificationSound = p.notificationSound;
@@ -684,6 +699,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder nameCleanups(String value) {
+            this.nameCleanups = value;
+            return this;
+        }
+
+        public Builder cleanUpNewNames(boolean value) {
+            this.cleanUpNewNames = value;
+            return this;
+        }
+
         public Builder ipFilterWhitelist(String value) {
             this.ipFilterWhitelist = value;
             return this;
@@ -770,6 +795,8 @@ public record Preferences(
                     this.videoPlayer,
                     this.videoPlayerArgs,
                     this.commentFilter,
+                    this.nameCleanups,
+                    this.cleanUpNewNames,
                     this.ipFilterWhitelist,
                     this.eventCommands,
                     this.notificationSound,

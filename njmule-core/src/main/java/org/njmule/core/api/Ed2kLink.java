@@ -85,6 +85,12 @@ public sealed interface Ed2kLink {
             httpSources = List.copyOf(httpSources);
         }
 
+        /** The same link under another name. */
+        public FileLink withName(String other) {
+            return new FileLink(
+                    other, this.size, this.hash, this.aichHash, this.partHashes, this.sources, this.httpSources);
+        }
+
         public static FileLink of(String name, long size, Hash16 hash) {
             return new FileLink(name, size, hash, Optional.empty(), List.of(), List.of(), List.of());
         }

@@ -117,6 +117,8 @@ public final class SyntheticEmuleProfile {
                         "FilterBadIPs=0",
                         "MessagesFromFriendsOnly=1",
                         "MessageFilter=buy now|cheap",
+                        "FilenameCleanups=dvdrip|sponsored",
+                        "AutoFilenameCleanup=1",
                         "MaxConnectionsPerFiveSeconds=35",
                         "QueueSize=9000",
                         "NetworkED2K=1",

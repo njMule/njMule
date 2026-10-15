@@ -108,6 +108,8 @@ public final class PreferencesCodec {
         key("preview.player", Preferences::videoPlayer, Preferences.Builder::videoPlayer);
         key("preview.args", Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs);
         key("comments.filter", Preferences::commentFilter, Preferences.Builder::commentFilter);
+        key("files.nameCleanups", Preferences::nameCleanups, Preferences.Builder::nameCleanups);
+        boolKey("files.cleanUpNewNames", Preferences::cleanUpNewNames, Preferences.Builder::cleanUpNewNames);
         boolKey("notify.sound", Preferences::notificationSound, Preferences.Builder::notificationSound);
         key(
                 "notify.soundFile",

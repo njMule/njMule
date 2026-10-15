@@ -373,6 +373,10 @@ All notable changes to this project are documented here. The format follows
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file
   gets once complete.
+- File names tidied (engine API `FileNames.cleanUp`): escapes, dots and underscores used as spaces,
+  tags in square brackets and the words of a list in the options go, and each word starts with a
+  capital. New downloads can get the tidy name as they are added (an option, off by default); the
+  list and the option are taken from an eMule profile too.
 - Windows high contrast: while it is on, the desktop interface takes the system's colours (window,
   text, selection, links, disabled text) for every surface, text, selection, part bar and graph of
   the theme, alerts included, and follows the system when the scheme changes or is turned off.

@@ -51,6 +51,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileComment;
+import org.njmule.core.api.FileNames;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.api.PeerComment;
@@ -204,7 +205,9 @@ public final class DownloadManager implements AutoCloseable {
             boolean filterLan,
             boolean previewFirst,
             String commentFilter,
-            int maxDownloadKiBps) {
+            int maxDownloadKiBps,
+            boolean cleanUpNewNames,
+            String nameCleanups) {
 
         public Settings(
                 ObfuscationMode obfuscation,
@@ -212,7 +215,7 @@ public final class DownloadManager implements AutoCloseable {
                 int listenPort,
                 long minFreeSpace,
                 boolean filterLan) {
-            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "", 0);
+            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "", 0, false, "");
         }
     }
 
@@ -558,8 +561,12 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     /** Adds a download in {@code category}, a known one or none; empty, in the category its name falls in. */
-    public DownloadInfo add(Ed2kLink.FileLink link, OptionalInt chosen) throws IOException {
-        Optional<DownloadQueue.Download> known = this.queue.get(link.hash());
+    public DownloadInfo add(Ed2kLink.FileLink added, OptionalInt chosen) throws IOException {
+        Optional<DownloadQueue.Download> known = this.queue.get(added.hash());
+        Settings settings = this.settings.get();
+        Ed2kLink.FileLink link = known.isEmpty() && settings.cleanUpNewNames()
+                ? added.withName(FileNames.cleanUp(added.name(), settings.nameCleanups()))
+                : added;
         // A link of another file under the same hash would give sources that cannot serve this one.
         boolean same = known.map(d -> DownloadQueue.sameFile(d.file(), link)).orElse(true);
         int category = Category.NONE;

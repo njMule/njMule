@@ -391,6 +391,10 @@ public final class EmuleImporter {
         ini.get(SECTION, "CommentFilter")
                 .filter(v -> v.length() <= Preferences.MAX_MESSAGE_FILTER)
                 .ifPresent(b::commentFilter);
+        ini.get(SECTION, "FilenameCleanups")
+                .filter(v -> v.length() <= Preferences.MAX_MESSAGE_FILTER)
+                .ifPresent(b::nameCleanups);
+        ini.getBoolean(SECTION, "AutoFilenameCleanup").ifPresent(b::cleanUpNewNames);
         ini.getLong(SECTION, "MaxConnectionsPerFiveSeconds")
                 .ifPresent(v -> b.newConnectionsPerFiveSeconds(Math.clamp(v, 1, Preferences.MAX_NEW_CONNECTIONS)));
         ini.getBoolean(SECTION, "PreviewPrio").ifPresent(b::previewFirst);

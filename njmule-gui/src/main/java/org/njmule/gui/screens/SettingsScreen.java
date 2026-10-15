@@ -152,6 +152,8 @@ public final class SettingsScreen implements Screen {
     private final TextField videoPlayerArgs = new TextField();
     private final ComboBox<SharedFilesVisibility> visibility = new ComboBox<>();
     private final CheckBox addPaused = new CheckBox();
+    private final CheckBox cleanUpNewNames = new CheckBox();
+    private final TextField nameCleanups = new TextField();
     private final CheckBox startNext = new CheckBox();
     private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
@@ -292,6 +294,8 @@ public final class SettingsScreen implements Screen {
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
         this.visibility.setButtonCell(new NamedCell<>(this::visibilityName));
         this.addPaused.setText(this.gui.t("IDS_ADDNEWFILESPAUSED"));
+        this.cleanUpNewNames.setText(this.gui.t("IDS_AUTOCLEANUPFN"));
+        this.nameCleanups.setPrefColumnCount(30);
         this.startNext.setText(this.gui.t("IDS_STARTNEXTFILE"));
         // Any category, the same first, or the same only.
         this.nextCategory
@@ -387,6 +391,8 @@ public final class SettingsScreen implements Screen {
         row = field(grid, row, this.gui.t("IDS_PW_VIDEOPLAYER"), new HBox(8, this.videoPlayer, this.videoPlayerArgs));
         row = field(grid, row, this.gui.t("IDS_PW_SHARE"), this.visibility);
         grid.add(this.addPaused, 1, row++);
+        grid.add(this.cleanUpNewNames, 1, row++);
+        row = field(grid, row, this.gui.t("IDS_FILTERFILENAMEWORD"), this.nameCleanups);
         HBox next = new HBox(8, this.startNext, this.nextCategory);
         next.setAlignment(Pos.CENTER_LEFT);
         grid.add(next, 1, row++);
@@ -788,6 +794,8 @@ public final class SettingsScreen implements Screen {
         this.videoPlayerArgs.setText(p.videoPlayerArgs());
         this.visibility.setValue(p.sharedFilesVisibility());
         this.addPaused.setSelected(p.addDownloadsPaused());
+        this.cleanUpNewNames.setSelected(p.cleanUpNewNames());
+        this.nameCleanups.setText(p.nameCleanups());
         this.startNext.setSelected(p.nextDownload() != NextDownload.NONE);
         this.nextCategory.setValue(p.nextDownload() == NextDownload.NONE ? NextDownload.ANY : p.nextDownload());
         this.theme.setValue(this.gui.themes().family());
@@ -1045,6 +1053,14 @@ public final class SettingsScreen implements Screen {
                         Preferences.Builder::addDownloadsPaused,
                         this.addPaused.isSelected())
                 .set(
+                        Preferences::cleanUpNewNames,
+                        Preferences.Builder::cleanUpNewNames,
+                        this.cleanUpNewNames.isSelected())
+                .set(
+                        Preferences::nameCleanups,
+                        Preferences.Builder::nameCleanups,
+                        this.nameCleanups.getText().strip())
+                .set(
                         Preferences::nextDownload,
                         Preferences.Builder::nextDownload,
                         this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
@@ -1264,6 +1280,14 @@ public final class SettingsScreen implements Screen {
 
     TextField tcpPortField() {
         return this.tcpPort;
+    }
+
+    CheckBox cleanUpNewNamesBox() {
+        return this.cleanUpNewNames;
+    }
+
+    TextField nameCleanupsField() {
+        return this.nameCleanups;
     }
 
     ComboBox<String> bindInterfaceBox() {
