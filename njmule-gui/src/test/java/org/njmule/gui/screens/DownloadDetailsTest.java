@@ -79,27 +79,32 @@ class DownloadDetailsTest {
     }
 
     @Test
-    void aPartWithAnyByteMissingIsNotComplete() {
+    void shouldNotCountAPartWithAnyByteMissingAsComplete() {
         whenTheCompletePartsAreCounted(FILM.parts(), 4);
+
         thenTheyAre(2);
     }
 
     @Test
-    void theDetailsOpenFromTheirButtonAndShowTheDownloadChosen() throws Exception {
+    void shouldOpenTheDetailsFromTheirButtonAndShowTheDownloadChosen() throws Exception {
         givenTheTransfersWith(FILM);
-        thenTheDetailsAre(false);
-        whenTheDetailsButtonIsPressed();
-        thenTheDetailsAre(true);
-        thenTheDetailsTell("Choose one download");
+        givenTheDetailsAre(false);
+        givenTheDetailsButtonPressed();
+        givenTheDetailsAre(true);
+        givenTheDetailsTell("Choose one download");
+
         whenTheDownloadIsChosen();
+
         thenTheDetailsTell("film.mkv", "2 / 4", "7", "High");
         thenTheSettingsRemember(true);
     }
 
     @Test
-    void altEnterOpensTheDetails() throws Exception {
+    void shouldOpenTheDetailsWithAltEnter() throws Exception {
         givenTheTransfersWith(FILM);
+
         whenAltEnterIsPressed();
+
         thenTheDetailsAre(true);
     }
 
@@ -117,8 +122,16 @@ class DownloadDetailsTest {
         this.complete = DownloadDetails.complete(map, total);
     }
 
-    private void whenTheDetailsButtonIsPressed() throws Exception {
+    private void givenTheDetailsButtonPressed() throws Exception {
         FxTesting.onFx(() -> ((ToggleButton) this.screen.view().lookup("#details")).fire());
+    }
+
+    private void givenTheDetailsAre(boolean shown) throws Exception {
+        detailsAre(shown);
+    }
+
+    private void givenTheDetailsTell(String... texts) throws Exception {
+        detailsTell(texts);
     }
 
     private void whenAltEnterIsPressed() throws Exception {
@@ -136,11 +149,24 @@ class DownloadDetailsTest {
     }
 
     private void thenTheDetailsAre(boolean shown) throws Exception {
+        detailsAre(shown);
+    }
+
+    private void thenTheDetailsTell(String... texts) throws Exception {
+        detailsTell(texts);
+    }
+
+    private void thenTheSettingsRemember(boolean shown) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDetails()))
+                .isEqualTo(shown);
+    }
+
+    private void detailsAre(boolean shown) throws Exception {
         assertThat(FxTesting.onFx(() -> this.screen.details().view().getScene() != null))
                 .isEqualTo(shown);
     }
 
-    private void thenTheDetailsTell(String... texts) throws Exception {
+    private void detailsTell(String... texts) throws Exception {
         List<String> shown = FxTesting.onFx(() -> {
             Node view = this.screen.details().view();
             view.applyCss();
@@ -153,10 +179,5 @@ class DownloadDetailsTest {
         for (String text : texts) {
             assertThat(shown).anyMatch(t -> t != null && t.contains(text));
         }
-    }
-
-    private void thenTheSettingsRemember(boolean shown) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDetails()))
-                .isEqualTo(shown);
     }
 }

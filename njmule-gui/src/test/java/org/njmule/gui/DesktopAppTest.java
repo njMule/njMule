@@ -23,12 +23,12 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.control.Label;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -45,147 +45,248 @@ class DesktopAppTest {
     @TempDir
     Path dir;
 
+    private DesktopApp app;
+    private boolean closed;
+    private Stage stage;
+    private List<Window> before;
+    private TrayMenu menu;
+    private Label oldChip;
+    private String oldChipText;
+
     @BeforeAll
     static void toolkit() throws Exception {
         FxTesting.start();
     }
 
+    @AfterEach
+    void close() throws Exception {
+        if (this.stage != null) {
+            FxTesting.onFx(this.stage::close);
+        }
+        if (this.app != null && !this.closed) {
+            this.app.close();
+        }
+    }
+
     @Test
-    void opensShowsRemembersTheWindowAndCloses() throws Exception {
+    void shouldOpenShowRememberTheWindowAndClose() throws Exception {
+        givenAnAppOnAFreeTcpPort();
+        givenTheWindowsShowingSoFar();
+        givenTheAppShown();
+        givenTheTitleStartsWith("njMule");
+        givenADialogOfTheWindowShowsTheAppsIcon();
+        givenTheCurrentScreenIs("transfers");
+        givenTheTrayMenuNoted();
+        givenTheAppRelaunchedOnTheScreen("search");
+        givenTheTrayMenuFollowsTheLanguage();
+        givenTheCurrentScreenIs("search");
+        givenTheEngineRuns();
+        givenTheWindowClosed();
+        givenNoWindowOfOursKeepsNjMuleRunning();
+
+        whenTheAppCloses();
+
+        thenTheEngineIsStopped();
+        thenTheSettingsWereSaved();
+        thenTheSavedScreenIs("search");
+        thenTheWindowPlaceWasSaved();
+    }
+
+    @Test
+    void shouldLeaveAWindowPlaceOffEveryScreenAndNeverSaveTheOneOfAnIcon() throws Exception {
+        // As left by a monitor since unplugged.
+        givenTheWindowPlace("window.x=-50000\nwindow.y=-50000\nwindow.width=900\nwindow.height=700\n");
+        givenAnApp();
+        givenTheAppShownWithoutTheTray();
+        givenTheWindowShowsOnAScreen();
+        givenTheWindowMovedTo(10, 20);
+        givenTheWindowMinimisedAndClosed();
+
+        whenTheAppCloses();
+
+        thenTheSavedPlaceIsNotAtX(10);
+    }
+
+    @Test
+    void shouldStopUpdatingTheWindowLeftByALanguageChange() throws Exception {
+        givenAnApp();
+        givenTheAppShown();
+        givenTheConnectionChipNoted();
+        givenTheAppRelaunched();
+
+        whenTheEngineConnectsTo("81.2.3.4:4661", "Big");
+
+        thenTheConnectionChipShows("Big");
+        thenTheOldConnectionChipIsNotUpdated();
+    }
+
+    private void givenAnAppOnAFreeTcpPort() throws Exception {
         Path config = Files.createDirectories(this.dir.resolve("config"));
         int port;
         try (ServerSocket probe = new ServerSocket(0)) {
             port = probe.getLocalPort();
         }
         Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
-        DesktopApp app = DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
-        AtomicReference<Stage> stage = new AtomicReference<>();
-        List<Window> before = FxTesting.onFx(DesktopAppTest::showing);
-        try {
-            FxTesting.onFx(() -> {
-                stage.set(new Stage());
-                app.show(stage.get());
-            });
-            assertThat(FxTesting.onFx(() -> stage.get().getTitle())).startsWith("njMule");
-            assertThat(FxTesting.onFx(() -> {
-                        Stage dialog = new Stage();
-                        dialog.initOwner(stage.get());
-                        dialog.show();
-                        int icons = dialog.getIcons().size();
-                        dialog.close();
-                        return icons;
-                    }))
-                    .as("a dialog shows the app's icon too")
-                    .isPositive();
-            assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("transfers");
-            TrayMenu menu = FxTesting.onFx(app::trayMenu);
-            FxTesting.onFx(() -> {
-                app.window().show("search");
-                app.relaunch();
-            });
-            if (menu != null) {
-                assertThat(FxTesting.onFx(app::trayMenu))
-                        .as("the tray menu follows the language")
-                        .isNotSameAs(menu);
-            }
-            assertThat(FxTesting.onFx(() -> app.window().current())).isEqualTo("search");
-            assertThat(app.engine().isRunning()).isTrue();
-            FxTesting.onFx(() -> stage.get().close());
-            assertThat(FxTesting.onFx(DesktopAppTest::showing))
-                    .as("no window of ours keeps njMule running")
-                    .containsExactlyInAnyOrderElementsOf(before);
-        } finally {
-            app.close();
-        }
-        assertThat(app.engine().isRunning()).isFalse();
-        GuiSettings saved = GuiSettings.load(this.dir.resolve("gui"));
-        assertThat(saved.existed()).isTrue();
-        assertThat(saved.screen()).isEqualTo("search");
-        assertThat(saved.window()).isPresent();
+        this.app = DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
     }
 
-    @Test
-    void aWindowPlaceOffEveryScreenIsLeftAndAnIconNeverSavesOne() throws Exception {
+    private void givenAnApp() throws Exception {
+        this.app = open();
+    }
+
+    private void givenTheWindowPlace(String settings) throws Exception {
         Path gui = Files.createDirectories(this.dir.resolve("gui"));
-        // As left by a monitor since unplugged.
-        Files.writeString(
-                gui.resolve(GuiSettings.FILE_NAME),
-                "window.x=-50000\nwindow.y=-50000\nwindow.width=900\nwindow.height=700\n");
-        DesktopApp app = open();
-        AtomicReference<Stage> stage = new AtomicReference<>();
-        try {
-            // Without the tray: minimising must never put a real icon in the system tray.
-            FxTesting.onFx(() -> {
-                stage.set(new Stage());
-                app.show(stage.get(), false);
-            });
-            Rectangle2D shown = FxTesting.onFx(() -> new Rectangle2D(
-                    stage.get().getX(),
-                    stage.get().getY(),
-                    stage.get().getWidth(),
-                    stage.get().getHeight()));
-            assertThat(FxTesting.onFx(() -> Screen.getScreensForRectangle(shown)))
-                    .as("the window shows on a screen")
-                    .isNotEmpty();
-
-            FxTesting.onFx(() -> {
-                stage.get().setX(10);
-                stage.get().setY(20);
-            });
-            assertThat(FxTesting.onFx(() -> stage.get().getX())).isEqualTo(10);
-            // Minimised, the place a window reports is not where it shows: on Windows -32000.
-            FxTesting.onFx(() -> {
-                stage.get().setIconified(true);
-                stage.get().close();
-            });
-        } finally {
-            app.close();
-        }
-        assertThat(GuiSettings.load(gui).window())
-                .as("the place before the window was minimised")
-                .hasValueSatisfying(b -> assertThat(b[0]).isNotEqualTo(10));
+        Files.writeString(gui.resolve(GuiSettings.FILE_NAME), settings);
     }
 
-    @Test
-    void theWindowLeftByALanguageChangeNoLongerFollowsTheEngine() throws Exception {
-        DesktopApp app = open();
-        AtomicReference<Stage> stage = new AtomicReference<>();
-        try {
-            FxTesting.onFx(() -> {
-                stage.set(new Stage());
-                app.show(stage.get());
-            });
-            Label oldChip = FxTesting.onFx(() -> (Label) app.window().root().lookup(".connection-chip"));
-            String before = FxTesting.onFx(() -> oldChip.getText());
+    private void givenTheWindowsShowingSoFar() throws Exception {
+        this.before = FxTesting.onFx(DesktopAppTest::showing);
+    }
 
-            FxTesting.onFx(app::relaunch);
-            ServerInfo big = new ServerInfo(
-                    "81.2.3.4:4661",
-                    "Big",
-                    "",
-                    10,
-                    20,
-                    30,
-                    0,
-                    ServerInfo.Priority.NORMAL,
-                    0,
-                    0,
-                    0,
-                    0,
-                    "",
-                    false,
-                    false);
-            FxTesting.onFx(() -> app.model().handle(new EngineEvent.ServerConnecting(big)));
+    private void givenTheAppShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.stage = new Stage();
+            this.app.show(this.stage);
+        });
+    }
 
-            Label newChip = FxTesting.onFx(() -> (Label) app.window().root().lookup(".connection-chip"));
-            assertThat(FxTesting.onFx(() -> newChip.getText())).contains("Big");
-            assertThat(FxTesting.onFx(() -> oldChip.getText()))
-                    .as("the old window is not updated any more")
-                    .isEqualTo(before);
-            FxTesting.onFx(() -> stage.get().close());
-        } finally {
-            app.close();
+    // Without the tray: minimising must never put a real icon in the system tray.
+    private void givenTheAppShownWithoutTheTray() throws Exception {
+        FxTesting.onFx(() -> {
+            this.stage = new Stage();
+            this.app.show(this.stage, false);
+        });
+    }
+
+    private void givenTheTitleStartsWith(String title) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.stage.getTitle())).startsWith(title);
+    }
+
+    private void givenADialogOfTheWindowShowsTheAppsIcon() throws Exception {
+        assertThat(FxTesting.onFx(() -> {
+                    Stage dialog = new Stage();
+                    dialog.initOwner(this.stage);
+                    dialog.show();
+                    int icons = dialog.getIcons().size();
+                    dialog.close();
+                    return icons;
+                }))
+                .as("a dialog shows the app's icon too")
+                .isPositive();
+    }
+
+    private void givenTheCurrentScreenIs(String screen) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.app.window().current())).isEqualTo(screen);
+    }
+
+    private void givenTheTrayMenuNoted() throws Exception {
+        this.menu = FxTesting.onFx(this.app::trayMenu);
+    }
+
+    private void givenTheAppRelaunchedOnTheScreen(String screen) throws Exception {
+        FxTesting.onFx(() -> {
+            this.app.window().show(screen);
+            this.app.relaunch();
+        });
+    }
+
+    private void givenTheTrayMenuFollowsTheLanguage() throws Exception {
+        if (this.menu != null) {
+            assertThat(FxTesting.onFx(this.app::trayMenu))
+                    .as("the tray menu follows the language")
+                    .isNotSameAs(this.menu);
         }
+    }
+
+    private void givenTheEngineRuns() {
+        assertThat(this.app.engine().isRunning()).isTrue();
+    }
+
+    private void givenTheWindowClosed() throws Exception {
+        FxTesting.onFx(() -> this.stage.close());
+    }
+
+    private void givenNoWindowOfOursKeepsNjMuleRunning() throws Exception {
+        assertThat(FxTesting.onFx(DesktopAppTest::showing))
+                .as("no window of ours keeps njMule running")
+                .containsExactlyInAnyOrderElementsOf(this.before);
+    }
+
+    private void givenTheWindowShowsOnAScreen() throws Exception {
+        Rectangle2D shown = FxTesting.onFx(() ->
+                new Rectangle2D(this.stage.getX(), this.stage.getY(), this.stage.getWidth(), this.stage.getHeight()));
+        assertThat(FxTesting.onFx(() -> Screen.getScreensForRectangle(shown)))
+                .as("the window shows on a screen")
+                .isNotEmpty();
+    }
+
+    private void givenTheWindowMovedTo(double x, double y) throws Exception {
+        FxTesting.onFx(() -> {
+            this.stage.setX(x);
+            this.stage.setY(y);
+        });
+        assertThat(FxTesting.onFx(() -> this.stage.getX())).isEqualTo(x);
+    }
+
+    // Minimised, the place a window reports is not where it shows: on Windows -32000.
+    private void givenTheWindowMinimisedAndClosed() throws Exception {
+        FxTesting.onFx(() -> {
+            this.stage.setIconified(true);
+            this.stage.close();
+        });
+    }
+
+    private void givenTheConnectionChipNoted() throws Exception {
+        this.oldChip = FxTesting.onFx(() -> (Label) this.app.window().root().lookup(".connection-chip"));
+        this.oldChipText = FxTesting.onFx(() -> this.oldChip.getText());
+    }
+
+    private void givenTheAppRelaunched() throws Exception {
+        FxTesting.onFx(this.app::relaunch);
+    }
+
+    private void whenTheAppCloses() {
+        this.closed = true;
+        this.app.close();
+    }
+
+    private void whenTheEngineConnectsTo(String address, String name) throws Exception {
+        ServerInfo server = new ServerInfo(
+                address, name, "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
+        FxTesting.onFx(() -> this.app.model().handle(new EngineEvent.ServerConnecting(server)));
+    }
+
+    private void thenTheEngineIsStopped() {
+        assertThat(this.app.engine().isRunning()).isFalse();
+    }
+
+    private void thenTheSettingsWereSaved() {
+        assertThat(GuiSettings.load(this.dir.resolve("gui")).existed()).isTrue();
+    }
+
+    private void thenTheSavedScreenIs(String screen) {
+        assertThat(GuiSettings.load(this.dir.resolve("gui")).screen()).isEqualTo(screen);
+    }
+
+    private void thenTheWindowPlaceWasSaved() {
+        assertThat(GuiSettings.load(this.dir.resolve("gui")).window()).isPresent();
+    }
+
+    private void thenTheSavedPlaceIsNotAtX(double x) {
+        assertThat(GuiSettings.load(this.dir.resolve("gui")).window())
+                .as("the place before the window was minimised")
+                .hasValueSatisfying(b -> assertThat(b[0]).isNotEqualTo(x));
+    }
+
+    private void thenTheConnectionChipShows(String text) throws Exception {
+        Label newChip = FxTesting.onFx(() -> (Label) this.app.window().root().lookup(".connection-chip"));
+        assertThat(FxTesting.onFx(() -> newChip.getText())).contains(text);
+    }
+
+    private void thenTheOldConnectionChipIsNotUpdated() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.oldChip.getText()))
+                .as("the old window is not updated any more")
+                .isEqualTo(this.oldChipText);
     }
 
     // An app in the test's folder, on free ports and without Kad: never on the ports of a running eMule.

@@ -27,30 +27,79 @@ class LiveListTest {
 
     private record Item(String key, int value) {}
 
+    private final LiveList<String, Item> list = new LiveList<>(Item::key);
+    private final List<String> changes = new ArrayList<>();
+    private LiveList.Row<Item> kept;
+
     @Test
-    void rowsStayAndTheirValuesChange() {
-        LiveList<String, Item> list = new LiveList<>(Item::key);
-        List<String> changes = new ArrayList<>();
-        list.rows().addListener((ListChangeListener<LiveList.Row<Item>>) c -> {
+    void shouldKeepTheRowsAndChangeTheirValues() {
+        givenTheChangesAreRecorded();
+        givenTheListIsUpdatedWith(new Item("a", 1), new Item("b", 2), new Item("a", 9));
+        givenTheFirstRowIsKept();
+        givenTheListIsUpdatedWith(new Item("a", 3), new Item("b", 2));
+
+        whenTheListIsUpdatedWith(new Item("b", 2));
+
+        thenTheKeptRowHolds(new Item("a", 3));
+        thenTheListHasOneRowWithKey("b");
+        thenTheChangesAre("added", "added", "updated", "removed");
+    }
+
+    @Test
+    void shouldPutAndRemoveRowsByKey() {
+        givenTheListIsUpdatedWith(new Item("b", 2));
+        givenARowIsPut(new Item("c", 4));
+
+        whenTheRowsAreRemoved("b", "nothing");
+
+        thenTheRowKeysAre("c");
+    }
+
+    private void givenTheChangesAreRecorded() {
+        this.list.rows().addListener((ListChangeListener<LiveList.Row<Item>>) c -> {
             while (c.next()) {
-                changes.add(c.wasUpdated() ? "updated" : c.wasAdded() ? "added" : "removed");
+                this.changes.add(c.wasUpdated() ? "updated" : c.wasAdded() ? "added" : "removed");
             }
         });
+    }
 
-        list.update(List.of(new Item("a", 1), new Item("b", 2), new Item("a", 9)));
-        LiveList.Row<Item> a = list.rows().getFirst();
-        list.update(List.of(new Item("a", 3), new Item("b", 2)));
-        list.update(List.of(new Item("b", 2)));
+    private void givenTheListIsUpdatedWith(Item... items) {
+        this.list.update(List.of(items));
+    }
 
-        assertThat(a.get()).isEqualTo(new Item("a", 3));
-        assertThat(a.valueProperty().get()).isEqualTo(new Item("a", 3));
-        assertThat(list.size()).isEqualTo(1);
-        assertThat(list.rows().getFirst().get().key()).isEqualTo("b");
-        assertThat(changes).containsExactly("added", "added", "updated", "removed");
+    private void givenTheFirstRowIsKept() {
+        this.kept = this.list.rows().getFirst();
+    }
 
-        list.put(new Item("c", 4));
-        list.remove("b");
-        list.remove("nothing");
-        assertThat(list.rows()).extracting(r -> r.get().key()).containsExactly("c");
+    private void givenARowIsPut(Item item) {
+        this.list.put(item);
+    }
+
+    private void whenTheListIsUpdatedWith(Item... items) {
+        this.list.update(List.of(items));
+    }
+
+    private void whenTheRowsAreRemoved(String... keys) {
+        for (String key : keys) {
+            this.list.remove(key);
+        }
+    }
+
+    private void thenTheKeptRowHolds(Item item) {
+        assertThat(this.kept.get()).isEqualTo(item);
+        assertThat(this.kept.valueProperty().get()).isEqualTo(item);
+    }
+
+    private void thenTheListHasOneRowWithKey(String key) {
+        assertThat(this.list.size()).isEqualTo(1);
+        assertThat(this.list.rows().getFirst().get().key()).isEqualTo(key);
+    }
+
+    private void thenTheChangesAre(String... changes) {
+        assertThat(this.changes).containsExactly(changes);
+    }
+
+    private void thenTheRowKeysAre(String... keys) {
+        assertThat(this.list.rows()).extracting(r -> r.get().key()).containsExactly(keys);
     }
 }

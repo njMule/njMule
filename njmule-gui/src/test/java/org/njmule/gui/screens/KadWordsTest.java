@@ -56,51 +56,72 @@ class KadWordsTest {
     }
 
     @Test
-    void kadOffSaysHowToStartItAndOpensTheWaysIn() throws Exception {
-        givenTheKadScreen();
+    void shouldSayHowToStartKadWhileItIsOffAndOpenTheWaysIn() throws Exception {
+        whenTheKadScreenShows();
+
         thenKadSays("Kad is off. It finds sources and files without servers: connect to start it.");
         thenTheWaysInAreOpen(true);
     }
 
     @Test
-    void kadOnClosesTheWaysInAndSaysOthersReachUs() throws Exception {
+    void shouldCloseTheWaysInAndSayOthersReachUsOnceKadIsOn() throws Exception {
         givenTheKadScreen();
+
         whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
+
         thenKadSays("Kad is on, and other nodes can reach you.");
         thenTheToneIs("success");
         thenTheWaysInAreOpen(false);
     }
 
     @Test
-    void kadBehindAFirewallNamesThePortToOpen() throws Exception {
+    void shouldNameThePortToOpenWhenKadIsBehindAFirewall() throws Exception {
         givenTheKadScreen();
+
         whenKadIs(Statuses.kad(true, true, "192.0.2.7"));
+
         thenKadSays("Kad is on, but other nodes cannot reach you on port 4662: open it in your router, or turn"
                 + " on UPnP in the options.");
         thenTheToneIs("warning");
     }
 
     @Test
-    void theWaysInStayAsTheUserLeftThemUntilKadConnectsOrStops() throws Exception {
+    void shouldKeepTheWaysInAsTheUserLeftThemUntilKadConnectsOrStops() throws Exception {
         givenTheKadScreen();
-        whenKadIs(new KadInfo(false, 3, 0, false, "", "", 4672));
-        thenKadSays("Kad is looking for the nodes it knows. If it finds none, give it some below.");
-        whenTheUserClosesTheWaysIn();
-        whenKadIs(new KadInfo(false, 5, 1, false, "", "", 4672));
-        thenTheWaysInAreOpen(false);
-        whenKadIs(Statuses.kad(true, false, "192.0.2.7"));
+        givenKadIs(new KadInfo(false, 3, 0, false, "", "", 4672));
+        givenKadSays("Kad is looking for the nodes it knows. If it finds none, give it some below.");
+        givenTheUserClosedTheWaysIn();
+        givenKadIs(new KadInfo(false, 5, 1, false, "", "", 4672));
+        givenTheWaysInAreOpen(false);
+        givenKadIs(Statuses.kad(true, false, "192.0.2.7"));
+
         whenKadStops();
+
         thenTheWaysInAreOpen(true);
     }
 
     private void givenTheKadScreen() throws Exception {
-        this.test = TestGui.start(
-                this.dir.resolve("njmule"),
-                real -> Engines.overriding(
-                        real, Map.of("status", args -> CompletableFuture.completedFuture(this.status.get()))));
-        this.screen = FxTesting.onFx(() -> new KadScreen(this.test.gui));
-        this.test.show(FxTesting.onFx(this.screen::view));
-        status(this.status.get());
+        showTheKadScreen();
+    }
+
+    private void givenKadIs(KadInfo kad) throws Exception {
+        status(Statuses.kadOnly(Optional.of(kad), PORT));
+    }
+
+    private void givenKadSays(String words) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.sayLabel().getText())).isEqualTo(words);
+    }
+
+    private void givenTheUserClosedTheWaysIn() throws Exception {
+        FxTesting.onFx(() -> this.screen.joinPane().setExpanded(false));
+    }
+
+    private void givenTheWaysInAreOpen(boolean open) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.joinPane().isExpanded())).isEqualTo(open);
+    }
+
+    private void whenTheKadScreenShows() throws Exception {
+        showTheKadScreen();
     }
 
     private void whenKadIs(KadInfo kad) throws Exception {
@@ -109,10 +130,6 @@ class KadWordsTest {
 
     private void whenKadStops() throws Exception {
         status(Statuses.kadOnly(Optional.empty(), PORT));
-    }
-
-    private void whenTheUserClosesTheWaysIn() throws Exception {
-        FxTesting.onFx(() -> this.screen.joinPane().setExpanded(false));
     }
 
     private void thenKadSays(String words) throws Exception {
@@ -125,6 +142,16 @@ class KadWordsTest {
 
     private void thenTheWaysInAreOpen(boolean open) throws Exception {
         assertThat(FxTesting.onFx(() -> this.screen.joinPane().isExpanded())).isEqualTo(open);
+    }
+
+    private void showTheKadScreen() throws Exception {
+        this.test = TestGui.start(
+                this.dir.resolve("njmule"),
+                real -> Engines.overriding(
+                        real, Map.of("status", args -> CompletableFuture.completedFuture(this.status.get()))));
+        this.screen = FxTesting.onFx(() -> new KadScreen(this.test.gui));
+        this.test.show(FxTesting.onFx(this.screen::view));
+        status(this.status.get());
     }
 
     private void status(EngineStatus next) throws Exception {

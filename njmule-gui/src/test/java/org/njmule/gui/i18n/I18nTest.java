@@ -30,6 +30,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class I18nTest {
 
@@ -61,64 +63,166 @@ class I18nTest {
             "nj.proxy.socks",
             "nj.proxy.http");
 
-    @Test
-    void englishAndItalianTextsLoad() {
-        I18n english = I18n.of(Locale.ENGLISH);
-        I18n italian = I18n.of(Locale.ITALIAN);
+    private I18n texts;
+    private String text;
+    private boolean has;
+    private final Set<String> used = new TreeSet<>(DYNAMIC);
+    private final List<String> missing = new ArrayList<>();
 
-        assertThat(english.t("IDS_DL_FILENAME")).isEqualTo("File Name");
-        assertThat(italian.t("IDS_DL_FILENAME")).isEqualTo("Nome file");
-        assertThat(english.t("nj.top.tools")).isEqualTo("Tools");
-        assertThat(italian.t("nj.top.tools")).isEqualTo("Strumenti");
-        // Not translated in Italian: English stands in.
-        assertThat(italian.t("IDS_KADEMLIA")).isEqualTo("Kad");
+    @ParameterizedTest
+    @CsvSource({
+        "en, IDS_DL_FILENAME, File Name",
+        "it, IDS_DL_FILENAME, Nome file",
+        "en, nj.top.tools, Tools",
+        "it, nj.top.tools, Strumenti"
+    })
+    void shouldLoadTheEnglishAndItalianTexts(String language, String key, String text) {
+        givenTheTextsIn(Locale.forLanguageTag(language));
+
+        whenTheTextIsLookedUp(key);
+
+        thenItReads(text);
+    }
+
+    // Not translated in Italian: English stands in.
+    @Test
+    void shouldLetEnglishStandInForATextNotTranslatedInItalian() {
+        givenTheTextsIn(Locale.ITALIAN);
+
+        whenTheTextIsLookedUp("IDS_KADEMLIA");
+
+        thenItReads("Kad");
     }
 
     @Test
-    void placeholdersAndUnknownKeys() {
-        I18n english = I18n.of(Locale.ENGLISH);
+    void shouldFillThePlaceholders() {
+        givenTheTextsIn(Locale.ENGLISH);
 
-        assertThat(english.f("IDS_SHAREDFILESCOUNT", 12)).isEqualTo("Number of Shared Files: 12");
-        assertThat(english.f("IDS_SHAREDFILESCOUNT", "not a number")).contains("%d");
-        assertThat(english.t("nj.no.such.key")).isEqualTo("[nj.no.such.key]");
-        assertThat(english.has("IDS_DL_FILENAME")).isTrue();
-        assertThat(english.has("IDS_NO_SUCH")).isFalse();
+        whenTheTextIsFormattedWith("IDS_SHAREDFILESCOUNT", 12);
+
+        thenItReads("Number of Shared Files: 12");
     }
 
     @Test
-    void everyKeyTheSourcesUseHasAText() throws IOException {
-        Set<String> used = new TreeSet<>(DYNAMIC);
+    void shouldKeepThePlaceholderOfAnArgumentThatDoesNotFit() {
+        givenTheTextsIn(Locale.ENGLISH);
+
+        whenTheTextIsFormattedWith("IDS_SHAREDFILESCOUNT", "not a number");
+
+        thenItContains("%d");
+    }
+
+    @Test
+    void shouldShowAnUnknownKeyInBrackets() {
+        givenTheTextsIn(Locale.ENGLISH);
+
+        whenTheTextIsLookedUp("nj.no.such.key");
+
+        thenItReads("[nj.no.such.key]");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"IDS_DL_FILENAME, true", "IDS_NO_SUCH, false"})
+    void shouldTellWhetherAKeyHasAText(String key, boolean has) {
+        givenTheTextsIn(Locale.ENGLISH);
+
+        whenAskedWhetherThereIsATextFor(key);
+
+        thenThereIsAText(has);
+    }
+
+    @Test
+    void shouldHaveATextForEveryKeyTheSourcesUse() throws IOException {
+        givenTheKeysTheSourcesUse();
+
+        whenTheKeysAreLookedUpInEveryLanguage();
+
+        thenTheKeysUsedAreMoreThan(100);
+        thenNoTextIsMissing();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "it, IDS_PW_CON_UPLBL, Upload",
+        "it, IDS_CD_DOWN, 'Download (sessione):'",
+        "en, IDS_CD_DOWN, 'Downloaded (this session):'"
+    })
+    void shouldKeepUploadAndDownloadInItalian(String language, String key, String text) {
+        givenTheTextsIn(Locale.forLanguageTag(language));
+
+        whenTheTextIsLookedUp(key);
+
+        thenItReads(text);
+    }
+
+    @Test
+    void shouldKeepTheItalianTranslationOfTheOtherTexts() {
+        givenTheTextsIn(Locale.ITALIAN);
+
+        whenTheTextIsLookedUp("IDS_DL_FILENAME");
+
+        thenItReadsTheEmuleTranslation("Nome file");
+    }
+
+    private void givenTheTextsIn(Locale language) {
+        this.texts = I18n.of(language);
+    }
+
+    private void givenTheKeysTheSourcesUse() throws IOException {
         try (Stream<Path> files = Files.walk(SOURCES)) {
             for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
                 Matcher m = KEY.matcher(Files.readString(file));
                 while (m.find()) {
-                    used.add(m.group(1));
+                    this.used.add(m.group(1));
                 }
             }
         }
-        List<String> missing = new ArrayList<>();
-        for (Locale language : I18n.LANGUAGES) {
-            I18n texts = I18n.of(language);
-            for (String key : used) {
-                if (!texts.has(key)) {
-                    missing.add(language + ":" + key);
-                }
-            }
-        }
-        assertThat(used).hasSizeGreaterThan(100);
-        assertThat(missing).isEmpty();
     }
 
-    @Test
-    void italianKeepsUploadAndDownload() {
-        I18n english = I18n.of(Locale.ENGLISH);
-        I18n italian = I18n.of(Locale.ITALIAN);
+    private void whenTheTextIsLookedUp(String key) {
+        this.text = this.texts.t(key);
+    }
 
-        assertThat(italian.t("IDS_PW_CON_UPLBL")).isEqualTo("Upload");
-        assertThat(italian.t("IDS_CD_DOWN")).isEqualTo("Download (sessione):");
-        assertThat(english.t("IDS_CD_DOWN")).isEqualTo("Downloaded (this session):");
-        assertThat(italian.t("IDS_DL_FILENAME"))
-                .as("eMule's translation elsewhere")
-                .isEqualTo("Nome file");
+    private void whenTheTextIsFormattedWith(String key, Object argument) {
+        this.text = this.texts.f(key, argument);
+    }
+
+    private void whenAskedWhetherThereIsATextFor(String key) {
+        this.has = this.texts.has(key);
+    }
+
+    private void whenTheKeysAreLookedUpInEveryLanguage() {
+        for (Locale language : I18n.LANGUAGES) {
+            I18n inLanguage = I18n.of(language);
+            for (String key : this.used) {
+                if (!inLanguage.has(key)) {
+                    this.missing.add(language + ":" + key);
+                }
+            }
+        }
+    }
+
+    private void thenItReads(String text) {
+        assertThat(this.text).isEqualTo(text);
+    }
+
+    private void thenItReadsTheEmuleTranslation(String text) {
+        assertThat(this.text).as("eMule's translation elsewhere").isEqualTo(text);
+    }
+
+    private void thenItContains(String part) {
+        assertThat(this.text).contains(part);
+    }
+
+    private void thenThereIsAText(boolean has) {
+        assertThat(this.has).isEqualTo(has);
+    }
+
+    private void thenTheKeysUsedAreMoreThan(int count) {
+        assertThat(this.used).hasSizeGreaterThan(count);
+    }
+
+    private void thenNoTextIsMissing() {
+        assertThat(this.missing).isEmpty();
     }
 }

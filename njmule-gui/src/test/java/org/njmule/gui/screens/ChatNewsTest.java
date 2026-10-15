@@ -49,14 +49,16 @@ class ChatNewsTest {
     }
 
     @Test
-    void aConversationWithNewsIsMarkedUntilLookedAt() throws Exception {
+    void shouldMarkAConversationWithNewsUntilLookedAt() throws Exception {
         givenTheMessages();
-        whenAMessageComesFrom("Ann", "10.0.0.1:4662");
-        whenAMessageComesFrom("Bob", "10.0.0.2:4662");
-        whenAMessageComesFrom("Ann", "10.0.0.1:4662");
-        thenTheConversationIsMarked("Ann", true);
-        thenTheConversationIsMarked("Bob", false);
+        givenAMessageFrom("Ann", "10.0.0.1:4662");
+        givenAMessageFrom("Bob", "10.0.0.2:4662");
+        givenAMessageFrom("Ann", "10.0.0.1:4662");
+        givenTheConversationIsMarked("Ann", true);
+        givenTheConversationIsMarked("Bob", false);
+
         whenTheConversationIsChosen("Ann");
+
         thenTheConversationIsMarked("Ann", false);
     }
 
@@ -66,9 +68,13 @@ class ChatNewsTest {
         this.test.show(FxTesting.onFx(this.screen::view));
     }
 
-    private void whenAMessageComesFrom(String nick, String address) throws Exception {
+    private void givenAMessageFrom(String nick, String address) throws Exception {
         FxTesting.onFx(() -> this.test.model.handle(
                 new EngineEvent.MessageReceived(address, PEER, Optional.of(nick), "hello from " + nick)));
+    }
+
+    private void givenTheConversationIsMarked(String nick, boolean marked) throws Exception {
+        assertThat(FxTesting.onFx(() -> MessagesScreen.isUnread(tab(nick)))).isEqualTo(marked);
     }
 
     private void whenTheConversationIsChosen(String nick) throws Exception {

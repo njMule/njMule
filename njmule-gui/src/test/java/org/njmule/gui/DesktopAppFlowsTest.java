@@ -65,7 +65,19 @@ class DesktopAppFlowsTest {
     Path dir;
 
     private DesktopApp app;
+    private boolean closed;
     private Stage stage;
+    private Path config;
+    private boolean delivered;
+    private boolean mayExit;
+    private TrayMenu menu;
+    private final List<Stage> trayOwners = new ArrayList<>();
+    private final AtomicBoolean minimised = new AtomicBoolean();
+    private final List<String> told = new CopyOnWriteArrayList<>();
+    private final AtomicReference<String> asked = new AtomicReference<>();
+    private ContextMenu windowMenu;
+    private Stage other;
+    private ServerSocket taken;
 
     @BeforeAll
     static void toolkit() throws Exception {
@@ -74,192 +86,138 @@ class DesktopAppFlowsTest {
 
     @AfterEach
     void close() throws Exception {
+        if (this.other != null) {
+            FxTesting.onFx(this.other::close);
+        }
         if (this.stage != null) {
             FxTesting.onFx(this.stage::close);
         }
-        if (this.app != null) {
+        if (this.app != null && !this.closed) {
             this.app.close();
         }
-    }
-
-    @Test
-    void linksOfTheCommandLineAndOfLaterStartsAreFollowed() throws Exception {
-        Path root = this.dir.resolve("njmule");
-        this.app = open(root, ENGLISH, FILE_LINK, "ed2k://|server|81.2.3.4|4661|/");
-        show(false);
-
-        FxTesting.await(
-                "the download and the server",
-                () -> messages()
-                        .containsAll(
-                                List.of("Download added: test file.bin", "81.2.3.4:4661 added to the server list")));
-        assertThat(this.app.engine().downloads().get(10, TimeUnit.SECONDS))
-                .extracting(DownloadInfo::name)
-                .containsExactly("test file.bin");
-
-        // A later start hands its links over.
-        Path config = DesktopApp.configDir(LaunchOptions.parse("--config-dir", root.toString()));
-        assertThat(config).isEqualTo(root.resolve("config"));
-        assertThat(LinkHandoff.deliver(
-                        config,
-                        List.of(
-                                "ed2k://|serverlist|http://127.0.0.1:9/server.met|/",
-                                "ed2k://|nodeslist|http://127.0.0.1:9/nodes.dat|/",
-                                "ed2k://|serverlist|http://bad host/server.met|/",
-                                "ed2k://|search|film|/")))
-                .isTrue();
-        FxTesting.await(
-                "the lists refused and the bad address",
-                () -> messages().stream()
-                                        .filter(m -> m.contains("local or private"))
-                                        .count()
-                                == 2
-                        && messages().stream().anyMatch(m -> m.contains("Illegal character")));
-        assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
-    }
-
-    @Test
-    void exitIsAskedFirstUnlessTheUserSaidNotTo() throws Exception {
-        this.app = open(this.dir.resolve("njmule"), ENGLISH);
-        show(false);
-
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
-            assertThat(this.app.mayExit(this.stage)).isFalse();
-            // The window's close button asks too.
-            FxTesting.answer(ButtonType.NO);
-            this.stage.fireEvent(new WindowEvent(this.stage, WindowEvent.WINDOW_CLOSE_REQUEST));
-        });
-        assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
-
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.YES, pane -> ((CheckBox) pane.lookup(".check-box")).setSelected(true));
-            assertThat(this.app.mayExit(this.stage)).isTrue();
-        });
-        assertThat(GuiSettings.load(this.dir.resolve("njmule").resolve("gui")).confirmExit())
-                .isFalse();
-        assertThat(FxTesting.onFx(() -> this.app.mayExit(this.stage)))
-                .as("not asked again")
-                .isTrue();
-    }
-
-    @Test
-    void theWebInterfaceStartsBesideTheWindowWhenItsPortIsFree() throws Exception {
-        Path first = this.dir.resolve("first");
-        new WebUiSettings(true, freePort(), false, "hash").save(first.resolve("config"));
-        DesktopApp served = open(first, ENGLISH);
-        try {
-            assertThat(served.webUi()).isPresent();
-        } finally {
-            served.close();
-        }
-
-        Path second = this.dir.resolve("second");
-        try (ServerSocket taken = new ServerSocket(0)) {
-            new WebUiSettings(true, taken.getLocalPort(), false, "hash").save(second.resolve("config"));
-            this.app = open(second, ENGLISH);
-            assertThat(this.app.webUi()).as("the port is taken").isEmpty();
+        if (this.taken != null) {
+            this.taken.close();
         }
     }
 
     @Test
-    void aWindowStartsMinimisedWhereItWasLeft() throws Exception {
-        this.app = open(
-                this.dir.resolve("njmule"),
-                ENGLISH
-                        + "window.startMinimized=true\nwindow.minimizeToTray=false\n"
-                        + "window.x=10\nwindow.y=20\nwindow.width=900\nwindow.height=700\n");
-        AtomicBoolean minimised = new AtomicBoolean();
-        FxTesting.onFx(() -> {
-            this.stage = new Stage();
-            // The headless platform keeps every window shown: what counts is that it was asked to minimise.
-            this.stage.iconifiedProperty().addListener((o, was, now) -> minimised.compareAndSet(false, now));
-            this.app.show(this.stage, false);
-        });
+    void shouldFollowTheLinksOfTheCommandLineAndOfLaterStarts() throws Exception {
+        givenAnAppWithLinks(FILE_LINK, "ed2k://|server|81.2.3.4|4661|/");
+        givenTheWindowShowed();
+        givenTheWindowTold("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
+        givenTheDownloadsOfTheEngineAre("test file.bin");
+        givenALaterStartFindsTheConfigDirectory();
 
-        assertThat(minimised).isTrue();
-        // The size grows only as far as the buttons need.
-        assertThat(FxTesting.onFx(() -> List.of(this.stage.getX(), this.stage.getY())))
-                .containsExactly(10.0, 20.0);
-        assertThat(FxTesting.onFx(this.stage::getWidth)).isGreaterThanOrEqualTo(900);
+        whenALaterStartHandsItsLinksOver(
+                "ed2k://|serverlist|http://127.0.0.1:9/server.met|/",
+                "ed2k://|nodeslist|http://127.0.0.1:9/nodes.dat|/",
+                "ed2k://|serverlist|http://bad host/server.met|/",
+                "ed2k://|search|film|/");
+
+        thenTheLinksWereDelivered();
+        thenTheWindowTellsTheListsRefusedAndTheBadAddress();
+        thenTheWindowStillShows();
     }
 
     @Test
-    void theTrayMenuOpensTheOptionsAndAsksBeforeExiting() throws Exception {
-        this.app = open(this.dir.resolve("njmule"), ENGLISH);
-        show(true);
-        TrayMenu menu = FxTesting.onFx(this.app::trayMenu);
-        assertThat(menu).isNotNull();
+    void shouldAskBeforeExitingUnlessTheUserSaidNotTo() throws Exception {
+        givenAnAppWithoutLinks();
+        givenTheWindowShowed();
+        givenTheUserRefusedToExit();
+        givenTheUserRefusedToCloseTheWindow();
+        givenTheWindowStillShows();
+        givenTheUserExitedSayingNotToAskAgain();
+        givenTheSettingsNoLongerConfirmExit();
 
-        press(menu, "Options");
-        assertThat(FxTesting.onFx(() -> this.app.window().current())).isEqualTo("settings");
-        press(menu, "Restore");
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
-            pressNow(menu, "Exit");
-        });
-        assertThat(this.app.engine().isRunning()).isTrue();
-        assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
+        whenTheAppIsAskedToExit();
 
-        Stage trayBefore = FxTesting.onFx(this.app::trayOwner);
-        FxTesting.onFx(this.app::relaunch);
-        assertThat(FxTesting.onFx(this.app::trayMenu)).isNotSameAs(menu);
-        Stage trayAfter = FxTesting.onFx(this.app::trayOwner);
-        FxTesting.onFx(this.stage::close);
-        // Only this app's windows: those an earlier test left open in the same JVM are not its own.
-        List<Window> owners = List.of(this.stage, trayBefore, trayAfter);
-        assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
-                        .filter(Window::isShowing)
-                        .filter(w -> w instanceof Stage s && owners.contains(s.getOwner()))
-                        .toList()))
-                .as("the tray's windows went with the main one")
-                .isEmpty();
+        thenTheAppMayExitWithoutAsking();
     }
 
     @Test
-    void aCopiedLinkIsDownloadedOnceTheUserSaysSo() throws Exception {
-        this.app = open(this.dir.resolve("njmule"), ENGLISH + "links.watchClipboard=true\n");
-        show(false);
-        List<String> told = new CopyOnWriteArrayList<>();
-        FxTesting.onFx(() -> this.app.window().whileHidden(told::add));
-        // The watch first notes what the clipboard held before: it looks once a second, as the window's timer
-        // that adds a rate each time, which started just before it.
-        FxTesting.await("two ticks", () -> this.app.model().rates().size() >= 3);
-        List<String> links = IntStream.rangeClosed(1, 11)
-                .mapToObj(i -> "ed2k://|file|part" + i + ".bin|1000|" + "%032X".formatted(i) + "|/")
-                .toList();
-        AtomicReference<String> asked = new AtomicReference<>();
-        FxTesting.answerLater(ButtonType.YES, pane -> asked.set(pane.getContentText()));
-        FxTesting.onFx(() -> {
-            ClipboardContent content = new ClipboardContent();
-            content.putString(String.join("\n", links));
-            Clipboard.getSystemClipboard().setContent(content);
-        });
+    void shouldStartTheWebInterfaceBesideTheWindowWhenItsPortIsFree() throws Exception {
+        givenTheWebInterfaceOnAFreePort();
 
-        FxTesting.await("the downloads", () -> this.app.model().downloads().size() == 11);
-        assertThat(told).contains("Download added: part1.bin", "Download added: part11.bin");
-        assertThat(asked.get()).startsWith("part1.bin\npart2.bin").endsWith("part10.bin\n…");
+        whenTheAppOpens();
+
+        thenTheWebInterfaceRuns();
     }
 
     @Test
-    void closingTheWindowClosesItsOwnWindowsOnly() throws Exception {
-        this.app = open(this.dir.resolve("njmule"), ENGLISH);
-        show(false);
-        AtomicReference<ContextMenu> menu = new AtomicReference<>();
-        AtomicReference<Stage> other = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            menu.set(new ContextMenu(new MenuItem("item")));
-            menu.get().show(this.stage);
-            other.set(new Stage());
-            other.get().show();
-            this.stage.close();
-        });
-        try {
-            assertThat(FxTesting.onFx(menu.get()::isShowing)).isFalse();
-            assertThat(FxTesting.onFx(other.get()::isShowing)).as("not ours").isTrue();
-        } finally {
-            FxTesting.onFx(other.get()::close);
-        }
+    void shouldNotStartTheWebInterfaceWhenItsPortIsTaken() throws Exception {
+        givenTheWebInterfaceOnATakenPort();
+
+        whenTheAppOpens();
+
+        thenTheWebInterfaceDidNotStartAsThePortIsTaken();
+    }
+
+    @Test
+    void shouldStartAWindowMinimisedWhereItWasLeft() throws Exception {
+        givenAnAppWithTheInterfaceSettings("""
+                window.startMinimized=true
+                window.minimizeToTray=false
+                window.x=10
+                window.y=20
+                window.width=900
+                window.height=700
+                """);
+        givenAWindowWhoseMinimisingIsWatched();
+
+        whenTheAppShowsTheWindow();
+
+        thenTheWindowWasAskedToMinimise();
+        thenTheWindowIsAt(10.0, 20.0);
+        thenTheWindowIsAtLeastWide(900);
+    }
+
+    @Test
+    void shouldOpenTheOptionsAndAskBeforeExitingFromTheTrayMenuThenCloseItsWindows() throws Exception {
+        givenAnAppWithoutLinks();
+        givenTheWindowShowedWithTheTray();
+        givenTheTrayMenu();
+        givenTheTrayItemPressed("Options");
+        givenTheCurrentScreenIs("settings");
+        givenTheTrayItemPressed("Restore");
+        givenTheUserRefusedToExitFromTheTray();
+        givenTheEngineRuns();
+        givenTheWindowStillShows();
+        givenTheTrayOwnerNoted();
+        givenTheAppRelaunched();
+        givenTheTrayMenuWasReplaced();
+        givenTheTrayOwnerNoted();
+
+        whenTheWindowCloses();
+
+        thenTheTraysWindowsWentWithTheMainOne();
+    }
+
+    @Test
+    void shouldDownloadACopiedLinkOnceTheUserSaysSo() throws Exception {
+        givenAnAppWithTheInterfaceSettings("links.watchClipboard=true\n");
+        givenTheWindowShowed();
+        givenWhatTheWindowTellsWhileHiddenIsNoted();
+        givenTheClipboardWatchStarted();
+        givenTheUserWillSayYes();
+
+        whenLinksAreCopied(11);
+
+        thenTheModelHasDownloads(11);
+        thenTheUserWasToldWhileHidden("Download added: part1.bin", "Download added: part11.bin");
+        thenTheQuestionListedTheFiles("part1.bin\npart2.bin", "part10.bin\n…");
+    }
+
+    @Test
+    void shouldCloseOnlyItsOwnWindowsWhenTheWindowCloses() throws Exception {
+        givenAnAppWithoutLinks();
+        givenTheWindowShowed();
+        givenAMenuOfTheWindowShows();
+        givenAnotherWindowShows();
+
+        whenTheWindowCloses();
+
+        thenTheMenuOfTheWindowIsClosed();
+        thenTheOtherWindowStillShows();
     }
 
     @Test
@@ -273,8 +231,30 @@ class DesktopAppFlowsTest {
         thenTheWindowTells("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
     }
 
+    @Test
+    void shouldCloseAnAppNeverShownToo() throws Exception {
+        givenAnAppWithoutInterfaceSettings();
+
+        whenTheAppCloses();
+
+        thenTheEngineIsStopped();
+        thenTheAppHasNoWebInterface();
+    }
+
     private void givenAnAppWithoutLinks() throws Exception {
         this.app = open(this.dir.resolve("njmule"), ENGLISH);
+    }
+
+    private void givenAnAppWithLinks(String... links) throws Exception {
+        this.app = open(this.dir.resolve("njmule"), ENGLISH, links);
+    }
+
+    private void givenAnAppWithTheInterfaceSettings(String gui) throws Exception {
+        this.app = open(this.dir.resolve("njmule"), ENGLISH + gui);
+    }
+
+    private void givenAnAppWithoutInterfaceSettings() throws Exception {
+        this.app = open(this.dir.resolve("njmule"), null);
     }
 
     private void givenMacOsOpened(String link) {
@@ -285,20 +265,266 @@ class DesktopAppFlowsTest {
         show(false);
     }
 
+    private void givenTheWindowShowedWithTheTray() throws Exception {
+        show(true);
+    }
+
+    private void givenTheWindowTold(String... messages) throws Exception {
+        FxTesting.await("the messages", () -> messages().containsAll(List.of(messages)));
+    }
+
+    private void givenTheDownloadsOfTheEngineAre(String... names) throws Exception {
+        assertThat(this.app.engine().downloads().get(10, TimeUnit.SECONDS))
+                .extracting(DownloadInfo::name)
+                .containsExactly(names);
+    }
+
+    private void givenALaterStartFindsTheConfigDirectory() throws Exception {
+        Path root = this.dir.resolve("njmule");
+        this.config = DesktopApp.configDir(LaunchOptions.parse("--config-dir", root.toString()));
+        assertThat(this.config).isEqualTo(root.resolve("config"));
+    }
+
+    private void givenTheUserRefusedToExit() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.NO);
+            assertThat(this.app.mayExit(this.stage)).isFalse();
+        });
+    }
+
+    // The window's close button asks too.
+    private void givenTheUserRefusedToCloseTheWindow() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.NO);
+            this.stage.fireEvent(new WindowEvent(this.stage, WindowEvent.WINDOW_CLOSE_REQUEST));
+        });
+    }
+
+    private void givenTheWindowStillShows() throws Exception {
+        assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
+    }
+
+    private void givenTheUserExitedSayingNotToAskAgain() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.YES, pane -> ((CheckBox) pane.lookup(".check-box")).setSelected(true));
+            assertThat(this.app.mayExit(this.stage)).isTrue();
+        });
+    }
+
+    private void givenTheSettingsNoLongerConfirmExit() {
+        assertThat(GuiSettings.load(this.dir.resolve("njmule").resolve("gui")).confirmExit())
+                .isFalse();
+    }
+
+    private void givenTheWebInterfaceOnAFreePort() throws Exception {
+        new WebUiSettings(true, freePort(), false, "hash")
+                .save(this.dir.resolve("njmule").resolve("config"));
+    }
+
+    private void givenTheWebInterfaceOnATakenPort() throws Exception {
+        this.taken = new ServerSocket(0);
+        new WebUiSettings(true, this.taken.getLocalPort(), false, "hash")
+                .save(this.dir.resolve("njmule").resolve("config"));
+    }
+
+    // The headless platform keeps every window shown: what counts is that it was asked to minimise.
+    private void givenAWindowWhoseMinimisingIsWatched() throws Exception {
+        FxTesting.onFx(() -> {
+            this.stage = new Stage();
+            this.stage.iconifiedProperty().addListener((o, was, now) -> this.minimised.compareAndSet(false, now));
+        });
+    }
+
+    private void givenTheTrayMenu() throws Exception {
+        this.menu = FxTesting.onFx(this.app::trayMenu);
+        assertThat(this.menu).isNotNull();
+    }
+
+    private void givenTheTrayItemPressed(String item) throws Exception {
+        press(this.menu, item);
+    }
+
+    private void givenTheCurrentScreenIs(String screen) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.app.window().current())).isEqualTo(screen);
+    }
+
+    private void givenTheUserRefusedToExitFromTheTray() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.NO);
+            pressNow(this.menu, "Exit");
+        });
+    }
+
+    private void givenTheEngineRuns() {
+        assertThat(this.app.engine().isRunning()).isTrue();
+    }
+
+    private void givenTheTrayOwnerNoted() throws Exception {
+        this.trayOwners.add(FxTesting.onFx(this.app::trayOwner));
+    }
+
+    private void givenTheAppRelaunched() throws Exception {
+        FxTesting.onFx(this.app::relaunch);
+    }
+
+    private void givenTheTrayMenuWasReplaced() throws Exception {
+        assertThat(FxTesting.onFx(this.app::trayMenu)).isNotSameAs(this.menu);
+    }
+
+    private void givenWhatTheWindowTellsWhileHiddenIsNoted() throws Exception {
+        FxTesting.onFx(() -> this.app.window().whileHidden(this.told::add));
+    }
+
+    // The watch first notes what the clipboard held before: it looks once a second, as the window's timer
+    // that adds a rate each time, which started just before it.
+    private void givenTheClipboardWatchStarted() throws Exception {
+        FxTesting.await("two ticks", () -> this.app.model().rates().size() >= 3);
+    }
+
+    private void givenTheUserWillSayYes() {
+        FxTesting.answerLater(ButtonType.YES, pane -> this.asked.set(pane.getContentText()));
+    }
+
+    private void givenAMenuOfTheWindowShows() throws Exception {
+        FxTesting.onFx(() -> {
+            this.windowMenu = new ContextMenu(new MenuItem("item"));
+            this.windowMenu.show(this.stage);
+        });
+    }
+
+    private void givenAnotherWindowShows() throws Exception {
+        FxTesting.onFx(() -> {
+            this.other = new Stage();
+            this.other.show();
+        });
+    }
+
+    private void whenALaterStartHandsItsLinksOver(String... links) throws Exception {
+        this.delivered = LinkHandoff.deliver(this.config, List.of(links));
+    }
+
+    private void whenTheAppIsAskedToExit() throws Exception {
+        this.mayExit = FxTesting.onFx(() -> this.app.mayExit(this.stage));
+    }
+
+    private void whenTheAppOpens() throws Exception {
+        this.app = open(this.dir.resolve("njmule"), ENGLISH);
+    }
+
+    private void whenTheAppShowsTheWindow() throws Exception {
+        FxTesting.onFx(() -> this.app.show(this.stage, false));
+    }
+
+    private void whenTheWindowCloses() throws Exception {
+        FxTesting.onFx(this.stage::close);
+    }
+
+    private void whenLinksAreCopied(int count) throws Exception {
+        List<String> links = IntStream.rangeClosed(1, count)
+                .mapToObj(i -> "ed2k://|file|part" + i + ".bin|1000|" + "%032X".formatted(i) + "|/")
+                .toList();
+        FxTesting.onFx(() -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(String.join("\n", links));
+            Clipboard.getSystemClipboard().setContent(content);
+        });
+    }
+
     private void whenMacOsOpens(String link) {
         MacLinks.SYSTEM.offer(link);
+    }
+
+    private void whenTheAppCloses() {
+        this.closed = true;
+        this.app.close();
+    }
+
+    private void thenTheLinksWereDelivered() {
+        assertThat(this.delivered).isTrue();
+    }
+
+    private void thenTheWindowTellsTheListsRefusedAndTheBadAddress() throws Exception {
+        FxTesting.await(
+                "the lists refused and the bad address",
+                () -> messages().stream()
+                                        .filter(m -> m.contains("local or private"))
+                                        .count()
+                                == 2
+                        && messages().stream().anyMatch(m -> m.contains("Illegal character")));
+    }
+
+    private void thenTheWindowStillShows() throws Exception {
+        assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
+    }
+
+    private void thenTheAppMayExitWithoutAsking() {
+        assertThat(this.mayExit).as("not asked again").isTrue();
+    }
+
+    private void thenTheWebInterfaceRuns() {
+        assertThat(this.app.webUi()).isPresent();
+    }
+
+    private void thenTheWebInterfaceDidNotStartAsThePortIsTaken() {
+        assertThat(this.app.webUi()).as("the port is taken").isEmpty();
+    }
+
+    private void thenTheWindowWasAskedToMinimise() {
+        assertThat(this.minimised).isTrue();
+    }
+
+    private void thenTheWindowIsAt(double x, double y) throws Exception {
+        assertThat(FxTesting.onFx(() -> List.of(this.stage.getX(), this.stage.getY())))
+                .containsExactly(x, y);
+    }
+
+    // The size grows only as far as the buttons need.
+    private void thenTheWindowIsAtLeastWide(double width) throws Exception {
+        assertThat(FxTesting.onFx(this.stage::getWidth)).isGreaterThanOrEqualTo(width);
+    }
+
+    // Only this app's windows: those an earlier test left open in the same JVM are not its own.
+    private void thenTheTraysWindowsWentWithTheMainOne() throws Exception {
+        List<Window> owners = new ArrayList<>(this.trayOwners);
+        owners.add(this.stage);
+        assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
+                        .filter(Window::isShowing)
+                        .filter(w -> w instanceof Stage s && owners.contains(s.getOwner()))
+                        .toList()))
+                .as("the tray's windows went with the main one")
+                .isEmpty();
+    }
+
+    private void thenTheModelHasDownloads(int count) throws Exception {
+        FxTesting.await("the downloads", () -> this.app.model().downloads().size() == count);
+    }
+
+    private void thenTheUserWasToldWhileHidden(String... messages) {
+        assertThat(this.told).contains(messages);
+    }
+
+    private void thenTheQuestionListedTheFiles(String first, String last) {
+        assertThat(this.asked.get()).startsWith(first).endsWith(last);
+    }
+
+    private void thenTheMenuOfTheWindowIsClosed() throws Exception {
+        assertThat(FxTesting.onFx(this.windowMenu::isShowing)).isFalse();
+    }
+
+    private void thenTheOtherWindowStillShows() throws Exception {
+        assertThat(FxTesting.onFx(this.other::isShowing)).as("not ours").isTrue();
     }
 
     private void thenTheWindowTells(String... messages) throws Exception {
         FxTesting.await("the messages", () -> messages().containsAll(List.of(messages)));
     }
 
-    @Test
-    void anAppNeverShownClosesToo() throws Exception {
-        DesktopApp unseen = open(this.dir.resolve("njmule"), null);
-        unseen.close();
-        assertThat(unseen.engine().isRunning()).isFalse();
-        assertThat(unseen.webUi()).isEmpty();
+    private void thenTheEngineIsStopped() {
+        assertThat(this.app.engine().isRunning()).isFalse();
+    }
+
+    private void thenTheAppHasNoWebInterface() {
+        assertThat(this.app.webUi()).isEmpty();
     }
 
     // An app in its own folder, on free ports and without Kad, with these interface settings.

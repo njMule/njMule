@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.gui.i18n.I18n;
 
 /** Sizes and rates with the units of the interface's language. */
@@ -66,36 +70,49 @@ class FormatsUnitsTest {
         thenTheyRead("3.00 Mo", "1.0 KB/s");
     }
 
-    @Test
-    void shouldWriteFastRatesInMegabytesAndGigabytes() {
+    @ParameterizedTest
+    @MethodSource("fastRates")
+    void shouldWriteFastRatesInMegabytesAndGigabytes(long bytesPerSecond, String shown) {
         givenTheInterfaceIn(Locale.ENGLISH);
 
-        whenARateIsShown(1_355_000);
-        thenItReads("1.29 MB/s");
-        whenARateIsShown(100L << 20);
-        thenItReads("100.0 MB/s");
-        whenARateIsShown(1_181_116_006);
-        thenItReads("1.10 GB/s");
+        whenARateIsShown(bytesPerSecond);
+
+        thenItReads(shown);
     }
 
-    @Test
-    void shouldKeepKilobytesJustBelowAThousand() {
+    @ParameterizedTest
+    @MethodSource("ratesAroundAThousandKilobytes")
+    void shouldKeepKilobytesJustBelowAThousand(long bytesPerSecond, String shown) {
         givenTheInterfaceIn(Locale.ENGLISH);
 
-        whenARateIsShown(999 * 1024);
-        thenItReads("999.0 KB/s");
-        whenARateIsShown(1000 * 1024);
-        thenItReads("0.98 MB/s");
+        whenARateIsShown(bytesPerSecond);
+
+        thenItReads(shown);
     }
 
-    @Test
-    void shouldWriteFastRatesWithTheUnitsOfTheLanguage() {
+    @ParameterizedTest
+    @MethodSource("fastFrenchRates")
+    void shouldWriteFastRatesWithTheUnitsOfTheLanguage(long bytesPerSecond, String shown) {
         givenTheInterfaceIn(Locale.FRENCH);
 
-        whenARateIsShown(1_355_000);
-        thenItReads("1,29 Mo/s");
-        whenARateIsShown(1_181_116_006);
-        thenItReads("1,10 Go/s");
+        whenARateIsShown(bytesPerSecond);
+
+        thenItReads(shown);
+    }
+
+    static Stream<Arguments> fastRates() {
+        return Stream.of(
+                Arguments.of(1_355_000L, "1.29 MB/s"),
+                Arguments.of(100L << 20, "100.0 MB/s"),
+                Arguments.of(1_181_116_006L, "1.10 GB/s"));
+    }
+
+    static Stream<Arguments> ratesAroundAThousandKilobytes() {
+        return Stream.of(Arguments.of(999L * 1024, "999.0 KB/s"), Arguments.of(1000L * 1024, "0.98 MB/s"));
+    }
+
+    static Stream<Arguments> fastFrenchRates() {
+        return Stream.of(Arguments.of(1_355_000L, "1,29 Mo/s"), Arguments.of(1_181_116_006L, "1,10 Go/s"));
     }
 
     private void givenTheInterfaceIn(Locale language) {

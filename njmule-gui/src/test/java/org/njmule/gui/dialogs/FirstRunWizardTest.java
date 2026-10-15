@@ -42,6 +42,7 @@ class FirstRunWizardTest {
     private FirstRunWizard wizard;
     private Optional<Path> emule = Optional.empty();
     private final List<FirstRunWizard.Outcome> outcomes = new ArrayList<>();
+    private Path folder;
 
     @AfterEach
     void close() throws Exception {
@@ -54,95 +55,121 @@ class FirstRunWizardTest {
     }
 
     @Test
-    void finishAppliesTheAnswersOfEveryPage() throws Exception {
+    void shouldApplyTheAnswersOfEveryPageOnFinish() throws Exception {
         givenTheWizard();
-        whenTheNickIs("Tester");
-        whenNextIsPressed(3);
-        thenTheButtonReads("Finish");
+        givenTheNick("Tester");
+        givenNextPressed(3);
+        givenTheButtonReads("Finish");
+
         whenNextIsPressed(1);
+
         thenTheNickBecomes("Tester");
         thenTheOutcomeIs(new FirstRunWizard.Outcome(false, false));
     }
 
     @Test
-    void aNickThatIsNotRightHoldsNextBack() throws Exception {
+    void shouldHoldNextBackUntilTheNickIsRight() throws Exception {
         givenTheWizard();
-        whenNextIsPressed(1);
-        whenTheNickIs("");
-        thenNextIsOff(true);
+        givenNextPressed(1);
+        givenTheNick("");
+        givenNextIsOff(true);
+
         whenTheNickIs("Someone");
+
         thenNextIsOff(false);
     }
 
     @Test
-    void skippingChangesNothing() throws Exception {
+    void shouldChangeNothingWhenSkipped() throws Exception {
         givenTheWizard();
-        whenTheNickIs("Tester");
+        givenTheNick("Tester");
+
         whenTheWindowIsClosed();
+
         thenTheNickStays("njMule");
         thenThereIsNoOutcome();
     }
 
     @Test
-    void anEmuleOnThisComputerAddsItsPage() throws Exception {
+    void shouldAddThePageOfAnEmuleOnThisComputer() throws Exception {
         givenAnEmule();
-        givenTheWizard();
+
+        whenTheWizardShows();
+
         thenThePagesAre(5);
     }
 
     @Test
-    void thePortsAreThoseOfTheSettings() throws Exception {
+    void shouldShowThePortsOfTheSettings() throws Exception {
         givenAnEmule();
-        givenTheWizard();
-        thenThePortsAre(
-                this.test.engine.preferences().tcpPort(),
-                this.test.engine.preferences().udpPort());
+
+        whenTheWizardShows();
+
+        thenThePortsAreThoseOfTheSettings();
     }
 
     @Test
-    void aLineFillsTheCapacitiesOfTheLine() throws Exception {
+    void shouldFillTheCapacitiesOfTheLine() throws Exception {
         givenTheWizard();
+
         whenTheLineIs(1);
+
         thenTheCapacitiesAre("100", "20");
     }
 
     @Test
-    void theFoldersAddedAreSharedWithTheirSubfolders() throws Exception {
-        Path music = Files.createDirectories(this.dir.resolve("music"));
+    void shouldShareTheFoldersAddedWithTheirSubfolders() throws Exception {
+        givenAFolder("music");
         givenTheWizard();
-        whenTheFolderIsAdded(music);
+        givenTheFolderAdded();
+
         whenFinished();
-        thenTheSharedFoldersInclude(music);
+
+        thenTheFolderIsShared();
     }
 
     private void givenAnEmule() throws Exception {
         this.emule = Optional.of(Files.createDirectories(this.dir.resolve("emule-config")));
     }
 
+    private void givenAFolder(String name) throws Exception {
+        this.folder = Files.createDirectories(this.dir.resolve(name));
+    }
+
     private void givenTheWizard() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        StackPane window = new StackPane();
-        this.test.show(window);
-        this.wizard = FxTesting.onFx(() -> {
-            FirstRunWizard w = new FirstRunWizard(
-                    this.test.gui,
-                    window.getScene().getWindow(),
-                    this.test.engine.preferences(),
-                    this.emule,
-                    this.outcomes::add);
-            w.show();
-            return w;
-        });
+        showTheWizard();
+    }
+
+    private void givenTheNick(String nick) throws Exception {
+        typeTheNick(nick);
+    }
+
+    private void givenNextPressed(int times) throws Exception {
+        pressNext(times);
+    }
+
+    private void givenTheButtonReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.wizard.nextButton().getText())).isEqualTo(text);
+    }
+
+    private void givenNextIsOff(boolean off) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.wizard.nextButton().isDisabled())).isEqualTo(off);
+    }
+
+    private void givenTheFolderAdded() throws Exception {
+        FxTesting.onFx(() -> this.wizard.sharedList().getItems().add(this.folder));
+    }
+
+    private void whenTheWizardShows() throws Exception {
+        showTheWizard();
     }
 
     private void whenTheNickIs(String nick) throws Exception {
-        FxTesting.onFx(() -> this.wizard.nickField().setText(nick));
+        typeTheNick(nick);
     }
 
     private void whenNextIsPressed(int times) throws Exception {
-        for (int i = 0; i < times; i++) {
-            FxTesting.onFx(() -> this.wizard.nextButton().fire());
-        }
+        pressNext(times);
     }
 
     private void whenTheWindowIsClosed() throws Exception {
@@ -153,16 +180,8 @@ class FirstRunWizardTest {
         FxTesting.onFx(() -> this.wizard.lineBox().setValue(FirstRunWizard.LINES.get(index)));
     }
 
-    private void whenTheFolderIsAdded(Path folder) throws Exception {
-        FxTesting.onFx(() -> this.wizard.sharedList().getItems().add(folder));
-    }
-
     private void whenFinished() throws Exception {
         FxTesting.onFx(this.wizard::finish);
-    }
-
-    private void thenTheButtonReads(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.wizard.nextButton().getText())).isEqualTo(text);
     }
 
     private void thenNextIsOff(boolean off) throws Exception {
@@ -189,7 +208,9 @@ class FirstRunWizardTest {
         assertThat(FxTesting.onFx(this.wizard::pages)).isEqualTo(pages);
     }
 
-    private void thenThePortsAre(int tcp, int udp) throws Exception {
+    private void thenThePortsAreThoseOfTheSettings() throws Exception {
+        int tcp = this.test.engine.preferences().tcpPort();
+        int udp = this.test.engine.preferences().udpPort();
         assertThat(FxTesting.onFx(() -> this.wizard.tcpField().getText())).isEqualTo(Integer.toString(tcp));
         assertThat(FxTesting.onFx(() -> this.wizard.udpField().getText())).isEqualTo(Integer.toString(udp));
     }
@@ -200,11 +221,37 @@ class FirstRunWizardTest {
                 .containsExactly(down, up);
     }
 
-    private void thenTheSharedFoldersInclude(Path folder) throws Exception {
+    private void thenTheFolderIsShared() throws Exception {
         FxTesting.await(
                 "the shared folder",
                 () -> this.test.engine.sharedDirectories().join().stream()
                         .map(SharedDirectory::path)
-                        .anyMatch(folder::equals));
+                        .anyMatch(this.folder::equals));
+    }
+
+    private void showTheWizard() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        StackPane window = new StackPane();
+        this.test.show(window);
+        this.wizard = FxTesting.onFx(() -> {
+            FirstRunWizard w = new FirstRunWizard(
+                    this.test.gui,
+                    window.getScene().getWindow(),
+                    this.test.engine.preferences(),
+                    this.emule,
+                    this.outcomes::add);
+            w.show();
+            return w;
+        });
+    }
+
+    private void typeTheNick(String nick) throws Exception {
+        FxTesting.onFx(() -> this.wizard.nickField().setText(nick));
+    }
+
+    private void pressNext(int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            FxTesting.onFx(() -> this.wizard.nextButton().fire());
+        }
     }
 }

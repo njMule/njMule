@@ -21,10 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import javafx.scene.image.Image;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,13 @@ class MessagesScreenTest {
 
     private TestGui test;
     private NjMuleEngine bob;
+    private MessagesScreen screen;
+    private final BlockingQueue<EngineEvent> bobSees = new LinkedBlockingQueue<>();
+    private EngineEvent.MessageReceived got;
+    private MessagesScreen.ChatPane pane;
+    private Chats.Chat chat;
+    private byte[] bmp;
+    private Optional<Image> picture;
 
     @AfterEach
     void close() throws Exception {
@@ -58,113 +67,235 @@ class MessagesScreenTest {
     }
 
     @Test
-    void chatsWithAnotherClientAndKeepsItAsAFriend() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.bob = FxTesting.engine(this.dir.resolve("bob"));
-        BlockingQueue<EngineEvent> bobSees = new LinkedBlockingQueue<>();
-        this.bob.events().subscribe(new Collector(bobSees));
-        MessagesScreen screen = new MessagesScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
-        String bobAddress = "127.0.0.1:" + this.bob.preferences().tcpPort();
+    void shouldChatWithAnotherClientKeepItAsAFriendAndRefuseABadAddress() throws Exception {
+        givenTheMessages();
+        givenBob();
+        givenAChatStartedWithBob();
+        givenTheUserWrites("hello bob");
+        givenBobReceives("hello bob");
+        givenBobAnswers("hi there");
+        givenTheAnswerShows();
+        givenOneConversationNamedAfterBob();
+        givenBobBefriended();
+        givenBobChattedWithAndRemovedAsAFriend();
 
+        whenChatsAreStartedWithTheAddressAndNoFriendChosen("nowhere");
+
+        thenTheUserWasToldSomethingContaining("host:port: nowhere");
+    }
+
+    @Test
+    void shouldShowACaptchaSendItsSolutionAndCloseTheConversation() throws Exception {
+        givenTheMessages();
+        givenABmpPicture(80, 24);
+        givenAConversationWith("127.0.0.1:1");
+        givenTheCaptchaShows(false);
+        givenTheConversationBefriended();
+        givenACaptchaRequestedBy("127.0.0.1:1");
+        givenTheCaptchaShows(true);
+        givenTheSolutionSent("ABCD");
+        givenTheCaptchaShows(false);
+        givenTheFirstLineIs("ABCD");
+        givenTheUserWasToldSomethingStartingWith("Wait for an answer");
+        givenTheFailureIsNoted();
+
+        whenTheConversationIsClosed();
+
+        thenThereIsNoConversation();
+    }
+
+    @Test
+    void shouldShowNoPictureForBytesThatAreNoImage() {
+        whenThePictureIsRead(new byte[] {1, 2, 3});
+
+        thenThereIsNoPicture();
+    }
+
+    @Test
+    void shouldRefuseAChatToAnIpv6AddressAndCountNothingAsSent() throws Exception {
+        givenTheMessages();
+        givenAChatStartedWith("[2001:db8::1]:4661");
+        givenTheUserWasToldSomethingContaining("2001:db8::1");
+        givenThereIsNoConversation();
+
+        whenAMessageIsSentTo("2001:db8::1:4661", "hello");
+
+        thenNothingShowsAsSent();
+        thenTheUserWasToldSomethingContaining("2001:db8::1:4661");
+    }
+
+    private void givenTheMessages() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.screen = new MessagesScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(this.screen::view));
+    }
+
+    private void givenBob() throws Exception {
+        this.bob = FxTesting.engine(this.dir.resolve("bob"));
+        this.bob.events().subscribe(new Collector(this.bobSees));
+    }
+
+    private void givenAChatStartedWithBob() throws Exception {
+        startChat("127.0.0.1:" + this.bob.preferences().tcpPort());
+        this.pane = FxTesting.onFx(() -> (MessagesScreen.ChatPane)
+                this.screen.tabs().getTabs().getFirst().getContent());
+    }
+
+    private void givenAChatStartedWith(String address) throws Exception {
+        startChat(address);
+    }
+
+    private void givenTheUserWrites(String text) throws Exception {
         FxTesting.onFx(() -> {
-            screen.addressField().setText(bobAddress);
-            screen.startChat();
+            this.pane.inputField().setText(text);
+            this.pane.send();
         });
-        MessagesScreen.ChatPane pane = FxTesting.onFx(() ->
-                (MessagesScreen.ChatPane) screen.tabs().getTabs().getFirst().getContent());
-        FxTesting.onFx(() -> {
-            pane.inputField().setText("hello bob");
-            pane.send();
-        });
-        EngineEvent.MessageReceived got = null;
-        while (got == null) {
-            EngineEvent e = bobSees.poll(20, TimeUnit.SECONDS);
+    }
+
+    private void givenBobReceives(String text) throws Exception {
+        while (this.got == null) {
+            EngineEvent e = this.bobSees.poll(20, TimeUnit.SECONDS);
             assertThat(e).isNotNull();
             if (e instanceof EngineEvent.MessageReceived m) {
-                got = m;
+                this.got = m;
             }
         }
-        assertThat(got.text()).isEqualTo("hello bob");
+        assertThat(this.got.text()).isEqualTo(text);
+    }
 
-        this.bob.sendMessage(ServerAddress.parse(got.address()), "hi there").get(5, TimeUnit.SECONDS);
-        Chats.Chat chat = FxTesting.onFx(() -> this.test.model.chats().all().getFirst());
-        FxTesting.await("the answer", () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.THEM));
-        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().size())).isEqualTo(1);
-        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().getFirst().getText()))
+    private void givenBobAnswers(String text) throws Exception {
+        this.bob.sendMessage(ServerAddress.parse(this.got.address()), text).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheAnswerShows() throws Exception {
+        this.chat = FxTesting.onFx(() -> this.test.model.chats().all().getFirst());
+        FxTesting.await("the answer", () -> this.chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.THEM));
+    }
+
+    private void givenOneConversationNamedAfterBob() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().size())).isEqualTo(1);
+        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().getFirst().getText()))
                 .isEqualTo(this.bob.preferences().nick());
+    }
+
+    private void givenBobBefriended() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.snapshot(screen.view(), "messages-chat");
-            pane.befriend();
+            FxTesting.snapshot(this.screen.view(), "messages-chat");
+            this.pane.befriend();
             return null;
         });
-        FxTesting.await("a friend", () -> screen.friendsList().getItems().size() == 1);
-        FxTesting.onFx(() -> {
-            screen.friendsList().getSelectionModel().select(0);
-            screen.chatWithFriend();
-            screen.removeFriend();
-        });
-        FxTesting.await("no friend", () -> screen.friendsList().getItems().isEmpty());
-
-        FxTesting.onFx(() -> {
-            screen.addressField().setText("nowhere");
-            screen.startChat();
-            screen.chatWithFriend();
-        });
-        assertThat(this.test.told).anyMatch(m -> m.contains("host:port: nowhere"));
+        FxTesting.await("a friend", () -> this.screen.friendsList().getItems().size() == 1);
     }
 
-    @Test
-    void aCaptchaIsShownAndItsSolutionSent() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        MessagesScreen screen = new MessagesScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
-        BufferedImage picture = new BufferedImage(80, 24, BufferedImage.TYPE_INT_RGB);
-        ByteArrayOutputStream bmp = new ByteArrayOutputStream();
-        ImageIO.write(picture, "bmp", bmp);
-
-        Chats.Chat chat = FxTesting.onFx(() -> this.test.model.chats().with("127.0.0.1:1"));
-        MessagesScreen.ChatPane pane = FxTesting.onFx(() ->
-                (MessagesScreen.ChatPane) screen.tabs().getTabs().getFirst().getContent());
-        assertThat(FxTesting.onFx(pane::showsCaptcha)).isFalse();
-        // Who wrote is not known before the first packet from them.
-        FxTesting.onFx(pane::befriend);
-        FxTesting.onFx(() -> this.test.model.handle(
-                new EngineEvent.CaptchaRequested("127.0.0.1:1", Hash16.ZERO, bmp.toByteArray())));
-        assertThat(FxTesting.onFx(pane::showsCaptcha)).isTrue();
-        assertThat(MessagesScreen.picture(new byte[] {1, 2, 3})).isEmpty();
+    private void givenBobChattedWithAndRemovedAsAFriend() throws Exception {
         FxTesting.onFx(() -> {
-            pane.solutionField().setText("ABCD");
-            pane.solve();
+            this.screen.friendsList().getSelectionModel().select(0);
+            this.screen.chatWithFriend();
+            this.screen.removeFriend();
         });
-        assertThat(FxTesting.onFx(pane::showsCaptcha)).isFalse();
-        assertThat(FxTesting.onFx(() -> chat.lines().getFirst().text())).isEqualTo("ABCD");
-        assertThat(this.test.told).anyMatch(m -> m.startsWith("Wait for an answer"));
-        FxTesting.await("the failure", () -> chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.NOTICE));
-        FxTesting.onFx(() -> screen.tabs().getTabs().getFirst().getOnClosed().handle(null));
-        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().isEmpty())).isTrue();
+        FxTesting.await("no friend", () -> this.screen.friendsList().getItems().isEmpty());
     }
 
-    @Test
-    void aChatToAnIpv6AddressIsRefusedAndNothingCountsAsSent() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        MessagesScreen screen = new MessagesScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
+    private void givenABmpPicture(int width, int height) throws Exception {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(image, "bmp", out);
+        this.bmp = out.toByteArray();
+    }
 
+    private void givenAConversationWith(String address) throws Exception {
+        this.chat = FxTesting.onFx(() -> this.test.model.chats().with(address));
+        this.pane = FxTesting.onFx(() -> (MessagesScreen.ChatPane)
+                this.screen.tabs().getTabs().getFirst().getContent());
+    }
+
+    private void givenTheCaptchaShows(boolean shows) throws Exception {
+        assertThat(FxTesting.onFx(this.pane::showsCaptcha)).isEqualTo(shows);
+    }
+
+    // Who wrote is not known before the first packet from them.
+    private void givenTheConversationBefriended() throws Exception {
+        FxTesting.onFx(this.pane::befriend);
+    }
+
+    private void givenACaptchaRequestedBy(String address) throws Exception {
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.CaptchaRequested(address, Hash16.ZERO, this.bmp)));
+    }
+
+    private void givenTheSolutionSent(String solution) throws Exception {
         FxTesting.onFx(() -> {
-            screen.addressField().setText("[2001:db8::1]:4661");
-            screen.startChat();
+            this.pane.solutionField().setText(solution);
+            this.pane.solve();
         });
-        assertThat(this.test.told).anyMatch(m -> m.contains("2001:db8::1"));
-        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs().isEmpty())).isTrue();
+    }
 
-        // An address as an IPv6 one reads without its brackets.
-        FxTesting.onFx(() -> this.test.model.sendMessage("2001:db8::1:4661", "hello"));
+    private void givenTheFirstLineIs(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.chat.lines().getFirst().text())).isEqualTo(text);
+    }
+
+    private void givenTheUserWasToldSomethingStartingWith(String start) {
+        assertThat(this.test.told).anyMatch(m -> m.startsWith(start));
+    }
+
+    private void givenTheUserWasToldSomethingContaining(String part) {
+        assertThat(this.test.told).anyMatch(m -> m.contains(part));
+    }
+
+    private void givenTheFailureIsNoted() throws Exception {
+        FxTesting.await(
+                "the failure", () -> this.chat.lines().stream().anyMatch(l -> l.author() == Chats.Author.NOTICE));
+    }
+
+    private void givenThereIsNoConversation() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().isEmpty())).isTrue();
+    }
+
+    private void whenChatsAreStartedWithTheAddressAndNoFriendChosen(String address) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.addressField().setText(address);
+            this.screen.startChat();
+            this.screen.chatWithFriend();
+        });
+    }
+
+    private void whenTheConversationIsClosed() throws Exception {
+        FxTesting.onFx(
+                () -> this.screen.tabs().getTabs().getFirst().getOnClosed().handle(null));
+    }
+
+    private void whenThePictureIsRead(byte[] bytes) {
+        this.picture = MessagesScreen.picture(bytes);
+    }
+
+    // An address as an IPv6 one reads without its brackets.
+    private void whenAMessageIsSentTo(String address, String text) throws Exception {
+        FxTesting.onFx(() -> this.test.model.sendMessage(address, text));
+    }
+
+    private void thenTheUserWasToldSomethingContaining(String part) {
+        assertThat(this.test.told).anyMatch(m -> m.contains(part));
+    }
+
+    private void thenThereIsNoConversation() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().isEmpty())).isTrue();
+    }
+
+    private void thenThereIsNoPicture() {
+        assertThat(this.picture).isEmpty();
+    }
+
+    private void thenNothingShowsAsSent() throws Exception {
         assertThat(FxTesting.onFx(() -> this.test.model.chats().all().stream()
                         .allMatch(c -> c.lines().isEmpty())))
                 .as("nothing shows as sent")
                 .isTrue();
-        assertThat(this.test.told).anyMatch(m -> m.contains("2001:db8::1:4661"));
+    }
+
+    private void startChat(String address) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.addressField().setText(address);
+            this.screen.startChat();
+        });
     }
 
     private record Collector(BlockingQueue<EngineEvent> queue) implements Flow.Subscriber<EngineEvent> {

@@ -67,6 +67,28 @@ class EngineModelTest {
     private static final EngineStatus NOTHING = Statuses.of(Optional.empty(), 0, false, Optional.empty(), false);
     private static final EngineStatus KAD_ONLY =
             Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
+    private static final ServerInfo BIG = new ServerInfo(
+            "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
+    private static final ServerInfo SUNRISE = new ServerInfo(
+            "176.123.5.89:4725",
+            "eMule Sunrise",
+            "",
+            0,
+            0,
+            0,
+            0,
+            ServerInfo.Priority.NORMAL,
+            0,
+            0,
+            0,
+            0,
+            "",
+            true,
+            false);
+    private static final DownloadInfo DOWNLOAD =
+            new DownloadInfo(FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
+    private static final DownloadInfo DONE =
+            new DownloadInfo(FILE, "a.bin", 100, 100, DownloadInfo.Status.COMPLETE, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
 
     @TempDir
     Path dir;
@@ -76,6 +98,15 @@ class EngineModelTest {
     private EngineModel.Search opened;
     private final List<String> errors = new CopyOnWriteArrayList<>();
     private final List<CompletableFuture<EngineStatus>> statusPolls = new CopyOnWriteArrayList<>();
+    private final CompletableFuture<Void> connecting = new CompletableFuture<>();
+    private final List<String> added = new CopyOnWriteArrayList<>();
+    private final List<String> finished = new CopyOnWriteArrayList<>();
+    private final List<String> categoriesAdded = new CopyOnWriteArrayList<>();
+    private final AtomicReference<EngineModel.Search> started = new AtomicReference<>();
+    private final AtomicReference<ImportReport> report = new AtomicReference<>();
+    private final AtomicReference<String> nick = new AtomicReference<>();
+    private int logged;
+    private Path folder;
 
     @AfterEach
     void close() {
@@ -110,250 +141,329 @@ class EngineModelTest {
     }
 
     @Test
-    void aConnectionThatCannotStartKeepsTheServerWeHad() throws Exception {
-        EngineModel m = start(real -> Engines.overriding(
-                real,
-                Map.of(
-                        "connect",
-                        args -> CompletableFuture.failedFuture(new UnknownHostException("nowhere.invalid")))));
-        ServerInfo big = new ServerInfo(
-                "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
-        m.handle(new EngineEvent.ServerConnected(big, 0x12345678L, false, true));
+    void shouldKeepTheServerWeHadWhenAConnectionCannotStart() throws Exception {
+        givenAModelWhoseEngineCannotConnectTo("nowhere.invalid");
+        givenTheModelHears(new EngineEvent.ServerConnected(BIG, 0x12345678L, false, true));
 
-        m.connect(Optional.of(new ServerAddress("nowhere.invalid", 4661)));
+        whenTheModelConnectsTo("nowhere.invalid", 4661);
 
-        until(() -> !this.errors.isEmpty());
-        assertThat(this.errors).containsExactly("nowhere.invalid");
-        assertThat(m.connectionProperty().get())
-                .as("still connected to Big, not connecting for ever")
-                .isEqualTo(EngineModel.Connection.CONNECTED);
-        assertThat(m.serverNameProperty().get()).isEqualTo("Big");
+        thenTheErrorsAre("nowhere.invalid");
+        thenTheModelIsStillConnected();
+        thenTheServerNameIs("Big");
     }
 
     @Test
-    void anUnrelatedFailureLeavesAConnectionBeingMade() throws Exception {
-        CompletableFuture<Void> connecting = new CompletableFuture<>();
-        EngineModel m = start(real -> Engines.overriding(
-                real,
-                Map.of(
-                        "connect",
-                        args -> connecting,
-                        "kadBootstrap",
-                        args -> CompletableFuture.failedFuture(new IllegalStateException("Kad is not running")))));
+    void shouldLeaveAConnectionBeingMadeOnAnUnrelatedFailure() throws Exception {
+        givenAModelWhoseConnectionIsPendingAndWhoseKadCannotStart();
+        givenTheModelConnects();
 
-        m.connect(Optional.empty());
-        m.kadBootstrap(ServerAddress.parse("127.0.0.1:4672"));
+        whenKadIsBootstrappedFrom("127.0.0.1:4672");
 
-        until(() -> !this.errors.isEmpty());
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTING);
-        connecting.completeExceptionally(new IllegalStateException("no known server"));
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.DISCONNECTED);
+        thenAnErrorIsTold();
+        thenTheConnectionIs(EngineModel.Connection.CONNECTING);
     }
 
     @Test
-    void anErrorWithoutAMessageShowsItsName() throws Exception {
-        EngineModel m = start();
+    void shouldDisconnectOnceTheConnectionBeingMadeFails() throws Exception {
+        givenAModelWhoseConnectionIsPendingAndWhoseKadCannotStart();
+        givenTheModelConnects();
+        givenKadFailedToBootstrapFrom("127.0.0.1:4672");
 
-        m.onError((Throwable) new IllegalStateException());
+        whenTheConnectionFails("no known server");
 
-        assertThat(this.errors).containsExactly("IllegalStateException");
+        thenTheConnectionIs(EngineModel.Connection.DISCONNECTED);
     }
 
     @Test
-    void aDownloadIsToldAddedOnlyOnceTheEngineTookIt() throws Exception {
-        EngineModel m = start(real -> Engines.overriding(
-                real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException("disk full")))));
-        List<String> added = new CopyOnWriteArrayList<>();
-
-        m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
-
-        until(() -> !this.errors.isEmpty());
-        assertThat(this.errors).containsExactly("disk full");
-        assertThat(added).isEmpty();
-        assertThat(m.downloads().size()).isZero();
-    }
-
-    @Test
-    void pollsTheStatusAndKeepsTheRates() throws Exception {
-        EngineModel m = start();
-
-        until(() -> m.rates().size() == 1);
-        m.tick();
-        until(() -> m.rates().size() == 2);
-
-        assertThat(m.statusProperty().get().server()).isEmpty();
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.DISCONNECTED);
-        assertThat(m.engine()).isSameAs(this.engine);
-        assertThat(m.preferencesProperty().get()).isEqualTo(this.engine.preferences());
-    }
-
-    @Test
-    void downloadsAreAddedPausedAndCancelled() throws Exception {
-        EngineModel m = start();
-
-        List<String> added = new CopyOnWriteArrayList<>();
-        m.addDownload(Ed2kLink.FileLink.of("a.bin", 5000, FILE), d -> added.add(d.name()));
-        until(() -> m.downloads().size() == 1 && !added.isEmpty());
-        assertThat(added).containsExactly("a.bin");
-        m.pause(FILE);
-        until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.PAUSED);
-        m.resume(FILE);
-        until(() -> m.downloads().rows().getFirst().get().status() == DownloadInfo.Status.DOWNLOADING);
-        m.cancel(FILE);
-        until(() -> m.downloads().size() == 0);
-        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
-    }
-
-    @Test
-    void failuresReachTheErrorSink() throws Exception {
-        EngineModel m = start();
-
-        AtomicReference<EngineModel.Search> started = new AtomicReference<>();
-        m.search(new SearchRequest("ubuntu", SearchRequest.Scope.SERVER), started::set);
-        m.kadBootstrap(ServerAddress.parse("127.0.0.1:4672"));
-
-        until(() -> this.errors.size() >= 2);
-        assertThat(started.get()).isNull();
-        assertThat(this.errors).anyMatch(e -> e.contains("Kad is not running"));
-    }
-
-    @Test
-    void eventsUpdateTheState() throws Exception {
-        EngineModel m = notListening();
-        ServerInfo server = new ServerInfo(
-                "81.2.3.4:4661", "Big", "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
-
-        m.handle(new EngineEvent.ServerConnecting(server));
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTING);
-        assertThat(m.serverNameProperty().get()).isEqualTo("Big");
-        m.handle(new EngineEvent.ServerConnected(server, 0x12345678L, false, true));
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.CONNECTED);
-        m.handle(new EngineEvent.ServerUpdated(server));
-        assertThat(m.servers().size()).isEqualTo(1);
-        m.handle(new EngineEvent.ServerDisconnected(Optional.of(server), "bye"));
-        assertThat(m.connectionProperty().get()).isEqualTo(EngineModel.Connection.DISCONNECTED);
-        assertThat(m.serverNameProperty().get()).isEmpty();
-
-        m.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.INFO, "one")));
-        m.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.DEBUG, "two")));
-        assertThat(m.lastLogProperty().get()).isEqualTo("one");
-        assertThat(m.log()).extracting(LogLine::message).endsWith("one", "two");
-        for (int i = 0; i < EngineModel.LOG_LINES + 5; i++) {
-            m.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.INFO, "x")));
-        }
-        assertThat(m.log()).hasSize(EngineModel.LOG_LINES);
-
-        DownloadInfo download = new DownloadInfo(
-                FILE, "a.bin", 100, 0, DownloadInfo.Status.DOWNLOADING, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
-        m.handle(new EngineEvent.DownloadAdded(download));
-        m.handle(new EngineEvent.DownloadProgress(download));
-        m.handle(new EngineEvent.DownloadFailed(download, "disk"));
-        assertThat(m.downloads().size()).isEqualTo(1);
-        m.handle(new EngineEvent.DownloadRemoved(FILE));
-        assertThat(m.downloads().size()).isZero();
-        List<String> finished = new CopyOnWriteArrayList<>();
-        m.onCompleted(d -> finished.add(d.name()));
-        m.handle(new EngineEvent.DownloadAdded(download));
-        DownloadInfo done = new DownloadInfo(
-                FILE, "a.bin", 100, 100, DownloadInfo.Status.COMPLETE, AUTO, 0, 0, 0, 0, PartMap.EMPTY);
-        m.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("a.bin")));
-        assertThat(m.downloads().size()).as("finished downloads stay listed").isEqualTo(1);
-        assertThat(finished).containsExactly("a.bin");
-        m.clearCompleted();
-        assertThat(m.downloads().size()).isZero();
-        m.handle(new EngineEvent.PreferencesChanged(this.engine.preferences()));
-        m.handle(new EngineEvent.Started("x"));
-
-        ServerInfo sunrise = new ServerInfo(
-                "176.123.5.89:4725",
-                "eMule Sunrise",
-                "",
-                0,
-                0,
-                0,
-                0,
-                ServerInfo.Priority.NORMAL,
-                0,
-                0,
-                0,
-                0,
-                "",
-                true,
-                false);
-        int logged = m.log().size();
-        assertThat(m.serverInfo().getFirst().kind()).isEqualTo(EngineModel.ServerNote.Kind.TITLE);
-        m.clearServerInfo();
-        m.handle(new EngineEvent.ServerConnected(sunrise, 7_603_580, true, true));
-        m.handle(new EngineEvent.ServerMessage(sunrise, "Welcome to eMule Sunrise!"));
-        assertThat(m.serverInfo())
-                .extracting(EngineModel.ServerNote::kind)
-                .containsExactly(
-                        EngineModel.ServerNote.Kind.GAP,
-                        EngineModel.ServerNote.Kind.CONNECTED_OBFUSCATED,
-                        EngineModel.ServerNote.Kind.MESSAGE);
-        assertThat(m.serverInfo().get(1).text()).isEqualTo("eMule Sunrise (176.123.5.89:4725)");
-        assertThat(m.serverAddressProperty().get()).isEqualTo("176.123.5.89:4725");
-        assertThat(m.log()).as("the server's lines are not events").hasSize(logged);
-        m.clearServerInfo();
-        assertThat(m.serverInfo()).isEmpty();
-    }
-
-    @Test
-    void searchResultsGoToTheirSearch() throws Exception {
-        EngineModel m = start();
-        SearchId id = new SearchId(7);
-        // As if the engine had accepted the search.
-        EngineModel.Search search = m.open(id, new SearchRequest("x", SearchRequest.Scope.KAD));
-
-        SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
-        m.handle(new EngineEvent.SearchResults(id, List.of(result)));
-        m.handle(new EngineEvent.SearchResults(new SearchId(8), List.of(result)));
-        assertThat(search.results().size()).isEqualTo(1);
-        assertThat(search.runningProperty().get()).isTrue();
-        m.handle(new EngineEvent.SearchEnded(id, 1));
-        assertThat(search.runningProperty().get()).isFalse();
-        assertThat(m.searches()).containsExactly(search);
-        assertThat(search.id()).isEqualTo(id);
-        assertThat(search.request().expression()).isEqualTo("x");
-        m.moreResults(search);
-        m.stopSearch(search);
-        assertThat(m.searches()).isEmpty();
-    }
-
-    @Test
-    void resultsThatComeBeforeTheirSearchOpensGoToItOnceItDoes() throws Exception {
+    void shouldShowTheNameOfAnErrorWithoutAMessage() throws Exception {
         givenAModel();
-        whenResultsAndTheEndOfASearchComeBeforeItsId(new SearchId(9));
+
+        whenAnErrorWithoutAMessageIsTold();
+
+        thenTheErrorsAre("IllegalStateException");
+    }
+
+    @Test
+    void shouldTellADownloadAddedOnlyOnceTheEngineTookIt() throws Exception {
+        givenAModelWhoseEngineCannotAddDownloads("disk full");
+
+        whenTheDownloadIsAdded("a.bin", 5000);
+
+        thenTheErrorsAre("disk full");
+        thenNoDownloadWasToldAdded();
+        thenTheModelHasNoDownload();
+    }
+
+    @Test
+    void shouldPollTheStatusAndKeepTheRates() throws Exception {
+        givenAModel();
+        givenTheModelKeptRates(1);
+
+        whenTheModelPollsAgain();
+
+        thenTheModelKeepsRates(2);
+        thenTheStatusHasNoServer();
+        thenTheConnectionIs(EngineModel.Connection.DISCONNECTED);
+        thenTheModelWorksOnTheEngine();
+        thenThePreferencesAreThoseOfTheEngine();
+    }
+
+    @Test
+    void shouldAddPauseResumeAndCancelADownload() throws Exception {
+        givenAModel();
+        givenTheDownloadAdded("a.bin", 5000);
+        givenTheDownloadIsListedAndToldAdded("a.bin");
+        givenTheDownloadPaused();
+        givenTheDownloadResumed();
+
+        whenTheDownloadIsCancelled();
+
+        thenTheModelSoonHasNoDownload();
+        thenTheEngineHasNoDownload();
+    }
+
+    @Test
+    void shouldSendFailuresToTheErrorSink() throws Exception {
+        givenAModel();
+        givenAServerSearchFor("ubuntu");
+
+        whenKadIsBootstrappedFrom("127.0.0.1:4672");
+
+        thenThereAreAtLeastErrors(2);
+        thenTheSearchDidNotStart();
+        thenAnErrorContains("Kad is not running");
+    }
+
+    @Test
+    void shouldFollowTheServerConnectionThroughItsEvents() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheModelHears(new EngineEvent.ServerConnecting(BIG));
+        givenTheConnectionIs(EngineModel.Connection.CONNECTING);
+        givenTheServerNameIs("Big");
+        givenTheModelHears(new EngineEvent.ServerConnected(BIG, 0x12345678L, false, true));
+        givenTheConnectionIs(EngineModel.Connection.CONNECTED);
+        givenTheModelHears(new EngineEvent.ServerUpdated(BIG));
+        givenTheServersListed(1);
+
+        whenTheModelHears(new EngineEvent.ServerDisconnected(Optional.of(BIG), "bye"));
+
+        thenTheConnectionIs(EngineModel.Connection.DISCONNECTED);
+        thenThereIsNoServerName();
+    }
+
+    @Test
+    void shouldShowTheLastInfoLineAndLogEveryLine() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenALogLine(LogLine.Level.INFO, "one");
+
+        whenALogLineComes(LogLine.Level.DEBUG, "two");
+
+        thenTheLastLogLineIs("one");
+        thenTheLogEndsWith("one", "two");
+    }
+
+    @Test
+    void shouldKeepOnlyTheLatestLogLines() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+
+        whenLogLinesCome(EngineModel.LOG_LINES + 5);
+
+        thenTheLogHasLines(EngineModel.LOG_LINES);
+    }
+
+    @Test
+    void shouldListADownloadThroughItsEventsUntilRemoved() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheModelHears(new EngineEvent.DownloadAdded(DOWNLOAD));
+        givenTheModelHears(new EngineEvent.DownloadProgress(DOWNLOAD));
+        givenTheModelHears(new EngineEvent.DownloadFailed(DOWNLOAD, "disk"));
+        givenTheDownloadsListed(1);
+
+        whenTheModelHears(new EngineEvent.DownloadRemoved(FILE));
+
+        thenTheModelHasNoDownload();
+    }
+
+    @Test
+    void shouldKeepAFinishedDownloadListedAndTellIt() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheFinishedDownloadsAreNoted();
+        givenTheModelHears(new EngineEvent.DownloadAdded(DOWNLOAD));
+
+        whenTheDownloadCompletes();
+
+        thenTheFinishedDownloadsStayListed(1);
+        thenTheFinishedDownloadsToldAre("a.bin");
+    }
+
+    @Test
+    void shouldClearTheFinishedDownloads() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheModelHears(new EngineEvent.DownloadAdded(DOWNLOAD));
+        givenTheDownloadCompleted();
+
+        whenTheFinishedDownloadsAreCleared();
+
+        thenTheModelHasNoDownload();
+    }
+
+    @Test
+    void shouldNoteTheSessionsAndMessagesOfTheServerWithoutLoggingThem() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheEngineStartedWithItsPreferences();
+        givenTheLogLinesCounted();
+        givenTheFirstServerNoteIsTheTitle();
+        givenTheServerNotesCleared();
+        givenTheModelHears(new EngineEvent.ServerConnected(SUNRISE, 7_603_580, true, true));
+
+        whenTheModelHears(new EngineEvent.ServerMessage(SUNRISE, "Welcome to eMule Sunrise!"));
+
+        thenTheServerNotesAre(
+                EngineModel.ServerNote.Kind.GAP,
+                EngineModel.ServerNote.Kind.CONNECTED_OBFUSCATED,
+                EngineModel.ServerNote.Kind.MESSAGE);
+        thenTheServerNoteReads(1, "eMule Sunrise (176.123.5.89:4725)");
+        thenTheServerAddressIs("176.123.5.89:4725");
+        thenTheServerLinesAreNotLogged();
+    }
+
+    @Test
+    void shouldClearTheServerNotes() throws Exception {
+        givenAModelThatHearsNoEventOfTheEngine();
+        givenTheServerNotesCleared();
+        givenTheModelHears(new EngineEvent.ServerConnected(SUNRISE, 7_603_580, true, true));
+        givenTheModelHears(new EngineEvent.ServerMessage(SUNRISE, "Welcome to eMule Sunrise!"));
+
+        whenTheServerNotesAreCleared();
+
+        thenThereIsNoServerNote();
+    }
+
+    @Test
+    void shouldSendResultsToTheirSearch() throws Exception {
+        givenAModel();
+        givenASearchTheEngineAccepted(new SearchId(7), "x");
+
+        whenTheSameResultComesFor(new SearchId(7), new SearchId(8));
+
+        thenTheSearchHasResults(1);
+        thenTheSearchRuns(true);
+    }
+
+    @Test
+    void shouldEndASearchWhenTheEngineSaysSo() throws Exception {
+        givenAModel();
+        givenASearchTheEngineAccepted(new SearchId(7), "x");
+        givenTheSameResultCameFor(new SearchId(7), new SearchId(8));
+
+        whenTheSearchEnds(new SearchId(7));
+
+        thenTheSearchRuns(false);
+        thenTheSearchesAreOnlyTheOneOpened();
+        thenTheSearchIs(new SearchId(7), "x");
+    }
+
+    @Test
+    void shouldForgetAStoppedSearch() throws Exception {
+        givenAModel();
+        givenASearchTheEngineAccepted(new SearchId(7), "x");
+        givenTheSearchEnded(new SearchId(7));
+        givenMoreResultsAsked();
+
+        whenTheSearchIsStopped();
+
+        thenThereIsNoSearch();
+    }
+
+    @Test
+    void shouldSendResultsThatComeBeforeTheirSearchOpensToItOnceItDoes() throws Exception {
+        givenAModel();
+        givenResultsAndTheEndOfASearchCameBeforeItsId(new SearchId(9));
+
         whenTheSearchOpens(new SearchId(9));
+
         thenTheSearchHasTheResultsAndHasEnded();
+    }
+
+    @Test
+    void shouldNotHideANewerStateWithALateAnswerToAnEarlierPoll() throws Exception {
+        givenAModelWhoseEngineAnswersStatusPollsWhenTold();
+        givenTheModelPolledAgain();
+        givenTheSecondPollAnsweredFirst(KAD_ONLY);
+
+        whenTheFirstPollIsAnswered(NOTHING);
+
+        thenTheModelShows(KAD_ONLY);
+    }
+
+    @Test
+    void shouldShareADirectory() throws Exception {
+        givenAModel();
+        givenAFolderWithAFile("share", "b.txt", 100);
+
+        whenTheFolderIsShared();
+
+        thenTheSharedFilesAre(1);
+    }
+
+    @Test
+    void shouldUpdateThePreferences() throws Exception {
+        givenAModel();
+
+        whenTheNickIsChangedTo("Changed");
+
+        thenTheNickToldIs("Changed");
+    }
+
+    @Test
+    void shouldImportAnEmuleProfile() throws Exception {
+        givenAModel();
+        givenAnEmuleProfileWith("preferences.ini", "[eMule]\r\nNick=Imported\r\n");
+
+        whenTheProfileIsImported();
+
+        thenTheImportReported();
+        thenTheNickIs("Imported");
+    }
+
+    @Test
+    void shouldStillTellTheChangesOfTheCategoriesAfterAGarbageCollection() throws Exception {
+        givenAModel();
+        givenTheNamesOfTheCategoriesAddedAreNoted();
+        givenTheGarbageCollected();
+
+        whenTheCategoriesAreSetTo("Films");
+
+        thenTheCategoriesAddedInclude("Films");
+        thenTheCategoriesAreAlwaysTheSameList();
     }
 
     private void givenAModel() throws Exception {
         this.model = start();
     }
 
-    private void whenResultsAndTheEndOfASearchComeBeforeItsId(SearchId id) {
-        SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
-        this.model.handle(new EngineEvent.SearchResults(id, List.of(result)));
-        this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    private void givenAModelThatHearsNoEventOfTheEngine() throws Exception {
+        notListening();
     }
 
-    private void whenTheSearchOpens(SearchId id) {
-        this.opened = this.model.open(id, new SearchRequest("x", SearchRequest.Scope.SERVER));
+    private void givenAModelWhoseEngineCannotConnectTo(String host) throws Exception {
+        start(real -> Engines.overriding(
+                real, Map.of("connect", args -> CompletableFuture.failedFuture(new UnknownHostException(host)))));
     }
 
-    private void thenTheSearchHasTheResultsAndHasEnded() {
-        assertThat(this.opened.results().size()).isEqualTo(1);
-        assertThat(this.opened.runningProperty().get()).isFalse();
+    private void givenAModelWhoseConnectionIsPendingAndWhoseKadCannotStart() throws Exception {
+        start(real -> Engines.overriding(
+                real,
+                Map.of(
+                        "connect",
+                        args -> this.connecting,
+                        "kadBootstrap",
+                        args -> CompletableFuture.failedFuture(new IllegalStateException("Kad is not running")))));
     }
 
-    @Test
-    void aLateAnswerToAnEarlierPollDoesNotHideANewerState() throws Exception {
-        givenAModelWhoseEngineAnswersStatusPollsWhenTold();
-        whenTheModelPollsAgain();
-        whenTheSecondPollIsAnsweredFirst(KAD_ONLY);
-        whenTheFirstPollIsAnswered(NOTHING);
-        thenTheModelShows(KAD_ONLY);
+    private void givenAModelWhoseEngineCannotAddDownloads(String message) throws Exception {
+        start(real -> Engines.overriding(
+                real, Map.of("addDownload", args -> CompletableFuture.failedFuture(new IOException(message)))));
     }
 
     private void givenAModelWhoseEngineAnswersStatusPollsWhenTold() throws Exception {
@@ -364,66 +474,426 @@ class EngineModelTest {
         })));
     }
 
+    private void givenTheModelHears(EngineEvent event) {
+        this.model.handle(event);
+    }
+
+    private void givenTheModelConnects() {
+        this.model.connect(Optional.empty());
+    }
+
+    private void givenKadFailedToBootstrapFrom(String node) throws Exception {
+        this.model.kadBootstrap(ServerAddress.parse(node));
+        until(() -> !this.errors.isEmpty());
+    }
+
+    private void givenTheConnectionIs(EngineModel.Connection connection) {
+        assertThat(this.model.connectionProperty().get()).isEqualTo(connection);
+    }
+
+    private void givenTheServerNameIs(String name) {
+        assertThat(this.model.serverNameProperty().get()).isEqualTo(name);
+    }
+
+    private void givenTheServersListed(int count) {
+        assertThat(this.model.servers().size()).isEqualTo(count);
+    }
+
+    private void givenTheModelKeptRates(int count) throws Exception {
+        until(() -> this.model.rates().size() == count);
+    }
+
+    private void givenTheDownloadAdded(String name, long size) {
+        addDownload(name, size);
+    }
+
+    private void givenTheDownloadIsListedAndToldAdded(String name) throws Exception {
+        until(() -> this.model.downloads().size() == 1 && !this.added.isEmpty());
+        assertThat(this.added).containsExactly(name);
+    }
+
+    private void givenTheDownloadPaused() throws Exception {
+        this.model.pause(FILE);
+        until(() -> this.model.downloads().rows().getFirst().get().status() == DownloadInfo.Status.PAUSED);
+    }
+
+    private void givenTheDownloadResumed() throws Exception {
+        this.model.resume(FILE);
+        until(() -> this.model.downloads().rows().getFirst().get().status() == DownloadInfo.Status.DOWNLOADING);
+    }
+
+    private void givenAServerSearchFor(String expression) {
+        this.model.search(new SearchRequest(expression, SearchRequest.Scope.SERVER), this.started::set);
+    }
+
+    private void givenALogLine(LogLine.Level level, String message) {
+        this.model.handle(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
+    }
+
+    private void givenTheDownloadsListed(int count) {
+        assertThat(this.model.downloads().size()).isEqualTo(count);
+    }
+
+    private void givenTheFinishedDownloadsAreNoted() {
+        this.model.onCompleted(d -> this.finished.add(d.name()));
+    }
+
+    private void givenTheDownloadCompleted() {
+        complete();
+    }
+
+    private void givenTheEngineStartedWithItsPreferences() {
+        this.model.handle(new EngineEvent.PreferencesChanged(this.engine.preferences()));
+        this.model.handle(new EngineEvent.Started("x"));
+    }
+
+    private void givenTheLogLinesCounted() {
+        this.logged = this.model.log().size();
+    }
+
+    private void givenTheFirstServerNoteIsTheTitle() {
+        assertThat(this.model.serverInfo().getFirst().kind()).isEqualTo(EngineModel.ServerNote.Kind.TITLE);
+    }
+
+    private void givenTheServerNotesCleared() {
+        this.model.clearServerInfo();
+    }
+
+    // As if the engine had accepted the search.
+    private void givenASearchTheEngineAccepted(SearchId id, String expression) {
+        this.opened = this.model.open(id, new SearchRequest(expression, SearchRequest.Scope.KAD));
+    }
+
+    private void givenTheSameResultCameFor(SearchId... ids) {
+        resultFor(ids);
+    }
+
+    private void givenTheSearchEnded(SearchId id) {
+        this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    }
+
+    private void givenMoreResultsAsked() {
+        this.model.moreResults(this.opened);
+    }
+
+    private void givenResultsAndTheEndOfASearchCameBeforeItsId(SearchId id) {
+        SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
+        this.model.handle(new EngineEvent.SearchResults(id, List.of(result)));
+        this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    }
+
+    private void givenTheModelPolledAgain() {
+        this.model.tick();
+    }
+
+    private void givenTheSecondPollAnsweredFirst(EngineStatus status) {
+        this.statusPolls.get(1).complete(status);
+    }
+
+    private void givenAFolderWithAFile(String name, String file, int size) throws IOException {
+        this.folder = Files.createDirectories(this.dir.resolve(name));
+        Files.write(this.folder.resolve(file), new byte[size]);
+    }
+
+    private void givenAnEmuleProfileWith(String file, String content) throws IOException {
+        this.folder = Files.createDirectories(this.dir.resolve("emule"));
+        Files.writeString(this.folder.resolve(file), content);
+    }
+
+    private void givenTheNamesOfTheCategoriesAddedAreNoted() {
+        this.model.categories().addListener((ListChangeListener<Category>) c -> {
+            while (c.next()) {
+                c.getAddedSubList().forEach(category -> this.categoriesAdded.add(category.name()));
+            }
+        });
+    }
+
+    private void givenTheGarbageCollected() throws InterruptedException {
+        collectGarbage();
+    }
+
+    private void whenTheModelConnectsTo(String host, int port) {
+        this.model.connect(Optional.of(new ServerAddress(host, port)));
+    }
+
+    private void whenKadIsBootstrappedFrom(String node) {
+        this.model.kadBootstrap(ServerAddress.parse(node));
+    }
+
+    private void whenTheConnectionFails(String reason) {
+        this.connecting.completeExceptionally(new IllegalStateException(reason));
+    }
+
+    private void whenAnErrorWithoutAMessageIsTold() {
+        this.model.onError((Throwable) new IllegalStateException());
+    }
+
+    private void whenTheDownloadIsAdded(String name, long size) {
+        addDownload(name, size);
+    }
+
     private void whenTheModelPollsAgain() {
         this.model.tick();
     }
 
-    private void whenTheSecondPollIsAnsweredFirst(EngineStatus status) {
-        this.statusPolls.get(1).complete(status);
+    private void whenTheDownloadIsCancelled() {
+        this.model.cancel(FILE);
+    }
+
+    private void whenTheModelHears(EngineEvent event) {
+        this.model.handle(event);
+    }
+
+    private void whenALogLineComes(LogLine.Level level, String message) {
+        this.model.handle(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
+    }
+
+    private void whenLogLinesCome(int count) {
+        for (int i = 0; i < count; i++) {
+            this.model.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.INFO, "x")));
+        }
+    }
+
+    private void whenTheDownloadCompletes() {
+        complete();
+    }
+
+    private void whenTheFinishedDownloadsAreCleared() {
+        this.model.clearCompleted();
+    }
+
+    private void whenTheServerNotesAreCleared() {
+        this.model.clearServerInfo();
+    }
+
+    private void whenTheSameResultComesFor(SearchId... ids) {
+        resultFor(ids);
+    }
+
+    private void whenTheSearchEnds(SearchId id) {
+        this.model.handle(new EngineEvent.SearchEnded(id, 1));
+    }
+
+    private void whenTheSearchIsStopped() {
+        this.model.stopSearch(this.opened);
+    }
+
+    private void whenTheSearchOpens(SearchId id) {
+        this.opened = this.model.open(id, new SearchRequest("x", SearchRequest.Scope.SERVER));
     }
 
     private void whenTheFirstPollIsAnswered(EngineStatus status) {
         this.statusPolls.getFirst().complete(status);
     }
 
+    private void whenTheFolderIsShared() {
+        this.model.shareDirectory(this.folder);
+    }
+
+    private void whenTheNickIsChangedTo(String nick) {
+        this.model.updatePreferences(p -> p.toBuilder().nick(nick).build(), p -> this.nick.set(p.nick()));
+    }
+
+    private void whenTheProfileIsImported() {
+        this.model.importFromEmule(
+                this.folder, new ImportOptions(false, false, false), this.report::set, this.errors::add);
+    }
+
+    private void whenTheCategoriesAreSetTo(String name) throws Exception {
+        AtomicBoolean done = new AtomicBoolean();
+        this.model.setCategories(
+                List.of(new Category(1, name, Optional.empty(), "", 1, AUTO, "*.mkv", false)), () -> done.set(true));
+        until(done::get);
+    }
+
+    private void thenTheErrorsAre(String... errors) throws Exception {
+        until(() -> !this.errors.isEmpty());
+        assertThat(this.errors).containsExactly(errors);
+    }
+
+    private void thenAnErrorIsTold() throws Exception {
+        until(() -> !this.errors.isEmpty());
+    }
+
+    private void thenThereAreAtLeastErrors(int count) throws Exception {
+        until(() -> this.errors.size() >= count);
+    }
+
+    private void thenAnErrorContains(String part) {
+        assertThat(this.errors).anyMatch(e -> e.contains(part));
+    }
+
+    private void thenTheModelIsStillConnected() {
+        assertThat(this.model.connectionProperty().get())
+                .as("still connected to Big, not connecting for ever")
+                .isEqualTo(EngineModel.Connection.CONNECTED);
+    }
+
+    private void thenTheConnectionIs(EngineModel.Connection connection) {
+        assertThat(this.model.connectionProperty().get()).isEqualTo(connection);
+    }
+
+    private void thenTheServerNameIs(String name) {
+        assertThat(this.model.serverNameProperty().get()).isEqualTo(name);
+    }
+
+    private void thenThereIsNoServerName() {
+        assertThat(this.model.serverNameProperty().get()).isEmpty();
+    }
+
+    private void thenNoDownloadWasToldAdded() {
+        assertThat(this.added).isEmpty();
+    }
+
+    private void thenTheModelHasNoDownload() {
+        assertThat(this.model.downloads().size()).isZero();
+    }
+
+    private void thenTheModelSoonHasNoDownload() throws Exception {
+        until(() -> this.model.downloads().size() == 0);
+    }
+
+    private void thenTheEngineHasNoDownload() throws Exception {
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenTheModelKeepsRates(int count) throws Exception {
+        until(() -> this.model.rates().size() == count);
+    }
+
+    private void thenTheStatusHasNoServer() {
+        assertThat(this.model.statusProperty().get().server()).isEmpty();
+    }
+
+    private void thenTheModelWorksOnTheEngine() {
+        assertThat(this.model.engine()).isSameAs(this.engine);
+    }
+
+    private void thenThePreferencesAreThoseOfTheEngine() {
+        assertThat(this.model.preferencesProperty().get()).isEqualTo(this.engine.preferences());
+    }
+
+    private void thenTheSearchDidNotStart() {
+        assertThat(this.started.get()).isNull();
+    }
+
+    private void thenTheLastLogLineIs(String message) {
+        assertThat(this.model.lastLogProperty().get()).isEqualTo(message);
+    }
+
+    private void thenTheLogEndsWith(String... messages) {
+        assertThat(this.model.log()).extracting(LogLine::message).endsWith(messages);
+    }
+
+    private void thenTheLogHasLines(int count) {
+        assertThat(this.model.log()).hasSize(count);
+    }
+
+    private void thenTheFinishedDownloadsStayListed(int count) {
+        assertThat(this.model.downloads().size())
+                .as("finished downloads stay listed")
+                .isEqualTo(count);
+    }
+
+    private void thenTheFinishedDownloadsToldAre(String... names) {
+        assertThat(this.finished).containsExactly(names);
+    }
+
+    private void thenTheServerNotesAre(EngineModel.ServerNote.Kind... kinds) {
+        assertThat(this.model.serverInfo())
+                .extracting(EngineModel.ServerNote::kind)
+                .containsExactly(kinds);
+    }
+
+    private void thenTheServerNoteReads(int index, String text) {
+        assertThat(this.model.serverInfo().get(index).text()).isEqualTo(text);
+    }
+
+    private void thenTheServerAddressIs(String address) {
+        assertThat(this.model.serverAddressProperty().get()).isEqualTo(address);
+    }
+
+    private void thenTheServerLinesAreNotLogged() {
+        assertThat(this.model.log()).as("the server's lines are not events").hasSize(this.logged);
+    }
+
+    private void thenThereIsNoServerNote() {
+        assertThat(this.model.serverInfo()).isEmpty();
+    }
+
+    private void thenTheSearchHasResults(int count) {
+        assertThat(this.opened.results().size()).isEqualTo(count);
+    }
+
+    private void thenTheSearchRuns(boolean running) {
+        assertThat(this.opened.runningProperty().get()).isEqualTo(running);
+    }
+
+    private void thenTheSearchesAreOnlyTheOneOpened() {
+        assertThat(this.model.searches()).containsExactly(this.opened);
+    }
+
+    private void thenTheSearchIs(SearchId id, String expression) {
+        assertThat(this.opened.id()).isEqualTo(id);
+        assertThat(this.opened.request().expression()).isEqualTo(expression);
+    }
+
+    private void thenThereIsNoSearch() {
+        assertThat(this.model.searches()).isEmpty();
+    }
+
+    private void thenTheSearchHasTheResultsAndHasEnded() {
+        assertThat(this.opened.results().size()).isEqualTo(1);
+        assertThat(this.opened.runningProperty().get()).isFalse();
+    }
+
     private void thenTheModelShows(EngineStatus status) {
         assertThat(this.model.statusProperty().get()).isEqualTo(status);
     }
 
-    @Test
-    void sharesPreferencesAndImports() throws Exception {
-        EngineModel m = start();
-        Path folder = Files.createDirectories(this.dir.resolve("share"));
-        Files.write(folder.resolve("b.txt"), new byte[100]);
-        Path emule = Files.createDirectories(this.dir.resolve("emule"));
-        Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nNick=Imported\r\n");
-        AtomicReference<ImportReport> report = new AtomicReference<>();
-        AtomicReference<String> nick = new AtomicReference<>();
-
-        m.shareDirectory(folder);
-        m.updatePreferences(p -> p.toBuilder().nick("Changed").build(), p -> nick.set(p.nick()));
-        until(() -> "Changed".equals(nick.get()));
-        m.importFromEmule(emule, new ImportOptions(false, false, false), report::set, this.errors::add);
-        until(() -> report.get() != null);
-
-        assertThat(m.preferencesProperty().get().nick()).isEqualTo("Imported");
-        for (int i = 0; i < 80 && m.sharedFiles().size() == 0; i++) {
+    private void thenTheSharedFilesAre(int count) throws InterruptedException {
+        for (int i = 0; i < 80 && this.model.sharedFiles().size() == 0; i++) {
             Thread.sleep(100);
             for (int t = 0; t < 15; t++) {
-                m.tick();
+                this.model.tick();
             }
         }
-        assertThat(m.sharedFiles().size()).isEqualTo(1);
+        assertThat(this.model.sharedFiles().size()).isEqualTo(count);
     }
 
-    @Test
-    void theCategoriesStillTellTheirChangesAfterAGarbageCollection() throws Exception {
-        EngineModel m = start();
-        List<String> added = new CopyOnWriteArrayList<>();
-        m.categories().addListener((ListChangeListener<Category>) c -> {
-            while (c.next()) {
-                c.getAddedSubList().forEach(category -> added.add(category.name()));
-            }
-        });
-        collectGarbage();
+    private void thenTheNickToldIs(String nick) throws Exception {
+        until(() -> nick.equals(this.nick.get()));
+    }
 
-        AtomicBoolean done = new AtomicBoolean();
-        m.setCategories(
-                List.of(new Category(1, "Films", Optional.empty(), "", 1, AUTO, "*.mkv", false)), () -> done.set(true));
-        until(done::get);
+    private void thenTheImportReported() throws Exception {
+        until(() -> this.report.get() != null);
+    }
 
-        assertThat(added).contains("Films");
-        assertThat(m.categories()).isSameAs(m.categories());
+    private void thenTheNickIs(String nick) {
+        assertThat(this.model.preferencesProperty().get().nick()).isEqualTo(nick);
+    }
+
+    private void thenTheCategoriesAddedInclude(String... names) {
+        assertThat(this.categoriesAdded).contains(names);
+    }
+
+    private void thenTheCategoriesAreAlwaysTheSameList() {
+        assertThat(this.model.categories()).isSameAs(this.model.categories());
+    }
+
+    private void addDownload(String name, long size) {
+        this.model.addDownload(Ed2kLink.FileLink.of(name, size, FILE), d -> this.added.add(d.name()));
+    }
+
+    private void complete() {
+        this.model.handle(new EngineEvent.DownloadCompleted(DONE, this.dir.resolve("a.bin")));
+    }
+
+    private void resultFor(SearchId... ids) {
+        SearchResult result = new SearchResult(FILE, "x.iso", 10, 3, 1, Optional.of("Iso"));
+        for (SearchId id : ids) {
+            this.model.handle(new EngineEvent.SearchResults(id, List.of(result)));
+        }
     }
 
     // Returns once a weak reference was cleared a few times: collections ran.

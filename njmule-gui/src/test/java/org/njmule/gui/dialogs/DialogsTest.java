@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -48,162 +47,334 @@ class DialogsTest {
     Path dir;
 
     private TestGui test;
+    private Stage stage;
+    private CategoriesDialog categories;
+    private SharedFoldersDialog sharedFolders;
+    private ImportDialog importDialog;
+    private CommentDialog comment;
+    private AboutDialog about;
+    private final CompletableFuture<Optional<FileComment>> stored = new CompletableFuture<>();
+    private Path folder;
+    private Optional<Path> guess;
 
     @AfterEach
     void close() throws Exception {
+        if (this.stage != null) {
+            FxTesting.onFx(this.stage::close);
+        }
         if (this.test != null) {
             this.test.close();
         }
     }
 
     @Test
-    void categoriesAreAddedChangedAndRemoved() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        AtomicReference<CategoriesDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            dialog.set(new CategoriesDialog(this.test.gui, new Stage()));
-            dialog.get().show();
-            dialog.get().nameField().setText("Films");
-            dialog.get().patternsField().setText("*.mkv|*.avi");
-            dialog.get().save();
-        });
-        FxTesting.await("the category", () -> this.test.gui.model().categories().size() == 1);
-        assertThat(this.test.engine.categories().get(10, TimeUnit.SECONDS))
-                .singleElement()
-                .satisfies(c -> {
-                    assertThat(c.id()).isEqualTo(1);
-                    assertThat(c.matches("a.mkv")).isTrue();
-                });
+    void shouldAddChangeAndRemoveCategories() throws Exception {
+        givenTheGui();
+        givenTheCategoriesDialogShown();
+        givenACategorySaved("Films", "*.mkv|*.avi");
+        givenTheModelHasOneCategory();
+        givenTheEngineKeptTheCategory(1, "a.mkv");
+        givenTheCategoryIsSelected();
+        givenTheCategoryRenamed("Movies");
+        givenTheOnlyCategoryIsNamed("Movies");
 
-        FxTesting.await(
-                "selected", () -> dialog.get().list().getSelectionModel().getSelectedItem() != null);
-        FxTesting.onFx(() -> {
-            dialog.get().nameField().setText("Movies");
-            dialog.get().save();
-        });
-        FxTesting.await(
-                "renamed",
-                () -> this.test.gui.model().categories().getFirst().name().equals("Movies"));
-        assertThat(this.test.gui.model().categories()).hasSize(1);
+        whenTheFirstCategoryIsRemoved();
 
-        FxTesting.onFx(() -> {
-            dialog.get().list().getSelectionModel().select(0);
-            dialog.get().remove();
-        });
-        FxTesting.await("no category", () -> this.test.gui.model().categories().isEmpty());
-        FxTesting.onFx(() -> dialog.get().stage().close());
+        thenTheModelHasNoCategory();
     }
 
     @Test
-    void sharedFoldersAreListedAndUnshared() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        Path folder = Files.createDirectories(this.dir.resolve("films"));
-        this.test.engine.shareDirectory(folder, true).get(10, TimeUnit.SECONDS);
-        AtomicReference<SharedFoldersDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            dialog.set(new SharedFoldersDialog(this.test.gui, new Stage()));
-            dialog.get().show();
-        });
-        FxTesting.await("the folder", () -> dialog.get().list().getItems().size() == 1);
-        assertThat(FxTesting.onFx(() -> dialog.get().list().getItems().getFirst()))
-                .isEqualTo(new SharedDirectory(folder.toAbsolutePath(), true));
+    void shouldListAndUnshareSharedFolders() throws Exception {
+        givenTheGui();
+        givenASharedFolder("films");
+        givenTheSharedFoldersDialogShown();
+        givenTheDialogListsTheFolder();
 
-        FxTesting.onFx(() -> {
-            dialog.get().list().getSelectionModel().select(0);
-            dialog.get().unshareSelected();
-        });
-        FxTesting.await("no folder", () -> dialog.get().list().getItems().isEmpty());
-        FxTesting.onFx(() -> dialog.get().stage().close());
+        whenTheFirstFolderIsUnshared();
+
+        thenTheDialogListsNoFolder();
     }
 
     @Test
-    void anImportIsCheckedThenTaken() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        Path emule = Files.createDirectories(this.dir.resolve("emule-config"));
-        Files.writeString(emule.resolve("preferences.ini"), "[eMule]\r\nNick=FromEmule\r\n");
-        AtomicReference<ImportDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            Stage owner = new Stage();
-            dialog.set(new ImportDialog(this.test.gui, owner));
-            dialog.get().show();
-            dialog.get().directoryField().setText(emule.toString());
-            dialog.get().run(true);
-        });
-        FxTesting.await(
-                "the check", () -> !dialog.get().reportTable().getItems().isEmpty());
-        assertThat(FxTesting.onFx(() -> dialog.get().reportTable().getItems().stream()
-                        .filter(i -> i.file().equals("preferences.ini"))
-                        .findFirst()
-                        .orElseThrow()
-                        .outcome()))
-                .isEqualTo(ImportReport.Outcome.WOULD_IMPORT);
-        assertThat(this.test.engine.preferences().nick()).isNotEqualTo("FromEmule");
+    void shouldCheckAnImportThenTakeItAndRefuseAMissingFolder() throws Exception {
+        givenTheGui();
+        givenAnEmuleConfigFolderWith("preferences.ini", "[eMule]\r\nNick=FromEmule\r\n");
+        givenTheImportDialogShown();
+        givenTheFolderChecked();
+        givenTheCheckSays("preferences.ini", ImportReport.Outcome.WOULD_IMPORT);
+        givenTheNickIsNot("FromEmule");
+        givenTheImportTaken();
+        givenTheNickBecomes("FromEmule");
 
-        FxTesting.onFx(() -> dialog.get().run(false));
-        FxTesting.await(
-                "the import", () -> this.test.engine.preferences().nick().equals("FromEmule"));
-        FxTesting.onFx(() -> {
-            dialog.get().directoryField().setText(this.dir.resolve("none").toString());
-            dialog.get().run(true);
-            dialog.get().stage().close();
-        });
-        assertThat(this.test.told).anyMatch(m -> m.startsWith("Not a folder"));
-        assertThat(ImportDialog.guessEmuleDirectory()).isNotNull();
+        whenAFolderThatDoesNotExistIsChecked();
+
+        thenTheUserWasToldSomethingStartingWith("Not a folder");
     }
 
     @Test
-    void aFailedImportLetsTheDialogBeUsedAgain() throws Exception {
+    void shouldGuessTheEmuleDirectoryWithoutFailing() {
+        whenTheEmuleDirectoryIsGuessed();
+
+        thenThereIsAGuess();
+    }
+
+    @Test
+    void shouldLetTheDialogBeUsedAgainAfterAFailedImport() throws Exception {
+        givenTheGuiWithAnImportThatFails("preferences.ini is locked");
+        givenAnEmptyEmuleConfigFolder();
+        givenTheImportDialogShown();
+
+        whenTheFolderIsChecked();
+
+        thenTheCheckCanBeRunAgain();
+        thenTheSummaryContains("preferences.ini is locked");
+    }
+
+    @Test
+    void shouldNeverReplaceWhatTheUserTypedWithALateComment() throws Exception {
+        givenTheGuiWithTheStoredCommentStillComing();
+        givenTheCommentDialogShown("film.mkv");
+        givenTheUserTyped("my own words");
+
+        whenTheStoredCommentArrives("the old comment", 3);
+
+        thenTheCommentFieldShows("my own words");
+        thenTheRatingIs(3);
+    }
+
+    @Test
+    void shouldShowTheAboutDialog() throws Exception {
+        givenTheGui();
+
+        whenTheAboutDialogIsShown();
+
+        thenTheAboutDialogShows();
+    }
+
+    private void givenTheGui() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+    }
+
+    private void givenTheGuiWithAnImportThatFails(String message) throws Exception {
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
                         real,
-                        Map.of(
-                                "importFromEmule",
-                                args -> CompletableFuture.failedFuture(new IOException("preferences.ini is locked")))));
-        Path emule = Files.createDirectories(this.dir.resolve("emule-config"));
-        AtomicReference<ImportDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            dialog.set(new ImportDialog(this.test.gui, new Stage()));
-            dialog.get().show();
-            dialog.get().directoryField().setText(emule.toString());
-            dialog.get().run(true);
-        });
-
-        FxTesting.await("the failure", () -> !dialog.get().checkButton().isDisabled());
-        assertThat(FxTesting.onFx(() -> dialog.get().summaryLabel().getText())).contains("preferences.ini is locked");
-        FxTesting.onFx(() -> dialog.get().stage().close());
+                        Map.of("importFromEmule", args -> CompletableFuture.failedFuture(new IOException(message)))));
     }
 
-    @Test
-    void aLateCommentNeverReplacesWhatTheUserTyped() throws Exception {
-        CompletableFuture<Optional<FileComment>> stored = new CompletableFuture<>();
+    private void givenTheGuiWithTheStoredCommentStillComing() throws Exception {
         this.test = TestGui.start(
-                this.dir.resolve("njmule"), real -> Engines.overriding(real, Map.of("fileComment", args -> stored)));
-        AtomicReference<CommentDialog> dialog = new AtomicReference<>();
-        FxTesting.onFx(() -> {
-            dialog.set(new CommentDialog(this.test.gui, new Stage(), FILE, "film.mkv", false));
-            dialog.get().show();
-            dialog.get().textField().setText("my own words");
-        });
-
-        stored.complete(Optional.of(FileComment.of("the old comment", 3)));
-        FxTesting.onFx(() -> {});
-
-        assertThat(FxTesting.onFx(() -> dialog.get().textField().getText())).isEqualTo("my own words");
-        assertThat(FxTesting.onFx(() -> dialog.get().ratingBox().getValue()))
-                .as("the rating was not touched")
-                .isEqualTo(3);
-        FxTesting.onFx(() -> dialog.get().stage().close());
+                this.dir.resolve("njmule"),
+                real -> Engines.overriding(real, Map.of("fileComment", args -> this.stored)));
     }
 
-    @Test
-    void aboutShowsTheVersion() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
+    private void givenTheCategoriesDialogShown() throws Exception {
         FxTesting.onFx(() -> {
-            AboutDialog about = new AboutDialog(this.test.gui, new Stage());
-            about.show();
-            assertThat(about.stage().isShowing()).isTrue();
-            about.stage().close();
+            this.categories = new CategoriesDialog(this.test.gui, new Stage());
+            this.categories.show();
+            this.stage = this.categories.stage();
+        });
+    }
+
+    private void givenACategorySaved(String name, String patterns) throws Exception {
+        FxTesting.onFx(() -> {
+            this.categories.nameField().setText(name);
+            this.categories.patternsField().setText(patterns);
+            this.categories.save();
+        });
+    }
+
+    private void givenTheModelHasOneCategory() throws Exception {
+        FxTesting.await("the category", () -> this.test.gui.model().categories().size() == 1);
+    }
+
+    private void givenTheEngineKeptTheCategory(int id, String matchingFile) throws Exception {
+        assertThat(this.test.engine.categories().get(10, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(c -> {
+                    assertThat(c.id()).isEqualTo(id);
+                    assertThat(c.matches(matchingFile)).isTrue();
+                });
+    }
+
+    private void givenTheCategoryIsSelected() throws Exception {
+        FxTesting.await(
+                "selected", () -> this.categories.list().getSelectionModel().getSelectedItem() != null);
+    }
+
+    private void givenTheCategoryRenamed(String name) throws Exception {
+        FxTesting.onFx(() -> {
+            this.categories.nameField().setText(name);
+            this.categories.save();
+        });
+    }
+
+    private void givenTheOnlyCategoryIsNamed(String name) throws Exception {
+        FxTesting.await(
+                "renamed",
+                () -> this.test.gui.model().categories().getFirst().name().equals(name));
+        assertThat(this.test.gui.model().categories()).hasSize(1);
+    }
+
+    private void givenASharedFolder(String name) throws Exception {
+        this.folder = Files.createDirectories(this.dir.resolve(name));
+        this.test.engine.shareDirectory(this.folder, true).get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenTheSharedFoldersDialogShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.sharedFolders = new SharedFoldersDialog(this.test.gui, new Stage());
+            this.sharedFolders.show();
+            this.stage = this.sharedFolders.stage();
+        });
+    }
+
+    private void givenTheDialogListsTheFolder() throws Exception {
+        FxTesting.await("the folder", () -> this.sharedFolders.list().getItems().size() == 1);
+        assertThat(FxTesting.onFx(() -> this.sharedFolders.list().getItems().getFirst()))
+                .isEqualTo(new SharedDirectory(this.folder.toAbsolutePath(), true));
+    }
+
+    private void givenAnEmuleConfigFolderWith(String file, String content) throws Exception {
+        this.folder = Files.createDirectories(this.dir.resolve("emule-config"));
+        Files.writeString(this.folder.resolve(file), content);
+    }
+
+    private void givenAnEmptyEmuleConfigFolder() throws Exception {
+        this.folder = Files.createDirectories(this.dir.resolve("emule-config"));
+    }
+
+    private void givenTheImportDialogShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.importDialog = new ImportDialog(this.test.gui, new Stage());
+            this.importDialog.show();
+            this.stage = this.importDialog.stage();
+        });
+    }
+
+    private void givenTheFolderChecked() throws Exception {
+        check(this.folder);
+    }
+
+    private void givenTheCheckSays(String file, ImportReport.Outcome outcome) throws Exception {
+        FxTesting.await(
+                "the check", () -> !this.importDialog.reportTable().getItems().isEmpty());
+        assertThat(FxTesting.onFx(() -> this.importDialog.reportTable().getItems().stream()
+                        .filter(i -> i.file().equals(file))
+                        .findFirst()
+                        .orElseThrow()
+                        .outcome()))
+                .isEqualTo(outcome);
+    }
+
+    private void givenTheNickIsNot(String nick) {
+        assertThat(this.test.engine.preferences().nick()).isNotEqualTo(nick);
+    }
+
+    private void givenTheImportTaken() throws Exception {
+        FxTesting.onFx(() -> this.importDialog.run(false));
+    }
+
+    private void givenTheNickBecomes(String nick) throws Exception {
+        FxTesting.await(
+                "the import", () -> this.test.engine.preferences().nick().equals(nick));
+    }
+
+    private void givenTheCommentDialogShown(String name) throws Exception {
+        FxTesting.onFx(() -> {
+            this.comment = new CommentDialog(this.test.gui, new Stage(), FILE, name, false);
+            this.comment.show();
+            this.stage = this.comment.stage();
+        });
+    }
+
+    private void givenTheUserTyped(String text) throws Exception {
+        FxTesting.onFx(() -> this.comment.textField().setText(text));
+    }
+
+    private void whenTheFirstCategoryIsRemoved() throws Exception {
+        FxTesting.onFx(() -> {
+            this.categories.list().getSelectionModel().select(0);
+            this.categories.remove();
+        });
+    }
+
+    private void whenTheFirstFolderIsUnshared() throws Exception {
+        FxTesting.onFx(() -> {
+            this.sharedFolders.list().getSelectionModel().select(0);
+            this.sharedFolders.unshareSelected();
+        });
+    }
+
+    private void whenAFolderThatDoesNotExistIsChecked() throws Exception {
+        check(this.dir.resolve("none"));
+    }
+
+    private void whenTheEmuleDirectoryIsGuessed() {
+        this.guess = ImportDialog.guessEmuleDirectory();
+    }
+
+    private void whenTheFolderIsChecked() throws Exception {
+        check(this.folder);
+    }
+
+    private void whenTheStoredCommentArrives(String text, int rating) throws Exception {
+        this.stored.complete(Optional.of(FileComment.of(text, rating)));
+        FxTesting.onFx(() -> {});
+    }
+
+    private void whenTheAboutDialogIsShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.about = new AboutDialog(this.test.gui, new Stage());
+            this.about.show();
+            this.stage = this.about.stage();
+        });
+    }
+
+    private void thenTheModelHasNoCategory() throws Exception {
+        FxTesting.await("no category", () -> this.test.gui.model().categories().isEmpty());
+    }
+
+    private void thenTheDialogListsNoFolder() throws Exception {
+        FxTesting.await("no folder", () -> this.sharedFolders.list().getItems().isEmpty());
+    }
+
+    private void thenTheUserWasToldSomethingStartingWith(String start) {
+        assertThat(this.test.told).anyMatch(m -> m.startsWith(start));
+    }
+
+    private void thenThereIsAGuess() {
+        assertThat(this.guess).isNotNull();
+    }
+
+    private void thenTheCheckCanBeRunAgain() throws Exception {
+        FxTesting.await("the failure", () -> !this.importDialog.checkButton().isDisabled());
+    }
+
+    private void thenTheSummaryContains(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.importDialog.summaryLabel().getText()))
+                .contains(text);
+    }
+
+    private void thenTheCommentFieldShows(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.comment.textField().getText())).isEqualTo(text);
+    }
+
+    private void thenTheRatingIs(int rating) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.comment.ratingBox().getValue()))
+                .as("the rating was not touched")
+                .isEqualTo(rating);
+    }
+
+    private void thenTheAboutDialogShows() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.about.stage().isShowing())).isTrue();
+    }
+
+    private void check(Path profile) throws Exception {
+        FxTesting.onFx(() -> {
+            this.importDialog.directoryField().setText(profile.toString());
+            this.importDialog.run(true);
         });
     }
 }

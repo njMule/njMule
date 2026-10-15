@@ -48,6 +48,13 @@ class OnlineTest {
 
     private TestGui test;
     private FakeServer server;
+    private InetAddress lan;
+    private MainWindow window;
+    private ServersScreen servers;
+    private SearchScreen search;
+    private TransfersScreen transfers;
+    private Button connect;
+    private TableView<LiveList.Row<SearchResult>> results;
 
     @AfterEach
     void close() throws Exception {
@@ -60,29 +67,47 @@ class OnlineTest {
     }
 
     @Test
-    void connectsSearchesDownloadsAndDisconnects() throws Exception {
-        InetAddress lan = lanAddress();
-        long highId = Integer.toUnsignedLong(
-                Integer.reverseBytes(ByteBuffer.wrap(lan.getAddress()).getInt()));
-        this.server = FakeServer.start(
-                lan,
-                FakeServer.finding(
-                        highId,
-                        "welcome to the fake server",
-                        5_000_000_000L,
-                        "ubuntu 24.04 desktop.iso",
-                        "ubuntu notes.txt"));
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        MainWindow window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
-        this.test.show(window.root());
-        ServersScreen servers = (ServersScreen) window.screen("servers").orElseThrow();
-        SearchScreen search = (SearchScreen) window.screen("search").orElseThrow();
-        TransfersScreen transfers = (TransfersScreen) window.screen("transfers").orElseThrow();
+    void shouldConnectSearchDownloadDisconnectAndConnectAgain() throws Exception {
+        givenAFakeServerOnTheLan("ubuntu 24.04 desktop.iso", "ubuntu notes.txt");
+        givenTheMainWindow();
+        givenTheServerConnectedFromTheServersScreen();
+        givenTheServerListed();
+        givenTheConnectButtonReads("Disconnect");
+        givenAServerSearchFor("ubuntu");
+        givenTheResults(2);
+        givenTheFirstResultDownloadedAndTheSearchStopped();
+        givenTheTransfersListADownload();
+        givenTheTransfersShownAndTheResultsClosed();
+        givenTheThemeButtonSwitchesTheTheme();
+        givenTheConnectButtonDisconnects();
 
+        whenTheConnectButtonIsPressed();
+
+        thenTheModelConnectsAgain();
+    }
+
+    private void givenAFakeServerOnTheLan(String... files) throws Exception {
+        this.lan = lanAddress();
+        long highId = Integer.toUnsignedLong(
+                Integer.reverseBytes(ByteBuffer.wrap(this.lan.getAddress()).getInt()));
+        this.server = FakeServer.start(
+                this.lan, FakeServer.finding(highId, "welcome to the fake server", 5_000_000_000L, files));
+    }
+
+    private void givenTheMainWindow() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
+        this.test.show(this.window.root());
+        this.servers = (ServersScreen) this.window.screen("servers").orElseThrow();
+        this.search = (SearchScreen) this.window.screen("search").orElseThrow();
+        this.transfers = (TransfersScreen) this.window.screen("transfers").orElseThrow();
+    }
+
+    private void givenTheServerConnectedFromTheServersScreen() throws Exception {
         FxTesting.onFx(() -> {
-            window.show("servers");
-            servers.addressField().setText(lan.getHostAddress() + ":" + this.server.port());
-            servers.connectToAddress();
+            this.window.show("servers");
+            this.servers.addressField().setText(this.lan.getHostAddress() + ":" + this.server.port());
+            this.servers.connectToAddress();
         });
         FxTesting.await(
                 "connected", () -> this.test.model.connectionProperty().get() == EngineModel.Connection.CONNECTED);
@@ -90,54 +115,84 @@ class OnlineTest {
         FxTesting.await(
                 "the status with the server",
                 () -> this.test.model.statusProperty().get().server().isPresent());
-        FxTesting.await("the server row", () -> servers.table().getItems().size() == 1);
-        Button connect = FxTesting.onFx(() -> (Button) window.root().lookup("#connect"));
-        assertThat(FxTesting.onFx(connect::getText)).isEqualTo("Disconnect");
+    }
 
+    private void givenTheServerListed() throws Exception {
+        FxTesting.await("the server row", () -> this.servers.table().getItems().size() == 1);
+    }
+
+    private void givenTheConnectButtonReads(String text) throws Exception {
+        this.connect = FxTesting.onFx(() -> (Button) this.window.root().lookup("#connect"));
+        assertThat(FxTesting.onFx(this.connect::getText)).isEqualTo(text);
+    }
+
+    private void givenAServerSearchFor(String query) throws Exception {
         FxTesting.onFx(() -> {
-            window.show("search");
-            search.queryField().setText("ubuntu");
-            search.methodBox().setValue(SearchScreen.Method.SERVER);
-            search.start();
+            this.window.show("search");
+            this.search.queryField().setText(query);
+            this.search.methodBox().setValue(SearchScreen.Method.SERVER);
+            this.search.start();
         });
-        FxTesting.await("a result tab", () -> search.tabs().getTabs().size() == 1);
-        TableView<LiveList.Row<SearchResult>> results =
-                FxTesting.onFx(() -> search.table(search.tabs().getTabs().getFirst()));
-        FxTesting.await("two results", () -> results.getItems().size() == 2);
+        FxTesting.await("a result tab", () -> this.search.tabs().getTabs().size() == 1);
+    }
+
+    private void givenTheResults(int count) throws Exception {
+        this.results = FxTesting.onFx(
+                () -> this.search.table(this.search.tabs().getTabs().getFirst()));
+        FxTesting.await("two results", () -> this.results.getItems().size() == count);
+    }
+
+    private void givenTheFirstResultDownloadedAndTheSearchStopped() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.snapshot(window.root(), "search-results");
-            results.getSelectionModel().select(0);
-            search.downloadSelected();
-            search.more();
-            search.stop();
+            FxTesting.snapshot(this.window.root(), "search-results");
+            this.results.getSelectionModel().select(0);
+            this.search.downloadSelected();
+            this.search.more();
+            this.search.stop();
             return null;
         });
+    }
+
+    private void givenTheTransfersListADownload() throws Exception {
         FxTesting.await(
                 "a download",
-                () -> transfers.view() != null
+                () -> this.transfers.view() != null
                         && !this.test.model.downloads().rows().isEmpty());
+    }
+
+    private void givenTheTransfersShownAndTheResultsClosed() throws Exception {
         FxTesting.onFx(() -> {
-            window.show("transfers");
-            search.tabs().getTabs().getFirst().getOnClosed().handle(null);
-            search.tabs().getTabs().clear();
+            this.window.show("transfers");
+            this.search.tabs().getTabs().getFirst().getOnClosed().handle(null);
+            this.search.tabs().getTabs().clear();
         });
         FxTesting.onFx(() -> {
-            FxTesting.snapshot(window.root(), "transfers-download");
+            FxTesting.snapshot(this.window.root(), "transfers-download");
             return null;
         });
+    }
 
-        Button theme = FxTesting.onFx(() -> (Button) window.root().lookup("#theme"));
+    private void givenTheThemeButtonSwitchesTheTheme() throws Exception {
+        Button theme = FxTesting.onFx(() -> (Button) this.window.root().lookup("#theme"));
         boolean dark =
                 FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get());
         FxTesting.onFx(theme::fire);
         assertThat(FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get()))
                 .isNotEqualTo(dark);
+    }
 
-        FxTesting.onFx(connect::fire);
+    private void givenTheConnectButtonDisconnects() throws Exception {
+        FxTesting.onFx(this.connect::fire);
         FxTesting.await(
                 "disconnected",
                 () -> this.test.model.connectionProperty().get() == EngineModel.Connection.DISCONNECTED);
-        FxTesting.onFx(connect::fire);
+    }
+
+    private void whenTheConnectButtonIsPressed() throws Exception {
+        FxTesting.onFx(this.connect::fire);
+    }
+
+    private void thenTheModelConnectsAgain() throws Exception {
         FxTesting.await(
                 "connected again",
                 () -> this.test.model.connectionProperty().get() != EngineModel.Connection.DISCONNECTED);

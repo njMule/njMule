@@ -22,10 +22,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,31 +39,72 @@ class GuiTourTest {
     @TempDir
     Path dir;
 
-    @Test
-    void visitsEverythingThenEndsWithTheThemeItFound() throws Exception {
-        try (TestGui test = TestGui.start(this.dir.resolve("njmule"))) {
-            AtomicReference<Stage> stage = new AtomicReference<>();
-            CountDownLatch done = new CountDownLatch(1);
-            FxTesting.onFx(() -> {
-                MainWindow window = new MainWindow(test.gui);
-                Stage s = new Stage();
-                Scene scene = new Scene(window.root(), 1100, 720);
-                test.gui.themes().attach(scene);
-                s.setScene(scene);
-                s.show();
-                stage.set(s);
-                GuiTour.start(test.gui, window, s, List.of(), done::countDown);
-            });
-            assertThat(done.await(90, TimeUnit.SECONDS)).isTrue();
-            assertThat(FxTesting.onFx(() -> test.gui.themes().family())).isEqualTo(Themes.Family.NORD);
-            assertThat(FxTesting.onFx(() -> test.gui.themes().mode())).isEqualTo(GuiSettings.Mode.LIGHT);
-            assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
-                            .filter(Window::isShowing)
-                            .filter(w -> w instanceof Stage)
-                            .count()))
-                    .isEqualTo(1);
-            assertThat(GuiTour.requested()).isFalse();
-            FxTesting.onFx(() -> stage.get().close());
+    private final CountDownLatch done = new CountDownLatch(1);
+    private TestGui test;
+    private MainWindow window;
+    private Stage stage;
+
+    @AfterEach
+    void close() throws Exception {
+        if (this.stage != null) {
+            FxTesting.onFx(() -> this.stage.close());
         }
+        if (this.test != null) {
+            this.test.close();
+        }
+    }
+
+    @Test
+    void shouldVisitEverythingThenEndWithTheThemeItFound() throws Exception {
+        givenTheGui();
+        givenTheMainWindowShown();
+
+        whenTheTourStarts();
+
+        thenTheTourEndsWithinSeconds(90);
+        thenTheThemeIs(Themes.Family.NORD, GuiSettings.Mode.LIGHT);
+        thenTheShowingStagesAre(1);
+        thenTheTourIsNotRequested();
+    }
+
+    private void givenTheGui() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+    }
+
+    private void givenTheMainWindowShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.window = new MainWindow(this.test.gui);
+            Stage s = new Stage();
+            Scene scene = new Scene(this.window.root(), 1100, 720);
+            this.test.gui.themes().attach(scene);
+            s.setScene(scene);
+            s.show();
+            this.stage = s;
+        });
+    }
+
+    private void whenTheTourStarts() throws Exception {
+        FxTesting.onFx(() -> GuiTour.start(this.test.gui, this.window, this.stage, List.of(), this.done::countDown));
+    }
+
+    private void thenTheTourEndsWithinSeconds(long seconds) throws InterruptedException {
+        assertThat(this.done.await(seconds, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void thenTheThemeIs(Themes.Family family, GuiSettings.Mode mode) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.test.gui.themes().family())).isEqualTo(family);
+        assertThat(FxTesting.onFx(() -> this.test.gui.themes().mode())).isEqualTo(mode);
+    }
+
+    private void thenTheShowingStagesAre(long count) throws Exception {
+        assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
+                        .filter(Window::isShowing)
+                        .filter(w -> w instanceof Stage)
+                        .count()))
+                .isEqualTo(count);
+    }
+
+    private void thenTheTourIsNotRequested() {
+        assertThat(GuiTour.requested()).isFalse();
     }
 }

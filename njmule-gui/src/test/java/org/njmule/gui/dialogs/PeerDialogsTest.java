@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,63 +56,90 @@ class PeerDialogsTest {
     Path dir;
 
     private TestGui test;
+    private final List<Stage> stages = new ArrayList<>();
+    private ClientFilesDialog files;
+    private final AtomicReference<CompletableFuture<List<SearchResult>>> answer = new AtomicReference<>();
+    private final CompletableFuture<Void> saved = new CompletableFuture<>();
+    private final AtomicReference<FileComment> stored = new AtomicReference<>();
+    private CommentDialog comment;
+    private ListView<?> heard;
 
     @AfterEach
-    void close() {
+    void close() throws Exception {
+        for (Stage stage : this.stages) {
+            FxTesting.onFx(stage::close);
+        }
         if (this.test != null) {
             this.test.close();
         }
     }
 
     @Test
-    void theFilesOfAClientAreListedAndTheChosenOnesDownloaded() throws Exception {
-        SearchResult film = new SearchResult(FILE, "film.mkv", 700_000_000, 1, 1, Optional.of("Video"));
+    void shouldListTheFilesOfAClientDownloadTheChosenOnesAndClose() throws Exception {
+        givenAClientSharing("film.mkv");
+        givenItsFilesBrowsed();
+        givenTheDialogListsFiles(1);
+        givenTheStateReads("1 shared files");
+        givenTheTitleIs("View Shared Files: Peer");
+        givenDownloadIsOffWhileNothingIsChosen();
+        givenTheFirstFileDownloaded();
+        givenTheModelHasDownloads(1);
+        givenTheEngineDownloads("film.mkv");
+
+        whenCloseIsPressed();
+
+        thenTheDialogIsClosed();
+    }
+
+    @Test
+    void shouldSayWhenAClientHasNoFilesOrRefuses() throws Exception {
+        givenAClientWithoutFiles();
+        givenItsFilesBrowsed();
+        givenTheStateBecomes("The client shows no files");
+        givenTheDialogClosed();
+        givenTheClientRefuses("the client refused");
+
+        whenItsFilesAreBrowsed();
+
+        thenTheStateBecomes("No list: the client refused");
+    }
+
+    @Test
+    void shouldShowWhatTheSourcesOfADownloadSaidAndCloseOnceTheCommentIsStored() throws Exception {
+        givenSourcesThatCommented();
+        givenTheCommentDialogShown("film.mkv");
+        givenTheCommentsHeardShow("Bob: [Good] nice", "Ann: no rating");
+        givenTheOwnCommentShows("kept", 2);
+        givenTheRatingsOffer("Poor");
+        givenACommentSavedLongerThanAllowedWithTheRating(5);
+        givenTheCommentStoredIsCut(5);
+        givenTheDialogStaysOpenUntilStored();
+
+        whenTheCommentIsStored();
+
+        thenTheCommentDialogCloses();
+    }
+
+    private void givenAClientSharing(String name) throws Exception {
+        SearchResult film = new SearchResult(FILE, name, 700_000_000, 1, 1, Optional.of("Video"));
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
                         real, Map.of("browseSharedFiles", args -> CompletableFuture.completedFuture(List.of(film)))));
-        ClientFilesDialog dialog = browse();
-
-        FxTesting.await("the list", () -> table(dialog).getItems().size() == 1);
-        assertThat(FxTesting.onFx(() -> state(dialog))).isEqualTo("1 shared files");
-        assertThat(FxTesting.onFx(() -> dialog.stage().getTitle())).isEqualTo("View Shared Files: Peer");
-        assertThat(FxTesting.onFx(() -> button(dialog, "Download").isDisabled()))
-                .as("nothing chosen")
-                .isTrue();
-        FxTesting.onFx(() -> {
-            table(dialog).getSelectionModel().select(0);
-            button(dialog, "Download").fire();
-        });
-        FxTesting.await("the download", () -> this.test.model.downloads().size() == 1);
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
-                .extracting(DownloadInfo::name)
-                .containsExactly("film.mkv");
-        FxTesting.onFx(() -> button(dialog, "Close").fire());
-        assertThat(FxTesting.onFx(() -> dialog.stage().isShowing())).isFalse();
     }
 
-    @Test
-    void aClientWithoutFilesOrThatRefusesSaysSo() throws Exception {
-        AtomicReference<CompletableFuture<List<SearchResult>>> answer =
-                new AtomicReference<>(CompletableFuture.completedFuture(List.of()));
+    private void givenAClientWithoutFiles() throws Exception {
+        this.answer.set(CompletableFuture.completedFuture(List.of()));
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
-                real -> Engines.overriding(real, Map.of("browseSharedFiles", args -> answer.get())));
-
-        ClientFilesDialog empty = browse();
-        FxTesting.await("told", () -> state(empty).equals("The client shows no files"));
-        FxTesting.onFx(() -> empty.stage().close());
-
-        answer.set(CompletableFuture.failedFuture(new IOException("the client refused")));
-        ClientFilesDialog refused = browse();
-        FxTesting.await("told", () -> state(refused).equals("No list: the client refused"));
-        FxTesting.onFx(() -> refused.stage().close());
+                real -> Engines.overriding(real, Map.of("browseSharedFiles", args -> this.answer.get())));
     }
 
-    @Test
-    void aDownloadsCommentsShowWhatItsSourcesSaid() throws Exception {
-        CompletableFuture<Void> saved = new CompletableFuture<>();
-        AtomicReference<FileComment> stored = new AtomicReference<>();
+    private void givenTheClientRefuses(String reason) {
+        this.answer.set(CompletableFuture.failedFuture(new IOException(reason)));
+    }
+
+    private void givenSourcesThatCommented() throws Exception {
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
@@ -125,46 +153,135 @@ class PeerDialogsTest {
                                 args -> CompletableFuture.completedFuture(Optional.of(FileComment.of("kept", 2))),
                                 "setFileComment",
                                 args -> {
-                                    stored.set((FileComment) args[1]);
-                                    return saved;
+                                    this.stored.set((FileComment) args[1]);
+                                    return this.saved;
                                 })));
-        AtomicReference<CommentDialog> dialog = new AtomicReference<>();
+    }
+
+    private void givenItsFilesBrowsed() throws Exception {
+        this.files = browse();
+    }
+
+    private void givenTheDialogListsFiles(int count) throws Exception {
+        FxTesting.await("the list", () -> table(this.files).getItems().size() == count);
+    }
+
+    private void givenTheStateReads(String state) throws Exception {
+        assertThat(FxTesting.onFx(() -> state(this.files))).isEqualTo(state);
+    }
+
+    private void givenTheStateBecomes(String state) throws Exception {
+        FxTesting.await("told", () -> state(this.files).equals(state));
+    }
+
+    private void givenTheTitleIs(String title) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.files.stage().getTitle())).isEqualTo(title);
+    }
+
+    private void givenDownloadIsOffWhileNothingIsChosen() throws Exception {
+        assertThat(FxTesting.onFx(() -> button(this.files, "Download").isDisabled()))
+                .as("nothing chosen")
+                .isTrue();
+    }
+
+    private void givenTheFirstFileDownloaded() throws Exception {
         FxTesting.onFx(() -> {
-            dialog.set(new CommentDialog(this.test.gui, new Stage(), FILE, "film.mkv", true));
-            dialog.get().show();
+            table(this.files).getSelectionModel().select(0);
+            button(this.files, "Download").fire();
+        });
+    }
+
+    private void givenTheModelHasDownloads(int count) throws Exception {
+        FxTesting.await("the download", () -> this.test.model.downloads().size() == count);
+    }
+
+    private void givenTheEngineDownloads(String... names) throws Exception {
+        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+                .extracting(DownloadInfo::name)
+                .containsExactly(names);
+    }
+
+    private void givenTheDialogClosed() throws Exception {
+        FxTesting.onFx(() -> this.files.stage().close());
+    }
+
+    private void givenTheCommentDialogShown(String name) throws Exception {
+        FxTesting.onFx(() -> {
+            this.comment = new CommentDialog(this.test.gui, new Stage(), FILE, name, true);
+            this.comment.show();
+            this.stages.add(this.comment.stage());
         });
         // The list of the dialog, not the one of the rating box.
-        ListView<?> heard =
-                FxTesting.onFx(() -> dialog.get().stage().getScene().getRoot().getChildrenUnmodifiable().stream()
-                        .filter(ListView.class::isInstance)
-                        .map(ListView.class::cast)
-                        .findFirst()
-                        .orElseThrow());
-        FxTesting.await("the comments heard", () -> heard.getItems().size() == 2);
-        FxTesting.await("their lines", () -> !FxTesting.cellTexts(heard).isEmpty());
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(heard))).contains("Bob: [Good] nice", "Ann: no rating");
-        assertThat(FxTesting.onFx(() -> dialog.get().textField().getText())).isEqualTo("kept");
-        assertThat(FxTesting.onFx(() -> dialog.get().ratingBox().getValue())).isEqualTo(2);
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(dialog.get().ratingBox())))
-                .contains("Poor");
+        this.heard = FxTesting.onFx(() -> this.comment.stage().getScene().getRoot().getChildrenUnmodifiable().stream()
+                .filter(ListView.class::isInstance)
+                .map(ListView.class::cast)
+                .findFirst()
+                .orElseThrow());
+    }
 
+    private void givenTheCommentsHeardShow(String... lines) throws Exception {
+        FxTesting.await("the comments heard", () -> this.heard.getItems().size() == lines.length);
+        FxTesting.await("their lines", () -> !FxTesting.cellTexts(this.heard).isEmpty());
+        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.heard))).contains(lines);
+    }
+
+    private void givenTheOwnCommentShows(String text, int rating) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.comment.textField().getText())).isEqualTo(text);
+        assertThat(FxTesting.onFx(() -> this.comment.ratingBox().getValue())).isEqualTo(rating);
+    }
+
+    private void givenTheRatingsOffer(String rating) throws Exception {
+        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.comment.ratingBox())))
+                .contains(rating);
+    }
+
+    private void givenACommentSavedLongerThanAllowedWithTheRating(int rating) throws Exception {
         FxTesting.onFx(() -> {
-            dialog.get().textField().setText("x".repeat(FileComment.MAX_LENGTH + 20));
-            dialog.get().ratingBox().setValue(5);
-            dialog.get().save();
+            this.comment.textField().setText("x".repeat(FileComment.MAX_LENGTH + 20));
+            this.comment.ratingBox().setValue(rating);
+            this.comment.save();
         });
-        assertThat(stored.get()).isEqualTo(FileComment.of("x".repeat(FileComment.MAX_LENGTH), 5));
-        assertThat(FxTesting.onFx(() -> dialog.get().stage().isShowing()))
+    }
+
+    private void givenTheCommentStoredIsCut(int rating) {
+        assertThat(this.stored.get()).isEqualTo(FileComment.of("x".repeat(FileComment.MAX_LENGTH), rating));
+    }
+
+    private void givenTheDialogStaysOpenUntilStored() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.comment.stage().isShowing()))
                 .as("open until stored")
                 .isTrue();
-        saved.complete(null);
-        FxTesting.await("closed", () -> !dialog.get().stage().isShowing());
+    }
+
+    private void whenCloseIsPressed() throws Exception {
+        FxTesting.onFx(() -> button(this.files, "Close").fire());
+    }
+
+    private void whenItsFilesAreBrowsed() throws Exception {
+        this.files = browse();
+    }
+
+    private void whenTheCommentIsStored() {
+        this.saved.complete(null);
+    }
+
+    private void thenTheDialogIsClosed() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.files.stage().isShowing())).isFalse();
+    }
+
+    private void thenTheStateBecomes(String state) throws Exception {
+        FxTesting.await("told", () -> state(this.files).equals(state));
+    }
+
+    private void thenTheCommentDialogCloses() throws Exception {
+        FxTesting.await("closed", () -> !this.comment.stage().isShowing());
     }
 
     private ClientFilesDialog browse() throws Exception {
         return FxTesting.onFx(() -> {
             ClientFilesDialog dialog = new ClientFilesDialog(this.test.gui, new Stage(), "Peer");
             dialog.show(PEER);
+            this.stages.add(dialog.stage());
             return dialog;
         });
     }

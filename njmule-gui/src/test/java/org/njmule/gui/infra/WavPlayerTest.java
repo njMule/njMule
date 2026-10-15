@@ -30,6 +30,8 @@ import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 // Only files that are no sound: nothing is ever heard.
 class WavPlayerTest {
@@ -84,12 +86,12 @@ class WavPlayerTest {
         thenTheSettingsAreAnEmptyFileInTheCache();
     }
 
-    @Test
-    void shouldLeaveTheSoundSystemAloneWithAJavaHomeOrNamedSettings() throws IOException {
-        whenTheSettingsAreAskedFor("/opt/jdk", null);
-        thenNoSettingsAreGiven();
+    // An empty value stands for null.
+    @ParameterizedTest
+    @CsvSource({"/opt/jdk,", ", /etc/sound.properties"})
+    void shouldLeaveTheSoundSystemAloneWithAJavaHomeOrNamedSettings(String javaHome, String named) throws IOException {
+        whenTheSettingsAreAskedFor(javaHome, named);
 
-        whenTheSettingsAreAskedFor(null, "/etc/sound.properties");
         thenNoSettingsAreGiven();
     }
 

@@ -21,16 +21,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DesktopEntryTest {
 
+    private List<String> entryLines;
+
     // JavaFX names the windows' class after the application class; the desktop entry must match it, or
     // Linux desktops show the running app without its icon and name.
     @Test
-    void theLinuxDesktopEntryMatchesTheWindowClass() throws IOException {
-        Path entry = Path.of("..", "packaging", "linux", "org.njmule.njMule.desktop");
+    void shouldMatchTheLinuxDesktopEntryWithTheWindowClass() throws IOException {
+        whenTheLinuxDesktopEntryIsRead();
 
-        assertThat(Files.readAllLines(entry)).contains("StartupWMClass=" + NjMuleFxApp.class.getName());
+        thenTheEntryContains("StartupWMClass=" + NjMuleFxApp.class.getName());
+    }
+
+    private void whenTheLinuxDesktopEntryIsRead() throws IOException {
+        this.entryLines = Files.readAllLines(Path.of("..", "packaging", "linux", "org.njmule.njMule.desktop"));
+    }
+
+    private void thenTheEntryContains(String line) {
+        assertThat(this.entryLines).contains(line);
     }
 }
