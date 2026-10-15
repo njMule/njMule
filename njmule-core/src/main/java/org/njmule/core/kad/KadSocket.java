@@ -22,6 +22,7 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.IntPredicate;
@@ -47,8 +48,10 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     private static final int MAX_DATAGRAM = 8 * 1024;
     private static final int MAX_UNPACKED = 250_000;
     private static final int PACK_ABOVE = 200;
+    private static final Duration CLOSE_WAIT = Duration.ofSeconds(2);
 
     private final DatagramSocket socket;
+    private Thread reader;
     private final EngineLoop loop;
     private final Hash16 userHash;
     private final KadIdentity identity;
@@ -93,7 +96,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                 Objects.requireNonNull(identity, "identity"),
                 Objects.requireNonNull(blocked, "blocked"),
                 Objects.requireNonNull(random, "random"));
-        Thread.ofVirtual().name("njmule-kad-udp").start(socket::run);
+        socket.reader = Thread.ofVirtual().name("njmule-kad-udp").start(socket::run);
         return socket;
     }
 
@@ -147,6 +150,18 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     @Override
     public void close() {
         this.socket.close();
+        // The port is free only once the receiving thread has left the socket: until then binding it again fails,
+        // as when Kad starts again at once on the same port.
+        Thread reading = this.reader;
+        if (reading != null && reading != Thread.currentThread()) {
+            try {
+                if (!reading.join(CLOSE_WAIT)) {
+                    logger.debug("The UDP reader of port {} is still running", this.socket.getLocalPort());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void run() {

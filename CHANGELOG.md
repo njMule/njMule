@@ -439,6 +439,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Kad started again at once (turned on again, or restarted for a new port) could fail to bind its
+  UDP port, mostly on Linux: a closed UDP socket now frees its port before close returns. The same
+  holds for the server UDP socket when Kad takes its port.
 - The labels of the comment, category and import dialogs are no longer cut short.
 - The friends list is titled "Friends" (it used the text meaning "visible to friends"), and a
   CAPTCHA request in a chat is no longer cut short.

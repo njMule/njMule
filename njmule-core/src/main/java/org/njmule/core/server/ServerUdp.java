@@ -21,6 +21,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
+import java.time.Duration;
 import java.util.Objects;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
@@ -46,9 +47,11 @@ public final class ServerUdp implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(ServerUdp.class);
     private static final int MAX_DATAGRAM = 8 * 1024;
+    private static final Duration CLOSE_WAIT = Duration.ofSeconds(2);
 
     private final DatagramSocket socket;
     private final Receiver receiver;
+    private Thread reader;
 
     private ServerUdp(DatagramSocket socket, Receiver receiver) {
         this.socket = socket;
@@ -80,7 +83,7 @@ public final class ServerUdp implements AutoCloseable {
 
     private static ServerUdp start(DatagramSocket socket, Receiver receiver) {
         ServerUdp udp = new ServerUdp(socket, Objects.requireNonNull(receiver, "receiver"));
-        Thread.ofVirtual().name("njmule-server-udp").start(udp::run);
+        udp.reader = Thread.ofVirtual().name("njmule-server-udp").start(udp::run);
         return udp;
     }
 
@@ -96,6 +99,18 @@ public final class ServerUdp implements AutoCloseable {
     @Override
     public void close() {
         this.socket.close();
+        // The port is free only once the receiving thread has left the socket: until then binding it again fails,
+        // as when Kad starts again at once on the same port.
+        Thread reading = this.reader;
+        if (reading != null && reading != Thread.currentThread()) {
+            try {
+                if (!reading.join(CLOSE_WAIT)) {
+                    logger.debug("The UDP reader of port {} is still running", this.socket.getLocalPort());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void run() {

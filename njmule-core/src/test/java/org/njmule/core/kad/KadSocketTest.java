@@ -19,6 +19,8 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import java.net.DatagramSocket;
+import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -38,8 +40,12 @@ class KadSocketTest {
     @TempDir
     Path dir;
 
+    // Enough rounds to meet the close race, which most rounds lose on Linux when the port is not waited for.
+    private static final int ROUNDS = 20;
+
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final SecureRandom random = new SecureRandom();
+    private int busy;
 
     @AfterEach
     void stop() {
@@ -72,6 +78,31 @@ class KadSocketTest {
                     .as("a bootstrap request adds nobody")
                     .isZero();
         }
+    }
+
+    @Test
+    void aClosedSocketLeavesItsPortFreeAtOnce() throws Exception {
+        this.whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
+        this.thenThePortWasBusyTimes(0);
+    }
+
+    // Each socket receives (its reader waits on it) when it closes, as a running Kad does.
+    private void whenSocketsAreClosedAndTheirPortsBoundAgain(int rounds) throws Exception {
+        for (int i = 0; i < rounds; i++) {
+            KadSocket socket = this.socket("reuse");
+            int port = socket.port();
+            Thread.sleep(5);
+            socket.close();
+            try (DatagramSocket again = new DatagramSocket(port)) {
+                assertThat(again.getLocalPort()).isEqualTo(port);
+            } catch (SocketException e) {
+                this.busy++;
+            }
+        }
+    }
+
+    private void thenThePortWasBusyTimes(int times) {
+        assertThat(this.busy).isEqualTo(times);
     }
 
     private KadSocket socket(String name) throws Exception {
