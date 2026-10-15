@@ -103,6 +103,7 @@ public final class MainWindow {
     private final Map<String, ToggleButton> rail = new LinkedHashMap<>();
     private final NetworkPane network;
     private final ServersScreen servers;
+    private final Banner banner;
     private final Label activeBadge = badge();
     private final Label unreadBadge = badge();
     private final Circle networkDot = new Circle(4);
@@ -139,7 +140,10 @@ public final class MainWindow {
             this.screens.put(screen.id(), screen);
         }
         this.network = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
-        BorderPane frame = new BorderPane(this.content, this.topBar(), null, this.statusStrip(), this.navRail());
+        this.banner = new Banner(gui, this::connectIfOff, () -> this.show("settings"));
+        VBox center = new VBox(this.banner.view(), this.content);
+        VBox.setVgrow(this.content, Priority.ALWAYS);
+        BorderPane frame = new BorderPane(center, this.topBar(), null, this.statusStrip(), this.navRail());
         // Messages stack in the bottom corner, above the status strip: never over the tool rows.
         this.messages.setAlignment(Pos.BOTTOM_RIGHT);
         this.messages.setPickOnBounds(false);
@@ -447,6 +451,18 @@ public final class MainWindow {
         return strip;
     }
 
+    // The banner's way out of being offline: what Connect does then.
+    private void connectIfOff() {
+        if (this.gui.model().connectionProperty().get() == EngineModel.Connection.DISCONNECTED) {
+            this.toggleConnection();
+        }
+    }
+
+    /** The banner, for tests. */
+    Banner banner() {
+        return this.banner;
+    }
+
     // Connect and Disconnect act on both networks; Cancel only stops trying servers.
     private void toggleConnection() {
         EngineModel model = this.gui.model();
@@ -504,6 +520,7 @@ public final class MainWindow {
                 state == EngineModel.Connection.CONNECTED,
                 state == EngineModel.Connection.CONNECTING);
         this.showNetwork();
+        this.banner.update(state, this.gui.model().statusProperty().get());
     }
 
     private void showStatus(EngineStatus status) {
@@ -548,6 +565,7 @@ public final class MainWindow {
                 "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
         this.showNetwork();
         this.showActive();
+        this.banner.update(this.gui.model().connectionProperty().get(), status);
     }
 
     // The network's place tells at a glance whether either network is up; its tooltip says which.

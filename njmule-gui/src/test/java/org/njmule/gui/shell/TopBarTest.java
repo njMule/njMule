@@ -138,11 +138,13 @@ class TopBarTest {
     }
 
     private void thenTheLogIsInFront() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.window.root().lookupAll(".tab-pane").stream()
+        String log = this.test.gui.t("IDS_SV_LOG");
+        FxTesting.await(
+                "the log in front",
+                () -> this.window.root().lookupAll(".tab-pane").stream()
                         .map(TabPane.class::cast)
-                        .filter(t -> t.getTabs().size() == 2 && t.getScene() != null)
-                        .anyMatch(t -> t.getSelectionModel().getSelectedIndex() == 1)))
-                .isTrue();
+                        .map(t -> t.getSelectionModel().getSelectedItem())
+                        .anyMatch(tab -> tab != null && log.equals(tab.getText())));
     }
 
     private void thenTheToolsAre(String... ids) throws Exception {

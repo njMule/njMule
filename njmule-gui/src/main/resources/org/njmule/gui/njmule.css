@@ -197,6 +197,32 @@
     -fx-alignment: center-right;
 }
 
+/* A state that lasts and wants something done, above the screens: pastel fill, text in the theme's
+   own colour, the icon telling the kind besides the words. */
+.banner {
+    -fx-spacing: 10;
+    -fx-padding: 6 12 6 12;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 1 0;
+}
+
+.banner.offline {
+    -fx-background-color: -color-accent-subtle;
+}
+
+.banner.unreachable {
+    -fx-background-color: -color-warning-subtle;
+}
+
+.banner .banner-icon {
+    -fx-icon-size: 18;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.banner.unreachable .banner-icon {
+    -fx-icon-color: -color-warning-fg;
+}
+
 /* Screens. */
 .screen {
     -fx-padding: 12;

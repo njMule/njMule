@@ -258,7 +258,8 @@ class CaptureTour {
         for (int i = 0; i < 31; i++) {
             FxTesting.onFx(this.model::tick);
         }
-        Thread.sleep(800);
+        // Long enough for the banner of a lasting state to show.
+        Thread.sleep(2500);
     }
 
     // What only events tell: the connection, the log, the chats and ten minutes of rates.
