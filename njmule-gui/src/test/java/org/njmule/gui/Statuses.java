@@ -33,6 +33,12 @@ public final class Statuses {
                 server, clientId, lowId, false, kad, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, "", 0, relatedSearch);
     }
 
+    /** No server, {@code kad} as given, listening on {@code tcpPort}. */
+    public static EngineStatus kadOnly(Optional<KadInfo> kad, int tcpPort) {
+        return new EngineStatus(
+                Optional.empty(), 0, false, false, kad, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, "", tcpPort, false);
+    }
+
     /** Kad running, connected or not, behind a firewall or not, at {@code ip} (empty when unknown). */
     public static KadInfo kad(boolean connected, boolean firewalled, String ip) {
         return new KadInfo(connected, 10, 5, firewalled, "00112233445566778899AABBCCDDEEFF", ip, 4672);

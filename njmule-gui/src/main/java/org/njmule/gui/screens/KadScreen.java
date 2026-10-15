@@ -16,10 +16,10 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.theme.Styles;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -27,9 +27,12 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -49,7 +52,7 @@ import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.UrlBox;
 
-/** The state of our Kad node and joining Kad through a known node. */
+/** The state of our Kad node in plain words and in numbers, and joining Kad from a list of nodes or a known one. */
 public final class KadScreen implements Screen {
 
     private final Gui gui;
@@ -60,6 +63,10 @@ public final class KadScreen implements Screen {
     private final Label contacts = value();
     private final Label verified = value();
     private final Label id = Fx.leftToRight(value());
+    private final Label say = new Label();
+    private final FontIcon sayIcon = new FontIcon();
+    private final TitledPane join = new TitledPane();
+    private Boolean wasConnected;
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
@@ -101,13 +108,11 @@ public final class KadScreen implements Screen {
         this.nodeInput = new Inputs(this.gui)
                 .address(this.node, this.gui.t("IDS_BOOTSTRAP"))
                 .quietWhenEmpty();
-        Button start = Fx.primary(Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap));
-        start.disableProperty().bind(this.nodeInput.validProperty().not());
         this.connect.setOnAction(e -> this.connectOrDisconnect());
         this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
         this.recheck.setGraphic(new FontIcon(Material2MZ.SECURITY));
         this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
-        var tools = Fx.toolRow(this.connect, this.recheck, Fx.spacer(), this.node, start);
+        var tools = Fx.toolRow(this.connect, this.recheck);
         FlowPane cards = new FlowPane(
                 12,
                 12,
@@ -117,12 +122,18 @@ public final class KadScreen implements Screen {
                 card(this.gui.t("IDS_KADCONTACTLAB"), this.contacts),
                 card(this.gui.t("nj.kad.verified"), this.verified),
                 card(this.gui.t("IDS_KADID"), this.id));
-        Label hint = new Label(this.gui.t("nj.kad.hint"));
-        hint.setWrapText(true);
+        this.say.setGraphic(this.sayIcon);
+        this.say.setWrapText(true);
+        this.say.setMaxWidth(Double.MAX_VALUE);
+        this.say.setMinHeight(Region.USE_PREF_SIZE);
+        this.say.getStyleClass().add("kad-say");
+        this.join.setText(this.gui.t("nj.kad.join"));
+        this.join.getStyleClass().add(Styles.DENSE);
+        this.join.setContent(this.ways());
         this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.show(now));
         this.show(this.gui.model().statusProperty().get());
         TabPane lists = this.lists();
-        VBox content = new VBox(16, this.nodesRow(), cards, hint, lists);
+        VBox content = new VBox(16, this.say, cards, this.join, lists);
         VBox.setVgrow(lists, Priority.ALWAYS);
         // Shown under the network, which gives the title.
         return Fx.part(tools, content);
@@ -174,17 +185,28 @@ public final class KadScreen implements Screen {
         this.gui.model().refreshKadLists();
     }
 
-    // Contacts from a nodes.dat on the web, from an address typed or used before.
-    private Node nodesRow() {
+    // The two ways in, explained together: a list of nodes from the web (an address typed or used before), or one
+    // client known by its address.
+    private Node ways() {
         this.nodes = new UrlBox(this.gui, "nodesDat", this.gui.t("IDS_BOOTSRAPNODESDAT"));
         this.nodes.node().setPromptText("https://\u2026/nodes.dat");
         this.nodes.node().getEditor().setOnAction(e -> this.nodesFromUrl());
-        Button take = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2MZ.REFRESH, this::nodesFromUrl);
+        this.nodes.node().setMaxWidth(Double.MAX_VALUE);
+        Button take = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::nodesFromUrl);
         take.disableProperty().bind(this.nodes.input().validProperty().not());
-        HBox row = new HBox(8, new Label(this.gui.t("IDS_BOOTSRAPNODESDAT")), this.nodes.node(), take);
-        row.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(this.nodes.node(), Priority.ALWAYS);
-        return row;
+        this.node.setMaxWidth(Double.MAX_VALUE);
+        Button start = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap);
+        start.disableProperty().bind(this.nodeInput.validProperty().not());
+        Label hint = new Label(this.gui.t("nj.kad.joinHint"));
+        hint.setWrapText(true);
+        hint.setMinHeight(Region.USE_PREF_SIZE);
+        GridPane ways = new GridPane(8, 8);
+        ways.addRow(0, Fx.whole(new Label(this.gui.t("IDS_BOOTSRAPNODESDAT"))), this.nodes.node(), Fx.whole(take));
+        ways.addRow(1, Fx.whole(new Label(this.gui.t("nj.kad.fromClient"))), this.node, Fx.whole(start));
+        ColumnConstraints grows = new ColumnConstraints();
+        grows.setHgrow(Priority.ALWAYS);
+        ways.getColumnConstraints().addAll(new ColumnConstraints(), grows);
+        return new VBox(10, hint, ways);
     }
 
     void nodesFromUrl() {
@@ -222,6 +244,13 @@ public final class KadScreen implements Screen {
 
     private void show(EngineStatus status) {
         boolean running = status.kad().isPresent();
+        this.say(status);
+        // Open while Kad is not connected, closed once it is; in between, as the user leaves it.
+        boolean connected = status.kad().map(KadInfo::connected).orElse(false);
+        if (!Boolean.valueOf(connected).equals(this.wasConnected)) {
+            this.wasConnected = connected;
+            this.join.setExpanded(!connected);
+        }
         // The lists follow every few seconds while the screen shows.
         if (this.view != null && this.view.getScene() != null && this.view.isVisible() && ++this.ticks % 3 == 0) {
             this.gui.model().refreshKadLists();
@@ -252,6 +281,35 @@ public final class KadScreen implements Screen {
         this.contacts.setText(this.gui.formats().count(k.contacts()));
         this.verified.setText(this.gui.formats().count(k.verifiedContacts()));
         this.id.setText(k.id());
+    }
+
+    // The state in plain words, with what to do about it.
+    private void say(EngineStatus status) {
+        Optional<KadInfo> kad = status.kad();
+        this.say.getStyleClass().removeAll("success", "warning");
+        if (kad.isEmpty()) {
+            this.sayIcon.setIconCode(Material2AL.CLOUD_OFF);
+            this.say.setText(this.gui.t("nj.kad.sayOff"));
+        } else if (!kad.get().connected()) {
+            this.sayIcon.setIconCode(Material2AL.HOURGLASS_EMPTY);
+            this.say.setText(this.gui.t("nj.kad.sayConnecting"));
+        } else if (kad.get().firewalled()) {
+            this.sayIcon.setIconCode(Material2MZ.WARNING);
+            this.say.setText(this.gui.f("nj.kad.sayFirewalled", status.tcpPort()));
+            this.say.getStyleClass().add("warning");
+        } else {
+            this.sayIcon.setIconCode(Material2AL.CHECK_CIRCLE);
+            this.say.setText(this.gui.t("nj.kad.sayOpen"));
+            this.say.getStyleClass().add("success");
+        }
+    }
+
+    Label sayLabel() {
+        return this.say;
+    }
+
+    TitledPane joinPane() {
+        return this.join;
     }
 
     /** Whether other nodes can send to our UDP port: untested until a test came to an outcome. */

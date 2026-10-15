@@ -235,6 +235,35 @@
     -fx-icon-color: -color-warning-fg;
 }
 
+/* Kad's state in words, on a pastel tint of its tone; the text keeps the theme's colour. */
+.kad-say {
+    -fx-graphic-text-gap: 10;
+    -fx-padding: 8 12 8 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+}
+
+.kad-say .ikonli-font-icon {
+    -fx-icon-size: 18;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.kad-say.success {
+    -fx-background-color: -color-success-subtle;
+}
+
+.kad-say.success .ikonli-font-icon {
+    -fx-icon-color: -color-success-fg;
+}
+
+.kad-say.warning {
+    -fx-background-color: -color-warning-subtle;
+}
+
+.kad-say.warning .ikonli-font-icon {
+    -fx-icon-color: -color-warning-fg;
+}
+
 /* An empty list: a large muted icon, the words, and the buttons that fill it. */
 .empty-state .empty-icon {
     -fx-icon-size: 40;
