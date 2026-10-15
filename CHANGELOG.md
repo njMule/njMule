@@ -369,6 +369,9 @@ All notable changes to this project are documented here. The format follows
 - The rate graph has a scale; chat tabs with unread messages are marked. The statistics show what
   happens now first, then the graph, then the session and the cumulative figures, each in a regular
   grid of cards; the statistics tree has dense rows.
+- Chats show each line as a bubble that wraps, ours at the end of the row and theirs at the start,
+  with the time and the author above the words; the friends list has dense rows and the address of
+  a new conversation is named beside its box.
 - What was done with a search result (downloading, shared, downloaded, cancelled, spam) shows with
   an icon besides its tint and words.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.

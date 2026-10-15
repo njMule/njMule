@@ -777,6 +777,7 @@ final class CaptureDemo {
         c.put("disconnect", a -> CompletableFuture.completedFuture(null));
         c.put("connectKad", a -> CompletableFuture.completedFuture(null));
         c.put("disconnectKad", a -> CompletableFuture.completedFuture(null));
+        c.put("sendMessage", a -> CompletableFuture.completedFuture(null));
         c.put(
                 "peerComments",
                 a -> CompletableFuture.completedFuture(List.of(

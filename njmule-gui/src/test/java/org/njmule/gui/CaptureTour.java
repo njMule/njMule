@@ -275,6 +275,8 @@ class CaptureTour {
                 "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Hi! Do you have the 4K one too?"));
         this.model.onNext(new EngineEvent.MessageReceived(
                 "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Thanks for Sintel :)"));
+        FxTesting.onFx(
+                () -> this.model.sendMessage("203.0.113.33:4672", "You're welcome! The 4K one is in my shared files."));
         this.model.onNext(new EngineEvent.MessageReceived(
                 "198.51.100.77:4662", CaptureDemo.hash("x9"), Optional.of("Fog"), "May I add you as a friend?"));
         this.model.onNext(new EngineEvent.CaptchaRequested("192.0.2.99:4662", CaptureDemo.hash("c9"), captcha()));

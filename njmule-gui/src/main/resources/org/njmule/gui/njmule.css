@@ -460,12 +460,39 @@
     -fx-fill: -nj-brand-accent;
 }
 
-.chat-us {
+/* Friends one per dense row; chat lines as bubbles on pastel tints: ours accent (the subtle tint is too close to
+   the neutral one in Nord), theirs neutral. */
+.friends-list .list-cell {
+    -fx-cell-size: 2em;
+}
+
+.chat-lines .list-cell {
+    -fx-cell-size: -1;
+    -fx-padding: 3 8 3 8;
+    -fx-background-color: transparent;
+}
+
+.chat-bubble {
+    -fx-padding: 5 10 6 10;
+    -fx-background-radius: 10;
+    -fx-background-color: -color-bg-subtle;
+}
+
+.chat-us .chat-bubble {
+    -fx-background-color: -color-accent-muted;
+}
+
+.chat-notice .chat-bubble {
+    -fx-background-color: transparent;
+}
+
+.chat-meta {
+    -fx-font-size: 0.85em;
     -fx-text-fill: -color-fg-muted;
 }
 
-.chat-notice {
-    -fx-text-fill: -color-accent-fg;
+.chat-notice .chat-bubble .label {
+    -fx-text-fill: -color-fg-muted;
     -fx-font-style: italic;
 }
 

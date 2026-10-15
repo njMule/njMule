@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -100,6 +101,7 @@ public final class MessagesScreen implements Screen {
 
     private Node build() {
         this.friends.setItems(this.gui.model().friends().rows());
+        this.friends.getStyleClass().add("friends-list");
         this.friends.setPlaceholder(new Label(this.gui.t("nj.chat.noFriends")));
         this.friends.setCellFactory(l -> new ListCell<>() {
             @Override
@@ -144,7 +146,10 @@ public final class MessagesScreen implements Screen {
         none.visibleProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         SplitPane split = new SplitPane(left, new StackPane(none, this.tabs));
         split.setDividerPositions(0.26);
-        var tools = Fx.toolRow(this.address, start);
+        // The address is named beside its box: the box has the cursor when the screen opens, which hides its hint.
+        Label where = Fx.whole(new Label(this.gui.t("IDS_SV_ADDRESS")));
+        where.setLabelFor(this.address);
+        var tools = Fx.toolRow(where, this.address, start);
         return Fx.screen(this.title(), tools, split);
     }
 
@@ -327,6 +332,7 @@ public final class MessagesScreen implements Screen {
             this.setPadding(new Insets(8, 0, 0, 0));
             ListView<Chats.Line> lines = new ListView<>(chat.lines());
             lines.setUserData(chat);
+            lines.getStyleClass().add("chat-lines");
             lines.setCellFactory(l -> new LineCell());
             MessagesScreen.this
                     .gui
@@ -412,25 +418,63 @@ public final class MessagesScreen implements Screen {
         }
     }
 
-    /** A line: time, author and text; notices are translated. */
+    /**
+     * A line as a bubble: ours at the end of the row, theirs at the start, with the time and the author above the
+     * words; notices are translated and stand alone. Long lines wrap.
+     */
     private final class LineCell extends ListCell<Chats.Line> {
+        private final Label meta = new Label();
+        private final Label words = new Label();
+        private final VBox bubble = new VBox(2, this.meta, this.words);
+        private final HBox row = new HBox(this.bubble);
+
+        LineCell() {
+            this.meta.getStyleClass().add("chat-meta");
+            this.words.setWrapText(true);
+            this.bubble.getStyleClass().add("chat-bubble");
+            this.bubble.setMinWidth(Region.USE_PREF_SIZE);
+            // The cell takes the width of the list rather than of its text, so that long lines wrap.
+            this.setPrefWidth(0);
+        }
+
         @Override
         protected void updateItem(Chats.Line line, boolean empty) {
             super.updateItem(line, empty);
             this.getStyleClass().removeAll("chat-us", "chat-them", "chat-notice");
+            this.setText(null);
             if (empty || line == null) {
-                this.setText(null);
+                this.setGraphic(null);
                 return;
             }
             String time = MessagesScreen.this.gui.formats().time(line.time());
             // What people wrote keeps its own direction, whatever the language of the interface.
             I18n i18n = MessagesScreen.this.gui.i18n();
-            String text = switch (line.author()) {
-                case US -> time + "  " + i18n.t("nj.chat.me") + ": " + i18n.embed(line.text());
-                case THEM -> time + "  " + i18n.embed(this.who()) + ": " + i18n.embed(line.text());
-                case NOTICE -> time + "  " + MessagesScreen.this.gui.f(line.text(), line.detail());
-            };
-            this.setText(text);
+            switch (line.author()) {
+                case US -> {
+                    this.meta.setText(time + "  " + i18n.t("nj.chat.me"));
+                    this.words.setText(i18n.embed(line.text()));
+                }
+                case THEM -> {
+                    this.meta.setText(time + "  " + i18n.embed(this.who()));
+                    this.words.setText(i18n.embed(line.text()));
+                }
+                case NOTICE -> {
+                    this.meta.setText(time);
+                    this.words.setText(MessagesScreen.this.gui.f(line.text(), line.detail()));
+                }
+            }
+            this.row.setAlignment(
+                    switch (line.author()) {
+                        case US -> Pos.CENTER_RIGHT;
+                        case THEM -> Pos.CENTER_LEFT;
+                        case NOTICE -> Pos.CENTER;
+                    });
+            if (this.getListView() != null && !this.bubble.maxWidthProperty().isBound()) {
+                this.bubble
+                        .maxWidthProperty()
+                        .bind(this.getListView().widthProperty().multiply(0.75));
+            }
+            this.setGraphic(this.row);
             this.getStyleClass().add("chat-" + line.author().name().toLowerCase(Locale.ROOT));
         }
 
