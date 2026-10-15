@@ -95,6 +95,8 @@ import org.njmule.gui.ui.Screen;
 public final class MainWindow {
 
     private static final Duration MESSAGE_TIME = Duration.seconds(6);
+    // Within the time the engine keeps what an undo needs.
+    private static final Duration OFFER_TIME = Duration.seconds(10);
     // More messages at once push the oldest out: the stack never covers the screen.
     private static final int MAX_MESSAGES = 4;
     private static final List<KeyCode> DIGITS = List.of(
@@ -244,12 +246,29 @@ public final class MainWindow {
         show(text, new FontIcon(Material2AL.CHECK_CIRCLE_OUTLINE), Styles.SUCCESS, true);
     }
 
+    /**
+     * Shows a message with a button labelled {@code action} that runs {@code run}, for longer than a short message: an
+     * undo has to be found in time.
+     */
+    public void offer(String text, String action, Runnable run) {
+        Notification note = show(text, new FontIcon(Material2AL.INFO), null, false);
+        Button button = new Button(action);
+        button.setOnAction(e -> {
+            this.messages.getChildren().remove(note);
+            run.run();
+        });
+        note.setPrimaryActions(button);
+        PauseTransition later = new PauseTransition(OFFER_TIME);
+        later.setOnFinished(e -> this.messages.getChildren().remove(note));
+        later.play();
+    }
+
     /** Shows a problem, which stays until the user closes it. */
     public void problem(String text) {
         show(text, new FontIcon(Material2AL.ERROR_OUTLINE), Styles.DANGER, false);
     }
 
-    private void show(String text, FontIcon icon, String style, boolean fades) {
+    private Notification show(String text, FontIcon icon, String style, boolean fades) {
         this.elsewhere.accept(text);
         Notification note = new Notification(text, icon);
         note.getStyleClass().add("elevated-1");
@@ -268,6 +287,7 @@ public final class MainWindow {
             later.setOnFinished(e -> this.messages.getChildren().remove(note));
             later.play();
         }
+        return note;
     }
 
     // The sound of a notification of an event, when the preferences ask for one; not for the replies to the user.

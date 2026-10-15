@@ -33,7 +33,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
@@ -146,10 +145,12 @@ class TransfersMenusTest {
         givenTheLinkCopied("nj.copyLink", "ed2k://|file|test%20file.bin|");
         givenTheItemOfTheMenuChosen("IDS_DL_CLEAR");
         givenTheDownloadsLeftAfterTheClear(1);
-        // Cancel asks first.
-        givenTheCancelOfTheMenuAnswered(ButtonBar.ButtonData.CANCEL_CLOSE);
-        givenTheEngineDownloads(1);
-        givenTheCancelOfTheChosenAnswered(ButtonBar.ButtonData.OK_DONE);
+        // Cancel asks nothing first: its message offers to undo it.
+        givenTheCancelOfTheMenuChosen();
+        givenNoDownloadLeft();
+        givenTheCancelUndone();
+        givenTheDownloadBack();
+        givenTheChosenCancelled();
         givenNoDownloadLeft();
 
         whenTheChosenAreCancelledAgain();
@@ -468,20 +469,23 @@ class TransfersMenusTest {
                 .isEqualTo(count);
     }
 
-    private void givenTheCancelOfTheMenuAnswered(ButtonBar.ButtonData answer) throws Exception {
-        FxTesting.onFx(() -> {
-            FxTesting.answer(answer);
-            item(downloadMenu(), "IDS_CANCEL").fire();
-        });
+    private void givenTheCancelOfTheMenuChosen() throws Exception {
+        FxTesting.onFx(() -> item(downloadMenu(), "IDS_CANCEL").fire());
     }
 
-    private void givenTheEngineDownloads(int count) throws Exception {
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS)).hasSize(count);
+    private void givenTheCancelUndone() throws Exception {
+        assertThat(this.test.told).last().isEqualTo("Downloads cancelled: 1");
+        FxTesting.onFx(() -> this.test.offered.getLast().run());
     }
 
-    private void givenTheCancelOfTheChosenAnswered(ButtonBar.ButtonData answer) throws Exception {
+    private void givenTheDownloadBack() throws Exception {
+        FxTesting.await(
+                "taken back", () -> this.transfers.downloads().getItems().size() == 1);
+    }
+
+    private void givenTheChosenCancelled() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(answer);
+            this.transfers.downloads().getSelectionModel().select(0);
             this.transfers.cancelSelected();
         });
     }

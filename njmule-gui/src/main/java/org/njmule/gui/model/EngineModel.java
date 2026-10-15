@@ -550,6 +550,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
     }
 
+    /** Takes back a download cancelled moments ago; it comes back with the engine's event. */
+    public void restore(Hash16 file) {
+        later(this.engine.restoreDownload(file), ok -> {});
+    }
+
     /** Renames a shared file; a name taken already is told through the errors. */
     public void renameShared(Hash16 file, String name) {
         later(this.engine.renameSharedFile(file, name), ok -> refreshShared());

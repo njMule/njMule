@@ -52,6 +52,9 @@ public final class TestGui implements AutoCloseable {
     /** The sound files played, in order; no sound is ever heard. */
     public final List<Path> played;
 
+    /** The actions offered with a message, such as an undo, in order. */
+    public final List<Runnable> offered;
+
     private final AtomicInteger relaunches;
     private Stage stage;
 
@@ -61,12 +64,14 @@ public final class TestGui implements AutoCloseable {
             Gui gui,
             List<String> told,
             List<Path> played,
+            List<Runnable> offered,
             AtomicInteger relaunches) {
         this.engine = engine;
         this.model = model;
         this.gui = gui;
         this.told = told;
         this.played = played;
+        this.offered = offered;
         this.relaunches = relaunches;
     }
 
@@ -104,6 +109,7 @@ public final class TestGui implements AutoCloseable {
         EngineModel model = new EngineModel(wrap.apply(engine), Platform::runLater);
         List<String> told = new CopyOnWriteArrayList<>();
         List<Path> played = new CopyOnWriteArrayList<>();
+        List<Runnable> offered = new CopyOnWriteArrayList<>();
         AtomicInteger relaunches = new AtomicInteger();
         Gui gui = FxTesting.onFx(() -> new Gui(
                 i18n,
@@ -114,13 +120,17 @@ public final class TestGui implements AutoCloseable {
                 engine.directories(),
                 told::add,
                 told::add,
+                (text, action, run) -> {
+                    told.add(text);
+                    offered.add(run);
+                },
                 relaunches::incrementAndGet,
                 new Subscriptions(),
                 played::add,
                 autostart));
         model.onError(told::add);
         model.start();
-        return new TestGui(engine, model, gui, told, played, relaunches);
+        return new TestGui(engine, model, gui, told, played, offered, relaunches);
     }
 
     public int relaunches() {

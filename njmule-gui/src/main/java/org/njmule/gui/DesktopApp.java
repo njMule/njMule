@@ -583,6 +583,7 @@ public final class DesktopApp implements AutoCloseable {
                 this.directories,
                 text -> this.window.message(text),
                 text -> this.window.problem(text),
+                (text, action, run) -> this.window.offer(text, action, run),
                 this::relaunch,
                 new Subscriptions(),
                 this.sound,

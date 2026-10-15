@@ -22,6 +22,7 @@ import atlantafx.base.controls.Notification;
 import atlantafx.base.theme.Styles;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
@@ -40,6 +41,7 @@ class MessageKindsTest {
 
     private TestGui test;
     private MainWindow window;
+    private final AtomicInteger ran = new AtomicInteger();
 
     @AfterEach
     void close() {
@@ -64,6 +66,35 @@ class MessageKindsTest {
         whenShown(List.of("one", "two", "three"), List.of(), List.of("four", "five"));
         thenTheMessagesAre("two", "three", "four", "five");
         thenTheyStackAt(Pos.BOTTOM_RIGHT);
+    }
+
+    @Test
+    void shouldRunTheActionOfferedWithAMessageAndTakeTheMessageAway() throws Exception {
+        givenTheWindow();
+        givenTheOffer("Downloads cancelled: 1", "Undo");
+
+        whenItsButtonIsPressed("Undo");
+
+        thenTheActionRan();
+        thenTheMessagesAre();
+    }
+
+    private void givenTheOffer(String text, String action) throws Exception {
+        FxTesting.onFx(() -> this.window.offer(text, action, this.ran::incrementAndGet));
+        thenTheMessagesAre(text);
+    }
+
+    private void whenItsButtonIsPressed(String action) throws Exception {
+        FxTesting.onFx(() -> ((Notification) this.window.messages().getFirst())
+                .getPrimaryActions().stream()
+                        .filter(b -> b.getText().equals(action))
+                        .findFirst()
+                        .orElseThrow()
+                        .fire());
+    }
+
+    private void thenTheActionRan() {
+        assertThat(this.ran).hasValue(1);
     }
 
     private void givenTheWindow() throws Exception {

@@ -39,6 +39,7 @@ import org.njmule.gui.model.EngineModel;
  *
  * @param inform shows a short message to the user
  * @param warn shows a problem the user has to read: what failed or was refused, and why
+ * @param offer shows a short message with an action the user may take while it shows, such as an undo
  * @param relaunch rebuilds the window, after a language change
  * @param subscriptions what the window follows of the model, ended when it is rebuilt
  * @param sound plays the sound of the notifications
@@ -53,10 +54,17 @@ public record Gui(
         AppDirectories directories,
         Consumer<String> inform,
         Consumer<String> warn,
+        Offer offer,
         Runnable relaunch,
         Subscriptions subscriptions,
         SoundPlayer sound,
         Optional<Autostart> autostart) {
+
+    /** Shows {@code text} with a button labelled {@code action} that runs {@code run}, while the message shows. */
+    @FunctionalInterface
+    public interface Offer {
+        void show(String text, String action, Runnable run);
+    }
 
     public Gui {
         Objects.requireNonNull(i18n, "i18n");
@@ -67,6 +75,7 @@ public record Gui(
         Objects.requireNonNull(directories, "directories");
         Objects.requireNonNull(inform, "inform");
         Objects.requireNonNull(warn, "warn");
+        Objects.requireNonNull(offer, "offer");
         Objects.requireNonNull(relaunch, "relaunch");
         Objects.requireNonNull(subscriptions, "subscriptions");
         Objects.requireNonNull(sound, "sound");
@@ -74,8 +83,8 @@ public record Gui(
     }
 
     /**
-     * A context with subscriptions of its own, which plays no sound, never starts at login and tells problems as it
-     * tells the rest.
+     * A context with subscriptions of its own, which plays no sound, never starts at login and tells problems and
+     * offers as it tells the rest.
      */
     public Gui(
             I18n i18n,
@@ -95,6 +104,7 @@ public record Gui(
                 directories,
                 inform,
                 inform,
+                (text, action, run) -> inform.accept(text),
                 relaunch,
                 new Subscriptions(),
                 SoundPlayer.SILENT,

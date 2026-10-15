@@ -235,6 +235,7 @@ class CaptureTour {
                 dirs,
                 toWindow,
                 problemToWindow,
+                (text, action, run) -> toWindow.accept(text),
                 () -> {},
                 new Subscriptions(),
                 SoundPlayer.SILENT,

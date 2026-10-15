@@ -31,9 +31,7 @@ import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -670,17 +668,16 @@ public final class TransfersScreen implements Screen {
         Fx.selected(this.downloads).forEach(d -> this.gui.model().resume(d.hash()));
     }
 
+    // No question first: the engine keeps what was downloaded for a while, and the message offers to take it back.
     void cancelSelected() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm = this.gui.dialog(
-                new Alert(Alert.AlertType.CONFIRMATION, this.gui.f("nj.transfers.cancelConfirm", selected.size())));
-        ButtonType go =
-                Fx.answers(confirm, this.gui.t("nj.transfers.cancelYes"), this.gui.t("nj.transfers.cancelNo"), true);
-        confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(go::equals).ifPresent(b -> cancel(selected));
+        cancel(selected);
+        this.gui.offer().show(this.gui.f("nj.transfers.cancelled", selected.size()), this.gui.t("IDS_UNDO"), () -> {
+            selected.forEach(d -> this.gui.model().restore(d.hash()));
+        });
     }
 
     void cancel(List<DownloadInfo> selected) {
