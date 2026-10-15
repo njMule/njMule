@@ -178,6 +178,29 @@ public final class GuiSettings {
         this.values.setProperty("table." + name + ".sort", sort);
     }
 
+    /** Whether the transfers show the details of the download chosen beside the list; off by default. */
+    public boolean transfersDetails() {
+        return Boolean.parseBoolean(this.values.getProperty("transfers.details", "false"));
+    }
+
+    public void setTransfersDetails(boolean value) {
+        this.values.setProperty("transfers.details", String.valueOf(value));
+    }
+
+    /** Where the list of downloads ends and their details start, as a share of the width. */
+    public double transfersDetailsDivider() {
+        try {
+            double value = Double.parseDouble(this.values.getProperty("transfers.detailsDivider", "0.7"));
+            return Double.isFinite(value) ? Math.clamp(value, 0.3, 0.9) : 0.7;
+        } catch (NumberFormatException e) {
+            return 0.7;
+        }
+    }
+
+    public void setTransfersDetailsDivider(double value) {
+        this.values.setProperty("transfers.detailsDivider", String.valueOf(value));
+    }
+
     /** Whether eD2K file links copied in other programs are downloaded; off by default. */
     public boolean watchClipboard() {
         return Boolean.parseBoolean(this.values.getProperty("links.watchClipboard", "false"));

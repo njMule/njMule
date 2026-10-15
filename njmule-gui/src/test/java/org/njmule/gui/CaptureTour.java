@@ -342,6 +342,7 @@ class CaptureTour {
         this.textFieldMenu();
         this.settingsPage();
         this.liveSearch();
+        this.transfersDetails();
         this.dialogs();
         this.invalidInputs();
         this.toasts();
@@ -600,6 +601,16 @@ class CaptureTour {
         Thread.sleep(400);
         this.model.onNext(new EngineEvent.SearchResults(CaptureDemo.LIVE_SEARCH, CaptureDemo.liveResults()));
         this.shot("search-live", "A search running, with its first results");
+    }
+
+    private void transfersDetails() throws Exception {
+        this.fx(() -> this.window.show("transfers"));
+        Parent transfers = this.screenRoot();
+        this.fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
+        this.shot("transfers-details-none", "Transfers with the details open, nothing chosen");
+        this.select(transfers, 0, 0);
+        this.shot("transfers-details", "Transfers with the details of the download chosen");
+        this.fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
     }
 
     // ---------------------------------------------------------------- dialogs

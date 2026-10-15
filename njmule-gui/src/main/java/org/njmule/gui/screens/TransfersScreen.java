@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
@@ -105,6 +106,9 @@ public final class TransfersScreen implements Screen {
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
     private final ObjectProperty<Predicate<SourceInfo>> shownSources = new SimpleObjectProperty<>(s -> true);
     private final TextField filter = new TextField();
+    private final ToggleButton detailsButton = new ToggleButton();
+    private final SplitPane upperSplit = new SplitPane();
+    private DownloadDetails details;
     private int shownCategory = SHOW_ALL;
     private Input<List<Ed2kLink.FileLink>> linkInput;
 
@@ -236,6 +240,7 @@ public final class TransfersScreen implements Screen {
                 Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks),
                 Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
                 Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
+                this.detailsButton,
                 Fx.spacer(),
                 this.link,
                 add);
@@ -290,14 +295,18 @@ public final class TransfersScreen implements Screen {
                 c -> this.showSourcesOfSelected());
         VBox upper = new VBox(head, this.downloads);
         VBox.setVgrow(this.downloads, Priority.ALWAYS);
-        SplitPane split = new SplitPane(upper, lower);
+        this.buildDetails(upper);
+        SplitPane split = new SplitPane(this.upperSplit, lower);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.6);
         VBox screen = Fx.screen(this.title(), tools, split);
-        // Ctrl+F (Cmd+F) narrows the downloads by name.
+        // Ctrl+F (Cmd+F) narrows the downloads by name; Alt+Enter opens the details of the chosen one.
         screen.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.isShortcutDown() && e.getCode() == KeyCode.F) {
                 this.filter.requestFocus();
+                e.consume();
+            } else if (e.isAltDown() && e.getCode() == KeyCode.ENTER) {
+                this.showDetails(true);
                 e.consume();
             }
         });
@@ -472,6 +481,65 @@ public final class TransfersScreen implements Screen {
                 .filter(w -> !w.isEmpty())
                 .toList();
         return d -> words.stream().allMatch(d.name().toLowerCase(Locale.ROOT)::contains);
+    }
+
+    // The details beside the list, shown or not as last time and as wide as they were left.
+    private void buildDetails(Node upper) {
+        var formats = this.gui.formats();
+        this.details = new DownloadDetails(
+                this.gui,
+                new DownloadDetails.Words(
+                        d -> this.shownText(shown(d)),
+                        d -> this.priorityText(shownPriority(d)),
+                        d -> this.categoryName(d.category()),
+                        d -> remaining(d) < 0 ? "?" : formats.duration(remaining(d))),
+                this::copyLinks,
+                this::commentSelected);
+        this.detailsButton.setText(this.gui.t("IDS_DETAILS"));
+        this.detailsButton.setGraphic(Fx.icon(Material2AL.INFO));
+        this.detailsButton.setId("details");
+        Fx.whole(this.detailsButton);
+        this.detailsButton.setOnAction(e -> this.showDetails(this.detailsButton.isSelected()));
+        this.upperSplit.getItems().setAll(upper);
+        SplitPane.setResizableWithParent(this.details.view(), false);
+        this.showDetails(this.gui.settings().transfersDetails());
+        this.downloads.getSelectionModel().getSelectedItems().addListener((ListChangeListener<
+                        LiveList.Row<DownloadInfo>>)
+                c -> this.refreshDetails());
+        // The figures move with each second's news.
+        this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.refreshDetails());
+    }
+
+    void showDetails(boolean on) {
+        this.detailsButton.setSelected(on);
+        List<Node> items = this.upperSplit.getItems();
+        if (on && !items.contains(this.details.view())) {
+            items.add(this.details.view());
+            // A new divider each time the details show: its place is remembered as it moves.
+            this.upperSplit.setDividerPositions(this.gui.settings().transfersDetailsDivider());
+            this.upperSplit
+                    .getDividers()
+                    .getFirst()
+                    .positionProperty()
+                    .addListener((o, was, now) -> this.gui.settings().setTransfersDetailsDivider(now.doubleValue()));
+        } else if (!on) {
+            items.remove(this.details.view());
+        }
+        this.gui.settings().setTransfersDetails(on);
+        this.refreshDetails();
+    }
+
+    private void refreshDetails() {
+        if (this.details == null || !this.detailsButton.isSelected()) {
+            return;
+        }
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        this.details.show(selected.size() == 1 ? Optional.of(selected.getFirst()) : Optional.empty());
+    }
+
+    /** The details beside the list, for tests. */
+    DownloadDetails details() {
+        return this.details;
     }
 
     private void showSourcesOfSelected() {

@@ -400,6 +400,46 @@
     -fx-border-radius: 8;
 }
 
+/* The details of a download beside the list. */
+.download-details {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 1;
+}
+
+.download-details > .label {
+    -fx-padding: 16;
+}
+
+.details-content {
+    -fx-padding: 12;
+}
+
+.details-name {
+    -fx-font-weight: bold;
+    -fx-font-size: 1.1em;
+}
+
+.details-heading {
+    -fx-font-weight: bold;
+}
+
+.details-facts {
+    -fx-hgap: 12;
+    -fx-vgap: 4;
+}
+
+.details-legend .label {
+    -fx-graphic-text-gap: 6;
+    -fx-font-size: 0.9em;
+}
+
+.legend-swatch {
+    -fx-min-width: 14;
+    -fx-min-height: 10;
+    -fx-max-height: 10;
+}
+
 /* Swatches the part bars take their colours from. */
 .bar-bg { -fx-background-color: -nj-bar-bg; }
 .bar-have { -fx-background-color: -nj-bar-have; }
