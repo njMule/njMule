@@ -84,6 +84,7 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.Segments;
 import org.njmule.gui.ui.TableLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,7 +145,7 @@ public final class SearchScreen implements Screen {
     private Node view;
     private final ComboBox<String> query = new ComboBox<>();
     private Input<String> queryInput;
-    private final ComboBox<Method> method = new ComboBox<>();
+    private Segments<Method> method;
     private final ComboBox<FileType> type = new ComboBox<>();
     private final TextField minSize = new TextField();
     private final TextField maxSize = new TextField();
@@ -197,6 +198,7 @@ public final class SearchScreen implements Screen {
         Inputs inputs = new Inputs(this.gui);
         this.query.setEditable(true);
         this.query.setPrefWidth(320);
+        this.query.setMaxWidth(Double.MAX_VALUE);
         this.query.setPromptText(this.gui.t("IDS_SEARCH_TEXT"));
         this.gui.settings().seedHistory(HISTORY, this.gui.directories().config().resolve(EMULE_HISTORY));
         this.query.getItems().setAll(this.gui.settings().history(HISTORY));
@@ -207,10 +209,7 @@ public final class SearchScreen implements Screen {
         this.query.setTooltip(this.query.getEditor().getTooltip());
         Button start = Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start));
         start.disableProperty().bind(this.queryInput.validProperty().not());
-        this.method.getItems().addAll(Method.values());
-        this.method.setValue(Method.AUTOMATIC);
-        this.method.setCellFactory(l -> new MethodCell());
-        this.method.setButtonCell(new MethodCell());
+        this.method = new Segments<>(List.of(Method.values()), this::methodName);
         // More and Stop act on the search shown, Download on the results chosen in it.
         Button more = Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more);
         Button stop = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop);
@@ -219,8 +218,11 @@ public final class SearchScreen implements Screen {
         Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
         download.disableProperty().bind(this.noneChosen);
         this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.followChoice());
-        var tools =
-                Fx.toolRow(this.query, this.method, start, more, stop, this.parametersButton, Fx.spacer(), download);
+        // Two rows: what to look for, then where and with what, beside what acts on the results.
+        HBox.setHgrow(this.query, Priority.ALWAYS);
+        var tools = Fx.toolRow(this.query, start);
+        var where =
+                Fx.toolRow(this.method.node(), this.parametersButton, Fx.toolGap(), more, stop, Fx.spacer(), download);
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded, shared or marked since shows so in every list.
         this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> this.refreshAll());
@@ -248,7 +250,9 @@ public final class SearchScreen implements Screen {
         this.type.valueProperty().addListener((o, was, now) -> this.countParameters());
         this.countParameters();
         this.showParameters(this.parametersInUse() > 0);
-        return Fx.screen(this.title(), tools, this.content);
+        VBox below = new VBox(where, this.content);
+        VBox.setVgrow(this.content, Priority.ALWAYS);
+        return Fx.screen(this.title(), tools, below);
     }
 
     // The search parameters: the type and the attributes the server or Kad filter on.
@@ -751,7 +755,7 @@ public final class SearchScreen implements Screen {
         return this.query.getEditor();
     }
 
-    ComboBox<Method> methodBox() {
+    Segments<Method> methodBox() {
         return this.method;
     }
 
@@ -786,14 +790,6 @@ public final class SearchScreen implements Screen {
     /** The results table of {@code tab}. */
     TableView<LiveList.Row<SearchResult>> table(Tab tab) {
         return this.results.get(tab).table();
-    }
-
-    private final class MethodCell extends ListCell<Method> {
-        @Override
-        protected void updateItem(Method item, boolean empty) {
-            super.updateItem(item, empty);
-            this.setText(empty || item == null ? null : SearchScreen.this.methodName(item));
-        }
     }
 
     private final class TypeCell extends ListCell<FileType> {

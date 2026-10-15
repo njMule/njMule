@@ -364,7 +364,9 @@ All notable changes to this project are documented here. The format follows
   filters the downloads by name (Ctrl+F); the sources below are those of the download chosen; a
   Details pane (Alt+Enter) shows the parts drawn large with a legend and the facts the columns cut.
 - The lists use dense rows; empty lists say how to fill them and offer the buttons that do it.
-- The search parameters fold behind a button that counts those in use.
+- The search parameters fold behind a button that counts those in use. The search has two rows: a
+  wide box for the words with Start, then where to search (Automatic, Server, Global, Kad shown at
+  once as joined buttons), the parameters and what acts on the results.
 - The media columns of a search (artist, album, title, length, bitrate, codec) show while its results
   hold songs or films and hide otherwise, until the column menu shows or hides one of them.
 - The options have an index of their sections and a box that finds an option by its words.
