@@ -243,6 +243,20 @@
     -fx-font-size: 1.05em;
 }
 
+/* The list of shortcuts: the keys in a box of their own beside what they do. */
+.shortcuts {
+    -fx-hgap: 16;
+    -fx-vgap: 6;
+}
+
+.shortcuts .shortcut-key {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 1 6 1 6;
+}
+
 /* Screens. */
 .screen {
     -fx-padding: 12;

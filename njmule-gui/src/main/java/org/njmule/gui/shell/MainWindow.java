@@ -33,6 +33,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -42,13 +43,17 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
+import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -160,11 +165,14 @@ public final class MainWindow {
         // A screen's button can lead to another screen, such as Search from an empty list of downloads.
         this.root.addEventHandler(Navigate.TO_SCREEN, e -> this.show(e.screen()));
         this.root.setNodeOrientation(gui.orientation());
-        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order.
+        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order; F1 lists the shortcuts.
         this.root.setOnKeyPressed(e -> {
             int index = DIGITS.indexOf(e.getCode());
             if (e.isShortcutDown() && index >= 0 && index < PLACES.size()) {
                 this.open(PLACES.get(index));
+                e.consume();
+            } else if (e.getCode() == KeyCode.F1) {
+                this.showShortcuts();
                 e.consume();
             }
         });
@@ -350,6 +358,10 @@ public final class MainWindow {
         MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Material2MZ.SETTINGS));
         options.setOnAction(e -> this.show("settings"));
         options.setId("options");
+        MenuItem shortcuts = new MenuItem(this.gui.t("nj.shortcuts.title"), Fx.icon(Material2AL.KEYBOARD));
+        shortcuts.setAccelerator(new KeyCodeCombination(KeyCode.F1));
+        shortcuts.setOnAction(e -> this.showShortcuts());
+        shortcuts.setId("shortcuts");
         MenuButton tools = new MenuButton(
                 this.gui.t("nj.top.tools"),
                 new FontIcon(Material2AL.BUILD),
@@ -357,6 +369,7 @@ public final class MainWindow {
                 options,
                 new SeparatorMenuItem(),
                 importer,
+                shortcuts,
                 about);
         // The rates open the limits: what one wants to change on seeing them.
         Button rates = new Button(null, new HBox(10, this.down, this.up));
@@ -412,6 +425,8 @@ public final class MainWindow {
                 StackPane.setAlignment(mark, Pos.TOP_RIGHT);
             }
             ToggleButton button = new ToggleButton(title, graphic);
+            // The tooltip tells the shortcut of the place, as menus show theirs.
+            button.setTooltip(new Tooltip(title + "  " + shortcut(PLACES.indexOf(place))));
             button.setToggleGroup(group);
             button.setId("rail-" + place);
             // A rail button stays selected while its place shows.
@@ -596,7 +611,7 @@ public final class MainWindow {
         ToggleButton button = this.rail.get(NETWORK);
         if (button != null) {
             String state = this.ed2k.getText() + "\n" + this.kad.getText();
-            button.setTooltip(new Tooltip(state));
+            button.setTooltip(new Tooltip(state + "\n" + shortcut(PLACES.indexOf(NETWORK))));
             button.setAccessibleHelp(state);
         }
     }
@@ -663,6 +678,56 @@ public final class MainWindow {
         } catch (IOException e) {
             this.problem(e.getMessage());
         }
+    }
+
+    /** The shortcut of the place at {@code index} of the rail, as the platform writes it: Ctrl+1, or ⌘1. */
+    static String shortcut(int index) {
+        return new KeyCodeCombination(DIGITS.get(index), KeyCombination.SHORTCUT_DOWN).getDisplayText();
+    }
+
+    // The keys that do something, with what they do, in a window of their own.
+    void showShortcuts() {
+        GridPane grid = new GridPane();
+        grid.getStyleClass().add("shortcuts");
+        int row = 0;
+        for (int i = 0; i < PLACES.size(); i++) {
+            String place = PLACES.get(i);
+            String title = place.equals(NETWORK)
+                    ? this.gui.t("IDS_NETWORK")
+                    : this.screens.get(place).title();
+            row = shortcutRow(grid, row, shortcut(i), title);
+        }
+        String transfers = this.screens.get("transfers").title() + ": ";
+        row = shortcutRow(
+                grid,
+                row,
+                new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN).getDisplayText(),
+                transfers + this.gui.t("nj.transfers.filter"));
+        row = shortcutRow(
+                grid,
+                row,
+                new KeyCodeCombination(KeyCode.ENTER, KeyCombination.ALT_DOWN).getDisplayText(),
+                transfers + this.gui.t("IDS_DETAILS"));
+        shortcutRow(grid, row, new KeyCodeCombination(KeyCode.F1).getDisplayText(), this.gui.t("nj.shortcuts.title"));
+        Stage stage = new Stage();
+        stage.initOwner(this.root.getScene().getWindow());
+        stage.setTitle(this.gui.t("nj.shortcuts.title"));
+        Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, stage::close);
+        close.setCancelButton(true);
+        close.setDefaultButton(true);
+        HBox buttons = new HBox(close);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        VBox box = new VBox(14, grid, buttons);
+        box.setPadding(new Insets(16));
+        stage.setScene(this.gui.attach(new Scene(box)));
+        stage.show();
+    }
+
+    private static int shortcutRow(GridPane grid, int row, String keys, String what) {
+        Label key = Fx.leftToRight(new Label(keys));
+        key.getStyleClass().add("shortcut-key");
+        grid.addRow(row, key, new Label(what));
+        return row + 1;
     }
 
     private static Label badge() {
