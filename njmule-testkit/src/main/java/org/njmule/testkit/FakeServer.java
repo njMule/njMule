@@ -20,6 +20,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.BindException;
 import java.net.DatagramPacket;
@@ -110,6 +111,8 @@ public final class FakeServer implements AutoCloseable {
     private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
     private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
+    // The threads that take connections and datagrams, which closing waits for.
+    private final List<Thread> loops = new CopyOnWriteArrayList<>();
     private volatile Function<SearchExpr, List<FileEntry>> answers;
     private volatile boolean hasMore;
     private final List<SearchExpr> moreRequests = new CopyOnWriteArrayList<>();
@@ -140,8 +143,8 @@ public final class FakeServer implements AutoCloseable {
                 tcp.close();
                 continue;
             }
-            Thread.ofVirtual().name("fake-server-tcp").start(server::acceptLoop);
-            Thread.ofVirtual().name("fake-server-udp").start(server::udpLoop);
+            server.loops.add(Thread.ofVirtual().name("fake-server-tcp").start(server::acceptLoop));
+            server.loops.add(Thread.ofVirtual().name("fake-server-udp").start(server::udpLoop));
             return server;
         }
         throw new BindException("no free TCP/UDP port pair");
@@ -230,7 +233,7 @@ public final class FakeServer implements AutoCloseable {
         DatagramSocket socket = new DatagramSocket(new InetSocketAddress(this.tcp.getInetAddress(), 0));
         this.udpKey = key;
         this.obfuscatedUdp = socket;
-        Thread.ofVirtual().name("fake-server-obfuscated-udp").start(() -> obfuscatedUdpLoop(socket));
+        this.loops.add(Thread.ofVirtual().name("fake-server-obfuscated-udp").start(() -> obfuscatedUdpLoop(socket)));
     }
 
     /** The UDP port obfuscated datagrams are taken on, 0 when they are not. */
@@ -284,6 +287,7 @@ public final class FakeServer implements AutoCloseable {
         }
     }
 
+    /** Stops the server; once it returns, its ports are free and nothing answers on them. */
     @Override
     public void close() throws IOException {
         this.udp.close();
@@ -292,6 +296,15 @@ public final class FakeServer implements AutoCloseable {
             obfuscated.close();
         }
         this.tcp.close();
+        // A socket closed while a virtual thread waits on it stays bound, and may still accept, until that thread left.
+        try {
+            for (Thread loop : this.loops) {
+                loop.join();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while the server stopped");
+        }
     }
 
     private void acceptLoop() {

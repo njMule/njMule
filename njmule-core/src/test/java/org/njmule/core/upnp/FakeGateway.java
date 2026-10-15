@@ -19,6 +19,7 @@ package org.njmule.core.upnp;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -175,6 +176,13 @@ public final class FakeGateway implements AutoCloseable {
     public void close() throws IOException {
         this.ssdp.close();
         this.http.close();
+        // As when the web server moves: the closed socket listens until the accepting thread has left it.
+        try {
+            this.acceptor.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while the gateway stopped");
+        }
         for (Socket s : this.open) {
             s.close();
         }
