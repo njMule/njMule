@@ -45,82 +45,124 @@ class RateFieldTest {
     }
 
     @Test
-    void aLimitOfAThousandKBAndMoreShowsInMB() throws Exception {
+    void shouldShowALimitOfAThousandKBAndMoreInMB() throws Exception {
         givenALimit();
+
         whenShown(1536);
+
         thenItReads("1.5", RateField.Unit.MB);
         thenTheValueIs(1536);
     }
 
     @Test
-    void aSmallLimitShowsInKB() throws Exception {
+    void shouldShowASmallLimitInKB() throws Exception {
         givenALimit();
+
         whenShown(300);
+
         thenItReads("300", RateField.Unit.KB);
     }
 
     @Test
-    void aLimitTypedInMBWithDecimalsIsKeptInKiB() throws Exception {
+    void shouldKeepALimitTypedInMBWithDecimalsInKiB() throws Exception {
         givenALimit();
-        whenShown(100);
-        whenTheUnitIs(RateField.Unit.MB);
+        givenShown(100);
+        givenTheUnit(RateField.Unit.MB);
+
         whenTyped("2,5");
+
         thenTheValueIs(2560);
     }
 
     @Test
-    void anUntouchedFieldGivesBackTheExactValueShown() throws Exception {
+    void shouldGiveBackTheExactValueShownWhenUntouched() throws Exception {
         givenALimit();
+
         whenShown(122_070);
+
         thenItReads("119.21", RateField.Unit.MB);
         thenTheValueIs(122_070);
     }
 
     @Test
-    void anotherUnitKeepsTheSpeedTyped() throws Exception {
+    void shouldKeepTheSpeedWhenAnotherUnitIsChosen() throws Exception {
         givenALimit();
-        whenShown(2048);
+        givenShown(2048);
+
         whenTheUnitIs(RateField.Unit.KB);
+
         thenItReads("2048", RateField.Unit.KB);
         thenTheValueIs(2048);
     }
 
     @Test
-    void noLimitIsZeroAndTurnsTheFieldOff() throws Exception {
+    void shouldTakeNoLimitAsZeroAndTurnTheFieldOff() throws Exception {
         givenALimit();
+
         whenShown(0);
+
         thenTheValueIs(0);
         thenTheFieldIsOff(true);
-        whenNoLimitIs(false);
+    }
+
+    @Test
+    void shouldTakeTheLimitTypedOnceNoLimitIsUnticked() throws Exception {
+        givenALimit();
+        givenShown(0);
+        givenNoLimitIs(false);
+
         whenTyped("50");
+
         thenTheValueIs(50);
         thenTheFieldIsOff(false);
     }
 
     @Test
-    void aLimitBelowOneKBIsNotTaken() throws Exception {
+    void shouldNotTakeALimitBelowOneKB() throws Exception {
         givenALimit();
-        whenShown(10);
+        givenShown(10);
+
         whenTyped("0.4");
+
         thenItIsValid(false);
     }
 
     @Test
-    void aLineIsTypedInMbitAndToldInBytesToo() throws Exception {
+    void shouldShowALineInMbitAndTellItInBytesToo() throws Exception {
         givenALine();
+
         whenShown(12_207);
+
         thenItReads("100", RateField.Unit.MBIT);
-        thenItIsAbout("≈ " + this.test.gui.formats().rate(12_207 * 1024L));
+        thenItIsAboutTheRateOf(12_207);
+    }
+
+    @Test
+    void shouldTakeALineTypedInMbit() throws Exception {
+        givenALine();
+        givenShown(12_207);
+
         whenTyped("1000");
+
         thenTheValueIs(122_070);
     }
 
     @Test
-    void anOptionalLimitIsNothingWhenEmpty() throws Exception {
+    void shouldGiveNothingForAnEmptyOptionalLimit() throws Exception {
         givenAnOptionalLimit();
+
         whenTheOptionalIsShown(OptionalInt.empty());
+
         thenTheOptionalIs(OptionalInt.empty());
+    }
+
+    @Test
+    void shouldGiveZeroForAnOptionalLimitOfZero() throws Exception {
+        givenAnOptionalLimit();
+        givenTheOptionalShown(OptionalInt.empty());
+
         whenTheOptionalIsShown(OptionalInt.of(0));
+
         thenTheOptionalIs(OptionalInt.of(0));
     }
 
@@ -139,6 +181,22 @@ class RateFieldTest {
         this.optional = FxTesting.onFx(() -> RateField.optionalLimit(this.test.gui, "rule"));
     }
 
+    private void givenShown(int kib) throws Exception {
+        FxTesting.onFx(() -> this.field.show(kib));
+    }
+
+    private void givenTheOptionalShown(OptionalInt kib) throws Exception {
+        FxTesting.onFx(() -> this.optional.showOptional(kib));
+    }
+
+    private void givenTheUnit(RateField.Unit unit) throws Exception {
+        FxTesting.onFx(() -> this.field.unitBox().setValue(unit));
+    }
+
+    private void givenNoLimitIs(boolean none) throws Exception {
+        FxTesting.onFx(() -> this.field.noLimitBox().orElseThrow().setSelected(none));
+    }
+
     private void whenShown(int kib) throws Exception {
         FxTesting.onFx(() -> this.field.show(kib));
     }
@@ -153,10 +211,6 @@ class RateFieldTest {
 
     private void whenTyped(String text) throws Exception {
         FxTesting.onFx(() -> this.field.field().setText(text));
-    }
-
-    private void whenNoLimitIs(boolean none) throws Exception {
-        FxTesting.onFx(() -> this.field.noLimitBox().orElseThrow().setSelected(none));
     }
 
     private void thenItReads(String text, RateField.Unit unit) throws Exception {
@@ -180,7 +234,8 @@ class RateFieldTest {
         assertThat(FxTesting.onFx(() -> this.field.input().isValid())).isEqualTo(valid);
     }
 
-    private void thenItIsAbout(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.field.aboutLabel().getText())).isEqualTo(text);
+    private void thenItIsAboutTheRateOf(int kib) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.field.aboutLabel().getText()))
+                .isEqualTo("≈ " + this.test.gui.formats().rate(kib * 1024L));
     }
 }

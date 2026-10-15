@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.gui.FxTesting;
@@ -34,83 +35,210 @@ class ClipboardWatchTest {
     private static final String FILM = "ed2k://|file|my film.mkv|700000000|0123456789ABCDEF0123456789ABCDEF|/";
     private static final String SONG = "ed2k://|file|song.mp3|4000000|00112233445566778899AABBCCDDEEFF|/";
 
-    @Test
-    void takesTheFileLinksOfATextThatStartsWithOne() {
-        assertThat(ClipboardWatch.fileLinks("  " + FILM + "\r\n" + SONG + " " + FILM + "\n"))
-                .extracting(Ed2kLink.FileLink::name)
-                .containsExactly("my film.mkv", "song.mp3");
+    private final AtomicBoolean on = new AtomicBoolean();
+    private final AtomicInteger reads = new AtomicInteger();
+    private final AtomicReference<String> clipboard = new AtomicReference<>("");
+    private final List<List<Ed2kLink.FileLink>> asked = new CopyOnWriteArrayList<>();
+    private final List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
+    private ClipboardWatch watch;
+    private List<Ed2kLink.FileLink> links;
+
+    // What njMule copied is kept in a static: none may be left for the next test.
+    @AfterEach
+    void forgetOurOwnText() {
+        ClipboardWatch.ours(null);
     }
 
     @Test
-    void theClipboardIsNotReadWhileTheOptionIsOff() throws Exception {
-        AtomicBoolean on = new AtomicBoolean();
-        AtomicInteger reads = new AtomicInteger();
-        AtomicReference<String> clipboard = new AtomicReference<>("a password");
-        List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
-        ClipboardWatch watch = watch(
-                on::get,
+    void shouldTakeTheFileLinksOfATextThatStartsWithOne() {
+        whenTheFileLinksAreTakenFrom("  " + FILM + "\r\n" + SONG + " " + FILM + "\n");
+
+        thenTheFileLinksAre("my film.mkv", "song.mp3");
+    }
+
+    @Test
+    void shouldLeaveATextWhoseLinkIsNotAtTheStart() {
+        whenTheFileLinksAreTakenFrom("see " + FILM);
+
+        thenNoFileLinksAreTaken("not at the start");
+    }
+
+    @Test
+    void shouldLeaveAServerLink() {
+        whenTheFileLinksAreTakenFrom("ed2k://|server|10.0.0.1|4661|/");
+
+        thenNoFileLinksAreTaken("a server link");
+    }
+
+    @Test
+    void shouldLeaveABrokenLinkAfterAGoodOne() {
+        whenTheFileLinksAreTakenFrom(FILM + " ed2k://|file|broken|/");
+
+        thenTheFileLinksAre("my film.mkv");
+    }
+
+    @Test
+    void shouldNotReadTheClipboardWhileTheOptionIsOff() throws Exception {
+        givenTheClipboardHolds("a password");
+        givenAWatchWithTheOptionOff();
+        givenTheClipboardHolds(FILM);
+
+        whenTheWatchLooks();
+
+        thenTheClipboardWasReadTimes(0, "off, the default");
+        thenNothingWasFound("off, the default");
+    }
+
+    @Test
+    void shouldLeaveWhatWasCopiedBeforeTheOptionWasOn() throws Exception {
+        givenTheClipboardHolds("a password");
+        givenAWatchWithTheOptionOff();
+        givenTheClipboardHolds(FILM);
+        givenTheWatchLooked();
+        givenTheOptionTurnedOn();
+
+        whenTheWatchLooks();
+
+        thenNothingWasFound("copied before the option was on");
+    }
+
+    @Test
+    void shouldTakeALinkCopiedOnceTheOptionIsOn() throws Exception {
+        givenTheClipboardHolds("a password");
+        givenAWatchWithTheOptionOff();
+        givenTheClipboardHolds(FILM);
+        givenTheWatchLooked();
+        givenTheOptionTurnedOn();
+        givenTheWatchLooked();
+        givenTheClipboardHolds(SONG);
+
+        whenTheWatchLooks();
+
+        thenOneCopyWasFoundWithTheLinks("song.mp3");
+    }
+
+    @Test
+    void shouldLeaveTheTextNjMuleCopiedItself() throws Exception {
+        givenTheClipboardHolds("");
+        givenAWatchWithTheOptionOn();
+        givenTheWatchLooked();
+        givenNjMuleCopied(FILM);
+
+        whenTheWatchLooks();
+
+        thenNothingWasFound("copied by njMule");
+    }
+
+    @Test
+    void shouldTakeOurOwnTextAgainOnceTheClipboardChanged() throws Exception {
+        givenTheClipboardHolds("");
+        givenAWatchWithTheOptionOn();
+        givenTheWatchLooked();
+        givenNjMuleCopied(FILM);
+        givenTheWatchLooked();
+        givenTheClipboardHolds("something else");
+        givenTheWatchLooked();
+        givenTheClipboardHolds(FILM);
+
+        whenTheWatchLooks();
+
+        thenCopiesWereFound(1, "the same link copied again in a browser");
+    }
+
+    @Test
+    void shouldTakeLinksOnlyWhenTheUserSaysSo() throws Exception {
+        givenTheClipboardHolds("");
+        givenAWatchWhoseUserSaysNo();
+        givenTheWatchLooked();
+        givenTheClipboardHolds(FILM);
+
+        whenTheWatchLooks();
+
+        thenTheUserWasAskedTimes(1);
+        thenNothingWasFound("the user said no");
+    }
+
+    private void givenTheClipboardHolds(String text) {
+        this.clipboard.set(text);
+    }
+
+    private void givenAWatchWithTheOptionOff() throws Exception {
+        this.watch = watch(
+                this.on::get,
                 () -> {
-                    reads.incrementAndGet();
-                    return clipboard.get();
+                    this.reads.incrementAndGet();
+                    return this.clipboard.get();
                 },
-                found);
-
-        clipboard.set(FILM);
-        FxTesting.onFx(watch::tick);
-        assertThat(reads).as("off, the default").hasValue(0);
-        assertThat(found).isEmpty();
-
-        on.set(true);
-        FxTesting.onFx(watch::tick);
-        assertThat(found).as("copied before the option was on").isEmpty();
-        clipboard.set(SONG);
-        FxTesting.onFx(watch::tick);
-        assertThat(found)
-                .singleElement()
-                .satisfies(links ->
-                        assertThat(links).extracting(Ed2kLink.FileLink::name).containsExactly("song.mp3"));
+                this.found);
     }
 
-    @Test
-    void ourOwnTextIsLeftOnlyUntilTheClipboardChanges() throws Exception {
-        AtomicReference<String> clipboard = new AtomicReference<>("");
-        List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
-        ClipboardWatch watch = watch(() -> true, clipboard::get, found);
-        FxTesting.onFx(watch::tick);
-
-        ClipboardWatch.ours(FILM);
-        clipboard.set(FILM);
-        FxTesting.onFx(watch::tick);
-        assertThat(found).as("copied by njMule").isEmpty();
-        clipboard.set("something else");
-        FxTesting.onFx(watch::tick);
-        clipboard.set(FILM);
-        FxTesting.onFx(watch::tick);
-        assertThat(found).as("the same link copied again in a browser").hasSize(1);
+    private void givenAWatchWithTheOptionOn() throws Exception {
+        this.watch = watch(() -> true, this.clipboard::get, this.found);
     }
 
-    @Test
-    void linksAreTakenOnlyWhenTheUserSaysSo() throws Exception {
-        AtomicReference<String> clipboard = new AtomicReference<>("");
-        List<List<Ed2kLink.FileLink>> asked = new CopyOnWriteArrayList<>();
-        List<List<Ed2kLink.FileLink>> found = new CopyOnWriteArrayList<>();
+    private void givenAWatchWhoseUserSaysNo() throws Exception {
         FxTesting.start();
-        ClipboardWatch watch = FxTesting.onFx(() -> new ClipboardWatch(
+        this.watch = FxTesting.onFx(() -> new ClipboardWatch(
                 () -> true,
-                clipboard::get,
-                links -> {
-                    asked.add(links);
+                this.clipboard::get,
+                offered -> {
+                    this.asked.add(offered);
                     return false;
                 },
                 Runnable::run,
-                found::add));
-        FxTesting.onFx(watch::tick);
+                this.found::add));
+    }
 
-        clipboard.set(FILM);
-        FxTesting.onFx(watch::tick);
+    private void givenTheOptionTurnedOn() {
+        this.on.set(true);
+    }
 
-        assertThat(asked).hasSize(1);
-        assertThat(found).as("the user said no").isEmpty();
+    private void givenNjMuleCopied(String text) {
+        ClipboardWatch.ours(text);
+        this.clipboard.set(text);
+    }
+
+    private void givenTheWatchLooked() throws Exception {
+        FxTesting.onFx(this.watch::tick);
+    }
+
+    private void whenTheWatchLooks() throws Exception {
+        FxTesting.onFx(this.watch::tick);
+    }
+
+    private void whenTheFileLinksAreTakenFrom(String text) {
+        this.links = ClipboardWatch.fileLinks(text);
+    }
+
+    private void thenTheFileLinksAre(String... names) {
+        assertThat(this.links).extracting(Ed2kLink.FileLink::name).containsExactly(names);
+    }
+
+    private void thenNoFileLinksAreTaken(String why) {
+        assertThat(this.links).as(why).isEmpty();
+    }
+
+    private void thenTheClipboardWasReadTimes(int times, String why) {
+        assertThat(this.reads).as(why).hasValue(times);
+    }
+
+    private void thenNothingWasFound(String why) {
+        assertThat(this.found).as(why).isEmpty();
+    }
+
+    private void thenOneCopyWasFoundWithTheLinks(String... names) {
+        assertThat(this.found)
+                .singleElement()
+                .satisfies(copy ->
+                        assertThat(copy).extracting(Ed2kLink.FileLink::name).containsExactly(names));
+    }
+
+    private void thenCopiesWereFound(int copies, String why) {
+        assertThat(this.found).as(why).hasSize(copies);
+    }
+
+    private void thenTheUserWasAskedTimes(int times) {
+        assertThat(this.asked).hasSize(times);
     }
 
     private ClipboardWatch watch(
@@ -118,16 +246,5 @@ class ClipboardWatchTest {
         FxTesting.start();
         // Never started: the tests tick it, and never touch the system clipboard.
         return FxTesting.onFx(() -> new ClipboardWatch(wanted, clipboard, links -> true, Runnable::run, found::add));
-    }
-
-    @Test
-    void leavesOtherTexts() {
-        assertThat(ClipboardWatch.fileLinks("see " + FILM))
-                .as("not at the start")
-                .isEmpty();
-        assertThat(ClipboardWatch.fileLinks("ed2k://|server|10.0.0.1|4661|/")).isEmpty();
-        assertThat(ClipboardWatch.fileLinks(FILM + " ed2k://|file|broken|/"))
-                .extracting(Ed2kLink.FileLink::name)
-                .containsExactly("my film.mkv");
     }
 }

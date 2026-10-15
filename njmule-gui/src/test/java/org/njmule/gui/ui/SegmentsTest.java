@@ -36,42 +36,57 @@ class SegmentsTest {
     }
 
     @Test
-    void theFirstChoiceIsChosenAtFirst() throws Exception {
-        givenTheChoices("auto", "server", "kad");
+    void shouldChooseTheFirstChoiceAtFirst() throws Exception {
+        whenBuiltWithTheChoices("auto", "server", "kad");
+
         thenTheChoiceIs("auto");
         thenTheChosenButtonsAre("auto");
     }
 
     @Test
-    void aClickChoosesItsChoiceAndLeavesTheOthers() throws Exception {
+    void shouldChooseTheClickedChoiceAndLeaveTheOthers() throws Exception {
         givenTheChoices("auto", "server", "kad");
+
         whenClicked("kad");
+
         thenTheChoiceIs("kad");
         thenTheChosenButtonsAre("kad");
     }
 
     @Test
-    void aClickOnTheChosenOneKeepsIt() throws Exception {
+    void shouldKeepTheChosenOneWhenClickedAgain() throws Exception {
         givenTheChoices("auto", "server", "kad");
+        givenClicked("server");
+
         whenClicked("server");
-        whenClicked("server");
+
         thenTheChoiceIs("server");
         thenTheChosenButtonsAre("server");
     }
 
     @Test
-    void aChoiceSetFromCodeShowsOnItsButton() throws Exception {
+    void shouldShowAChoiceSetFromCodeOnItsButton() throws Exception {
         givenTheChoices("auto", "server", "kad");
+
         whenTheChoiceIsSetTo("server");
+
         thenTheChosenButtonsAre("server");
     }
 
     private void givenTheChoices(String... choices) throws Exception {
-        this.segments = FxTesting.onFx(() -> new Segments<>(List.of(choices), c -> c.toUpperCase(Locale.ROOT)));
+        build(choices);
+    }
+
+    private void givenClicked(String choice) throws Exception {
+        click(choice);
+    }
+
+    private void whenBuiltWithTheChoices(String... choices) throws Exception {
+        build(choices);
     }
 
     private void whenClicked(String choice) throws Exception {
-        FxTesting.onFx(() -> this.segments.button(choice).fire());
+        click(choice);
     }
 
     private void whenTheChoiceIsSetTo(String choice) throws Exception {
@@ -87,5 +102,13 @@ class SegmentsTest {
                         .filter(c -> this.segments.button(c).isSelected())
                         .toList()))
                 .containsExactly(choices);
+    }
+
+    private void build(String... choices) throws Exception {
+        this.segments = FxTesting.onFx(() -> new Segments<>(List.of(choices), c -> c.toUpperCase(Locale.ROOT)));
+    }
+
+    private void click(String choice) throws Exception {
+        FxTesting.onFx(() -> this.segments.button(choice).fire());
     }
 }

@@ -21,12 +21,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.Locale;
 import javafx.scene.Scene;
-import javafx.scene.image.WritableImage;
+import javafx.scene.image.PixelReader;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.njmule.core.api.PartMap;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.infra.GuiSettings;
@@ -36,49 +38,100 @@ class PartBarTest {
 
     private static final long PART = PartMap.PART_SIZE;
 
+    private PartMap map;
+    private GuiSettings.Mode mode;
+    private PartBar bar;
+    private Stage stage;
+    private Color have;
+    private Color requested;
+    private Color fewSources;
+    private Color manySources;
+    private Color none;
+    private Color strip;
+
     @BeforeAll
     static void toolkit() throws Exception {
         FxTesting.start();
     }
 
-    @Test
-    void drawsWhatWeHaveWhatIsMissingAndWhatIsRequested() throws Exception {
-        // Ten parts: the first two done, part 2 requested, parts 3-5 with sources, the rest with
-        // none.
-        PartMap map = new PartMap(
+    @AfterEach
+    void close() throws Exception {
+        if (this.stage != null) {
+            FxTesting.onFx(this.stage::close);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GuiSettings.Mode.class,
+            names = {"LIGHT", "DARK"})
+    void shouldDrawWhatWeHaveWhatIsMissingAndWhatIsRequested(GuiSettings.Mode theme) throws Exception {
+        givenTenPartsWithTheFirstTwoDoneAndPartTwoRequested(0, 0, 3, 1, 5, 12, 0, 0, 0, 0);
+        givenABarShownInTheTheme(theme);
+
+        whenTheBarShowsTheMapWithCompletedBytes(2 * PART);
+
+        thenWhatWeHaveLooksUnlikeTheOtherParts();
+        thenFewSourcesLookUnlikeMany();
+        thenNoSourcesLookUnlikeMany();
+        thenTheCompletedStripLooksUnlikeWhatWeHave();
+    }
+
+    // Ten parts: the first two done, part 2 requested, parts 3-5 with sources, the rest with none.
+    private void givenTenPartsWithTheFirstTwoDoneAndPartTwoRequested(Integer... sources) {
+        this.map = new PartMap(
                 10 * PART,
                 List.of(new PartMap.Span(2 * PART, 10 * PART)),
                 List.of(new PartMap.Span(2 * PART, 3 * PART)),
-                List.of(0, 0, 3, 1, 5, 12, 0, 0, 0, 0));
-        for (GuiSettings.Mode mode : List.of(GuiSettings.Mode.LIGHT, GuiSettings.Mode.DARK)) {
-            FxTesting.onFx(() -> {
-                PartBar bar = new PartBar();
-                bar.setPrefSize(400, 16);
-                VBox box = new VBox(bar);
-                Scene scene = new Scene(box, 400, 16);
-                Themes themes = new Themes(Themes.Family.NORD, mode);
-                themes.attach(scene);
-                Stage stage = new Stage();
-                stage.setScene(scene);
-                stage.show();
-                box.applyCss();
-                box.layout();
-                bar.set(map, 2 * PART);
-                WritableImage image = bar.snapshot(null, null);
-                FxTesting.snapshot(bar, "partbar-" + mode.name().toLowerCase(Locale.ROOT));
-                Color have = image.getPixelReader().getColor(20, 10);
-                Color requested = image.getPixelReader().getColor(100, 10);
-                Color fewSources = image.getPixelReader().getColor(140, 10);
-                Color manySources = image.getPixelReader().getColor(220, 10);
-                Color none = image.getPixelReader().getColor(350, 10);
-                Color strip = image.getPixelReader().getColor(20, 1);
-                assertThat(List.of(requested, fewSources, manySources, none)).doesNotContain(have);
-                assertThat(fewSources).isNotEqualTo(manySources);
-                assertThat(none).isNotEqualTo(manySources);
-                assertThat(strip).isNotEqualTo(have);
-                stage.close();
-                return null;
-            });
-        }
+                List.of(sources));
+    }
+
+    private void givenABarShownInTheTheme(GuiSettings.Mode theme) throws Exception {
+        this.mode = theme;
+        FxTesting.onFx(() -> {
+            this.bar = new PartBar();
+            this.bar.setPrefSize(400, 16);
+            VBox box = new VBox(this.bar);
+            Scene scene = new Scene(box, 400, 16);
+            Themes themes = new Themes(Themes.Family.NORD, theme);
+            themes.attach(scene);
+            this.stage = new Stage();
+            this.stage.setScene(scene);
+            this.stage.show();
+            box.applyCss();
+            box.layout();
+        });
+    }
+
+    private void whenTheBarShowsTheMapWithCompletedBytes(long completed) throws Exception {
+        FxTesting.onFx(() -> {
+            this.bar.set(this.map, completed);
+            PixelReader pixels = this.bar.snapshot(null, null).getPixelReader();
+            FxTesting.snapshot(this.bar, "partbar-" + this.mode.name().toLowerCase(Locale.ROOT));
+            this.have = pixels.getColor(20, 10);
+            this.requested = pixels.getColor(100, 10);
+            this.fewSources = pixels.getColor(140, 10);
+            this.manySources = pixels.getColor(220, 10);
+            this.none = pixels.getColor(350, 10);
+            this.strip = pixels.getColor(20, 1);
+            return null;
+        });
+    }
+
+    private void thenWhatWeHaveLooksUnlikeTheOtherParts() {
+        assertThat(List.of(this.requested, this.fewSources, this.manySources, this.none))
+                .doesNotContain(this.have);
+    }
+
+    private void thenFewSourcesLookUnlikeMany() {
+        assertThat(this.fewSources).isNotEqualTo(this.manySources);
+    }
+
+    private void thenNoSourcesLookUnlikeMany() {
+        assertThat(this.none).isNotEqualTo(this.manySources);
+    }
+
+    private void thenTheCompletedStripLooksUnlikeWhatWeHave() {
+        assertThat(this.strip).isNotEqualTo(this.have);
     }
 }

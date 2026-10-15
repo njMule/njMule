@@ -18,21 +18,51 @@ package org.njmule.gui.ui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.njmule.gui.infra.GuiSettings;
 
 class UrlBoxTest {
 
-    @Test
-    void eMuleHistoriesAreUtf16AfterAByteOrderMark() {
-        byte[] data = "\uFEFFhttp://a.example/server.met\r\nhttp://b.example/server.met\r\n\r\n"
-                .concat("http://a.example/server.met\r\n")
-                .getBytes(StandardCharsets.UTF_16LE);
+    private byte[] data;
+    private List<String> history;
 
-        assertThat(GuiSettings.emuleHistory(data))
-                .containsExactly("http://a.example/server.met", "http://b.example/server.met");
-        assertThat(GuiSettings.emuleHistory("http://a.example/".getBytes(StandardCharsets.US_ASCII)))
-                .isEmpty();
+    @Test
+    void shouldReadEmuleHistoriesAsUtf16AfterAByteOrderMark() {
+        givenAHistoryFile(
+                "\uFEFFhttp://a.example/server.met\r\nhttp://b.example/server.met\r\n\r\n"
+                        .concat("http://a.example/server.met\r\n"),
+                StandardCharsets.UTF_16LE);
+
+        whenTheEmuleHistoryIsRead();
+
+        thenTheHistoryIs("http://a.example/server.met", "http://b.example/server.met");
+    }
+
+    @Test
+    void shouldReadNothingFromAHistoryWithoutAByteOrderMark() {
+        givenAHistoryFile("http://a.example/", StandardCharsets.US_ASCII);
+
+        whenTheEmuleHistoryIsRead();
+
+        thenTheHistoryIsEmpty();
+    }
+
+    private void givenAHistoryFile(String text, Charset charset) {
+        this.data = text.getBytes(charset);
+    }
+
+    private void whenTheEmuleHistoryIsRead() {
+        this.history = GuiSettings.emuleHistory(this.data);
+    }
+
+    private void thenTheHistoryIs(String... urls) {
+        assertThat(this.history).containsExactly(urls);
+    }
+
+    private void thenTheHistoryIsEmpty() {
+        assertThat(this.history).isEmpty();
     }
 }

@@ -67,6 +67,11 @@ class TrayWindowsTest {
     private Gui gui;
     private Stage owner;
     private final List<String> actions = new ArrayList<>();
+    private final List<String> commands = new CopyOnWriteArrayList<>();
+    private final AtomicInteger writes = new AtomicInteger();
+    private TrayMenu menu;
+    private Slider slider;
+    private MiniMule mini;
 
     @BeforeAll
     static void toolkit() throws Exception {
@@ -87,9 +92,188 @@ class TrayWindowsTest {
     }
 
     @Test
-    void theMenuSetsTheLimitsAndCallsItsActions() throws Exception {
+    void shouldSetTheDownloadLimitFromItsSlider() throws Exception {
+        givenAStartedGui();
+        givenATrayMenuThatRecordsItsActions();
+        givenTheMenuShownAsPictured("tray-menu");
+
+        whenTheDownloadSliderIsMovedTo(250);
+
+        thenTheDownloadLimitBecomes(250);
+    }
+
+    @Test
+    void shouldThrottleAndLiftBothLimitsFromItsItems() throws Exception {
+        givenAStartedGui();
+        givenATrayMenuThatRecordsItsActions();
+        givenTheMenuShown();
+        givenTheItemPressed("IDS_PW_PA");
+        givenBothLimitsBecame(1);
+
+        whenTheItemIsPressed("IDS_PW_UA");
+
+        thenBothLimitsBecomeTheLineCapacities();
+    }
+
+    @Test
+    void shouldCallTheActionsOfItsItemsAndCloseOnEach() throws Exception {
+        givenAStartedGui();
+        givenATrayMenuThatRecordsItsActions();
+
+        whenTheItemsArePressedInTurn("IDS_EM_PREFS", "IDS_MAIN_POPUP_RESTORE", "IDS_EXIT");
+
+        thenTheActionsCalledAre("options", "restore", "exit");
+        thenTheMenuIsShowing(false, "an item closes the menu");
+    }
+
+    @Test
+    void shouldNeverChangeTheLimitsWhenOpened() throws Exception {
+        givenAGuiCountingThePreferenceWrites();
+        givenTheLimits(1000, 800);
+        givenATrayMenu();
+        givenTheMenuShownAndHidden();
+        // The line got slower meanwhile: the slider's top falls below its old position.
+        givenTheLimits(500, 300);
+
+        whenTheMenuIsShown();
+
+        thenThePreferencesWereWrittenTimes(0, "opening the menu");
+        thenTheDownloadLimitIs(300);
+        thenTheDownloadSpeedReads(300, "the limit as set");
+    }
+
+    @Test
+    void shouldShowTheStateAtAGlance() throws Exception {
+        givenAStartedGui();
+        givenAStatusWindowThatRecordsItsActions();
+
+        whenTheStatusWindowIsShownAsPictured("minimule");
+
+        thenTheStatusShowsValues(5);
+        thenTheFirstValueReadsTheText("IDS_NO", "not connected");
+        thenTheValueReads(3, "0");
+        thenTheLastValueIsKnown("the free space of the incoming folder");
+    }
+
+    @Test
+    void shouldCallTheActionsOfTheStatusWindowButtons() throws Exception {
+        givenAStartedGui();
+        givenAStatusWindowThatRecordsItsActions();
+        givenTheStatusWindowShown();
+
+        whenAllItsButtonsArePressed();
+
+        thenTheActionsCalledAre("incoming", "options", "restore");
+    }
+
+    @Test
+    void shouldConnectAndDisconnectFromItsItems() throws Exception {
+        givenAGuiRecordingItsCommandsAndPreferenceWrites();
+        givenATrayMenu();
+        givenTheMenuShownWithTheItemOff("IDS_MAIN_BTN_DISCONNECT", "not connected");
+        givenTheItemPressed("IDS_MAIN_BTN_CONNECT");
+        givenTheMenuShownWithTheItemOff("IDS_MAIN_BTN_CONNECT", "trying the servers");
+
+        whenTheItemIsPressed("IDS_MAIN_BTN_DISCONNECT");
+
+        thenTheCommandsSentAre("connect", "disconnect");
+    }
+
+    @Test
+    void shouldSetTheUploadLimitOnceItsSliderIsLetGoAndOnlyWhenItMoved() throws Exception {
+        givenAGuiRecordingItsCommandsAndPreferenceWrites();
+        givenTheLimits(1000, 800);
+        givenATrayMenu();
+        givenTheMenuShown();
+        givenTheUploadSliderDraggedTo(300);
+        givenTheSliderLetGo();
+        givenTheUploadLimitBecame(300);
+
+        whenTheSliderIsDraggedAndLetGoWithoutMoving();
+
+        thenThePreferencesWereWrittenTimes(1, "only for the slider that moved");
+    }
+
+    @Test
+    void shouldCloseOnEscapeButNotOnOtherKeys() throws Exception {
+        givenAGuiRecordingItsCommandsAndPreferenceWrites();
+        givenATrayMenu();
+        givenTheMenuShown();
+        givenTheMenuStillShowingAfterTheKey(KeyCode.A);
+
+        whenTheKeyIsPressed(KeyCode.ESCAPE);
+
+        thenTheMenuIsShowing(false, "closed by Escape");
+    }
+
+    @Test
+    void shouldCountKadAndAFolderNotMadeYet() throws Exception {
+        givenAGuiOnKad();
+        givenAStatusWindowForAFolderNotMadeYet();
+
+        whenTheStatusWindowIsShown();
+
+        thenTheStatusWindowIsShowing(true);
+        thenTheFirstValueReadsTheText("IDS_YES", "connected to Kad");
+        thenTheLastValueIsKnown("the free space of the disk it will be on");
+    }
+
+    @Test
+    void shouldHideTheStatusWindow() throws Exception {
+        givenAGuiOnKad();
+        givenAStatusWindowForAFolderNotMadeYet();
+        givenTheStatusWindowShown();
+
+        whenTheStatusWindowIsHidden();
+
+        thenTheStatusWindowIsShowing(false);
+    }
+
+    private void givenAStartedGui() throws Exception {
         start();
-        TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
+    }
+
+    private void givenAGuiCountingThePreferenceWrites() throws Exception {
+        start(real -> Engines.overriding(real, Map.of("updatePreferences", args -> {
+            this.writes.incrementAndGet();
+            return real.updatePreferences(change(args[0]));
+        })));
+    }
+
+    private void givenAGuiRecordingItsCommandsAndPreferenceWrites() throws Exception {
+        start(real -> Engines.overriding(
+                real,
+                Map.of(
+                        "connect",
+                        args -> {
+                            this.commands.add("connect");
+                            return CompletableFuture.completedFuture(null);
+                        },
+                        "disconnect",
+                        args -> {
+                            this.commands.add("disconnect");
+                            return CompletableFuture.completedFuture(null);
+                        },
+                        "updatePreferences",
+                        args -> {
+                            this.writes.incrementAndGet();
+                            return real.updatePreferences(change(args[0]));
+                        })));
+    }
+
+    private void givenAGuiOnKad() throws Exception {
+        EngineStatus onKad = Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
+        start(real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
+        FxTesting.await(
+                "on Kad", () -> Objects.equals(this.model.statusProperty().get(), onKad));
+    }
+
+    private void givenTheLimits(int capacity, int limit) throws Exception {
+        limits(capacity, limit);
+    }
+
+    private void givenATrayMenuThatRecordsItsActions() throws Exception {
+        this.menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
             @Override
             public void restore() {
                 TrayWindowsTest.this.actions.add("restore");
@@ -105,48 +289,10 @@ class TrayWindowsTest {
                 TrayWindowsTest.this.actions.add("exit");
             }
         }));
-        FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(FxTesting.onFx(menu::isShowing)).isTrue();
-        FxTesting.onFx(() -> {
-            FxTesting.snapshot(menu.scene().getRoot(), "tray-menu");
-            return null;
-        });
-
-        int top = Math.max(preferences().downloadCapacityKiBps(), preferences().maxDownloadKiBps());
-        FxTesting.onFx(() -> ((Slider)
-                        menu.scene().getRoot().lookupAll(".slider").iterator().next())
-                .setValue(SpeedLimits.position(250, top)));
-        FxTesting.await("the download limit", () -> preferences().maxDownloadKiBps() == 250);
-
-        press(menu.scene(), this.gui.t("IDS_PW_PA"));
-        FxTesting.await(
-                "the throttled limits",
-                () -> preferences().maxDownloadKiBps() == 1 && preferences().maxUploadKiBps() == 1);
-        press(menu.scene(), this.gui.t("IDS_PW_UA"));
-        FxTesting.await(
-                "the full limits",
-                () -> preferences().maxDownloadKiBps() == preferences().downloadCapacityKiBps()
-                        && preferences().maxUploadKiBps() == preferences().uploadCapacityKiBps());
-
-        for (String item : List.of("IDS_EM_PREFS", "IDS_MAIN_POPUP_RESTORE", "IDS_EXIT")) {
-            FxTesting.onFx(() -> menu.show(600, 500));
-            press(menu.scene(), this.gui.t(item));
-        }
-        assertThat(this.actions).containsExactly("options", "restore", "exit");
-        assertThat(FxTesting.onFx(menu::isShowing))
-                .as("an item closes the menu")
-                .isFalse();
     }
 
-    @Test
-    void openingTheMenuNeverChangesTheLimits() throws Exception {
-        AtomicInteger writes = new AtomicInteger();
-        start(real -> Engines.overriding(real, Map.of("updatePreferences", args -> {
-            writes.incrementAndGet();
-            return real.updatePreferences(change(args[0]));
-        })));
-        limits(1000, 800);
-        TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
+    private void givenATrayMenu() throws Exception {
+        this.menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
             @Override
             public void restore() {}
 
@@ -156,29 +302,73 @@ class TrayWindowsTest {
             @Override
             public void exit() {}
         }));
-        FxTesting.onFx(() -> menu.show(600, 500));
-        FxTesting.onFx(menu::hide);
-        // The line got slower meanwhile: the slider's top falls below its old position.
-        limits(500, 300);
-
-        FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(writes).as("opening the menu").hasValue(0);
-        assertThat(preferences().maxDownloadKiBps()).isEqualTo(300);
-
-        assertThat(FxTesting.onFx(() -> ((Label) menu.scene()
-                                .getRoot()
-                                .lookupAll(".speed-value")
-                                .iterator()
-                                .next())
-                        .getText()))
-                .as("the limit as set")
-                .isEqualTo(this.gui.formats().rate(300 * 1024L));
     }
 
-    @Test
-    void theStatusWindowShowsTheStateAtAGlance() throws Exception {
-        start();
-        MiniMule mini = FxTesting.onFx(() -> new MiniMule(this.gui, this.owner, () -> this.dir, new MiniMule.Actions() {
+    private void givenTheMenuShown() throws Exception {
+        FxTesting.onFx(() -> this.menu.show(600, 500));
+    }
+
+    private void givenTheMenuShownAsPictured(String picture) throws Exception {
+        FxTesting.onFx(() -> this.menu.show(600, 500));
+        assertThat(FxTesting.onFx(this.menu::isShowing)).isTrue();
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(this.menu.scene().getRoot(), picture);
+            return null;
+        });
+    }
+
+    private void givenTheMenuShownAndHidden() throws Exception {
+        FxTesting.onFx(() -> this.menu.show(600, 500));
+        FxTesting.onFx(this.menu::hide);
+    }
+
+    private void givenTheMenuShownWithTheItemOff(String item, String why) throws Exception {
+        FxTesting.onFx(() -> this.menu.show(600, 500));
+        assertThat(FxTesting.onFx(
+                        () -> item(this.menu.scene(), this.gui.t(item)).isDisabled()))
+                .as(why)
+                .isTrue();
+    }
+
+    private void givenTheMenuStillShowingAfterTheKey(KeyCode key) throws Exception {
+        FxTesting.onFx(() -> this.menu.scene().getRoot().fireEvent(FxTesting.key(key, false)));
+        assertThat(FxTesting.onFx(this.menu::isShowing)).isTrue();
+    }
+
+    private void givenTheItemPressed(String item) throws Exception {
+        press(this.menu.scene(), this.gui.t(item));
+    }
+
+    private void givenBothLimitsBecame(int kib) throws Exception {
+        FxTesting.await(
+                "the throttled limits",
+                () -> preferences().maxDownloadKiBps() == kib && preferences().maxUploadKiBps() == kib);
+    }
+
+    private void givenTheUploadSliderDraggedTo(int kib) throws Exception {
+        this.slider = FxTesting.onFx(
+                () -> (Slider) this.menu.scene().getRoot().lookupAll(".slider").toArray()[1]);
+        int top = Math.max(preferences().uploadCapacityKiBps(), preferences().maxUploadKiBps());
+        FxTesting.onFx(() -> {
+            this.slider.setValueChanging(true);
+            this.slider.setValue(SpeedLimits.position(kib, top));
+        });
+        assertThat(this.writes).as("while dragged").hasValue(0);
+    }
+
+    private void givenTheSliderLetGo() throws Exception {
+        FxTesting.onFx(() -> this.slider.setValueChanging(false));
+    }
+
+    private void givenTheUploadLimitBecame(int kib) throws Exception {
+        FxTesting.await("the upload limit", () -> preferences().maxUploadKiBps() == kib);
+        FxTesting.await(
+                "the new preferences",
+                () -> this.model.preferencesProperty().get().maxUploadKiBps() == kib);
+    }
+
+    private void givenAStatusWindowThatRecordsItsActions() throws Exception {
+        this.mini = FxTesting.onFx(() -> new MiniMule(this.gui, this.owner, () -> this.dir, new MiniMule.Actions() {
             @Override
             public void openIncoming() {
                 TrayWindowsTest.this.actions.add("incoming");
@@ -194,109 +384,10 @@ class TrayWindowsTest {
                 TrayWindowsTest.this.actions.add("restore");
             }
         }));
-        FxTesting.onFx(mini::show);
-        FxTesting.onFx(() -> {
-            FxTesting.snapshot(mini.scene().getRoot(), "minimule");
-            return null;
-        });
-
-        List<String> values = FxTesting.onFx(() -> mini.scene().getRoot().lookupAll(".minimule-value").stream()
-                .map(n -> ((Label) n).getText())
-                .toList());
-        assertThat(values).hasSize(5);
-        assertThat(values.get(0)).isEqualTo(this.gui.t("IDS_NO"));
-        assertThat(values.get(3)).isEqualTo("0");
-        assertThat(values.get(4)).isNotEqualTo("?");
-        FxTesting.onFx(() -> {
-            for (Node node : mini.scene().getRoot().lookupAll(".button")) {
-                ((Button) node).fire();
-            }
-        });
-        assertThat(this.actions).containsExactly("incoming", "options", "restore");
     }
 
-    @Test
-    void theMenuConnectsTakesTheLimitsLetGoAndCloses() throws Exception {
-        List<String> commands = new CopyOnWriteArrayList<>();
-        AtomicInteger writes = new AtomicInteger();
-        start(real -> Engines.overriding(
-                real,
-                Map.of(
-                        "connect",
-                        args -> {
-                            commands.add("connect");
-                            return CompletableFuture.completedFuture(null);
-                        },
-                        "disconnect",
-                        args -> {
-                            commands.add("disconnect");
-                            return CompletableFuture.completedFuture(null);
-                        },
-                        "updatePreferences",
-                        args -> {
-                            writes.incrementAndGet();
-                            return real.updatePreferences(change(args[0]));
-                        })));
-        limits(1000, 800);
-        TrayMenu menu = FxTesting.onFx(() -> new TrayMenu(this.gui, this.owner, new TrayMenu.Actions() {
-            @Override
-            public void restore() {}
-
-            @Override
-            public void options() {}
-
-            @Override
-            public void exit() {}
-        }));
-        String connect = this.gui.t("IDS_MAIN_BTN_CONNECT");
-        String disconnect = this.gui.t("IDS_MAIN_BTN_DISCONNECT");
-
-        FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(FxTesting.onFx(() -> item(menu.scene(), disconnect).isDisabled()))
-                .isTrue();
-        press(menu.scene(), connect);
-        FxTesting.onFx(() -> menu.show(600, 500));
-        assertThat(FxTesting.onFx(() -> item(menu.scene(), connect).isDisabled()))
-                .as("trying the servers")
-                .isTrue();
-        press(menu.scene(), disconnect);
-        assertThat(commands).containsExactly("connect", "disconnect");
-
-        // A slider dragged sets its limit once it is let go, and only when it moved.
-        FxTesting.onFx(() -> menu.show(600, 500));
-        Slider up = FxTesting.onFx(
-                () -> (Slider) menu.scene().getRoot().lookupAll(".slider").toArray()[1]);
-        int top = Math.max(preferences().uploadCapacityKiBps(), preferences().maxUploadKiBps());
-        FxTesting.onFx(() -> {
-            up.setValueChanging(true);
-            up.setValue(SpeedLimits.position(300, top));
-        });
-        assertThat(writes).as("while dragged").hasValue(0);
-        FxTesting.onFx(() -> up.setValueChanging(false));
-        FxTesting.await("the upload limit", () -> preferences().maxUploadKiBps() == 300);
-        FxTesting.await(
-                "the new preferences",
-                () -> this.model.preferencesProperty().get().maxUploadKiBps() == 300);
-        FxTesting.onFx(() -> {
-            up.setValueChanging(true);
-            up.setValueChanging(false);
-        });
-        assertThat(writes).hasValue(1);
-
-        // Escape closes the menu; other keys do not.
-        FxTesting.onFx(() -> menu.scene().getRoot().fireEvent(FxTesting.key(KeyCode.A, false)));
-        assertThat(FxTesting.onFx(menu::isShowing)).isTrue();
-        FxTesting.onFx(() -> menu.scene().getRoot().fireEvent(FxTesting.key(KeyCode.ESCAPE, false)));
-        assertThat(FxTesting.onFx(menu::isShowing)).isFalse();
-    }
-
-    @Test
-    void theStatusWindowCountsKadAndAFolderNotMadeYet() throws Exception {
-        EngineStatus onKad = Statuses.of(Optional.empty(), 0, false, Optional.of(Statuses.kad(true, false, "")), false);
-        start(real -> Engines.overriding(real, Map.of("status", args -> CompletableFuture.completedFuture(onKad))));
-        FxTesting.await(
-                "on Kad", () -> Objects.equals(this.model.statusProperty().get(), onKad));
-        MiniMule mini = FxTesting.onFx(() -> new MiniMule(
+    private void givenAStatusWindowForAFolderNotMadeYet() throws Exception {
+        this.mini = FxTesting.onFx(() -> new MiniMule(
                 this.gui,
                 this.owner,
                 () -> this.dir.resolve("incoming").resolve("not made yet"),
@@ -310,18 +401,140 @@ class TrayWindowsTest {
                     @Override
                     public void restore() {}
                 }));
+    }
 
-        FxTesting.onFx(mini::show);
-        assertThat(FxTesting.onFx(mini::isShowing)).isTrue();
-        List<String> values = FxTesting.onFx(() -> mini.scene().getRoot().lookupAll(".minimule-value").stream()
+    private void givenTheStatusWindowShown() throws Exception {
+        FxTesting.onFx(this.mini::show);
+    }
+
+    private void whenTheDownloadSliderIsMovedTo(int kib) throws Exception {
+        int top = Math.max(preferences().downloadCapacityKiBps(), preferences().maxDownloadKiBps());
+        FxTesting.onFx(() -> ((Slider) this.menu
+                        .scene()
+                        .getRoot()
+                        .lookupAll(".slider")
+                        .iterator()
+                        .next())
+                .setValue(SpeedLimits.position(kib, top)));
+    }
+
+    private void whenTheItemIsPressed(String item) throws Exception {
+        press(this.menu.scene(), this.gui.t(item));
+    }
+
+    private void whenTheItemsArePressedInTurn(String... items) throws Exception {
+        for (String item : items) {
+            FxTesting.onFx(() -> this.menu.show(600, 500));
+            press(this.menu.scene(), this.gui.t(item));
+        }
+    }
+
+    private void whenTheMenuIsShown() throws Exception {
+        FxTesting.onFx(() -> this.menu.show(600, 500));
+    }
+
+    private void whenTheSliderIsDraggedAndLetGoWithoutMoving() throws Exception {
+        FxTesting.onFx(() -> {
+            this.slider.setValueChanging(true);
+            this.slider.setValueChanging(false);
+        });
+    }
+
+    private void whenTheKeyIsPressed(KeyCode key) throws Exception {
+        FxTesting.onFx(() -> this.menu.scene().getRoot().fireEvent(FxTesting.key(key, false)));
+    }
+
+    private void whenTheStatusWindowIsShownAsPictured(String picture) throws Exception {
+        FxTesting.onFx(this.mini::show);
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(this.mini.scene().getRoot(), picture);
+            return null;
+        });
+    }
+
+    private void whenTheStatusWindowIsShown() throws Exception {
+        FxTesting.onFx(this.mini::show);
+    }
+
+    private void whenAllItsButtonsArePressed() throws Exception {
+        FxTesting.onFx(() -> {
+            for (Node node : this.mini.scene().getRoot().lookupAll(".button")) {
+                ((Button) node).fire();
+            }
+        });
+    }
+
+    private void whenTheStatusWindowIsHidden() throws Exception {
+        FxTesting.onFx(this.mini::hide);
+    }
+
+    private void thenTheDownloadLimitBecomes(int kib) throws Exception {
+        FxTesting.await("the download limit", () -> preferences().maxDownloadKiBps() == kib);
+    }
+
+    private void thenBothLimitsBecomeTheLineCapacities() throws Exception {
+        FxTesting.await(
+                "the full limits",
+                () -> preferences().maxDownloadKiBps() == preferences().downloadCapacityKiBps()
+                        && preferences().maxUploadKiBps() == preferences().uploadCapacityKiBps());
+    }
+
+    private void thenTheActionsCalledAre(String... called) {
+        assertThat(this.actions).containsExactly(called);
+    }
+
+    private void thenTheMenuIsShowing(boolean showing, String why) throws Exception {
+        assertThat(FxTesting.onFx(this.menu::isShowing)).as(why).isEqualTo(showing);
+    }
+
+    private void thenThePreferencesWereWrittenTimes(int times, String why) {
+        assertThat(this.writes).as(why).hasValue(times);
+    }
+
+    private void thenTheDownloadLimitIs(int kib) {
+        assertThat(preferences().maxDownloadKiBps()).isEqualTo(kib);
+    }
+
+    private void thenTheDownloadSpeedReads(int kib, String why) throws Exception {
+        assertThat(FxTesting.onFx(() -> ((Label) this.menu
+                                .scene()
+                                .getRoot()
+                                .lookupAll(".speed-value")
+                                .iterator()
+                                .next())
+                        .getText()))
+                .as(why)
+                .isEqualTo(this.gui.formats().rate(kib * 1024L));
+    }
+
+    private void thenTheCommandsSentAre(String... sent) {
+        assertThat(this.commands).containsExactly(sent);
+    }
+
+    private void thenTheStatusWindowIsShowing(boolean showing) throws Exception {
+        assertThat(FxTesting.onFx(this.mini::isShowing)).isEqualTo(showing);
+    }
+
+    private void thenTheStatusShowsValues(int count) throws Exception {
+        assertThat(statusValues()).hasSize(count);
+    }
+
+    private void thenTheFirstValueReadsTheText(String text, String why) throws Exception {
+        assertThat(statusValues().getFirst()).as(why).isEqualTo(this.gui.t(text));
+    }
+
+    private void thenTheValueReads(int index, String value) throws Exception {
+        assertThat(statusValues().get(index)).isEqualTo(value);
+    }
+
+    private void thenTheLastValueIsKnown(String why) throws Exception {
+        assertThat(statusValues().getLast()).as(why).isNotEqualTo("?");
+    }
+
+    private List<String> statusValues() throws Exception {
+        return FxTesting.onFx(() -> this.mini.scene().getRoot().lookupAll(".minimule-value").stream()
                 .map(n -> ((Label) n).getText())
                 .toList());
-        assertThat(values.getFirst()).as("connected to Kad").isEqualTo(this.gui.t("IDS_YES"));
-        assertThat(values.getLast())
-                .as("the free space of the disk it will be on")
-                .isNotEqualTo("?");
-        FxTesting.onFx(mini::hide);
-        assertThat(FxTesting.onFx(mini::isShowing)).isFalse();
     }
 
     private Button item(Scene scene, String text) {
