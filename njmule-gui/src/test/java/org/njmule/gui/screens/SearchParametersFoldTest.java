@@ -46,36 +46,46 @@ class SearchParametersFoldTest {
     }
 
     @Test
-    void theParametersFoldAwayUntilWantedAndTheButtonCountsThoseInUse() throws Exception {
-        givenTheSearchScreen();
-        thenTheParametersShow(false);
-        thenTheButtonReads("Search Parameters");
+    void shouldFoldTheParametersAwayUntilWantedAndCountThoseInUseOnTheButton() throws Exception {
+        givenTheSearchScreenWithTheParametersFoldedAwayAndTheButtonReading("Search Parameters");
+        givenTheParametersUnfolded();
+        givenTheMinimumSize("100");
+        givenTheExtension("mkv");
+        givenTheButtonReads("Search Parameters (2)");
+
         whenTheButtonIsPressed();
-        thenTheParametersShow(true);
-        whenTheMinimumSizeIs("100");
-        whenTheExtensionIs("mkv");
-        thenTheButtonReads("Search Parameters (2)");
-        whenTheButtonIsPressed();
+
         thenTheParametersShow(false);
     }
 
-    private void givenTheSearchScreen() throws Exception {
+    private void givenTheSearchScreenWithTheParametersFoldedAwayAndTheButtonReading(String text) throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.screen = FxTesting.onFx(() -> new SearchScreen(this.test.gui));
         this.view = FxTesting.onFx(() -> (Parent) this.screen.view());
         this.test.show(this.view);
+        thenTheParametersShow(false);
+        thenTheButtonReads(text);
+    }
+
+    private void givenTheParametersUnfolded() throws Exception {
+        whenTheButtonIsPressed();
+        thenTheParametersShow(true);
+    }
+
+    private void givenTheMinimumSize(String text) throws Exception {
+        FxTesting.onFx(() -> this.screen.minSizeField().setText(text));
+    }
+
+    private void givenTheExtension(String text) throws Exception {
+        FxTesting.onFx(() -> this.screen.extensionField().setText(text));
+    }
+
+    private void givenTheButtonReads(String text) throws Exception {
+        thenTheButtonReads(text);
     }
 
     private void whenTheButtonIsPressed() throws Exception {
         FxTesting.onFx(() -> button().fire());
-    }
-
-    private void whenTheMinimumSizeIs(String text) throws Exception {
-        FxTesting.onFx(() -> this.screen.minSizeField().setText(text));
-    }
-
-    private void whenTheExtensionIs(String text) throws Exception {
-        FxTesting.onFx(() -> this.screen.extensionField().setText(text));
     }
 
     private void thenTheParametersShow(boolean shown) throws Exception {

@@ -40,6 +40,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerInfo;
@@ -61,6 +63,7 @@ class ServersMenusTest {
 
     private TestGui test;
     private final List<String> calls = new CopyOnWriteArrayList<>();
+    private ServersScreen screen;
 
     @AfterEach
     void close() {
@@ -70,149 +73,432 @@ class ServersMenusTest {
     }
 
     @Test
-    void theServerMenuFollowsTheSelectionAndActs() throws Exception {
-        ServersScreen screen = screen();
-        ContextMenu menu = FxTesting.onFx(() -> screen.table().getContextMenu());
+    void shouldConnectToAnyServerWithoutASelection() throws Exception {
+        givenTheServersScreen();
+        givenTheClipboardHolds("nothing to paste");
+        givenNoServerChosen();
+        givenTheMenuShown();
+        givenTheMenuItemsAreOff(true, "IDS_CONNECTTHIS", "IDS_SW_DIRECTDOWNLOAD");
+        givenTheMenuItemsAreOff(false, "IDS_REMOVEALL");
+        givenTheLinksCopied();
 
+        whenConnectOrDisconnectIsPressed();
+
+        thenTheEngineWasAskedFor("connect any");
+    }
+
+    @Test
+    void shouldTakeTheStaticServerOutOfTheStaticListWhenBothServersAreChosen() throws Exception {
+        givenTheServersScreen();
+        givenAllServersChosen();
+        givenTheMenuShown();
+        givenTheMenuItemsAreOff(false, "IDS_ADDTOSTATIC", "IDS_REMOVEFROMSTATIC");
+        givenNoPriorityTicked();
+
+        whenTheMenuItemIsFired("IDS_REMOVEFROMSTATIC");
+
+        thenTheEngineWasAlsoAskedFor("static 81.2.3.5:4242 false");
+    }
+
+    @Test
+    void shouldOfferToDisconnectFromTheServerWeAreOnWithItsPriorityTicked() throws Exception {
+        givenTheServersScreen();
+        givenConnectedTo(BIG);
+        givenTheServerChosen(BIG);
+        givenTheMenuShown();
+        givenTheConnectItemReads("Disconnect");
+        givenThePriorityTicked("Normal");
+        givenTheLastPriorityChosen();
+        givenTheMenuItemFired("IDS_ADDTOSTATIC");
+
+        whenTheMenuItemIsFired("IDS_CONNECTTHIS");
+
+        thenTheEngineWasAlsoAskedFor("priority 81.2.3.4:4661 HIGH", "static 81.2.3.4:4661 true", "disconnect");
+    }
+
+    @Test
+    void shouldPasteTheServerLinksOfTheClipboard() throws Exception {
+        givenTheServersScreen();
+        givenTheClipboardHolds("ed2k://|server|81.2.3.9|4661|/ ed2k://|serverlist|https://example.org/list.met|/");
+        givenTheMenuShown();
+        givenTheMenuItemsAreOff(false, "IDS_SW_DIRECTDOWNLOAD");
+
+        whenTheMenuItemIsFired("IDS_SW_DIRECTDOWNLOAD");
+
+        thenTheUserIsTold("3 new servers from example.org");
+        thenTheEngineWasAlsoAskedFor("add 81.2.3.9:4661", "list https://example.org/list.met");
+        thenTheServerListAddressesRememberedAre("https://example.org/list.met");
+    }
+
+    @Test
+    void shouldAskBeforeRemovingAllServersAndStopTryingThemFirst() throws Exception {
+        givenTheServersScreen();
+        givenTheMenuShown();
+        givenRemoveAllCancelled();
+        givenNoServerRemoved();
+        givenNjMuleTryingTheServers();
+
+        whenRemoveAllIsConfirmed();
+
+        thenTheEngineWasAlsoAskedFor("remove [81.2.3.4:4661, 81.2.3.5:4242]");
+        thenTryingTheServersStoppedBeforeTheRemoval("remove [81.2.3.4:4661, 81.2.3.5:4242]");
+    }
+
+    @Test
+    void shouldCopyTheLinkOfTheChosenServerWithTheShortcut() throws Exception {
+        givenTheServersScreen();
+        givenTheServerChosen(SMALL);
+
+        whenTheKeyIsPressedOnTheList(KeyCode.C, true);
+
+        thenTheClipboardHolds("ed2k://|server|81.2.3.5|4242|/");
+        thenTheEngineWasAskedNothing();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "V, true, add 81.2.3.8:4661",
+        "ENTER, false, connect 81.2.3.5:4242",
+        "DELETE, false, remove [81.2.3.5:4242]"
+    })
+    void shouldActOnTheChosenServerWithAKey(KeyCode key, boolean shortcut, String call) throws Exception {
+        givenTheServersScreen();
+        givenTheServerChosen(SMALL);
+        givenTheClipboardHolds("ed2k://|server|81.2.3.8|4661|/");
+
+        whenTheKeyIsPressedOnTheList(key, shortcut);
+
+        thenTheEngineWasAskedFor(call);
+    }
+
+    @Test
+    void shouldIgnoreAPlainLetterOnTheList() throws Exception {
+        givenTheServersScreen();
+        givenTheServerChosen(SMALL);
+
+        whenTheKeyIsPressedOnTheList(KeyCode.A, false);
+
+        thenTheEngineWasAskedNothing();
+    }
+
+    @Test
+    void shouldConnectToADoubleClickedServer() throws Exception {
+        givenTheServersScreen();
+
+        whenTheServerIsDoubleClicked(BIG);
+
+        thenTheLastCallIs("connect 81.2.3.4:4661");
+    }
+
+    @Test
+    void shouldConnectToATypedAddressAndEmptyTheBox() throws Exception {
+        givenTheServersScreen();
+        givenTheAddressTyped("81.2.3.7:4661");
+
+        whenConnectToTheAddressIsPressed();
+
+        thenTheLastCallIs("connect 81.2.3.7:4661");
+        thenTheAddressBoxIsEmpty();
+    }
+
+    @Test
+    void shouldEmptyTheFilterOnEscape() throws Exception {
+        givenTheServersScreen();
+        givenTheFilterTyped("big");
+
+        whenTheKeyIsPressedInTheFilter(KeyCode.ESCAPE);
+
+        thenTheFilterIsEmpty();
+    }
+
+    @Test
+    void shouldNotFetchAnEmptyListAddress() throws Exception {
+        givenTheServersScreen();
+        givenTheListAddressCleared();
+
+        whenTheListIsUpdatedFromTheAddress();
+
+        thenNoListWasFetched();
+    }
+
+    @Test
+    void shouldShowTheSessionsInTheServerInfo() throws Exception {
+        givenTheServersScreen();
+
+        whenTwoSessionsAMessageAndAWarningCome();
+
+        thenTheServerInfoShowsTheSessions();
+        thenTheServerInfoShowsSuccesses(2);
+    }
+
+    @Test
+    void shouldResetTheServerInfoAndKeepTheLog() throws Exception {
+        givenTheServersScreen();
+        givenTwoSessionsAMessageAndAWarning();
+        givenTheServerInfoShowsTheSessions();
+
+        whenResetIsPressed();
+
+        thenTheServerInfoIsEmpty();
+        thenTheLogIsKept();
+    }
+
+    @Test
+    void shouldResetTheLog() throws Exception {
+        givenTheServersScreen();
+        givenTwoSessionsAMessageAndAWarning();
+        givenTheLogTabChosen();
+        givenTheLogShowsTheWarning();
+
+        whenResetIsPressed();
+
+        thenTheLogIsEmpty();
+    }
+
+    private void givenTheServersScreen() throws Exception {
+        this.screen = screen();
+    }
+
+    private void givenTheClipboardHolds(String text) throws Exception {
         FxTesting.onFx(() -> {
             ClipboardContent content = new ClipboardContent();
-            content.putString("nothing to paste");
+            content.putString(text);
             Clipboard.getSystemClipboard().setContent(content);
-            screen.table().getSelectionModel().clearSelection();
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_CONNECTTHIS").isDisable()).isTrue();
-            assertThat(item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isTrue();
-            assertThat(item(menu, "IDS_REMOVEALL").isDisable()).isFalse();
-            screen.copyLinks();
-            screen.connectOrDisconnect();
         });
-        assertThat(this.calls).containsExactly("connect any");
+    }
 
-        // Both servers: one static, the priorities differ, so none is ticked.
-        FxTesting.onFx(() -> {
-            screen.table().getSelectionModel().selectAll();
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_ADDTOSTATIC").isDisable()).isFalse();
-            assertThat(item(menu, "IDS_REMOVEFROMSTATIC").isDisable()).isFalse();
-            assertThat(priorities(menu)).noneMatch(RadioMenuItem::isSelected);
-            item(menu, "IDS_REMOVEFROMSTATIC").fire();
-        });
-        assertThat(this.calls).contains("static 81.2.3.5:4242 false");
+    private void givenNoServerChosen() throws Exception {
+        FxTesting.onFx(() -> this.screen.table().getSelectionModel().clearSelection());
+    }
 
-        // The server we are on: Disconnect, and its priority ticked.
-        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, true)));
-        FxTesting.onFx(() -> {
-            select(screen, BIG);
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_CONNECTTHIS").getText()).isEqualTo("Disconnect");
-            assertThat(priorities(menu))
-                    .filteredOn(RadioMenuItem::isSelected)
-                    .extracting(MenuItem::getText)
-                    .containsExactly("Normal");
-            priorities(menu).getLast().fire();
-            item(menu, "IDS_ADDTOSTATIC").fire();
-            item(menu, "IDS_CONNECTTHIS").fire();
-        });
-        assertThat(this.calls).contains("priority 81.2.3.4:4661 HIGH", "static 81.2.3.4:4661 true", "disconnect");
+    private void givenAllServersChosen() throws Exception {
+        FxTesting.onFx(() -> this.screen.table().getSelectionModel().selectAll());
+    }
 
-        // A server link on the clipboard can be pasted.
-        FxTesting.onFx(() -> {
-            ClipboardContent content = new ClipboardContent();
-            content.putString("ed2k://|server|81.2.3.9|4661|/ ed2k://|serverlist|https://example.org/list.met|/");
-            Clipboard.getSystemClipboard().setContent(content);
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_SW_DIRECTDOWNLOAD").isDisable()).isFalse();
-            item(menu, "IDS_SW_DIRECTDOWNLOAD").fire();
-        });
-        FxTesting.await("the list fetched", () -> this.test.told.contains("3 new servers from example.org"));
-        assertThat(this.calls).contains("add 81.2.3.9:4661", "list https://example.org/list.met");
-        assertThat(this.test.gui.settings().history("serverMet")).containsExactly("https://example.org/list.met");
+    private void givenTheServerChosen(ServerInfo server) throws Exception {
+        FxTesting.onFx(() -> select(this.screen, server));
+    }
 
-        // Remove All asks first.
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
-            item(menu, "IDS_REMOVEALL").fire();
-        });
+    private void givenConnectedTo(ServerInfo server) throws Exception {
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(server, 99, false, true)));
+    }
+
+    private void givenTheMenuShown() throws Exception {
+        FxTesting.onFx(() -> menu().getOnShowing().handle(null));
+    }
+
+    private void givenTheMenuItemsAreOff(boolean off, String... keys) throws Exception {
+        for (String key : keys) {
+            assertThat(FxTesting.onFx(() -> item(menu(), key).isDisable()))
+                    .as(key)
+                    .isEqualTo(off);
+        }
+    }
+
+    // One server is static and the priorities differ, so none is ticked.
+    private void givenNoPriorityTicked() throws Exception {
+        assertThat(FxTesting.onFx(() -> priorities(menu()))).noneMatch(RadioMenuItem::isSelected);
+    }
+
+    private void givenTheConnectItemReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(menu(), "IDS_CONNECTTHIS").getText()))
+                .isEqualTo(text);
+    }
+
+    private void givenThePriorityTicked(String priority) throws Exception {
+        assertThat(FxTesting.onFx(() -> priorities(menu())))
+                .filteredOn(RadioMenuItem::isSelected)
+                .extracting(MenuItem::getText)
+                .containsExactly(priority);
+    }
+
+    private void givenTheLastPriorityChosen() throws Exception {
+        FxTesting.onFx(() -> priorities(menu()).getLast().fire());
+    }
+
+    private void givenTheMenuItemFired(String key) throws Exception {
+        whenTheMenuItemIsFired(key);
+    }
+
+    private void givenTheLinksCopied() throws Exception {
+        FxTesting.onFx(this.screen::copyLinks);
+    }
+
+    private void givenRemoveAllCancelled() throws Exception {
+        answerRemoveAll(ButtonBar.ButtonData.CANCEL_CLOSE);
+    }
+
+    private void givenNoServerRemoved() {
         assertThat(this.calls).noneMatch(c -> c.startsWith("remove"));
-        FxTesting.onFx(() -> {
-            this.test.model.connect(Optional.empty());
-            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
-            item(menu, "IDS_REMOVEALL").fire();
-        });
-        assertThat(this.calls).contains("remove [81.2.3.4:4661, 81.2.3.5:4242]");
-        assertThat(this.calls.getLast())
-                .as("trying servers stops first")
-                .isEqualTo("remove [81.2.3.4:4661, 81.2.3.5:4242]");
-        assertThat(this.calls.get(this.calls.size() - 2)).isEqualTo("disconnect");
     }
 
-    @Test
-    void keysAndDoubleClicksActOnTheList() throws Exception {
-        ServersScreen screen = screen();
-        FxTesting.onFx(() -> {
-            select(screen, SMALL);
-            screen.table().fireEvent(FxTesting.key(KeyCode.C, true));
-            assertThat(Clipboard.getSystemClipboard().getString()).isEqualTo("ed2k://|server|81.2.3.5|4242|/");
-            ClipboardContent content = new ClipboardContent();
-            content.putString("ed2k://|server|81.2.3.8|4661|/");
-            Clipboard.getSystemClipboard().setContent(content);
-            screen.table().fireEvent(FxTesting.key(KeyCode.V, true));
-            screen.table().fireEvent(FxTesting.key(KeyCode.ENTER, false));
-            screen.table().fireEvent(FxTesting.key(KeyCode.DELETE, false));
-            screen.table().fireEvent(FxTesting.key(KeyCode.A, false));
-        });
-        assertThat(this.calls).containsExactly("add 81.2.3.8:4661", "connect 81.2.3.5:4242", "remove [81.2.3.5:4242]");
+    private void givenNjMuleTryingTheServers() throws Exception {
+        FxTesting.onFx(() -> this.test.model.connect(Optional.empty()));
+    }
 
+    private void givenTheAddressTyped(String address) throws Exception {
+        FxTesting.onFx(() -> this.screen.addressField().setText(address));
+    }
+
+    private void givenTheFilterTyped(String text) throws Exception {
+        FxTesting.onFx(() -> this.screen.filterField().setText(text));
+    }
+
+    private void givenTheListAddressCleared() throws Exception {
+        FxTesting.onFx(() -> this.screen.listBox().node().getEditor().clear());
+    }
+
+    private void givenTwoSessionsAMessageAndAWarning() throws Exception {
+        whenTwoSessionsAMessageAndAWarningCome();
+    }
+
+    private void givenTheServerInfoShowsTheSessions() throws Exception {
+        thenTheServerInfoShowsTheSessions();
+    }
+
+    private void givenTheLogTabChosen() throws Exception {
+        FxTesting.onFx(() -> this.screen.logTabs().getSelectionModel().select(1));
+    }
+
+    private void givenTheLogShowsTheWarning() throws Exception {
+        ListView<?> log = FxTesting.onFx(
+                () -> (ListView<?>) this.screen.logTabs().getTabs().get(1).getContent());
+        FxTesting.await("the warning", () -> log.lookupAll(".warning").size() == 1);
+    }
+
+    private void whenConnectOrDisconnectIsPressed() throws Exception {
+        FxTesting.onFx(this.screen::connectOrDisconnect);
+    }
+
+    private void whenTheMenuItemIsFired(String key) throws Exception {
+        FxTesting.onFx(() -> item(menu(), key).fire());
+    }
+
+    private void whenRemoveAllIsConfirmed() throws Exception {
+        answerRemoveAll(ButtonBar.ButtonData.OK_DONE);
+    }
+
+    private void whenTheKeyIsPressedOnTheList(KeyCode key, boolean shortcut) throws Exception {
+        FxTesting.onFx(() -> this.screen.table().fireEvent(FxTesting.key(key, shortcut)));
+    }
+
+    private void whenTheServerIsDoubleClicked(ServerInfo server) throws Exception {
         FxTesting.onFx(() -> FxTesting.doubleClick(
-                screen.table(), r -> ((LiveList.Row<?>) r).get().equals(BIG)));
-        assertThat(this.calls.getLast()).isEqualTo("connect 81.2.3.4:4661");
-
-        FxTesting.onFx(() -> {
-            screen.addressField().setText("81.2.3.7:4661");
-            screen.connectToAddress();
-            screen.filterField().setText("big");
-            screen.filterField().fireEvent(FxTesting.key(KeyCode.ESCAPE, false));
-        });
-        assertThat(this.calls.getLast()).isEqualTo("connect 81.2.3.7:4661");
-        assertThat(FxTesting.onFx(() -> screen.addressField().getText())).isEmpty();
-        assertThat(FxTesting.onFx(() -> screen.filterField().getText())).isEmpty();
-
-        // An empty list address is not fetched.
-        FxTesting.onFx(() -> {
-            screen.listBox().node().getEditor().clear();
-            screen.updateFromUrl();
-        });
-        assertThat(this.calls).noneMatch(c -> c.startsWith("list"));
+                this.screen.table(), r -> ((LiveList.Row<?>) r).get().equals(server)));
     }
 
-    @Test
-    void theLogsShowTheSessionsAndAreReset() throws Exception {
-        ServersScreen screen = screen();
+    private void whenConnectToTheAddressIsPressed() throws Exception {
+        FxTesting.onFx(this.screen::connectToAddress);
+    }
+
+    private void whenTheKeyIsPressedInTheFilter(KeyCode key) throws Exception {
+        FxTesting.onFx(() -> this.screen.filterField().fireEvent(FxTesting.key(key, false)));
+    }
+
+    private void whenTheListIsUpdatedFromTheAddress() throws Exception {
+        FxTesting.onFx(this.screen::updateFromUrl);
+    }
+
+    private void whenTwoSessionsAMessageAndAWarningCome() throws Exception {
         FxTesting.onFx(() -> {
             this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, true));
             this.test.model.handle(new EngineEvent.ServerConnected(SMALL, 99, true, false));
             this.test.model.handle(new EngineEvent.ServerMessage(BIG, "Welcome to Big"));
             this.test.model.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.WARNING, "careful")));
         });
-        ListView<?> info = FxTesting.onFx(
-                () -> (ListView<?>) screen.logTabs().getTabs().getFirst().getContent());
+    }
+
+    private void whenResetIsPressed() throws Exception {
+        FxTesting.onFx(() -> reset(this.screen).fire());
+    }
+
+    private void thenTheEngineWasAskedFor(String... expected) {
+        assertThat(this.calls).containsExactly(expected);
+    }
+
+    private void thenTheEngineWasAlsoAskedFor(String... expected) {
+        assertThat(this.calls).contains(expected);
+    }
+
+    private void thenTheEngineWasAskedNothing() {
+        assertThat(this.calls).isEmpty();
+    }
+
+    private void thenTheLastCallIs(String call) {
+        assertThat(this.calls.getLast()).isEqualTo(call);
+    }
+
+    private void thenTryingTheServersStoppedBeforeTheRemoval(String removal) {
+        assertThat(this.calls.getLast()).as("trying servers stops first").isEqualTo(removal);
+        assertThat(this.calls.get(this.calls.size() - 2)).isEqualTo("disconnect");
+    }
+
+    private void thenTheUserIsTold(String message) throws Exception {
+        FxTesting.await("the list fetched", () -> this.test.told.contains(message));
+    }
+
+    private void thenTheServerListAddressesRememberedAre(String... addresses) {
+        assertThat(this.test.gui.settings().history("serverMet")).containsExactly(addresses);
+    }
+
+    private void thenTheClipboardHolds(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
+                .isEqualTo(text);
+    }
+
+    private void thenTheAddressBoxIsEmpty() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.addressField().getText())).isEmpty();
+    }
+
+    private void thenTheFilterIsEmpty() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.filterField().getText())).isEmpty();
+    }
+
+    // An empty list address is not fetched.
+    private void thenNoListWasFetched() {
+        assertThat(this.calls).noneMatch(c -> c.startsWith("list"));
+    }
+
+    private void thenTheServerInfoShowsTheSessions() throws Exception {
+        ListView<?> info = serverInfo();
         FxTesting.await(
                 "the sessions",
                 () -> FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Obfuscated connection established"))
                         && FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Connection established"))
                         && FxTesting.cellTexts(info).contains("Welcome to Big"));
-        assertThat(FxTesting.onFx(() -> info.lookupAll(".success").size())).isEqualTo(2);
+    }
 
-        FxTesting.onFx(() -> reset(screen).fire());
+    private void thenTheServerInfoShowsSuccesses(int count) throws Exception {
+        ListView<?> info = serverInfo();
+        assertThat(FxTesting.onFx(() -> info.lookupAll(".success").size())).isEqualTo(count);
+    }
+
+    private void thenTheServerInfoIsEmpty() throws Exception {
         FxTesting.await("no server info", () -> this.test.model.serverInfo().isEmpty());
-        assertThat(this.test.model.log()).isNotEmpty();
+    }
 
-        FxTesting.onFx(() -> screen.logTabs().getSelectionModel().select(1));
-        ListView<?> log = FxTesting.onFx(
-                () -> (ListView<?>) screen.logTabs().getTabs().get(1).getContent());
-        FxTesting.await("the warning", () -> log.lookupAll(".warning").size() == 1);
-        FxTesting.onFx(() -> reset(screen).fire());
+    private void thenTheLogIsKept() {
+        assertThat(this.test.model.log()).isNotEmpty();
+    }
+
+    private void thenTheLogIsEmpty() throws Exception {
         assertThat(FxTesting.onFx(() -> this.test.model.log().isEmpty())).isTrue();
+    }
+
+    private void answerRemoveAll(ButtonBar.ButtonData answer) throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(answer);
+            item(menu(), "IDS_REMOVEALL").fire();
+        });
+    }
+
+    private ContextMenu menu() {
+        return this.screen.table().getContextMenu();
+    }
+
+    private ListView<?> serverInfo() throws Exception {
+        return FxTesting.onFx(
+                () -> (ListView<?>) this.screen.logTabs().getTabs().getFirst().getContent());
     }
 
     private ServersScreen screen() throws Exception {

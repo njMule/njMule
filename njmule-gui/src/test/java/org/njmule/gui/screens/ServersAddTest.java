@@ -55,37 +55,65 @@ class ServersAddTest {
     }
 
     @Test
-    void withoutServersTheWaysToAddThemAreOpen() throws Exception {
-        givenTheServers(List.of());
+    void shouldOpenTheWaysToAddWithoutServers() throws Exception {
+        givenTheEngineLists(List.of());
+
+        whenTheServersScreenIsShown();
+
         thenTheWaysToAddAreOpen(true);
     }
 
     @Test
-    void theFirstServersCloseTheWaysToAddAndTheLastGoneOpensThem() throws Exception {
+    void shouldCloseTheWaysToAddForTheFirstServersAndOpenThemWhenTheLastIsGone() throws Exception {
         givenTheServers(List.of());
-        whenTheServersBecome(TWO);
-        thenTheWaysToAddAreOpen(false);
-        whenTheUserOpensTheWaysToAdd();
-        whenTheServersBecome(TWO.subList(0, 1));
-        thenTheWaysToAddAreOpen(true);
+        givenTheServersBecome(TWO);
+        givenTheWaysToAddAreOpen(false);
+        givenTheUserOpenedTheWaysToAdd();
+        givenTheServersBecome(TWO.subList(0, 1));
+        givenTheWaysToAddAreOpen(true);
+
         whenTheServersBecome(List.of());
+
         thenTheWaysToAddAreOpen(true);
     }
 
     @Test
-    void withServersTheWaysToAddStartClosedAndMyInfoIsATab() throws Exception {
-        givenTheServers(TWO);
+    void shouldStartWithTheWaysToAddClosedAndMyInfoAsATabWhenThereAreServers() throws Exception {
+        givenTheEngineLists(TWO);
+
+        whenTheServersScreenIsShown();
+
         thenTheWaysToAddAreOpen(false);
         thenTheTabsBelowAre("Server Info", "Log", "My Info");
     }
 
     private void givenTheServers(List<ServerInfo> list) throws Exception {
+        givenTheEngineLists(list);
+        whenTheServersScreenIsShown();
+    }
+
+    private void givenTheEngineLists(List<ServerInfo> list) throws Exception {
         this.servers.set(list);
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
                         real, Map.of("servers", args -> CompletableFuture.completedFuture(this.servers.get()))));
         FxTesting.await("the servers", () -> this.test.model.servers().rows().size() == list.size());
+    }
+
+    private void givenTheServersBecome(List<ServerInfo> list) throws Exception {
+        whenTheServersBecome(list);
+    }
+
+    private void givenTheUserOpenedTheWaysToAdd() throws Exception {
+        FxTesting.onFx(() -> this.screen.addPane().setExpanded(true));
+    }
+
+    private void givenTheWaysToAddAreOpen(boolean open) throws Exception {
+        thenTheWaysToAddAreOpen(open);
+    }
+
+    private void whenTheServersScreenIsShown() throws Exception {
         this.screen = FxTesting.onFx(() -> new ServersScreen(this.test.gui));
         this.test.show(FxTesting.onFx(this.screen::view));
     }
@@ -94,10 +122,6 @@ class ServersAddTest {
         this.servers.set(list);
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServersChanged(list.size())));
         FxTesting.await("the servers", () -> this.test.model.servers().rows().size() == list.size());
-    }
-
-    private void whenTheUserOpensTheWaysToAdd() throws Exception {
-        FxTesting.onFx(() -> this.screen.addPane().setExpanded(true));
     }
 
     private void thenTheWaysToAddAreOpen(boolean open) throws Exception {

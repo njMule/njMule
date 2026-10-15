@@ -102,8 +102,8 @@ class SearchColumnsTest {
     void shouldKeepTheMediaColumnsTheColumnMenuChose() throws Exception {
         givenASearchTab();
         givenTheServerFound(LONG_SONG);
+        givenTheColumnHidden("Artist");
 
-        whenTheColumnIsHidden("Artist");
         whenTheServerFinds(LONG_SONG, SHORT_SONG);
 
         thenTheHiddenColumnsAre("File ID", "Artist");
@@ -159,13 +159,13 @@ class SearchColumnsTest {
         whenTheServerFinds(results);
     }
 
+    private void givenTheColumnHidden(String title) throws Exception {
+        FxTesting.onFx(() -> column(title).setVisible(false));
+    }
+
     private void whenTheServerFinds(SearchResult... results) throws Exception {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(results))));
         FxTesting.await("the results", () -> this.table.getItems().size() == results.length);
-    }
-
-    private void whenTheColumnIsHidden(String title) throws Exception {
-        FxTesting.onFx(() -> column(title).setVisible(false));
     }
 
     private void whenTheColumnIsShown(String title) throws Exception {

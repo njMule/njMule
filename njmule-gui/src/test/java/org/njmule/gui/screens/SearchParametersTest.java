@@ -17,53 +17,127 @@
 package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 
 class SearchParametersTest {
 
-    @Test
-    void theParametersBecomeAttributesTheParserTakes() {
-        String expression = SearchScreen.expression(
-                " ubuntu iso ",
-                SearchScreen.FileType.CD_IMAGE,
-                OptionalInt.of(100),
-                OptionalInt.of(5000),
-                OptionalInt.of(5),
-                OptionalInt.of(1),
-                ".iso");
+    private String words;
+    private SearchScreen.FileType type = SearchScreen.FileType.ANY;
+    private OptionalInt minimumMb = OptionalInt.empty();
+    private OptionalInt maximumMb = OptionalInt.empty();
+    private OptionalInt sources = OptionalInt.empty();
+    private OptionalInt complete = OptionalInt.empty();
+    private String extension = "";
+    private String expression;
+    private SearchResult result;
+    private Predicate<SearchResult> filter;
 
-        assertThat(expression)
-                .isEqualTo("ubuntu iso @type=cd @size>=100m @size<=5000m @sources>=5 @complete>=1 @ext=iso");
-        SearchRequest.checkExpression(expression);
-        assertThat(SearchScreen.expression(
-                        "x",
-                        SearchScreen.FileType.ANY,
-                        OptionalInt.empty(),
-                        OptionalInt.empty(),
-                        OptionalInt.empty(),
-                        OptionalInt.empty(),
-                        " "))
-                .isEqualTo("x");
+    @Test
+    void shouldTurnTheParametersIntoAttributesTheParserTakes() {
+        givenTheWords(" ubuntu iso ");
+        givenTheType(SearchScreen.FileType.CD_IMAGE);
+        givenTheSizeInMbBetween(100, 5000);
+        givenAtLeastSources(5);
+        givenAtLeastCompleteSources(1);
+        givenTheExtension(".iso");
+
+        whenTheExpressionIsMade();
+
+        thenTheExpressionIs("ubuntu iso @type=cd @size>=100m @size<=5000m @sources>=5 @complete>=1 @ext=iso");
+        thenTheParserTakesTheExpression();
     }
 
     @Test
-    void theResultFilterTakesEveryWordOfTheName() {
-        SearchResult result = new SearchResult(
-                Hash16.parseHex("0123456789abcdef0123456789abcdef"),
-                "Ubuntu 24.04 Desktop.iso",
-                1,
-                1,
-                1,
-                Optional.empty());
+    void shouldLeaveTheWordsAloneWithoutParameters() {
+        givenTheWords("x");
+        givenTheExtension(" ");
 
-        assertThat(SearchScreen.matching("")).accepts(result);
-        assertThat(SearchScreen.matching("ubuntu desktop")).accepts(result);
-        assertThat(SearchScreen.matching("ubuntu server")).rejects(result);
+        whenTheExpressionIsMade();
+
+        thenTheExpressionIs("x");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "ubuntu desktop"})
+    void shouldKeepAResultWhoseNameHasEveryWordOfTheFilter(String filterText) {
+        givenAResultNamed("Ubuntu 24.04 Desktop.iso");
+
+        whenTheResultsAreFilteredBy(filterText);
+
+        thenTheResultIsKept();
+    }
+
+    @Test
+    void shouldDropAResultWhoseNameMissesAWordOfTheFilter() {
+        givenAResultNamed("Ubuntu 24.04 Desktop.iso");
+
+        whenTheResultsAreFilteredBy("ubuntu server");
+
+        thenTheResultIsDropped();
+    }
+
+    private void givenTheWords(String text) {
+        this.words = text;
+    }
+
+    private void givenTheType(SearchScreen.FileType fileType) {
+        this.type = fileType;
+    }
+
+    private void givenTheSizeInMbBetween(int minimum, int maximum) {
+        this.minimumMb = OptionalInt.of(minimum);
+        this.maximumMb = OptionalInt.of(maximum);
+    }
+
+    private void givenAtLeastSources(int count) {
+        this.sources = OptionalInt.of(count);
+    }
+
+    private void givenAtLeastCompleteSources(int count) {
+        this.complete = OptionalInt.of(count);
+    }
+
+    private void givenTheExtension(String text) {
+        this.extension = text;
+    }
+
+    private void givenAResultNamed(String name) {
+        this.result =
+                new SearchResult(Hash16.parseHex("0123456789abcdef0123456789abcdef"), name, 1, 1, 1, Optional.empty());
+    }
+
+    private void whenTheExpressionIsMade() {
+        this.expression = SearchScreen.expression(
+                this.words, this.type, this.minimumMb, this.maximumMb, this.sources, this.complete, this.extension);
+    }
+
+    private void whenTheResultsAreFilteredBy(String text) {
+        this.filter = SearchScreen.matching(text);
+    }
+
+    private void thenTheExpressionIs(String expected) {
+        assertThat(this.expression).isEqualTo(expected);
+    }
+
+    private void thenTheParserTakesTheExpression() {
+        assertThatCode(() -> SearchRequest.checkExpression(this.expression)).doesNotThrowAnyException();
+    }
+
+    private void thenTheResultIsKept() {
+        assertThat(this.filter).accepts(this.result);
+    }
+
+    private void thenTheResultIsDropped() {
+        assertThat(this.filter).rejects(this.result);
     }
 }

@@ -40,6 +40,7 @@ class SettingsScreenTest {
     private TestGui test;
     private SettingsScreen screen;
     private final PretendAutostart system = new PretendAutostart();
+    private int uploadLimitSetMeanwhile;
 
     @AfterEach
     void close() {
@@ -49,70 +50,37 @@ class SettingsScreenTest {
     }
 
     @Test
-    void applyWritesOnlyWhatTheUserChanged() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        SettingsScreen screen = new SettingsScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
-        FxTesting.onFx(screen::shown);
-        int before = this.test.engine.preferences().maxUploadKiBps();
+    void shouldWriteOnlyWhatTheUserChangedFromOneApplyToTheNext() throws Exception {
+        givenTheSettingsShow();
+        givenTheUploadLimitRaisedMeanwhileBy(77);
+        givenTheNickApplied("Other");
+        givenTheEngineHasTheNick("Other");
+        givenTheEngineKeptTheUploadLimitSetMeanwhile();
+        givenTheNickTyped("Third");
 
-        // The tray menu or the scheduler changes a limit while the settings show.
-        this.test
-                .engine
-                .updatePreferences(
-                        p -> p.toBuilder().maxUploadKiBps(before + 77).build())
-                .get(10, TimeUnit.SECONDS);
-        FxTesting.onFx(() -> {
-            screen.nickField().setText("Other");
-            screen.apply();
-        });
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
+        whenTheUserApplies();
 
-        assertThat(this.test.engine.preferences().nick()).isEqualTo("Other");
-        assertThat(this.test.engine.preferences().maxUploadKiBps())
-                .as("the limit set meanwhile")
-                .isEqualTo(before + 77);
-
-        // A second apply starts from what the first one wrote.
-        FxTesting.onFx(() -> {
-            screen.nickField().setText("Third");
-            screen.apply();
-        });
-        FxTesting.await(
-                "saved again", () -> this.test.engine.preferences().nick().equals("Third"));
-        assertThat(this.test.engine.preferences().maxUploadKiBps()).isEqualTo(before + 77);
+        thenTheEngineSavesTheNick("Third");
+        thenTheEngineKeptTheUploadLimitSetMeanwhile();
     }
 
     @Test
-    void aNickTakesNoTextDirectionControls() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        SettingsScreen screen = new SettingsScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
-        FxTesting.onFx(screen::shown);
-        // Embeddings, overrides and isolates would show another name than the one sent, which the engine refuses.
-        StringBuilder nick = new StringBuilder("ann");
-        for (char c = 0x202A; c <= 0x202E; c++) {
-            nick.append(c).append('x');
-        }
-        for (char c = 0x2066; c <= 0x2069; c++) {
-            nick.append(c).append('y');
-        }
+    void shouldTakeNoTextDirectionControlsInANick() throws Exception {
+        givenTheSettingsShow();
+        givenTheNickTypedWithTextDirectionControls("ann");
+        givenTheNickFieldShows("annxxxxxyyyy");
 
-        String typed = FxTesting.onFx(() -> {
-            screen.nickField().setText(nick.toString());
-            return screen.nickField().getText();
-        });
-        assertThat(typed).isEqualTo("annxxxxxyyyy");
-        FxTesting.onFx(screen::apply);
-        FxTesting.await("saved", () -> this.test.engine.preferences().nick().equals("annxxxxxyyyy"));
-        assertThat(this.test.told).noneMatch(m -> m.startsWith("Not saved"));
+        whenTheUserApplies();
+
+        thenTheEngineSavesTheNick("annxxxxxyyyy");
+        thenTheUserIsNotToldItWasNotSaved();
     }
 
     @Test
     void shouldSaveTheEventCommandTheUserTyped() throws Exception {
         givenTheSettingsShow();
+        givenTheUserTurnedOnTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME done\"");
 
-        whenTheUserTurnsOnTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME done\"");
         whenTheUserApplies();
 
         thenTheEngineRunsOn(
@@ -122,8 +90,8 @@ class SettingsScreenTest {
     @Test
     void shouldNotSaveACommandWithAQuoteLeftOpen() throws Exception {
         givenTheSettingsShow();
+        givenTheUserTurnedOnTheCommand(EventCommands.Event.CHAT_MESSAGE, "say \"%MESSAGE");
 
-        whenTheUserTurnsOnTheCommand(EventCommands.Event.CHAT_MESSAGE, "say \"%MESSAGE");
         whenTheUserApplies();
 
         thenTheUserIsToldItWasNotSaved();
@@ -133,8 +101,8 @@ class SettingsScreenTest {
     @Test
     void shouldPlayTheTypedSoundFileForATest() throws Exception {
         givenTheSettingsShow();
+        givenTheUserTypedTheSoundFile(ding());
 
-        whenTheUserTypesTheSoundFile(ding());
         whenTheUserTestsTheSound();
 
         thenThePlayedSoundsAre(ding());
@@ -144,9 +112,9 @@ class SettingsScreenTest {
     @Test
     void shouldSaveTheNotificationSound() throws Exception {
         givenTheSettingsShow();
+        givenTheUserTurnedTheSoundOn();
+        givenTheUserTypedTheSoundFile(ding());
 
-        whenTheUserTurnsTheSoundOn();
-        whenTheUserTypesTheSoundFile(ding());
         whenTheUserApplies();
 
         thenTheEnginePlays(ding());
@@ -154,7 +122,9 @@ class SettingsScreenTest {
 
     @Test
     void shouldOfferNoStartAtLoginOutsideTheInstalledProgram() throws Exception {
-        givenTheSettingsShow();
+        givenNjMuleRunningOutsideTheInstalledProgram();
+
+        whenTheSettingsShow();
 
         thenTheStartAtLoginBoxIsOff();
         thenTheStartAtLoginBoxSaysWhy();
@@ -163,7 +133,9 @@ class SettingsScreenTest {
     @Test
     void shouldShowTheStartAtLoginAsTheSystemHasIt() throws Exception {
         givenTheSystemStartsNjMuleAtLogin(true);
-        givenTheSettingsShowWithTheStartAtLogin();
+        givenTheInstalledNjMuleRunning();
+
+        whenTheSettingsShowWithTheStartAtLogin();
 
         thenTheStartAtLoginBoxShows(true);
     }
@@ -172,8 +144,8 @@ class SettingsScreenTest {
     void shouldTurnTheStartAtLoginOnWhenApplied() throws Exception {
         givenTheSystemStartsNjMuleAtLogin(false);
         givenTheSettingsShowWithTheStartAtLogin();
+        givenTheUserTickedTheStartAtLogin(true);
 
-        whenTheUserTicksTheStartAtLogin(true);
         whenTheUserApplies();
 
         thenTheSystemStartsNjMuleAtLogin(true);
@@ -190,16 +162,100 @@ class SettingsScreenTest {
     }
 
     private void givenTheSettingsShow() throws Exception {
+        givenNjMuleRunningOutsideTheInstalledProgram();
+        whenTheSettingsShow();
+    }
+
+    private void givenNjMuleRunningOutsideTheInstalledProgram() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        showTheSettings();
     }
 
     private void givenTheSystemStartsNjMuleAtLogin(boolean on) {
         this.system.on = on;
     }
 
-    private void givenTheSettingsShowWithTheStartAtLogin() throws Exception {
+    private void givenTheInstalledNjMuleRunning() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"), Optional.of(this.system));
+    }
+
+    private void givenTheSettingsShowWithTheStartAtLogin() throws Exception {
+        givenTheInstalledNjMuleRunning();
+        whenTheSettingsShowWithTheStartAtLogin();
+    }
+
+    // The tray menu or the scheduler changes a limit while the settings show.
+    private void givenTheUploadLimitRaisedMeanwhileBy(int kiBps) throws Exception {
+        int before = this.test.engine.preferences().maxUploadKiBps();
+        this.uploadLimitSetMeanwhile = before + kiBps;
+        this.test
+                .engine
+                .updatePreferences(p -> p.toBuilder()
+                        .maxUploadKiBps(this.uploadLimitSetMeanwhile)
+                        .build())
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    // A second apply starts from what this one wrote.
+    private void givenTheNickApplied(String nick) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.nickField().setText(nick);
+            this.screen.apply();
+        });
+        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
+    }
+
+    private void givenTheEngineHasTheNick(String nick) {
+        assertThat(this.test.engine.preferences().nick()).isEqualTo(nick);
+    }
+
+    private void givenTheEngineKeptTheUploadLimitSetMeanwhile() {
+        thenTheEngineKeptTheUploadLimitSetMeanwhile();
+    }
+
+    private void givenTheNickTyped(String nick) throws Exception {
+        FxTesting.onFx(() -> this.screen.nickField().setText(nick));
+    }
+
+    // Embeddings, overrides and isolates would show another name than the one sent, which the engine refuses.
+    private void givenTheNickTypedWithTextDirectionControls(String start) throws Exception {
+        StringBuilder nick = new StringBuilder(start);
+        for (char c = 0x202A; c <= 0x202E; c++) {
+            nick.append(c).append('x');
+        }
+        for (char c = 0x2066; c <= 0x2069; c++) {
+            nick.append(c).append('y');
+        }
+        givenTheNickTyped(nick.toString());
+    }
+
+    private void givenTheNickFieldShows(String nick) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.nickField().getText())).isEqualTo(nick);
+    }
+
+    private void givenTheUserTurnedOnTheCommand(EventCommands.Event event, String commandLine) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.eventSwitch(event).setSelected(true);
+            this.screen.eventField(event).setText(commandLine);
+        });
+    }
+
+    private void givenTheUserTurnedTheSoundOn() throws Exception {
+        FxTesting.onFx(() -> this.screen.soundBox().setSelected(true));
+    }
+
+    private void givenTheUserTypedTheSoundFile(Path file) throws Exception {
+        FxTesting.onFx(() -> this.screen.soundFileField().setText(file.toString()));
+    }
+
+    private void givenTheUserTickedTheStartAtLogin(boolean on) throws Exception {
+        FxTesting.onFx(() -> this.screen.autostartBox().setSelected(on));
+    }
+
+    private void whenTheSettingsShow() throws Exception {
+        showTheSettings();
+    }
+
+    private void whenTheSettingsShowWithTheStartAtLogin() throws Exception {
         showTheSettings();
         FxTesting.await(
                 "the system was asked", () -> !this.screen.autostartBox().isDisabled());
@@ -209,10 +265,6 @@ class SettingsScreenTest {
         this.screen = new SettingsScreen(this.test.gui);
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.onFx(this.screen::shown);
-    }
-
-    private void whenTheUserTicksTheStartAtLogin(boolean on) throws Exception {
-        FxTesting.onFx(() -> this.screen.autostartBox().setSelected(on));
     }
 
     private void thenTheStartAtLoginBoxIsOff() {
@@ -260,23 +312,8 @@ class SettingsScreenTest {
         }
     }
 
-    private void whenTheUserTurnsOnTheCommand(EventCommands.Event event, String commandLine) throws Exception {
-        FxTesting.onFx(() -> {
-            this.screen.eventSwitch(event).setSelected(true);
-            this.screen.eventField(event).setText(commandLine);
-        });
-    }
-
     private void whenTheUserApplies() throws Exception {
         FxTesting.onFx(this.screen::apply);
-    }
-
-    private void whenTheUserTurnsTheSoundOn() throws Exception {
-        FxTesting.onFx(() -> this.screen.soundBox().setSelected(true));
-    }
-
-    private void whenTheUserTypesTheSoundFile(Path file) throws Exception {
-        FxTesting.onFx(() -> this.screen.soundFileField().setText(file.toString()));
     }
 
     private void whenTheUserTestsTheSound() throws Exception {
@@ -310,6 +347,21 @@ class SettingsScreenTest {
         FxTesting.await(
                 "saved",
                 () -> this.test.engine.preferences().eventCommands().get(event).equals(expected));
+    }
+
+    private void thenTheEngineSavesTheNick(String nick) throws Exception {
+        FxTesting.await(
+                "the nick saved", () -> this.test.engine.preferences().nick().equals(nick));
+    }
+
+    private void thenTheEngineKeptTheUploadLimitSetMeanwhile() {
+        assertThat(this.test.engine.preferences().maxUploadKiBps())
+                .as("the limit set meanwhile")
+                .isEqualTo(this.uploadLimitSetMeanwhile);
+    }
+
+    private void thenTheUserIsNotToldItWasNotSaved() {
+        assertThat(this.test.told).noneMatch(m -> m.startsWith("Not saved"));
     }
 
     private void thenTheUserIsToldItWasNotSaved() {

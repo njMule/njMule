@@ -44,41 +44,60 @@ class SettingsIndexTest {
     }
 
     @Test
-    void theIndexListsTheSectionsInTheOrderOfThePage() throws Exception {
-        givenTheOptions();
+    void shouldListTheSectionsInTheOrderOfThePage() throws Exception {
+        givenTheOptionsScreen();
+
+        whenTheOptionsAreShown();
+
         thenTheIndexStartsWith("General", "Notifications", "Connection");
         thenTheIndexHoldsOnlySections();
     }
 
     @Test
-    void findingAnOptionLeadsToItsField() throws Exception {
+    void shouldLeadAFoundOptionToItsField() throws Exception {
         givenTheOptions();
-        whenFound("client port");
-        thenTheIndexHolds("Client Port (TCP)");
+        givenFound("client port");
+        givenTheIndexHolds("Client Port (TCP)");
+
         whenTheFirstFoundIsChosen();
+
         thenTheCursorIsIn(this.screen.tcpPortField());
     }
 
     @Test
-    void scrollingToTheEndChoosesTheLastSection() throws Exception {
+    void shouldChooseTheLastSectionWhenScrolledToTheEnd() throws Exception {
         givenTheOptions();
+
         whenThePageIsScrolledTo(1.0);
+
         thenTheChosenSectionIsTheLast();
     }
 
     private void givenTheOptions() throws Exception {
+        givenTheOptionsScreen();
+        whenTheOptionsAreShown();
+    }
+
+    private void givenTheOptionsScreen() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.screen = new SettingsScreen(this.test.gui);
         this.test.show(FxTesting.onFx(this.screen::view));
+    }
+
+    private void givenFound(String text) throws Exception {
+        FxTesting.onFx(() -> this.screen.index().findField().setText(text));
+    }
+
+    private void givenTheIndexHolds(String text) throws Exception {
+        thenTheIndexHolds(text);
+    }
+
+    private void whenTheOptionsAreShown() throws Exception {
         FxTesting.onFx(this.screen::shown);
         FxTesting.onFx(() -> {
             this.screen.view().applyCss();
             ((javafx.scene.Parent) this.screen.view()).layout();
         });
-    }
-
-    private void whenFound(String text) throws Exception {
-        FxTesting.onFx(() -> this.screen.index().findField().setText(text));
     }
 
     private void whenTheFirstFoundIsChosen() throws Exception {

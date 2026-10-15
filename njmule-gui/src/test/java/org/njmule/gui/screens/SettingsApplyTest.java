@@ -46,19 +46,23 @@ class SettingsApplyTest {
     }
 
     @Test
-    void applyWithAWrongValueShowsTheFieldAndSaysWhatItTakes() throws Exception {
+    void shouldShowTheWrongFieldAndSayWhatItTakesWhenApplied() throws Exception {
         givenTheOptionsScrolledToTheBottom();
         givenAPortOutOfRange();
+
         whenApplyIsPressed();
+
         thenTheUserIsToldWhichFieldAndWhatItTakes("Not saved: TCP: ");
         thenTheFieldHasTheCursorAndIsInSight(this.screen.tcpPortField());
         thenNothingWasSaved();
     }
 
     @Test
-    void applyIsNeverGreyedOutByAWrongValue() throws Exception {
+    void shouldNeverGreyOutApplyForAWrongValue() throws Exception {
         givenTheOptionsScrolledToTheBottom();
-        givenAPortOutOfRange();
+
+        whenAPortOutOfRangeIsTyped();
+
         thenApplyCanBePressed();
     }
 
@@ -72,6 +76,10 @@ class SettingsApplyTest {
     }
 
     private void givenAPortOutOfRange() throws Exception {
+        whenAPortOutOfRangeIsTyped();
+    }
+
+    private void whenAPortOutOfRangeIsTyped() throws Exception {
         FxTesting.onFx(() -> this.screen.tcpPortField().setText("99999"));
     }
 

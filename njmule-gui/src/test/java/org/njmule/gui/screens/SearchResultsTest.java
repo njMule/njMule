@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -76,6 +77,8 @@ class SearchResultsTest {
     private static final SearchResult SHARED = result("11111111111111111111111111111111", "film shared.mkv");
     private static final SearchResult DOWNLOADED = result("22222222222222222222222222222222", "film old.mkv");
     private static final SearchResult CANCELLED = result("33333333333333333333333333333333", "film gone.mkv");
+    private static final ServerInfo BIG = Statuses.server("81.2.3.4:4661", "Big", false);
+    private static final ServerInfo BIG_STATIC = Statuses.server("81.2.3.4:4661", "Big", true);
 
     @TempDir
     Path dir;
@@ -88,6 +91,7 @@ class SearchResultsTest {
     private Tab shownTab;
     // Commands a test replaces beside those of every test.
     private final Map<String, Engines.Command> extra = new HashMap<>();
+    private Throwable exception;
 
     @AfterEach
     void close() {
@@ -97,272 +101,585 @@ class SearchResultsTest {
     }
 
     @Test
-    void resultsAreFilteredMarkedDownloadedAndCopied() throws Exception {
-        SearchScreen screen = screen();
-        Tab tab = search(screen, "film", SearchScreen.Method.SERVER);
-        assertThat(this.calls).containsExactly("search film SERVER");
-        assertThat(FxTesting.onFx(tab::getText)).isEqualTo("film (0)");
-
-        FxTesting.onFx(() -> this.test.model.handle(
-                new EngineEvent.SearchResults(new SearchId(1), List.of(FILM_DVD, FILM_HD, SONG))));
-        assertThat(FxTesting.onFx(tab::getText)).isEqualTo("film (3)");
-        TableView<LiveList.Row<SearchResult>> table = FxTesting.onFx(() -> screen.table(tab));
-        TextField filter = FxTesting.onFx(() -> (TextField) tab.getContent().lookup(".text-field"));
-        Label count = FxTesting.onFx(() -> (Label) tab.getContent().lookup(".label"));
-
-        FxTesting.onFx(() -> filter.setText("  DVD   film "));
-        assertThat(FxTesting.onFx(() -> table.getItems().size())).isEqualTo(1);
-        assertThat(FxTesting.onFx(count::getText)).isEqualTo("Results (1/3)");
-        FxTesting.onFx(() -> filter.fireEvent(FxTesting.key(KeyCode.A, false)));
-        assertThat(FxTesting.onFx(() -> filter.getText())).as("another key").isNotEmpty();
-        FxTesting.onFx(() -> filter.fireEvent(FxTesting.key(KeyCode.ESCAPE, false)));
-        assertThat(FxTesting.onFx(() -> filter.getText())).isEmpty();
-        assertThat(FxTesting.onFx(count::getText)).isEqualTo("Results (3)");
-
-        // Spam: the menu offers what the selection is not yet.
-        ContextMenu menu = FxTesting.onFx(table::getContextMenu);
-        FxTesting.onFx(() -> {
-            select(table, FILM_DVD);
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable())
-                    .as("the server finds no related files")
-                    .isTrue();
-            assertThat(item(menu, "IDS_MARKSPAM").isDisable()).isFalse();
-            assertThat(item(menu, "IDS_MARKNOTSPAM").isDisable()).isTrue();
-            item(menu, "IDS_MARKSPAM").fire();
-        });
-        FxTesting.await("marked as spam", () -> table.lookupAll(".known-spam").size() == 1);
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table))).contains("Spam");
-        FxTesting.onFx(() -> {
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_MARKSPAM").isDisable()).isTrue();
-            assertThat(item(menu, "IDS_MARKNOTSPAM").isDisable()).isFalse();
-            item(menu, "IDS_MARKNOTSPAM").fire();
-        });
-        FxTesting.await(
-                "not spam any more", () -> table.lookupAll(".known-spam").isEmpty());
-
-        FxTesting.onFx(() -> {
-            item(menu, "nj.copyLink").fire();
-            assertThat(Clipboard.getSystemClipboard().getString()).startsWith("ed2k://|file|Film%20DVD%20rip.avi|");
-            item(menu, "IDS_DL_LINK2").fire();
-            assertThat(Clipboard.getSystemClipboard().getString()).startsWith("<a href=\"ed2k://|file|");
-            item(menu, "IDS_DOWNLOAD").fire();
-        });
-        FxTesting.await(
-                "downloading", () -> table.lookupAll(".known-downloading").size() == 1);
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
-                .extracting(DownloadInfo::name)
-                .containsExactly("Film DVD rip.avi");
-
-        // A double click downloads the file of its row.
-        FxTesting.onFx(() ->
-                FxTesting.doubleClick(table, r -> ((LiveList.Row<?>) r).get().equals(SONG)));
-        FxTesting.await(
-                "two downloads", () -> table.lookupAll(".known-downloading").size() == 2);
-
-        FxTesting.onFx(() -> {
-            screen.more();
-            screen.stop();
-        });
-        FxTesting.await("more and stop", () -> this.calls.containsAll(List.of("more", "stop")));
-    }
-
-    @Test
-    void whatWasDoneWithAFileShowsBeforeItsSpamMark() throws Exception {
-        SearchScreen screen = screen();
-        Tab tab = search(screen, "film", SearchScreen.Method.GLOBAL);
-        assertThat(this.calls).containsExactly("search film GLOBAL");
-        FxTesting.onFx(() -> this.test.model.handle(
-                new EngineEvent.SearchResults(new SearchId(1), List.of(SHARED, DOWNLOADED, CANCELLED, FILM_HD))));
-        TableView<LiveList.Row<SearchResult>> table = FxTesting.onFx(() -> screen.table(tab));
-
-        FxTesting.await(
-                "the known files",
-                () -> table.lookupAll(".known-shared").size() == 1
-                        && table.lookupAll(".known-downloaded").size() == 1
-                        && table.lookupAll(".known-cancelled").size() == 1);
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table))).contains("Shared", "Downloaded", "Cancelled");
-    }
-
-    @Test
-    void aRelatedSearchOpensATabOfItsOwnAndAClosedTabStops() throws Exception {
-        this.status.set(Statuses.of(Optional.empty(), 0, false, Optional.empty(), true));
-        SearchScreen screen = screen();
-        Tab tab = search(screen, "film @size>=1m", SearchScreen.Method.KAD);
-        assertThat(this.calls).containsExactly("search film @size>=1m KAD");
-        assertThat(FxTesting.onFx(tab::getText))
-                .as("no attributes in the title")
-                .isEqualTo("film (0)");
-        FxTesting.onFx(() ->
-                this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(FILM_DVD, FILM_HD))));
-        TableView<LiveList.Row<SearchResult>> table = FxTesting.onFx(() -> screen.table(tab));
-        ContextMenu menu = FxTesting.onFx(table::getContextMenu);
-
-        FxTesting.onFx(() -> {
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable())
-                    .as("nothing selected")
-                    .isTrue();
-            screen.searchRelated();
-            screen.markSpam(true);
-            select(table, FILM_HD);
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_SEARCHRELATED").isDisable()).isFalse();
-            item(menu, "IDS_SEARCHRELATED").fire();
-        });
-        FxTesting.await("the related tab", () -> screen.tabs().getTabs().size() == 2);
-        assertThat(this.calls).contains("search related::00112233445566778899AABBCCDDEEFF SERVER");
-
-        FxTesting.onFx(() -> {
-            Tab related = screen.tabs().getTabs().get(1);
-            related.getOnClosed().handle(new Event(Tab.CLOSED_EVENT));
-            screen.tabs().getTabs().remove(related);
-        });
-        FxTesting.await("stopped", () -> this.calls.contains("stop"));
-        assertThat(FxTesting.onFx(() -> screen.tabs().getTabs())).containsExactly(tab);
-
-        // The tabs left open are kept with their results at the exit.
-        FxTesting.onFx(screen::closing);
-        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS))
-                .singleElement()
-                .satisfies(s -> {
-                    assertThat(s.request().expression()).isEqualTo("film @size>=1m");
-                    assertThat(s.results()).extracting(SearchResult::name).contains("film hd.mkv");
-                });
-    }
-
-    @Test
-    void automaticSearchesTheNetworkThereIs() throws Exception {
-        SearchScreen screen = screen();
-        FxTesting.onFx(() -> {
-            screen.queryField().setText("film");
-            screen.start();
-        });
-        assertThat(this.test.told).containsExactly("You are not connected to a server or the Kad network!");
-
-        // Kad alone.
-        status(Optional.empty(), Optional.of(Statuses.kad(true, false, "")));
-        search(screen, "kad only", SearchScreen.Method.AUTOMATIC);
-        // A server alone.
-        FxTesting.onFx(() -> this.test.model.handle(
-                new EngineEvent.ServerConnected(Statuses.server("81.2.3.4:4661", "Big", false), 99, false, false)));
-        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)), Optional.empty());
-        search(screen, "server only", SearchScreen.Method.AUTOMATIC);
-        // Both: Kad, unless the server is a static one.
-        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", false)), Optional.of(Statuses.kad(true, false, "")));
-        search(screen, "both", SearchScreen.Method.AUTOMATIC);
-        status(Optional.of(Statuses.server("81.2.3.4:4661", "Big", true)), Optional.of(Statuses.kad(true, false, "")));
-        search(screen, "static", SearchScreen.Method.AUTOMATIC);
-
-        assertThat(this.calls)
-                .containsExactly(
-                        "search kad only KAD", "search server only SERVER", "search both KAD", "search static SERVER");
-        assertThat(FxTesting.onFx(() -> screen.queryField().getText())).isEqualTo("static");
-        assertThat(this.test.gui.settings().history("search")).startsWith("static", "both", "server only");
-    }
-
-    @Test
-    void wrongParametersAreToldAndResetClearsThem() throws Exception {
-        SearchScreen screen = screen();
-        FxTesting.onFx(() -> {
-            screen.queryField().setText("film");
-            screen.methodBox().setValue(SearchScreen.Method.SERVER);
-            screen.extensionField().setText("tar.gz");
-            screen.start();
-        });
-        assertThat(this.test.told).hasSize(1);
-        FxTesting.onFx(() -> {
-            screen.extensionField().clear();
-            screen.queryField().setText("(film");
-            screen.start();
-        });
-        assertThat(this.test.told).hasSize(2);
-        assertThat(this.calls).isEmpty();
-
-        FxTesting.onFx(() -> {
-            screen.typeBox().setValue(SearchScreen.FileType.AUDIO);
-            screen.minSizeField().setText("5");
-            screen.extensionField().setText("mp3");
-            screen.resetParameters();
-        });
-        assertThat(FxTesting.onFx(() -> screen.typeBox().getValue())).isEqualTo(SearchScreen.FileType.ANY);
-        assertThat(FxTesting.onFx(() -> screen.minSizeField().getText()
-                        + screen.extensionField().getText()))
-                .isEmpty();
-    }
-
-    @Test
-    void theEdgesOfTheParametersAndOfASearchWithoutSelection() throws Exception {
-        this.extra.put("saveSearches", args -> CompletableFuture.failedFuture(new IOException("disk full")));
-        SearchScreen screen = screen();
-        FxTesting.onFx(() -> {
-            // Without a tab these do nothing.
-            screen.searchRelated();
-            screen.copyHtml();
-            screen.markSpam(true);
-            screen.queryField().setText("x".repeat(SearchRequest.MAX_EXPRESSION_LENGTH));
-            screen.methodBox().setValue(SearchScreen.Method.SERVER);
-            screen.typeBox().setValue(SearchScreen.FileType.VIDEO);
-            screen.start();
-        });
-        assertThat(this.test.told).as("too long with its type").hasSize(1);
-        assertThat(this.calls).isEmpty();
-
-        // A minimum out of range leaves the maximum its own lowest value.
-        FxTesting.onFx(() -> screen.minSizeField().setText("999999"));
-        assertThat(FxTesting.onFx(() -> screen.maxSizeField().getTooltip().getText()))
-                .isEqualTo(this.test.gui.f("nj.input.optionalNumber", 1, 256 * 1024));
-
-        FxTesting.onFx(() -> {
-            screen.minSizeField().clear();
-            screen.typeBox().setValue(SearchScreen.FileType.ANY);
-            screen.extensionField().setText(".mkv");
-        });
-        Tab found = search(screen, "film", SearchScreen.Method.SERVER);
-        assertThat(this.calls).containsExactly("search film @ext=mkv SERVER");
-        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchResults(new SearchId(1), List.of(FILM_DVD))));
-        FxTesting.onFx(() -> {
-            ClipboardContent content = new ClipboardContent();
-            content.putString("unchanged");
-            Clipboard.getSystemClipboard().setContent(content);
-            screen.table(found).getSelectionModel().clearSelection();
-            screen.copyLinks();
-            screen.markSpam(true);
-        });
-        assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
-                .as("nothing selected")
-                .isEqualTo("unchanged");
-
-        // The exit goes on when the open searches cannot be kept.
-        FxTesting.onFx(screen::closing);
-    }
-
-    @Test
-    void downloadWaitsForAResultChosenAndMoreAndStopForASearch() throws Exception {
+    void shouldCountTheResultsOfAServerSearchInItsTab() throws Exception {
         givenTheSearchScreen();
-        thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
-        whenSearchedFor("film", FILM_DVD, FILM_HD);
-        thenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
-        thenTheButtonsAreOff(true, "IDS_DOWNLOAD");
-        whenTheResultIsChosen(FILM_HD);
-        thenTheButtonsAreOff(false, "IDS_DOWNLOAD");
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheEngineWasAskedFor("search film SERVER");
+        givenTheTabReads("film (0)");
+
+        whenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+
+        thenTheTabReads("film (3)");
+    }
+
+    @Test
+    void shouldFilterTheResultsByEveryWordUntilEscape() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheFilterTyped("  DVD   film ");
+        givenTheTableShows(1, "Results (1/3)");
+        givenAKeyPressedInTheFilter(KeyCode.A);
+        givenTheFilterIsKeptByAnotherKey();
+
+        whenAKeyIsPressedInTheFilter(KeyCode.ESCAPE);
+
+        thenTheFilterIsEmpty();
+        thenTheCountReads("Results (3)");
+    }
+
+    @Test
+    void shouldMarkAChosenResultAsSpamFromTheMenu() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+        givenTheMenuItemIsOff("IDS_SEARCHRELATED", "the server finds no related files");
+        givenTheMenuItemsAreOff(false, "IDS_MARKSPAM");
+        givenTheMenuItemsAreOff(true, "IDS_MARKNOTSPAM");
+
+        whenTheMenuItemIsFired("IDS_MARKSPAM");
+
+        thenOneResultIsMarkedAsSpam();
+    }
+
+    @Test
+    void shouldMarkASpamResultBackFromTheMenu() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+        givenTheMenuItemFired("IDS_MARKSPAM");
+        givenOneResultMarkedAsSpam();
+        givenTheMenuShown();
+        givenTheMenuItemsAreOff(true, "IDS_MARKSPAM");
+        givenTheMenuItemsAreOff(false, "IDS_MARKNOTSPAM");
+
+        whenTheMenuItemIsFired("IDS_MARKNOTSPAM");
+
+        thenNoResultIsMarkedAsSpam();
+    }
+
+    @Test
+    void shouldCopyTheLinkOfTheChosenResult() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+
+        whenTheMenuItemIsFired("nj.copyLink");
+
+        thenTheClipboardStartsWith("ed2k://|file|Film%20DVD%20rip.avi|");
+    }
+
+    @Test
+    void shouldCopyTheHtmlLinkOfTheChosenResult() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+
+        whenTheMenuItemIsFired("IDS_DL_LINK2");
+
+        thenTheClipboardStartsWith("<a href=\"ed2k://|file|");
+    }
+
+    @Test
+    void shouldDownloadTheChosenResultFromTheMenu() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+
+        whenTheMenuItemIsFired("IDS_DOWNLOAD");
+
+        thenTheResultsDownloadingAre(1);
+        thenTheEngineDownloads("Film DVD rip.avi");
+    }
+
+    @Test
+    void shouldDownloadTheFileOfADoubleClickedRow() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+        givenTheMenuItemFired("IDS_DOWNLOAD");
+        givenTheResultsDownloading(1);
+
+        whenTheRowIsDoubleClicked(SONG);
+
+        thenTheResultsDownloadingAre(2);
+    }
+
+    @Test
+    void shouldAskForMoreResultsAndStopASearch() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenMoreResultsAskedFor();
+
+        whenTheSearchIsStopped();
+
+        thenTheEngineIsAskedFor("more", "stop");
+    }
+
+    @Test
+    void shouldShowWhatWasDoneWithAFileBeforeItsSpamMark() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.GLOBAL);
+        givenTheEngineWasAskedFor("search film GLOBAL");
+
+        whenTheResultsCome(SHARED, DOWNLOADED, CANCELLED, FILM_HD);
+
+        thenTheKnownFilesAreMarked();
+        thenTheCellsShow("Shared", "Downloaded", "Cancelled");
+    }
+
+    @Test
+    void shouldSearchKadWithoutTheAttributesInTheTabTitle() throws Exception {
+        givenTheEngineCanSearchRelatedFiles();
+        givenTheSearchScreen();
+
+        whenSearchedFor("film @size>=1m", SearchScreen.Method.KAD);
+
+        thenTheEngineWasAskedFor("search film @size>=1m KAD");
+        thenTheTabReads("film (0)", "no attributes in the title");
+    }
+
+    @Test
+    void shouldOpenARelatedSearchInATabOfItsOwn() throws Exception {
+        givenTheEngineCanSearchRelatedFiles();
+        givenTheSearchScreen();
+        givenASearchFor("film @size>=1m", SearchScreen.Method.KAD);
+        givenTheResultsCome(FILM_DVD, FILM_HD);
+        givenTheMenuShown();
+        givenTheMenuItemIsOff("IDS_SEARCHRELATED", "nothing selected");
+        givenARelatedSearchAndASpamMarkAskedForWithoutAChoice();
+        givenTheResultChosen(FILM_HD);
+        givenTheMenuShown();
+        givenTheMenuItemsAreOff(false, "IDS_SEARCHRELATED");
+
+        whenTheMenuItemIsFired("IDS_SEARCHRELATED");
+
+        thenARelatedTabOpens();
+        thenTheEngineWasAlsoAskedFor("search related::00112233445566778899AABBCCDDEEFF SERVER");
+    }
+
+    @Test
+    void shouldStopTheSearchOfAClosedTab() throws Exception {
+        givenTheEngineCanSearchRelatedFiles();
+        givenTheSearchScreen();
+        givenASearchFor("film @size>=1m", SearchScreen.Method.KAD);
+        givenTheResultsCome(FILM_DVD, FILM_HD);
+        givenARelatedSearchOpenedFor(FILM_HD);
+
+        whenTheRelatedTabIsClosed();
+
+        thenTheEngineIsAskedFor("stop");
+        thenOnlyTheFirstTabIsLeft();
+    }
+
+    @Test
+    void shouldKeepTheTabsLeftOpenWithTheirResultsAtTheExit() throws Exception {
+        givenTheEngineCanSearchRelatedFiles();
+        givenTheSearchScreen();
+        givenASearchFor("film @size>=1m", SearchScreen.Method.KAD);
+        givenTheResultsCome(FILM_DVD, FILM_HD);
+        givenARelatedSearchOpenedFor(FILM_HD);
+        givenTheRelatedTabClosed();
+
+        whenTheScreenCloses();
+
+        thenNoExceptionOccurred();
+        thenTheSearchKeptIs("film @size>=1m", "film hd.mkv");
+    }
+
+    @Test
+    void shouldRefuseAnAutomaticSearchWithoutANetwork() throws Exception {
+        givenTheSearchScreen();
+
+        whenTheSearchIsStartedFor("film");
+
+        thenTheUserIsToldOnly("You are not connected to a server or the Kad network!");
+    }
+
+    @Test
+    void shouldSearchTheNetworkThereIsAutomatically() throws Exception {
+        givenTheSearchScreen();
+        givenKadAlone();
+        givenAnAutomaticSearchFor("kad only");
+        givenAServerAlone();
+        givenAnAutomaticSearchFor("server only");
+        givenAServerAndKad(BIG);
+        givenAnAutomaticSearchFor("both");
+        givenAServerAndKad(BIG_STATIC);
+
+        whenSearchedFor("static", SearchScreen.Method.AUTOMATIC);
+
+        thenTheEngineWasAskedFor(
+                "search kad only KAD", "search server only SERVER", "search both KAD", "search static SERVER");
+        thenTheQueryReads("static");
+        thenTheSearchHistoryStartsWith("static", "both", "server only");
+    }
+
+    @Test
+    void shouldTellAWrongParameterOrExpressionAndNotSearch() throws Exception {
+        givenTheSearchScreen();
+        givenTheMethod(SearchScreen.Method.SERVER);
+        givenTheExtension("tar.gz");
+        givenTheSearchStartedFor("film");
+        givenTheUserWasToldTimes(1);
+        givenTheExtensionCleared();
+
+        whenTheSearchIsStartedFor("(film");
+
+        thenTheUserWasToldTimes(2);
+        thenTheEngineWasAskedNothing();
+    }
+
+    @Test
+    void shouldClearTheParametersOnReset() throws Exception {
+        givenTheSearchScreen();
+        givenTheType(SearchScreen.FileType.AUDIO);
+        givenTheMinimumSize("5");
+        givenTheExtension("mp3");
+
+        whenTheParametersAreReset();
+
+        thenTheTypeIs(SearchScreen.FileType.ANY);
+        thenTheMinimumSizeAndTheExtensionAreEmpty();
+    }
+
+    @Test
+    void shouldRefuseAnExpressionTooLongWithItsType() throws Exception {
+        givenTheSearchScreen();
+        givenARelatedSearchAnHtmlCopyAndASpamMarkAskedForWithoutATab();
+        givenTheMethod(SearchScreen.Method.SERVER);
+        givenTheType(SearchScreen.FileType.VIDEO);
+
+        whenTheSearchIsStartedFor("x".repeat(SearchRequest.MAX_EXPRESSION_LENGTH));
+
+        thenTheUserWasToldOnceThatTheExpressionIsTooLongWithItsType();
+        thenTheEngineWasAskedNothing();
+    }
+
+    @Test
+    void shouldLeaveTheMaximumItsOwnLowestValueWhenTheMinimumIsOutOfRange() throws Exception {
+        givenTheSearchScreen();
+
+        whenTheMinimumSizeIsTyped("999999");
+
+        thenTheMaximumSizeTakes(1, 256 * 1024);
+    }
+
+    @Test
+    void shouldCopyNothingWithoutAChosenResult() throws Exception {
+        givenTheSearchScreen();
+        givenTheExtension(".mkv");
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheEngineWasAskedFor("search film @ext=mkv SERVER");
+        givenTheResultsCome(FILM_DVD);
+        givenTheClipboardHolds("unchanged");
+        givenNoResultChosen();
+        givenASpamMarkAskedFor();
+
+        whenTheLinksAreCopied();
+
+        thenTheClipboardStillHolds("unchanged");
+    }
+
+    @Test
+    void shouldGoOnWithTheExitWhenTheOpenSearchesCannotBeKept() throws Exception {
+        givenKeepingTheSearchesFails();
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD);
+
+        whenTheScreenCloses();
+
+        thenNoExceptionOccurred();
+    }
+
+    @Test
+    void shouldLetDownloadWaitForAChosenResultAndMoreAndStopForASearch() throws Exception {
+        givenTheSearchScreen();
+        givenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        givenSearchedFor("film", FILM_DVD, FILM_HD);
+        givenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
+        givenTheButtonsAreOff(true, "IDS_DOWNLOAD");
+        givenTheResultChosen(FILM_HD);
+        givenTheButtonsAreOff(false, "IDS_DOWNLOAD");
+
         whenTheSearchIsClosed();
+
         thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+    }
+
+    @Test
+    void shouldNotKeepTheSearchesWhenTheSettingsSaySo() throws Exception {
+        givenTheSearchScreen();
+        givenTheSettingsKeepNoSearches();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+
+        whenTheScreenCloses();
+
+        thenNoExceptionOccurred();
+        thenNoSearchIsKept();
     }
 
     private void givenTheSearchScreen() throws Exception {
         this.shownScreen = screen();
     }
 
-    private void whenSearchedFor(String words, SearchResult... results) throws Exception {
-        this.shownTab = search(this.shownScreen, words, SearchScreen.Method.SERVER);
+    private void givenTheEngineCanSearchRelatedFiles() {
+        this.status.set(Statuses.of(Optional.empty(), 0, false, Optional.empty(), true));
+    }
+
+    private void givenKeepingTheSearchesFails() {
+        this.extra.put("saveSearches", args -> CompletableFuture.failedFuture(new IOException("disk full")));
+    }
+
+    private void givenTheSettingsKeepNoSearches() throws Exception {
+        this.test
+                .engine
+                .updatePreferences(p -> p.toBuilder().storeSearches(false).build())
+                .get(10, TimeUnit.SECONDS);
+        FxTesting.onFx(
+                () -> this.test.model.handle(new EngineEvent.PreferencesChanged(this.test.engine.preferences())));
+    }
+
+    private void givenASearchFor(String words, SearchScreen.Method method) throws Exception {
+        whenSearchedFor(words, method);
+    }
+
+    private void givenSearchedFor(String words, SearchResult... results) throws Exception {
+        givenASearchFor(words, SearchScreen.Method.SERVER);
+        givenTheResultsCome(results);
+    }
+
+    private void givenTheEngineWasAskedFor(String... expected) {
+        thenTheEngineWasAskedFor(expected);
+    }
+
+    private void givenTheTabReads(String text) throws Exception {
+        thenTheTabReads(text);
+    }
+
+    private void givenTheResultsCome(SearchResult... results) throws Exception {
+        whenTheResultsCome(results);
+    }
+
+    private void givenTheFilterTyped(String text) throws Exception {
+        FxTesting.onFx(() -> filter().setText(text));
+    }
+
+    private void givenTheTableShows(int rows, String count) throws Exception {
+        assertThat(FxTesting.onFx(() -> table().getItems().size())).isEqualTo(rows);
+        thenTheCountReads(count);
+    }
+
+    private void givenAKeyPressedInTheFilter(KeyCode key) throws Exception {
+        whenAKeyIsPressedInTheFilter(key);
+    }
+
+    private void givenTheFilterIsKeptByAnotherKey() throws Exception {
+        assertThat(FxTesting.onFx(() -> filter().getText())).as("another key").isNotEmpty();
+    }
+
+    private void givenTheResultChosen(SearchResult result) throws Exception {
+        FxTesting.onFx(() -> select(table(), result));
+    }
+
+    private void givenNoResultChosen() throws Exception {
+        FxTesting.onFx(() -> table().getSelectionModel().clearSelection());
+    }
+
+    // The menu offers what the selection is not yet.
+    private void givenTheMenuShown() throws Exception {
+        FxTesting.onFx(() -> menu().getOnShowing().handle(null));
+    }
+
+    private void givenTheMenuItemIsOff(String key, String why) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(menu(), key).isDisable())).as(why).isTrue();
+    }
+
+    private void givenTheMenuItemsAreOff(boolean off, String... keys) throws Exception {
+        for (String key : keys) {
+            assertThat(FxTesting.onFx(() -> item(menu(), key).isDisable()))
+                    .as(key)
+                    .isEqualTo(off);
+        }
+    }
+
+    private void givenTheMenuItemFired(String key) throws Exception {
+        whenTheMenuItemIsFired(key);
+    }
+
+    private void givenOneResultMarkedAsSpam() throws Exception {
+        thenOneResultIsMarkedAsSpam();
+    }
+
+    private void givenTheResultsDownloading(int count) throws Exception {
+        thenTheResultsDownloadingAre(count);
+    }
+
+    private void givenMoreResultsAskedFor() throws Exception {
+        FxTesting.onFx(this.shownScreen::more);
+    }
+
+    // Without a choice these do nothing.
+    private void givenARelatedSearchAndASpamMarkAskedForWithoutAChoice() throws Exception {
+        FxTesting.onFx(() -> {
+            this.shownScreen.searchRelated();
+            this.shownScreen.markSpam(true);
+        });
+    }
+
+    // Without a tab these do nothing.
+    private void givenARelatedSearchAnHtmlCopyAndASpamMarkAskedForWithoutATab() throws Exception {
+        FxTesting.onFx(() -> {
+            this.shownScreen.searchRelated();
+            this.shownScreen.copyHtml();
+            this.shownScreen.markSpam(true);
+        });
+    }
+
+    private void givenASpamMarkAskedFor() throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.markSpam(true));
+    }
+
+    private void givenARelatedSearchOpenedFor(SearchResult result) throws Exception {
+        givenTheResultChosen(result);
+        givenTheMenuShown();
+        givenTheMenuItemFired("IDS_SEARCHRELATED");
+        thenARelatedTabOpens();
+    }
+
+    private void givenTheRelatedTabClosed() throws Exception {
+        whenTheRelatedTabIsClosed();
+        thenTheEngineIsAskedFor("stop");
+    }
+
+    private void givenKadAlone() throws Exception {
+        status(Optional.empty(), Optional.of(Statuses.kad(true, false, "")));
+    }
+
+    private void givenAServerAlone() throws Exception {
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, false)));
+        status(Optional.of(BIG), Optional.empty());
+    }
+
+    // With both, Kad, unless the server is a static one.
+    private void givenAServerAndKad(ServerInfo server) throws Exception {
+        status(Optional.of(server), Optional.of(Statuses.kad(true, false, "")));
+    }
+
+    private void givenAnAutomaticSearchFor(String words) throws Exception {
+        whenSearchedFor(words, SearchScreen.Method.AUTOMATIC);
+    }
+
+    private void givenTheMethod(SearchScreen.Method method) throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.methodBox().setValue(method));
+    }
+
+    private void givenTheType(SearchScreen.FileType type) throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.typeBox().setValue(type));
+    }
+
+    private void givenTheMinimumSize(String text) throws Exception {
+        whenTheMinimumSizeIsTyped(text);
+    }
+
+    private void givenTheExtension(String text) throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.extensionField().setText(text));
+    }
+
+    private void givenTheExtensionCleared() throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.extensionField().clear());
+    }
+
+    private void givenTheSearchStartedFor(String words) throws Exception {
+        whenTheSearchIsStartedFor(words);
+    }
+
+    private void givenTheUserWasToldTimes(int count) {
+        thenTheUserWasToldTimes(count);
+    }
+
+    private void givenTheClipboardHolds(String text) throws Exception {
+        FxTesting.onFx(() -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(text);
+            Clipboard.getSystemClipboard().setContent(content);
+        });
+    }
+
+    private void givenTheButtonsAreOff(boolean off, String... keys) throws Exception {
+        thenTheButtonsAreOff(off, keys);
+    }
+
+    private void whenSearchedFor(String words, SearchScreen.Method method) throws Exception {
+        this.shownTab = search(this.shownScreen, words, method);
+    }
+
+    private void whenTheResultsCome(SearchResult... results) throws Exception {
         FxTesting.onFx(() ->
                 this.test.model.handle(new EngineEvent.SearchResults(new SearchId(this.ids.get()), List.of(results))));
     }
 
-    private void whenTheResultIsChosen(SearchResult result) throws Exception {
-        FxTesting.onFx(() -> select(this.shownScreen.table(this.shownTab), result));
+    private void whenAKeyIsPressedInTheFilter(KeyCode key) throws Exception {
+        FxTesting.onFx(() -> filter().fireEvent(FxTesting.key(key, false)));
+    }
+
+    private void whenTheMenuItemIsFired(String key) throws Exception {
+        FxTesting.onFx(() -> item(menu(), key).fire());
+    }
+
+    // A double click downloads the file of its row.
+    private void whenTheRowIsDoubleClicked(SearchResult result) throws Exception {
+        FxTesting.onFx(() ->
+                FxTesting.doubleClick(table(), r -> ((LiveList.Row<?>) r).get().equals(result)));
+    }
+
+    private void whenTheSearchIsStopped() throws Exception {
+        FxTesting.onFx(this.shownScreen::stop);
+    }
+
+    private void whenTheRelatedTabIsClosed() throws Exception {
+        FxTesting.onFx(() -> {
+            Tab related = this.shownScreen.tabs().getTabs().get(1);
+            related.getOnClosed().handle(new Event(Tab.CLOSED_EVENT));
+            this.shownScreen.tabs().getTabs().remove(related);
+        });
+    }
+
+    private void whenTheScreenCloses() {
+        this.exception = catchThrowable(() -> FxTesting.onFx(this.shownScreen::closing));
+    }
+
+    private void whenTheSearchIsStartedFor(String words) throws Exception {
+        FxTesting.onFx(() -> {
+            this.shownScreen.queryField().setText(words);
+            this.shownScreen.start();
+        });
+    }
+
+    private void whenTheParametersAreReset() throws Exception {
+        FxTesting.onFx(this.shownScreen::resetParameters);
+    }
+
+    private void whenTheMinimumSizeIsTyped(String text) throws Exception {
+        FxTesting.onFx(() -> this.shownScreen.minSizeField().setText(text));
+    }
+
+    private void whenTheLinksAreCopied() throws Exception {
+        FxTesting.onFx(this.shownScreen::copyLinks);
     }
 
     private void whenTheSearchIsClosed() throws Exception {
@@ -379,18 +696,162 @@ class SearchResultsTest {
                 .containsOnly(off);
     }
 
-    @Test
-    void searchesAreNotKeptWhenTheSettingsSaySo() throws Exception {
-        SearchScreen screen = screen();
-        this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder().storeSearches(false).build())
-                .get(10, TimeUnit.SECONDS);
-        FxTesting.onFx(
-                () -> this.test.model.handle(new EngineEvent.PreferencesChanged(this.test.engine.preferences())));
-        search(screen, "film", SearchScreen.Method.SERVER);
-        FxTesting.onFx(screen::closing);
+    private void thenTheEngineWasAskedFor(String... expected) {
+        assertThat(this.calls).containsExactly(expected);
+    }
+
+    private void thenTheEngineWasAlsoAskedFor(String... expected) {
+        assertThat(this.calls).contains(expected);
+    }
+
+    private void thenTheEngineIsAskedFor(String... expected) throws Exception {
+        List<String> all = List.of(expected);
+        FxTesting.await(String.join(" and ", all), () -> this.calls.containsAll(all));
+    }
+
+    private void thenTheEngineWasAskedNothing() {
+        assertThat(this.calls).isEmpty();
+    }
+
+    private void thenTheTabReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(this.shownTab::getText)).isEqualTo(text);
+    }
+
+    private void thenTheTabReads(String text, String why) throws Exception {
+        assertThat(FxTesting.onFx(this.shownTab::getText)).as(why).isEqualTo(text);
+    }
+
+    private void thenTheFilterIsEmpty() throws Exception {
+        assertThat(FxTesting.onFx(() -> filter().getText())).isEmpty();
+    }
+
+    private void thenTheCountReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> count().getText())).isEqualTo(text);
+    }
+
+    private void thenOneResultIsMarkedAsSpam() throws Exception {
+        FxTesting.await("marked as spam", () -> table().lookupAll(".known-spam").size() == 1);
+        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains("Spam");
+    }
+
+    private void thenNoResultIsMarkedAsSpam() throws Exception {
+        FxTesting.await(
+                "not spam any more", () -> table().lookupAll(".known-spam").isEmpty());
+    }
+
+    private void thenTheClipboardStartsWith(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
+                .startsWith(text);
+    }
+
+    private void thenTheClipboardStillHolds(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> Clipboard.getSystemClipboard().getString()))
+                .as("nothing selected")
+                .isEqualTo(text);
+    }
+
+    private void thenTheResultsDownloadingAre(int count) throws Exception {
+        FxTesting.await(
+                count + " downloading",
+                () -> table().lookupAll(".known-downloading").size() == count);
+    }
+
+    private void thenTheEngineDownloads(String... names) throws Exception {
+        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+                .extracting(DownloadInfo::name)
+                .containsExactly(names);
+    }
+
+    private void thenTheKnownFilesAreMarked() throws Exception {
+        FxTesting.await(
+                "the known files",
+                () -> table().lookupAll(".known-shared").size() == 1
+                        && table().lookupAll(".known-downloaded").size() == 1
+                        && table().lookupAll(".known-cancelled").size() == 1);
+    }
+
+    private void thenTheCellsShow(String... texts) throws Exception {
+        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains(texts);
+    }
+
+    private void thenARelatedTabOpens() throws Exception {
+        FxTesting.await(
+                "the related tab", () -> this.shownScreen.tabs().getTabs().size() == 2);
+    }
+
+    private void thenOnlyTheFirstTabIsLeft() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.shownScreen.tabs().getTabs())).containsExactly(this.shownTab);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheSearchKeptIs(String expression, String resultName) throws Exception {
+        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS))
+                .singleElement()
+                .satisfies(s -> {
+                    assertThat(s.request().expression()).isEqualTo(expression);
+                    assertThat(s.results()).extracting(SearchResult::name).contains(resultName);
+                });
+    }
+
+    private void thenNoSearchIsKept() throws Exception {
         assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenTheUserIsToldOnly(String message) {
+        assertThat(this.test.told).containsExactly(message);
+    }
+
+    private void thenTheUserWasToldTimes(int count) {
+        assertThat(this.test.told).hasSize(count);
+    }
+
+    private void thenTheUserWasToldOnceThatTheExpressionIsTooLongWithItsType() {
+        assertThat(this.test.told).as("too long with its type").hasSize(1);
+    }
+
+    private void thenTheQueryReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.shownScreen.queryField().getText()))
+                .isEqualTo(text);
+    }
+
+    private void thenTheSearchHistoryStartsWith(String... words) {
+        assertThat(this.test.gui.settings().history("search")).startsWith(words);
+    }
+
+    private void thenTheTypeIs(SearchScreen.FileType type) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.shownScreen.typeBox().getValue())).isEqualTo(type);
+    }
+
+    private void thenTheMinimumSizeAndTheExtensionAreEmpty() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.shownScreen.minSizeField().getText()
+                        + this.shownScreen.extensionField().getText()))
+                .isEmpty();
+    }
+
+    // A minimum out of range leaves the maximum its own lowest value.
+    private void thenTheMaximumSizeTakes(int lowest, int highest) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> this.shownScreen.maxSizeField().getTooltip().getText()))
+                .isEqualTo(this.test.gui.f("nj.input.optionalNumber", lowest, highest));
+    }
+
+    private TableView<LiveList.Row<SearchResult>> table() {
+        return this.shownScreen.table(this.shownTab);
+    }
+
+    private ContextMenu menu() {
+        return table().getContextMenu();
+    }
+
+    private TextField filter() {
+        return (TextField) this.shownTab.getContent().lookup(".text-field");
+    }
+
+    private Label count() {
+        return (Label) this.shownTab.getContent().lookup(".label");
     }
 
     private SearchScreen screen() throws Exception {

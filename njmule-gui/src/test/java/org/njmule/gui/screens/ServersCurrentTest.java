@@ -65,12 +65,12 @@ class ServersCurrentTest {
     @Test
     void shouldMarkTheServerBeingTriedThenTheOneConnectedTo() throws Exception {
         givenTheServersListed();
-
-        whenNjMuleConnectsTo(BIG);
-        thenTheServerIsBeingTried(BIG);
-        thenTheServerIsNotMarked(SMALL);
+        givenNjMuleConnectingTo(BIG);
+        givenTheServerBeingTried(BIG);
+        givenTheServerNotMarked(SMALL);
 
         whenTheConnectionIsMadeTo(BIG);
+
         thenTheServerIsInUse(BIG);
     }
 
@@ -103,6 +103,18 @@ class ServersCurrentTest {
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.await(
                 "the servers listed", () -> this.screen.table().getItems().size() == 2);
+    }
+
+    private void givenNjMuleConnectingTo(ServerInfo server) throws Exception {
+        whenNjMuleConnectsTo(server);
+    }
+
+    private void givenTheServerBeingTried(ServerInfo server) throws Exception {
+        thenTheServerIsBeingTried(server);
+    }
+
+    private void givenTheServerNotMarked(ServerInfo server) throws Exception {
+        thenTheServerIsNotMarked(server);
     }
 
     private void givenConnectedTo(ServerInfo server) throws Exception {

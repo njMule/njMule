@@ -19,8 +19,12 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.util.List;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.ServerInfo;
 
 class ServersFilterTest {
@@ -42,28 +46,80 @@ class ServersFilterTest {
             true,
             false);
 
-    @Test
-    void everyWordMustMatchSomewhereInAnyCase() {
-        assertThat(ServersScreen.matching("")).accepts(SUNRISE);
-        assertThat(ServersScreen.matching("  ")).accepts(SUNRISE);
-        assertThat(ServersScreen.matching("SUNRISE")).accepts(SUNRISE);
-        assertThat(ServersScreen.matching("sunrise 176.123")).accepts(SUNRISE);
-        assertThat(ServersScreen.matching("lugdunum")).as("the version").accepts(SUNRISE);
-        Predicate<ServerInfo> other = ServersScreen.matching("sunrise donkey");
-        assertThat(other).rejects(SUNRISE);
+    private Predicate<ServerInfo> filter;
+    private String text;
+    private List<URI> addresses;
+    private String number;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  ", "SUNRISE", "sunrise 176.123"})
+    void shouldKeepAServerWhenEveryWordMatchesSomewhereInAnyCase(String words) {
+        whenTheServersAreFilteredBy(words);
+
+        thenTheServerIsKept();
     }
 
     @Test
-    void serverListAddressesAreTheWebOnesOfTheLines() {
-        assertThat(SettingsScreen.addresses(
-                        "http://a.example/server.met\n  \nftp://x.example/y\nnot an address\nhttps://b.example/s.met"))
-                .extracting(URI::toString)
-                .containsExactly("http://a.example/server.met", "https://b.example/s.met");
+    void shouldKeepAServerWhoseVersionMatches() {
+        whenTheServersAreFilteredBy("lugdunum");
+
+        thenTheServerIsKept();
     }
 
     @Test
-    void kadShowsOurAddressAsTheNumberItsIdIsMadeOf() {
-        assertThat(MyInfoPane.number("1.2.3.4")).isEqualTo("16909060");
-        assertThat(MyInfoPane.number("255.255.255.255")).isEqualTo("4294967295");
+    void shouldDropAServerWhenAWordMatchesNowhere() {
+        whenTheServersAreFilteredBy("sunrise donkey");
+
+        thenTheServerIsDropped();
+    }
+
+    @Test
+    void shouldTakeTheWebAddressesOfTheServerListLines() {
+        givenTheServerListLines(
+                "http://a.example/server.met\n  \nftp://x.example/y\nnot an address\nhttps://b.example/s.met");
+
+        whenTheAddressesAreRead();
+
+        thenTheAddressesAre("http://a.example/server.met", "https://b.example/s.met");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1.2.3.4, 16909060", "255.255.255.255, 4294967295"})
+    void shouldShowOurKadAddressAsTheNumberItsIdIsMadeOf(String ip, String expected) {
+        whenTheAddressIsTurnedIntoANumber(ip);
+
+        thenTheNumberIs(expected);
+    }
+
+    private void givenTheServerListLines(String lines) {
+        this.text = lines;
+    }
+
+    private void whenTheServersAreFilteredBy(String words) {
+        this.filter = ServersScreen.matching(words);
+    }
+
+    private void whenTheAddressesAreRead() {
+        this.addresses = SettingsScreen.addresses(this.text);
+    }
+
+    private void whenTheAddressIsTurnedIntoANumber(String ip) {
+        this.number = MyInfoPane.number(ip);
+    }
+
+    private void thenTheServerIsKept() {
+        assertThat(this.filter).accepts(SUNRISE);
+    }
+
+    private void thenTheServerIsDropped() {
+        assertThat(this.filter).rejects(SUNRISE);
+    }
+
+    private void thenTheAddressesAre(String... expected) {
+        assertThat(this.addresses).extracting(URI::toString).containsExactly(expected);
+    }
+
+    private void thenTheNumberIs(String expected) {
+        assertThat(this.number).isEqualTo(expected);
     }
 }
