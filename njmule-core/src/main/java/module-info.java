@@ -21,7 +21,6 @@ module org.njmule.core {
     // information) and "config" (preferences and directory layout). Everything else is internal.
     requires com.google.common;
     requires static com.google.errorprone.annotations;
-    requires java.net.http;
     requires java.xml;
     requires org.eclipse.jetty.client;
     requires org.bouncycastle.provider;

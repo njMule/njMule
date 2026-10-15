@@ -26,14 +26,10 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.NetworkInterface;
-import java.net.ProxySelector;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -50,6 +46,13 @@ import java.util.concurrent.TimeoutException;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import org.eclipse.jetty.client.CompletableResponseListener;
+import org.eclipse.jetty.client.ContentResponse;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.client.StringRequestContent;
+import org.eclipse.jetty.http.HttpMethod;
+import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -71,7 +74,7 @@ public final class Igd implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(Igd.class);
     private static final int MAX_DESCRIPTION = 256 * 1024;
     private static final int MAX_REASON = 120;
-    // For the headers, and for the whole answer: the JDK's timeout ends with the headers.
+    // For the whole answer, headers and body.
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
     private static final String[] DEVICES = {
         "urn:schemas-upnp-org:device:InternetGatewayDevice:2", "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
@@ -94,11 +97,16 @@ public final class Igd implements AutoCloseable {
 
     /** Asks {@code target} (normally {@link #SSDP}) for a gateway and waits up to {@code wait}. */
     public static Optional<Igd> discover(InetSocketAddress target, Duration wait) throws IOException {
-        HttpClient http = HttpClient.newBuilder()
-                .connectTimeout(HTTP_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .proxy(ProxySelector.of(null))
-                .build();
+        // The router is on the LAN: never through the proxy of the preferences.
+        HttpClient http = new HttpClient();
+        http.setExecutor(new VirtualThreadPool());
+        http.setConnectTimeout(HTTP_TIMEOUT.toMillis());
+        http.setFollowRedirects(false);
+        try {
+            http.start();
+        } catch (Exception e) {
+            throw new IOException("cannot start the HTTP client", e);
+        }
         Set<URI> seen = new LinkedHashSet<>();
         boolean found = false;
         try (MulticastSocket socket = new MulticastSocket()) {
@@ -157,7 +165,7 @@ public final class Igd implements AutoCloseable {
             }
         } finally {
             if (!found) {
-                http.close();
+                stop(http);
             }
         }
         return Optional.empty();
@@ -165,7 +173,15 @@ public final class Igd implements AutoCloseable {
 
     @Override
     public void close() {
-        this.http.close();
+        stop(this.http);
+    }
+
+    private static void stop(HttpClient http) {
+        try {
+            http.stop();
+        } catch (Exception e) {
+            logger.debug("UPnP: the HTTP client did not stop cleanly: {}", e.toString());
+        }
     }
 
     public URI controlUrl() {
@@ -251,25 +267,24 @@ public final class Igd implements AutoCloseable {
                 + "</u:"
                 + action
                 + "></s:Body></s:Envelope>";
-        HttpRequest request = HttpRequest.newBuilder(this.control)
-                .timeout(HTTP_TIMEOUT)
-                .header("Content-Type", "text/xml; charset=\"utf-8\"")
-                .header("SOAPAction", "\"" + this.service + "#" + action + "\"")
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                .build();
-        HttpResponse<byte[]> response = exchange(this.http, request);
-        if (response.statusCode() != 200) {
-            String reason = reason(response.statusCode(), response.body());
+        Request request = this.http
+                .newRequest(this.control)
+                .method(HttpMethod.POST)
+                .headers(h -> h.put("SOAPAction", "\"" + this.service + "#" + action + "\""))
+                .body(new StringRequestContent("text/xml; charset=\"utf-8\"", body, StandardCharsets.UTF_8));
+        ContentResponse response = exchange(request);
+        if (response.getStatus() != 200) {
+            String reason = reason(response.getStatus(), response.getContent());
             logger.debug("UPnP {} refused: {}", action, reason);
             throw new Refused(reason);
         }
-        return response.body();
+        return response.getContent();
     }
 
     // A device that sends without end, or stops half-way, holds us no longer than the timeout.
-    private static HttpResponse<byte[]> exchange(HttpClient http, HttpRequest request) throws IOException {
-        CompletableFuture<HttpResponse<byte[]>> answer = http.sendAsync(
-                request, HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofByteArray(), MAX_DESCRIPTION));
+    private static ContentResponse exchange(Request request) throws IOException {
+        request.timeout(HTTP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        CompletableFuture<ContentResponse> answer = new CompletableResponseListener(request, MAX_DESCRIPTION).send();
         try {
             return answer.get(HTTP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -279,21 +294,24 @@ public final class Igd implements AutoCloseable {
         } catch (TimeoutException e) {
             answer.cancel(true);
             throw new IOException(
-                    "no whole answer from " + request.uri() + " in " + HTTP_TIMEOUT.toSeconds() + " s", e);
+                    "no whole answer from " + request.getURI() + " in " + HTTP_TIMEOUT.toSeconds() + " s", e);
         } catch (ExecutionException e) {
-            throw e.getCause() instanceof IOException io ? io : new IOException(e.getCause());
+            Throwable cause = e.getCause();
+            if (cause instanceof TimeoutException) {
+                throw new IOException(
+                        "no whole answer from " + request.getURI() + " in " + HTTP_TIMEOUT.toSeconds() + " s", cause);
+            }
+            throw cause instanceof IOException io ? io : new IOException(cause.getMessage(), cause);
         }
     }
 
     // The WAN connection in use, when the router has more than one; else the first.
     private static Optional<Igd> describe(URI location, HttpClient http) throws IOException {
-        HttpRequest request =
-                HttpRequest.newBuilder(location).timeout(HTTP_TIMEOUT).GET().build();
-        HttpResponse<byte[]> response = exchange(http, request);
-        if (response.statusCode() != 200) {
+        ContentResponse response = exchange(http.newRequest(location));
+        if (response.getStatus() != 200) {
             return Optional.empty();
         }
-        byte[] xml = response.body();
+        byte[] xml = response.getContent();
         Document doc;
         try {
             doc = parse(xml, false);
