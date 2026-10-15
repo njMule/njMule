@@ -323,14 +323,25 @@ class EngineImportTest {
         });
     }
 
-    private void thenTheHalfDownloadWasAnnouncedInCategory(int category) {
-        assertThat(this.events)
-                .filteredOn(EngineEvent.DownloadAdded.class::isInstance)
-                .map(e -> ((EngineEvent.DownloadAdded) e).download())
-                .filteredOn(d -> d.hash().equals(this.emule.halfHash))
+    // Events reach their watchers on a thread of their own: the announcement may come just after the import.
+    private void thenTheHalfDownloadWasAnnouncedInCategory(int category) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (announcedHalfDownloads().isEmpty()) {
+            assertThat(System.nanoTime()).as("the half download announced").isLessThan(deadline);
+            Thread.sleep(50);
+        }
+        assertThat(announcedHalfDownloads())
                 .singleElement()
                 .extracting(DownloadInfo::category)
                 .isEqualTo(category);
+    }
+
+    private List<DownloadInfo> announcedHalfDownloads() {
+        return this.events.stream()
+                .filter(EngineEvent.DownloadAdded.class::isInstance)
+                .map(e -> ((EngineEvent.DownloadAdded) e).download())
+                .filter(d -> d.hash().equals(this.emule.halfHash))
+                .toList();
     }
 
     private void thenTheHalfDownloadIsInCategory(int category) throws Exception {
