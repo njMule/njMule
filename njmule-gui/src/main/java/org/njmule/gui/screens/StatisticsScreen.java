@@ -83,7 +83,8 @@ public final class StatisticsScreen implements Screen {
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
         Region upSwatch = RateGraph.swatch("legend-up");
-        RateGraph graph = new RateGraph(this.gui.model().rates(), downSwatch, upSwatch, this.gui.subscriptions());
+        RateGraph graph = new RateGraph(
+                this.gui.model().rates(), downSwatch, upSwatch, this.gui.subscriptions(), this.gui.formats()::rate);
         HBox legend = new HBox(
                 8,
                 downSwatch,

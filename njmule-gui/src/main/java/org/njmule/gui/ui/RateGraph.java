@@ -17,11 +17,13 @@
 package org.njmule.gui.ui;
 
 import java.util.List;
+import java.util.function.LongFunction;
 import java.util.function.ToLongFunction;
 import javafx.collections.ObservableList;
 import javafx.geometry.NodeOrientation;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Label;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
@@ -29,8 +31,9 @@ import javafx.scene.paint.Paint;
 import org.njmule.gui.model.EngineModel;
 
 /**
- * The download and upload rates of the last minutes as two filled lines, scaled to the highest rate shown. Its colours
- * come from the theme tokens of the legend swatches, so it follows the theme.
+ * The download and upload rates of the last minutes as two filled lines, on a scale rounded up from the highest rate
+ * shown and labelled at its top and middle. Its colours come from the theme tokens of the legend swatches, so it
+ * follows the theme.
  */
 public final class RateGraph extends Region {
 
@@ -44,16 +47,25 @@ public final class RateGraph extends Region {
     private final Region down;
     private final Region up;
     private final Region grid = swatch("graph-grid");
+    private final LongFunction<String> rate;
+    private final Label top = scaleLabel();
+    private final Label middle = scaleLabel();
     private long highest;
 
     /**
      * @param down the legend swatch of the download line
      * @param up the legend swatch of the upload line
      * @param subscriptions where the graph's following of {@code samples} is kept
+     * @param rate writes a rate in bytes per second for the scale
      */
     public RateGraph(
-            ObservableList<EngineModel.RateSample> samples, Region down, Region up, Subscriptions subscriptions) {
+            ObservableList<EngineModel.RateSample> samples,
+            Region down,
+            Region up,
+            Subscriptions subscriptions,
+            LongFunction<String> rate) {
         this.samples = samples;
+        this.rate = rate;
         this.down = down;
         this.up = up;
         this.getStyleClass().add("rate-graph");
@@ -61,7 +73,7 @@ public final class RateGraph extends Region {
         this.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.grid.setManaged(false);
         this.grid.setVisible(false);
-        this.getChildren().addAll(this.canvas, this.grid);
+        this.getChildren().addAll(this.canvas, this.grid, this.top, this.middle);
         this.setMinHeight(160);
         this.setPrefHeight(260);
         subscriptions.onListChange(samples, c -> this.draw());
@@ -87,6 +99,27 @@ public final class RateGraph extends Region {
         this.canvas.setWidth(this.getWidth());
         this.canvas.setHeight(this.getHeight());
         this.draw();
+        // The scale's words sit just under the lines they name, at the left edge.
+        double h = this.getHeight();
+        for (Label label : List.of(this.top, this.middle)) {
+            label.autosize();
+        }
+        this.top.relocate(6, 2);
+        this.middle.relocate(6, Math.round(h / 2.0) + 2);
+    }
+
+    /** The top of the scale: the highest rate shown, rounded up to 1, 2 or 5 times a power of ten KB/s. */
+    static long scale(long highest) {
+        long kib = Math.max(1, (highest + 1023) / 1024);
+        long step = 1;
+        while (true) {
+            for (long m : new long[] {1, 2, 5}) {
+                if (m * step >= kib) {
+                    return m * step * 1024;
+                }
+            }
+            step *= 10;
+        }
     }
 
     private void draw() {
@@ -99,11 +132,16 @@ public final class RateGraph extends Region {
         }
         int from = Math.max(0, this.samples.size() - SPAN);
         List<EngineModel.RateSample> shown = this.samples.subList(from, this.samples.size());
-        long max = 1024;
+        long seen = 1024;
         for (EngineModel.RateSample s : shown) {
-            max = Math.max(max, Math.max(s.down(), s.up()));
+            seen = Math.max(seen, Math.max(s.down(), s.up()));
         }
-        this.highest = max;
+        this.highest = seen;
+        long max = scale(seen);
+        this.top.setText(this.rate.apply(max));
+        this.middle.setText(this.rate.apply(max / 2));
+        this.top.autosize();
+        this.middle.autosize();
         g.setStroke(color(this.grid, Color.gray(0.5, 0.4)));
         g.setLineWidth(1);
         for (int i = 1; i < 4; i++) {
@@ -143,6 +181,13 @@ public final class RateGraph extends Region {
         g.setStroke(color);
         g.setLineWidth(1.5);
         g.strokePolyline(xs, ys, n);
+    }
+
+    private static Label scaleLabel() {
+        Label label = new Label();
+        label.getStyleClass().add("graph-scale");
+        label.setManaged(false);
+        return label;
     }
 
     private static Color color(Region swatch, Color fallback) {

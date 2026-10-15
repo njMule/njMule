@@ -406,6 +406,12 @@
     -fx-background-color: -nj-graph-grid;
 }
 
+/* The scale of the rate graph: small and muted, on the plot's own background. */
+.graph-scale {
+    -fx-font-size: 0.8em;
+    -fx-text-fill: -color-fg-muted;
+}
+
 .rate-graph {
     -fx-background-color: -color-bg-subtle;
     -fx-background-radius: 8;
