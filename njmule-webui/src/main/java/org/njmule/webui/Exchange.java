@@ -16,6 +16,7 @@
  */
 package org.njmule.webui;
 
+import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,8 +36,13 @@ import org.eclipse.jetty.server.Response;
  */
 final class Exchange {
 
+    // The most of a request body left unread that the exchange reads anyway, as Tomcat's maxSwallowSize: past it the
+    // connection closes.
+    private static final long MAX_DISCARDED = 2 * 1024 * 1024;
+
     private final Request request;
     private final Response response;
+    private RequestBody requestBody;
     private OutputStream body;
     private boolean started;
 
@@ -82,8 +88,16 @@ final class Exchange {
         return remote instanceof InetSocketAddress inet ? inet.getAddress() : InetAddress.getLoopbackAddress();
     }
 
+    /** The body of the request; what the handler leaves unread is read when the answer ends. */
     InputStream requestBody() {
-        return Content.Source.asInputStream(this.request);
+        return requestStream();
+    }
+
+    private RequestBody requestStream() {
+        if (this.requestBody == null) {
+            this.requestBody = new RequestBody(Content.Source.asInputStream(this.request));
+        }
+        return this.requestBody;
     }
 
     void setHeader(String name, String value) {
@@ -140,10 +154,37 @@ final class Exchange {
         }
     }
 
-    // The answer ends: what the body still holds goes out.
+    // The handler may close it before its end; the exchange closes it for real once it has read the rest.
+    private static final class RequestBody extends FilterInputStream {
+
+        RequestBody(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public void close() {
+            // The exchange reads the rest first.
+        }
+
+        // At most MAX_DISCARDED bytes: past them the close fails the body and Jetty closes the connection.
+        void discardRest() throws IOException {
+            try (InputStream rest = this.in) {
+                long left = MAX_DISCARDED;
+                long skipped;
+                do {
+                    skipped = rest.skip(left);
+                    left -= skipped;
+                } while (skipped > 0 && left > 0);
+            }
+        }
+    }
+
+    // The answer ends: what the body still holds goes out, then what the client still sends is read. Closing a
+    // connection the client writes to makes TCP reset it, which can drop the answer unread (RFC 9112, 9.6).
     void finish() throws IOException {
         if (this.body != null) {
             this.body.close();
         }
+        requestStream().discardRest();
     }
 }

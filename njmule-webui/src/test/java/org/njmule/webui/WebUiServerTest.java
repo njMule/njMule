@@ -28,6 +28,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -36,19 +38,30 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
 
-/** What the HTTP server itself tells callers: nothing of its software, and no stack trace when a request is bad. */
+/**
+ * What the HTTP server itself does for callers: it names no software, shows no stack trace for a bad request, and gets
+ * the answer to a refused request across whenever its body comes.
+ */
 @Timeout(60)
 class WebUiServerTest {
+
+    private static final String LOGIN_BODY = "password=correct+horse";
+    private static final Pattern CONTENT_LENGTH = Pattern.compile("(?i)\r\ncontent-length: *(\\d+)\r\n");
 
     @TempDir
     Path dir;
 
     private NjMuleEngine engine;
     private WebUi ui;
+    private Socket connection;
+    private String refusal;
     private String answer;
 
     @AfterEach
-    void stop() {
+    void stop() throws IOException {
+        if (this.connection != null) {
+            this.connection.close();
+        }
         if (this.ui != null) {
             this.ui.close();
         }
@@ -73,6 +86,23 @@ class WebUiServerTest {
         thenTheAnswerNamesNoServerSoftware();
     }
 
+    @Test
+    void shouldReadTheBodyOfARefusedPostThatComesAfterTheAnswer() throws Exception {
+        givenTheWebInterface();
+        givenACrossSitePostAnsweredBeforeItsBody();
+        whenTheBodyComesWithAnotherRequest();
+        thenTheRefusalIs("403");
+        thenTheAnswerIs("200");
+    }
+
+    @Test
+    void shouldSendNoContinueAfterRefusingAPostWaitingForIt() throws Exception {
+        givenTheWebInterface();
+        whenACrossSitePostWaitingForContinueIsSent();
+        thenTheAnswerIs("403");
+        thenTheAnswerHoldsOneStatus();
+    }
+
     private void givenTheWebInterface() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
@@ -95,8 +125,59 @@ class WebUiServerTest {
         }
     }
 
+    // The body is sent only once the answer is read, the order a busy computer may give any client.
+    private void givenACrossSitePostAnsweredBeforeItsBody() throws IOException {
+        this.connection = new Socket(InetAddress.getLoopbackAddress(), this.ui.port());
+        send(crossSitePost(""));
+        this.refusal = readAnswer();
+    }
+
+    private void whenACrossSitePostWaitingForContinueIsSent() throws IOException {
+        whenAsked(crossSitePost("Expect: 100-continue\r\n"));
+    }
+
+    private void whenTheBodyComesWithAnotherRequest() throws IOException {
+        send(LOGIN_BODY + "GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        this.answer = new String(this.connection.getInputStream().readAllBytes(), StandardCharsets.ISO_8859_1);
+    }
+
+    private void thenTheRefusalIs(String status) {
+        assertThat(this.refusal).startsWith("HTTP/1.1 " + status + " ");
+    }
+
     private void thenTheAnswerIs(String status) {
         assertThat(this.answer).startsWith("HTTP/1.1 " + status + " ");
+    }
+
+    private void thenTheAnswerHoldsOneStatus() {
+        assertThat(this.answer.split("HTTP/1.1 ", -1)).hasSize(2);
+    }
+
+    private static String crossSitePost(String headers) {
+        return "POST /login HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://elsewhere.example\r\n"
+                + "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: " + LOGIN_BODY.length()
+                + "\r\n" + headers + "\r\n";
+    }
+
+    private void send(String bytes) throws IOException {
+        OutputStream out = this.connection.getOutputStream();
+        out.write(bytes.getBytes(StandardCharsets.ISO_8859_1));
+        out.flush();
+    }
+
+    // One answer of the connection: its head, then as many bytes as its Content-Length says.
+    private String readAnswer() throws IOException {
+        InputStream in = this.connection.getInputStream();
+        StringBuilder head = new StringBuilder();
+        while (head.indexOf("\r\n\r\n") < 0) {
+            int b = in.read();
+            assertThat(b).as("an answer ending early: %s", head).isNotNegative();
+            head.append((char) b);
+        }
+        Matcher length = CONTENT_LENGTH.matcher(head);
+        assertThat(length.find()).as("a Content-Length in %s", head).isTrue();
+        byte[] body = in.readNBytes(Integer.parseInt(length.group(1)));
+        return head + new String(body, StandardCharsets.ISO_8859_1);
     }
 
     private void thenTheAnswerNamesNoServerSoftware() {
