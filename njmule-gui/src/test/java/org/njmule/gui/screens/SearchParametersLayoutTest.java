@@ -61,6 +61,8 @@ class SearchParametersLayoutTest {
         this.test = TestGui.start(this.dir.resolve("njmule"), language);
         SearchScreen screen = FxTesting.onFx(() -> new SearchScreen(this.test.gui));
         this.view = FxTesting.onFx(screen::view);
+        // The parameters fold away until wanted: here they are.
+        FxTesting.onFx(() -> screen.showParameters(true));
         this.test.show(this.view);
     }
 

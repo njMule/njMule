@@ -329,6 +329,13 @@ class CaptureTour {
             this.fx(() -> this.window.show(id));
             this.fx(() -> expandTrees(this.stage.getScene().getRoot()));
             this.shot(id, "Screen " + id + " as it opens");
+            if (id.equals("search")) {
+                // The parameters fold away until wanted: open them to picture their lists too.
+                this.fx(() -> ((javafx.scene.control.ToggleButton)
+                                this.stage.getScene().getRoot().lookup("#search-parameters"))
+                        .fire());
+                this.shot("search-parameters", "Search with its parameters open");
+            }
             this.tabs(id, this.screenRoot(), true);
             this.menus(id, this.screenRoot());
             this.tooltips(id, this.screenRoot());

@@ -52,6 +52,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.FlowPane;
@@ -152,6 +153,9 @@ public final class SearchScreen implements Screen {
     private Input<OptionalInt> completeInput;
     private Input<String> extensionInput;
     private final TabPane tabs = new TabPane();
+    private final ToggleButton parametersButton = new ToggleButton();
+    private final VBox content = new VBox(8);
+    private Node parameters;
     private final Map<Tab, Results> results = new HashMap<>();
 
     // title: the tab's own, such as a kept related search's; empty = from the expression.
@@ -208,6 +212,7 @@ public final class SearchScreen implements Screen {
                 start,
                 Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more),
                 Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop),
+                this.parametersButton,
                 Fx.spacer(),
                 Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected));
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
@@ -224,9 +229,20 @@ public final class SearchScreen implements Screen {
                 }
             });
         }
-        VBox content = new VBox(8, this.parameters(inputs), this.tabs);
+        this.parameters = this.parameters(inputs);
+        this.content.getChildren().setAll(this.tabs);
         VBox.setVgrow(this.tabs, Priority.ALWAYS);
-        return Fx.screen(this.title(), tools, content);
+        // The parameters fold away until wanted; the button counts those in use, and they show when any is.
+        this.parametersButton.setGraphic(Fx.icon(Material2MZ.TUNE));
+        this.parametersButton.setId("search-parameters");
+        this.parametersButton.setOnAction(e -> this.showParameters(this.parametersButton.isSelected()));
+        for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
+            f.textProperty().addListener((o, was, now) -> this.countParameters());
+        }
+        this.type.valueProperty().addListener((o, was, now) -> this.countParameters());
+        this.countParameters();
+        this.showParameters(this.parametersInUse() > 0);
+        return Fx.screen(this.title(), tools, this.content);
     }
 
     // The search parameters: the type and the attributes the server or Kad filter on.
@@ -281,6 +297,29 @@ public final class SearchScreen implements Screen {
         return this.minSizeInput != null && this.minSizeInput.isValid()
                 ? Math.max(1, this.minSizeInput.value().orElse(1))
                 : 1;
+    }
+
+    void showParameters(boolean on) {
+        this.parametersButton.setSelected(on);
+        if (on && !this.content.getChildren().contains(this.parameters)) {
+            this.content.getChildren().addFirst(this.parameters);
+        } else if (!on) {
+            this.content.getChildren().remove(this.parameters);
+        }
+    }
+
+    private int parametersInUse() {
+        int used = this.type.getValue() == FileType.ANY ? 0 : 1;
+        for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
+            used += f.getText().isBlank() ? 0 : 1;
+        }
+        return used;
+    }
+
+    private void countParameters() {
+        int used = this.parametersInUse();
+        String name = this.gui.t("IDS_SEARCHPARAMS");
+        this.parametersButton.setText(used == 0 ? name : name + " (" + used + ")");
     }
 
     void resetParameters() {
