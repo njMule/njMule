@@ -21,7 +21,9 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import javafx.geometry.NodeOrientation;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.TextInputDialog;
 import org.njmule.app.Autostart;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.i18n.I18n;
@@ -120,11 +122,19 @@ public record Gui(
     }
 
     /**
-     * Lays {@code dialog} out in the direction of the interface; it would follow its owner's, but the windows of the
-     * notification area have none to give.
+     * Lays {@code dialog} out in the direction of the interface (it would follow its owner's, but the windows of the
+     * notification area have none to give) and in the house style: no question-mark picture, the question is in the
+     * words, and no header repeating the kind of alert. A header or picture set afterwards stays.
      */
-    public <D extends Dialog<?>> D orient(D dialog) {
+    public <D extends Dialog<?>> D dialog(D dialog) {
         dialog.getDialogPane().setNodeOrientation(this.orientation());
+        if (dialog instanceof TextInputDialog
+                || dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION) {
+            dialog.setGraphic(null);
+        }
+        if (dialog instanceof Alert) {
+            dialog.setHeaderText(null);
+        }
         return dialog;
     }
 }

@@ -372,6 +372,8 @@ All notable changes to this project are documented here. The format follows
 - Chats show each line as a bubble that wraps, ours at the end of the row and theirs at the start,
   with the time and the author above the words; the friends list has dense rows and the address of
   a new conversation is named beside its box.
+- Questions and text boxes drop the question-mark picture and the header that only repeated the kind
+  of alert; warnings keep their sign.
 - What was done with a search result (downloading, shared, downloaded, cancelled, spam) shows with
   an icon besides its tint and words.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.

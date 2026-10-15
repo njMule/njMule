@@ -152,7 +152,7 @@ public final class DesktopApp implements AutoCloseable {
             return true;
         }
         CheckBox again = new CheckBox(this.gui.t("IDS_DONOTASKAGAIN"));
-        Alert ask = this.gui.orient(new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO));
+        Alert ask = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO));
         ask.setHeaderText(this.gui.t("nj.exit.confirm"));
         ask.getDialogPane().setContent(again);
         ask.initOwner(owner);
@@ -241,7 +241,7 @@ public final class DesktopApp implements AutoCloseable {
                 links.stream().map(link -> this.gui.i18n().embed(link.name())).toList();
         String shown = String.join("\n", names.subList(0, Math.min(names.size(), MAX_NAMES_ASKED)))
                 + (names.size() > MAX_NAMES_ASKED ? "\n…" : "");
-        Alert ask = this.gui.orient(new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO));
+        Alert ask = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO));
         ask.setHeaderText(this.gui.t("IDS_ADDDOWNLOADSFROMCB").strip());
         Window owner = this.stage.isShowing() ? this.stage : this.trayOwner;
         if (owner != null) {

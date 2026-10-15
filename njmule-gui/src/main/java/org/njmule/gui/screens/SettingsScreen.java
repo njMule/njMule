@@ -1165,7 +1165,7 @@ public final class SettingsScreen implements Screen {
             text.setPrefRowCount(8);
             text.setPrefColumnCount(50);
             text.setPromptText("https://\u2026/server.met");
-            Dialog<ButtonType> dialog = this.gui.orient(new Dialog<>());
+            Dialog<ButtonType> dialog = this.gui.dialog(new Dialog<>());
             dialog.setTitle(this.gui.t("IDS_PW_USS"));
             dialog.setHeaderText(this.gui.t("nj.settings.serverListAddresses"));
             dialog.getDialogPane().setContent(text);

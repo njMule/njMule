@@ -170,7 +170,7 @@ public final class SharedScreen implements Screen {
             content.getChildren().add(warning);
         }
         Alert ask =
-                this.gui.orient(new Alert(sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION, null));
+                this.gui.dialog(new Alert(sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION, null));
         ButtonType go = Fx.answers(
                 ask,
                 this.gui.t(sensitive ? "nj.shared.shareAnyway" : "nj.shared.share"),
@@ -223,7 +223,7 @@ public final class SharedScreen implements Screen {
             return;
         }
         SharedFileInfo file = selected.getFirst();
-        TextInputDialog ask = this.gui.orient(new TextInputDialog(file.name()));
+        TextInputDialog ask = this.gui.dialog(new TextInputDialog(file.name()));
         ask.setTitle(this.gui.t("IDS_RENAME"));
         ask.setHeaderText(this.gui.i18n().embed(file.name()));
         Fx.leftToRight(ask.getEditor());

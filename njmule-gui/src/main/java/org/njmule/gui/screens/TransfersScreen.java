@@ -674,7 +674,7 @@ public final class TransfersScreen implements Screen {
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm = this.gui.orient(
+        Alert confirm = this.gui.dialog(
                 new Alert(Alert.AlertType.CONFIRMATION, this.gui.f("nj.transfers.cancelConfirm", selected.size())));
         ButtonType go =
                 Fx.answers(confirm, this.gui.t("nj.transfers.cancelYes"), this.gui.t("nj.transfers.cancelNo"), true);
@@ -693,7 +693,7 @@ public final class TransfersScreen implements Screen {
             return;
         }
         DownloadInfo d = selected.getFirst();
-        TextInputDialog ask = this.gui.orient(new TextInputDialog());
+        TextInputDialog ask = this.gui.dialog(new TextInputDialog());
         ask.setTitle(this.gui.t("IDS_ADDSRCMANUALLY"));
         ask.setHeaderText(this.gui.i18n().embed(d.name()));
         ask.setContentText(this.gui.t("nj.input.address"));
