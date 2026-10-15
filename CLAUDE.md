@@ -114,7 +114,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
   `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g: Gradle's own 512 MiB slows
   the window tests to a time-out) and `test.parallelModules=1` (one module's tests at a time, for
-  machines with few cores). Any `-Pnjmule.<name>=<value>` reaches the tests as a system property.
+  machines with few cores; the CI's verify and Sonar jobs use it on their four CPUs). Any `-Pnjmule.<name>=<value>` reaches the tests as a system property.
   PowerShell splits an unquoted option at its first dot: write `'-Ptest.forks=1'`.
   One class: `./gradlew :njmule-core:test --tests '*TagCodecTest'`.
 - Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
