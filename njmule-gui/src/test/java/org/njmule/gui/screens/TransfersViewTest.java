@@ -187,7 +187,8 @@ class TransfersViewTest {
     }
 
     private void thenTheFilterHasTheCursor() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.filter().getScene().getFocusOwner() == this.filter()))
+        assertThat(FxTesting.onFx(
+                        () -> this.filter().equals(this.filter().getScene().getFocusOwner())))
                 .isTrue();
     }
 

@@ -106,7 +106,8 @@ class SettingsIndexTest {
     }
 
     private void thenTheCursorIsIn(javafx.scene.Node field) throws Exception {
-        FxTesting.await("the cursor in the field", () -> field.getScene().getFocusOwner() == field);
+        FxTesting.await(
+                "the cursor in the field", () -> field.equals(field.getScene().getFocusOwner()));
     }
 
     private void thenTheChosenSectionIsTheLast() throws Exception {

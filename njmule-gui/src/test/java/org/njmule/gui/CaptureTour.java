@@ -163,7 +163,7 @@ class CaptureTour {
 
     private void whenEachSetIsPictured() throws Exception {
         for (String name : this.sets) {
-            String[] parts = name.strip().split("-");
+            String[] parts = name.strip().split("-", -1);
             Locale language = Locale.forLanguageTag(parts[0]);
             GuiSettings.Mode mode = "dark".equals(parts[1]) ? GuiSettings.Mode.DARK : GuiSettings.Mode.LIGHT;
             String depth = parts.length > 2 ? parts[2] : "screens";
@@ -362,7 +362,7 @@ class CaptureTour {
         Thread.sleep(300);
         FxTesting.onFx(() -> {
             for (Window w : List.copyOf(Window.getWindows())) {
-                if (w instanceof Stage s && s != this.stage && s.isShowing()) {
+                if (w instanceof Stage s && !s.equals(this.stage) && s.isShowing()) {
                     this.save("shortcuts", image(s.getScene()), "The keyboard shortcuts (F1)");
                     s.hide();
                 }
@@ -617,8 +617,9 @@ class CaptureTour {
         this.fx(() -> this.window.show("search"));
         Parent root = this.screenRoot();
         this.fx(() -> {
-            ComboBox<?> query = find(root, ComboBox.class).stream()
-                    .filter(ComboBox::isEditable)
+            ComboBox<?> query = root.lookupAll(".combo-box").stream()
+                    .filter(n -> n instanceof ComboBox<?> box && box.isEditable())
+                    .map(n -> (ComboBox<?>) n)
                     .findFirst()
                     .orElseThrow();
             query.getEditor().setText("big buck bunny");
@@ -1183,7 +1184,7 @@ class CaptureTour {
         double oy = this.stage.getY() + main.getY();
         BufferedImage base = image(main);
         List<Window> others = Window.getWindows().stream()
-                .filter(w -> w != this.stage && w.isShowing() && w.getScene() != null && w.getOpacity() > 0.01)
+                .filter(w -> !w.equals(this.stage) && w.isShowing() && w.getScene() != null && w.getOpacity() > 0.01)
                 .toList();
         double minX = 0;
         double minY = 0;

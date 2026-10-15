@@ -173,7 +173,7 @@ final class DownloadDetails {
         boolean[] missing = new boolean[total];
         for (PartMap.Span gap : map.missing()) {
             int first = (int) (gap.start() / PartMap.PART_SIZE);
-            int last = (int) ((Math.max(gap.start(), gap.end() - 1)) / PartMap.PART_SIZE);
+            int last = (int) (Math.max(gap.start(), gap.end() - 1) / PartMap.PART_SIZE);
             for (int p = first; p <= last && p < total; p++) {
                 missing[p] = true;
             }

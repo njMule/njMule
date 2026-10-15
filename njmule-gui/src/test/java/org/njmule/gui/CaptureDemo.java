@@ -69,7 +69,6 @@ import org.njmule.core.config.Schedule;
 final class CaptureDemo {
 
     static final SearchId LIVE_SEARCH = new SearchId(77);
-    private static final long MB = 1024L * 1024;
 
     private CaptureDemo() {}
 

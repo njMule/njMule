@@ -105,7 +105,7 @@ public final class RateGraph extends Region {
             label.autosize();
         }
         this.top.relocate(6, 2);
-        this.middle.relocate(6, Math.round(h / 2.0) + 2);
+        this.middle.relocate(6, Math.rint(h / 2.0) + 2);
     }
 
     /** The top of the scale: the highest rate shown, rounded up to 1, 2 or 5 times a power of ten KB/s. */

@@ -172,7 +172,7 @@ final class SettingsIndex {
                 current = e;
             }
         }
-        if (current != null && current != this.list.getSelectionModel().getSelectedItem()) {
+        if (current != null && !current.equals(this.list.getSelectionModel().getSelectedItem())) {
             this.following = true;
             try {
                 this.list.getSelectionModel().select(current);

@@ -126,8 +126,10 @@ public final class ClipboardWatch implements AutoCloseable {
         Clipboard.getSystemClipboard().setContent(content);
     }
 
-    /** The file links of a copied {@code text} that starts with one; the parts that are not links are left out. */
-    /** The eD2K file links in {@code text}, one or many, as copied or dragged from a page. */
+    /**
+     * The eD2K file links of {@code text}, one or many as copied or dragged from a page, when it starts with one; the
+     * parts that are not links are left out.
+     */
     public static List<Ed2kLink.FileLink> fileLinks(String text) {
         String stripped = text.strip();
         if (!stripped.regionMatches(true, 0, FILE_LINK, 0, FILE_LINK.length())) {

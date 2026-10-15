@@ -129,7 +129,7 @@ public record Gui(
     public <D extends Dialog<?>> D dialog(D dialog) {
         dialog.getDialogPane().setNodeOrientation(this.orientation());
         if (dialog instanceof TextInputDialog
-                || dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION) {
+                || (dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION)) {
             dialog.setGraphic(null);
         }
         if (dialog instanceof Alert) {
