@@ -161,25 +161,25 @@ public final class TransfersScreen implements Screen {
                                 TransfersScreen::remaining,
                                 s -> s < 0 ? "?" : formats.duration(s)))));
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
-        MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"));
+        MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"), Fx.icon(Material2MZ.PAUSE));
         pause.setOnAction(e -> this.pauseSelected());
-        MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"));
+        MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"), Fx.icon(Material2MZ.PLAY_ARROW));
         resume.setOnAction(e -> this.resumeSelected());
-        MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"));
+        MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"), Fx.icon(Material2MZ.STOP));
         stop.setOnAction(e -> this.stopSelected());
-        MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"));
+        MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"), Fx.icon(Material2AL.DELETE));
         cancel.setOnAction(e -> this.cancelSelected());
-        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
+        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
         copy.setOnAction(e -> this.copyLinks());
-        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"));
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
         html.setOnAction(e -> this.copyHtml());
-        MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"));
+        MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"), Fx.icon(Material2AL.CLEAR_ALL));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
-        MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"));
+        MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"), Fx.icon(Material2MZ.PERSON_ADD));
         addSource.setOnAction(e -> this.addSourceToSelected());
-        MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"));
+        MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"), Fx.icon(Material2MZ.RATE_REVIEW));
         comments.setOnAction(e -> this.commentSelected());
-        MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"));
+        MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"), Fx.icon(Material2MZ.PREVIEW));
         preview.setOnAction(e -> this.previewSelected());
         CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
         previewFirst.setOnAction(e -> Fx.selected(this.downloads)
@@ -192,8 +192,9 @@ public final class TransfersScreen implements Screen {
                 .forEach(d -> this.gui.model().setAutoSwap(d.hash(), autoSwap.isSelected())));
         MenuItem swapAway = new MenuItem(this.gui.t("nj.a4af.toOther"));
         swapAway.setOnAction(e -> this.swapSourcesAway());
-        Menu sourceHandling = new Menu(this.gui.t("IDS_A4AF"), null, swapHere, autoSwap, swapAway);
-        Menu category = new Menu(this.gui.t("IDS_CAT"));
+        Menu sourceHandling =
+                new Menu(this.gui.t("IDS_A4AF"), Fx.icon(Material2MZ.SWAP_HORIZ), swapHere, autoSwap, swapAway);
+        Menu category = new Menu(this.gui.t("IDS_CAT"), Fx.icon(Material2AL.LABEL));
         this.downloads.setContextMenu(new ContextMenu(
                 pause,
                 resume,
@@ -205,7 +206,7 @@ public final class TransfersScreen implements Screen {
                 comments,
                 addSource,
                 sourceHandling,
-                this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"))),
+                this.priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY))),
                 category,
                 new SeparatorMenuItem(),
                 copy,

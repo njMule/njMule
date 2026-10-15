@@ -103,11 +103,11 @@ public final class SharedScreen implements Screen {
                                 360,
                                 (SharedFileInfo f) -> String.valueOf(f.path().getParent())))));
         TableLayout.remember(this.table, "shared", this.gui.settings());
-        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"));
+        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
         copy.setOnAction(e -> this.copyLinks());
-        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"));
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
         html.setOnAction(e -> this.copyHtml());
-        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"));
+        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY));
         priority.getItems().setAll(this.priorityItems());
         MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
         MenuItem comment = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Material2MZ.RATE_REVIEW, this::commentSelected);
