@@ -84,6 +84,7 @@ public final class StatisticsScreen implements Screen {
     }
 
     private static final int COLUMNS = 3;
+    private static final double CARD_MIN_WIDTH = 120;
 
     private Node build() {
         Region downSwatch = RateGraph.swatch("legend-down");
@@ -149,12 +150,12 @@ public final class StatisticsScreen implements Screen {
         }
         for (int i = 0; i < cards.length; i++) {
             VBox card = cards[i];
-            card.setMinWidth(0);
+            // Never measured narrower than a few words: wrapping text in a width near zero breaks JavaFX's text
+            // layout (an index out of bounds with some fonts).
+            card.setMinWidth(CARD_MIN_WIDTH);
             card.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
             for (Node n : card.getChildren()) {
-                Label label = (Label) n;
-                label.setWrapText(true);
-                label.setMinHeight(Region.USE_PREF_SIZE);
+                ((Label) n).setWrapText(true);
             }
             grid.add(card, i % COLUMNS, i / COLUMNS);
         }
