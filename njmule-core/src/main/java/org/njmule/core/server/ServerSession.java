@@ -110,6 +110,12 @@ public final class ServerSession {
     /** After an id of 0, which refuses the login, the wait for a real id before the next server is tried. */
     public static final Duration REFUSAL_GRACE = Duration.ofSeconds(3);
 
+    /**
+     * A session with nothing sent for this long gets an empty file offer, which changes nothing on the server but keeps
+     * routers from dropping the idle connection.
+     */
+    public static final Duration KEEP_ALIVE = Duration.ofMinutes(15);
+
     /** Servers tried at once when any will do: a dead or silent one does not hold up the next. */
     public static final int ATTEMPTS_AT_ONCE = 2;
 
@@ -117,6 +123,7 @@ public final class ServerSession {
     public static final Duration RETRY_AFTER = Duration.ofSeconds(30);
 
     private static final Logger logger = LoggerFactory.getLogger(ServerSession.class);
+    private static final Duration KEEP_ALIVE_CHECK = Duration.ofMinutes(1);
     private static final String VERSION_LINE = "server version";
     private static final Pattern VERSION_NUMBER = Pattern.compile("(\\d{1,5})\\.(\\d{1,5})");
     private static final CharMatcher CONTROL = CharMatcher.javaIsoControl();
@@ -129,6 +136,8 @@ public final class ServerSession {
         final boolean probe;
         TcpConnection connection;
         ScheduledFuture<?> timeout;
+        ScheduledFuture<?> keepingAlive;
+        long lastSent;
         Optional<IdChange> id = Optional.empty();
         boolean refused;
         boolean over;
@@ -249,7 +258,19 @@ public final class ServerSession {
 
     /** Sends a packet to the connected server; {@code false} when there is no session. */
     public boolean send(Packet packet) {
-        return this.session != null && this.session.connection.send(packet);
+        Attempt current = this.session;
+        if (current == null || !current.connection.send(packet)) {
+            return false;
+        }
+        current.lastSent = System.nanoTime();
+        return true;
+    }
+
+    void keepAliveIfIdle(long now) {
+        Attempt current = this.session;
+        if (current != null && now - current.lastSent >= KEEP_ALIVE.toNanos()) {
+            send(ServerMessages.keepAlive());
+        }
     }
 
     private void fillPass() {
@@ -547,6 +568,9 @@ public final class ServerSession {
         this.looking = false;
         this.last = Optional.empty();
         this.session = attempt;
+        attempt.lastSent = System.nanoTime();
+        attempt.keepingAlive = this.loop.scheduleRepeating(
+                "server keep-alive", KEEP_ALIVE_CHECK, KEEP_ALIVE_CHECK, () -> keepAliveIfIdle(System.nanoTime()));
         ServerList.Address address = ServerList.addressOf(attempt.server);
         boolean learnt = attempt.obfuscated && !ServerList.supportsObfuscation(attempt.server);
         int port = portFor(attempt);
@@ -695,6 +719,9 @@ public final class ServerSession {
         attempt.over = true;
         if (attempt.timeout != null) {
             attempt.timeout.cancel(false);
+        }
+        if (attempt.keepingAlive != null) {
+            attempt.keepingAlive.cancel(false);
         }
         if (attempt.connection != null) {
             attempt.connection.close();

@@ -17,6 +17,7 @@
 package org.njmule.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -25,6 +26,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
@@ -75,6 +77,7 @@ class ServerSessionTest {
             new SecureRandom());
     private ServerSocket listener;
     private Socket socket;
+    private InputStream in;
     private OutputStream out;
     private ServerMet.Server target;
 
@@ -137,6 +140,28 @@ class ServerSessionTest {
     }
 
     @Test
+    void shouldOfferNoFileToTheServerOnceNothingWasSentForAWhile() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+        givenTheServerLoggedUsIn();
+
+        whenTheSessionHasSentNothingFor(ServerSession.KEEP_ALIVE);
+
+        thenTheServerGetsAnEmptyFileOffer();
+    }
+
+    @Test
+    void shouldSendNothingToKeepAliveAConnectionInUse() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+        givenTheServerLoggedUsIn();
+
+        whenTheSessionHasSentNothingFor(ServerSession.KEEP_ALIVE.minusMinutes(1));
+
+        thenTheServerGetsNothingWithin(500);
+    }
+
+    @Test
     void shouldEndTheAttemptWhenTheServerHangsUpBeforeTheId() throws Exception {
         givenAPlainServer();
         givenTheSessionConnected();
@@ -188,9 +213,15 @@ class ServerSessionTest {
         whenTheSessionConnects();
         this.socket = this.listener.accept();
         this.socket.setSoTimeout(10_000);
-        InputStream in = new BufferedInputStream(this.socket.getInputStream());
+        this.in = new BufferedInputStream(this.socket.getInputStream());
         this.out = this.socket.getOutputStream();
-        TcpFraming.read(in, FrameLimits.SERVER);
+        TcpFraming.read(this.in, FrameLimits.SERVER);
+    }
+
+    private void givenTheServerLoggedUsIn() throws Exception {
+        this.out.write(TcpFraming.encode(new ServerMessages.IdChange(HIGH_ID, 0, 0).encode()));
+        this.out.flush();
+        assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
     }
 
     private void whenTheSessionConnects() throws Exception {
@@ -221,6 +252,13 @@ class ServerSessionTest {
                         .encode());
     }
 
+    private void whenTheSessionHasSentNothingFor(Duration idle) throws Exception {
+        onLoop(() -> {
+            this.session.keepAliveIfIdle(System.nanoTime() + idle.toNanos());
+            return null;
+        });
+    }
+
     private void whenTheServerHangsUp() throws IOException {
         this.socket.close();
     }
@@ -230,6 +268,18 @@ class ServerSessionTest {
         this.socket.setSoTimeout(10_000);
         Packet login = TcpFraming.read(new BufferedInputStream(this.socket.getInputStream()), FrameLimits.SERVER);
         assertThat(login.opcode()).isEqualTo(Opcodes.Server.LOGINREQUEST.code());
+    }
+
+    private void thenTheServerGetsAnEmptyFileOffer() throws IOException {
+        Packet offer = TcpFraming.read(this.in, FrameLimits.SERVER);
+        assertThat(offer.opcode()).isEqualTo(Opcodes.Server.OFFERFILES.code());
+        assertThat(offer.payload()).containsExactly(0, 0, 0, 0);
+    }
+
+    private void thenTheServerGetsNothingWithin(int millis) throws IOException {
+        this.socket.setSoTimeout(millis);
+        assertThat(catchThrowable(() -> TcpFraming.read(this.in, FrameLimits.SERVER)))
+                .isInstanceOf(SocketTimeoutException.class);
     }
 
     private void thenTheNextMessageIs(String line) throws InterruptedException {

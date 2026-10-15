@@ -353,6 +353,8 @@ All notable changes to this project are documented here. The format follows
   files it asked about.
 - Server names, descriptions and versions over UDP: a server that answers the status ping is asked
   for them, with a challenge its answer must carry, so the list shows them without connecting.
+- A server connection with nothing sent for 15 minutes gets an empty file offer, so that routers
+  that drop idle connections keep it.
 - Obfuscated UDP with servers: a global search goes encrypted, to the server's obfuscated UDP
   port, to every server that takes it and gave a UDP key for our current address, and its
   answers are decrypted; with obfuscation required, servers that cannot take it are not asked.
