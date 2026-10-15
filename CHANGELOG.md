@@ -368,6 +368,8 @@ All notable changes to this project are documented here. The format follows
 - The options have an index of their sections and a box that finds an option by its words.
 - The rate graph has a scale; chat tabs with unread messages are marked.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.
+- Ctrl+K opens a command palette: typing finds a place or a command of the menus, searches the
+  network for the words typed, or downloads the eD2K links pasted.
 - Messages come in three kinds: news, successes (a finished download) and problems, which carry a
   colour and an icon of their own and stay until closed. They stack in the bottom corner above the
   status strip, at most four at a time, instead of covering the tool rows.
