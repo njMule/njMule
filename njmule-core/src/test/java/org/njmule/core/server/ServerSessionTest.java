@@ -26,6 +26,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -122,6 +123,17 @@ class ServerSessionTest {
         thenTheSessionIsLoggedIn();
         thenTheClientIdIs(HIGH_ID);
         thenTheSessionLoggedInOnce();
+    }
+
+    @Test
+    void shouldGiveUpSoonOnAServerThatAnswersWithAnIdOfZeroAlone() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+
+        whenTheServerSends(new ServerMessages.IdChange(0, 0, 0).encode());
+
+        thenTheSessionIsLostWithin(ServerSession.LOGIN_TIMEOUT.dividedBy(2), "the server answered with id 0");
+        thenNoSessionIsOpen();
     }
 
     @Test
@@ -245,6 +257,10 @@ class ServerSessionTest {
         assertThat(next("disconnected")).startsWith("disconnected");
     }
 
+    private void thenTheSessionIsLostWithin(Duration wait, String reason) throws InterruptedException {
+        assertThat(next("disconnected", wait)).isEqualTo("disconnected " + reason);
+    }
+
     private void thenNoSessionIsOpen() throws Exception {
         assertThat(onLoop(this.session::isConnected)).isFalse();
     }
@@ -272,7 +288,11 @@ class ServerSessionTest {
     }
 
     private String next(String kind) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        return next(kind, Duration.ofSeconds(10));
+    }
+
+    private String next(String kind, Duration wait) throws InterruptedException {
+        long deadline = System.nanoTime() + wait.toNanos();
         while (System.nanoTime() < deadline) {
             String event = this.events.poll(100, TimeUnit.MILLISECONDS);
             if (event != null && event.startsWith(kind)) {

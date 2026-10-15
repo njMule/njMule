@@ -107,6 +107,9 @@ public final class ServerSession {
     /** From the start of an attempt to the id: connection, handshake and login. */
     public static final Duration LOGIN_TIMEOUT = Duration.ofSeconds(25);
 
+    /** After an id of 0, which refuses the login, the wait for a real id before the next server is tried. */
+    public static final Duration REFUSAL_GRACE = Duration.ofSeconds(3);
+
     /** Servers tried at once when any will do: a dead or silent one does not hold up the next. */
     public static final int ATTEMPTS_AT_ONCE = 2;
 
@@ -127,6 +130,7 @@ public final class ServerSession {
         TcpConnection connection;
         ScheduledFuture<?> timeout;
         Optional<IdChange> id = Optional.empty();
+        boolean refused;
         boolean over;
 
         Attempt(ServerMet.Server server, boolean obfuscated, boolean probe) {
@@ -512,8 +516,14 @@ public final class ServerSession {
 
     private void idChanged(Attempt attempt, IdChange change) {
         if (change.clientId() == 0) {
-            // The server refuses us without saying so; the login timeout moves on.
             logger.debug("Id 0 from {}", ServerList.addressOf(attempt.server));
+            if (attempt != this.session && !attempt.refused) {
+                // A refusal: the next server need not wait for the whole login timeout.
+                attempt.refused = true;
+                attempt.timeout.cancel(false);
+                attempt.timeout = this.loop.schedule(
+                        "server login refused", REFUSAL_GRACE, () -> fail(attempt, "the server answered with id 0"));
+            }
             return;
         }
         boolean changed = attempt.id.map(IdChange::clientId).orElse(0L) != change.clientId();
