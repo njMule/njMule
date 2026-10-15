@@ -176,8 +176,9 @@ class CommentDialogKadTest {
     }
 
     private void thenTheLinesAre(String... lines) throws Exception {
-        FxTesting.await("the comments", () -> this.dialog.heardList().getItems().size() == lines.length);
-        FxTesting.await(
+        FxTesting.assertEventually(
+                "the comments", () -> this.dialog.heardList().getItems().size() == lines.length);
+        FxTesting.assertEventually(
                 "their lines",
                 () -> FxTesting.cellTexts(this.dialog.heardList()).size() == lines.length);
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.dialog.heardList())))

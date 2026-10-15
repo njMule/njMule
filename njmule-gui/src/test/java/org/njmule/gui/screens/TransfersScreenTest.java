@@ -198,7 +198,7 @@ class TransfersScreenTest {
     }
 
     private void thenALabelReads(String text) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the percentage",
                 () -> this.screen.downloads().lookupAll(".label").stream()
                         .anyMatch(n -> n instanceof Label l && text.equals(l.getText())));

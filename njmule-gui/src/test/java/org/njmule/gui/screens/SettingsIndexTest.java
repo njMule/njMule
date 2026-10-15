@@ -125,12 +125,12 @@ class SettingsIndexTest {
     }
 
     private void thenTheCursorIsIn(javafx.scene.Node field) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the cursor in the field", () -> field.equals(field.getScene().getFocusOwner()));
     }
 
     private void thenTheChosenSectionIsTheLast() throws Exception {
-        FxTesting.await("the last section chosen", () -> {
+        FxTesting.assertEventually("the last section chosen", () -> {
             List<SettingsIndex.Entry> sections = this.screen.index().shown();
             var chosen = ((javafx.scene.control.ListView<?>)
                             this.screen.index().view().getChildren().getLast())

@@ -444,7 +444,7 @@ class DesktopAppFlowsTest {
     }
 
     private void thenTheWindowTellsTheListsRefusedAndTheBadAddress() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the lists refused and the bad address",
                 () -> messages().stream()
                                         .filter(m -> m.contains("local or private"))
@@ -496,7 +496,8 @@ class DesktopAppFlowsTest {
     }
 
     private void thenTheModelHasDownloads(int count) throws Exception {
-        FxTesting.await("the downloads", () -> this.app.model().downloads().size() == count);
+        FxTesting.assertEventually(
+                "the downloads", () -> this.app.model().downloads().size() == count);
     }
 
     private void thenTheUserWasToldWhileHidden(String... messages) {
@@ -516,7 +517,7 @@ class DesktopAppFlowsTest {
     }
 
     private void thenTheWindowTells(String... messages) throws Exception {
-        FxTesting.await("the messages", () -> messages().containsAll(List.of(messages)));
+        FxTesting.assertEventually("the messages", () -> messages().containsAll(List.of(messages)));
     }
 
     private void thenTheEngineIsStopped() {

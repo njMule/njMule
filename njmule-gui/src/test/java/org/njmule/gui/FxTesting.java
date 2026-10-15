@@ -249,6 +249,11 @@ public final class FxTesting {
         }
     }
 
+    /** Fails unless {@code condition}, checked on the FX thread, comes to hold within the wait of {@link #await}. */
+    public static void assertEventually(String what, BooleanSupplier condition) throws Exception {
+        await(what, condition);
+    }
+
     /** An engine in {@code root} on free ports, without Kad until asked: never on the ports of a running njMule. */
     public static NjMuleEngine engine(Path root) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(root, true);

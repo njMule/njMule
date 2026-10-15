@@ -79,7 +79,7 @@ class DropLinksTest {
     }
 
     private void thenTheDownloadsAre(String... names) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the downloads", () -> this.test.engine.downloads().join().size() == names.length);
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
                 .extracting(DownloadInfo::name)

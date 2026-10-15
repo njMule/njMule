@@ -201,7 +201,7 @@ class TransfersViewTest {
     }
 
     private void thenTheSourcesShownAre(int count) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the sources shown", () -> this.screen.sources().getItems().size() == count);
     }
 

@@ -683,15 +683,16 @@ class TransfersMenusTest {
     }
 
     private void thenTheEngineIsAskedTo(String... asked) throws Exception {
-        FxTesting.await("the engine asked", () -> this.calls.containsAll(List.of(asked)));
+        FxTesting.assertEventually("the engine asked", () -> this.calls.containsAll(List.of(asked)));
     }
 
     private void thenTheUserIsTold(String... messages) throws Exception {
-        FxTesting.await("the user told", () -> this.test.told.containsAll(List.of(messages)));
+        FxTesting.assertEventually("the user told", () -> this.test.told.containsAll(List.of(messages)));
     }
 
     private void thenTheDownloadTakesA4afSourcesByItself() throws Exception {
-        FxTesting.await("taking A4AF sources", () -> first(this.transfers).autoSwap());
+        FxTesting.assertEventually(
+                "taking A4AF sources", () -> first(this.transfers).autoSwap());
         FxTesting.onFx(() -> {
             ContextMenu menu = this.transfers.downloads().getContextMenu();
             menu.getOnShowing().handle(null);
@@ -702,7 +703,7 @@ class TransfersMenusTest {
     }
 
     private void thenTheSourcesShow(String... texts) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the A4AF texts",
                 () -> FxTesting.cellTexts(this.transfers.sources()).containsAll(List.of(texts)));
         FxTesting.onFx(() -> {
@@ -712,7 +713,7 @@ class TransfersMenusTest {
     }
 
     private void thenAWindowShows(String title) throws Exception {
-        FxTesting.await("the window " + title, () -> window(title) != null);
+        FxTesting.assertEventually("the window " + title, () -> window(title) != null);
     }
 
     private void thenNoExceptionOccurred() {
@@ -720,7 +721,7 @@ class TransfersMenusTest {
     }
 
     private void thenTheUserIsToldTimes(int count) throws Exception {
-        FxTesting.await("told", () -> this.test.told.size() == count);
+        FxTesting.assertEventually("told", () -> this.test.told.size() == count);
     }
 
     private void thenNothingIsAt(String name) {
@@ -728,7 +729,7 @@ class TransfersMenusTest {
     }
 
     private void thenAllTheDownloadsShowAgain(int count) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "all shown again", () -> this.transfers.downloads().getItems().size() == count);
     }
 

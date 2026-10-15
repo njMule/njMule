@@ -92,7 +92,7 @@ class SettingsApplyTest {
     }
 
     private void thenTheFieldHasTheCursorAndIsInSight(TextField field) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the cursor in the field", () -> field.equals(field.getScene().getFocusOwner()));
         assertThat(FxTesting.onFx(() -> this.screen.scrollPane().getVvalue())).isLessThan(0.5);
     }

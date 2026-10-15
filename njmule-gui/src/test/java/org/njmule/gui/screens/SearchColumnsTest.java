@@ -198,7 +198,8 @@ class SearchColumnsTest {
 
     private void thenTheCellsShow(String... texts) throws Exception {
         List<String> expected = List.of(texts);
-        FxTesting.await("the cells", () -> FxTesting.cellTexts(this.table).containsAll(expected));
+        FxTesting.assertEventually(
+                "the cells", () -> FxTesting.cellTexts(this.table).containsAll(expected));
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.table))).containsAll(expected);
     }
 

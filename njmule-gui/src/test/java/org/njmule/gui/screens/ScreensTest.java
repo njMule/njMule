@@ -1286,7 +1286,7 @@ class ScreensTest {
     }
 
     private void thenTheDownloadRowsBecome(int count) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 count + " download rows",
                 () -> this.transfers.downloads().getItems().size() == count);
     }
@@ -1301,13 +1301,13 @@ class ScreensTest {
     }
 
     private void thenTheDownloadBecomes(DownloadInfo.Status status) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 status.toString(),
                 () -> this.transfers.downloads().getItems().getFirst().get().status() == status);
     }
 
     private void thenTheDownloadPriorityBecomes(DownloadPriority priority) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 priority + " priority",
                 () -> this.transfers.downloads().getItems().getFirst().get().priority() == priority);
     }
@@ -1329,7 +1329,7 @@ class ScreensTest {
     }
 
     private void thenTheCategoryShownHasNoDownload() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "out of the category",
                 () -> this.transfers.downloads().getItems().isEmpty());
         FxTesting.onFx(() -> {
@@ -1355,15 +1355,16 @@ class ScreensTest {
     }
 
     private void thenTheUserIsToldWhy() throws Exception {
-        FxTesting.await("a refusal", () -> !this.test.told.isEmpty());
+        FxTesting.assertEventually("a refusal", () -> !this.test.told.isEmpty());
     }
 
     private void thenTheUserIsToldAtLeast(int messages) throws Exception {
-        FxTesting.await(messages + " messages", () -> this.test.told.size() >= messages);
+        FxTesting.assertEventually(messages + " messages", () -> this.test.told.size() >= messages);
     }
 
     private void thenTheUserIsToldTheAddressIsLocalOrPrivate() throws Exception {
-        FxTesting.await("refused", () -> this.test.told.stream().anyMatch(m -> m.contains("local or private")));
+        FxTesting.assertEventually(
+                "refused", () -> this.test.told.stream().anyMatch(m -> m.contains("local or private")));
     }
 
     private void thenNoIpFilterAddressIsRemembered() {
@@ -1387,7 +1388,7 @@ class ScreensTest {
     }
 
     private void thenTheServerRowsBecome(int count) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 count + " servers", () -> this.servers.table().getItems().size() == count);
     }
 
@@ -1421,7 +1422,7 @@ class ScreensTest {
 
     private void thenTheFirstServerBecomesStaticWith(ServerInfo.Priority priority) throws Exception {
         String firstAddress = firstServerAddress();
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "static and " + priority,
                 () -> this.servers.table().getItems().stream()
                         .map(r -> r.get())
@@ -1456,7 +1457,8 @@ class ScreensTest {
     }
 
     private void thenTheSearchTabsBecome(int count) throws Exception {
-        FxTesting.await("the kept tab", () -> this.search.tabs().getTabs().size() == count);
+        FxTesting.assertEventually(
+                "the kept tab", () -> this.search.tabs().getTabs().size() == count);
     }
 
     private void thenTheFirstSearchTabReads(String title) throws Exception {
@@ -1471,7 +1473,7 @@ class ScreensTest {
     }
 
     private void thenTheFirstSharedFilePriorityBecomes(UploadPriority priority) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the " + priority + " priority",
                 () -> this.shared.table().getItems().getFirst().get().priority() == priority);
     }
@@ -1482,7 +1484,7 @@ class ScreensTest {
     }
 
     private void thenTheKadButtonBecomes(String text) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the button follows",
                 () -> this.kadScreen.connectButton().getText().equals(text));
     }
@@ -1512,7 +1514,7 @@ class ScreensTest {
     }
 
     private void thenTheDownloadedTotalReads(String text) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "totals", () -> this.statistics.downloadedLabel().getText().equals(text));
         assertThat(FxTesting.onFx(() -> this.statistics.downloadedLabel().getText()))
                 .isEqualTo(text);
@@ -1563,7 +1565,8 @@ class ScreensTest {
     }
 
     private void thenARuleApplies() throws Exception {
-        FxTesting.await("the rule applies", () -> this.test.engine.activeRule().isPresent());
+        FxTesting.assertEventually(
+                "the rule applies", () -> this.test.engine.activeRule().isPresent());
     }
 
     private void thenTheFirstRuleIsNamed(String name) {
@@ -1571,7 +1574,8 @@ class ScreensTest {
     }
 
     private void thenTheActiveRuleShows(String text) throws Exception {
-        FxTesting.await("shown", () -> this.scheduler.activeLabel().getText().equals(text));
+        FxTesting.assertEventually(
+                "shown", () -> this.scheduler.activeLabel().getText().equals(text));
     }
 
     private void thenNoRuleIsListed() throws Exception {
@@ -1580,7 +1584,7 @@ class ScreensTest {
     }
 
     private void thenTheSettingsAreSaved() throws Exception {
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
+        FxTesting.assertEventually("saved", () -> this.test.told.contains("Settings saved."));
     }
 
     private void thenTheNickIs(String nick) {
@@ -1598,12 +1602,12 @@ class ScreensTest {
     }
 
     private void thenTheProxyHostBecomes(String host) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the proxy", () -> this.test.engine.preferences().proxy().host().equals(host));
     }
 
     private void thenNoProxyIsUsed() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "no proxy", () -> !this.test.engine.preferences().proxy().isEnabled());
     }
 

@@ -189,7 +189,8 @@ class FirstRunWizardTest {
     }
 
     private void thenTheNickBecomes(String nick) throws Exception {
-        FxTesting.await("the nick", () -> this.test.engine.preferences().nick().equals(nick));
+        FxTesting.assertEventually(
+                "the nick", () -> this.test.engine.preferences().nick().equals(nick));
     }
 
     private void thenTheNickStays(String nick) {
@@ -222,7 +223,7 @@ class FirstRunWizardTest {
     }
 
     private void thenTheFolderIsShared() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the shared folder",
                 () -> this.test.engine.sharedDirectories().join().stream()
                         .map(SharedDirectory::path)

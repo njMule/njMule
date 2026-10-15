@@ -163,7 +163,7 @@ class TopBarTest {
 
     private void thenTheLogIsInFront() throws Exception {
         String log = this.test.gui.t("IDS_SV_LOG");
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the log in front",
                 () -> this.window.root().lookupAll(".tab-pane").stream()
                         .map(TabPane.class::cast)
@@ -178,7 +178,7 @@ class TopBarTest {
     }
 
     private void thenTheLimitsShow(int down, int up) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the limits",
                 () -> javafx.stage.Window.getWindows().stream()
                         .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)

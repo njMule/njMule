@@ -112,11 +112,11 @@ class ImportAutostartTest {
     }
 
     private void thenNjMuleStartsAtLogin() throws Exception {
-        FxTesting.await("the start at login", () -> this.system.on && this.system.changes.get() == 1);
+        FxTesting.assertEventually("the start at login", () -> this.system.on && this.system.changes.get() == 1);
     }
 
     private void thenTheUserIsTold(String text) throws Exception {
-        FxTesting.await("the message", () -> this.test.told.stream().anyMatch(m -> m.startsWith(text)));
+        FxTesting.assertEventually("the message", () -> this.test.told.stream().anyMatch(m -> m.startsWith(text)));
     }
 
     private void thenTheSystemWasNotChanged() throws Exception {

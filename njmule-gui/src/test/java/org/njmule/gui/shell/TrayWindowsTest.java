@@ -469,11 +469,11 @@ class TrayWindowsTest {
     }
 
     private void thenTheDownloadLimitBecomes(int kib) throws Exception {
-        FxTesting.await("the download limit", () -> preferences().maxDownloadKiBps() == kib);
+        FxTesting.assertEventually("the download limit", () -> preferences().maxDownloadKiBps() == kib);
     }
 
     private void thenBothLimitsBecomeTheLineCapacities() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the full limits",
                 () -> preferences().maxDownloadKiBps() == preferences().downloadCapacityKiBps()
                         && preferences().maxUploadKiBps() == preferences().uploadCapacityKiBps());

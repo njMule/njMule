@@ -706,7 +706,7 @@ class SearchResultsTest {
 
     private void thenTheEngineIsAskedFor(String... expected) throws Exception {
         List<String> all = List.of(expected);
-        FxTesting.await(String.join(" and ", all), () -> this.calls.containsAll(all));
+        FxTesting.assertEventually(String.join(" and ", all), () -> this.calls.containsAll(all));
     }
 
     private void thenTheEngineWasAskedNothing() {
@@ -730,12 +730,13 @@ class SearchResultsTest {
     }
 
     private void thenOneResultIsMarkedAsSpam() throws Exception {
-        FxTesting.await("marked as spam", () -> table().lookupAll(".known-spam").size() == 1);
+        FxTesting.assertEventually(
+                "marked as spam", () -> table().lookupAll(".known-spam").size() == 1);
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains("Spam");
     }
 
     private void thenNoResultIsMarkedAsSpam() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "not spam any more", () -> table().lookupAll(".known-spam").isEmpty());
     }
 
@@ -751,7 +752,7 @@ class SearchResultsTest {
     }
 
     private void thenTheResultsDownloadingAre(int count) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 count + " downloading",
                 () -> table().lookupAll(".known-downloading").size() == count);
     }
@@ -763,7 +764,7 @@ class SearchResultsTest {
     }
 
     private void thenTheKnownFilesAreMarked() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the known files",
                 () -> table().lookupAll(".known-shared").size() == 1
                         && table().lookupAll(".known-downloaded").size() == 1
@@ -775,7 +776,7 @@ class SearchResultsTest {
     }
 
     private void thenARelatedTabOpens() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the related tab", () -> this.shownScreen.tabs().getTabs().size() == 2);
     }
 

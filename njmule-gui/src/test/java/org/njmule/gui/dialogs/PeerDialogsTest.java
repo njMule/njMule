@@ -270,11 +270,11 @@ class PeerDialogsTest {
     }
 
     private void thenTheStateBecomes(String state) throws Exception {
-        FxTesting.await("told", () -> state(this.files).equals(state));
+        FxTesting.assertEventually("told", () -> state(this.files).equals(state));
     }
 
     private void thenTheCommentDialogCloses() throws Exception {
-        FxTesting.await("closed", () -> !this.comment.stage().isShowing());
+        FxTesting.assertEventually("closed", () -> !this.comment.stage().isShowing());
     }
 
     private ClientFilesDialog browse() throws Exception {

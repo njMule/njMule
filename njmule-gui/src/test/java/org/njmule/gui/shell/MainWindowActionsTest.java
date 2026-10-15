@@ -385,7 +385,7 @@ class MainWindowActionsTest {
     }
 
     private void thenTheImportAndAboutWindowsShow() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the import and about windows",
                 () -> titles().containsAll(
                                 List.of(this.test.gui.t("nj.import.title"), this.test.gui.t("nj.about.title"))));

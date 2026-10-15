@@ -281,7 +281,8 @@ class SettingsScreenTest {
     }
 
     private void thenTheSystemStartsNjMuleAtLogin(boolean on) throws Exception {
-        FxTesting.await("the system was changed", () -> this.system.on == on && this.system.changes.get() == 1);
+        FxTesting.assertEventually(
+                "the system was changed", () -> this.system.on == on && this.system.changes.get() == 1);
     }
 
     private void thenTheSystemWasNotChanged() throws Exception {
@@ -329,7 +330,7 @@ class SettingsScreenTest {
     }
 
     private void thenTheEnginePlays(Path file) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "saved",
                 () -> this.test.engine.preferences().notificationSound()
                         && this.test
@@ -344,13 +345,13 @@ class SettingsScreenTest {
     }
 
     private void thenTheEngineRunsOn(EventCommands.Event event, EventCommands.Command expected) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "saved",
                 () -> this.test.engine.preferences().eventCommands().get(event).equals(expected));
     }
 
     private void thenTheEngineSavesTheNick(String nick) throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the nick saved", () -> this.test.engine.preferences().nick().equals(nick));
     }
 

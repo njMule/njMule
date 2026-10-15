@@ -434,7 +434,7 @@ class ServersMenusTest {
     }
 
     private void thenTheUserIsTold(String message) throws Exception {
-        FxTesting.await("the list fetched", () -> this.test.told.contains(message));
+        FxTesting.assertEventually("the list fetched", () -> this.test.told.contains(message));
     }
 
     private void thenTheServerListAddressesRememberedAre(String... addresses) {
@@ -461,7 +461,7 @@ class ServersMenusTest {
 
     private void thenTheServerInfoShowsTheSessions() throws Exception {
         ListView<?> info = serverInfo();
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the sessions",
                 () -> FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Obfuscated connection established"))
                         && FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Connection established"))
@@ -474,7 +474,8 @@ class ServersMenusTest {
     }
 
     private void thenTheServerInfoIsEmpty() throws Exception {
-        FxTesting.await("no server info", () -> this.test.model.serverInfo().isEmpty());
+        FxTesting.assertEventually(
+                "no server info", () -> this.test.model.serverInfo().isEmpty());
     }
 
     private void thenTheLogIsKept() {

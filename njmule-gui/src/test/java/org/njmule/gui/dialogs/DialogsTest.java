@@ -333,11 +333,13 @@ class DialogsTest {
     }
 
     private void thenTheModelHasNoCategory() throws Exception {
-        FxTesting.await("no category", () -> this.test.gui.model().categories().isEmpty());
+        FxTesting.assertEventually(
+                "no category", () -> this.test.gui.model().categories().isEmpty());
     }
 
     private void thenTheDialogListsNoFolder() throws Exception {
-        FxTesting.await("no folder", () -> this.sharedFolders.list().getItems().isEmpty());
+        FxTesting.assertEventually(
+                "no folder", () -> this.sharedFolders.list().getItems().isEmpty());
     }
 
     private void thenTheUserWasToldSomethingStartingWith(String start) {
@@ -349,7 +351,8 @@ class DialogsTest {
     }
 
     private void thenTheCheckCanBeRunAgain() throws Exception {
-        FxTesting.await("the failure", () -> !this.importDialog.checkButton().isDisabled());
+        FxTesting.assertEventually(
+                "the failure", () -> !this.importDialog.checkButton().isDisabled());
     }
 
     private void thenTheSummaryContains(String text) throws Exception {

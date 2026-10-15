@@ -193,7 +193,7 @@ class OnlineTest {
     }
 
     private void thenTheModelConnectsAgain() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "connected again",
                 () -> this.test.model.connectionProperty().get() != EngineModel.Connection.DISCONNECTED);
     }

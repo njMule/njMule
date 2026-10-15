@@ -314,12 +314,12 @@ class SharedMenusTest {
     }
 
     private void thenTheOnlyRenameIs(String rename) throws Exception {
-        FxTesting.await("renamed", () -> this.calls.contains(rename));
+        FxTesting.assertEventually("renamed", () -> this.calls.contains(rename));
         assertThat(this.calls).as("the same name, or cancelled").containsExactly(rename);
     }
 
     private void thenTheWindowShows(String title) throws Exception {
-        FxTesting.await("the window " + title, () -> window(title) != null);
+        FxTesting.assertEventually("the window " + title, () -> window(title) != null);
     }
 
     private void thenTheLabelsInclude(String text) throws Exception {
