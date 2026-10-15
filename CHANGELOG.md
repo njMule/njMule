@@ -367,6 +367,8 @@ All notable changes to this project are documented here. The format follows
 - The search parameters fold behind a button that counts those in use.
 - The options have an index of their sections and a box that finds an option by its words.
 - The rate graph has a scale; chat tabs with unread messages are marked.
+- What was done with a search result (downloading, shared, downloaded, cancelled, spam) shows with
+  an icon besides its tint and words.
 - eD2K links dropped on the window become downloads; the shared folders window can share a folder.
 - Ctrl+K opens a command palette: typing finds a place or a command of the menus, searches the
   network for the words typed, or downloads the eD2K links pasted.

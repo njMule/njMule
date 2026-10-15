@@ -64,6 +64,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.material2.Material2AL;
 import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
@@ -490,7 +491,7 @@ public final class SearchScreen implements Screen {
         TableView<LiveList.Row<SearchResult>> table =
                 Fx.table(search.results(), this.gui.t("nj.search.waiting"), shown);
         TableColumn<LiveList.Row<SearchResult>, Known> known =
-                Fx.column(this.gui.t("nj.search.known"), 110, r -> this.known(r));
+                Fx.column(this.gui.t("nj.search.known"), 130, r -> this.known(r));
         known.setCellFactory(c -> new KnownCell());
         TableColumn<LiveList.Row<SearchResult>, String> fileId = Fx.leftToRight(Fx.column(
                 this.gui.t("IDS_FILEID"), 220, (SearchResult r) -> r.hash().toHex()));
@@ -798,7 +799,7 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** What we did with the file, on a tint of its own, with the text, so colour is not the only cue. */
+    /** What we did with the file, on a tint of its own, with an icon and the text, so colour is not the only cue. */
     private final class KnownCell extends TableCell<LiveList.Row<SearchResult>, Known> {
         @Override
         protected void updateItem(Known item, boolean empty) {
@@ -808,8 +809,19 @@ public final class SearchScreen implements Screen {
                             "known-downloading", "known-shared", "known-downloaded", "known-cancelled", "known-spam");
             if (empty || item == null || item == Known.NONE) {
                 this.setText(null);
+                this.setGraphic(null);
                 return;
             }
+            FontIcon icon = Fx.icon(
+                    switch (item) {
+                        case DOWNLOADING -> Material2AL.CLOUD_DOWNLOAD;
+                        case SHARED -> Material2AL.FOLDER_SHARED;
+                        case DOWNLOADED -> Material2AL.CHECK_CIRCLE_OUTLINE;
+                        case CANCELLED -> Material2AL.BLOCK;
+                        case SPAM, NONE -> Material2MZ.REPORT;
+                    });
+            icon.getStyleClass().add("known-icon");
+            this.setGraphic(icon);
             this.setText(SearchScreen.this.gui.t(
                     switch (item) {
                         case DOWNLOADING -> "IDS_DOWNLOADING";

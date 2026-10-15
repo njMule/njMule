@@ -701,6 +701,10 @@
     -fx-text-fill: -color-fg-default;
 }
 
+.table-cell .known-icon {
+    -fx-icon-color: -color-fg-default;
+}
+
 /* What a download does, told by an icon beside its words: green while data comes, amber when no source is
    known, red for a problem, muted otherwise. */
 .download-state {
