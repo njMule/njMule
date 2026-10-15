@@ -1142,7 +1142,7 @@ class CaptureTour {
                 ? "x"
                 : text.toLowerCase(Locale.ROOT)
                         .replaceAll("[^\\p{L}\\p{N}]+", "-")
-                        .replaceAll("(^-+|-+$)", "");
+                        .replaceAll("^-|-$", "");
         return s.isEmpty() ? "x" : s.length() > 40 ? s.substring(0, 40) : s;
     }
 
