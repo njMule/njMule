@@ -17,7 +17,6 @@
 package org.njmule.core.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.common.base.Ticker;
 import java.time.Duration;
@@ -26,7 +25,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.persist.format.IpFilterDat;
 import org.njmule.core.security.ConnectionGuard.Admission;
 import org.njmule.core.security.ConnectionGuard.Limits;
@@ -37,149 +39,164 @@ class ConnectionGuardTest {
 
     private static final int PEER = Ipv4.parse("1.2.3.4");
     private static final int OTHER = Ipv4.parse("5.6.7.8");
+    private static final int SERVER = Ipv4.parse("7.7.7.7");
 
     private final FakeTicker ticker = new FakeTicker();
     private final List<ConnectionGuard.Permit> ours = new ArrayList<>();
+    private final List<ConnectionGuard.Permit> permits = new ArrayList<>();
+    private final Set<Integer> banned = new HashSet<>();
+    private final AtomicReference<Limits> settings = new AtomicReference<>();
     private ConnectionGuard guard;
     private Admission admission;
     private int admitted;
+    private Duration window;
+    private Limits madeLimits;
+    private RuntimeException exception;
 
     @Test
-    void filteredAddressesAreRefusedFirst() {
-        IpFilter filter = IpFilter.of(List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")), IpFilter.DEFAULT_LEVEL);
-        ConnectionGuard guard = new ConnectionGuard(() -> filter, Limits.DEFAULT, this.ticker);
+    void shouldRefuseFilteredAddressesFirst() {
+        givenAGuardFiltering(PEER);
 
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
-        assertThat(guard.admit(OTHER)).isInstanceOf(Admission.Admitted.class);
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsRefused(Refusal.FILTERED);
     }
 
     @Test
-    void capsConnectionsPerAddressAndInTotalUntilPermitsAreReleased() {
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, new Limits(3, 2, 100, Duration.ofSeconds(5)), this.ticker);
+    void shouldAdmitAddressesTheFilterLetsThrough() {
+        givenAGuardFiltering(PEER);
 
-        ConnectionGuard.Permit first = permit(guard.admit(PEER));
-        permit(guard.admit(PEER));
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
-        permit(guard.admit(OTHER));
-        assertThat(guard.admit(Ipv4.parse("9.9.9.9"))).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS));
+        whenAConnectionComesFrom(OTHER);
 
-        first.close();
-        first.close();
-        assertThat(guard.openConnections()).isEqualTo(2);
-        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+        thenItIsAdmitted();
     }
 
     @Test
-    void readsTheLimitsAtEachAdmission() {
-        AtomicReference<Limits> limits = new AtomicReference<>(new Limits(1, 5, 100, Duration.ofSeconds(5)));
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, ip -> false, ip -> false, limits::get, this.ticker);
+    void shouldCapConnectionsPerAddressAndInTotalUntilPermitsAreReleased() {
+        givenAGuard(new Limits(3, 2, 100, Duration.ofSeconds(5)));
+        givenAConnectionFrom(PEER);
+        givenAConnectionFrom(PEER);
+        givenTheGuardRefuses(PEER, Refusal.TOO_MANY_FROM_ADDRESS);
+        givenAConnectionFrom(OTHER);
+        givenTheGuardRefuses(Ipv4.parse("9.9.9.9"), Refusal.TOO_MANY_CONNECTIONS);
+        givenTheFirstConnectionIsClosedTwice();
+        givenTheOpenConnectionsAre(2);
 
-        permit(guard.admit(PEER));
-        assertThat(guard.admit(OTHER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS));
-        limits.set(new Limits(2, 5, 100, Duration.ofSeconds(5)));
-        assertThat(guard.admit(OTHER)).as("the settings changed").isInstanceOf(Admission.Admitted.class);
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsAdmitted();
     }
 
     @Test
-    void theServerTestingUsPassesTheRateAndTotalLimitsButNotTheFilter() {
-        int server = Ipv4.parse("7.7.7.7");
-        IpFilter filter = IpFilter.of(List.of(new IpFilterDat.Range(PEER, PEER, 0, "test")), IpFilter.DEFAULT_LEVEL);
-        ConnectionGuard guard = new ConnectionGuard(
-                () -> filter,
-                ip -> ip == server || ip == PEER,
-                new Limits(1, 5, 1, Duration.ofSeconds(5)),
-                this.ticker);
+    void shouldReadTheLimitsAtEachAdmission() {
+        givenAGuardReadingTheLimitsFromTheSettings(new Limits(1, 5, 100, Duration.ofSeconds(5)));
+        givenAConnectionFrom(PEER);
+        givenTheGuardRefuses(OTHER, Refusal.TOO_MANY_CONNECTIONS);
+        givenTheSettingsChangeTo(new Limits(2, 5, 100, Duration.ofSeconds(5)));
 
-        permit(guard.admit(OTHER));
-        assertThat(guard.admit(Ipv4.parse("9.9.9.9"))).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
-        assertThat(guard.admit(server)).isInstanceOf(Admission.Admitted.class);
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.FILTERED));
+        whenAConnectionComesFrom(OTHER);
+
+        thenItIsAdmitted("the settings changed");
     }
 
     @Test
-    void refusesBannedAddressesAsLongAsTheBanLasts() {
-        Set<Integer> banned = new HashSet<>(Set.of(PEER));
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, ip -> false, banned::contains, Limits.DEFAULT, this.ticker);
+    void shouldLetTheServerTestingUsPassTheRateAndTotalLimitsButNotTheFilter() {
+        givenAGuardFilteringButExempting(PEER, Set.of(SERVER, PEER), new Limits(1, 5, 1, Duration.ofSeconds(5)));
+        givenAConnectionFrom(OTHER);
+        givenTheGuardRefuses(Ipv4.parse("9.9.9.9"), Refusal.ACCEPT_RATE);
+        givenAConnectionFrom(SERVER);
 
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.BANNED));
-        permit(guard.admit(OTHER));
-        banned.clear();
-        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsRefused(Refusal.FILTERED);
     }
 
     @Test
-    void limitsTheAcceptRateOverASlidingWindow() {
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, new Limits(100, 100, 2, Duration.ofSeconds(5)), this.ticker);
+    void shouldRefuseBannedAddressesAsLongAsTheBanLasts() {
+        givenAGuardBanning(PEER);
+        givenTheGuardRefuses(PEER, Refusal.BANNED);
+        givenAConnectionFrom(OTHER);
+        givenTheBanEnds();
 
-        permit(guard.admit(PEER)).close();
-        this.ticker.advance(Duration.ofSeconds(3));
-        permit(guard.admit(PEER)).close();
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
+        whenAConnectionComesFrom(PEER);
 
-        this.ticker.advance(Duration.ofSeconds(2));
-        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+        thenItIsAdmitted();
     }
 
     @Test
-    void refusalsDoNotUseTheRateAndPermitsCloseOnce() {
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, new Limits(100, 1, 2, Duration.ofSeconds(5)), this.ticker);
+    void shouldLimitTheAcceptRateOverASlidingWindow() {
+        givenAGuard(new Limits(100, 100, 2, Duration.ofSeconds(5)));
+        givenAClosedConnectionFrom(PEER);
+        givenTimePasses(Duration.ofSeconds(3));
+        givenAClosedConnectionFrom(PEER);
+        givenTheGuardRefuses(PEER, Refusal.ACCEPT_RATE);
+        givenTimePasses(Duration.ofSeconds(2));
 
-        ConnectionGuard.Permit held = permit(guard.admit(PEER));
-        for (int i = 0; i < 5; i++) {
-            assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
-        }
-        ConnectionGuard.Permit other = permit(guard.admit(OTHER));
-        held.close();
-        held.close();
-        assertThat(guard.openConnections()).isEqualTo(1);
-        assertThat(guard.admit(PEER))
-                .as("closing a permit gives no accept back")
-                .isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
-        other.close();
-        assertThat(guard.openConnections()).isZero();
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsAdmitted();
     }
 
     @Test
-    void anAcceptLeavesTheWindowExactlyWhenItEnds() {
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, new Limits(100, 100, 1, Duration.ofSeconds(5)), this.ticker);
+    void shouldNotCountRefusalsInTheRateAndClosePermitsOnce() {
+        givenAGuard(new Limits(100, 1, 2, Duration.ofSeconds(5)));
+        givenAConnectionFrom(PEER);
+        givenTheGuardRefusesEveryTime(PEER, 5, Refusal.TOO_MANY_FROM_ADDRESS);
+        givenAConnectionFrom(OTHER);
+        givenTheFirstConnectionIsClosedTwice();
+        givenTheOpenConnectionsAre(1);
+        givenTheGuardRefuses(PEER, Refusal.ACCEPT_RATE, "closing a permit gives no accept back");
 
-        permit(guard.admit(PEER)).close();
-        this.ticker.advance(Duration.ofSeconds(5).minusNanos(1));
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.ACCEPT_RATE));
-        this.ticker.advance(Duration.ofNanos(1));
-        assertThat(guard.admit(PEER)).isInstanceOf(Admission.Admitted.class);
+        whenTheLastConnectionIsClosed();
+
+        thenNoConnectionIsOpen();
     }
 
     @Test
-    void exemptAddressesStillHaveTheirPerAddressCap() {
-        ConnectionGuard guard = new ConnectionGuard(
-                IpFilter::empty,
-                ip -> ip == PEER,
-                ip -> false,
-                new Limits(1, 2, 1, Duration.ofSeconds(5)),
-                this.ticker);
+    void shouldLetAnAcceptLeaveTheWindowExactlyWhenItEnds() {
+        givenAGuard(new Limits(100, 100, 1, Duration.ofSeconds(5)));
+        givenAClosedConnectionFrom(PEER);
+        givenTimePasses(Duration.ofSeconds(5).minusNanos(1));
+        givenTheGuardRefuses(PEER, Refusal.ACCEPT_RATE);
+        givenTimePasses(Duration.ofNanos(1));
 
-        permit(guard.admit(OTHER));
-        permit(guard.admit(PEER));
-        permit(guard.admit(PEER));
-        assertThat(guard.admit(PEER)).isEqualTo(new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS));
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsAdmitted();
     }
 
     @Test
-    void theRateWindowMustBeAPositiveSpanOfTime() {
-        for (Duration window : new Duration[] {Duration.ZERO, Duration.ofSeconds(-5), Duration.ofDays(365 * 300)}) {
-            assertThatThrownBy(() -> new Limits(100, 100, 2, window))
-                    .as("%s", window)
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-        assertThat(new Limits(100, 100, 2, Limits.MAX_RATE_WINDOW).rateWindow()).isEqualTo(Limits.MAX_RATE_WINDOW);
-        assertThat(new Limits(100, 100, 2, Duration.ofNanos(1)).rateWindow()).isEqualTo(Duration.ofNanos(1));
+    void shouldStillCapTheConnectionsOfAnExemptAddress() {
+        givenAGuardExempting(PEER, new Limits(1, 2, 1, Duration.ofSeconds(5)));
+        givenAConnectionFrom(OTHER);
+        givenAConnectionFrom(PEER);
+        givenAConnectionFrom(PEER);
+
+        whenAConnectionComesFrom(PEER);
+
+        thenItIsRefused(Refusal.TOO_MANY_FROM_ADDRESS);
+    }
+
+    @ParameterizedTest
+    @MethodSource("windowsThatAreNotAPositiveSpanOfTime")
+    void shouldRefuseARateWindowThatIsNotAPositiveSpanOfTime(Duration rateWindow) {
+        whenLimitsAreMadeWithTheRateWindow(rateWindow);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldAcceptTheLongestRateWindow() {
+        whenLimitsAreMadeWithTheRateWindow(Limits.MAX_RATE_WINDOW);
+
+        thenTheRateWindowIs(Limits.MAX_RATE_WINDOW);
+    }
+
+    @Test
+    void shouldAcceptARateWindowOfOneNanosecond() {
+        whenLimitsAreMadeWithTheRateWindow(Duration.ofNanos(1));
+
+        thenTheRateWindowIs(Duration.ofNanos(1));
     }
 
     @Test
@@ -209,6 +226,77 @@ class ConnectionGuardTest {
         this.guard = new ConnectionGuard(IpFilter::empty, limits, this.ticker);
     }
 
+    private void givenAGuardFiltering(int ip) {
+        IpFilter filter = IpFilter.of(List.of(new IpFilterDat.Range(ip, ip, 0, "test")), IpFilter.DEFAULT_LEVEL);
+        this.guard = new ConnectionGuard(() -> filter, Limits.DEFAULT, this.ticker);
+    }
+
+    private void givenAGuardFilteringButExempting(int filtered, Set<Integer> exempt, Limits limits) {
+        IpFilter filter =
+                IpFilter.of(List.of(new IpFilterDat.Range(filtered, filtered, 0, "test")), IpFilter.DEFAULT_LEVEL);
+        this.guard = new ConnectionGuard(() -> filter, exempt::contains, limits, this.ticker);
+    }
+
+    private void givenAGuardExempting(int ip, Limits limits) {
+        this.guard =
+                new ConnectionGuard(IpFilter::empty, address -> address == ip, address -> false, limits, this.ticker);
+    }
+
+    private void givenAGuardBanning(int ip) {
+        this.banned.add(ip);
+        this.guard = new ConnectionGuard(
+                IpFilter::empty, address -> false, this.banned::contains, Limits.DEFAULT, this.ticker);
+    }
+
+    private void givenAGuardReadingTheLimitsFromTheSettings(Limits limits) {
+        this.settings.set(limits);
+        this.guard = new ConnectionGuard(
+                IpFilter::empty, address -> false, address -> false, this.settings::get, this.ticker);
+    }
+
+    private void givenTheSettingsChangeTo(Limits limits) {
+        this.settings.set(limits);
+    }
+
+    private void givenTheBanEnds() {
+        this.banned.clear();
+    }
+
+    private void givenTimePasses(Duration duration) {
+        this.ticker.advance(duration);
+    }
+
+    private void givenAConnectionFrom(int ip) {
+        this.permits.add(permit(this.guard.admit(ip)));
+    }
+
+    private void givenAClosedConnectionFrom(int ip) {
+        permit(this.guard.admit(ip)).close();
+    }
+
+    private void givenTheFirstConnectionIsClosedTwice() {
+        this.permits.getFirst().close();
+        this.permits.getFirst().close();
+    }
+
+    private void givenTheGuardRefuses(int ip, Refusal reason) {
+        assertThat(this.guard.admit(ip)).isEqualTo(new Admission.Refused(reason));
+    }
+
+    private void givenTheGuardRefuses(int ip, Refusal reason, String why) {
+        assertThat(this.guard.admit(ip)).as(why).isEqualTo(new Admission.Refused(reason));
+    }
+
+    private void givenTheGuardRefusesEveryTime(int ip, int times, Refusal reason) {
+        for (int i = 0; i < times; i++) {
+            assertThat(this.guard.admit(ip)).isEqualTo(new Admission.Refused(reason));
+        }
+    }
+
+    private void givenTheOpenConnectionsAre(int count) {
+        assertThat(this.guard.openConnections()).isEqualTo(count);
+    }
+
     private void givenAnAddressThatOpenedAndClosedConnectionsInARow(int ip, int times) {
         for (int i = 0; i < times; i++) {
             if (this.guard.admit(ip) instanceof Admission.Admitted(ConnectionGuard.Permit permit)) {
@@ -228,8 +316,50 @@ class ConnectionGuardTest {
         this.admission = this.guard.admit(ip);
     }
 
+    private void whenAConnectionComesFrom(int ip) {
+        this.admission = this.guard.admit(ip);
+    }
+
+    private void whenTheLastConnectionIsClosed() {
+        this.permits.getLast().close();
+    }
+
+    private void whenLimitsAreMadeWithTheRateWindow(Duration rateWindow) {
+        this.window = rateWindow;
+        try {
+            this.madeLimits = new Limits(100, 100, 2, rateWindow);
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
+    }
+
     private void thenTheFirstAddressGotOnlyItsShare(int share) {
         assertThat(this.admitted).isEqualTo(share);
+    }
+
+    private void thenItIsAdmitted() {
+        assertThat(this.admission).isInstanceOf(Admission.Admitted.class);
+    }
+
+    private void thenItIsAdmitted(String why) {
+        assertThat(this.admission).as(why).isInstanceOf(Admission.Admitted.class);
+    }
+
+    private void thenItIsRefused(Refusal reason) {
+        assertThat(this.admission).isEqualTo(new Admission.Refused(reason));
+    }
+
+    private void thenNoConnectionIsOpen() {
+        assertThat(this.guard.openConnections()).isZero();
+    }
+
+    private void thenExceptionOccurred(Class<? extends RuntimeException> type) {
+        assertThat(this.exception).as("%s", this.window).isInstanceOf(type);
+    }
+
+    private void thenTheRateWindowIs(Duration expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.madeLimits.rateWindow()).isEqualTo(expected);
     }
 
     private void thenTheOtherAddressIsAdmitted() {
@@ -251,6 +381,10 @@ class ConnectionGuardTest {
         assertThat(this.guard.hasRoom()).isTrue();
         assertThat(this.guard.admit(OTHER)).isInstanceOf(Admission.Admitted.class);
         assertThat(this.guard.hasRoom()).isFalse();
+    }
+
+    static Stream<Duration> windowsThatAreNotAPositiveSpanOfTime() {
+        return Stream.of(Duration.ZERO, Duration.ofSeconds(-5), Duration.ofDays(365 * 300));
     }
 
     private static ConnectionGuard.Permit permit(Admission admission) {

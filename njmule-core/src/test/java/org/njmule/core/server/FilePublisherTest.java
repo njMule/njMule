@@ -61,6 +61,7 @@ class FilePublisherTest {
     private final CountDownLatch connected = new CountDownLatch(1);
     private final List<FileEntry> offered = new ArrayList<>();
     private ScriptedServer server;
+    private Optional<Packet> nextOffer;
     private final ServerSession session = new ServerSession(
             this.loop,
             new ServerList(),
@@ -91,78 +92,32 @@ class FilePublisherTest {
     }
 
     @Test
-    void aHighIdOffersItsAddressAndLargeFilesOnlyToServersThatTakeThem() throws Exception {
-        Hash16 small = hash(1);
-        this.files.add(new FilePublisher.Offer(small, "film.avi", 1000, true));
-        this.files.add(new FilePublisher.Offer(hash(2), "huge.iso", 5_000_000_000L, true));
-        try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
-            connect(server);
-            tick();
+    void shouldOfferAHighIdAddressAndLargeFilesOnlyToServersThatTakeThem() throws Exception {
+        givenTheSharedFiles(
+                new FilePublisher.Offer(hash(1), "film.avi", 1000, true),
+                new FilePublisher.Offer(hash(2), "huge.iso", 5_000_000_000L, true));
+        givenALoginToAServerGiving(HIGH_ID, 0);
+        givenTheServerWasOfferedOnlyTheFile(hash(1), HIGH_ID, LISTEN_PORT, "Video");
 
-            List<FileEntry> offered =
-                    offers(server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
+        whenTheFilesAreDueBeforeTheInterval();
 
-            assertThat(offered).singleElement().satisfies(entry -> {
-                assertThat(entry.hash()).isEqualTo(small);
-                assertThat(entry.clientId()).isEqualTo(HIGH_ID);
-                assertThat(entry.port()).isEqualTo(LISTEN_PORT);
-                assertThat(Tags.stringValue(entry.tags(), FileTag.FILETYPE))
-                        .as("a type name")
-                        .hasValue("Video");
-            });
-            tick();
-            assertThat(server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500)))
-                    .as("nothing new")
-                    .isEmpty();
-        }
+        thenNothingIsOffered("nothing new");
     }
 
     @Test
-    void aLowIdOffersNoAddressAndBatchesWaitTheirTurn() throws Exception {
-        long lowId = 1234;
-        int flags = ServerMessages.TCP_LARGEFILES | ServerMessages.TCP_TYPE_TAG_INTEGER;
-        for (int i = 0; i < FilePublisher.BATCH + 1; i++) {
-            this.files.add(new FilePublisher.Offer(hash(i + 10), "file " + i + ".iso", 5_000_000_000L + i, i > 0));
-        }
-        try (ScriptedServer server = ScriptedServer.start(lowId, flags)) {
-            connect(server);
-            tick();
+    void shouldOfferALowIdWithoutAddressAndInBatchesThatWaitTheirTurn() throws Exception {
+        givenLargeSharedFilesOfWhichTheFirstIsIncomplete(FilePublisher.BATCH + 1);
+        givenALoginToAServerGiving(1234, ServerMessages.TCP_LARGEFILES | ServerMessages.TCP_TYPE_TAG_INTEGER);
+        givenTheServerWasOfferedAFullBatchWithoutOurAddress();
+        givenNothingWasOfferedBeforeTheInterval("the next batch waits a minute");
+        givenTheIntervalPassed();
+        givenTheServerWasOffered(hash(FilePublisher.BATCH + 10));
+        givenTheIntervalPassed();
+        givenTheFileCompleted(hash(10));
 
-            List<FileEntry> first =
-                    offers(server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
-            assertThat(first).hasSize(FilePublisher.BATCH);
-            assertThat(first.getFirst().clientId()).isZero();
-            assertThat(first.getFirst().port()).isZero();
-            assertThat(Tags.intValue(first.getFirst().tags(), 0x3A))
-                    .as("the size's high bits")
-                    .hasValue(1);
-            assertThat(Tags.intValue(first.getFirst().tags(), FileTag.FILETYPE))
-                    .as("a type code")
-                    .isPresent();
+        whenTheFilesAreDue();
 
-            tick();
-            assertThat(server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500)))
-                    .as("the next batch waits a minute")
-                    .isEmpty();
-            this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
-            tick();
-            assertThat(offers(
-                            server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()))
-                    .extracting(FileEntry::hash)
-                    .containsExactly(hash(FilePublisher.BATCH + 10));
-
-            this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
-            onLoop(() -> {
-                this.publisher.changed(Optional.of(hash(10)));
-                return null;
-            });
-            tick();
-            assertThat(offers(
-                            server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()))
-                    .as("a file that completed is offered again")
-                    .extracting(FileEntry::hash)
-                    .containsExactly(hash(10));
-        }
+        thenTheServerIsOffered(hash(10), "a file that completed is offered again");
     }
 
     @Test
@@ -216,9 +171,97 @@ class FilePublisherTest {
     }
 
     @Test
-    void nothingIsOfferedWithoutASession() throws Exception {
-        this.files.add(new FilePublisher.Offer(hash(1), "film.avi", 1000, true));
+    void shouldOfferNothingWithoutASession() throws Exception {
+        givenTheSharedFiles(new FilePublisher.Offer(hash(1), "film.avi", 1000, true));
 
+        whenThePublisherRunsWithoutASession();
+
+        thenNoSessionIsOpen();
+    }
+
+    private void givenTheSharedFiles(FilePublisher.Offer... offers) {
+        this.files.addAll(List.of(offers));
+    }
+
+    private void givenLargeSharedFilesOfWhichTheFirstIsIncomplete(int count) {
+        for (int i = 0; i < count; i++) {
+            this.files.add(new FilePublisher.Offer(hash(i + 10), "file " + i + ".iso", 5_000_000_000L + i, i > 0));
+        }
+    }
+
+    private void givenALoginToAServerGiving(long clientId, int flags) throws Exception {
+        this.server = ScriptedServer.start(clientId, flags);
+        connect(this.server);
+    }
+
+    private void givenTheServerWasOfferedOnlyTheFile(Hash16 hash, long clientId, int port, String typeName)
+            throws Exception {
+        tick();
+        List<FileEntry> first =
+                offers(this.server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
+        assertThat(first).singleElement().satisfies(entry -> {
+            assertThat(entry.hash()).isEqualTo(hash);
+            assertThat(entry.clientId()).isEqualTo(clientId);
+            assertThat(entry.port()).isEqualTo(port);
+            assertThat(Tags.stringValue(entry.tags(), FileTag.FILETYPE))
+                    .as("a type name")
+                    .hasValue(typeName);
+        });
+    }
+
+    private void givenTheServerWasOfferedAFullBatchWithoutOurAddress() throws Exception {
+        tick();
+        List<FileEntry> first =
+                offers(this.server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow());
+        assertThat(first).hasSize(FilePublisher.BATCH);
+        assertThat(first.getFirst().clientId()).isZero();
+        assertThat(first.getFirst().port()).isZero();
+        assertThat(Tags.intValue(first.getFirst().tags(), 0x3A))
+                .as("the size's high bits")
+                .hasValue(1);
+        assertThat(Tags.intValue(first.getFirst().tags(), FileTag.FILETYPE))
+                .as("a type code")
+                .isPresent();
+    }
+
+    private void givenNothingWasOfferedBeforeTheInterval(String why) throws Exception {
+        tick();
+        assertThat(this.server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500)))
+                .as(why)
+                .isEmpty();
+    }
+
+    private void givenTheIntervalPassed() {
+        this.time.addAndGet(FilePublisher.INTERVAL.toNanos());
+    }
+
+    private void givenTheServerWasOffered(Hash16... hashes) throws Exception {
+        tick();
+        assertThat(offers(
+                        this.server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()))
+                .extracting(FileEntry::hash)
+                .containsExactly(hashes);
+    }
+
+    private void givenTheFileCompleted(Hash16 hash) throws Exception {
+        onLoop(() -> {
+            this.publisher.changed(Optional.of(hash));
+            return null;
+        });
+    }
+
+    private void whenTheFilesAreDue() throws Exception {
+        tick();
+        this.offered.addAll(
+                offers(this.server.next(Opcodes.Server.OFFERFILES.code(), WAIT).orElseThrow()));
+    }
+
+    private void whenTheFilesAreDueBeforeTheInterval() throws Exception {
+        tick();
+        this.nextOffer = this.server.next(Opcodes.Server.OFFERFILES.code(), Duration.ofMillis(500));
+    }
+
+    private void whenThePublisherRunsWithoutASession() throws Exception {
         onLoop(() -> {
             this.publisher.changed(Optional.empty());
             this.publisher.tick();
@@ -226,7 +269,17 @@ class FilePublisherTest {
             this.publisher.tick();
             return null;
         });
+    }
 
+    private void thenNothingIsOffered(String why) {
+        assertThat(this.nextOffer).as(why).isEmpty();
+    }
+
+    private void thenTheServerIsOffered(Hash16 hash, String why) {
+        assertThat(this.offered).as(why).extracting(FileEntry::hash).containsExactly(hash);
+    }
+
+    private void thenNoSessionIsOpen() throws Exception {
         assertThat(onLoop(this.session::isConnected)).isFalse();
     }
 

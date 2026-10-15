@@ -72,132 +72,194 @@ class ServerSessionTest {
             new Recorder(),
             () -> false,
             new SecureRandom());
+    private ServerSocket listener;
+    private Socket socket;
+    private OutputStream out;
+    private ServerMet.Server target;
 
     @AfterEach
-    void stop() {
+    void stop() throws IOException {
+        if (this.socket != null) {
+            this.socket.close();
+        }
+        if (this.listener != null) {
+            this.listener.close();
+        }
         this.loop.close();
     }
 
     @Test
-    void anObfuscatedPortBeyondTheRangeIsIgnoredAndThePlainOneUsed() throws Exception {
-        this.preferences = this.preferences.toBuilder()
-                .obfuscation(ObfuscationMode.REQUESTED)
-                .build();
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
-                    .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION))
-                    .with(intTag(ServerTag.TCPPORTOBFUSCATION, 70_000));
+    void shouldIgnoreAnObfuscatedPortBeyondTheRangeAndUseThePlainOne() throws Exception {
+        givenObfuscation(ObfuscationMode.REQUESTED);
+        givenAServerAnnouncingTheObfuscatedPort(70_000);
 
-            onLoop(() -> {
-                this.session.connect(Optional.of(target));
-                return null;
-            });
+        whenTheSessionConnects();
 
-            try (Socket socket = server.accept()) {
-                socket.setSoTimeout(10_000);
-                Packet login = TcpFraming.read(new BufferedInputStream(socket.getInputStream()), FrameLimits.SERVER);
-                assertThat(login.opcode()).isEqualTo(Opcodes.Server.LOGINREQUEST.code());
-            }
-        }
+        thenTheServerGetsAPlainLoginRequest();
     }
 
     @Test
-    void controlCharactersFromTheServerAreDropped() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
-                    // Pinged before and known to be plain: no obfuscation is tried first.
-                    .with(intTag(ServerTag.UDPFLAGS, 0));
-            onLoop(() -> {
-                this.session.connect(Optional.of(target));
-                return null;
-            });
-            try (Socket socket = server.accept()) {
-                socket.setSoTimeout(10_000);
-                InputStream in = new BufferedInputStream(socket.getInputStream());
-                OutputStream out = socket.getOutputStream();
-                TcpFraming.read(in, FrameLimits.SERVER);
-                out.write(TcpFraming.encode(new ServerMessages.IdChange(HIGH_ID, 0, 0).encode()));
-                out.write(TcpFraming.encode(ServerMessages.message("\u001b[31mWelcome\u0007\r\nsecond\tline")));
-                out.write(TcpFraming.encode(new ServerMessages.ServerIdent(
+    void shouldDropTheControlCharactersFromTheServer() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+
+        whenTheServerLogsUsInWithTheMessageAndIdentity(
+                "\u001b[31mWelcome\u0007\r\nsecond\tline", "Evil\r\n6.6.6.6:4661,0,Injected", "bad\u0000description");
+
+        thenTheNextMessageIs("[31mWelcome");
+        thenTheNextMessageIs("secondline");
+        thenTheServerIsUpdatedTo("Evil6.6.6.6:4661,0,Injected / baddescription");
+    }
+
+    @Test
+    void shouldTakeAnIdOfZeroAsNoLoginAndALaterIdAsOne() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+
+        whenTheServerSends(
+                new ServerMessages.IdChange(0, 0, 0).encode(), new ServerMessages.IdChange(HIGH_ID, 0, 0).encode());
+
+        thenTheSessionIsLoggedIn();
+        thenTheClientIdIs(HIGH_ID);
+        thenTheSessionLoggedInOnce();
+    }
+
+    @Test
+    void shouldEndTheAttemptWhenTheServerHangsUpBeforeTheId() throws Exception {
+        givenAPlainServer();
+        givenTheSessionConnected();
+
+        whenTheServerHangsUp();
+
+        thenTheSessionIsLost();
+        thenNoSessionIsOpen();
+        thenTheSessionHasNoServer();
+    }
+
+    @Test
+    void shouldNeverDialAServerKnownByAHostNameAtNoAddress() throws Exception {
+        givenAServerKnownOnlyByTheHostName("localhost");
+
+        whenTheSessionConnects();
+
+        thenTheSessionIsLost();
+        thenNoServerIsDialedAt("0.0.0.0");
+        thenNoConnectionArrivesWithin(500);
+    }
+
+    private void givenObfuscation(ObfuscationMode mode) {
+        this.preferences = this.preferences.toBuilder().obfuscation(mode).build();
+    }
+
+    private void givenAServerAnnouncingTheObfuscatedPort(int obfuscatedPort) throws IOException {
+        this.listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        this.target = new ServerMet.Server(LOOPBACK, this.listener.getLocalPort(), List.of())
+                .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_TCP_OBFUSCATION))
+                .with(intTag(ServerTag.TCPPORTOBFUSCATION, obfuscatedPort));
+    }
+
+    private void givenAPlainServer() throws IOException {
+        this.listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        this.target = new ServerMet.Server(LOOPBACK, this.listener.getLocalPort(), List.of())
+                // Pinged before and known to be plain: no obfuscation is tried first.
+                .with(intTag(ServerTag.UDPFLAGS, 0));
+    }
+
+    private void givenAServerKnownOnlyByTheHostName(String host) throws IOException {
+        this.listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        // localhost resolves without any network, to an address no server may have.
+        this.target = new ServerMet.Server(
+                0, this.listener.getLocalPort(), List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), host)));
+    }
+
+    private void givenTheSessionConnected() throws Exception {
+        whenTheSessionConnects();
+        this.socket = this.listener.accept();
+        this.socket.setSoTimeout(10_000);
+        InputStream in = new BufferedInputStream(this.socket.getInputStream());
+        this.out = this.socket.getOutputStream();
+        TcpFraming.read(in, FrameLimits.SERVER);
+    }
+
+    private void whenTheSessionConnects() throws Exception {
+        onLoop(() -> {
+            this.session.connect(Optional.of(this.target));
+            return null;
+        });
+    }
+
+    private void whenTheServerSends(Packet... packets) throws IOException {
+        for (Packet packet : packets) {
+            this.out.write(TcpFraming.encode(packet));
+        }
+        this.out.flush();
+    }
+
+    private void whenTheServerLogsUsInWithTheMessageAndIdentity(String message, String name, String description)
+            throws IOException {
+        whenTheServerSends(
+                new ServerMessages.IdChange(HIGH_ID, 0, 0).encode(),
+                ServerMessages.message(message),
+                new ServerMessages.ServerIdent(
                                 Hash16.parseHex("02".repeat(16)),
                                 LOOPBACK,
-                                server.getLocalPort(),
-                                Optional.of("Evil\r\n6.6.6.6:4661,0,Injected"),
-                                Optional.of("bad\u0000description"))
-                        .encode()));
-                out.flush();
-
-                assertThat(next("message")).isEqualTo("message [31mWelcome");
-                assertThat(next("message")).isEqualTo("message secondline");
-                assertThat(next("updated")).isEqualTo("updated Evil6.6.6.6:4661,0,Injected / baddescription");
-            }
-        }
+                                this.listener.getLocalPort(),
+                                Optional.of(name),
+                                Optional.of(description))
+                        .encode());
     }
 
-    @Test
-    void anIdOfZeroIsNoLoginAndALaterIdIs() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
-                    // Pinged before and known to be plain: no obfuscation is tried first.
-                    .with(intTag(ServerTag.UDPFLAGS, 0));
-            onLoop(() -> {
-                this.session.connect(Optional.of(target));
-                return null;
-            });
-            try (Socket socket = server.accept()) {
-                socket.setSoTimeout(10_000);
-                InputStream in = new BufferedInputStream(socket.getInputStream());
-                OutputStream out = socket.getOutputStream();
-                TcpFraming.read(in, FrameLimits.SERVER);
-                out.write(TcpFraming.encode(new ServerMessages.IdChange(0, 0, 0).encode()));
-                out.write(TcpFraming.encode(new ServerMessages.IdChange(HIGH_ID, 0, 0).encode()));
-                out.flush();
-
-                assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
-                assertThat(onLoop(() -> this.session.id().map(ServerMessages.IdChange::clientId)))
-                        .contains(HIGH_ID);
-                assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
-            }
-        }
+    private void whenTheServerHangsUp() throws IOException {
+        this.socket.close();
     }
 
-    @Test
-    void aServerHangingUpBeforeTheIdEndsTheAttempt() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ServerMet.Server target = new ServerMet.Server(LOOPBACK, server.getLocalPort(), List.of())
-                    // Pinged before and known to be plain: no obfuscation is tried first.
-                    .with(intTag(ServerTag.UDPFLAGS, 0));
-            onLoop(() -> {
-                this.session.connect(Optional.of(target));
-                return null;
-            });
-            try (Socket socket = server.accept()) {
-                TcpFraming.read(new BufferedInputStream(socket.getInputStream()), FrameLimits.SERVER);
-            }
-
-            assertThat(next("disconnected")).startsWith("disconnected");
-            assertThat(onLoop(this.session::isConnected)).isFalse();
-            assertThat(onLoop(this.session::server)).isEmpty();
-        }
+    private void thenTheServerGetsAPlainLoginRequest() throws IOException {
+        this.socket = this.listener.accept();
+        this.socket.setSoTimeout(10_000);
+        Packet login = TcpFraming.read(new BufferedInputStream(this.socket.getInputStream()), FrameLimits.SERVER);
+        assertThat(login.opcode()).isEqualTo(Opcodes.Server.LOGINREQUEST.code());
     }
 
-    @Test
-    void aServerKnownByAHostNameIsNeverDialedAtNoAddress() throws Exception {
-        try (ServerSocket trap = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            // localhost resolves without any network, to an address no server may have.
-            ServerMet.Server named = new ServerMet.Server(
-                    0, trap.getLocalPort(), List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "localhost")));
+    private void thenTheNextMessageIs(String line) throws InterruptedException {
+        assertThat(next("message")).isEqualTo("message " + line);
+    }
 
-            onLoop(() -> {
-                this.session.connect(Optional.of(named));
-                return null;
-            });
+    private void thenTheServerIsUpdatedTo(String nameAndDescription) throws InterruptedException {
+        assertThat(next("updated")).isEqualTo("updated " + nameAndDescription);
+    }
 
-            assertThat(next("disconnected")).startsWith("disconnected");
-            assertThat(this.seen).noneMatch(e -> e.startsWith("connecting 0.0.0.0"));
-            trap.setSoTimeout(500);
-            assertThat(accepts(trap)).isFalse();
-        }
+    private void thenTheSessionIsLoggedIn() throws InterruptedException {
+        assertThat(next("connected")).isEqualTo("connected " + HIGH_ID);
+    }
+
+    private void thenTheClientIdIs(long id) throws Exception {
+        assertThat(onLoop(() -> this.session.id().map(ServerMessages.IdChange::clientId)))
+                .contains(id);
+    }
+
+    private void thenTheSessionLoggedInOnce() {
+        assertThat(this.seen).filteredOn(e -> e.startsWith("connected")).hasSize(1);
+    }
+
+    private void thenTheSessionIsLost() throws InterruptedException {
+        assertThat(next("disconnected")).startsWith("disconnected");
+    }
+
+    private void thenNoSessionIsOpen() throws Exception {
+        assertThat(onLoop(this.session::isConnected)).isFalse();
+    }
+
+    private void thenTheSessionHasNoServer() throws Exception {
+        assertThat(onLoop(this.session::server)).isEmpty();
+    }
+
+    private void thenNoServerIsDialedAt(String ip) {
+        assertThat(this.seen).noneMatch(e -> e.startsWith("connecting " + ip));
+    }
+
+    private void thenNoConnectionArrivesWithin(int millis) throws IOException {
+        this.listener.setSoTimeout(millis);
+        assertThat(accepts(this.listener)).isFalse();
     }
 
     private static boolean accepts(ServerSocket server) {

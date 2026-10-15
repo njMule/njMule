@@ -17,21 +17,36 @@
 package org.njmule.core.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class PathSanitizerTest {
 
     @TempDir
     Path dir;
+
+    private final List<Path> reserved = new ArrayList<>();
+    private String reservedName;
+    private String sanitized;
+    private Path directory;
+    private Path path;
 
     @ParameterizedTest
     @CsvSource(
@@ -48,53 +63,65 @@ class PathSanitizerTest {
                 "...|_",
                 "'  '|_"
             })
-    void makesNamesSafe(String raw, String expected) {
-        assertThat(PathSanitizer.fileName(raw)).isEqualTo(expected);
+    void shouldMakeNamesSafe(String raw, String expected) {
+        whenTheNameIsSanitized(raw);
+
+        thenTheNameIs(expected);
     }
 
     @Test
-    void replacesControlCharactersAndKeepsUnicode() {
-        assertThat(PathSanitizer.fileName("a\u0000b\nc\u007Fé✓.txt")).isEqualTo("a_b_c_é✓.txt");
+    void shouldReplaceControlCharactersAndKeepUnicode() {
+        whenTheNameIsSanitized("a\u0000b\nc\u007Fé✓.txt");
+
+        thenTheNameIs("a_b_c_é✓.txt");
     }
 
     @Test
-    void truncatesLongNamesButKeepsTheExtension() {
-        String name = PathSanitizer.fileName("è".repeat(300) + ".mkv");
+    void shouldTruncateLongNamesButKeepTheExtension() {
+        whenTheNameIsSanitized("è".repeat(300) + ".mkv");
 
-        assertThat(name).endsWith(".mkv");
-        assertThat(name.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+        thenTheNameEndsWith(".mkv");
+        thenTheNameFitsTheLimit();
     }
 
     @Test
-    void picksAFreeNameInsideTheDirectory() throws Exception {
-        Files.createFile(this.dir.resolve("file.iso"));
-        Files.createFile(this.dir.resolve("file (2).iso"));
+    void shouldPickAFreeNameInsideTheDirectory() throws IOException {
+        givenTheFiles("file.iso", "file (2).iso");
 
-        assertThat(PathSanitizer.unique(this.dir, "file.iso")).isEqualTo(this.dir.resolve("file (3).iso"));
-        assertThat(PathSanitizer.resolveInside(this.dir, "../x").getParent())
-                .isEqualTo(this.dir.toAbsolutePath().normalize());
+        whenAFreeNameIsPickedFor("file.iso");
+
+        thenThePathIs("file (3).iso");
     }
 
     @Test
-    void aCutNeverLeavesTrailingDotsOrSpaces() {
-        assertThat(PathSanitizer.fileName("a" + ".".repeat(300) + "b".repeat(20)))
-                .isEqualTo("a");
-        assertThat(PathSanitizer.fileName("a" + " ".repeat(300) + "b".repeat(20)))
-                .isEqualTo("a");
-        assertThat(PathSanitizer.fileName(".".repeat(300) + "b".repeat(20))).isEqualTo("_");
-        assertThat(PathSanitizer.fileName("a" + Character.toString(0x3000) + "."))
-                .isEqualTo("a");
-        assertThat(PathSanitizer.fileName("a." + Character.toString(0x3000))).isEqualTo("a");
+    void shouldResolveANameInsideTheDirectory() throws IOException {
+        whenTheNameIsResolvedInsideTheDirectory("../x");
+
+        thenThePathIsDirectlyInsideTheDirectory();
+    }
+
+    @ParameterizedTest
+    @MethodSource("namesEndingInDotsOrSpacesOnceCut")
+    void shouldNeverLeaveTrailingDotsOrSpacesWhenCutting(String raw, String expected) {
+        whenTheNameIsSanitized(raw);
+
+        thenTheNameIs(expected);
+    }
+
+    @ParameterizedTest
+    @MethodSource("reservedNamesOnceCut")
+    void shouldCheckTheCutNameForReservedNames(String raw, String expected) {
+        whenTheNameIsSanitized(raw);
+
+        thenTheNameIs(expected);
     }
 
     @Test
-    void theReservedNameCheckSeesTheCutName() {
-        assertThat(PathSanitizer.fileName("CON" + " ".repeat(300) + "x")).isEqualTo("_CON");
-        assertThat(PathSanitizer.fileName("AUX" + " ".repeat(200) + "x.mkv")).isEqualTo("_AUX.mkv");
-        String longReserved = PathSanitizer.fileName("NUL." + "x".repeat(300));
-        assertThat(longReserved).startsWith("_NUL.");
-        assertThat(longReserved.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+    void shouldEscapeALongReservedNameAndStillCutIt() {
+        whenTheNameIsSanitized("NUL." + "x".repeat(300));
+
+        thenTheNameStartsWith("_NUL.");
+        thenTheNameFitsTheLimit();
     }
 
     @ParameterizedTest
@@ -112,44 +139,176 @@ class PathSanitizerTest {
                 "COM10|COM10",
                 "LPT10.txt|LPT10.txt"
             })
-    void reservedDeviceNamesAreEscaped(String raw, String expected) {
-        assertThat(PathSanitizer.fileName(raw)).isEqualTo(expected);
+    void shouldEscapeReservedDeviceNames(String raw, String expected) {
+        whenTheNameIsSanitized(raw);
+
+        thenTheNameIs(expected);
     }
 
-    @Test
-    void numberedNamesOfLongNamesStayDistinct() throws Exception {
-        for (String name : new String[] {"x".repeat(250) + ".mkv", "y".repeat(300), "z".repeat(197) + ".a"}) {
-            java.util.Set<Path> taken = new java.util.HashSet<>();
-            for (int i = 0; i < 12; i++) {
-                Path reserved = PathSanitizer.reserve(this.dir, name);
-                assertThat(taken.add(reserved)).as("%s, copy %d", name, i).isTrue();
-                assertThat(reserved.getFileName().toString().getBytes(StandardCharsets.UTF_8).length)
-                        .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
-            }
-            Path free = PathSanitizer.unique(this.dir, name);
-            assertThat(taken).doesNotContain(free);
-            assertThat(free.getFileName().toString()).contains(" (13)");
+    @ParameterizedTest
+    @MethodSource("longNames")
+    void shouldReserveDistinctNumberedNamesForLongNames(String longName) throws IOException {
+        whenTheNameIsReservedTimes(longName, 12);
+
+        thenTheReservedPathsAreDistinct();
+        thenEveryReservedNameFitsTheLimit();
+    }
+
+    @ParameterizedTest
+    @MethodSource("longNames")
+    void shouldPickTheNumberAfterTheReservedNamesOfALongName(String longName) throws IOException {
+        givenTheNameReservedTimes(longName, 12);
+
+        whenAFreeNameIsPickedFor(longName);
+
+        thenThePathIsNoneOfTheReserved();
+        thenTheFileNameContains(" (13)");
+    }
+
+    @Property
+    void shouldMakeNamesSafeShortAndStable(@ForAll String raw) {
+        whenTheNameIsSanitized(raw);
+
+        thenTheNameIsNotEmpty();
+        thenTheNameFitsTheLimit();
+        thenTheNameHasNoForbiddenCharacter();
+        thenTheNameEndsNeitherWithADotNorWithASpace();
+        thenSanitizingTheNameAgainChangesNothing();
+    }
+
+    @Property
+    void shouldKeepAnyNameInsideTheDirectory(@ForAll String raw) throws IOException {
+        whenTheNameIsResolvedInsideTheDownloads(raw);
+
+        thenThePathIsDirectlyInsideTheDirectory();
+        thenTheFileNameIsNotBlank();
+    }
+
+    static Stream<Arguments> namesEndingInDotsOrSpacesOnceCut() {
+        return Stream.of(
+                arguments("a" + ".".repeat(300) + "b".repeat(20), "a"),
+                arguments("a" + " ".repeat(300) + "b".repeat(20), "a"),
+                arguments(".".repeat(300) + "b".repeat(20), "_"),
+                arguments("a" + Character.toString(0x3000) + ".", "a"),
+                arguments("a." + Character.toString(0x3000), "a"));
+    }
+
+    static Stream<Arguments> reservedNamesOnceCut() {
+        return Stream.of(
+                arguments("CON" + " ".repeat(300) + "x", "_CON"),
+                arguments("AUX" + " ".repeat(200) + "x.mkv", "_AUX.mkv"));
+    }
+
+    static Stream<String> longNames() {
+        return Stream.of("x".repeat(250) + ".mkv", "y".repeat(300), "z".repeat(197) + ".a");
+    }
+
+    private void givenTheFiles(String... names) throws IOException {
+        for (String file : names) {
+            Files.createFile(this.dir.resolve(file));
         }
     }
 
-    @Property
-    void namesAreSafeShortAndStable(@ForAll String raw) {
-        String name = PathSanitizer.fileName(raw);
-
-        assertThat(name).isNotEmpty();
-        assertThat(name.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
-        assertThat(name.chars()).noneMatch(c -> c < 0x20 || c == 0x7F || "\\/:*?\"<>|".indexOf(c) >= 0);
-        assertThat(name).doesNotEndWith(".").doesNotEndWith(" ");
-        assertThat(PathSanitizer.fileName(name)).isEqualTo(name);
+    private void givenTheNameReservedTimes(String raw, int times) throws IOException {
+        reserveTimes(raw, times);
     }
 
-    @Property
-    void anyNameStaysInsideTheDirectory(@ForAll String name) throws Exception {
-        // Nothing is created: resolving only computes the path.
-        Path downloads = Path.of("downloads").toAbsolutePath().normalize();
-        Path resolved = PathSanitizer.resolveInside(downloads, name);
+    private void whenTheNameIsSanitized(String raw) {
+        this.sanitized = PathSanitizer.fileName(raw);
+    }
 
-        assertThat(resolved.getParent()).isEqualTo(downloads);
-        assertThat(resolved.getFileName().toString()).isNotBlank();
+    private void whenAFreeNameIsPickedFor(String raw) throws IOException {
+        this.path = PathSanitizer.unique(this.dir, raw);
+    }
+
+    private void whenTheNameIsResolvedInsideTheDirectory(String raw) throws IOException {
+        this.directory = this.dir.toAbsolutePath().normalize();
+        this.path = PathSanitizer.resolveInside(this.dir, raw);
+    }
+
+    private void whenTheNameIsResolvedInsideTheDownloads(String raw) throws IOException {
+        // Nothing is created: resolving only computes the path.
+        this.directory = Path.of("downloads").toAbsolutePath().normalize();
+        this.path = PathSanitizer.resolveInside(this.directory, raw);
+    }
+
+    private void whenTheNameIsReservedTimes(String raw, int times) throws IOException {
+        reserveTimes(raw, times);
+    }
+
+    private void thenTheNameIs(String expected) {
+        assertThat(this.sanitized).isEqualTo(expected);
+    }
+
+    private void thenTheNameEndsWith(String end) {
+        assertThat(this.sanitized).endsWith(end);
+    }
+
+    private void thenTheNameStartsWith(String start) {
+        assertThat(this.sanitized).startsWith(start);
+    }
+
+    private void thenTheNameFitsTheLimit() {
+        assertThat(this.sanitized.getBytes(StandardCharsets.UTF_8).length)
+                .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+    }
+
+    private void thenTheNameIsNotEmpty() {
+        assertThat(this.sanitized).isNotEmpty();
+    }
+
+    private void thenTheNameHasNoForbiddenCharacter() {
+        assertThat(this.sanitized.chars()).noneMatch(c -> c < 0x20 || c == 0x7F || "\\/:*?\"<>|".indexOf(c) >= 0);
+    }
+
+    private void thenTheNameEndsNeitherWithADotNorWithASpace() {
+        assertThat(this.sanitized).doesNotEndWith(".").doesNotEndWith(" ");
+    }
+
+    private void thenSanitizingTheNameAgainChangesNothing() {
+        assertThat(PathSanitizer.fileName(this.sanitized)).isEqualTo(this.sanitized);
+    }
+
+    private void thenThePathIs(String fileName) {
+        assertThat(this.path).isEqualTo(this.dir.resolve(fileName));
+    }
+
+    private void thenThePathIsDirectlyInsideTheDirectory() {
+        assertThat(this.path.getParent()).isEqualTo(this.directory);
+    }
+
+    private void thenTheFileNameIsNotBlank() {
+        assertThat(this.path.getFileName().toString()).isNotBlank();
+    }
+
+    private void thenTheFileNameContains(String part) {
+        assertThat(this.path.getFileName().toString()).contains(part);
+    }
+
+    private void thenTheReservedPathsAreDistinct() {
+        Set<Path> taken = new HashSet<>();
+        for (int i = 0; i < this.reserved.size(); i++) {
+            assertThat(taken.add(this.reserved.get(i)))
+                    .as("%s, copy %d", this.reservedName, i)
+                    .isTrue();
+        }
+    }
+
+    private void thenEveryReservedNameFitsTheLimit() {
+        for (Path copy : this.reserved) {
+            assertThat(copy.getFileName().toString().getBytes(StandardCharsets.UTF_8).length)
+                    .isLessThanOrEqualTo(PathSanitizer.MAX_NAME_BYTES);
+        }
+    }
+
+    private void thenThePathIsNoneOfTheReserved() {
+        assertThat(this.reserved).doesNotContain(this.path);
+    }
+
+    private void reserveTimes(String raw, int times) throws IOException {
+        this.reservedName = raw;
+        for (int i = 0; i < times; i++) {
+            this.reserved.add(PathSanitizer.reserve(this.dir, raw));
+        }
     }
 }

@@ -27,90 +27,140 @@ import org.njmule.core.util.Ipv4;
 
 class IpFilterTest {
 
-    @Test
-    void blocksOnlyRangesBelowTheLevel() {
-        IpFilter filter = IpFilter.of(
-                List.of(
-                        range("10.0.0.0", "10.255.255.255", 0, "private"),
-                        range("20.0.0.0", "20.0.0.255", 127, "allowed"),
-                        range("200.1.2.0", "200.1.2.255", 100, "high")),
-                IpFilter.DEFAULT_LEVEL);
+    private List<Range> ranges;
+    private byte[] dat;
+    private IpFilter filter;
 
-        assertThat(filter.blocks(Ipv4.parse("10.1.2.3"))).isTrue();
-        assertThat(filter.match(Ipv4.parse("10.255.255.255"))).contains("private");
-        assertThat(filter.blocks(Ipv4.parse("11.0.0.0"))).isFalse();
-        assertThat(filter.blocks(Ipv4.parse("20.0.0.1"))).isFalse();
-        assertThat(filter.blocks(Ipv4.parse("200.1.2.0"))).isTrue();
-        assertThat(filter.blocks(Ipv4.parse("200.1.3.0"))).isFalse();
-        assertThat(filter.rangeCount()).isEqualTo(2);
+    @Test
+    void shouldBlockOnlyRangesBelowTheLevel() {
+        givenTheRanges(
+                range("10.0.0.0", "10.255.255.255", 0, "private"),
+                range("20.0.0.0", "20.0.0.255", 127, "allowed"),
+                range("200.1.2.0", "200.1.2.255", 100, "high"));
+
+        whenTheFilterIsMadeAtTheLevel(IpFilter.DEFAULT_LEVEL);
+
+        thenItBlocks("10.1.2.3");
+        thenItMatches("10.255.255.255", "private");
+        thenItLetsThrough("11.0.0.0");
+        thenItLetsThrough("20.0.0.1");
+        thenItBlocks("200.1.2.0");
+        thenItLetsThrough("200.1.3.0");
+        thenItHoldsRanges(2);
     }
 
     @Test
-    void laterRangesWinWhereTheyOverlap() {
-        IpFilter filter = IpFilter.of(
-                List.of(
-                        range("1.0.0.10", "1.0.0.20", 0, "b"),
-                        range("1.0.0.0", "1.0.0.15", 0, "a"),
-                        range("1.0.0.21", "1.0.0.30", 50, "c"),
-                        range("1.0.0.40", "1.0.0.50", 0, "d")),
-                IpFilter.DEFAULT_LEVEL);
+    void shouldLetLaterRangesWinWhereTheyOverlap() {
+        givenTheRanges(
+                range("1.0.0.10", "1.0.0.20", 0, "b"),
+                range("1.0.0.0", "1.0.0.15", 0, "a"),
+                range("1.0.0.21", "1.0.0.30", 50, "c"),
+                range("1.0.0.40", "1.0.0.50", 0, "d"));
 
-        assertThat(filter.rangeCount()).isEqualTo(4);
-        assertThat(filter.match(Ipv4.parse("1.0.0.12"))).contains("a");
-        assertThat(filter.match(Ipv4.parse("1.0.0.17"))).contains("b");
-        assertThat(filter.match(Ipv4.parse("1.0.0.30"))).contains("c");
-        assertThat(filter.blocks(Ipv4.parse("1.0.0.35"))).isFalse();
-        assertThat(filter.match(Ipv4.parse("1.0.0.45"))).contains("d");
+        whenTheFilterIsMadeAtTheLevel(IpFilter.DEFAULT_LEVEL);
+
+        thenItHoldsRanges(4);
+        thenItMatches("1.0.0.12", "a");
+        thenItMatches("1.0.0.17", "b");
+        thenItMatches("1.0.0.30", "c");
+        thenItLetsThrough("1.0.0.35");
+        thenItMatches("1.0.0.45", "d");
     }
 
     @Test
-    void neverBlocksTheZeroAddressNorAnEmptyList() {
-        IpFilter all = IpFilter.of(List.of(range("0.0.0.0", "255.255.255.255", 0, "all")), 127);
+    void shouldNeverBlockTheZeroAddress() {
+        givenTheRanges(range("0.0.0.0", "255.255.255.255", 0, "all"));
 
-        assertThat(all.blocks(0)).isFalse();
-        assertThat(all.blocks(Ipv4.parse("255.255.255.255"))).isTrue();
-        assertThat(IpFilter.empty().blocks(Ipv4.parse("1.2.3.4"))).isFalse();
+        whenTheFilterIsMadeAtTheLevel(127);
+
+        thenItLetsThrough("0.0.0.0");
+        thenItBlocks("255.255.255.255");
     }
 
     @Test
-    void rangesHoldTheirEndsAcrossTheSignBitAndUpToTheLastAddress() {
-        IpFilter filter = IpFilter.of(
-                List.of(
-                        range("9.9.9.9", "9.9.9.9", 0, "one"),
-                        range("127.255.255.250", "128.0.0.5", 0, "across"),
-                        range("255.255.255.0", "255.255.255.255", 0, "top"),
-                        range("50.0.0.0", "50.0.0.9", 127, "at the level"),
-                        range("60.0.0.0", "60.0.0.9", 0, "left"),
-                        range("60.0.0.10", "60.0.0.19", 0, "right")),
-                127);
+    void shouldNeverBlockWithAnEmptyList() {
+        whenTheFilterIsEmpty();
 
-        assertThat(filter.match(Ipv4.parse("9.9.9.9"))).contains("one");
-        assertThat(filter.blocks(Ipv4.parse("9.9.9.8"))).isFalse();
-        assertThat(filter.blocks(Ipv4.parse("9.9.9.10"))).isFalse();
-        assertThat(filter.match(Ipv4.parse("127.255.255.255"))).contains("across");
-        assertThat(filter.match(Ipv4.parse("128.0.0.0"))).contains("across");
-        assertThat(filter.blocks(Ipv4.parse("128.0.0.6"))).isFalse();
-        assertThat(filter.match(Ipv4.parse("255.255.255.255"))).contains("top");
-        assertThat(filter.blocks(Ipv4.parse("50.0.0.5")))
-                .as("a level equal to the filter's lets through")
-                .isFalse();
-        assertThat(filter.match(Ipv4.parse("60.0.0.9"))).contains("left");
-        assertThat(filter.match(Ipv4.parse("60.0.0.10"))).contains("right");
-        assertThat(filter.rangeCount()).isEqualTo(5);
+        thenItLetsThrough("1.2.3.4");
     }
 
     @Test
-    void readsAnIpFilterDatFile() {
-        byte[] dat = """
+    void shouldHoldTheEndsOfRangesAcrossTheSignBitAndUpToTheLastAddress() {
+        givenTheRanges(
+                range("9.9.9.9", "9.9.9.9", 0, "one"),
+                range("127.255.255.250", "128.0.0.5", 0, "across"),
+                range("255.255.255.0", "255.255.255.255", 0, "top"),
+                range("50.0.0.0", "50.0.0.9", 127, "at the level"),
+                range("60.0.0.0", "60.0.0.9", 0, "left"),
+                range("60.0.0.10", "60.0.0.19", 0, "right"));
+
+        whenTheFilterIsMadeAtTheLevel(127);
+
+        thenItMatches("9.9.9.9", "one");
+        thenItLetsThrough("9.9.9.8");
+        thenItLetsThrough("9.9.9.10");
+        thenItMatches("127.255.255.255", "across");
+        thenItMatches("128.0.0.0", "across");
+        thenItLetsThrough("128.0.0.6");
+        thenItMatches("255.255.255.255", "top");
+        thenItLetsThrough("50.0.0.5", "a level equal to the filter's lets through");
+        thenItMatches("60.0.0.9", "left");
+        thenItMatches("60.0.0.10", "right");
+        thenItHoldsRanges(5);
+    }
+
+    @Test
+    void shouldReadAnIpFilterDatFile() {
+        givenTheIpFilterDat("""
                 # comment
                 001.002.003.000 - 001.002.003.255 , 000 , test range
                 009.009.009.009 - 009.009.009.009 , 200 , harmless
-                """.getBytes(StandardCharsets.US_ASCII);
+                """);
 
-        IpFilter filter = IpFilter.of(IpFilterDat.read(dat, "ipfilter.dat"), 127);
+        whenTheFilterIsReadAtTheLevel(127);
 
-        assertThat(filter.match(Ipv4.parse("1.2.3.4"))).contains("test range");
-        assertThat(filter.blocks(Ipv4.parse("9.9.9.9"))).isFalse();
+        thenItMatches("1.2.3.4", "test range");
+        thenItLetsThrough("9.9.9.9");
+    }
+
+    private void givenTheRanges(Range... list) {
+        this.ranges = List.of(list);
+    }
+
+    private void givenTheIpFilterDat(String text) {
+        this.dat = text.getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private void whenTheFilterIsMadeAtTheLevel(int level) {
+        this.filter = IpFilter.of(this.ranges, level);
+    }
+
+    private void whenTheFilterIsEmpty() {
+        this.filter = IpFilter.empty();
+    }
+
+    private void whenTheFilterIsReadAtTheLevel(int level) {
+        this.filter = IpFilter.of(IpFilterDat.read(this.dat, "ipfilter.dat"), level);
+    }
+
+    private void thenItBlocks(String address) {
+        assertThat(this.filter.blocks(Ipv4.parse(address))).isTrue();
+    }
+
+    private void thenItLetsThrough(String address) {
+        assertThat(this.filter.blocks(Ipv4.parse(address))).isFalse();
+    }
+
+    private void thenItLetsThrough(String address, String why) {
+        assertThat(this.filter.blocks(Ipv4.parse(address))).as(why).isFalse();
+    }
+
+    private void thenItMatches(String address, String description) {
+        assertThat(this.filter.match(Ipv4.parse(address))).contains(description);
+    }
+
+    private void thenItHoldsRanges(int count) {
+        assertThat(this.filter.rangeCount()).isEqualTo(count);
     }
 
     private static Range range(String start, String end, int level, String description) {

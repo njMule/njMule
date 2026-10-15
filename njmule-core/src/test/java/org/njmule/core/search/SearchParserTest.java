@@ -17,10 +17,12 @@
 package org.njmule.core.search;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.util.HexFormat;
 import java.util.List;
+import java.util.stream.Stream;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.Combinators;
@@ -30,7 +32,10 @@ import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -46,46 +51,76 @@ import org.njmule.core.search.SearchSyntaxException.Reason;
 
 class SearchParserTest {
 
+    private static final String RELATED_SEARCH = "related::" + "ab".repeat(16) + "::" + "cd".repeat(16);
+    private static final NumericAttr LARGE_SIZE =
+            new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 5_000_000_000L);
+
+    private String input;
+    private SearchExpr parsed;
     private SearchExpr search;
+    private SearchExpr serverSearch;
     private SearchExpr sent;
+    private byte[] encoded;
+    private String kadKeyword;
+    private Throwable exception;
 
-    @Test
-    void adjacentWordsAreAndedFromTheRight() {
-        assertThat(SearchParser.parse("linux iso")).isEqualTo(new And(kw("linux"), kw("iso")));
-        assertThat(SearchParser.parse("a b c")).isEqualTo(new And(kw("a"), new And(kw("b"), kw("c"))));
+    @ParameterizedTest
+    @MethodSource("adjacentWords")
+    void shouldAndAdjacentWordsFromTheRight(String text, SearchExpr expected) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(expected);
     }
 
     @Test
-    void aRelatedSearchIsOneWordForTheServer() {
-        String related = "related::" + "ab".repeat(16) + "::" + "cd".repeat(16);
-        assertThat(SearchParser.parse(related)).isEqualTo(kw(related));
+    void shouldTakeARelatedSearchAsOneWordForTheServer() {
+        whenTheTextIsParsed(RELATED_SEARCH);
+
+        thenTheSearchIs(kw(RELATED_SEARCH));
+    }
+
+    @ParameterizedTest
+    @MethodSource("precedences")
+    void shouldBindNotTighterThanOrAndOrTighterThanAnd(String text, SearchExpr expected) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(expected);
     }
 
     @Test
-    void notBindsTighterThanOrWhichBindsTighterThanAnd() {
-        assertThat(SearchParser.parse("a OR b c")).isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
-        assertThat(SearchParser.parse("a AND b OR c")).isEqualTo(new And(kw("a"), new Or(kw("b"), kw("c"))));
-        assertThat(SearchParser.parse("a OR b NOT c")).isEqualTo(new Or(kw("a"), new Not(kw("b"), kw("c"))));
-        assertThat(SearchParser.parse("(a OR b) AND c")).isEqualTo(new And(new Or(kw("a"), kw("b")), kw("c")));
+    void shouldReadALeadingMinusAsNot() {
+        whenTheTextIsParsed("linux -windows");
+
+        thenTheSearchIs(new Not(kw("linux"), kw("windows")));
     }
 
     @Test
-    void aLeadingMinusMeansNot() {
-        assertThat(SearchParser.parse("linux -windows")).isEqualTo(new Not(kw("linux"), kw("windows")));
-        assertThat(SearchParser.parse("x-ray")).isEqualTo(kw("x-ray"));
+    void shouldKeepAMinusInsideAWord() {
+        whenTheTextIsParsed("x-ray");
+
+        thenTheSearchIs(kw("x-ray"));
     }
 
     @Test
-    void operatorsAreUpperCaseWords() {
-        assertThat(SearchParser.parse("rock or roll")).isEqualTo(new And(kw("rock"), new And(kw("or"), kw("roll"))));
-        assertThat(SearchParser.parse("ORANGE")).isEqualTo(kw("ORANGE"));
+    void shouldTakeLowerCaseOperatorsAsWords() {
+        whenTheTextIsParsed("rock or roll");
+
+        thenTheSearchIs(new And(kw("rock"), new And(kw("or"), kw("roll"))));
     }
 
     @Test
-    void quotedPhrasesKeepTheirQuotesAndEscapes() {
-        assertThat(SearchParser.parse("\"exact phrase\" x")).isEqualTo(new And(kw("\"exact phrase\""), kw("x")));
-        assertThat(SearchParser.parse("\"a\\\"b\"")).isEqualTo(kw("\"a\"b\""));
-        assertThat(SearchParser.parse("\"\" x")).isEqualTo(kw("x"));
+    void shouldTakeAnUpperCaseWordStartingLikeAnOperatorAsAWord() {
+        whenTheTextIsParsed("ORANGE");
+
+        thenTheSearchIs(kw("ORANGE"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("quotedPhrases")
+    void shouldKeepTheQuotesAndEscapesOfQuotedPhrases(String text, SearchExpr expected) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(expected);
     }
 
     @ParameterizedTest
@@ -99,46 +134,33 @@ class SearchParserTest {
                 "@size=5b;EQUAL;5",
                 "@size<>3m;NOT_EQUAL;3145728"
             })
-    void sizesUseBinaryUnitsAndDefaultToMegabytes(String text, Comparison op, long bytes) {
-        assertThat(SearchParser.parse(text)).isEqualTo(new NumericAttr(FileTag.FILESIZE, op, bytes));
+    void shouldReadSizesInBinaryUnitsAndDefaultToMegabytes(String text, Comparison op, long bytes) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(new NumericAttr(FileTag.FILESIZE, op, bytes));
+    }
+
+    @ParameterizedTest
+    @MethodSource("numericAttributes")
+    void shouldReadNumericAttributesInDecimalUnitsAndLengthsAsTime(String text, SearchExpr expected) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(expected);
+    }
+
+    @ParameterizedTest
+    @MethodSource("stringAttributes")
+    void shouldReadStringAttributesAndFileTypes(String text, SearchExpr expected) {
+        whenTheTextIsParsed(text);
+
+        thenTheSearchIs(expected);
     }
 
     @Test
-    void numericAttributesUseDecimalUnitsAndLengthsUseTime() {
-        assertThat(SearchParser.parse("@sources>10"))
-                .isEqualTo(new NumericAttr(FileTag.SOURCES, Comparison.GREATER, 10));
-        assertThat(SearchParser.parse("@avail>=2k"))
-                .isEqualTo(new NumericAttr(FileTag.SOURCES, Comparison.GREATER_EQUAL, 2000));
-        assertThat(SearchParser.parse("@complete>5"))
-                .isEqualTo(new NumericAttr(FileTag.COMPLETE_SOURCES, Comparison.GREATER, 5));
-        assertThat(SearchParser.parse("@bitrate>=192"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_BITRATE, Comparison.GREATER_EQUAL, 192));
-        assertThat(SearchParser.parse("@rating>3"))
-                .isEqualTo(new NumericAttr(FileTag.FILERATING, Comparison.GREATER, 3));
-        assertThat(SearchParser.parse("@length>1:30"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 90));
-        assertThat(SearchParser.parse("@len>=1:00:00"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER_EQUAL, 3600));
-        assertThat(SearchParser.parse("@length < 5m"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.LESS, 300));
-    }
+    void shouldTurnAnEd2kLinkIntoAHashTerm() {
+        whenTheTextIsParsed("ed2k://|file|My File.iso|123|31d6cfe0d16ae931b73c59d7e0c089c0|/");
 
-    @Test
-    void stringAttributesAndFileTypes() {
-        assertThat(SearchParser.parse("@type=video")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Video"));
-        assertThat(SearchParser.parse("@typ=img")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Image"));
-        assertThat(SearchParser.parse("@type=doc")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Doc"));
-        assertThat(SearchParser.parse("@type=cd")).isEqualTo(new StringAttr(FileTag.FILETYPE, "Iso"));
-        assertThat(SearchParser.parse("@ext=mkv")).isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mkv"));
-        assertThat(SearchParser.parse("@ext=\"mp3\"")).isEqualTo(new StringAttr(FileTag.FILEFORMAT, "mp3"));
-        assertThat(SearchParser.parse("@artist=Queen song"))
-                .isEqualTo(new And(new StringAttr(FileTag.MEDIA_ARTIST, "Queen"), kw("song")));
-    }
-
-    @Test
-    void ed2kLinksBecomeHashTerms() {
-        assertThat(SearchParser.parse("ed2k://|file|My File.iso|123|31d6cfe0d16ae931b73c59d7e0c089c0|/"))
-                .isEqualTo(kw("ed2k::31D6CFE0D16AE931B73C59D7E0C089C0"));
+        thenTheSearchIs(kw("ed2k::31D6CFE0D16AE931B73C59D7E0C089C0"));
     }
 
     @ParameterizedTest
@@ -161,57 +183,64 @@ class SearchParserTest {
                 "-a;GENERAL",
                 "a b c d e f g h i j k l;TOO_COMPLEX"
             })
-    void reportsWhyAnExpressionIsInvalid(String text, Reason reason) {
-        assertThatThrownBy(() -> SearchParser.parse(text))
-                .isInstanceOfSatisfying(
-                        SearchSyntaxException.class, e -> assertThat(e.reason()).isEqualTo(reason));
+    void shouldReportWhyAnExpressionIsInvalid(String text, Reason reason) {
+        whenTheTextIsParsed(text);
+
+        thenTheSyntaxErrorIs(reason);
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "@length>99999999999999999999:00",
+                "@length>1:99999999999999999999",
+                "@length>1:00:99999999999999999999",
+                "@length>3000000000000000:00:00",
+                "@length>5000000000000000:00:00",
+                "@length>2562047788015215:30:08",
+                "@length>153722867280912931:00"
+            })
+    void shouldRefuseLengthsTooLargeForANumber(String text) {
+        whenTheTextIsParsed(text);
+
+        thenTheSyntaxErrorIs(Reason.INVALID_ATTRIBUTE_VALUE);
     }
 
     @Test
-    void lengthsTooLargeForANumberAreASyntaxError() {
-        for (String text : new String[] {
-            "@length>99999999999999999999:00",
-            "@length>1:99999999999999999999",
-            "@length>1:00:99999999999999999999",
-            "@length>3000000000000000:00:00",
-            "@length>5000000000000000:00:00",
-            "@length>2562047788015215:30:08",
-            "@length>153722867280912931:00"
-        }) {
-            assertThatThrownBy(() -> SearchParser.parse(text))
-                    .as(text)
-                    .isInstanceOfSatisfying(
-                            SearchSyntaxException.class,
-                            e -> assertThat(e.reason()).isEqualTo(Reason.INVALID_ATTRIBUTE_VALUE));
-        }
-        assertThat(SearchParser.parse("@length>2562047788015215:30:07"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, Long.MAX_VALUE));
-        assertThat(SearchParser.parse("@length>0:0:0"))
-                .isEqualTo(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 0));
+    void shouldAcceptTheLongestLengthANumberHolds() {
+        whenTheTextIsParsed("@length>2562047788015215:30:07");
+
+        thenTheSearchIs(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, Long.MAX_VALUE));
     }
 
     @Test
-    void numbersTooLargeOrMalformedAreASyntaxError() {
-        for (String text : new String[] {"@size>1e999", "@sources>1e30", "@size>9999999999999999g", "@bitrate>."}) {
-            assertThatThrownBy(() -> SearchParser.parse(text)).as(text).isInstanceOf(SearchSyntaxException.class);
-        }
-        assertThat(SearchParser.parse("@size>.5k"))
-                .isEqualTo(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 512));
+    void shouldAcceptALengthOfZero() {
+        whenTheTextIsParsed("@length>0:0:0");
+
+        thenTheSearchIs(new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"@size>1e999", "@sources>1e30", "@size>9999999999999999g", "@bitrate>."})
+    void shouldRefuseNumbersTooLargeOrMalformed(String text) {
+        whenTheTextIsParsed(text);
+
+        thenExceptionOccurred(SearchSyntaxException.class);
+    }
+
+    @Test
+    void shouldReadAFractionWithoutALeadingZero() {
+        whenTheTextIsParsed("@size>.5k");
+
+        thenTheSearchIs(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 512));
     }
 
     @Property
-    void fragmentsOfTheSyntaxParseOrFailWithASyntaxError(@ForAll("fragments") List<String> parts) {
-        String text = String.join("", parts);
-        try {
-            SearchExpr tree = SearchParser.parse(text);
-            PacketWriter out = new PacketWriter();
-            SearchTreeCodec.write(out, tree, true);
-            assertThat(SearchTreeCodec.read(PacketReader.of(out.toByteArray()))).isNotNull();
-        } catch (SearchSyntaxException expected) {
-            // invalid expression
-        } catch (DecodeException e) {
-            throw new AssertionError(text, e);
-        }
+    void shouldParseFragmentsOfTheSyntaxOrFailWithASyntaxError(@ForAll("fragments") List<String> parts) {
+        whenTheTextIsParsed(String.join("", parts));
+
+        thenTheTextIsASearchOrASyntaxError();
+        thenAParsedSearchCanBeReadBackFromA64BitServer();
     }
 
     @Provide
@@ -250,86 +279,82 @@ class SearchParserTest {
     }
 
     @Test
-    void serverTreesArePrefixEncoded() {
-        PacketWriter out = new PacketWriter();
-        SearchTreeCodec.write(out, new And(kw("a"), new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 5)), false);
+    void shouldPrefixEncodeTheTreesForServers() {
+        whenTheTreeIsWrittenFor32BitServers(new And(kw("a"), new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 5)));
 
-        assertThat(HexFormat.of().formatHex(out.toByteArray()))
-                .isEqualTo("0000" + "01010061" + "0305000000" + "01" + "0100" + "02");
+        thenTheBytesWrittenAre("0000" + "01010061" + "0305000000" + "01" + "0100" + "02");
     }
 
     @Test
-    void largeValuesNeed64BitServers() throws DecodeException {
-        NumericAttr big = new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 5_000_000_000L);
-        PacketWriter wide = new PacketWriter();
-        SearchTreeCodec.write(wide, big, true);
-        PacketWriter narrow = new PacketWriter();
-        SearchTreeCodec.write(narrow, big, false);
+    void shouldKeepALargeValueFor64BitServers() throws DecodeException {
+        whenTheTreeIsWrittenFor64BitServers(LARGE_SIZE);
 
-        assertThat(SearchTreeCodec.read(PacketReader.of(wide.toByteArray()))).isEqualTo(big);
-        assertThat(SearchTreeCodec.read(PacketReader.of(narrow.toByteArray())))
-                .isEqualTo(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 0xFFFF_FFFFL));
+        thenTheTreeReadBackIs(LARGE_SIZE);
     }
 
     @Test
-    void andedKeywordsAreSentAsOnePhrase() {
-        assertThat(SearchTreeCodec.forServer(SearchParser.parse("ubuntu 24.04 iso")))
-                .isEqualTo(kw("ubuntu 24.04 iso"));
-        SearchExpr or = SearchParser.parse("a OR b");
-        assertThat(SearchTreeCodec.forServer(or)).isSameAs(or);
+    void shouldCapALargeValueFor32BitServers() throws DecodeException {
+        whenTheTreeIsWrittenFor32BitServers(LARGE_SIZE);
+
+        thenTheTreeReadBackIs(new NumericAttr(FileTag.FILESIZE, Comparison.GREATER_EQUAL, 0xFFFF_FFFFL));
     }
 
     @Test
-    void shouldAskServersForArchivesAndDiscImagesAsPrograms() throws DecodeException {
+    void shouldSendAndedKeywordsAsOnePhrase() {
+        givenTheSearch("ubuntu 24.04 iso");
+
+        whenItIsPreparedForAServer();
+
+        thenTheServerSearchIs(kw("ubuntu 24.04 iso"));
+    }
+
+    @Test
+    void shouldSendOtherSearchesAsTheyAre() {
+        givenTheSearch("a OR b");
+
+        whenItIsPreparedForAServer();
+
+        thenTheServerSearchIsTheSearchItself();
+    }
+
+    @Test
+    void shouldAskServersForArchivesAsPrograms() throws DecodeException {
         givenTheSearch("linux @type=arc");
-        whenItIsSentToAServer();
-        thenTheServerIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
 
-        givenTheSearch("@type=iso linux");
         whenItIsSentToAServer();
+
+        thenTheServerIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
+    }
+
+    @Test
+    void shouldAskServersForDiscImagesAsPrograms() throws DecodeException {
+        givenTheSearch("@type=iso linux");
+
+        whenItIsSentToAServer();
+
         thenTheServerIsAskedFor(new And(new StringAttr(FileTag.FILETYPE, "Pro"), kw("linux")));
     }
 
-    private void givenTheSearch(String expression) {
-        this.search = SearchParser.parse(expression);
-    }
+    @Property
+    void shouldReadBackEveryTreeItWrites(@ForAll("trees") SearchExpr tree) throws DecodeException {
+        whenTheTreeIsWrittenFor64BitServers(tree);
 
-    private void whenItIsSentToAServer() throws DecodeException {
-        PacketWriter out = new PacketWriter();
-        SearchTreeCodec.write(out, SearchTreeCodec.forServer(this.search), false);
-        this.sent = SearchTreeCodec.read(PacketReader.of(out.toByteArray()));
-    }
-
-    private void thenTheServerIsAskedFor(SearchExpr expected) {
-        assertThat(this.sent).isEqualTo(expected);
+        thenTheTreeReadBackIs(tree);
+        thenNothingFollowsTheTree();
     }
 
     @Property
-    void treesRoundTrip(@ForAll("trees") SearchExpr tree) throws DecodeException {
-        PacketWriter out = new PacketWriter();
-        SearchTreeCodec.write(out, tree, true);
-        PacketReader in = PacketReader.of(out.toByteArray());
+    void shouldParseAnyTextOrFailWithASyntaxError(@ForAll @Size(max = 60) String text) {
+        whenTheTextIsParsed(text);
 
-        assertThat(SearchTreeCodec.read(in)).isEqualTo(tree);
-        in.expectEnd();
+        thenTheTextIsASearchOrASyntaxError();
     }
 
     @Property
-    void anyTextParsesOrFailsWithASyntaxError(@ForAll @Size(max = 60) String text) {
-        try {
-            SearchParser.parse(text);
-        } catch (SearchSyntaxException expected) {
-            // invalid expression
-        }
-    }
+    void shouldDecodeAnyBytesOrFailCleanly(@ForAll @Size(max = 60) byte[] data) {
+        whenTheBytesAreRead(data);
 
-    @Property
-    void anyBytesDecodeOrFailCleanly(@ForAll @Size(max = 60) byte[] data) {
-        try {
-            SearchTreeCodec.read(PacketReader.of(data));
-        } catch (DecodeException expected) {
-            // malformed tree
-        }
+        thenTheBytesAreATreeOrADecodeError();
     }
 
     @Provide
@@ -359,25 +384,234 @@ class SearchParserTest {
                 4);
     }
 
-    private static Keyword kw(String text) {
-        return new Keyword(text);
+    @Test
+    void shouldLookUpTheLongestWordInKad() {
+        whenKadPicksTheKeywordOf("the matrix reloaded");
+
+        thenKadLooksUp("reloaded");
     }
 
     @Test
-    void kadLooksUpTheLongestWordOfTheExpression() {
-        assertThat(kad("the matrix reloaded")).isEqualTo("reloaded");
-        assertThat(kad("\"linux\" AND (debian OR ubuntu) @size>700m"))
-                .as("a word every result has")
-                .isEqualTo("linux");
-        assertThat(kad("  Único  ")).isEqualTo("único");
-        assertThat(kad("ubuntu 22.04.3")).as("a word Kad indexes").isEqualTo("ubuntu");
-        assertThat(kad("linux -distribution")).isEqualTo("linux");
-        assertThat(kad("linux NOT (distribution OR distro)")).isEqualTo("linux");
-        assertThat(kad("iso \"the matrix\"")).isEqualTo("iso");
-        assertThatThrownBy(() -> kad("linux OR windows"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("OR");
-        assertThatThrownBy(() -> kad("22.04 @size>700m")).isInstanceOf(IllegalArgumentException.class);
+    void shouldLookUpAWordEveryResultHasInKad() {
+        whenKadPicksTheKeywordOf("\"linux\" AND (debian OR ubuntu) @size>700m");
+
+        thenKadLooksUp("linux", "a word every result has");
+    }
+
+    @Test
+    void shouldLookUpTheTrimmedLowerCaseWordInKad() {
+        whenKadPicksTheKeywordOf("  Único  ");
+
+        thenKadLooksUp("único");
+    }
+
+    @Test
+    void shouldLookUpAWordKadIndexes() {
+        whenKadPicksTheKeywordOf("ubuntu 22.04.3");
+
+        thenKadLooksUp("ubuntu", "a word Kad indexes");
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = ';',
+            value = {"linux -distribution;linux", "linux NOT (distribution OR distro);linux"})
+    void shouldNotLookUpAnExcludedWordInKad(String expression, String keyword) {
+        whenKadPicksTheKeywordOf(expression);
+
+        thenKadLooksUp(keyword);
+    }
+
+    @Test
+    void shouldPreferAWordOutsideAPhraseInKad() {
+        whenKadPicksTheKeywordOf("iso \"the matrix\"");
+
+        thenKadLooksUp("iso");
+    }
+
+    @Test
+    void shouldRefuseAlternativesInKad() {
+        whenKadPicksTheKeywordOf("linux OR windows");
+
+        thenExceptionOccurred(IllegalArgumentException.class, "OR");
+    }
+
+    @Test
+    void shouldRefuseAKadSearchWithoutAWordKadIndexes() {
+        whenKadPicksTheKeywordOf("22.04 @size>700m");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    static Stream<Arguments> adjacentWords() {
+        return Stream.of(
+                arguments("linux iso", new And(kw("linux"), kw("iso"))),
+                arguments("a b c", new And(kw("a"), new And(kw("b"), kw("c")))));
+    }
+
+    static Stream<Arguments> precedences() {
+        return Stream.of(
+                arguments("a OR b c", new And(new Or(kw("a"), kw("b")), kw("c"))),
+                arguments("a AND b OR c", new And(kw("a"), new Or(kw("b"), kw("c")))),
+                arguments("a OR b NOT c", new Or(kw("a"), new Not(kw("b"), kw("c")))),
+                arguments("(a OR b) AND c", new And(new Or(kw("a"), kw("b")), kw("c"))));
+    }
+
+    static Stream<Arguments> quotedPhrases() {
+        return Stream.of(
+                arguments("\"exact phrase\" x", new And(kw("\"exact phrase\""), kw("x"))),
+                arguments("\"a\\\"b\"", kw("\"a\"b\"")),
+                arguments("\"\" x", kw("x")));
+    }
+
+    static Stream<Arguments> numericAttributes() {
+        return Stream.of(
+                arguments("@sources>10", new NumericAttr(FileTag.SOURCES, Comparison.GREATER, 10)),
+                arguments("@avail>=2k", new NumericAttr(FileTag.SOURCES, Comparison.GREATER_EQUAL, 2000)),
+                arguments("@complete>5", new NumericAttr(FileTag.COMPLETE_SOURCES, Comparison.GREATER, 5)),
+                arguments("@bitrate>=192", new NumericAttr(FileTag.MEDIA_BITRATE, Comparison.GREATER_EQUAL, 192)),
+                arguments("@rating>3", new NumericAttr(FileTag.FILERATING, Comparison.GREATER, 3)),
+                arguments("@length>1:30", new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER, 90)),
+                arguments("@len>=1:00:00", new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.GREATER_EQUAL, 3600)),
+                arguments("@length < 5m", new NumericAttr(FileTag.MEDIA_LENGTH, Comparison.LESS, 300)));
+    }
+
+    static Stream<Arguments> stringAttributes() {
+        return Stream.of(
+                arguments("@type=video", new StringAttr(FileTag.FILETYPE, "Video")),
+                arguments("@typ=img", new StringAttr(FileTag.FILETYPE, "Image")),
+                arguments("@type=doc", new StringAttr(FileTag.FILETYPE, "Doc")),
+                arguments("@type=cd", new StringAttr(FileTag.FILETYPE, "Iso")),
+                arguments("@ext=mkv", new StringAttr(FileTag.FILEFORMAT, "mkv")),
+                arguments("@ext=\"mp3\"", new StringAttr(FileTag.FILEFORMAT, "mp3")),
+                arguments("@artist=Queen song", new And(new StringAttr(FileTag.MEDIA_ARTIST, "Queen"), kw("song"))));
+    }
+
+    private void givenTheSearch(String expression) {
+        this.search = SearchParser.parse(expression);
+    }
+
+    // jqwik reuses the instance across the tries of a property: every field is assigned again here.
+    private void whenTheTextIsParsed(String text) {
+        this.input = text;
+        this.parsed = null;
+        this.exception = catchThrowable(() -> this.parsed = SearchParser.parse(text));
+    }
+
+    private void whenItIsPreparedForAServer() {
+        this.serverSearch = SearchTreeCodec.forServer(this.search);
+    }
+
+    private void whenItIsSentToAServer() throws DecodeException {
+        PacketWriter out = new PacketWriter();
+        SearchTreeCodec.write(out, SearchTreeCodec.forServer(this.search), false);
+        this.sent = SearchTreeCodec.read(PacketReader.of(out.toByteArray()));
+    }
+
+    private void whenTheTreeIsWrittenFor64BitServers(SearchExpr tree) {
+        this.encoded = write(tree, true);
+    }
+
+    private void whenTheTreeIsWrittenFor32BitServers(SearchExpr tree) {
+        this.encoded = write(tree, false);
+    }
+
+    private void whenTheBytesAreRead(byte[] data) {
+        this.exception = catchThrowable(() -> SearchTreeCodec.read(PacketReader.of(data)));
+    }
+
+    private void whenKadPicksTheKeywordOf(String expression) {
+        this.input = expression;
+        this.exception = catchThrowable(() -> this.kadKeyword = kad(expression));
+    }
+
+    private void thenTheSearchIs(SearchExpr expected) {
+        assertThat(this.exception).as(this.input).isNull();
+        assertThat(this.parsed).isEqualTo(expected);
+    }
+
+    private void thenTheSyntaxErrorIs(Reason reason) {
+        assertThat(this.exception)
+                .as(this.input)
+                .isInstanceOfSatisfying(
+                        SearchSyntaxException.class, e -> assertThat(e.reason()).isEqualTo(reason));
+    }
+
+    private void thenTheTextIsASearchOrASyntaxError() {
+        if (!(this.exception instanceof SearchSyntaxException)) {
+            assertThat(this.exception).as(this.input).isNull();
+        }
+    }
+
+    private void thenAParsedSearchCanBeReadBackFromA64BitServer() {
+        if (this.parsed != null) {
+            try {
+                assertThat(SearchTreeCodec.read(PacketReader.of(write(this.parsed, true))))
+                        .isNotNull();
+            } catch (DecodeException e) {
+                throw new AssertionError(this.input, e);
+            }
+        }
+    }
+
+    private void thenTheBytesWrittenAre(String hex) {
+        assertThat(HexFormat.of().formatHex(this.encoded)).isEqualTo(hex);
+    }
+
+    private void thenTheTreeReadBackIs(SearchExpr expected) throws DecodeException {
+        assertThat(SearchTreeCodec.read(PacketReader.of(this.encoded))).isEqualTo(expected);
+    }
+
+    private void thenNothingFollowsTheTree() throws DecodeException {
+        PacketReader in = PacketReader.of(this.encoded);
+        SearchTreeCodec.read(in);
+        in.expectEnd();
+    }
+
+    private void thenTheBytesAreATreeOrADecodeError() {
+        if (!(this.exception instanceof DecodeException)) {
+            assertThat(this.exception).isNull();
+        }
+    }
+
+    private void thenTheServerSearchIs(SearchExpr expected) {
+        assertThat(this.serverSearch).isEqualTo(expected);
+    }
+
+    private void thenTheServerSearchIsTheSearchItself() {
+        assertThat(this.serverSearch).isSameAs(this.search);
+    }
+
+    private void thenTheServerIsAskedFor(SearchExpr expected) {
+        assertThat(this.sent).isEqualTo(expected);
+    }
+
+    private void thenKadLooksUp(String keyword) {
+        assertThat(this.exception).isNull();
+        assertThat(this.kadKeyword).isEqualTo(keyword);
+    }
+
+    private void thenKadLooksUp(String keyword, String why) {
+        assertThat(this.exception).isNull();
+        assertThat(this.kadKeyword).as(why).isEqualTo(keyword);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).as(this.input).isInstanceOf(type);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type, String messagePart) {
+        assertThat(this.exception).isInstanceOf(type).hasMessageContaining(messagePart);
+    }
+
+    private static byte[] write(SearchExpr tree, boolean supports64Bit) {
+        PacketWriter out = new PacketWriter();
+        SearchTreeCodec.write(out, tree, supports64Bit);
+        return out.toByteArray();
+    }
+
+    private static Keyword kw(String text) {
+        return new Keyword(text);
     }
 
     private static String kad(String expression) {

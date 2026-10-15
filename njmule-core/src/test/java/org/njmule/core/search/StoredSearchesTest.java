@@ -18,6 +18,7 @@ package org.njmule.core.search;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -35,6 +36,10 @@ import org.njmule.core.protocol.tag.Tag;
 
 class StoredSearchesTest {
 
+    private static final SearchResult FILM =
+            new SearchResult(hash(1), "film.mkv", 5_000_000_000L, 12, 3, Optional.of("Video"));
+    private static final SearchResult SONG = new SearchResult(hash(2), "song.mp3", 4_000_000, 1, 0, Optional.empty());
+
     @TempDir
     Path dir;
 
@@ -42,86 +47,69 @@ class StoredSearchesTest {
     private List<SavedSearch> loaded;
 
     @Test
-    void keepsTheOpenSearchesWithTheirResults() throws Exception {
-        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
-        assertThat(StoredSearches.load(file)).as("no file yet").isEmpty();
-        SearchResult film = new SearchResult(hash(1), "film.mkv", 5_000_000_000L, 12, 3, Optional.of("Video"));
-        SearchResult song = new SearchResult(hash(2), "song.mp3", 4_000_000, 1, 0, Optional.empty());
-        List<SavedSearch> open = List.of(
-                new SavedSearch("", new SearchRequest("film @type=Video", SearchRequest.Scope.KAD), List.of(film)),
+    void shouldKeepTheOpenSearchesWithTheirResults() throws IOException {
+        givenNoStoredSearchesYet();
+        givenTheOpenSearches(
+                new SavedSearch("", new SearchRequest("film @type=Video", SearchRequest.Scope.KAD), List.of(FILM)),
                 new SavedSearch(
                         "Related",
                         new SearchRequest("related::" + hash(1).toHex(), SearchRequest.Scope.SERVER),
-                        List.of(film, song)));
+                        List.of(FILM, SONG)));
 
-        StoredSearches.save(file, open);
+        whenTheSearchesAreSavedAndLoaded();
 
-        assertThat(StoredSearches.load(file)).isEqualTo(open);
-        assertThat(SearchFiles.readStored(Files.readAllBytes(file)))
-                .extracting(SearchFiles.StoredSearch::type)
-                .as("the numbers other clients use for the methods")
-                .containsExactly(3, 1);
+        thenTheLoadedSearchesAreTheSaved();
+        thenTheFileStoresTheMethods(3, 1);
     }
 
     @Test
-    void leavesOutResultsThatCannotBeDownloaded() throws Exception {
-        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
-        Files.write(
-                file,
-                SearchFiles.writeStored(List.of(stored(
-                        1,
-                        false,
-                        "film",
-                        "",
-                        List.of(
-                                result(1, "good.mkv", 1000),
-                                result(2, " ", 1000),
-                                result(3, "zero.bin", 0),
-                                result(4, "huge.bin", Ed2k.MAX_FILE_SIZE + 1),
-                                result(5, "largest.bin", Ed2k.MAX_FILE_SIZE))))));
+    void shouldLeaveOutResultsThatCannotBeDownloaded() throws IOException {
+        givenAFileWithTheSearches(stored(
+                1,
+                false,
+                "film",
+                "",
+                List.of(
+                        result(1, "good.mkv", 1000),
+                        result(2, " ", 1000),
+                        result(3, "zero.bin", 0),
+                        result(4, "huge.bin", Ed2k.MAX_FILE_SIZE + 1),
+                        result(5, "largest.bin", Ed2k.MAX_FILE_SIZE))));
 
-        List<SearchResult> results = StoredSearches.load(file).getFirst().results();
+        whenTheSearchesAreLoaded();
 
-        assertThat(results).extracting(SearchResult::name).containsExactly("good.mkv", "largest.bin");
-        assertThat(results).allSatisfy(r -> assertThat(r.link().size()).isEqualTo(r.size()));
+        thenTheFirstSearchHasTheResults("good.mkv", "largest.bin");
+        thenEveryResultLinksToItsOwnSize();
     }
 
     @Test
-    void keepsTheFileTypeOfAnImportedSearchAndSkipsBrowsedClients() throws Exception {
-        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
-        Files.write(
-                file,
-                SearchFiles.writeStored(List.of(
-                        stored(1, false, "film", "Video", List.of()),
-                        stored(2, true, "SomeUser", "", List.of(result(1, "shared.mkv", 1000))),
-                        stored(2, false, "setup", "Pro", List.of()),
-                        stored(2, false, "set", "EmuleCollection", List.of()),
-                        stored(2, false, "anything", "", List.of()))));
+    void shouldKeepTheFileTypeOfAnImportedSearchAndSkipBrowsedClients() throws IOException {
+        givenAFileWithTheSearches(
+                stored(1, false, "film", "Video", List.of()),
+                stored(2, true, "SomeUser", "", List.of(result(1, "shared.mkv", 1000))),
+                stored(2, false, "setup", "Pro", List.of()),
+                stored(2, false, "set", "EmuleCollection", List.of()),
+                stored(2, false, "anything", "", List.of()));
 
-        List<SavedSearch> searches = StoredSearches.load(file);
+        whenTheSearchesAreLoaded();
 
-        assertThat(searches)
-                .extracting(s -> s.request().expression())
-                .containsExactly("film @type=Video", "setup @type=Pro", "set", "anything");
-        assertThat(SearchParser.parse(searches.getFirst().request().expression()))
-                .isEqualTo(SearchParser.parse("film @type=video"));
+        thenTheExpressionsAre("film @type=Video", "setup @type=Pro", "set", "anything");
+        thenTheFirstExpressionMeansTheSameAs("film @type=video");
     }
 
     @Test
-    void fallsBackToTheBackupOfACorruptFile() throws Exception {
-        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
-        List<SavedSearch> first =
-                List.of(new SavedSearch("", new SearchRequest("first", SearchRequest.Scope.SERVER), List.of()));
-        StoredSearches.save(file, first);
-        StoredSearches.save(
-                file, List.of(new SavedSearch("", new SearchRequest("second", SearchRequest.Scope.SERVER), List.of())));
-        Files.write(file, new byte[] {0x0F, 1, 5});
+    void shouldFallBackToTheBackupOfACorruptFile() throws IOException {
+        givenTheSavedSearch("first");
+        givenTheSavedSearch("second");
+        givenTheFileIsCorrupted();
 
-        assertThat(StoredSearches.load(file)).isEqualTo(first);
+        whenTheSearchesAreLoaded();
+
+        thenTheLoadedSearchIs("first");
     }
 
     @Test
-    void shouldKeepTheMediaDetailsOfTheResults() throws Exception {
+    void shouldKeepTheMediaDetailsOfTheResults() throws IOException {
         givenAnOpenSearchWith(new SearchResult(
                 hash(7),
                 "song.mp3",
@@ -136,18 +124,80 @@ class StoredSearchesTest {
         thenTheLoadedSearchesAreTheSaved();
     }
 
+    private void givenNoStoredSearchesYet() throws IOException {
+        assertThat(StoredSearches.load(storedFile())).as("no file yet").isEmpty();
+    }
+
+    private void givenTheOpenSearches(SavedSearch... searches) {
+        this.saved = List.of(searches);
+    }
+
     private void givenAnOpenSearchWith(SearchResult result) {
         this.saved = List.of(new SavedSearch("", new SearchRequest("song", SearchRequest.Scope.KAD), List.of(result)));
     }
 
-    private void whenTheSearchesAreSavedAndLoaded() throws Exception {
-        Path file = this.dir.resolve(StoredSearches.FILE_NAME);
-        StoredSearches.save(file, this.saved);
-        this.loaded = StoredSearches.load(file);
+    private void givenAFileWithTheSearches(SearchFiles.StoredSearch... searches) throws IOException {
+        Files.write(storedFile(), SearchFiles.writeStored(List.of(searches)));
+    }
+
+    private void givenTheSavedSearch(String expression) throws IOException {
+        StoredSearches.save(storedFile(), serverSearch(expression));
+    }
+
+    private void givenTheFileIsCorrupted() throws IOException {
+        Files.write(storedFile(), new byte[] {0x0F, 1, 5});
+    }
+
+    private void whenTheSearchesAreSavedAndLoaded() throws IOException {
+        StoredSearches.save(storedFile(), this.saved);
+        this.loaded = StoredSearches.load(storedFile());
+    }
+
+    private void whenTheSearchesAreLoaded() throws IOException {
+        this.loaded = StoredSearches.load(storedFile());
     }
 
     private void thenTheLoadedSearchesAreTheSaved() {
         assertThat(this.loaded).isEqualTo(this.saved);
+    }
+
+    private void thenTheLoadedSearchIs(String expression) {
+        assertThat(this.loaded).isEqualTo(serverSearch(expression));
+    }
+
+    private void thenTheFileStoresTheMethods(Integer... types) throws IOException {
+        assertThat(SearchFiles.readStored(Files.readAllBytes(storedFile())))
+                .extracting(SearchFiles.StoredSearch::type)
+                .as("the numbers other clients use for the methods")
+                .containsExactly(types);
+    }
+
+    private void thenTheFirstSearchHasTheResults(String... names) {
+        assertThat(this.loaded.getFirst().results())
+                .extracting(SearchResult::name)
+                .containsExactly(names);
+    }
+
+    private void thenEveryResultLinksToItsOwnSize() {
+        assertThat(this.loaded.getFirst().results())
+                .allSatisfy(r -> assertThat(r.link().size()).isEqualTo(r.size()));
+    }
+
+    private void thenTheExpressionsAre(String... expressions) {
+        assertThat(this.loaded).extracting(s -> s.request().expression()).containsExactly(expressions);
+    }
+
+    private void thenTheFirstExpressionMeansTheSameAs(String expression) {
+        assertThat(SearchParser.parse(this.loaded.getFirst().request().expression()))
+                .isEqualTo(SearchParser.parse(expression));
+    }
+
+    private Path storedFile() {
+        return this.dir.resolve(StoredSearches.FILE_NAME);
+    }
+
+    private static List<SavedSearch> serverSearch(String expression) {
+        return List.of(new SavedSearch("", new SearchRequest(expression, SearchRequest.Scope.SERVER), List.of()));
     }
 
     private static SearchFiles.StoredSearch stored(

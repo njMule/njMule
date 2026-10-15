@@ -26,46 +26,181 @@ class ChatFilterTest {
     private static final ChatFilter USUAL =
             new ChatFilter(false, ChatFilter.words("Fastest Download Speed| |viagra"), true);
 
+    private final ChatFilter.State state = new ChatFilter.State();
+    private ChatFilter filter;
+    private List<String> words;
+    private boolean shown;
+
     @Test
-    void leavesOutTheFilteredWords() {
-        assertThat(ChatFilter.words("a|b c|")).containsExactly("a", "b c", "");
-        assertThat(USUAL.words())
-                .as("trimmed, in lower case, none empty")
-                .containsExactly("fastest download speed", "viagra");
-        assertThat(USUAL.shows(new ChatFilter.State(), true, "get the FASTEST download speed now"))
-                .isFalse();
-        assertThat(USUAL.shows(new ChatFilter.State(), true, "hello")).isTrue();
+    void shouldSplitTheFilteredWordsAtTheBars() {
+        whenTheWordsAreRead("a|b c|");
+
+        thenTheWordsAre("a", "b c", "");
     }
 
     @Test
-    void showsOnlyFriendsWhenAsked() {
-        ChatFilter friends = new ChatFilter(true, List.of(), false);
-        assertThat(friends.shows(new ChatFilter.State(), false, "hello")).isFalse();
-        assertThat(friends.shows(new ChatFilter.State(), true, "hello")).isTrue();
+    void shouldKeepTheFilteredWordsTrimmedInLowerCaseAndNoneEmpty() {
+        whenAFilterIsMadeAgainstTheWords("Fastest Download Speed| |viagra");
+
+        thenTheFilterLeavesOut("fastest download speed", "viagra");
     }
 
     @Test
-    void takesALinkBeforeWeWroteForSpam() {
-        ChatFilter.State state = new ChatFilter.State();
-        assertThat(USUAL.shows(state, false, "visit www.example.org")).isFalse();
-        assertThat(USUAL.shows(state, false, "hello")).as("a spammer stays one").isFalse();
+    void shouldLeaveOutAMessageWithAFilteredWord() {
+        givenTheUsualFilter();
 
-        ChatFilter.State answered = new ChatFilter.State();
-        answered.wrote();
-        assertThat(USUAL.shows(answered, false, "see https://example.org")).isTrue();
-        assertThat(USUAL.shows(new ChatFilter.State(), true, "www.example.org"))
-                .as("friends")
-                .isTrue();
+        whenAFriendWrites("get the FASTEST download speed now");
+
+        thenTheMessageIsHidden();
     }
 
     @Test
-    void showsThreeUnansweredMessagesAtMost() {
-        ChatFilter.State state = new ChatFilter.State();
-        for (int i = 0; i < ChatFilter.MAX_UNANSWERED; i++) {
-            assertThat(USUAL.shows(state, false, "hi " + i)).isTrue();
+    void shouldShowAMessageWithoutFilteredWords() {
+        givenTheUsualFilter();
+
+        whenAFriendWrites("hello");
+
+        thenTheMessageIsShown();
+    }
+
+    @Test
+    void shouldHideStrangersWhenOnlyFriendsAreShown() {
+        givenAFilterShowingOnlyFriends();
+
+        whenAStrangerWrites("hello");
+
+        thenTheMessageIsHidden();
+    }
+
+    @Test
+    void shouldShowFriendsWhenOnlyFriendsAreShown() {
+        givenAFilterShowingOnlyFriends();
+
+        whenAFriendWrites("hello");
+
+        thenTheMessageIsShown();
+    }
+
+    @Test
+    void shouldTakeALinkBeforeWeWroteForSpam() {
+        givenTheUsualFilter();
+
+        whenAStrangerWrites("visit www.example.org");
+
+        thenTheMessageIsHidden();
+    }
+
+    @Test
+    void shouldKeepTakingASpammerForOne() {
+        givenTheUsualFilter();
+        givenAStrangerWasHiddenForWriting("visit www.example.org");
+
+        whenAStrangerWrites("hello");
+
+        thenTheMessageIsHidden("a spammer stays one");
+    }
+
+    @Test
+    void shouldNotTakeALinkAfterWeWroteForSpam() {
+        givenTheUsualFilter();
+        givenWeWrote();
+
+        whenAStrangerWrites("see https://example.org");
+
+        thenTheMessageIsShown();
+    }
+
+    @Test
+    void shouldNotTakeALinkFromAFriendForSpam() {
+        givenTheUsualFilter();
+
+        whenAFriendWrites("www.example.org");
+
+        thenTheMessageIsShown("friends");
+    }
+
+    @Test
+    void shouldShowThreeUnansweredMessagesAtMost() {
+        givenTheUsualFilter();
+        givenTheUnansweredMessagesShown(ChatFilter.MAX_UNANSWERED);
+
+        whenAStrangerWrites("hi again");
+
+        thenTheMessageIsHidden();
+    }
+
+    @Test
+    void shouldShowEverythingWithoutAFilter() {
+        givenNoFilter();
+
+        whenAStrangerWrites("www.example.org");
+
+        thenTheMessageIsShown();
+    }
+
+    private void givenTheUsualFilter() {
+        this.filter = USUAL;
+    }
+
+    private void givenAFilterShowingOnlyFriends() {
+        this.filter = new ChatFilter(true, List.of(), false);
+    }
+
+    private void givenNoFilter() {
+        this.filter = ChatFilter.NONE;
+    }
+
+    private void givenWeWrote() {
+        this.state.wrote();
+    }
+
+    private void givenAStrangerWasHiddenForWriting(String message) {
+        assertThat(this.filter.shows(this.state, false, message)).isFalse();
+    }
+
+    private void givenTheUnansweredMessagesShown(int count) {
+        for (int i = 0; i < count; i++) {
+            assertThat(this.filter.shows(this.state, false, "hi " + i)).isTrue();
         }
-        assertThat(USUAL.shows(state, false, "hi again")).isFalse();
-        assertThat(ChatFilter.NONE.shows(new ChatFilter.State(), false, "www.example.org"))
-                .isTrue();
+    }
+
+    private void whenTheWordsAreRead(String text) {
+        this.words = ChatFilter.words(text);
+    }
+
+    private void whenAFilterIsMadeAgainstTheWords(String text) {
+        this.filter = new ChatFilter(false, ChatFilter.words(text), true);
+    }
+
+    private void whenAFriendWrites(String message) {
+        this.shown = this.filter.shows(this.state, true, message);
+    }
+
+    private void whenAStrangerWrites(String message) {
+        this.shown = this.filter.shows(this.state, false, message);
+    }
+
+    private void thenTheWordsAre(String... expected) {
+        assertThat(this.words).containsExactly(expected);
+    }
+
+    private void thenTheFilterLeavesOut(String... expected) {
+        assertThat(this.filter.words()).as("trimmed, in lower case, none empty").containsExactly(expected);
+    }
+
+    private void thenTheMessageIsShown() {
+        assertThat(this.shown).isTrue();
+    }
+
+    private void thenTheMessageIsShown(String why) {
+        assertThat(this.shown).as(why).isTrue();
+    }
+
+    private void thenTheMessageIsHidden() {
+        assertThat(this.shown).isFalse();
+    }
+
+    private void thenTheMessageIsHidden(String why) {
+        assertThat(this.shown).as(why).isFalse();
     }
 }

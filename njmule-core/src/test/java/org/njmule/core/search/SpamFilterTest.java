@@ -18,8 +18,10 @@ package org.njmule.core.search;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -39,93 +41,187 @@ import org.njmule.core.protocol.tag.TagType;
 
 class SpamFilterTest {
 
+    private static final byte[] DAMAGED = {0x0F, 5, 0, 0, 0, (byte) 0x99};
+
     @TempDir
     Path dir;
 
+    private SpamFilter filter;
+    private SpamMarks marks;
+
     @Test
-    void marksByHashAndNameAndKeepsThemInTheEmuleFile() throws Exception {
-        Path file = this.dir.resolve(SpamFilter.FILE_NAME);
-        SearchResult fake = result("ab", "Movie 2026 FULL.avi");
-        SearchResult renamed = result("cd", "movie 2026 full.AVI");
-        SearchResult other = result("ef", "Holiday.jpg");
+    void shouldKeepTheMarksByHashAndNameInTheFile() throws IOException {
+        givenTheFilterOfTheFile();
+        givenAFileThatIsNotSpamYet("ab", "Movie 2026 FULL.avi");
+        givenAFileMarkedAsSpam("ab", "Movie 2026 FULL.avi");
 
-        SpamFilter filter = SpamFilter.load(file);
-        assertThat(filter.marks().isSpam(fake)).isFalse();
-        filter.mark(fake.hash(), fake.name(), true);
-        filter.save(file);
+        whenTheFilterIsSavedAndLoadedAgain();
 
-        SpamMarks marks = SpamFilter.load(file).marks();
-        assertThat(marks.isSpam(fake)).isTrue();
-        assertThat(marks.isSpam(renamed)).as("the same name, in any case").isTrue();
-        assertThat(marks.isSpam(other)).isFalse();
-
-        SpamFilter again = SpamFilter.load(file);
-        again.mark(renamed.hash(), renamed.name(), false);
-        assertThat(again.marks().isSpam(renamed)).isFalse();
-        assertThat(again.marks().isSpam(fake)).as("still by its own hash").isTrue();
-        assertThat(again.marks().names()).as("the name is cleared").isEmpty();
+        thenAFileIsSpam("ab", "Movie 2026 FULL.avi");
+        thenAFileIsSpam("cd", "movie 2026 full.AVI", "the same name, in any case");
+        thenAFileIsNotSpam("ef", "Holiday.jpg");
     }
 
     @Test
-    void aShortNameAloneDoesNotMarkOtherFiles() {
-        SpamFilter filter = new SpamFilter();
-        filter.mark(Hash16.parseHex("ab".repeat(16)), "setup.exe", true);
-        filter.mark(Hash16.parseHex("ac".repeat(16)), "abcdef.zip", true);
-        filter.mark(Hash16.parseHex("ad".repeat(16)), "abcdefg.zip", true);
-        SpamMarks marks = filter.marks();
+    void shouldClearTheNameButKeepTheHashWhenACopyWithTheSameNameIsUnmarked() throws IOException {
+        givenTheFilterOfTheFile();
+        givenAFileMarkedAsSpam("ab", "Movie 2026 FULL.avi");
+        givenTheFilterIsSavedAndLoadedAgain();
 
-        assertThat(marks.isSpam(result("ab", "setup.exe"))).as("by its hash").isTrue();
-        assertThat(marks.isSpam(result("cd", "Setup.exe"))).isFalse();
-        assertThat(marks.isSpam(result("ce", "abcdef.zip"))).as("10 characters").isFalse();
-        assertThat(marks.isSpam(result("cf", "ABCDEFG.zip")))
-                .as("11 characters")
-                .isTrue();
+        whenAFileIsUnmarked("cd", "movie 2026 full.AVI");
+
+        thenAFileIsNotSpam("cd", "movie 2026 full.AVI");
+        thenAFileIsSpam("ab", "Movie 2026 FULL.avi", "still by its own hash");
+        thenNoNameIsMarked();
     }
 
     @Test
-    void markersTheFileCannotHoldAreDroppedSoSavingWorks() throws Exception {
-        Path file = this.dir.resolve(SpamFilter.FILE_NAME);
+    void shouldNotMarkOtherFilesByAShortNameAlone() {
+        givenANewFilter();
+        givenAFileMarkedAsSpam("ab", "setup.exe");
+        givenAFileMarkedAsSpam("ac", "abcdef.zip");
+        givenAFileMarkedAsSpam("ad", "abcdefg.zip");
+
+        whenTheMarksAreTaken();
+
+        thenAFileIsSpam("ab", "setup.exe", "by its hash");
+        thenAFileIsNotSpam("cd", "Setup.exe");
+        thenAFileIsNotSpam("ce", "abcdef.zip", "10 characters");
+        thenAFileIsSpam("cf", "ABCDEFG.zip", "11 characters");
+    }
+
+    @Test
+    void shouldDropTheMarkersTheFileCannotHoldSoSavingWorks() throws IOException {
+        givenASpamFileWithAMarkerItCannotHoldNextToTheHash("ab");
+        givenTheFilterOfTheFile();
+        givenAFileMarkedAsSpam("cd", "another fake file.avi");
+
+        whenTheFilterIsSaved();
+
+        thenTheSavedFileHasTheSpamHashes("ab", "cd");
+    }
+
+    @Test
+    void shouldSetADamagedFileAsideInsteadOfOverwritingIt() throws IOException {
+        givenADamagedSpamFile();
+        givenTheFilterOfTheFile();
+        givenTheFilterHasNoSpamYet();
+        givenAFileMarkedAsSpam("ab", "a fake movie.avi");
+
+        whenTheFilterIsSavedTwice();
+
+        thenOneCopyOfTheDamagedFileIsSetAside();
+        thenTheSavedFileHasTheSpamHashes("ab");
+    }
+
+    private void givenANewFilter() {
+        this.filter = new SpamFilter();
+    }
+
+    private void givenTheFilterOfTheFile() throws IOException {
+        this.filter = SpamFilter.load(spamFile());
+    }
+
+    private void givenASpamFileWithAMarkerItCannotHoldNextToTheHash(String hex) throws IOException {
         PacketWriter out = new PacketWriter().u8(0x0F).u32(2);
         out.u8(TagType.BSOB | TagType.NEW_ED2K_FLAG).u8(0x09).u8(2).u8(1).u8(2);
         TagCodec.writeEd2k(
                 out,
-                new Tag.HashTag(TagName.id(SearchFiles.SPAM_HASH), Hash16.parseHex("ab".repeat(16))),
+                new Tag.HashTag(TagName.id(SearchFiles.SPAM_HASH), hash(hex)),
                 Ed2kTagFormat.NEW,
                 StringEncoding.UTF8);
-        Files.write(file, out.toByteArray());
-
-        SpamFilter filter = SpamFilter.load(file);
-        filter.mark(Hash16.parseHex("cd".repeat(16)), "another fake file.avi", true);
-        filter.save(file);
-
-        SpamMarks marks = SpamFilter.load(file).marks();
-        assertThat(marks.spam())
-                .containsExactlyInAnyOrder(Hash16.parseHex("ab".repeat(16)), Hash16.parseHex("cd".repeat(16)));
+        Files.write(spamFile(), out.toByteArray());
     }
 
-    @Test
-    void aDamagedFileIsSetAsideNotOverwritten() throws Exception {
-        Path file = this.dir.resolve(SpamFilter.FILE_NAME);
-        byte[] damaged = {0x0F, 5, 0, 0, 0, (byte) 0x99};
-        Files.write(file, damaged);
+    private void givenADamagedSpamFile() throws IOException {
+        Files.write(spamFile(), DAMAGED);
+    }
 
-        SpamFilter filter = SpamFilter.load(file);
-        assertThat(filter.marks().spam()).isEmpty();
-        filter.mark(Hash16.parseHex("ab".repeat(16)), "a fake movie.avi", true);
-        filter.save(file);
-        filter.save(file);
+    private void givenAFileThatIsNotSpamYet(String hex, String name) {
+        assertThat(this.filter.marks().isSpam(result(hex, name))).isFalse();
+    }
 
+    private void givenTheFilterHasNoSpamYet() {
+        assertThat(this.filter.marks().spam()).isEmpty();
+    }
+
+    private void givenAFileMarkedAsSpam(String hex, String name) {
+        this.filter.mark(hash(hex), name, true);
+    }
+
+    private void givenTheFilterIsSavedAndLoadedAgain() throws IOException {
+        this.filter.save(spamFile());
+        this.filter = SpamFilter.load(spamFile());
+    }
+
+    private void whenTheFilterIsSavedAndLoadedAgain() throws IOException {
+        this.filter.save(spamFile());
+        this.marks = SpamFilter.load(spamFile()).marks();
+    }
+
+    private void whenTheFilterIsSaved() throws IOException {
+        this.filter.save(spamFile());
+    }
+
+    private void whenTheFilterIsSavedTwice() throws IOException {
+        this.filter.save(spamFile());
+        this.filter.save(spamFile());
+    }
+
+    private void whenAFileIsUnmarked(String hex, String name) {
+        this.filter.mark(hash(hex), name, false);
+        this.marks = this.filter.marks();
+    }
+
+    private void whenTheMarksAreTaken() {
+        this.marks = this.filter.marks();
+    }
+
+    private void thenAFileIsSpam(String hex, String name) {
+        assertThat(this.marks.isSpam(result(hex, name))).isTrue();
+    }
+
+    private void thenAFileIsSpam(String hex, String name, String why) {
+        assertThat(this.marks.isSpam(result(hex, name))).as(why).isTrue();
+    }
+
+    private void thenAFileIsNotSpam(String hex, String name) {
+        assertThat(this.marks.isSpam(result(hex, name))).isFalse();
+    }
+
+    private void thenAFileIsNotSpam(String hex, String name, String why) {
+        assertThat(this.marks.isSpam(result(hex, name))).as(why).isFalse();
+    }
+
+    private void thenNoNameIsMarked() {
+        assertThat(this.marks.names()).as("the name is cleared").isEmpty();
+    }
+
+    private void thenTheSavedFileHasTheSpamHashes(String... hexes) throws IOException {
+        assertThat(SpamFilter.load(spamFile()).marks().spam())
+                .containsExactlyInAnyOrder(
+                        Arrays.stream(hexes).map(SpamFilterTest::hash).toArray(Hash16[]::new));
+    }
+
+    private void thenOneCopyOfTheDamagedFileIsSetAside() throws IOException {
         List<Path> setAside;
         try (Stream<Path> files = Files.list(this.dir)) {
             setAside = files.filter(p -> p.getFileName().toString().startsWith(SpamFilter.FILE_NAME + ".corrupt-"))
                     .toList();
         }
         assertThat(setAside).hasSize(1);
-        assertThat(Files.readAllBytes(setAside.getFirst())).isEqualTo(damaged);
-        assertThat(SpamFilter.load(file).marks().spam()).containsExactly(Hash16.parseHex("ab".repeat(16)));
+        assertThat(Files.readAllBytes(setAside.getFirst())).isEqualTo(DAMAGED);
+    }
+
+    private Path spamFile() {
+        return this.dir.resolve(SpamFilter.FILE_NAME);
+    }
+
+    private static Hash16 hash(String hex) {
+        return Hash16.parseHex(hex.repeat(16));
     }
 
     private static SearchResult result(String hex, String name) {
-        return new SearchResult(Hash16.parseHex(hex.repeat(16)), name, 1000, 1, 0, Optional.empty());
+        return new SearchResult(hash(hex), name, 1000, 1, 0, Optional.empty());
     }
 }

@@ -18,6 +18,7 @@ package org.njmule.core.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -49,6 +50,9 @@ class ServerPingerTest {
     private final List<ServerMet.Server> dead = new ArrayList<>();
     private final ServerUdp udp;
     private final ServerPinger pinger;
+    private ServerDatagrams.Status status;
+    private ServerMet.Server applied;
+    private Throwable exception;
 
     ServerPingerTest() throws Exception {
         // Closed: whatever the pinger tries to send never leaves this machine.
@@ -72,39 +76,44 @@ class ServerPingerTest {
     }
 
     @Test
-    void aServerWhoseUdpPortWouldPassTheLastPortIsSkipped() {
-        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 65_533, List.of()));
+    void shouldSkipAServerWhoseUdpPortWouldPassTheLastPort() {
+        givenTheServer(server("192.0.2.1", 65_533));
+        givenAPingWasTriedWithoutFailing();
 
-        assertThatCode(this.pinger::pingNext).doesNotThrowAnyException();
-        assertThatCode(this.pinger::pingNext).doesNotThrowAnyException();
+        whenAPingIsTried();
+
+        thenNoExceptionOccurred();
     }
 
     @Test
-    void aServerKnownByHostNameOnlyIsNotPinged() {
-        this.servers.add(new ServerMet.Server(
+    void shouldNotPingAServerKnownByHostNameOnly() {
+        givenTheServer(new ServerMet.Server(
                 0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "server.example"))));
 
-        assertThatCode(this.pinger::pingNext).doesNotThrowAnyException();
-        assertThat(this.servers.all())
-                .singleElement()
-                .satisfies(s -> assertThat(s.lastPing()).isEmpty());
+        whenAPingIsTried();
+
+        thenNoExceptionOccurred();
+        thenTheOnlyServerWasNeverPinged();
     }
 
     @Test
-    void answersFromIpv6AddressesAreIgnored() {
-        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of()));
-        InetSocketAddress from = new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665);
-        InetSocketAddress v6 = new InetSocketAddress(InetAddress.ofLiteral("::1"), 4665);
+    void shouldIgnoreAnswersFromIpv6Addresses() {
+        givenTheServer(server("192.0.2.1", 4661));
+        givenAPacketArrivedWithoutFailingFrom(
+                new InetSocketAddress(InetAddress.ofLiteral("::1"), 4665),
+                status(1).encode());
 
-        assertThatCode(() -> this.pinger.received(v6, status(1).encode())).doesNotThrowAnyException();
-        assertThatCode(() -> this.pinger.received(from, status(1).encode())).doesNotThrowAnyException();
-        assertThat(this.updated).isEmpty();
+        whenAPacketArrivesFrom(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665),
+                status(1).encode());
+
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
     }
 
     @Test
-    void obfuscationWithoutPortsTakesTheDefaultsAndTheKeyIsBoundToOurAddress() {
-        ServerMet.Server server = new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of());
-        ServerDatagrams.Status status = new ServerDatagrams.Status(
+    void shouldTakeTheDefaultObfuscationPortsAndBindTheKeyToOurAddress() {
+        givenTheStatus(new ServerDatagrams.Status(
                 1,
                 10,
                 20,
@@ -115,46 +124,37 @@ class ServerPingerTest {
                 5,
                 0,
                 0,
-                0x1234_5678L);
+                0x1234_5678L));
 
-        ServerMet.Server applied = ServerPinger.apply(server, status, Ipv4.parse("1.2.3.4"));
+        whenTheStatusIsAppliedFor(server("192.0.2.1", 4661), "1.2.3.4");
 
-        assertThat(applied.obfuscatedTcpPort()).hasValue(4661);
-        assertThat(applied.obfuscatedUdpPort()).hasValue(4661 + 12);
-        assertThat(applied.users()).hasValue(10);
-        assertThat(ServerList.supportsObfuscation(applied)).isTrue();
-        assertThat(intValue(applied, ServerTag.UDPKEYIP)).isEqualTo(Ipv4.toEd2k(Ipv4.parse("1.2.3.4")));
+        thenTheObfuscatedTcpPortIs(4661);
+        thenTheObfuscatedUdpPortIs(4661 + 12);
+        thenTheUsersAre(10);
+        thenTheServerSupportsObfuscation();
+        thenTheKeyIsBoundTo("1.2.3.4");
     }
 
     @Test
-    void aServerThatFailedTooOftenIsReportedDeadUnlessItIsStatic() {
-        ServerMet.Server failing = new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of())
-                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 5));
-        ServerMet.Server kept = new ServerMet.Server(Ipv4.parse("192.0.2.2"), 4661, List.of())
-                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 5));
-        this.servers.add(failing);
-        this.servers.add(kept);
-        this.servers.setStatic(ServerList.addressOf(kept), true);
+    void shouldReportAServerThatFailedTooOftenDeadUnlessItIsStatic() {
+        givenTheServer(server("192.0.2.1", 4661).with(failures(5)));
+        givenTheStaticServer(server("192.0.2.2", 4661).with(failures(5)));
+        givenTheNextServerWasPinged();
 
-        this.pinger.pingNext();
-        this.pinger.pingNext();
+        whenTheNextServerIsPinged();
 
-        assertThat(this.dead).containsExactly(failing);
-        assertThat(this.servers.get(ServerList.addressOf(kept)).orElseThrow().lastPing())
-                .as("a static server is asked, though the closed socket sends nothing")
-                .isEmpty();
+        thenTheServersReportedDeadAre(server("192.0.2.1", 4661).with(failures(5)));
+        thenTheServerWasNeverPinged(
+                server("192.0.2.2", 4661), "a static server is asked, though the closed socket sends nothing");
     }
 
     @Test
-    void aServerPingedRecentlyIsLeftAlone() {
-        long now = Clock.systemUTC().instant().getEpochSecond();
-        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of())
-                .with(new Tag.IntTag(TagName.id(ServerTag.LASTPING), now))
-                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 9)));
+    void shouldLeaveAServerPingedRecentlyAlone() {
+        givenAServerThatFailedOftenAndWasLastPingedIn(Duration.ZERO);
 
-        this.pinger.pingNext();
+        whenTheNextServerIsPinged();
 
-        assertThat(this.dead).as("not even checked").isEmpty();
+        thenNoServerIsReportedDead("not even checked");
     }
 
     @Test
@@ -166,52 +166,40 @@ class ServerPingerTest {
         thenThatServerIsReportedDead();
     }
 
-    private void givenAServerThatFailedOftenAndWasLastPingedIn(Duration fromNow) {
-        long then = Clock.systemUTC().instant().plus(fromNow).getEpochSecond();
-        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of())
-                .with(new Tag.IntTag(TagName.id(ServerTag.LASTPING), then))
-                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 9)));
-    }
+    @Test
+    void shouldChangeNothingOnAMalformedStatus() {
+        givenTheServer(server("192.0.2.1", 4661));
 
-    private void whenTheNextServerIsPinged() {
-        this.pinger.pingNext();
-    }
+        whenAPacketArrivesFrom(
+                new InetSocketAddress(InetAddress.ofLiteral("192.0.2.1"), 4665),
+                Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), new byte[2]));
 
-    private void thenThatServerIsReportedDead() {
-        assertThat(this.dead).extracting(ServerMet.Server::ip).containsExactly(Ipv4.parse("192.0.2.1"));
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
     }
 
     @Test
-    void malformedOrUnaskedStatusesChangeNothing() {
-        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of()));
-        InetSocketAddress server = new InetSocketAddress(InetAddress.ofLiteral("192.0.2.1"), 4665);
+    void shouldChangeNothingOnAStatusThatWasNotAsked() {
+        givenTheServer(server("192.0.2.1", 4661));
 
-        this.pinger.received(
-                server, Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSERVSTATRES.code(), new byte[2]));
-        this.pinger.received(server, status(0x55AA_0001L).encode());
+        whenAPacketArrivesFrom(
+                new InetSocketAddress(InetAddress.ofLiteral("192.0.2.1"), 4665),
+                status(0x55AA_0001L).encode());
 
-        assertThat(this.updated).isEmpty();
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
     }
 
     @Test
-    void theTimerStartsAndStopsOnce() throws Exception {
-        this.loop
-                .submit(() -> {
-                    this.pinger.start();
-                    this.pinger.start();
-                    this.pinger.stop();
-                    this.pinger.stop();
-                    return null;
-                })
-                .get(5, TimeUnit.SECONDS);
+    void shouldStartAndStopTheTimerOnce() throws Exception {
+        whenThePingerIsStartedTwiceAndStoppedTwice();
 
-        assertThat(this.dead).isEmpty();
+        thenNoServerIsReportedDead();
     }
 
     @Test
-    void obfuscationPortsAnnouncedAreKeptAndNoKeyIsNoKey() {
-        ServerMet.Server server = new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of());
-        ServerDatagrams.Status status = new ServerDatagrams.Status(
+    void shouldKeepTheAnnouncedObfuscationPortsAndTakeNoKeyAsNoKey() {
+        givenTheStatus(new ServerDatagrams.Status(
                 1,
                 10,
                 20,
@@ -222,13 +210,141 @@ class ServerPingerTest {
                 5,
                 7000,
                 7001,
-                0);
+                0));
 
-        ServerMet.Server applied = ServerPinger.apply(server, status, Ipv4.parse("1.2.3.4"));
+        whenTheStatusIsAppliedFor(server("192.0.2.1", 4661), "1.2.3.4");
 
-        assertThat(applied.obfuscatedTcpPort()).hasValue(7001);
-        assertThat(applied.obfuscatedUdpPort()).hasValue(7000);
-        assertThat(applied.tags()).noneMatch(t -> t.name().equals(TagName.id(ServerTag.UDPKEY)));
+        thenTheObfuscatedTcpPortIs(7001);
+        thenTheObfuscatedUdpPortIs(7000);
+        thenTheServerHasNoKey();
+    }
+
+    private void givenTheServer(ServerMet.Server server) {
+        this.servers.add(server);
+    }
+
+    private void givenTheStaticServer(ServerMet.Server server) {
+        this.servers.add(server);
+        this.servers.setStatic(ServerList.addressOf(server), true);
+    }
+
+    private void givenAServerThatFailedOftenAndWasLastPingedIn(Duration fromNow) {
+        long then = Clock.systemUTC().instant().plus(fromNow).getEpochSecond();
+        this.servers.add(new ServerMet.Server(Ipv4.parse("192.0.2.1"), 4661, List.of())
+                .with(new Tag.IntTag(TagName.id(ServerTag.LASTPING), then))
+                .with(new Tag.IntTag(TagName.id(ServerTag.FAIL), 9)));
+    }
+
+    private void givenTheNextServerWasPinged() {
+        this.pinger.pingNext();
+    }
+
+    private void givenAPingWasTriedWithoutFailing() {
+        assertThatCode(this.pinger::pingNext).doesNotThrowAnyException();
+    }
+
+    private void givenAPacketArrivedWithoutFailingFrom(InetSocketAddress from, Packet packet) {
+        assertThatCode(() -> this.pinger.received(from, packet)).doesNotThrowAnyException();
+    }
+
+    private void givenTheStatus(ServerDatagrams.Status announced) {
+        this.status = announced;
+    }
+
+    private void whenTheNextServerIsPinged() {
+        this.pinger.pingNext();
+    }
+
+    private void whenAPingIsTried() {
+        this.exception = catchThrowable(this.pinger::pingNext);
+    }
+
+    private void whenAPacketArrivesFrom(InetSocketAddress from, Packet packet) {
+        this.exception = catchThrowable(() -> this.pinger.received(from, packet));
+    }
+
+    private void whenTheStatusIsAppliedFor(ServerMet.Server server, String ourAddress) {
+        this.applied = ServerPinger.apply(server, this.status, Ipv4.parse(ourAddress));
+    }
+
+    private void whenThePingerIsStartedTwiceAndStoppedTwice() throws Exception {
+        this.loop
+                .submit(() -> {
+                    this.pinger.start();
+                    this.pinger.start();
+                    this.pinger.stop();
+                    this.pinger.stop();
+                    return null;
+                })
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheOnlyServerWasNeverPinged() {
+        assertThat(this.servers.all())
+                .singleElement()
+                .satisfies(s -> assertThat(s.lastPing()).isEmpty());
+    }
+
+    private void thenTheServerWasNeverPinged(ServerMet.Server server, String why) {
+        assertThat(this.servers.get(ServerList.addressOf(server)).orElseThrow().lastPing())
+                .as(why)
+                .isEmpty();
+    }
+
+    private void thenNoServerIsUpdated() {
+        assertThat(this.updated).isEmpty();
+    }
+
+    private void thenThatServerIsReportedDead() {
+        assertThat(this.dead).extracting(ServerMet.Server::ip).containsExactly(Ipv4.parse("192.0.2.1"));
+    }
+
+    private void thenTheServersReportedDeadAre(ServerMet.Server... expected) {
+        assertThat(this.dead).containsExactly(expected);
+    }
+
+    private void thenNoServerIsReportedDead() {
+        assertThat(this.dead).isEmpty();
+    }
+
+    private void thenNoServerIsReportedDead(String why) {
+        assertThat(this.dead).as(why).isEmpty();
+    }
+
+    private void thenTheObfuscatedTcpPortIs(int port) {
+        assertThat(this.applied.obfuscatedTcpPort()).hasValue(port);
+    }
+
+    private void thenTheObfuscatedUdpPortIs(int port) {
+        assertThat(this.applied.obfuscatedUdpPort()).hasValue(port);
+    }
+
+    private void thenTheUsersAre(long users) {
+        assertThat(this.applied.users()).hasValue(users);
+    }
+
+    private void thenTheServerSupportsObfuscation() {
+        assertThat(ServerList.supportsObfuscation(this.applied)).isTrue();
+    }
+
+    private void thenTheKeyIsBoundTo(String address) {
+        assertThat(intValue(this.applied, ServerTag.UDPKEYIP)).isEqualTo(Ipv4.toEd2k(Ipv4.parse(address)));
+    }
+
+    private void thenTheServerHasNoKey() {
+        assertThat(this.applied.tags()).noneMatch(t -> t.name().equals(TagName.id(ServerTag.UDPKEY)));
+    }
+
+    private static ServerMet.Server server(String ip, int port) {
+        return new ServerMet.Server(Ipv4.parse(ip), port, List.of());
+    }
+
+    private static Tag failures(int count) {
+        return new Tag.IntTag(TagName.id(ServerTag.FAIL), count);
     }
 
     private static long intValue(ServerMet.Server server, int id) {

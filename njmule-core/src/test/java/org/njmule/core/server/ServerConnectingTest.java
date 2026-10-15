@@ -126,10 +126,9 @@ class ServerConnectingTest {
     }
 
     @Test
-    void aServerThatDoesNotAnswerDoesNotHoldUpTheNextOne() throws Exception {
+    void shouldNotLetAServerThatDoesNotAnswerHoldUpTheNextOne() throws Exception {
         givenObfuscation(ObfuscationMode.REQUESTED);
-        InetAddress lan = ScriptedServer.lanAddress();
-        givenTheKnownServers(ScriptedServer.startAt(lan, 0, 0), ScriptedServer.startAt(lan, HIGH_ID, 0));
+        givenAKnownServerThatDoesNotAnswerBeforeOneThatDoes();
 
         whenTheSessionLooksForAnyServer();
 
@@ -240,6 +239,11 @@ class ServerConnectingTest {
             assertThat(this.servers.add(listed)).isTrue();
         }
         this.servers.setPriority(new ServerList.Address(known[0].ip(), known[0].port()), ServerInfo.Priority.HIGH);
+    }
+
+    private void givenAKnownServerThatDoesNotAnswerBeforeOneThatDoes() throws Exception {
+        InetAddress lan = ScriptedServer.lanAddress();
+        givenTheKnownServers(ScriptedServer.startAt(lan, 0, 0), ScriptedServer.startAt(lan, HIGH_ID, 0));
     }
 
     private void givenTheSessionKeepsConnected(boolean keep) {

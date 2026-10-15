@@ -27,20 +27,35 @@ import org.njmule.core.util.Ipv4;
 
 class ExemptConnectionsTest {
 
+    private static final int CHECKER = Ipv4.parse("7.7.7.7");
+
+    private ConnectionGuard guard;
+    private Admission admission;
+
     @Test
-    void exemptConnectionsLeaveTheAcceptRateToTheOthers() {
-        int checker = Ipv4.parse("7.7.7.7");
-        ConnectionGuard guard = new ConnectionGuard(
-                IpFilter::empty,
-                ip -> ip == checker,
-                new Limits(100, 5, 1, Duration.ofSeconds(5)),
-                Ticker.systemTicker());
+    void shouldLetExemptConnectionsLeaveTheAcceptRateToTheOthers() {
+        givenAGuardExempting(CHECKER, new Limits(100, 5, 1, Duration.ofSeconds(5)));
+        givenAConnectionFrom(CHECKER);
+        givenAConnectionFrom(CHECKER);
 
-        assertThat(guard.admit(checker)).isInstanceOf(Admission.Admitted.class);
-        assertThat(guard.admit(checker)).isInstanceOf(Admission.Admitted.class);
+        whenAConnectionComesFrom(Ipv4.parse("1.2.3.4"));
 
-        assertThat(guard.admit(Ipv4.parse("1.2.3.4")))
-                .as("the one connection a window allows is still free")
-                .isInstanceOf(Admission.Admitted.class);
+        thenItIsAdmitted("the one connection a window allows is still free");
+    }
+
+    private void givenAGuardExempting(int ip, Limits limits) {
+        this.guard = new ConnectionGuard(IpFilter::empty, address -> address == ip, limits, Ticker.systemTicker());
+    }
+
+    private void givenAConnectionFrom(int ip) {
+        assertThat(this.guard.admit(ip)).isInstanceOf(Admission.Admitted.class);
+    }
+
+    private void whenAConnectionComesFrom(int ip) {
+        this.admission = this.guard.admit(ip);
+    }
+
+    private void thenItIsAdmitted(String why) {
+        assertThat(this.admission).as(why).isInstanceOf(Admission.Admitted.class);
     }
 }
