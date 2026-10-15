@@ -32,6 +32,8 @@ module org.njmule.core {
     // The test kit's fake server and peers speak the protocol through the internal codecs.
     exports org.njmule.core.files.hash to
             org.njmule.testkit;
+    exports org.njmule.core.protocol.crypt to
+            org.njmule.testkit;
     exports org.njmule.core.persist.format to
             org.njmule.testkit;
     exports org.njmule.core.protocol.ed2k to

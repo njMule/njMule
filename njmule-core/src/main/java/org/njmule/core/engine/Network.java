@@ -43,6 +43,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -134,6 +135,7 @@ import org.njmule.core.security.IpWhitelist;
 import org.njmule.core.server.FilePublisher;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.server.ServerPinger;
+import org.njmule.core.server.ServerRoute;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
 import org.njmule.core.social.ChatFilter;
@@ -211,6 +213,9 @@ final class Network {
     private final ServerSession session;
     private final SearchManager searches;
     private final ServerPinger pinger;
+    // The UDP keys of the servers we sent obfuscated datagrams to, by address and port, which they answer from: read
+    // on the server socket's thread.
+    private final Map<Long, Integer> serverUdpKeys = new ConcurrentHashMap<>();
     private final PeerGreetings greetings;
     private final PeerLinks links;
     // Replaced from the engine thread, read by the connection threads too.
@@ -347,12 +352,14 @@ final class Network {
                 this.servers,
                 () -> Optional.ofNullable(this.udp),
                 () -> Optional.ofNullable(this.kad).map(k -> kadSearches(k)),
-                new SearchEvents());
+                new SearchEvents(),
+                this::routeTo,
+                random);
         this.pinger = new ServerPinger(
                 loop,
                 this.servers,
                 () -> Optional.ofNullable(this.udp),
-                () -> this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0),
+                this::addressSeenByServer,
                 this::serverUpdated,
                 () -> this.preferences.get().deadServerRetries(),
                 this::deadServer,
@@ -532,7 +539,34 @@ final class Network {
 
     // Any free port but the one Kad and clients use, which the preferences may give later.
     private ServerUdp openServerUdp(int kadPort) throws SocketException {
-        return ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> datagram(from, packet)));
+        ServerUdp udp = ServerUdp.openBeside(kadPort, (from, packet) -> this.loop.post(() -> datagram(from, packet)));
+        udp.decodeWith(this::serverUdpKey);
+        return udp;
+    }
+
+    // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
+    private int addressSeenByServer() {
+        return this.session.id().map(ServerMessages.IdChange::publicIp).orElse(0);
+    }
+
+    // How a server is asked over UDP; the key of an obfuscated route is kept for the answers.
+    private Optional<ServerRoute> routeTo(ServerMet.Server server) {
+        Optional<ServerRoute> route = ServerRoute.of(
+                server, addressSeenByServer(), this.preferences.get().obfuscation());
+        route.filter(ServerRoute::isObfuscated).ifPresent(r -> this.serverUdpKeys.put(udpSlot(r.target()), r.key()));
+        return route;
+    }
+
+    // Read on the server socket's receiving thread.
+    private int serverUdpKey(InetSocketAddress from) {
+        return this.serverUdpKeys.getOrDefault(udpSlot(from), 0);
+    }
+
+    // Servers on one address are told apart by the port they answer from.
+    private static long udpSlot(InetSocketAddress address) {
+        return address.getAddress() instanceof Inet4Address v4
+                ? Integer.toUnsignedLong(Ipv4.fromBytes(v4.getAddress())) << 16 | address.getPort()
+                : -1;
     }
 
     // The server socket took the port Kad now wants: it moves to another.
@@ -2046,6 +2080,7 @@ final class Network {
         saveServersSoon();
     }
 
+    // Every change of the list comes here or to saveServers, which also take the UDP keys of servers added.
     private void saveServersSoon() {
         if (this.pendingSave == null || this.pendingSave.isDone()) {
             this.pendingSave = this.loop.schedule("save server.met", SAVE_DELAY, this::saveServers);

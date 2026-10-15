@@ -19,6 +19,7 @@ package org.njmule.core.search;
 import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,11 +34,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.FileTypes;
 import org.njmule.core.kad.Keywords;
@@ -48,6 +51,7 @@ import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.server.ServerRoute;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
 import org.njmule.core.util.Ipv4;
@@ -107,6 +111,8 @@ public final class SearchManager {
     private final Supplier<Optional<ServerUdp>> udp;
     private final Supplier<Optional<KadSearches>> kad;
     private final Listener listener;
+    private final Function<ServerMet.Server, Optional<ServerRoute>> route;
+    private final SecureRandom random;
     // Searches still running.
     private final Map<SearchId, Search> searches = new HashMap<>();
     private long nextId = 1;
@@ -123,12 +129,38 @@ public final class SearchManager {
             Supplier<Optional<ServerUdp>> udp,
             Supplier<Optional<KadSearches>> kad,
             Listener listener) {
+        this(
+                loop,
+                session,
+                servers,
+                udp,
+                kad,
+                listener,
+                s -> ServerRoute.of(s, 0, ObfuscationMode.DISABLED),
+                new SecureRandom());
+    }
+
+    /**
+     * As above, with {@code route} telling how a server is asked over UDP (empty: not at all, as when obfuscation is
+     * required and the server cannot take it).
+     */
+    public SearchManager(
+            EngineLoop loop,
+            ServerSession session,
+            ServerList servers,
+            Supplier<Optional<ServerUdp>> udp,
+            Supplier<Optional<KadSearches>> kad,
+            Listener listener,
+            Function<ServerMet.Server, Optional<ServerRoute>> route,
+            SecureRandom random) {
         this.loop = Objects.requireNonNull(loop, "loop");
         this.session = Objects.requireNonNull(session, "session");
         this.servers = Objects.requireNonNull(servers, "servers");
         this.udp = Objects.requireNonNull(udp, "udp");
         this.kad = Objects.requireNonNull(kad, "kad");
         this.listener = Objects.requireNonNull(listener, "listener");
+        this.route = Objects.requireNonNull(route, "route");
+        this.random = Objects.requireNonNull(random, "random");
     }
 
     /**
@@ -357,13 +389,15 @@ public final class SearchManager {
         if (request.isEmpty()) {
             return;
         }
-        InetSocketAddress address =
-                new InetSocketAddress(Ipv4.format(server.ip()), server.port() + ServerUdp.PORT_OFFSET);
+        Optional<ServerRoute> route = this.route.apply(server);
+        if (route.isEmpty()) {
+            return;
+        }
         try {
-            socket.get().send(address, request.get());
+            socket.get().send(route.get(), request.get(), this.random);
             search.askedOverUdp.add(server.ip());
         } catch (IOException e) {
-            logger.debug("Cannot query {}", address, e);
+            logger.debug("Cannot query {}", route.get().target(), e);
         }
     }
 

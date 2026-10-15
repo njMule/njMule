@@ -21,8 +21,11 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.function.ToIntFunction;
+import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
@@ -32,7 +35,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The UDP socket for server queries, on a random port. A virtual thread receives; datagrams too short for a header or
- * not eDonkey ones are dropped before the receiver sees them.
+ * not eDonkey ones are dropped before the receiver sees them. A datagram from a server whose UDP key we hold is decoded
+ * with it.
  */
 public final class ServerUdp implements AutoCloseable {
 
@@ -52,6 +56,8 @@ public final class ServerUdp implements AutoCloseable {
     private final DatagramSocket socket;
     private final Receiver receiver;
     private Thread reader;
+    // The UDP key of the server at an address, 0 for none: read on the receiving thread.
+    private volatile ToIntFunction<InetSocketAddress> keys = from -> 0;
 
     private ServerUdp(DatagramSocket socket, Receiver receiver) {
         this.socket = socket;
@@ -92,6 +98,20 @@ public final class ServerUdp implements AutoCloseable {
         this.socket.send(new DatagramPacket(datagram, datagram.length, to));
     }
 
+    /** Datagrams from now on are decoded with the UDP key {@code keys} gives for their sender (0: none). */
+    public void decodeWith(ToIntFunction<InetSocketAddress> keys) {
+        this.keys = Objects.requireNonNull(keys, "keys");
+    }
+
+    /** Sends {@code packet} along {@code route}: obfuscated with the server's key when the route has one. */
+    public void send(ServerRoute route, Packet packet, SecureRandom random) throws IOException {
+        byte[] datagram = UdpFraming.encode(packet);
+        if (route.isObfuscated()) {
+            datagram = DatagramObfuscation.encryptForServer(datagram, route.key(), random);
+        }
+        this.socket.send(new DatagramPacket(datagram, datagram.length, route.target()));
+    }
+
     public int port() {
         return this.socket.getLocalPort();
     }
@@ -120,9 +140,12 @@ public final class ServerUdp implements AutoCloseable {
             try {
                 datagram.setLength(buffer.length);
                 this.socket.receive(datagram);
-                Packet packet = UdpFraming.decode(buffer, 0, datagram.getLength());
+                InetSocketAddress from = (InetSocketAddress) datagram.getSocketAddress();
+                Packet packet = DatagramObfuscation.decodeFromServer(
+                                buffer, 0, datagram.getLength(), this.keys.applyAsInt(from))
+                        .packet();
                 if (packet.protocol() == Protocol.EDONKEY) {
-                    this.receiver.received((InetSocketAddress) datagram.getSocketAddress(), packet);
+                    this.receiver.received(from, packet);
                 }
             } catch (DecodeException e) {
                 logger.debug("Dropping a malformed datagram from {}", datagram.getSocketAddress());

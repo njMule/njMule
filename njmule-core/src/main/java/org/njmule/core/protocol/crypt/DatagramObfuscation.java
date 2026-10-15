@@ -197,11 +197,32 @@ public final class DatagramObfuscation {
 
     /** Decodes a datagram from a server whose UDP key is {@code serverKey} (0: none). */
     public static Received decodeFromServer(byte[] data, int offset, int length, int serverKey) throws DecodeException {
+        return decodeServerDatagram(data, offset, length, serverKey, MAGIC_FROM_SERVER);
+    }
+
+    /** The server's side, as the test kit's server plays it: decodes what a client holding {@code serverKey} sent. */
+    public static Received decodeAtServer(byte[] data, int offset, int length, int serverKey) throws DecodeException {
+        return decodeServerDatagram(data, offset, length, serverKey, MAGIC_TO_SERVER);
+    }
+
+    /** The server's side: an answer for a client that holds {@code serverKey}. */
+    public static byte[] encryptFromServer(byte[] datagram, int serverKey, SecureRandom random) {
+        int marker;
+        do {
+            marker = random.nextInt(256);
+        } while (marker == Protocol.EDONKEY);
+        byte[] keyPart = keyPart(random);
+        Rc4 rc4 = new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart)));
+        return seal(datagram, marker, keyPart, SYNC_SERVER, rc4, null);
+    }
+
+    private static Received decodeServerDatagram(byte[] data, int offset, int length, int serverKey, int magic)
+            throws DecodeException {
         if (length <= ED2K_OVERHEAD || serverKey == 0 || (data[offset] & 0xFF) == Protocol.EDONKEY) {
             return plain(data, offset, length);
         }
         byte[] keyPart = {data[offset + 1], data[offset + 2]};
-        Rc4 rc4 = new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart)));
+        Rc4 rc4 = new Rc4(StreamObfuscation.md5(serverMaterial(serverKey, magic, keyPart)));
         Optional<Received> opened = open(data, offset, length, rc4, SYNC_SERVER, Kind.SERVER);
         return opened.isPresent() ? opened.get() : plain(data, offset, length);
     }

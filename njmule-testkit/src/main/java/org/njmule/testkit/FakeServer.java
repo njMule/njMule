@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
@@ -97,6 +98,10 @@ public final class FakeServer implements AutoCloseable {
     private volatile List<ServerMessages.Endpoint> knownServers = List.of();
     private final List<SearchExpr> searches = new CopyOnWriteArrayList<>();
     private final List<SearchExpr> udpSearches = new CopyOnWriteArrayList<>();
+    private final List<SearchExpr> obfuscatedUdpSearches = new CopyOnWriteArrayList<>();
+    // Set once obfuscated datagrams are taken: their socket and the key the status gives for them.
+    private volatile DatagramSocket obfuscatedUdp;
+    private volatile int udpKey;
     private final List<FileEntry> offers = new CopyOnWriteArrayList<>();
     private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
     private final Map<Hash16, List<ServerMessages.Source>> sources = new ConcurrentHashMap<>();
@@ -194,6 +199,28 @@ public final class FakeServer implements AutoCloseable {
         return List.copyOf(this.udpSearches);
     }
 
+    /** Searches that came obfuscated, on the obfuscated UDP port. */
+    public List<SearchExpr> obfuscatedUdpSearches() {
+        return List.copyOf(this.obfuscatedUdpSearches);
+    }
+
+    /**
+     * From now on obfuscated datagrams are taken with {@code key} on a UDP port of their own, which the status answer
+     * gives with the key; answers to them go back obfuscated.
+     */
+    public void takeObfuscatedUdp(int key) throws SocketException {
+        DatagramSocket socket = new DatagramSocket(new InetSocketAddress(this.tcp.getInetAddress(), 0));
+        this.udpKey = key;
+        this.obfuscatedUdp = socket;
+        Thread.ofVirtual().name("fake-server-obfuscated-udp").start(() -> obfuscatedUdpLoop(socket));
+    }
+
+    /** The UDP port obfuscated datagrams are taken on, 0 when they are not. */
+    public int obfuscatedUdpPort() {
+        DatagramSocket socket = this.obfuscatedUdp;
+        return socket == null ? 0 : socket.getLocalPort();
+    }
+
     /** The files clients offered, in order. */
     public List<FileEntry> offers() {
         return List.copyOf(this.offers);
@@ -242,6 +269,10 @@ public final class FakeServer implements AutoCloseable {
     @Override
     public void close() throws IOException {
         this.udp.close();
+        DatagramSocket obfuscated = this.obfuscatedUdp;
+        if (obfuscated != null) {
+            obfuscated.close();
+        }
         this.tcp.close();
     }
 
@@ -344,7 +375,7 @@ public final class FakeServer implements AutoCloseable {
                 datagram.setLength(buffer.length);
                 this.udp.receive(datagram);
                 Packet request = UdpFraming.decode(buffer, 0, datagram.getLength());
-                Packet answer = answerUdp(request);
+                Packet answer = answerUdp(request, this.udpSearches);
                 if (answer != null) {
                     byte[] bytes = UdpFraming.encode(answer);
                     this.udp.send(new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));
@@ -357,11 +388,51 @@ public final class FakeServer implements AutoCloseable {
         }
     }
 
-    private Packet answerUdp(Packet request) throws DecodeException {
+    private void obfuscatedUdpLoop(DatagramSocket socket) {
+        byte[] buffer = new byte[8192];
+        DatagramPacket datagram = new DatagramPacket(buffer, buffer.length);
+        SecureRandom random = new SecureRandom();
+        while (!socket.isClosed()) {
+            try {
+                datagram.setLength(buffer.length);
+                socket.receive(datagram);
+                DatagramObfuscation.Received received =
+                        DatagramObfuscation.decodeAtServer(buffer, 0, datagram.getLength(), this.udpKey);
+                if (received.kind() != DatagramObfuscation.Kind.SERVER) {
+                    continue;
+                }
+                Packet answer = answerUdp(received.packet(), this.obfuscatedUdpSearches);
+                if (answer != null) {
+                    byte[] bytes =
+                            DatagramObfuscation.encryptFromServer(UdpFraming.encode(answer), this.udpKey, random);
+                    socket.send(new DatagramPacket(bytes, bytes.length, datagram.getSocketAddress()));
+                }
+            } catch (IOException e) {
+                if (!socket.isClosed()) {
+                    logger.debug("Fake server obfuscated UDP: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    private Packet answerUdp(Packet request, List<SearchExpr> searches) throws DecodeException {
         int opcode = request.opcode();
         if (opcode == Opcodes.ServerUdp.GLOBSERVSTATREQ.code()) {
             long challenge = request.reader().u32();
-            return new ServerDatagrams.Status(challenge, 10, 20, 100, 1000, 2000, 0, 0, 0, 0, 0).encode();
+            int key = this.udpKey;
+            return new ServerDatagrams.Status(
+                            challenge,
+                            10,
+                            20,
+                            100,
+                            1000,
+                            2000,
+                            key == 0 ? 0 : ServerDatagrams.UDP_OBFUSCATION,
+                            0,
+                            obfuscatedUdpPort(),
+                            0,
+                            Integer.toUnsignedLong(key))
+                    .encode();
         }
         PacketReader in = request.reader();
         if (opcode == Opcodes.ServerUdp.GLOBSEARCHREQ3.code()) {
@@ -370,7 +441,7 @@ public final class FakeServer implements AutoCloseable {
                 && opcode != Opcodes.ServerUdp.GLOBSEARCHREQ2.code()) {
             return null;
         }
-        this.udpSearches.add(SearchTreeCodec.read(in));
+        searches.add(SearchTreeCodec.read(in));
         return this.config.results().isEmpty() ? null : ServerDatagrams.searchResults(this.config.results());
     }
 

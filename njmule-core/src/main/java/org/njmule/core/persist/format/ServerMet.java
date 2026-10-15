@@ -101,6 +101,11 @@ public final class ServerMet {
             return Tags.intValue(this.tags, ServerTag.UDPKEY);
         }
 
+        /** Our address when the server gave its UDP key, in eD2K byte order: the key holds for it only. */
+        public OptionalLong udpKeyIp() {
+            return Tags.intValue(this.tags, ServerTag.UDPKEYIP);
+        }
+
         public OptionalLong obfuscatedTcpPort() {
             return Tags.intValue(this.tags, ServerTag.TCPPORTOBFUSCATION);
         }
