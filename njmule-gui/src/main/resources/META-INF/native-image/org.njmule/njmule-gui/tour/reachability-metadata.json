@@ -6177,6 +6177,9 @@
       ]
     },
     {
+      "type": "sun.net.www.protocol.data.Handler"
+    },
+    {
       "type": "sun.net.www.protocol.http.Handler",
       "methods": [
         {

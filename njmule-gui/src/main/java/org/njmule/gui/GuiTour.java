@@ -23,26 +23,34 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.collections.FXCollections;
 import javafx.event.Event;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
@@ -130,6 +138,7 @@ final class GuiTour {
                 this.steps.add(() -> themes.set(f, m));
             }
         }
+        this.steps.add(this::highContrast);
         this.steps.add(() -> themes.set(family, mode));
         this.steps.add(() -> new AboutDialog(this.gui, this.stage).show());
         this.steps.add(() -> new ImportDialog(this.gui, this.stage).show());
@@ -141,6 +150,7 @@ final class GuiTour {
         this.steps.add(this::scripts);
         this.steps.add(this::closeWindows);
         this.steps.add(() -> this.window.message("Tour"));
+        this.steps.add(() -> this.window.offer("Tour", "Tour", () -> {}));
         this.steps.add(GuiTour::languages);
         this.steps.add(GuiTour::picture);
         this.steps.add(GuiTour::clipboard);
@@ -205,6 +215,24 @@ final class GuiTour {
                 w.hide();
             }
         }
+    }
+
+    // A window in a high contrast scheme of the system, styled by the stylesheet made from its colours.
+    private void highContrast() {
+        Map<String, Object> scheme = Map.of(
+                "Windows.SPI.HighContrast", true,
+                "Windows.SysColor.COLOR_WINDOW", Color.BLACK,
+                "Windows.SysColor.COLOR_WINDOWTEXT", Color.WHITE);
+        Scene scene = new Scene(new VBox(new Label("Tour"), new Button("Tour")));
+        new Themes(
+                        this.gui.themes().family(),
+                        this.gui.themes().mode(),
+                        FXCollections.observableMap(new HashMap<>(scheme)))
+                .attach(scene);
+        Stage contrast = new Stage();
+        contrast.initOwner(this.stage);
+        contrast.setScene(scene);
+        contrast.show();
     }
 
     private void alert() {
