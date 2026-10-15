@@ -17,7 +17,6 @@
 package org.njmule.core.net;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -48,6 +47,14 @@ class ProxyRouteTest {
     private final List<String> seen = new CopyOnWriteArrayList<>();
     private final List<AutoCloseable> resources = new CopyOnWriteArrayList<>();
 
+    private ServerSocket target;
+    private ServerSocket proxy;
+    private ProxySettings settings;
+    private Socket accepted;
+    private Proxy chosen;
+    private boolean enabled;
+    private RuntimeException exception;
+
     @AfterEach
     void reset() throws Exception {
         ProxyRoute.install(() -> ProxySettings.NONE);
@@ -58,67 +65,144 @@ class ProxyRouteTest {
     }
 
     @Test
-    void connectionsGoThroughASocksProxyWithItsCredentials() throws Exception {
-        ServerSocket target = listen();
-        ServerSocket proxy = socks5(true);
-        ProxySettings settings =
-                new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret");
-        ProxyRoute.install(() -> settings);
+    void shouldConnectThroughASocksProxyWithItsCredentials() throws IOException {
+        givenATarget();
+        givenASocksProxy(true);
+        givenTheProxyIsUsedWith(ProxySettings.Type.SOCKS, "me", "secret");
 
-        TcpConnection connection = connect(target);
-        try (Socket accepted = target.accept()) {
-            assertThat(accepted).isNotNull();
-        }
-        connection.close();
+        whenAConnectionIsMadeToTheTarget();
 
-        assertThat(this.seen).containsExactly("auth me:secret", "connect 127.0.0.1:" + target.getLocalPort());
-        assertThat(settings.toString()).doesNotContain("secret").contains("password=***");
+        thenTheTargetAcceptedTheConnection();
+        thenTheProxyAuthenticatedAndConnectedToTheTarget("me", "secret");
+        thenTheSettingsDoNotShowThePassword("secret");
     }
 
     @Test
-    void aSocksProxyMayNeedNoCredentials() throws Exception {
-        ServerSocket target = listen();
-        ServerSocket proxy = socks5(false);
-        ProxyRoute.install(
-                () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "", ""));
+    void shouldConnectThroughASocksProxyThatNeedsNoCredentials() throws IOException {
+        givenATarget();
+        givenASocksProxy(false);
+        givenTheProxyIsUsedWith(ProxySettings.Type.SOCKS, "", "");
 
-        TcpConnection connection = connect(target);
-        try (Socket accepted = target.accept()) {
-            assertThat(accepted).isNotNull();
-        }
-        connection.close();
+        whenAConnectionIsMadeToTheTarget();
 
-        assertThat(this.seen).containsExactly("connect 127.0.0.1:" + target.getLocalPort());
+        thenTheTargetAcceptedTheConnection();
+        thenTheProxyOnlyConnectedToTheTargetWith("connect");
     }
 
     @Test
-    void connectionsGoThroughAnHttpProxy() throws Exception {
-        ServerSocket target = listen();
-        ServerSocket proxy = httpConnect();
-        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", proxy.getLocalPort(), "", ""));
+    void shouldConnectThroughAnHttpProxy() throws IOException {
+        givenATarget();
+        givenAnHttpProxy();
+        givenTheProxyIsUsedWith(ProxySettings.Type.HTTP, "", "");
 
-        TcpConnection connection = connect(target);
-        try (Socket accepted = target.accept()) {
-            assertThat(accepted).isNotNull();
-        }
-        connection.close();
+        whenAConnectionIsMadeToTheTarget();
 
-        assertThat(this.seen).containsExactly("CONNECT 127.0.0.1:" + target.getLocalPort());
+        thenTheTargetAcceptedTheConnection();
+        thenTheProxyOnlyConnectedToTheTargetWith("CONNECT");
     }
 
     @Test
-    void settingsAreChecked() {
-        assertThat(ProxyRoute.proxy(ProxySettings.NONE)).isEqualTo(Proxy.NO_PROXY);
-        assertThat(ProxySettings.NONE.isEnabled()).isFalse();
-        assertThatThrownBy(() -> new ProxySettings(ProxySettings.Type.SOCKS, " ", 1080, "", ""))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProxySettings(ProxySettings.Type.HTTP, "h", 0, "", ""))
-                .isInstanceOf(IllegalArgumentException.class);
+    void shouldGoDirectWithoutProxySettings() {
+        whenTheProxyIsChosenFor(ProxySettings.NONE);
+
+        thenTheConnectionsGoDirect();
     }
 
-    private TcpConnection connect(ServerSocket target) throws IOException {
+    @Test
+    void shouldTellThatNoProxySettingsAreDisabled() {
+        whenItIsAskedWhetherTheyAreEnabled(ProxySettings.NONE);
+
+        thenTheSettingsAreDisabled();
+    }
+
+    @Test
+    void shouldRefuseABlankHost() {
+        whenTheSettingsAreMade(ProxySettings.Type.SOCKS, " ", 1080);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefusePortZero() {
+        whenTheSettingsAreMade(ProxySettings.Type.HTTP, "h", 0);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    private void givenATarget() throws IOException {
+        this.target = listen();
+    }
+
+    private void givenASocksProxy(boolean wantsPassword) throws IOException {
+        this.proxy = socks5(wantsPassword);
+    }
+
+    private void givenAnHttpProxy() throws IOException {
+        this.proxy = httpConnect();
+    }
+
+    private void givenTheProxyIsUsedWith(ProxySettings.Type type, String user, String password) {
+        ProxySettings used = new ProxySettings(type, "127.0.0.1", this.proxy.getLocalPort(), user, password);
+        this.settings = used;
+        ProxyRoute.install(() -> used);
+    }
+
+    private void whenAConnectionIsMadeToTheTarget() throws IOException {
+        TcpConnection connection = connect(this.target);
+        try (Socket socket = this.target.accept()) {
+            this.accepted = socket;
+        }
+        connection.close();
+    }
+
+    private void whenTheProxyIsChosenFor(ProxySettings proxySettings) {
+        this.chosen = ProxyRoute.proxy(proxySettings);
+    }
+
+    private void whenItIsAskedWhetherTheyAreEnabled(ProxySettings proxySettings) {
+        this.enabled = proxySettings.isEnabled();
+    }
+
+    private void whenTheSettingsAreMade(ProxySettings.Type type, String host, int port) {
+        try {
+            this.settings = new ProxySettings(type, host, port, "", "");
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void thenTheTargetAcceptedTheConnection() {
+        assertThat(this.accepted).isNotNull();
+    }
+
+    private void thenTheProxyAuthenticatedAndConnectedToTheTarget(String user, String password) {
+        assertThat(this.seen)
+                .containsExactly("auth " + user + ":" + password, "connect 127.0.0.1:" + this.target.getLocalPort());
+    }
+
+    private void thenTheProxyOnlyConnectedToTheTargetWith(String request) {
+        assertThat(this.seen).containsExactly(request + " 127.0.0.1:" + this.target.getLocalPort());
+    }
+
+    private void thenTheSettingsDoNotShowThePassword(String password) {
+        assertThat(this.settings.toString()).doesNotContain(password).contains("password=***");
+    }
+
+    private void thenTheConnectionsGoDirect() {
+        assertThat(this.chosen).isEqualTo(Proxy.NO_PROXY);
+    }
+
+    private void thenTheSettingsAreDisabled() {
+        assertThat(this.enabled).isFalse();
+    }
+
+    private void thenExceptionOccurred(Class<? extends RuntimeException> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private TcpConnection connect(ServerSocket server) throws IOException {
         return TcpConnector.connectToClient(
-                new InetSocketAddress(InetAddress.getLoopbackAddress(), target.getLocalPort()),
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), server.getLocalPort()),
                 Optional.empty(),
                 TIMEOUT,
                 new SecureRandom());

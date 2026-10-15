@@ -22,6 +22,8 @@ import java.util.List;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.tag.ClientTag;
@@ -32,19 +34,64 @@ class PeerSoftwareTest {
 
     private static final Hash16 HASH = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
 
+    private Hello hello;
+    private String description;
+
     @Test
-    void namesTheSoftwareFromItsVersionTag() {
-        assertThat(PeerSoftware.describe(new Hello(HASH, 0, 4662, List.of(), 0, 0)))
-                .isEqualTo("eDonkey compatible");
-        assertThat(PeerSoftware.describe(hello(version(0, 0, 50, 1)))).isEqualTo("eMule v0.50b");
-        assertThat(PeerSoftware.describe(hello(version(0, 0, 70, 7)))).isEqualTo("eMule v0.70h");
-        assertThat(PeerSoftware.describe(hello(version(3, 2, 3, 1)))).isEqualTo("aMule v2.3.1");
-        assertThat(PeerSoftware.describe(hello(version(40, 1, 2, 3)))).isEqualTo("eMule compatible (client 40) v1.2.3");
+    void shouldNameAPeerWithoutVersionTagEDonkeyCompatible() {
+        givenAHelloWithoutVersionTag();
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIs("eDonkey compatible");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "0, 0, 50, 1, eMule v0.50b",
+        "0, 0, 70, 7, eMule v0.70h",
+        "3, 2, 3, 1, aMule v2.3.1",
+        "40, 1, 2, 3, eMule compatible (client 40) v1.2.3"
+    })
+    void shouldNameTheSoftwareFromItsVersionTag(int compat, int major, int minor, int update, String name) {
+        givenAHelloWithTheVersion(compat, major, minor, update);
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIs(name);
     }
 
     @Property
-    void anyVersionTagIsDescribed(@ForAll int tag) {
-        assertThat(PeerSoftware.describe(hello(tag))).isNotBlank();
+    void shouldDescribeAnyVersionTag(@ForAll int tag) {
+        givenAHelloWithTheVersionTag(tag);
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIsNotBlank();
+    }
+
+    private void givenAHelloWithoutVersionTag() {
+        this.hello = new Hello(HASH, 0, 4662, List.of(), 0, 0);
+    }
+
+    private void givenAHelloWithTheVersion(int compat, int major, int minor, int update) {
+        givenAHelloWithTheVersionTag(version(compat, major, minor, update));
+    }
+
+    private void givenAHelloWithTheVersionTag(int version) {
+        this.hello = hello(version);
+    }
+
+    private void whenTheSoftwareIsDescribed() {
+        this.description = PeerSoftware.describe(this.hello);
+    }
+
+    private void thenTheDescriptionIs(String expected) {
+        assertThat(this.description).isEqualTo(expected);
+    }
+
+    private void thenTheDescriptionIsNotBlank() {
+        assertThat(this.description).isNotBlank();
     }
 
     private static int version(int compat, int major, int minor, int update) {

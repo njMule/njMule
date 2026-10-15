@@ -158,14 +158,20 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aNodeThatOfferedBecomesOurBuddyAndIsPingedEveryTenMinutes() throws Exception {
+    void shouldTakeANodeThatOfferedAsOurBuddy() throws Exception {
         givenABuddyListening();
+        givenItOfferedToBeOurBuddy();
 
-        whenItOffersToBeOurBuddy();
         whenItAnswersOurHelloAs(BUDDY, 4675);
 
         thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
         thenOurBuddyIsAt(LOOPBACK, 4675);
+    }
+
+    @Test
+    void shouldPingOurBuddyEveryTenMinutes() throws Exception {
+        givenABuddyListening();
+        givenItIsOurBuddy();
 
         whenMinutesPass(10);
 
@@ -183,10 +189,10 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aClientThatAnswersWithAnotherHashIsNoBuddy() throws Exception {
+    void shouldNotTakeAClientThatAnswersWithAnotherHashAsBuddy() throws Exception {
         givenABuddyListening();
+        givenItOfferedToBeOurBuddy();
 
-        whenItOffersToBeOurBuddy();
         whenItAnswersOurHelloAs(FIREWALLED, 4675);
 
         thenTheStateBecomes(KadNode.Buddies.State.NONE);
@@ -194,12 +200,18 @@ class BuddyLinkTest {
     }
 
     @Test
-    void aFirewalledNodeWeAgreedToServeIsTakenAndGetsTheCallbacksForItsId() throws Exception {
+    void shouldTakeAFirewalledNodeWeAgreedToServe() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
 
         whenItConnectsAs(FIREWALLED);
 
         thenTheStateBecomes(KadNode.Buddies.State.SERVING);
+    }
+
+    @Test
+    void shouldRelayToTheNodeWeServeTheCallbacksForItsId() throws Exception {
+        givenWeAgreedToServe(FIREWALLED);
+        givenItConnectedAs(FIREWALLED);
 
         whenACallbackIsRelayed(this.buddyId);
 
@@ -228,13 +240,13 @@ class BuddyLinkTest {
     }
 
     @Test
-    void theNodeWeServeIsAnsweredAtMostOnceInThirteenMinutes() throws Exception {
+    void shouldAnswerTheNodeWeServeAtMostOnceInThirteenMinutes() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
         givenItConnectedAs(FIREWALLED);
+        givenMinutesPassed(13);
+        givenItPinged();
 
-        whenMinutesPass(13);
-        whenItPings();
-        whenItPings();
+        whenItPingsAgain();
 
         thenItGets(Opcodes.Extended.BUDDYPONG);
         thenItGetsNothingMore();
@@ -259,7 +271,7 @@ class BuddyLinkTest {
     }
 
     private void givenItIsOurBuddy() throws Exception {
-        whenItOffersToBeOurBuddy();
+        givenItOfferedToBeOurBuddy();
         whenItAnswersOurHelloAs(BUDDY, 4675);
         thenTheStateBecomes(KadNode.Buddies.State.CONNECTED);
     }
@@ -274,7 +286,15 @@ class BuddyLinkTest {
         thenTheStateBecomes(KadNode.Buddies.State.SERVING);
     }
 
-    private void whenItOffersToBeOurBuddy() throws Exception {
+    private void givenMinutesPassed(int minutes) throws Exception {
+        passMinutes(minutes);
+    }
+
+    private void givenItPinged() throws IOException {
+        ping();
+    }
+
+    private void givenItOfferedToBeOurBuddy() throws Exception {
         onLoop(() -> {
             this.buddies.offered(LOOPBACK, this.buddyListener.getLocalPort(), 4673, BUDDY, 0);
             return null;
@@ -308,11 +328,19 @@ class BuddyLinkTest {
         this.relayed = onLoop(() -> this.buddies.relay(id, UInt128.ZERO, Ipv4.of(5, 6, 7, 8), 4711));
     }
 
-    private void whenItPings() throws IOException {
-        this.peer.send(LowIdMessages.buddyPing());
+    private void whenItPingsAgain() throws IOException {
+        ping();
     }
 
     private void whenMinutesPass(int minutes) throws Exception {
+        passMinutes(minutes);
+    }
+
+    private void ping() throws IOException {
+        this.peer.send(LowIdMessages.buddyPing());
+    }
+
+    private void passMinutes(int minutes) throws Exception {
         this.now.addAndGet(Duration.ofMinutes(minutes).toNanos());
         onLoop(() -> {
             this.buddies.tick();

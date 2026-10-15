@@ -30,6 +30,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -38,8 +39,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.crypt.StreamObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
@@ -62,187 +66,249 @@ class TcpConnectionTest {
     // About 10 MB: more than a loopback socket buffers for a peer that does not read.
     private static final int DATA_FRAMES = 1_000;
 
+    private final List<AutoCloseable> resources = new ArrayList<>();
+
+    private ServerSocket server;
+    private Echo echo;
     private TcpConnection connection;
     private Socket peer;
+    private Recorder recorder;
+    private BlockingQueue<Optional<IOException>> closes;
+    private CompletableFuture<Packet> received;
+    private CompletableFuture<Void> serving;
+    private Packet packet;
+    private boolean sent;
+    private int framesQueued;
 
-    @Test
-    void talksToAPlainServer() throws Exception {
-        exchangeWithServer(false);
+    @AfterEach
+    void closeEverything() throws Exception {
+        for (AutoCloseable resource : this.resources.reversed()) {
+            resource.close();
+        }
     }
 
     @Test
-    void talksToAnObfuscatedServer() throws Exception {
-        exchangeWithServer(true);
+    void shouldTalkToAPlainServer() throws Exception {
+        givenAServerAnsweringOnce(false);
+        givenAConnectionToTheServer(false);
+
+        whenThePacketIsSent(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {7, 7, 7}));
+
+        thenItIsSent();
+        thenTheServerReceivedThePacket();
+        thenThePacketReceivedIs(Packet.of(Protocol.EDONKEY, 0x38, new byte[2]));
+        thenTheConnectionIsObfuscated(false);
+        thenTheServerIsDoneOnceTheConnectionCloses();
     }
 
     @Test
-    void clientsConnectPlainOrObfuscatedToTheListener() throws Exception {
-        try (Echo echo = new Echo(true)) {
-            for (Optional<Hash16> obfuscation : List.of(Optional.<Hash16>empty(), Optional.of(OWN_HASH))) {
-                Recorder recorder = new Recorder();
-                TcpConnection client = TcpConnector.connectToClient(echo.address(), obfuscation, TIMEOUT, RANDOM);
-                client.start(recorder, frame -> frame);
-                assertThat(client.isObfuscated()).isEqualTo(obfuscation.isPresent());
+    void shouldTalkToAnObfuscatedServer() throws Exception {
+        givenAServerAnsweringOnce(true);
+        givenAConnectionToTheServer(true);
 
-                Packet hello = Packet.of(Protocol.EDONKEY, 0x01, new byte[] {1, 2, 3});
-                assertThat(client.send(hello)).isTrue();
-                assertThat(recorder.next()).isEqualTo(hello);
-                client.close();
-                assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
+        whenThePacketIsSent(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {7, 7, 7}));
+
+        thenItIsSent();
+        thenTheServerReceivedThePacket();
+        thenThePacketReceivedIs(Packet.of(Protocol.EDONKEY, 0x38, new byte[2]));
+        thenTheConnectionIsObfuscated(true);
+        thenTheServerIsDoneOnceTheConnectionCloses();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldConnectPlainOrObfuscatedToTheListener(boolean obfuscated) throws IOException {
+        givenAListenerEchoingPackets(true);
+
+        whenAClientConnectsToTheListener(obfuscated);
+
+        thenTheConnectionIsObfuscated(obfuscated);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldGetItsPacketsBackFromAnEchoingListener(boolean obfuscated) throws Exception {
+        givenAListenerEchoingPackets(true);
+        givenAClientConnectedToTheListener(obfuscated);
+
+        whenThePacketIsSent(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {1, 2, 3}));
+
+        thenItIsSent();
+        thenThePacketComesBack();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldCloseAConnectionToTheListenerWithoutError(boolean obfuscated) throws Exception {
+        givenAListenerEchoingPackets(true);
+        givenAClientConnectedToTheListener(obfuscated);
+        givenThePacketEchoed(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {1, 2, 3}));
+
+        whenTheConnectionIsClosed();
+
+        thenItClosedWithoutError();
+    }
+
+    @Test
+    void shouldDropPlainClientsOfAListenerRequiringObfuscation() throws Exception {
+        givenAListenerEchoingPackets(false);
+        givenAClientConnectedToTheListener(false);
+
+        whenThePacketIsSent(Packet.of(Protocol.EDONKEY, 0x01, new byte[1]));
+
+        thenTheConnectionIsDropped();
+    }
+
+    @Test
+    void shouldCloseTheConnectionOnAFrameBeyondTheHandshakeLimit() throws Exception {
+        givenAPeerSendingAFrameThatIsNotAGreeting();
+
+        whenAClientConnectsToThePeer();
+
+        thenItClosedWith(DecodeException.class);
+        thenThePeerIsDone();
+    }
+
+    @Test
+    void shouldDropAPeerNotReadingOnceAFewMegabytesWait() throws Exception {
+        givenAConnectionToAPeerThatReadsNothingYet();
+
+        whenMegabyteFramesAreSentUpTo(64);
+
+        thenFewerFramesAreQueuedThan(64);
+        thenItClosedWithACause();
+        thenThePeerSocketIsStillOpen();
+    }
+
+    @Test
+    void shouldStillSendFramesQueuedBeforeAClose() throws Exception {
+        givenAConnectionToAPeerThatReadsNothingYet();
+        givenSmallFramesQueued(200);
+
+        whenTheConnectionIsClosed();
+
+        thenItClosedWithoutError();
+        thenThePeerReadsTheFramesThenTheEnd(200);
+    }
+
+    @Test
+    void shouldRefuseToSendAfterAClose() throws IOException {
+        givenAConnectionToAPeerThatReadsNothingYet();
+        givenSmallFramesQueued(200);
+        givenTheConnectionClosed();
+
+        whenThePacketIsSent(Packet.empty(Protocol.EDONKEY, 0x02));
+
+        thenItIsRefused();
+    }
+
+    @Test
+    void shouldCloseTheConnectionWhenAHandlerFails() throws Exception {
+        givenAConnectionWhoseHandlerFails();
+
+        whenThePeerSendsAPacket();
+
+        thenTheCloseIsToldBecause("handler failed");
+    }
+
+    @Test
+    void shouldTellTheCloseOfAFailedHandlerOnlyOnce() throws Exception {
+        givenAConnectionWhoseHandlerFails();
+        givenThePeerSentAPacket();
+        givenTheCloseToldBecause("handler failed");
+
+        whenTheConnectionIsClosed();
+
+        thenNoOtherCloseIsTold();
+        thenTheConnectionIsNotOpen();
+    }
+
+    @Test
+    void shouldSayAConnectionClosedBeforeItStartsIsClosedWhenStarted() throws Exception {
+        givenAConnectionClosedBeforeItStarts();
+
+        whenItIsStarted();
+
+        thenItClosedWithoutError();
+    }
+
+    @Test
+    void shouldRefuseToSendOnAConnectionClosedBeforeItStarted() throws Exception {
+        givenAConnectionClosedBeforeItStarts();
+        givenItStartedAndSaidItIsClosed();
+
+        whenThePacketIsSent(Packet.empty(Protocol.EDONKEY, 0x01));
+
+        thenItIsRefused();
+    }
+
+    @Test
+    void shouldSendAPacketWhileFileDataWaitsBeforeIt() throws IOException, DecodeException {
+        givenAConnectionToAPeerThatReadsNothingYet();
+        givenMuchFileDataQueued();
+
+        whenThePacketIsSent(Packet.of(Protocol.EDONKEY, CONTROL, new byte[1]));
+
+        thenItIsSent();
+        thenThePeerReadsItBeforeTheDataStillQueued();
+    }
+
+    private void givenAServerAnsweringOnce(boolean obfuscated) throws IOException {
+        ServerSocket listening = listen();
+        CompletableFuture<Packet> receiving = new CompletableFuture<>();
+        this.received = receiving;
+        this.serving = CompletableFuture.runAsync(() -> serveOnce(listening, obfuscated, receiving));
+    }
+
+    private void givenAConnectionToTheServer(boolean obfuscated) throws IOException {
+        this.recorder = new Recorder();
+        this.connection = TcpConnector.connectToServer(
+                new InetSocketAddress(LOOPBACK, this.server.getLocalPort()), obfuscated, TIMEOUT, RANDOM);
+        this.connection.start(this.recorder, frame -> frame);
+    }
+
+    private void givenAListenerEchoingPackets(boolean allowPlain) throws IOException {
+        this.echo = new Echo(allowPlain);
+        this.resources.add(this.echo);
+    }
+
+    private void givenAClientConnectedToTheListener(boolean obfuscated) throws IOException {
+        connectToTheListener(obfuscated);
+    }
+
+    private void givenThePacketEchoed(Packet echoed) throws InterruptedException {
+        assertThat(this.connection.send(echoed)).isTrue();
+        assertThat(this.recorder.next()).isEqualTo(echoed);
+    }
+
+    private void givenAPeerSendingAFrameThatIsNotAGreeting() throws IOException {
+        ServerSocket listening = listen();
+        this.serving = CompletableFuture.runAsync(() -> {
+            try (Socket socket = listening.accept()) {
+                // Not a greeting: refused before the payload is allocated.
+                socket.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x46, new byte[16])));
+                socket.getInputStream().read();
+            } catch (IOException e) {
+                // The client hung up, as expected.
             }
-        }
+        });
     }
 
-    @Test
-    void aListenerRequiringObfuscationDropsPlainClients() throws Exception {
-        try (Echo echo = new Echo(false)) {
-            Recorder recorder = new Recorder();
-            TcpConnection client = TcpConnector.connectToClient(echo.address(), Optional.empty(), TIMEOUT, RANDOM);
-            client.start(recorder, frame -> frame);
-            client.send(Packet.of(Protocol.EDONKEY, 0x01, new byte[1]));
-
-            recorder.closed.get(5, TimeUnit.SECONDS);
-            assertThat(client.isOpen()).isFalse();
-        }
-    }
-
-    @Test
-    void framesBeyondTheHandshakeLimitCloseTheConnection() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            CompletableFuture<Void> sent = CompletableFuture.runAsync(() -> {
-                try (Socket peer = server.accept()) {
-                    // Not a greeting: refused before the payload is allocated.
-                    peer.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x46, new byte[16])));
-                    peer.getInputStream().read();
-                } catch (IOException e) {
-                    // The client hung up, as expected.
-                }
-            });
-            Recorder recorder = new Recorder();
-            TcpConnection client = TcpConnector.connectToClient(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-            client.start(recorder, frame -> frame);
-
-            assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).containsInstanceOf(DecodeException.class);
-            sent.get(5, TimeUnit.SECONDS);
-        }
-    }
-
-    @Test
-    void aPeerNotReadingIsDroppedOnceAFewMegabytesWait() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            TcpConnection connection = TcpConnector.connectToClient(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-            try (Socket idle = server.accept()) {
-                Recorder recorder = new Recorder();
-                connection.start(recorder, frame -> frame);
-                Packet big = Packet.of(Protocol.EDONKEY, 0x4B, new byte[1 << 20]);
-                int sent = 0;
-                while (sent < 64 && connection.send(big)) {
-                    sent++;
-                }
-
-                assertThat(sent).as("frames queued").isLessThan(64);
-                assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isPresent();
-                assertThat(idle.isClosed()).isFalse();
-            }
-        }
-    }
-
-    @Test
-    void framesQueuedBeforeACloseAreStillSent() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            TcpConnection connection = TcpConnector.connectToClient(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-            try (Socket peer = server.accept()) {
-                peer.setSoTimeout(5000);
-                Recorder recorder = new Recorder();
-                connection.start(recorder, frame -> frame);
-                for (int i = 0; i < 200; i++) {
-                    assertThat(connection.send(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {(byte) i})))
-                            .isTrue();
-                }
-                connection.close();
-                assertThat(connection.send(Packet.empty(Protocol.EDONKEY, 0x02)))
-                        .isFalse();
-                assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
-
-                InputStream in = new BufferedInputStream(peer.getInputStream());
-                for (int i = 0; i < 200; i++) {
-                    assertThat(TcpFraming.read(in, FrameLimits.CLIENT).payload())
-                            .containsExactly((byte) i);
-                }
-                assertThat(in.read()).as("closed after the last frame").isEqualTo(-1);
-            }
-        }
-    }
-
-    @Test
-    void aHandlerThatFailsClosesTheConnectionOnce() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            TcpConnection connection = TcpConnector.connectToClient(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-            BlockingQueue<Optional<IOException>> closes = new LinkedBlockingQueue<>();
-            connection.start(
-                    new TcpConnection.Handler() {
-                        @Override
-                        public void onPacket(TcpConnection c, Packet packet) {
-                            throw new IllegalStateException("bug");
-                        }
-
-                        @Override
-                        public void onClosed(TcpConnection c, Optional<IOException> cause) {
-                            closes.add(cause);
-                        }
-                    },
-                    frame -> frame);
-            try (Socket peer = server.accept()) {
-                peer.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x01, new byte[1])));
-
-                assertThat(closes.poll(5, TimeUnit.SECONDS))
-                        .hasValueSatisfying(e -> assertThat(e).hasMessageContaining("handler failed"));
-                connection.close();
-                assertThat(closes.poll(300, TimeUnit.MILLISECONDS))
-                        .as("told once")
-                        .isNull();
-                assertThat(connection.isOpen()).isFalse();
-            }
-        }
-    }
-
-    @Test
-    void aConnectionClosedBeforeItStartsSaysSoWhenStarted() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            TcpConnection connection = TcpConnector.connectToClient(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-            connection.close();
-            Recorder recorder = new Recorder();
-
-            connection.start(recorder, frame -> frame);
-
-            assertThat(recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
-            assertThat(connection.send(Packet.empty(Protocol.EDONKEY, 0x01))).isFalse();
-        }
-    }
-
-    @Test
-    void aPacketSentWhileFileDataWaitsGoesOutBeforeIt() throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            givenAConnectionToAPeerThatReadsNothingYet(server);
-            givenMuchFileDataQueued();
-
-            whenAPacketIsSent();
-
-            thenThePeerReadsItBeforeTheDataStillQueued();
-        }
-    }
-
-    private void givenAConnectionToAPeerThatReadsNothingYet(ServerSocket server) throws IOException {
+    private void givenAConnectionToAPeerThatReadsNothingYet() throws IOException {
+        listen();
         this.connection = TcpConnector.connectToClient(
-                new InetSocketAddress(LOOPBACK, server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
-        this.peer = server.accept();
+                new InetSocketAddress(LOOPBACK, this.server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+        acceptThePeer();
         this.peer.setSoTimeout(5000);
-        this.connection.start(new Recorder(), frame -> frame);
+        this.recorder = new Recorder();
+        this.connection.start(this.recorder, frame -> frame);
+    }
+
+    private void givenSmallFramesQueued(int count) {
+        for (int i = 0; i < count; i++) {
+            assertThat(this.connection.send(Packet.of(Protocol.EDONKEY, 0x01, new byte[] {(byte) i})))
+                    .isTrue();
+        }
     }
 
     private void givenMuchFileDataQueued() {
@@ -253,9 +319,164 @@ class TcpConnectionTest {
         assertThat(this.connection.queuedData()).isPositive();
     }
 
-    private void whenAPacketIsSent() {
-        assertThat(this.connection.send(Packet.of(Protocol.EDONKEY, CONTROL, new byte[1])))
-                .isTrue();
+    private void givenTheConnectionClosed() {
+        this.connection.close();
+    }
+
+    private void givenAConnectionWhoseHandlerFails() throws IOException {
+        listen();
+        this.connection = TcpConnector.connectToClient(
+                new InetSocketAddress(LOOPBACK, this.server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+        BlockingQueue<Optional<IOException>> told = new LinkedBlockingQueue<>();
+        this.closes = told;
+        this.connection.start(
+                new TcpConnection.Handler() {
+                    @Override
+                    public void onPacket(TcpConnection c, Packet incoming) {
+                        throw new IllegalStateException("bug");
+                    }
+
+                    @Override
+                    public void onClosed(TcpConnection c, Optional<IOException> cause) {
+                        told.add(cause);
+                    }
+                },
+                frame -> frame);
+        acceptThePeer();
+    }
+
+    private void givenThePeerSentAPacket() throws IOException {
+        sendFromThePeer();
+    }
+
+    private void givenTheCloseToldBecause(String reason) throws InterruptedException {
+        assertTheCloseIsToldBecause(reason);
+    }
+
+    private void givenAConnectionClosedBeforeItStarts() throws IOException {
+        listen();
+        this.connection = TcpConnector.connectToClient(
+                new InetSocketAddress(LOOPBACK, this.server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+        this.connection.close();
+        this.recorder = new Recorder();
+    }
+
+    private void givenItStartedAndSaidItIsClosed() throws Exception {
+        this.connection.start(this.recorder, frame -> frame);
+        assertThat(this.recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void whenThePacketIsSent(Packet sending) {
+        this.packet = sending;
+        this.sent = this.connection.send(sending);
+    }
+
+    private void whenAClientConnectsToTheListener(boolean obfuscated) throws IOException {
+        connectToTheListener(obfuscated);
+    }
+
+    private void whenAClientConnectsToThePeer() throws IOException {
+        this.recorder = new Recorder();
+        this.connection = TcpConnector.connectToClient(
+                new InetSocketAddress(LOOPBACK, this.server.getLocalPort()), Optional.empty(), TIMEOUT, RANDOM);
+        this.connection.start(this.recorder, frame -> frame);
+    }
+
+    private void whenMegabyteFramesAreSentUpTo(int most) {
+        Packet big = Packet.of(Protocol.EDONKEY, 0x4B, new byte[1 << 20]);
+        while (this.framesQueued < most && this.connection.send(big)) {
+            this.framesQueued++;
+        }
+    }
+
+    private void whenTheConnectionIsClosed() {
+        this.connection.close();
+    }
+
+    private void whenThePeerSendsAPacket() throws IOException {
+        sendFromThePeer();
+    }
+
+    private void whenItIsStarted() {
+        this.connection.start(this.recorder, frame -> frame);
+    }
+
+    private void thenItIsSent() {
+        assertThat(this.sent).isTrue();
+    }
+
+    private void thenItIsRefused() {
+        assertThat(this.sent).isFalse();
+    }
+
+    private void thenTheServerReceivedThePacket() throws Exception {
+        assertThat(this.received.get(5, TimeUnit.SECONDS)).isEqualTo(this.packet);
+    }
+
+    private void thenThePacketReceivedIs(Packet expected) throws InterruptedException {
+        assertThat(this.recorder.next()).isEqualTo(expected);
+    }
+
+    private void thenThePacketComesBack() throws InterruptedException {
+        assertThat(this.recorder.next()).isEqualTo(this.packet);
+    }
+
+    private void thenTheConnectionIsObfuscated(boolean expected) {
+        assertThat(this.connection.isObfuscated()).isEqualTo(expected);
+    }
+
+    private void thenTheServerIsDoneOnceTheConnectionCloses() throws Exception {
+        this.connection.close();
+        this.serving.get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenThePeerIsDone() throws Exception {
+        this.serving.get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenItClosedWithoutError() throws Exception {
+        assertThat(this.recorder.closed.get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenItClosedWithACause() throws Exception {
+        assertThat(this.recorder.closed.get(5, TimeUnit.SECONDS)).isPresent();
+    }
+
+    private void thenItClosedWith(Class<? extends IOException> cause) throws Exception {
+        assertThat(this.recorder.closed.get(5, TimeUnit.SECONDS)).containsInstanceOf(cause);
+    }
+
+    private void thenTheConnectionIsDropped() throws Exception {
+        this.recorder.closed.get(5, TimeUnit.SECONDS);
+        assertThat(this.connection.isOpen()).isFalse();
+    }
+
+    private void thenTheConnectionIsNotOpen() {
+        assertThat(this.connection.isOpen()).isFalse();
+    }
+
+    private void thenFewerFramesAreQueuedThan(int most) {
+        assertThat(this.framesQueued).as("frames queued").isLessThan(most);
+    }
+
+    private void thenThePeerSocketIsStillOpen() {
+        assertThat(this.peer.isClosed()).isFalse();
+    }
+
+    private void thenThePeerReadsTheFramesThenTheEnd(int count) throws IOException, DecodeException {
+        InputStream in = new BufferedInputStream(this.peer.getInputStream());
+        for (int i = 0; i < count; i++) {
+            assertThat(TcpFraming.read(in, FrameLimits.CLIENT).payload()).containsExactly((byte) i);
+        }
+        assertThat(in.read()).as("closed after the last frame").isEqualTo(-1);
+    }
+
+    private void thenTheCloseIsToldBecause(String reason) throws InterruptedException {
+        assertTheCloseIsToldBecause(reason);
+    }
+
+    private void thenNoOtherCloseIsTold() throws InterruptedException {
+        assertThat(this.closes.poll(300, TimeUnit.MILLISECONDS)).as("told once").isNull();
     }
 
     private void thenThePeerReadsItBeforeTheDataStillQueued() throws IOException, DecodeException {
@@ -273,23 +494,31 @@ class TcpConnectionTest {
         this.peer.close();
     }
 
-    private void exchangeWithServer(boolean obfuscated) throws Exception {
-        try (ServerSocket server = new ServerSocket(0, 1, LOOPBACK)) {
-            CompletableFuture<Packet> received = new CompletableFuture<>();
-            CompletableFuture<Void> serving = CompletableFuture.runAsync(() -> serveOnce(server, obfuscated, received));
-            Recorder recorder = new Recorder();
-            TcpConnection connection = TcpConnector.connectToServer(
-                    new InetSocketAddress(LOOPBACK, server.getLocalPort()), obfuscated, TIMEOUT, RANDOM);
-            connection.start(recorder, frame -> frame);
-            Packet login = Packet.of(Protocol.EDONKEY, 0x01, new byte[] {7, 7, 7});
+    private void assertTheCloseIsToldBecause(String reason) throws InterruptedException {
+        assertThat(this.closes.poll(5, TimeUnit.SECONDS))
+                .hasValueSatisfying(e -> assertThat(e).hasMessageContaining(reason));
+    }
 
-            assertThat(connection.send(login)).isTrue();
-            assertThat(received.get(5, TimeUnit.SECONDS)).isEqualTo(login);
-            assertThat(recorder.next()).isEqualTo(Packet.of(Protocol.EDONKEY, 0x38, new byte[2]));
-            assertThat(connection.isObfuscated()).isEqualTo(obfuscated);
-            connection.close();
-            serving.get(5, TimeUnit.SECONDS);
-        }
+    private ServerSocket listen() throws IOException {
+        this.server = new ServerSocket(0, 1, LOOPBACK);
+        this.resources.add(this.server);
+        return this.server;
+    }
+
+    private void acceptThePeer() throws IOException {
+        this.peer = this.server.accept();
+        this.resources.add(this.peer);
+    }
+
+    private void connectToTheListener(boolean obfuscated) throws IOException {
+        Optional<Hash16> obfuscation = obfuscated ? Optional.of(OWN_HASH) : Optional.empty();
+        this.recorder = new Recorder();
+        this.connection = TcpConnector.connectToClient(this.echo.address(), obfuscation, TIMEOUT, RANDOM);
+        this.connection.start(this.recorder, frame -> frame);
+    }
+
+    private void sendFromThePeer() throws IOException {
+        this.peer.getOutputStream().write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, 0x01, new byte[1])));
     }
 
     // Reads one frame and answers with an empty server message, like a minimal eD2K server.

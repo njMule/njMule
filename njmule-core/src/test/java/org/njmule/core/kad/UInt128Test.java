@@ -17,93 +17,397 @@
 package org.njmule.core.kad;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigInteger;
 import java.util.HexFormat;
+import java.util.stream.Stream;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.IntRange;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.protocol.io.DecodeException;
 
 class UInt128Test {
 
     private static final UInt128 SAMPLE = UInt128.parseHex("00112233445566778899AABBCCDDEEFF");
 
+    private UInt128 id;
+    private UInt128 other;
+    private UInt128 third;
+    private byte[] bytes;
+    private UInt128 result;
+    private UInt128 reverse;
+    private int comparison;
+    private int bit;
+    private int[] bits;
+    private long top32;
+    private Exception exception;
+
     @Test
-    void onTheWireEachWordIsLittleEndianMostSignificantFirst() throws Exception {
-        assertThat(HexFormat.of().formatHex(SAMPLE.toWireBytes()))
-                .isEqualTo("33221100" + "77665544" + "bbaa9988" + "ffeeddcc");
-        assertThat(UInt128.fromWireBytes(SAMPLE.toWireBytes())).isEqualTo(SAMPLE);
-        assertThat(HexFormat.of().formatHex(SAMPLE.toBigEndian())).isEqualTo("00112233445566778899aabbccddeeff");
+    void shouldWriteEachWordLittleEndianMostSignificantFirstOnTheWire() {
+        givenTheId(SAMPLE);
+
+        whenItIsWrittenForTheWire();
+
+        thenTheBytesAre("33221100" + "77665544" + "bbaa9988" + "ffeeddcc");
     }
 
     @Test
-    void wrongLengthsAreRefused() {
-        assertThatThrownBy(() -> UInt128.fromWireBytes(new byte[15])).isInstanceOf(DecodeException.class);
-        assertThatThrownBy(() -> UInt128.fromBigEndian(new byte[17])).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> UInt128.parseHex("00")).isInstanceOf(IllegalArgumentException.class);
+    void shouldReadAnIdBackFromItsWireBytes() {
+        givenTheWireBytesOf(SAMPLE);
+
+        whenTheBytesAreReadFromTheWire();
+
+        thenTheIdReadIs(SAMPLE);
     }
 
     @Test
-    void orderIsUnsignedAndBitZeroIsTheMostSignificant() {
-        UInt128 top = new UInt128(Long.MIN_VALUE, 0);
-        UInt128 lowSign = new UInt128(0, Long.MIN_VALUE);
-        UInt128 ones = new UInt128(-1, -1);
+    void shouldWriteTheIdBigEndian() {
+        givenTheId(SAMPLE);
 
-        assertThat(top).isGreaterThan(new UInt128(Long.MAX_VALUE, -1));
-        assertThat(lowSign).isGreaterThan(new UInt128(0, Long.MAX_VALUE));
-        assertThat(ones).isGreaterThan(top);
-        assertThat(top.bit(0)).isEqualTo(1);
-        assertThat(lowSign.bit(64)).isEqualTo(1);
-        assertThat(lowSign.bit(63)).isZero();
-        assertThat(ones.bit(127)).isEqualTo(1);
-        assertThat(ones.top32()).isEqualTo(0xFFFF_FFFFL);
-        assertThatThrownBy(() -> ones.bit(-1)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> ones.bit(128)).isInstanceOf(IndexOutOfBoundsException.class);
+        whenItIsWrittenBigEndian();
+
+        thenTheBytesAre("00112233445566778899aabbccddeeff");
+    }
+
+    @Test
+    void shouldRefuseWireBytesOfTheWrongLength() {
+        givenTheBytes(new byte[15]);
+
+        whenTheBytesAreReadFromTheWire();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @Test
+    void shouldRefuseBigEndianBytesOfTheWrongLength() {
+        givenTheBytes(new byte[17]);
+
+        whenTheBytesAreReadBigEndian();
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseHexOfTheWrongLength() {
+        whenTheHexIsParsed("00");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("unsignedOrders")
+    void shouldOrderIdsAsUnsignedNumbers(UInt128 greater, UInt128 smaller) {
+        givenTheIds(greater, smaller);
+
+        whenTheyAreCompared();
+
+        thenTheFirstIsGreater();
+    }
+
+    @ParameterizedTest
+    @MethodSource("bitsFromTheMostSignificant")
+    void shouldNumberTheBitsFromTheMostSignificant(UInt128 value, int index, int expected) {
+        givenTheId(value);
+
+        whenTheBitIsRead(index);
+
+        thenTheBitIs(expected);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 128})
+    void shouldRefuseABitOutsideTheId(int index) {
+        givenTheId(new UInt128(-1, -1));
+
+        whenTheBitIsRead(index);
+
+        thenExceptionOccurred(IndexOutOfBoundsException.class);
+    }
+
+    @Test
+    void shouldTakeTheTop32BitsAsAnUnsignedNumber() {
+        givenTheId(new UInt128(-1, -1));
+
+        whenTheTop32BitsAreTaken();
+
+        thenTheTop32BitsAre(0xFFFF_FFFFL);
     }
 
     @Property
-    void xorIsADistance(@ForAll long a1, @ForAll long a2, @ForAll long b1, @ForAll long b2, @ForAll long c1) {
-        UInt128 a = new UInt128(a1, a2);
-        UInt128 b = new UInt128(b1, b2);
-        UInt128 c = new UInt128(c1, a2 ^ b2);
+    void shouldMeasureNoDistanceFromAnIdToItself(@ForAll long a1, @ForAll long a2) {
+        givenTheId(new UInt128(a1, a2));
 
-        assertThat(a.xor(a).isZero()).isTrue();
-        assertThat(a.xor(b)).isEqualTo(b.xor(a));
-        assertThat(a.xor(b).xor(b.xor(c))).isEqualTo(a.xor(c));
+        whenTheDistanceToItselfIsMeasured();
+
+        thenTheDistanceIsZero();
     }
 
     @Property
-    void orderAndBitsAgreeWithBigInteger(@ForAll long a1, @ForAll long a2, @ForAll long b1, @ForAll long b2) {
-        UInt128 a = new UInt128(a1, a2);
-        UInt128 b = new UInt128(b1, b2);
+    void shouldMeasureTheSameDistanceBothWays(@ForAll long a1, @ForAll long a2, @ForAll long b1, @ForAll long b2) {
+        givenTheIds(new UInt128(a1, a2), new UInt128(b1, b2));
 
-        assertThat(Integer.signum(a.compareTo(b))).isEqualTo(Integer.signum(big(a).compareTo(big(b))));
-        for (int i = 0; i < UInt128.BITS; i++) {
-            assertThat(a.bit(i) == 1).isEqualTo(big(a).testBit(UInt128.BITS - 1 - i));
+        whenTheDistanceIsMeasuredBothWays();
+
+        thenBothWaysGiveTheSameDistance();
+    }
+
+    @Property
+    void shouldCombineTheDistancesThroughAMiddleIdIntoTheDirectOne(
+            @ForAll long a1, @ForAll long a2, @ForAll long b1, @ForAll long b2, @ForAll long c1) {
+        givenTheIds(new UInt128(a1, a2), new UInt128(b1, b2));
+        givenTheThirdId(new UInt128(c1, a2 ^ b2));
+
+        whenTheDistancesThroughTheMiddleIdAreCombined();
+
+        thenTheCombinedDistanceIsTheOneFromTheFirstToTheThird();
+    }
+
+    @Property
+    void shouldOrderIdsAsBigIntegerDoes(@ForAll long a1, @ForAll long a2, @ForAll long b1, @ForAll long b2) {
+        givenTheIds(new UInt128(a1, a2), new UInt128(b1, b2));
+
+        whenTheyAreCompared();
+
+        thenTheOrderAgreesWithBigInteger();
+    }
+
+    @Property
+    void shouldNumberTheBitsAsBigIntegerDoesFromTheTop(@ForAll long a1, @ForAll long a2) {
+        givenTheId(new UInt128(a1, a2));
+
+        whenAllBitsAreRead();
+
+        thenTheBitsAgreeWithBigInteger();
+    }
+
+    @Property
+    void shouldRoundTripThroughHex(@ForAll long high, @ForAll long low) {
+        givenTheId(new UInt128(high, low));
+
+        whenItGoesThroughHex();
+
+        thenTheSameIdComesBack();
+    }
+
+    @Property
+    void shouldRoundTripThroughTheWire(@ForAll long high, @ForAll long low) throws DecodeException {
+        givenTheId(new UInt128(high, low));
+
+        whenItGoesThroughTheWire();
+
+        thenTheSameIdComesBack();
+    }
+
+    @Property
+    void shouldRoundTripThroughBigEndianBytes(@ForAll long high, @ForAll long low) {
+        givenTheId(new UInt128(high, low));
+
+        whenItGoesThroughBigEndianBytes();
+
+        thenTheSameIdComesBack();
+    }
+
+    @Property
+    void shouldRoundTripThroughAHash(@ForAll long high, @ForAll long low) {
+        givenTheId(new UInt128(high, low));
+
+        whenItGoesThroughAHash();
+
+        thenTheSameIdComesBack();
+    }
+
+    @Property
+    void shouldTakeTheFirst32BitsAsTheTopBits(@ForAll long high, @ForAll @IntRange(min = 0, max = 31) int index) {
+        givenTheId(new UInt128(high, 0));
+
+        whenTheTop32BitsAreTaken();
+
+        thenBitOfTheTop32IsTheSameBitOfTheId(index);
+    }
+
+    private void givenTheId(UInt128 value) {
+        this.id = value;
+    }
+
+    private void givenTheIds(UInt128 first, UInt128 second) {
+        this.id = first;
+        this.other = second;
+    }
+
+    private void givenTheThirdId(UInt128 value) {
+        this.third = value;
+    }
+
+    private void givenTheBytes(byte[] value) {
+        this.bytes = value;
+    }
+
+    private void givenTheWireBytesOf(UInt128 value) {
+        this.bytes = value.toWireBytes();
+    }
+
+    private void whenItIsWrittenForTheWire() {
+        this.bytes = this.id.toWireBytes();
+    }
+
+    private void whenItIsWrittenBigEndian() {
+        this.bytes = this.id.toBigEndian();
+    }
+
+    private void whenTheBytesAreReadFromTheWire() {
+        try {
+            this.result = UInt128.fromWireBytes(this.bytes);
+        } catch (DecodeException | RuntimeException e) {
+            this.exception = e;
         }
     }
 
-    @Property
-    void formsRoundTrip(@ForAll long high, @ForAll long low) throws Exception {
-        UInt128 id = new UInt128(high, low);
-
-        assertThat(UInt128.parseHex(id.toHex())).isEqualTo(id);
-        assertThat(UInt128.fromWireBytes(id.toWireBytes())).isEqualTo(id);
-        assertThat(UInt128.fromBigEndian(id.toBigEndian())).isEqualTo(id);
-        assertThat(UInt128.of(id.toHash16())).isEqualTo(id);
+    private void whenTheBytesAreReadBigEndian() {
+        try {
+            this.result = UInt128.fromBigEndian(this.bytes);
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
     }
 
-    @Property
-    void topBitsAreTheFirst32(@ForAll long high, @ForAll @IntRange(min = 0, max = 31) int bit) {
-        UInt128 id = new UInt128(high, 0);
-
-        assertThat(id.top32() >>> (31 - bit) & 1).isEqualTo((long) id.bit(bit));
+    private void whenTheHexIsParsed(String hex) {
+        try {
+            this.result = UInt128.parseHex(hex);
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
     }
 
-    private static BigInteger big(UInt128 id) {
-        return new BigInteger(1, id.toBigEndian());
+    private void whenTheyAreCompared() {
+        this.comparison = this.id.compareTo(this.other);
+    }
+
+    private void whenTheBitIsRead(int index) {
+        try {
+            this.bit = this.id.bit(index);
+        } catch (RuntimeException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenAllBitsAreRead() {
+        this.bits = new int[UInt128.BITS];
+        for (int i = 0; i < UInt128.BITS; i++) {
+            this.bits[i] = this.id.bit(i);
+        }
+    }
+
+    private void whenTheTop32BitsAreTaken() {
+        this.top32 = this.id.top32();
+    }
+
+    private void whenTheDistanceToItselfIsMeasured() {
+        this.result = this.id.xor(this.id);
+    }
+
+    private void whenTheDistanceIsMeasuredBothWays() {
+        this.result = this.id.xor(this.other);
+        this.reverse = this.other.xor(this.id);
+    }
+
+    private void whenTheDistancesThroughTheMiddleIdAreCombined() {
+        this.result = this.id.xor(this.other).xor(this.other.xor(this.third));
+    }
+
+    private void whenItGoesThroughHex() {
+        this.result = UInt128.parseHex(this.id.toHex());
+    }
+
+    private void whenItGoesThroughTheWire() throws DecodeException {
+        this.result = UInt128.fromWireBytes(this.id.toWireBytes());
+    }
+
+    private void whenItGoesThroughBigEndianBytes() {
+        this.result = UInt128.fromBigEndian(this.id.toBigEndian());
+    }
+
+    private void whenItGoesThroughAHash() {
+        this.result = UInt128.of(this.id.toHash16());
+    }
+
+    private void thenTheBytesAre(String hex) {
+        assertThat(HexFormat.of().formatHex(this.bytes)).isEqualTo(hex);
+    }
+
+    private void thenTheIdReadIs(UInt128 expected) {
+        assertThat(this.result).isEqualTo(expected);
+    }
+
+    private void thenTheSameIdComesBack() {
+        assertThat(this.result).isEqualTo(this.id);
+    }
+
+    private void thenTheFirstIsGreater() {
+        assertThat(this.comparison).isPositive();
+    }
+
+    private void thenTheBitIs(int expected) {
+        assertThat(this.bit).isEqualTo(expected);
+    }
+
+    private void thenTheTop32BitsAre(long expected) {
+        assertThat(this.top32).isEqualTo(expected);
+    }
+
+    private void thenTheDistanceIsZero() {
+        assertThat(this.result.isZero()).isTrue();
+    }
+
+    private void thenBothWaysGiveTheSameDistance() {
+        assertThat(this.result).isEqualTo(this.reverse);
+    }
+
+    private void thenTheCombinedDistanceIsTheOneFromTheFirstToTheThird() {
+        assertThat(this.result).isEqualTo(this.id.xor(this.third));
+    }
+
+    private void thenTheOrderAgreesWithBigInteger() {
+        assertThat(Integer.signum(this.comparison))
+                .isEqualTo(Integer.signum(big(this.id).compareTo(big(this.other))));
+    }
+
+    private void thenTheBitsAgreeWithBigInteger() {
+        for (int i = 0; i < UInt128.BITS; i++) {
+            assertThat(this.bits[i] == 1).isEqualTo(big(this.id).testBit(UInt128.BITS - 1 - i));
+        }
+    }
+
+    private void thenBitOfTheTop32IsTheSameBitOfTheId(int index) {
+        assertThat(this.top32 >>> (31 - index) & 1).isEqualTo((long) this.id.bit(index));
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private static Stream<Arguments> unsignedOrders() {
+        UInt128 top = new UInt128(Long.MIN_VALUE, 0);
+        return Stream.of(
+                Arguments.of(top, new UInt128(Long.MAX_VALUE, -1)),
+                Arguments.of(new UInt128(0, Long.MIN_VALUE), new UInt128(0, Long.MAX_VALUE)),
+                Arguments.of(new UInt128(-1, -1), top));
+    }
+
+    private static Stream<Arguments> bitsFromTheMostSignificant() {
+        UInt128 lowSign = new UInt128(0, Long.MIN_VALUE);
+        return Stream.of(
+                Arguments.of(new UInt128(Long.MIN_VALUE, 0), 0, 1),
+                Arguments.of(lowSign, 64, 1),
+                Arguments.of(lowSign, 63, 0),
+                Arguments.of(new UInt128(-1, -1), 127, 1));
+    }
+
+    private static BigInteger big(UInt128 value) {
+        return new BigInteger(1, value.toBigEndian());
     }
 }

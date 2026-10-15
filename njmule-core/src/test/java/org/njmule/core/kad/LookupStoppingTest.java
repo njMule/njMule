@@ -55,17 +55,30 @@ class LookupStoppingTest {
     private int sentBefore;
 
     @Test
-    void shouldSendNothingInTheLastTwentySecondsOfASearch() {
+    void shouldStillSendInTheFirstTwentyFiveSecondsOfASearch() {
         givenASearchWithSilentNodes(Lookup.Kind.SOURCES, 80);
 
         whenSecondsPass(25);
 
         thenItStillSends();
+    }
+
+    @Test
+    void shouldSendNothingInTheLastTwentySecondsOfASearch() {
+        givenASearchWithSilentNodes(Lookup.Kind.SOURCES, 80);
+        givenSecondsPassed(25);
 
         whenSecondsPass(14);
 
         thenItSentNothingMore();
         thenItRuns();
+    }
+
+    @Test
+    void shouldEndASearchFifteenSecondsAfterItStoppedSending() {
+        givenASearchWithSilentNodes(Lookup.Kind.SOURCES, 80);
+        givenSecondsPassed(25);
+        givenSecondsPassed(14);
 
         whenSecondsPass(1);
 
@@ -75,13 +88,21 @@ class LookupStoppingTest {
     @Test
     void shouldStillTakeAnswersOnceItHasAllItWants() {
         givenASearchWithSilentNodes(Lookup.Kind.KEYWORD, 3);
+        givenValuesArrived(300);
+        givenTheClosestNodeAnsweredWithCloserContacts();
 
-        whenValuesArrive(300);
-        whenTheClosestNodeAnswersWithCloserContacts();
         whenSecondsPass(14);
 
         thenItSentNothingMore();
         thenItRuns();
+    }
+
+    @Test
+    void shouldEndFifteenSecondsAfterItHasAllItWants() {
+        givenASearchWithSilentNodes(Lookup.Kind.KEYWORD, 3);
+        givenValuesArrived(300);
+        givenTheClosestNodeAnsweredWithCloserContacts();
+        givenSecondsPassed(14);
 
         whenSecondsPass(1);
 
@@ -95,6 +116,12 @@ class LookupStoppingTest {
         whenANodeAnswersEverySecondFor(Lookup.Kind.STORE_SOURCE.lifetime().toSeconds() - 6);
 
         thenItRuns();
+    }
+
+    @Test
+    void shouldEndAPublishWhoseNodesAnswerFifteenSecondsAfterItStoppedSending() {
+        givenASearchWithSilentNodes(Lookup.Kind.STORE_SOURCE, 2);
+        givenANodeAnsweredEverySecondFor(Lookup.Kind.STORE_SOURCE.lifetime().toSeconds() - 6);
 
         whenANodeAnswersEverySecondFor(1);
 
@@ -113,20 +140,15 @@ class LookupStoppingTest {
         this.lookup.start(table);
     }
 
-    private void whenSecondsPass(int seconds) {
-        this.sentBefore = this.sent.size();
-        for (int s = 0; s < seconds; s++) {
-            this.clock += SECOND;
-            this.lookup.tick(this.clock);
-        }
+    private void givenSecondsPassed(int seconds) {
+        passSeconds(seconds);
     }
 
-    private void whenValuesArrive(int values) {
+    private void givenValuesArrived(int values) {
         this.lookup.valueReceived(values, this.clock);
     }
 
-    private void whenTheClosestNodeAnswersWithCloserContacts() {
-        this.sentBefore = this.sent.size();
+    private void givenTheClosestNodeAnsweredWithCloserContacts() {
         this.lookup.answered(
                 ip(1),
                 PORT,
@@ -134,7 +156,27 @@ class LookupStoppingTest {
                 this.clock);
     }
 
+    private void givenANodeAnsweredEverySecondFor(long seconds) {
+        answerEverySecondFor(seconds);
+    }
+
+    private void whenSecondsPass(int seconds) {
+        passSeconds(seconds);
+    }
+
     private void whenANodeAnswersEverySecondFor(long seconds) {
+        answerEverySecondFor(seconds);
+    }
+
+    private void passSeconds(int seconds) {
+        this.sentBefore = this.sent.size();
+        for (int s = 0; s < seconds; s++) {
+            this.clock += SECOND;
+            this.lookup.tick(this.clock);
+        }
+    }
+
+    private void answerEverySecondFor(long seconds) {
         for (long s = 0; s < seconds; s++) {
             this.clock += SECOND;
             this.lookup.answered(ip(1), PORT, List.of(), this.clock);

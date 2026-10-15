@@ -18,31 +18,82 @@ package org.njmule.core.peer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.Test;
+import java.util.stream.Stream;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 
 class PeerLinkTest {
 
-    @Test
-    void answersOfAnUploaderGoToTheDownloadAndRequestsOfADownloaderToTheUpload() {
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.FILESTATUS))).isEqualTo(PeerLink.Side.DOWNLOAD);
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.ACCEPTUPLOADREQ))).isEqualTo(PeerLink.Side.DOWNLOAD);
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.SENDINGPART))).isEqualTo(PeerLink.Side.DOWNLOAD);
-        assertThat(PeerLink.sideOf(extended(Opcodes.Extended.COMPRESSEDPART_I64)))
-                .isEqualTo(PeerLink.Side.DOWNLOAD);
-        assertThat(PeerLink.sideOf(extended(Opcodes.Extended.ANSWERSOURCES2))).isEqualTo(PeerLink.Side.DOWNLOAD);
+    private Packet packet;
+    private PeerLink.Side side;
 
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.STARTUPLOADREQ))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.SETREQFILEID))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.CANCELTRANSFER))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(extended(Opcodes.Extended.REQUESTPARTS_I64))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(extended(Opcodes.Extended.REQUESTSOURCES2))).isEqualTo(PeerLink.Side.UPLOAD);
-        // A new hello and chat go to the side that answers them.
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.HELLO))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(basic(Opcodes.Client.MESSAGE))).isEqualTo(PeerLink.Side.UPLOAD);
-        assertThat(PeerLink.sideOf(Packet.empty(Protocol.EDONKEY, 0xFF))).isEqualTo(PeerLink.Side.UPLOAD);
+    @ParameterizedTest
+    @MethodSource("answersOfAnUploader")
+    void shouldRouteTheAnswersOfAnUploaderToTheDownload(Packet answer) {
+        givenThePacket(answer);
+
+        whenItsSideIsChosen();
+
+        thenTheSideIs(PeerLink.Side.DOWNLOAD);
+    }
+
+    @ParameterizedTest
+    @MethodSource("requestsOfADownloader")
+    void shouldRouteTheRequestsOfADownloaderToTheUpload(Packet request) {
+        givenThePacket(request);
+
+        whenItsSideIsChosen();
+
+        thenTheSideIs(PeerLink.Side.UPLOAD);
+    }
+
+    // A new hello and chat go to the side that answers them.
+    @ParameterizedTest
+    @MethodSource("helloChatAndUnknownPackets")
+    void shouldRouteAHelloAChatOrAnUnknownPacketToTheUpload(Packet other) {
+        givenThePacket(other);
+
+        whenItsSideIsChosen();
+
+        thenTheSideIs(PeerLink.Side.UPLOAD);
+    }
+
+    private void givenThePacket(Packet incoming) {
+        this.packet = incoming;
+    }
+
+    private void whenItsSideIsChosen() {
+        this.side = PeerLink.sideOf(this.packet);
+    }
+
+    private void thenTheSideIs(PeerLink.Side expected) {
+        assertThat(this.side).isEqualTo(expected);
+    }
+
+    private static Stream<Packet> answersOfAnUploader() {
+        return Stream.of(
+                basic(Opcodes.Client.FILESTATUS),
+                basic(Opcodes.Client.ACCEPTUPLOADREQ),
+                basic(Opcodes.Client.SENDINGPART),
+                extended(Opcodes.Extended.COMPRESSEDPART_I64),
+                extended(Opcodes.Extended.ANSWERSOURCES2));
+    }
+
+    private static Stream<Packet> requestsOfADownloader() {
+        return Stream.of(
+                basic(Opcodes.Client.STARTUPLOADREQ),
+                basic(Opcodes.Client.SETREQFILEID),
+                basic(Opcodes.Client.CANCELTRANSFER),
+                extended(Opcodes.Extended.REQUESTPARTS_I64),
+                extended(Opcodes.Extended.REQUESTSOURCES2));
+    }
+
+    private static Stream<Packet> helloChatAndUnknownPackets() {
+        return Stream.of(
+                basic(Opcodes.Client.HELLO), basic(Opcodes.Client.MESSAGE), Packet.empty(Protocol.EDONKEY, 0xFF));
     }
 
     private static Packet basic(Opcodes.Client opcode) {

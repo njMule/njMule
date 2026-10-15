@@ -48,117 +48,229 @@ class LookupTest {
             LookupTest.this.requested.add(contact);
         }
     };
+    private Lookup lookup;
 
     @Test
-    void aSearchWhoseNodesAllStaySilentEndsAfterTheLateAnswerWait() {
-        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 1, 2, 3);
-        assertThat(this.asks).hasSize(3);
+    void shouldKeepASilentSearchWaitingForLateAnswersAfterTheStall() {
+        givenALookup(Lookup.Kind.KEYWORD, 1, 2, 3);
+        givenItAskedNodes(3);
 
-        tickUntil(lookup, 3);
-        assertThat(lookup.isStopped()).as("waiting for late answers").isFalse();
-        tickUntil(lookup, 17);
-        assertThat(lookup.isStopped()).isFalse();
-        tickUntil(lookup, 18);
-        assertThat(lookup.isStopped())
-                .as("15 s after the stall, not at the end of its 45 s")
-                .isTrue();
+        whenTheClockReachesSecond(3);
+
+        thenTheLookupGoesOnWaitingForLateAnswers();
     }
 
     @Test
-    void aNodeLookupWhoseNodesAllStaySilentEndsAtTheStall() {
-        Lookup lookup = lookup(Lookup.Kind.NODE_COMPLETE, 1, 2);
+    void shouldKeepASilentSearchGoingUntilSeventeenSeconds() {
+        givenALookup(Lookup.Kind.KEYWORD, 1, 2, 3);
+        givenItAskedNodes(3);
 
-        tickUntil(lookup, 2);
-        assertThat(lookup.isStopped()).isFalse();
-        tickUntil(lookup, 3);
-        assertThat(lookup.isStopped()).isTrue();
+        whenTheClockReachesSecond(17);
+
+        thenTheLookupGoesOn();
     }
 
     @Test
-    void aSearchAsksTheClosestNodeThatAnsweredForMoreWhenTheTwoClosestAreSilent() {
-        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
+    void shouldEndASilentSearchAfterTheLateAnswerWait() {
+        givenALookup(Lookup.Kind.KEYWORD, 1, 2, 3);
+        givenItAskedNodes(3);
+
+        whenTheClockReachesSecond(18);
+
+        thenTheLookupStoppedFifteenSecondsAfterTheStall();
+    }
+
+    @Test
+    void shouldKeepASilentNodeLookupGoingUntilTheStall() {
+        givenALookup(Lookup.Kind.NODE_COMPLETE, 1, 2);
+
+        whenTheClockReachesSecond(2);
+
+        thenTheLookupGoesOn();
+    }
+
+    @Test
+    void shouldEndASilentNodeLookupAtTheStall() {
+        givenALookup(Lookup.Kind.NODE_COMPLETE, 1, 2);
+
+        whenTheClockReachesSecond(3);
+
+        thenTheLookupIsStopped();
+    }
+
+    @Test
+    void shouldAskTheClosestNodeThatAnsweredForMoreWhenTheTwoClosestAreSilent() {
+        givenALookup(Lookup.Kind.KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
         // The third closest answers, the two closest stay silent.
-        lookup.answered(ip(3), PORT, List.of(), T0);
-        tickUntil(lookup, 10);
+        givenTheNodeAnswered(3);
 
-        assertThat(this.asks).contains(Ipv4.format(ip(3)) + "/11");
-        assertThat(this.requested).extracting(KadMessages.Contact::ip).contains(ip(3));
-        // Only the node asked again may send that many contacts.
-        int closer = Ipv4.of(30, 0, 0, 1);
-        lookup.answered(
-                ip(4),
-                PORT,
-                List.of(
-                        contactAt(new UInt128(2L << 32 | 1, 0), closer),
-                        contactAt(new UInt128(2L << 32 | 2, 0), Ipv4.of(31, 0, 0, 1)),
-                        contactAt(new UInt128(2L << 32 | 3, 0), Ipv4.of(32, 0, 0, 1))),
-                this.clock);
-        assertThat(this.asks).noneMatch(a -> a.startsWith(Ipv4.format(closer)));
+        whenTheClockReachesSecond(10);
+
+        thenTheNodeIsAskedFor(3, 11);
+        thenTheNodeGetsTheRequest(3);
     }
 
     @Test
-    void aPublishNeverAsksANodeAgainForMore() {
-        Lookup lookup = lookup(Lookup.Kind.STORE_KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
+    void shouldTakeThatManyContactsOnlyFromTheNodeAskedAgain() {
+        givenALookup(Lookup.Kind.KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
+        givenTheNodeAnswered(3);
+        givenTheClockAtSecond(10);
+
+        whenTheNodeAnswers(
+                4,
+                contactAt(new UInt128(2L << 32 | 1, 0), Ipv4.of(30, 0, 0, 1)),
+                contactAt(new UInt128(2L << 32 | 2, 0), Ipv4.of(31, 0, 0, 1)),
+                contactAt(new UInt128(2L << 32 | 3, 0), Ipv4.of(32, 0, 0, 1)));
+
+        thenNoNodeIsAskedAt(Ipv4.of(30, 0, 0, 1));
+    }
+
+    @Test
+    void shouldNeverAskANodeAgainForMoreInAPublish() {
+        givenALookup(Lookup.Kind.STORE_KEYWORD, 1, 2, 3, 4, 5, 6, 7, 8);
         // Six nodes asked, then the sixth answers while it still waits for its publish.
-        while (this.asks.size() < 6) {
-            tickUntil(lookup, (this.clock - T0) / SECOND + 1);
+        givenTheClockRunsUntilItAskedNodes(6);
+        givenTheNodeAnswered(6);
+
+        whenTheClockRunsForSeconds(10);
+
+        thenNoNodeIsAskedForMore();
+    }
+
+    @Test
+    void shouldNotLetAnAnswerFillTheRespondersOwnSubnet() {
+        givenALookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
+
+        whenTheNodeAnswers(
+                100,
+                contactAt(distance(1), inTheSubnetOf(100, 0x10)),
+                contactAt(distance(2), inTheSubnetOf(100, 0x11)));
+
+        thenTheNumberOfAsksIs(4, "one more of the responder's /24 at most");
+    }
+
+    @Test
+    void shouldNotHoldLanAddressesToTheSubnetRule() {
+        givenALookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
+        givenTheAsksSoFarForgotten();
+
+        whenTheNodeAnswers(
+                100,
+                contactAt(distance(1), Ipv4.of(192, 168, 1, 1)),
+                contactAt(distance(2), Ipv4.of(192, 168, 1, 2)),
+                contactAt(distance(3), Ipv4.of(192, 168, 1, 3)));
+
+        thenTheNumberOfAsksIs(3, "LAN contacts are not held to the /24 rule");
+    }
+
+    @Test
+    void shouldEndALookupWithoutContactsAtOnce() {
+        whenALookupStarts(Lookup.Kind.KEYWORD);
+
+        thenTheLookupIsStopped();
+        thenNoNodeIsAsked();
+    }
+
+    @Test
+    void shouldAskOneNodeInANodeLookup() {
+        whenALookupStarts(Lookup.Kind.NODE, 1, 2, 3);
+
+        thenOnlyTheNodeIsAskedFor(1, 11);
+    }
+
+    @Test
+    void shouldEndANodeLookupWithTheAnswerOfItsNode() {
+        givenALookup(Lookup.Kind.NODE, 1, 2, 3);
+
+        whenTheNodeAnswers(1, contactAt(distance(0), Ipv4.of(30, 0, 0, 1)));
+
+        thenTheLookupIsStopped();
+    }
+
+    @Test
+    void shouldNotHearAnAskedNodeFromAnotherPort() {
+        givenALookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+
+        whenAnAnswerComesFrom(ip(100), PORT + 1, contactAt(distance(1), Ipv4.of(30, 0, 0, 1)));
+
+        thenTheNumberOfAsksIs(3, "another port");
+    }
+
+    @Test
+    void shouldNotHearAStranger() {
+        givenALookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+
+        whenAnAnswerComesFrom(Ipv4.of(40, 0, 0, 1), PORT, contactAt(distance(1), Ipv4.of(30, 0, 0, 1)));
+
+        thenTheNumberOfAsksIs(3, "a stranger");
+    }
+
+    @Test
+    void shouldNotHearAnAnswerWithMoreContactsThanAsked() {
+        givenALookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+
+        whenTheNodeAnswers(
+                100,
+                contactAt(distance(1), Ipv4.of(30, 0, 0, 1)),
+                contactAt(distance(2), Ipv4.of(31, 0, 0, 1)),
+                contactAt(distance(3), Ipv4.of(32, 0, 0, 1)));
+
+        thenTheNumberOfAsksIs(3, "too many contacts");
+    }
+
+    @Test
+    void shouldAskTheSameContactOnlyOnce() {
+        givenALookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+        givenTheIgnoredAnswersOfAStrangerAnotherPortAndTooManyContacts();
+
+        whenTheNodeAnswers(
+                100, contactAt(distance(1), Ipv4.of(30, 0, 0, 1)), contactAt(distance(1), Ipv4.of(31, 0, 0, 1)));
+
+        thenTheNumberOfAsksIs(4, "the same contact twice is asked once");
+    }
+
+    @Test
+    void shouldRequestOnlyNodesWithinTheTolerance() {
+        givenALookup(Lookup.Kind.KEYWORD, Lookup.TOLERANCE, Lookup.TOLERANCE + 1);
+        givenTheNodeAnswered(Lookup.TOLERANCE);
+        givenTheNodeAnswered(Lookup.TOLERANCE + 1);
+
+        whenTheClockReachesSecond(4);
+
+        thenOnlyTheNodeGetsTheRequest(Lookup.TOLERANCE);
+    }
+
+    private void givenALookup(Lookup.Kind kind, long... distances) {
+        this.lookup = lookup(kind, distances);
+    }
+
+    private void givenItAskedNodes(int count) {
+        assertThat(this.asks).hasSize(count);
+    }
+
+    private void givenTheNodeAnswered(long node) {
+        answer(ip(node), PORT);
+    }
+
+    private void givenTheClockAtSecond(long second) {
+        tickUntil(this.lookup, second);
+    }
+
+    private void givenTheClockRunsUntilItAskedNodes(int count) {
+        while (this.asks.size() < count) {
+            tickUntil(this.lookup, (this.clock - T0) / SECOND + 1);
         }
-        lookup.answered(ip(6), PORT, List.of(), this.clock);
-        tickUntil(lookup, (this.clock - T0) / SECOND + 10);
-
-        assertThat(this.asks).noneMatch(a -> a.endsWith("/11"));
     }
 
-    @Test
-    void anAnswerMayNotFillTheRespondersOwnSubnetButLanAddressesAreExempt() {
-        Lookup lookup = lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
-        int responder = ip(100);
-        int sameSubnet = responder & 0xFFFF_FF00;
-
-        lookup.answered(
-                responder,
-                PORT,
-                List.of(contactAt(distance(1), sameSubnet | 0x10), contactAt(distance(2), sameSubnet | 0x11)),
-                T0);
-        assertThat(this.asks).as("one more of the responder's /24 at most").hasSize(4);
-
-        Lookup lan = lookup(Lookup.Kind.NODE_COMPLETE, 100, 101, 102);
+    private void givenTheAsksSoFarForgotten() {
         this.asks.clear();
-        lan.answered(
-                responder,
-                PORT,
-                List.of(
-                        contactAt(distance(1), Ipv4.of(192, 168, 1, 1)),
-                        contactAt(distance(2), Ipv4.of(192, 168, 1, 2)),
-                        contactAt(distance(3), Ipv4.of(192, 168, 1, 3))),
-                T0);
-        assertThat(this.asks).as("LAN contacts are not held to the /24 rule").hasSize(3);
     }
 
-    @Test
-    void withoutContactsALookupEndsAtOnce() {
-        assertThat(lookup(Lookup.Kind.KEYWORD).isStopped()).isTrue();
-        assertThat(this.asks).isEmpty();
-    }
-
-    @Test
-    void aNodeLookupAsksOneNodeAndEndsWithItsAnswer() {
-        Lookup lookup = lookup(Lookup.Kind.NODE, 1, 2, 3);
-        assertThat(this.asks).containsExactly(Ipv4.format(ip(1)) + "/11");
-
-        lookup.answered(ip(1), PORT, List.of(contactAt(distance(0), Ipv4.of(30, 0, 0, 1))), T0);
-
-        assertThat(lookup.isStopped()).isTrue();
-    }
-
-    @Test
-    void onlyAskedNodesSendingWhatWasAskedAreHeard() {
-        Lookup lookup = lookup(Lookup.Kind.KEYWORD, 100, 101, 102);
+    private void givenTheIgnoredAnswersOfAStrangerAnotherPortAndTooManyContacts() {
         int closer = Ipv4.of(30, 0, 0, 1);
-
-        lookup.answered(ip(100), PORT + 1, List.of(contactAt(distance(1), closer)), T0);
-        lookup.answered(Ipv4.of(40, 0, 0, 1), PORT, List.of(contactAt(distance(1), closer)), T0);
-        lookup.answered(
+        this.lookup.answered(ip(100), PORT + 1, List.of(contactAt(distance(1), closer)), T0);
+        this.lookup.answered(Ipv4.of(40, 0, 0, 1), PORT, List.of(contactAt(distance(1), closer)), T0);
+        this.lookup.answered(
                 ip(100),
                 PORT,
                 List.of(
@@ -167,24 +279,77 @@ class LookupTest {
                         contactAt(distance(3), Ipv4.of(32, 0, 0, 1))),
                 T0);
         assertThat(this.asks).as("a stranger, another port, too many contacts").hasSize(3);
-
-        lookup.answered(
-                ip(100),
-                PORT,
-                List.of(contactAt(distance(1), closer), contactAt(distance(1), Ipv4.of(31, 0, 0, 1))),
-                T0);
-        assertThat(this.asks).as("the same contact twice is asked once").hasSize(4);
     }
 
-    @Test
-    void onlyNodesWithinTheToleranceGetTheRequest() {
-        Lookup lookup = lookup(Lookup.Kind.KEYWORD, Lookup.TOLERANCE, Lookup.TOLERANCE + 1);
-        lookup.answered(ip(Lookup.TOLERANCE), PORT, List.of(), T0);
-        lookup.answered(ip(Lookup.TOLERANCE + 1), PORT, List.of(), T0);
+    private void whenALookupStarts(Lookup.Kind kind, long... distances) {
+        this.lookup = lookup(kind, distances);
+    }
 
-        tickUntil(lookup, 4);
+    private void whenTheClockReachesSecond(long second) {
+        tickUntil(this.lookup, second);
+    }
 
-        assertThat(this.requested).extracting(KadMessages.Contact::ip).containsExactly(ip(Lookup.TOLERANCE));
+    private void whenTheClockRunsForSeconds(long seconds) {
+        tickUntil(this.lookup, (this.clock - T0) / SECOND + seconds);
+    }
+
+    private void whenTheNodeAnswers(long node, KadMessages.Contact... contacts) {
+        answer(ip(node), PORT, contacts);
+    }
+
+    private void whenAnAnswerComesFrom(int ip, int port, KadMessages.Contact... contacts) {
+        answer(ip, port, contacts);
+    }
+
+    private void thenTheLookupGoesOn() {
+        assertThat(this.lookup.isStopped()).isFalse();
+    }
+
+    private void thenTheLookupGoesOnWaitingForLateAnswers() {
+        assertThat(this.lookup.isStopped()).as("waiting for late answers").isFalse();
+    }
+
+    private void thenTheLookupIsStopped() {
+        assertThat(this.lookup.isStopped()).isTrue();
+    }
+
+    private void thenTheLookupStoppedFifteenSecondsAfterTheStall() {
+        assertThat(this.lookup.isStopped())
+                .as("15 s after the stall, not at the end of its 45 s")
+                .isTrue();
+    }
+
+    private void thenTheNodeIsAskedFor(long node, int count) {
+        assertThat(this.asks).contains(Ipv4.format(ip(node)) + "/" + count);
+    }
+
+    private void thenOnlyTheNodeIsAskedFor(long node, int count) {
+        assertThat(this.asks).containsExactly(Ipv4.format(ip(node)) + "/" + count);
+    }
+
+    private void thenTheNodeGetsTheRequest(long node) {
+        assertThat(this.requested).extracting(KadMessages.Contact::ip).contains(ip(node));
+    }
+
+    private void thenOnlyTheNodeGetsTheRequest(long node) {
+        assertThat(this.requested).extracting(KadMessages.Contact::ip).containsExactly(ip(node));
+    }
+
+    // Only the node asked again may send that many contacts.
+    private void thenNoNodeIsAskedAt(int ip) {
+        assertThat(this.asks).noneMatch(a -> a.startsWith(Ipv4.format(ip)));
+    }
+
+    private void thenNoNodeIsAskedForMore() {
+        assertThat(this.asks).noneMatch(a -> a.endsWith("/11"));
+    }
+
+    private void thenNoNodeIsAsked() {
+        assertThat(this.asks).isEmpty();
+    }
+
+    private void thenTheNumberOfAsksIs(int count, String why) {
+        assertThat(this.asks).as(why).hasSize(count);
     }
 
     private Lookup lookup(Lookup.Kind kind, long... distances) {
@@ -194,16 +359,20 @@ class LookupTest {
             c.setVerified(true);
             assertThat(table.add(c, false, NodesDat.UdpKey.NONE, 0, 0)).isEqualTo(RoutingTable.Outcome.ADDED);
         }
-        Lookup lookup = new Lookup(this.target, kind, this.requests, Ipv4::isLan, T0);
-        lookup.start(table);
-        return lookup;
+        Lookup started = new Lookup(this.target, kind, this.requests, Ipv4::isLan, T0);
+        started.start(table);
+        return started;
+    }
+
+    private void answer(int ip, int port, KadMessages.Contact... contacts) {
+        this.lookup.answered(ip, port, List.of(contacts), this.clock);
     }
 
     // Ticks once a second up to {@code second} seconds after the start.
-    private void tickUntil(Lookup lookup, long second) {
+    private void tickUntil(Lookup running, long second) {
         while (this.clock < T0 + second * SECOND) {
             this.clock += SECOND;
-            lookup.tick(this.clock);
+            running.tick(this.clock);
         }
     }
 
@@ -214,6 +383,10 @@ class LookupTest {
     // Each node in a /24 of its own; small distances are within the request tolerance.
     private static int ip(long d) {
         return Ipv4.of(20, (int) (d >>> 8) & 0xFF, (int) d & 0xFF, 1);
+    }
+
+    private static int inTheSubnetOf(long node, int host) {
+        return (ip(node) & 0xFFFF_FF00) | host;
     }
 
     private static UInt128 distance(long d) {

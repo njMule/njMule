@@ -17,7 +17,6 @@
 package org.njmule.core.peer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -60,62 +59,90 @@ class SharedFilesBrowserTest {
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final SharedFilesBrowser browser = new SharedFilesBrowser(this.loop, () -> US, new SecureRandom());
 
+    private Packet[] answers;
+    private List<SearchResult> files;
+    private Exception exception;
+
     @AfterEach
     void stop() {
         this.loop.close();
     }
 
     @Test
-    void anExtendedPacketWithTheOpcodeOfARefusalIsNotOne() throws Exception {
-        List<SearchResult> files = browse(
-                Packet.empty(Protocol.EMULE, Opcodes.Client.ASKSHAREDDENIEDANS.code()),
-                Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list(FILE, "film.avi", 700)));
+    void shouldNotTakeAnExtendedPacketWithTheOpcodeOfARefusalForOne() {
+        givenAPeerAnswering(refusal(Protocol.EMULE), filesAnswer(list(FILE, "film.avi", 700)));
 
-        assertThat(files).singleElement().satisfies(f -> {
-            assertThat(f.hash()).isEqualTo(FILE);
-            assertThat(f.name()).isEqualTo("film.avi");
-            assertThat(f.size()).isEqualTo(700);
+        whenItsFilesAreBrowsed();
+
+        thenTheOnlyFileIs(FILE, "film.avi", 700);
+    }
+
+    @Test
+    void shouldFailTheBrowseOnARefusal() {
+        givenAPeerAnswering(refusal(Protocol.EDONKEY));
+
+        whenItsFilesAreBrowsed();
+
+        thenTheBrowseFailedBecauseOf(IOException.class, "does not show its files");
+    }
+
+    @Test
+    void shouldFailTheBrowseOnAListWithMoreEntriesThanItHolds() {
+        givenAPeerAnswering(filesAnswer(claimingEntries(5, list(FILE, "one.bin", 1))));
+
+        whenItsFilesAreBrowsed();
+
+        thenTheBrowseFailedBecauseOf(DecodeException.class);
+    }
+
+    @Test
+    void shouldLeaveOutEntriesWithoutANameOrASize() {
+        givenAPeerAnswering(
+                filesAnswer(entries(entry(size(10)), entry(name("no size")), entry(name("empty"), size(0)))));
+
+        whenItsFilesAreBrowsed();
+
+        thenNoFileIsListed();
+    }
+
+    private void givenAPeerAnswering(Packet... packets) {
+        this.answers = packets;
+    }
+
+    private void whenItsFilesAreBrowsed() {
+        try {
+            this.files = browse(this.answers);
+        } catch (Exception e) {
+            this.exception = e;
+        }
+    }
+
+    private void thenTheOnlyFileIs(Hash16 hash, String name, long size) {
+        assertThat(this.exception).isNull();
+        assertThat(this.files).singleElement().satisfies(f -> {
+            assertThat(f.hash()).isEqualTo(hash);
+            assertThat(f.name()).isEqualTo(name);
+            assertThat(f.size()).isEqualTo(size);
         });
     }
 
-    @Test
-    void aRefusalFailsTheBrowse() {
-        assertThatThrownBy(() -> browse(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDDENIEDANS.code())))
-                .hasCauseInstanceOf(IOException.class)
-                .hasMessageContaining("does not show its files");
+    private void thenNoFileIsListed() {
+        assertThat(this.exception).isNull();
+        assertThat(this.files).isEmpty();
     }
 
-    @Test
-    void aListWithMoreEntriesThanItHoldsFailsTheBrowse() {
-        byte[] one = list(FILE, "one.bin", 1).toByteArray();
-        PacketWriter list = new PacketWriter().u32(5).bytes(one, 4, one.length - 4);
-
-        assertThatThrownBy(() -> browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
-                .hasCauseInstanceOf(DecodeException.class);
+    private void thenTheBrowseFailedBecauseOf(Class<? extends Exception> cause) {
+        assertThat(this.exception).hasCauseInstanceOf(cause);
     }
 
-    @Test
-    void entriesWithoutANameOrASizeAreLeftOut() throws Exception {
-        PacketWriter list = new PacketWriter().u32(3);
-        new FileEntry(FILE, 0, 0, List.of(new Tag.IntTag(TagName.id(FileTag.FILESIZE), 10))).write(list);
-        new FileEntry(FILE, 0, 0, List.of(new Tag.StringTag(TagName.id(FileTag.FILENAME), "no size"))).write(list);
-        new FileEntry(
-                        FILE,
-                        0,
-                        0,
-                        List.of(
-                                new Tag.StringTag(TagName.id(FileTag.FILENAME), "empty"),
-                                new Tag.IntTag(TagName.id(FileTag.FILESIZE), 0)))
-                .write(list);
-
-        assertThat(browse(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list)))
-                .isEmpty();
+    private void thenTheBrowseFailedBecauseOf(Class<? extends Exception> cause, String messagePart) {
+        assertThat(this.exception).hasCauseInstanceOf(cause).hasMessageContaining(messagePart);
     }
 
     // A client that takes our hello, answers it, then sends {@code answers} to our request.
     private List<SearchResult> browse(Packet... answers) throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            CompletableFuture<List<SearchResult>> files =
+            CompletableFuture<List<SearchResult>> listed =
                     this.browser.browse(new InetSocketAddress(InetAddress.getLoopbackAddress(), server.getLocalPort()));
             try (Socket client = server.accept()) {
                 client.setSoTimeout(10_000);
@@ -130,9 +157,17 @@ class SharedFilesBrowserTest {
                     out.write(TcpFraming.encode(answer));
                 }
                 out.flush();
-                return files.get(10, TimeUnit.SECONDS);
+                return listed.get(10, TimeUnit.SECONDS);
             }
         }
+    }
+
+    private static Packet refusal(int protocol) {
+        return Packet.empty(protocol, Opcodes.Client.ASKSHAREDDENIEDANS.code());
+    }
+
+    private static Packet filesAnswer(PacketWriter list) {
+        return Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), list);
     }
 
     private static PacketWriter list(Hash16 hash, String name, long size) {
@@ -146,5 +181,31 @@ class SharedFilesBrowserTest {
                                 new Tag.IntTag(TagName.id(FileTag.FILESIZE), size)))
                 .write(out);
         return out;
+    }
+
+    // The entries of a list under another count.
+    private static PacketWriter claimingEntries(int count, PacketWriter list) {
+        byte[] bytes = list.toByteArray();
+        return new PacketWriter().u32(count).bytes(bytes, 4, bytes.length - 4);
+    }
+
+    private static PacketWriter entries(FileEntry... entries) {
+        PacketWriter out = new PacketWriter().u32(entries.length);
+        for (FileEntry entry : entries) {
+            entry.write(out);
+        }
+        return out;
+    }
+
+    private static FileEntry entry(Tag... tags) {
+        return new FileEntry(FILE, 0, 0, List.of(tags));
+    }
+
+    private static Tag name(String name) {
+        return new Tag.StringTag(TagName.id(FileTag.FILENAME), name);
+    }
+
+    private static Tag size(long size) {
+        return new Tag.IntTag(TagName.id(FileTag.FILESIZE), size);
     }
 }

@@ -64,13 +64,20 @@ class LookupResponseTimeTest {
     }
 
     @Test
-    void shouldWaitNoLongerThanThreeSecondsWhileNodesAnswerSlowly() {
+    void shouldStillWaitAfterTwoSecondsWhileNodesAnswerSlowly() {
         givenNodesAnsweredIn(100, 10 * SECOND);
         givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
 
         whenSecondsPass(2);
 
         thenNodesAsked(3);
+    }
+
+    @Test
+    void shouldWaitNoLongerThanThreeSecondsWhileNodesAnswerSlowly() {
+        givenNodesAnsweredIn(100, 10 * SECOND);
+        givenALookupOfSilentNodes(Lookup.Kind.KEYWORD);
+        givenSecondsPassed(2);
 
         whenSecondsPass(1);
 
@@ -123,7 +130,15 @@ class LookupResponseTimeTest {
         this.lookup.start(table);
     }
 
+    private void givenSecondsPassed(int seconds) {
+        tick(seconds);
+    }
+
     private void whenSecondsPass(int seconds) {
+        tick(seconds);
+    }
+
+    private void tick(int seconds) {
         for (int s = 0; s < seconds; s++) {
             this.clock += SECOND;
             this.lookup.tick(this.clock);

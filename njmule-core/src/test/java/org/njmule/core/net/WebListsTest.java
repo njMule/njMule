@@ -17,7 +17,6 @@
 package org.njmule.core.net;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.google.common.base.Splitter;
@@ -32,6 +31,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
@@ -42,17 +42,31 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.config.ProxySettings;
 
 @Timeout(60)
 class WebListsTest {
+
+    private static final byte[] SERVER_LIST = "server list".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] IP_FILTER = "1.2.3.4 - 1.2.3.5 , 100 , bad".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] TWO_LINES =
+            "1.2.3.4 - 1.2.3.5 , 100 , one\n2.2.3.4 - 2.2.3.5 , 100 , two\n".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] CUT = Arrays.copyOf(TWO_LINES, 40);
+    private static final byte[] NO_BREAK = "1.2.3.4 - 1.2.3.5 , 100 , one".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] CARRIAGE_RETURN = "1.2.3.4 - 1.2.3.5 , 100 , one\r".getBytes(StandardCharsets.US_ASCII);
 
     // Path -> the whole response, status line to body.
     private final Map<String, byte[]> responses = new ConcurrentHashMap<>();
@@ -62,7 +76,16 @@ class WebListsTest {
     private final WebLists anyAddress = new WebLists(a -> true);
     private final List<ServerSocket> proxies = new CopyOnWriteArrayList<>();
     private final List<String> proxySaw = new CopyOnWriteArrayList<>();
-    private byte[] fetched;
+
+    private WebLists lists = this.anyAddress;
+    private boolean proxyInstalled;
+    private byte[] body;
+    private URI redirected;
+    private String literal;
+    private InetAddress address;
+    private boolean isPublic;
+    private boolean callerStillInterrupted;
+    private Throwable exception;
 
     @BeforeEach
     void start() throws IOException {
@@ -99,152 +122,522 @@ class WebListsTest {
         }
     }
 
-    @Test
-    void fetchesFollowsAFewRedirectsAndUnpacks() throws Exception {
-        byte[] list = "server list".getBytes(StandardCharsets.US_ASCII);
-        this.responses.put("/server.met", response(200, "", list));
-        this.responses.put("/moved", response(302, "Location: /server.met\r\n", new byte[0]));
-        this.responses.put("/list.gz", response(200, "", gzip(list)));
-        this.responses.put("/list.zip", response(200, "", zip("nodes.dat", list)));
-
-        assertThat(this.anyAddress.fetch(uri("/server.met"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(uri("/moved"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(uri("/list.gz"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(uri("/list.zip"))).isEqualTo(list);
-    }
-
-    @Test
-    void refusesLocalAddressesOtherSchemesFailuresAndRedirectLoops() throws Exception {
-        this.responses.put("/loop", response(302, "Location: /loop\r\n", new byte[0]));
-        this.responses.put("/away", response(301, "Location: ftp://example.org/server.met\r\n", new byte[0]));
-
-        assertThatThrownBy(() -> WebLists.create().fetch(uri("/server.met")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("local or private");
-        assertThatThrownBy(() -> this.anyAddress.fetch(URI.create("ftp://example.org/server.met")))
-                .hasMessageContaining("http and https");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/missing"))).hasMessageContaining("HTTP 404");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/loop"))).hasMessageContaining("too many redirects");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/away")))
-                .as("a redirect is checked like the first address")
-                .hasMessageContaining("http and https");
-    }
-
-    @Test
-    void aBodyThatStopsComingFailsWithinTheDeadline() {
-        byte[] head = "HTTP/1.1 200 X\r\nContent-Length: 1000\r\n\r\n0123456789".getBytes(StandardCharsets.US_ASCII);
-        this.responses.put("/stalled", head);
-        this.stalls.add("/stalled");
-        WebLists quick = new WebLists(a -> true, Duration.ofSeconds(2));
-
-        assertTimeoutPreemptively(
-                Duration.ofSeconds(15),
-                () -> assertThatThrownBy(() -> quick.fetch(uri("/stalled"))).isInstanceOf(IOException.class));
-    }
-
-    @Test
-    void anArchiveGivesTheListItHoldsRatherThanItsFirstFile() throws Exception {
-        byte[] list = "1.2.3.4 - 1.2.3.5 , 100 , bad".getBytes(StandardCharsets.US_ASCII);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(out)) {
-            zip.putNextEntry(new ZipEntry("README.txt"));
-            zip.write("read me".getBytes(StandardCharsets.US_ASCII));
-            zip.putNextEntry(new ZipEntry("lists/ipfilter.dat"));
-            zip.write(list);
-        }
-        this.responses.put("/lists.zip", response(200, "", out.toByteArray()));
-        this.responses.put("/other.zip", response(200, "", zip("only.txt", list)));
-
-        assertThat(this.anyAddress.fetch(uri("/lists.zip"))).isEqualTo(list);
-        assertThat(this.anyAddress.fetch(uri("/other.zip")))
-                .as("else the first")
-                .isEqualTo(list);
-    }
-
-    @Test
-    void aRedirectMayNotLeaveHttpsForHttp() throws Exception {
-        URI secure = URI.create("https://lists.example/ipfilter.zip");
-
-        assertThat(WebLists.redirect(secure, "/other.zip")).isEqualTo(URI.create("https://lists.example/other.zip"));
-        assertThat(WebLists.redirect(URI.create("http://lists.example/a"), "https://mirror.example/a"))
-                .isEqualTo(URI.create("https://mirror.example/a"));
-        assertThatThrownBy(() -> WebLists.redirect(secure, "http://mirror.example/ipfilter.zip"))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("https");
-    }
-
-    @Test
-    void aListCutShortIsRefused() throws Exception {
-        byte[] lines =
-                "1.2.3.4 - 1.2.3.5 , 100 , one\n2.2.3.4 - 2.2.3.5 , 100 , two\n".getBytes(StandardCharsets.US_ASCII);
-        byte[] cut = Arrays.copyOf(lines, 40);
-        byte[] shortHead = "HTTP/1.1 200 X\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n"
-                .getBytes(StandardCharsets.US_ASCII);
-        this.responses.put("/short", concat(shortHead, cut));
-        this.responses.put("/whole.dat", untilClosed(lines));
-        this.responses.put("/cut.dat", untilClosed(cut));
-
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/short"))).isInstanceOf(IOException.class);
-        assertThat(this.anyAddress.fetchText(uri("/whole.dat"))).isEqualTo(lines);
-        assertThatThrownBy(() -> this.anyAddress.fetchText(uri("/cut.dat")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("cut short");
-        assertThat(this.anyAddress.fetch(uri("/cut.dat")))
-                .as("not a list of lines")
-                .isEqualTo(cut);
-    }
-
-    @Test
-    void listsGoThroughTheHttpProxyOfThePreferences() throws Exception {
-        byte[] list = "through the proxy".getBytes(StandardCharsets.US_ASCII);
-        // A proxy gets the whole address; nothing listens at the address itself.
-        this.responses.put("http://localhost:9/server.met", response(200, "", list));
-        ProxyRoute.install(
-                () -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", this.server.getLocalPort(), "", ""));
-        try {
-            assertThat(new WebLists(a -> true).fetch(URI.create("http://localhost:9/server.met")))
-                    .isEqualTo(list);
-        } finally {
+    @AfterEach
+    void removeTheProxy() {
+        if (this.proxyInstalled) {
             ProxyRoute.install(() -> ProxySettings.NONE);
             Authenticator.setDefault(null);
         }
     }
 
     @Test
-    void listsGoThroughTheSocksProxyOfThePreferencesWithItsCredentials() throws Exception {
-        givenAList("/server.met", "through socks");
-        givenASocksProxyThatWantsAPassword();
-        try {
-            whenTheListIsFetched("/server.met");
-            thenTheListCame("through socks");
-            thenTheProxyWasAskedWithTheCredentialsForTheServer();
-        } finally {
-            ProxyRoute.install(() -> ProxySettings.NONE);
-        }
+    void shouldFetchAList() {
+        givenTheResponse("/server.met", response(200, "", SERVER_LIST));
+
+        whenTheListIsFetchedFrom("/server.met");
+
+        thenTheBodyIs(SERVER_LIST);
     }
 
-    private void givenAList(String path, String text) {
-        this.responses.put(path, response(200, "", text.getBytes(StandardCharsets.US_ASCII)));
+    @Test
+    void shouldFollowARedirect() {
+        givenTheResponse("/server.met", response(200, "", SERVER_LIST));
+        givenTheResponse("/moved", response(302, "Location: /server.met\r\n", new byte[0]));
+
+        whenTheListIsFetchedFrom("/moved");
+
+        thenTheBodyIs(SERVER_LIST);
     }
 
-    private void givenASocksProxyThatWantsAPassword() throws IOException {
+    @Test
+    void shouldUnpackAGzippedList() throws IOException {
+        givenTheResponse("/list.gz", response(200, "", gzip(SERVER_LIST)));
+
+        whenTheListIsFetchedFrom("/list.gz");
+
+        thenTheBodyIs(SERVER_LIST);
+    }
+
+    @Test
+    void shouldUnpackAZippedList() throws IOException {
+        givenTheResponse("/list.zip", response(200, "", zip("nodes.dat", SERVER_LIST)));
+
+        whenTheListIsFetchedFrom("/list.zip");
+
+        thenTheBodyIs(SERVER_LIST);
+    }
+
+    @Test
+    void shouldRefuseLocalAddresses() {
+        givenListsReachingOnlyPublicAddresses();
+
+        whenTheListIsFetchedFrom("/server.met");
+
+        thenExceptionOccurred(IOException.class, "local or private");
+    }
+
+    @Test
+    void shouldRefuseOtherSchemes() {
+        whenTheAddressIsFetched("ftp://example.org/server.met");
+
+        thenTheFetchFailsSaying("http and https");
+    }
+
+    @Test
+    void shouldFailOnAnHttpError() {
+        whenTheListIsFetchedFrom("/missing");
+
+        thenTheFetchFailsSaying("HTTP 404");
+    }
+
+    @Test
+    void shouldRefuseARedirectLoop() {
+        givenTheResponse("/loop", response(302, "Location: /loop\r\n", new byte[0]));
+
+        whenTheListIsFetchedFrom("/loop");
+
+        thenTheFetchFailsSaying("too many redirects");
+    }
+
+    @Test
+    void shouldCheckARedirectLikeTheFirstAddress() {
+        givenTheResponse("/away", response(301, "Location: ftp://example.org/server.met\r\n", new byte[0]));
+
+        whenTheListIsFetchedFrom("/away");
+
+        thenTheFetchFailsSaying("http and https", "a redirect is checked like the first address");
+    }
+
+    @Test
+    void shouldFailWithinTheDeadlineWhenTheBodyStopsComing() {
+        givenAStalledResponse("/stalled", "HTTP/1.1 200 X\r\nContent-Length: 1000\r\n\r\n0123456789");
+        givenListsWithTheDeadline(Duration.ofSeconds(2));
+
+        whenTheListIsFetchedWithin(Duration.ofSeconds(15), "/stalled");
+
+        thenExceptionOccurred(IOException.class);
+    }
+
+    @Test
+    void shouldTakeTheListAnArchiveHoldsRatherThanItsFirstFile() throws IOException {
+        givenTheResponse(
+                "/lists.zip",
+                response(
+                        200,
+                        "",
+                        zip(
+                                "README.txt",
+                                "read me".getBytes(StandardCharsets.US_ASCII),
+                                "lists/ipfilter.dat",
+                                IP_FILTER)));
+
+        whenTheListIsFetchedFrom("/lists.zip");
+
+        thenTheBodyIs(IP_FILTER);
+    }
+
+    @Test
+    void shouldTakeTheFirstFileOfAnArchiveWithoutAList() throws IOException {
+        givenTheResponse("/other.zip", response(200, "", zip("only.txt", IP_FILTER)));
+
+        whenTheListIsFetchedFrom("/other.zip");
+
+        thenTheBodyIs(IP_FILTER, "else the first");
+    }
+
+    @Test
+    void shouldResolveARelativeRedirect() {
+        whenRedirected("https://lists.example/ipfilter.zip", "/other.zip");
+
+        thenTheRedirectGoesTo("https://lists.example/other.zip");
+    }
+
+    @Test
+    void shouldLetARedirectGoFromHttpToHttps() {
+        whenRedirected("http://lists.example/a", "https://mirror.example/a");
+
+        thenTheRedirectGoesTo("https://mirror.example/a");
+    }
+
+    @Test
+    void shouldNotLetARedirectLeaveHttpsForHttp() {
+        whenRedirected("https://lists.example/ipfilter.zip", "http://mirror.example/ipfilter.zip");
+
+        thenExceptionOccurred(IOException.class, "https");
+    }
+
+    @Test
+    void shouldRefuseABodyShorterThanItsLength() {
+        givenTheResponse(
+                "/short",
+                concat(
+                        "HTTP/1.1 200 X\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n"
+                                .getBytes(StandardCharsets.US_ASCII),
+                        CUT));
+
+        whenTheListIsFetchedFrom("/short");
+
+        thenExceptionOccurred(IOException.class);
+    }
+
+    @Test
+    void shouldTakeAWholeListOfLines() {
+        givenTheResponse("/whole.dat", untilClosed(TWO_LINES));
+
+        whenTheTextIsFetchedFrom("/whole.dat");
+
+        thenTheBodyIs(TWO_LINES);
+    }
+
+    @Test
+    void shouldRefuseAListOfLinesCutShort() {
+        givenTheResponse("/cut.dat", untilClosed(CUT));
+
+        whenTheTextIsFetchedFrom("/cut.dat");
+
+        thenExceptionOccurred(IOException.class, "cut short");
+    }
+
+    @Test
+    void shouldTakeABodyCutShortThatIsNotAListOfLines() {
+        givenTheResponse("/cut.dat", untilClosed(CUT));
+
+        whenTheListIsFetchedFrom("/cut.dat");
+
+        thenTheBodyIs(CUT, "not a list of lines");
+    }
+
+    @Test
+    void shouldFetchListsThroughTheHttpProxyOfThePreferences() {
+        // A proxy gets the whole address; nothing listens at the address itself.
+        givenTheResponse(
+                "http://localhost:9/server.met",
+                response(200, "", "through the proxy".getBytes(StandardCharsets.US_ASCII)));
+        givenTheServerIsTheHttpProxyOfThePreferences();
+
+        whenTheAddressIsFetched("http://localhost:9/server.met");
+
+        thenTheBodyIs("through the proxy".getBytes(StandardCharsets.US_ASCII));
+    }
+
+    @Test
+    void shouldFetchListsThroughTheSocksProxyOfThePreferencesWithItsCredentials() throws IOException {
+        givenTheResponse("/server.met", response(200, "", "through socks".getBytes(StandardCharsets.US_ASCII)));
+        givenASocksProxyOfThePreferencesThatWantsAPassword();
+
+        whenTheListIsFetchedFrom("/server.met");
+
+        thenTheBodyIs("through socks".getBytes(StandardCharsets.US_ASCII));
+        thenTheProxyWasAskedWithTheCredentialsForTheServer();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {303, 307, 308})
+    void shouldFollowEveryKindOfRedirect(int status) {
+        givenTheResponse("/server.met", response(200, "", SERVER_LIST));
+        givenTheResponse("/moved" + status, response(status, "Location: /server.met\r\n", new byte[0]));
+
+        whenTheListIsFetchedFrom("/moved" + status);
+
+        thenTheBodyIs(SERVER_LIST, "HTTP " + status);
+    }
+
+    @Test
+    void shouldRefuseAnAddressWithoutScheme() {
+        whenTheAddressIsFetched("server.met");
+
+        thenExceptionOccurred(IOException.class, "http and https");
+    }
+
+    @Test
+    void shouldRefuseAnAddressWithoutHost() {
+        whenTheAddressIsFetched("http:/server.met");
+
+        thenExceptionOccurred(IOException.class, "no host");
+    }
+
+    @Test
+    void shouldRefuseARedirectToABadAddress() {
+        givenTheResponse("/bad", response(302, "Location: http://bad host/list\r\n", new byte[0]));
+
+        whenTheListIsFetchedFrom("/bad");
+
+        thenExceptionOccurred(IOException.class, "bad address");
+    }
+
+    @Test
+    void shouldRefuseARedirectWithoutLocation() {
+        givenTheResponse("/nowhere", response(302, "", new byte[0]));
+
+        whenTheListIsFetchedFrom("/nowhere");
+
+        thenExceptionOccurred(IOException.class, "without a location");
+    }
+
+    @Test
+    void shouldFetchNothingWithoutTimeLeft() {
+        givenTheResponse("/server.met", response(200, "", new byte[] {1}));
+        givenListsWithTheDeadline(Duration.ZERO);
+
+        whenTheListIsFetchedFrom("/server.met");
+
+        thenExceptionOccurred(IOException.class, "in time");
+    }
+
+    @Test
+    void shouldFetchNothingForAnInterruptedCaller() throws Exception {
+        givenTheResponse("/server.met", response(200, "", new byte[] {1}));
+
+        whenAnInterruptedCallerFetches("/server.met");
+
+        thenTheFetchFailsSaying("interrupted");
+        thenTheCallerIsStillInterrupted();
+    }
+
+    @Test
+    void shouldTakeAGzippedListAsItComesSinceGzipChecksItself() throws IOException {
+        givenTheResponse("/packed.gz", untilClosed(gzip(NO_BREAK)));
+
+        whenTheTextIsFetchedFrom("/packed.gz");
+
+        thenTheBodyIs(NO_BREAK, "gzip checks itself");
+    }
+
+    @Test
+    void shouldTakeAListEndingInACarriageReturnAsItComes() {
+        givenTheResponse("/cr.dat", untilClosed(CARRIAGE_RETURN));
+
+        whenTheTextIsFetchedFrom("/cr.dat");
+
+        thenTheBodyIs(CARRIAGE_RETURN);
+    }
+
+    @Test
+    void shouldTakeAnEmptyListAsItComes() {
+        givenTheResponse("/empty.dat", untilClosed(new byte[0]));
+
+        whenTheTextIsFetchedFrom("/empty.dat");
+
+        thenTheBodyIsEmpty();
+    }
+
+    @Test
+    void shouldTakeAListWhoseLengthWasGivenAsItComes() {
+        givenTheResponse("/sized.dat", response(200, "", NO_BREAK));
+
+        whenTheTextIsFetchedFrom("/sized.dat");
+
+        thenTheBodyIs(NO_BREAK, "its length was given");
+    }
+
+    @Test
+    void shouldTakeAChunkedListAsItComes() {
+        givenTheResponse("/chunked.dat", chunked("1d", NO_BREAK));
+
+        whenTheTextIsFetchedFrom("/chunked.dat");
+
+        thenTheBodyIs(NO_BREAK, "chunks end on their own");
+    }
+
+    @ParameterizedTest
+    @MethodSource("bodiesThatOnlyLookPacked")
+    void shouldLeaveAloneBodiesThatOnlyLookPacked(byte[] looksPacked) {
+        givenTheResponse("/a", response(200, "", looksPacked));
+
+        whenTheListIsFetchedFrom("/a");
+
+        thenTheBodyIs(looksPacked);
+    }
+
+    @Test
+    void shouldRefuseAnArchiveWithOnlyFolders() throws IOException {
+        givenTheResponse("/folders.zip", response(200, "", zipOfFolders("lists/")));
+
+        whenTheListIsFetchedFrom("/folders.zip");
+
+        thenExceptionOccurred(IOException.class, "empty zip");
+    }
+
+    @Test
+    void shouldRefuseAGzipBomb() throws IOException {
+        givenTheResponse("/bomb.gz", response(200, "", gzippedZerosBeyond(WebLists.MAX_SIZE)));
+
+        whenTheListIsFetchedFrom("/bomb.gz");
+
+        thenExceptionOccurred(IOException.class, "larger than");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "127.0.0.1",
+                "10.1.2.3",
+                "192.168.1.1",
+                "172.16.0.1",
+                "169.254.1.1",
+                "100.64.0.1",
+                "0.0.0.1",
+                "224.0.0.1",
+                "::1",
+                "fd00::1",
+                "fe80::1",
+                "0.0.0.0",
+                "::"
+            })
+    void shouldNotCountAPrivateOrSpecialAddressAsPublic(String literal) throws UnknownHostException {
+        givenTheAddress(literal);
+
+        whenItIsAskedWhetherItIsPublic();
+
+        thenItIsPublic(false);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"8.8.8.8", "100.128.0.1", "2001:4860:4860::8888"})
+    void shouldCountAPublicAddress(String literal) throws UnknownHostException {
+        givenTheAddress(literal);
+
+        whenItIsAskedWhetherItIsPublic();
+
+        thenItIsPublic(true);
+    }
+
+    private void givenTheResponse(String path, byte[] response) {
+        this.responses.put(path, response);
+    }
+
+    private void givenAStalledResponse(String path, String response) {
+        this.responses.put(path, response.getBytes(StandardCharsets.US_ASCII));
+        this.stalls.add(path);
+    }
+
+    private void givenListsReachingOnlyPublicAddresses() {
+        this.lists = WebLists.create();
+    }
+
+    private void givenListsWithTheDeadline(Duration deadline) {
+        this.lists = new WebLists(a -> true, deadline);
+    }
+
+    private void givenTheServerIsTheHttpProxyOfThePreferences() {
+        int port = this.server.getLocalPort();
+        this.proxyInstalled = true;
+        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", port, "", ""));
+        this.lists = new WebLists(a -> true);
+    }
+
+    private void givenASocksProxyOfThePreferencesThatWantsAPassword() throws IOException {
         ServerSocket proxy = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
         this.proxies.add(proxy);
         Thread.ofVirtual().start(() -> socks5(proxy));
+        this.proxyInstalled = true;
         ProxyRoute.install(
                 () -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", proxy.getLocalPort(), "me", "secret"));
     }
 
-    private void whenTheListIsFetched(String path) throws IOException {
-        this.fetched = this.anyAddress.fetch(uri(path));
+    private void givenTheAddress(String text) throws UnknownHostException {
+        this.literal = text;
+        this.address = InetAddress.getByName(text);
     }
 
-    private void thenTheListCame(String text) {
-        assertThat(new String(this.fetched, StandardCharsets.US_ASCII)).isEqualTo(text);
+    private void whenTheListIsFetchedFrom(String path) {
+        fetch(uri(path), false);
+    }
+
+    private void whenTheTextIsFetchedFrom(String path) {
+        fetch(uri(path), true);
+    }
+
+    private void whenTheAddressIsFetched(String uri) {
+        fetch(URI.create(uri), false);
+    }
+
+    private void whenTheListIsFetchedWithin(Duration limit, String path) {
+        assertTimeoutPreemptively(limit, () -> fetch(uri(path), false));
+    }
+
+    private void whenRedirected(String from, String location) {
+        try {
+            this.redirected = WebLists.redirect(URI.create(from), location);
+        } catch (IOException e) {
+            this.exception = e;
+        }
+    }
+
+    private void whenAnInterruptedCallerFetches(String path) throws Exception {
+        CompletableFuture<Throwable> failure = new CompletableFuture<>();
+        CompletableFuture<Boolean> stillInterrupted = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            Thread.currentThread().interrupt();
+            try {
+                this.anyAddress.fetch(uri(path));
+                failure.complete(null);
+            } catch (IOException e) {
+                failure.complete(e);
+            }
+            stillInterrupted.complete(Thread.currentThread().isInterrupted());
+        });
+        this.exception = failure.get(10, TimeUnit.SECONDS);
+        this.callerStillInterrupted = stillInterrupted.get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenItIsAskedWhetherItIsPublic() {
+        this.isPublic = WebLists.isPublic(this.address);
+    }
+
+    private void thenTheBodyIs(byte[] expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.body).isEqualTo(expected);
+    }
+
+    private void thenTheBodyIs(byte[] expected, String because) {
+        assertThat(this.exception).isNull();
+        assertThat(this.body).as(because).isEqualTo(expected);
     }
 
     private void thenTheProxyWasAskedWithTheCredentialsForTheServer() {
         assertThat(this.proxySaw).containsExactly("auth me:secret", "connect 127.0.0.1:" + this.server.getLocalPort());
+    }
+
+    private void thenTheBodyIsEmpty() {
+        assertThat(this.exception).isNull();
+        assertThat(this.body).isEmpty();
+    }
+
+    private void thenTheRedirectGoesTo(String expected) {
+        assertThat(this.redirected).isEqualTo(URI.create(expected));
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type, String messagePart) {
+        assertThat(this.exception).isInstanceOf(type).hasMessageContaining(messagePart);
+    }
+
+    private void thenTheFetchFailsSaying(String messagePart) {
+        assertThat(this.exception).hasMessageContaining(messagePart);
+    }
+
+    private void thenTheFetchFailsSaying(String messagePart, String because) {
+        assertThat(this.exception).as(because).hasMessageContaining(messagePart);
+    }
+
+    private void thenTheCallerIsStillInterrupted() {
+        assertThat(this.callerStillInterrupted).isTrue();
+    }
+
+    private void thenItIsPublic(boolean expected) {
+        assertThat(this.isPublic).as(this.literal).isEqualTo(expected);
+    }
+
+    private void fetch(URI uri, boolean lines) {
+        try {
+            this.body = lines ? this.lists.fetchText(uri) : this.lists.fetch(uri);
+        } catch (IOException | RuntimeException e) {
+            this.exception = e;
+        }
     }
 
     // A SOCKS 5 proxy (RFC 1928, user name and password per RFC 1929) that relays one connection both ways.
@@ -288,163 +681,16 @@ class WebListsTest {
         }
     }
 
-    @Test
-    void everyKindOfRedirectIsFollowed() throws Exception {
-        byte[] list = "server list".getBytes(StandardCharsets.US_ASCII);
-        this.responses.put("/server.met", response(200, "", list));
-        for (int status : new int[] {303, 307, 308}) {
-            this.responses.put("/moved" + status, response(status, "Location: /server.met\r\n", new byte[0]));
-
-            assertThat(this.anyAddress.fetch(uri("/moved" + status)))
-                    .as("HTTP %d", status)
-                    .isEqualTo(list);
-        }
-    }
-
-    @Test
-    void addressesWithoutSchemeOrHostAndBadRedirectsAreRefused() {
-        this.responses.put("/bad", response(302, "Location: http://bad host/list\r\n", new byte[0]));
-        this.responses.put("/nowhere", response(302, "", new byte[0]));
-
-        assertThatThrownBy(() -> this.anyAddress.fetch(URI.create("server.met")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("http and https");
-        assertThatThrownBy(() -> this.anyAddress.fetch(URI.create("http:/server.met")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("no host");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/bad")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("bad address");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/nowhere")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("without a location");
-    }
-
-    @Test
-    void noTimeLeftOrAnInterruptedCallerFetchesNothing() throws Exception {
-        this.responses.put("/server.met", response(200, "", new byte[] {1}));
-
-        assertThatThrownBy(() -> new WebLists(a -> true, Duration.ZERO).fetch(uri("/server.met")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("in time");
-
-        CompletableFuture<Throwable> failure = new CompletableFuture<>();
-        CompletableFuture<Boolean> stillInterrupted = new CompletableFuture<>();
-        Thread.ofVirtual().start(() -> {
-            Thread.currentThread().interrupt();
-            try {
-                this.anyAddress.fetch(uri("/server.met"));
-                failure.complete(null);
-            } catch (IOException e) {
-                failure.complete(e);
-            }
-            stillInterrupted.complete(Thread.currentThread().isInterrupted());
-        });
-        assertThat(failure.get(10, TimeUnit.SECONDS)).hasMessageContaining("interrupted");
-        assertThat(stillInterrupted.get(10, TimeUnit.SECONDS)).isTrue();
-    }
-
-    @Test
-    void listsThatCannotBeCutUnseenAreTakenAsTheyCome() throws Exception {
-        byte[] noBreak = "1.2.3.4 - 1.2.3.5 , 100 , one".getBytes(StandardCharsets.US_ASCII);
-        byte[] carriageReturn = "1.2.3.4 - 1.2.3.5 , 100 , one\r".getBytes(StandardCharsets.US_ASCII);
-        this.responses.put("/packed.gz", untilClosed(gzip(noBreak)));
-        this.responses.put("/cr.dat", untilClosed(carriageReturn));
-        this.responses.put("/empty.dat", untilClosed(new byte[0]));
-        this.responses.put("/sized.dat", response(200, "", noBreak));
-        this.responses.put(
-                "/chunked.dat",
-                concat(
-                        "HTTP/1.1 200 X\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
-                                .getBytes(StandardCharsets.US_ASCII),
-                        ("1d\r\n" + new String(noBreak, StandardCharsets.US_ASCII) + "\r\n0\r\n\r\n")
-                                .getBytes(StandardCharsets.US_ASCII)));
-
-        assertThat(this.anyAddress.fetchText(uri("/packed.gz")))
-                .as("gzip checks itself")
-                .isEqualTo(noBreak);
-        assertThat(this.anyAddress.fetchText(uri("/cr.dat"))).isEqualTo(carriageReturn);
-        assertThat(this.anyAddress.fetchText(uri("/empty.dat"))).isEmpty();
-        assertThat(this.anyAddress.fetchText(uri("/sized.dat")))
-                .as("its length was given")
-                .isEqualTo(noBreak);
-        assertThat(this.anyAddress.fetchText(uri("/chunked.dat")))
-                .as("chunks end on their own")
-                .isEqualTo(noBreak);
-    }
-
-    @Test
-    void bodiesThatOnlyLookPackedAreLeftAlone() throws Exception {
-        byte[] almostGzip = {0x1F, 0x00, 'x'};
-        byte[] almostZip = {'P', 'K', 1, 2, 'x'};
-        byte[] almostZipToo = {'P', 'K', 3, 9, 'x'};
-        byte[] tooShort = {'P'};
-        this.responses.put("/a", response(200, "", almostGzip));
-        this.responses.put("/b", response(200, "", almostZip));
-        this.responses.put("/c", response(200, "", almostZipToo));
-        this.responses.put("/d", response(200, "", tooShort));
-
-        assertThat(this.anyAddress.fetch(uri("/a"))).isEqualTo(almostGzip);
-        assertThat(this.anyAddress.fetch(uri("/b"))).isEqualTo(almostZip);
-        assertThat(this.anyAddress.fetch(uri("/c"))).isEqualTo(almostZipToo);
-        assertThat(this.anyAddress.fetch(uri("/d"))).isEqualTo(tooShort);
-    }
-
-    @Test
-    void anArchiveWithOnlyFoldersOrABombIsRefused() throws Exception {
-        ByteArrayOutputStream folders = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(folders)) {
-            zip.putNextEntry(new ZipEntry("lists/"));
-            zip.closeEntry();
-        }
-        ByteArrayOutputStream bomb = new ByteArrayOutputStream();
-        try (GZIPOutputStream gz = new GZIPOutputStream(bomb)) {
-            byte[] zeros = new byte[1024 * 1024];
-            for (long written = 0; written <= WebLists.MAX_SIZE; written += zeros.length) {
-                gz.write(zeros);
-            }
-        }
-        this.responses.put("/folders.zip", response(200, "", folders.toByteArray()));
-        this.responses.put("/bomb.gz", response(200, "", bomb.toByteArray()));
-
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/folders.zip")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("empty zip");
-        assertThatThrownBy(() -> this.anyAddress.fetch(uri("/bomb.gz")))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("larger than");
-    }
-
-    @Test
-    void onlyPublicAddressesCount() throws Exception {
-        for (String address : new String[] {
-            "127.0.0.1",
-            "10.1.2.3",
-            "192.168.1.1",
-            "172.16.0.1",
-            "169.254.1.1",
-            "100.64.0.1",
-            "0.0.0.1",
-            "224.0.0.1",
-            "::1",
-            "fd00::1",
-            "fe80::1",
-            "0.0.0.0",
-            "::"
-        }) {
-            assertThat(WebLists.isPublic(InetAddress.getByName(address)))
-                    .as(address)
-                    .isFalse();
-        }
-        for (String address : new String[] {"8.8.8.8", "100.128.0.1", "2001:4860:4860::8888"}) {
-            assertThat(WebLists.isPublic(InetAddress.getByName(address)))
-                    .as(address)
-                    .isTrue();
-        }
-    }
-
     private URI uri(String path) {
         return URI.create("http://127.0.0.1:" + this.server.getLocalPort() + path);
+    }
+
+    private static Stream<Arguments> bodiesThatOnlyLookPacked() {
+        return Stream.of(
+                Arguments.of(Named.of("almost gzip", new byte[] {0x1F, 0x00, 'x'})),
+                Arguments.of(Named.of("almost zip", new byte[] {'P', 'K', 1, 2, 'x'})),
+                Arguments.of(Named.of("almost zip too", new byte[] {'P', 'K', 3, 9, 'x'})),
+                Arguments.of(Named.of("too short", new byte[] {'P'})));
     }
 
     private static byte[] response(int status, String headers, byte[] body) {
@@ -462,6 +708,15 @@ class WebListsTest {
         return concat("HTTP/1.1 200 X\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1), body);
     }
 
+    // A response of one chunk of {@code hexSize} bytes.
+    private static byte[] chunked(String hexSize, byte[] chunk) {
+        return concat(
+                "HTTP/1.1 200 X\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                        .getBytes(StandardCharsets.US_ASCII),
+                (hexSize + "\r\n" + new String(chunk, StandardCharsets.US_ASCII) + "\r\n0\r\n\r\n")
+                        .getBytes(StandardCharsets.US_ASCII));
+    }
+
     private static byte[] concat(byte[] a, byte[] b) {
         byte[] all = Arrays.copyOf(a, a.length + b.length);
         System.arraycopy(b, 0, all, a.length, b.length);
@@ -476,12 +731,46 @@ class WebListsTest {
         return out.toByteArray();
     }
 
+    private static byte[] gzippedZerosBeyond(long size) throws IOException {
+        ByteArrayOutputStream bomb = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(bomb)) {
+            byte[] zeros = new byte[1024 * 1024];
+            for (long written = 0; written <= size; written += zeros.length) {
+                gz.write(zeros);
+            }
+        }
+        return bomb.toByteArray();
+    }
+
     private static byte[] zip(String name, byte[] data) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             zip.putNextEntry(new ZipEntry(name));
             zip.write(data);
             zip.closeEntry();
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] zip(String firstName, byte[] firstData, String secondName, byte[] secondData)
+            throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry(firstName));
+            zip.write(firstData);
+            zip.putNextEntry(new ZipEntry(secondName));
+            zip.write(secondData);
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] zipOfFolders(String... folders) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            for (String folder : folders) {
+                zip.putNextEntry(new ZipEntry(folder));
+                zip.closeEntry();
+            }
         }
         return out.toByteArray();
     }

@@ -19,6 +19,7 @@ package org.njmule.core.persist;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -33,10 +34,46 @@ class CategoriesCodecTest {
     @TempDir
     Path dir;
 
+    private List<Category> categories;
+    private List<Category> loaded;
+
     @Test
-    void categoriesRoundTripAndBrokenOnesAreLeftOut() throws Exception {
-        Path file = this.dir.resolve(CategoriesCodec.FILE_NAME);
-        List<Category> categories = List.of(
+    void shouldLoadNoCategoryFromAMissingFile() throws IOException {
+        whenTheCategoriesAreLoaded();
+
+        thenNoCategoryIsLoaded();
+    }
+
+    @Test
+    void shouldLoadTheCategoriesItSaved() throws IOException {
+        givenTwoSavedCategories();
+
+        whenTheCategoriesAreLoaded();
+
+        thenTheSavedCategoriesAreLoaded();
+    }
+
+    @Test
+    void shouldLeaveOutBrokenCategories() throws IOException {
+        givenTwoSavedCategories();
+        givenTheLinesAppended("category.7.name=\ncategory.8.color=99\n");
+
+        whenTheCategoriesAreLoaded();
+
+        thenTheSavedCategoriesAreLoaded();
+    }
+
+    @Test
+    void shouldLoseOnlyTheLineOfAMalformedEscape() throws IOException {
+        givenTheFileContent("\uFEFFcategory.1.name=Films\ncategory.1.comment=\\u12x\ncategory.2.name=Music\n");
+
+        whenTheCategoriesAreLoaded();
+
+        thenTheLoadedNamesAre("Films", "Music");
+    }
+
+    private void givenTwoSavedCategories() throws IOException {
+        this.categories = List.of(
                 new Category(
                         2,
                         "Films = ok",
@@ -47,21 +84,34 @@ class CategoriesCodecTest {
                         "*.mkv|*.avi",
                         false),
                 new Category(5, "Music", Optional.empty(), "", 0, DownloadPriority.AUTO, "\\.flac$", true));
-
-        assertThat(CategoriesCodec.load(file)).isEmpty();
-        CategoriesCodec.save(file, categories);
-        assertThat(CategoriesCodec.load(file)).isEqualTo(categories);
-
-        Files.writeString(file, Files.readString(file) + "category.7.name=\ncategory.8.color=99\n");
-        assertThat(CategoriesCodec.load(file)).isEqualTo(categories);
+        CategoriesCodec.save(file(), this.categories);
     }
 
-    @Test
-    void aMalformedEscapeCostsOnlyItsLine() throws Exception {
-        Path file = this.dir.resolve(CategoriesCodec.FILE_NAME);
-        Files.writeString(
-                file, "\uFEFFcategory.1.name=Films\ncategory.1.comment=\\u12x\ncategory.2.name=Music\n", UTF_8);
+    private void givenTheLinesAppended(String lines) throws IOException {
+        Files.writeString(file(), Files.readString(file()) + lines);
+    }
 
-        assertThat(CategoriesCodec.load(file)).extracting(Category::name).containsExactly("Films", "Music");
+    private void givenTheFileContent(String content) throws IOException {
+        Files.writeString(file(), content, UTF_8);
+    }
+
+    private void whenTheCategoriesAreLoaded() throws IOException {
+        this.loaded = CategoriesCodec.load(file());
+    }
+
+    private void thenNoCategoryIsLoaded() {
+        assertThat(this.loaded).isEmpty();
+    }
+
+    private void thenTheSavedCategoriesAreLoaded() {
+        assertThat(this.loaded).isEqualTo(this.categories);
+    }
+
+    private void thenTheLoadedNamesAre(String... names) {
+        assertThat(this.loaded).extracting(Category::name).containsExactly(names);
+    }
+
+    private Path file() {
+        return this.dir.resolve(CategoriesCodec.FILE_NAME);
     }
 }

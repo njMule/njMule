@@ -34,23 +34,43 @@ import org.njmule.core.protocol.tag.Tag;
 
 class SharedFilesBrowserResultsTest {
 
+    private Packet answer;
+    private List<SearchResult> files;
+
     @Test
-    void leavesOutFilesThatCannotBeDownloaded() throws DecodeException {
-        List<FileEntry> entries = List.of(
+    void shouldLeaveOutFilesThatCannotBeDownloaded() throws DecodeException {
+        givenAnAnswerListing(
                 file(1, "good.mkv", 1000),
                 file(2, " ", 1000),
                 file(3, "", 1000),
                 file(4, "empty.bin", 0),
                 file(5, "huge.bin", Ed2k.MAX_FILE_SIZE + 1),
                 file(6, "largest.bin", Ed2k.MAX_FILE_SIZE));
-        PacketWriter out = new PacketWriter().u32(entries.size());
-        entries.forEach(e -> e.write(out));
 
-        List<SearchResult> files =
-                SharedFilesBrowser.files(Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), out));
+        whenTheFilesAreRead();
 
-        assertThat(files).extracting(SearchResult::name).containsExactly("good.mkv", "largest.bin");
-        assertThat(files).allSatisfy(f -> assertThat(f.link().name()).isEqualTo(f.name()));
+        thenTheFilesAre("good.mkv", "largest.bin");
+        thenEachLinkIsNamedAsItsFile();
+    }
+
+    private void givenAnAnswerListing(FileEntry... entries) {
+        PacketWriter out = new PacketWriter().u32(entries.length);
+        for (FileEntry entry : entries) {
+            entry.write(out);
+        }
+        this.answer = Packet.of(Protocol.EDONKEY, Opcodes.Client.ASKSHAREDFILESANSWER.code(), out);
+    }
+
+    private void whenTheFilesAreRead() throws DecodeException {
+        this.files = SharedFilesBrowser.files(this.answer);
+    }
+
+    private void thenTheFilesAre(String... names) {
+        assertThat(this.files).extracting(SearchResult::name).containsExactly(names);
+    }
+
+    private void thenEachLinkIsNamedAsItsFile() {
+        assertThat(this.files).allSatisfy(f -> assertThat(f.link().name()).isEqualTo(f.name()));
     }
 
     private static FileEntry file(int seed, String name, long size) {
