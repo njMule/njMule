@@ -33,7 +33,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportReport;
-import org.njmule.core.api.SharedDirectory;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -49,7 +48,6 @@ class DialogsTest {
     private TestGui test;
     private Stage stage;
     private CategoriesDialog categories;
-    private SharedFoldersDialog sharedFolders;
     private ImportDialog importDialog;
     private CommentDialog comment;
     private AboutDialog about;
@@ -81,18 +79,6 @@ class DialogsTest {
         whenTheFirstCategoryIsRemoved();
 
         thenTheModelHasNoCategory();
-    }
-
-    @Test
-    void shouldListAndUnshareSharedFolders() throws Exception {
-        givenTheGui();
-        givenASharedFolder("films");
-        givenTheSharedFoldersDialogShown();
-        givenTheDialogListsTheFolder();
-
-        whenTheFirstFolderIsUnshared();
-
-        thenTheDialogListsNoFolder();
     }
 
     @Test
@@ -217,25 +203,6 @@ class DialogsTest {
         assertThat(this.test.gui.model().categories()).hasSize(1);
     }
 
-    private void givenASharedFolder(String name) throws Exception {
-        this.folder = Files.createDirectories(this.dir.resolve(name));
-        this.test.engine.shareDirectory(this.folder, true).get(10, TimeUnit.SECONDS);
-    }
-
-    private void givenTheSharedFoldersDialogShown() throws Exception {
-        FxTesting.onFx(() -> {
-            this.sharedFolders = new SharedFoldersDialog(this.test.gui, new Stage());
-            this.sharedFolders.show();
-            this.stage = this.sharedFolders.stage();
-        });
-    }
-
-    private void givenTheDialogListsTheFolder() throws Exception {
-        FxTesting.await("the folder", () -> this.sharedFolders.list().getItems().size() == 1);
-        assertThat(FxTesting.onFx(() -> this.sharedFolders.list().getItems().getFirst()))
-                .isEqualTo(new SharedDirectory(this.folder.toAbsolutePath(), true));
-    }
-
     private void givenAnEmuleConfigFolderWith(String file, String content) throws Exception {
         this.folder = Files.createDirectories(this.dir.resolve("emule-config"));
         Files.writeString(this.folder.resolve(file), content);
@@ -300,13 +267,6 @@ class DialogsTest {
         });
     }
 
-    private void whenTheFirstFolderIsUnshared() throws Exception {
-        FxTesting.onFx(() -> {
-            this.sharedFolders.list().getSelectionModel().select(0);
-            this.sharedFolders.unshareSelected();
-        });
-    }
-
     private void whenAFolderThatDoesNotExistIsChecked() throws Exception {
         check(this.dir.resolve("none"));
     }
@@ -335,11 +295,6 @@ class DialogsTest {
     private void thenTheModelHasNoCategory() throws Exception {
         FxTesting.assertEventually(
                 "no category", () -> this.test.gui.model().categories().isEmpty());
-    }
-
-    private void thenTheDialogListsNoFolder() throws Exception {
-        FxTesting.assertEventually(
-                "no folder", () -> this.sharedFolders.list().getItems().isEmpty());
     }
 
     private void thenTheUserWasToldSomethingStartingWith(String start) {

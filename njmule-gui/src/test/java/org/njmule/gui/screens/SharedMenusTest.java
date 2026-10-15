@@ -26,7 +26,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
-import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
@@ -143,15 +142,6 @@ class SharedMenusTest {
     }
 
     @Test
-    void shouldOpenTheSharedFoldersFromTheirButton() throws Exception {
-        givenTheSharedScreen();
-
-        whenTheButtonIsPressed("Shared folders");
-
-        thenTheWindowShows("Shared folders");
-    }
-
-    @Test
     void shouldAskFirstAndShareAFolderWithoutTheSubfoldersTheUserUnticked() throws Exception {
         givenTheSharedScreen();
 
@@ -261,10 +251,6 @@ class SharedMenusTest {
                     .orElseThrow()
                     .fire();
         });
-    }
-
-    private void whenTheButtonIsPressed(String text) throws Exception {
-        FxTesting.onFx(() -> button(this.shownScreen, text).fire());
     }
 
     private void whenSharingIsConfirmedWithoutSubfoldersFor(String folder) throws Exception {
@@ -410,14 +396,6 @@ class SharedMenusTest {
 
     private void type(Node pane, String text) {
         ((TextField) pane.lookup(".text-field")).setText(text);
-    }
-
-    private Button button(SharedScreen screen, String text) {
-        return screen.view().lookupAll(".button").stream()
-                .filter(n -> n instanceof Button b && text.equals(b.getText()))
-                .map(Button.class::cast)
-                .findFirst()
-                .orElseThrow();
     }
 
     private Window window(String title) {

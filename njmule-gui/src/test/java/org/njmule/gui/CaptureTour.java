@@ -95,7 +95,6 @@ import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
-import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
@@ -691,11 +690,6 @@ class CaptureTour {
                         .getFirst()
                         .getSelectionModel()
                         .select(1));
-        window(
-                "dialog-shared-folders",
-                "Shared folders",
-                () -> new SharedFoldersDialog(this.gui, this.stage).show(),
-                w -> {});
 
         fx(() -> this.window.show("transfers"));
         Parent transfers = screenRoot();

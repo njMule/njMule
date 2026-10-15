@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import javafx.beans.binding.Bindings;
+import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -30,13 +31,17 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.kordamp.ikonli.Ikon;
@@ -47,7 +52,6 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.gui.dialogs.CommentDialog;
-import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
@@ -56,12 +60,22 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 
-/** The files we share, and sharing one more directory. */
+/** The folders we share beside the incoming ones, and the files we share with what was asked of them. */
 public final class SharedScreen implements Screen {
+
+    // A count of this run beside the count of all runs, which orders the column.
+    private record Counted(long session, long total) implements Comparable<Counted> {
+        @Override
+        public int compareTo(Counted other) {
+            int byTotal = Long.compare(this.total, other.total);
+            return byTotal != 0 ? byTotal : Long.compare(this.session, other.session);
+        }
+    }
 
     private final Gui gui;
     private Node view;
     private TableView<LiveList.Row<SharedFileInfo>> table;
+    private final ListView<SharedDirectory> folders = new ListView<>();
 
     public SharedScreen(Gui gui) {
         this.gui = gui;
@@ -99,6 +113,28 @@ public final class SharedScreen implements Screen {
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size)),
                         Fx.column(this.gui.t("IDS_PRIORITY"), 100, SharedFileInfo::priority, this::priorityName),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_SF_REQUESTS"),
+                                90,
+                                (SharedFileInfo f) -> new Counted(
+                                        f.statistics().requests(),
+                                        f.statistics().totalRequests()),
+                                c -> c.session() + " (" + c.total() + ")")),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_SF_ACCEPTS"),
+                                90,
+                                (SharedFileInfo f) -> new Counted(
+                                        f.statistics().accepted(),
+                                        f.statistics().totalAccepted()),
+                                c -> c.session() + " (" + c.total() + ")")),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_SF_TRANSFERRED"),
+                                140,
+                                (SharedFileInfo f) -> new Counted(
+                                        f.statistics().transferred(),
+                                        f.statistics().totalTransferred()),
+                                c -> this.gui.formats().size(c.session()) + " ("
+                                        + this.gui.formats().size(c.total()) + ")")),
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.shared.folder"),
                                 360,
@@ -140,12 +176,79 @@ public final class SharedScreen implements Screen {
         Fx.needSelection(this.table, copyButton, priorities);
         var tools = Fx.toolRow(
                 Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
-                Fx.button(this.gui.t("IDS_SHAREDFOLDERS"), Material2AL.FOLDER_SHARED, this::showFolders),
                 copyButton,
                 priorities,
                 Fx.spacer(),
                 count);
-        return Fx.screen(title(), tools, this.table);
+        Node pane = foldersPane();
+        SplitPane split = new SplitPane(pane, this.table);
+        split.setDividerPositions(0.28);
+        SplitPane.setResizableWithParent(pane, false);
+        return Fx.screen(title(), tools, split);
+    }
+
+    // The folders shared beside the incoming ones: each with its subfolders or alone, and a way to stop sharing it.
+    private Node foldersPane() {
+        this.folders.setPlaceholder(new Label(this.gui.t("nj.shared.noFolders")));
+        this.folders.setCellFactory(l -> new FolderCell());
+        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.CREATE_NEW_FOLDER, this::chooseDirectory);
+        Button remove = Fx.button(this.gui.t("IDS_UNSHAREDIR"), Material2MZ.REMOVE_CIRCLE_OUTLINE, this::unshareFolder);
+        remove.disableProperty()
+                .bind(this.folders.getSelectionModel().selectedItemProperty().isNull());
+        Label heading = Fx.whole(new Label(this.gui.t("IDS_SHAREDFOLDERS")));
+        heading.getStyleClass().add(Styles.TEXT_BOLD);
+        VBox pane = new VBox(8, heading, this.folders, Fx.toolRow(add, remove));
+        VBox.setVgrow(this.folders, Priority.ALWAYS);
+        pane.setPadding(new Insets(0, 8, 0, 0));
+        pane.setMinWidth(220);
+        // Sharing or unsharing changes the files shared, wherever it was done: the folders are read again then.
+        this.gui.subscriptions().onListChange(this.gui.model().sharedFiles().rows(), c -> loadFolders());
+        loadFolders();
+        return pane;
+    }
+
+    void loadFolders() {
+        this.gui.model().sharedDirectories(dirs -> this.folders.getItems().setAll(dirs));
+    }
+
+    void unshareFolder() {
+        SharedDirectory selected = this.folders.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            this.gui.model().unshareDirectory(selected.path(), this::loadFolders);
+        }
+    }
+
+    // A shared folder, with the switch that shares its subfolders too.
+    private final class FolderCell extends ListCell<SharedDirectory> {
+        private final Label path = Fx.leftToRight(new Label());
+        private final CheckBox subfolders = new CheckBox(SharedScreen.this.gui.t("IDS_SHAREDIRSUB"));
+        private final VBox content = new VBox(4, this.path, this.subfolders);
+
+        FolderCell() {
+            this.path.setWrapText(true);
+            this.subfolders.setOnAction(e -> {
+                SharedDirectory folder = getItem();
+                if (folder != null) {
+                    SharedScreen.this.share(folder.path(), this.subfolders.isSelected());
+                }
+            });
+        }
+
+        @Override
+        protected void updateItem(SharedDirectory item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setGraphic(null);
+            } else {
+                this.path.setText(item.path().toString());
+                this.subfolders.setSelected(item.subdirectories());
+                setGraphic(this.content);
+            }
+        }
+    }
+
+    ListView<SharedDirectory> folders() {
+        return this.folders;
     }
 
     private void chooseDirectory() {
@@ -184,10 +287,6 @@ public final class SharedScreen implements Screen {
 
     void share(Path directory, boolean subdirectories) {
         this.gui.model().shareDirectory(directory, subdirectories);
-    }
-
-    private void showFolders() {
-        new SharedFoldersDialog(this.gui, this.view.getScene().getWindow(), this::chooseDirectory).show();
     }
 
     // Each level, for every selected file.

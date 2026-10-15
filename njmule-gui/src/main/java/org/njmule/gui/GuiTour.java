@@ -55,7 +55,6 @@ import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
-import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.SoundPlayer;
@@ -135,7 +134,6 @@ final class GuiTour {
         this.steps.add(() -> new AboutDialog(this.gui, this.stage).show());
         this.steps.add(() -> new ImportDialog(this.gui, this.stage).show());
         this.steps.add(() -> new CategoriesDialog(this.gui, this.stage).show());
-        this.steps.add(() -> new SharedFoldersDialog(this.gui, this.stage).show());
         this.steps.add(() -> Optional.ofNullable(
                         this.gui.model().preferencesProperty().get())
                 .ifPresent(p -> new FirstRunWizard(this.gui, this.stage, p, Optional.empty(), outcome -> {}).show()));
