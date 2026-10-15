@@ -1,7 +1,16 @@
 {
   "reflection": [
     {
+      "type": "boolean[]"
+    },
+    {
+      "type": "byte[]"
+    },
+    {
       "type": "ch.qos.logback.classic.spi.LogbackServiceProvider"
+    },
+    {
+      "type": "char[]"
     },
     {
       "type": "com.sun.crypto.provider.AESCipher$General",
@@ -1533,6 +1542,158 @@
       ]
     },
     {
+      "type": "com.sun.management.GarbageCollectorMXBean"
+    },
+    {
+      "type": "com.sun.management.GcInfo"
+    },
+    {
+      "type": "com.sun.management.HotSpotDiagnosticMXBean",
+      "methods": [
+        {
+          "name": "getVMOption",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.OperatingSystemMXBean"
+    },
+    {
+      "type": "com.sun.management.ThreadMXBean"
+    },
+    {
+      "type": "com.sun.management.UnixOperatingSystemMXBean"
+    },
+    {
+      "type": "com.sun.management.VMOption",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getOrigin",
+          "parameterTypes": []
+        },
+        {
+          "name": "getValue",
+          "parameterTypes": []
+        },
+        {
+          "name": "isWriteable",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.VMOption$Origin",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "ATTACH_ON_DEMAND"
+        },
+        {
+          "name": "CONFIG_FILE"
+        },
+        {
+          "name": "DEFAULT"
+        },
+        {
+          "name": "ENVIRON_VAR"
+        },
+        {
+          "name": "ERGONOMIC"
+        },
+        {
+          "name": "MANAGEMENT"
+        },
+        {
+          "name": "OTHER"
+        },
+        {
+          "name": "VM_CREATION"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandArgumentInfo",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "boolean",
+            "boolean",
+            "int"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandArgumentInfo[]"
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandInfo",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.internal.DiagnosticCommandInfo[]"
+    },
+    {
+      "type": "com.sun.management.internal.Flag",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.Object",
+            "boolean",
+            "boolean",
+            "com.sun.management.VMOption$Origin"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "com.sun.management.internal.GarbageCollectorExtImpl"
+    },
+    {
+      "type": "com.sun.management.internal.HotSpotAOTCacheImpl"
+    },
+    {
+      "type": "com.sun.management.internal.HotSpotDiagnostic"
+    },
+    {
+      "type": "com.sun.management.internal.HotSpotThreadImpl"
+    },
+    {
+      "type": "com.sun.management.internal.OperatingSystemImpl"
+    },
+    {
+      "type": "com.sun.management.internal.VirtualThreadSchedulerImpls$VirtualThreadSchedulerImpl"
+    },
+    {
       "type": "com.sun.media.sound.DirectAudioDevice",
       "jniAccessible": true,
       "methods": [
@@ -1972,7 +2133,16 @@
       ]
     },
     {
+      "type": "double[]"
+    },
+    {
+      "type": "float[]"
+    },
+    {
       "type": "groovy.lang.Closure"
+    },
+    {
+      "type": "int[]"
     },
     {
       "type": "java.awt.AWTEvent",
@@ -2669,11 +2839,35 @@
         },
         {
           "name": "TRUE"
+        },
+        {
+          "name": "TYPE"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "boolean"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Byte",
+      "fields": [
+        {
+          "name": "TYPE"
         }
       ]
     },
     {
       "type": "java.lang.Character",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ],
       "methods": [
         {
           "name": "isIdeographic",
@@ -2698,6 +2892,17 @@
       ]
     },
     {
+      "type": "java.lang.Deprecated"
+    },
+    {
+      "type": "java.lang.Double",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
       "type": "java.lang.Enum",
       "jniAccessible": true,
       "methods": [
@@ -2708,12 +2913,36 @@
       ]
     },
     {
+      "type": "java.lang.Float",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Integer",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
       "type": "java.lang.Iterable",
       "jniAccessible": true,
       "methods": [
         {
           "name": "iterator",
           "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Long",
+      "fields": [
+        {
+          "name": "TYPE"
         }
       ]
     },
@@ -2738,6 +2967,17 @@
           "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "java.lang.Short",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.StackTraceElement"
     },
     {
       "type": "java.lang.String",
@@ -2790,8 +3030,71 @@
         {
           "name": "currentThread",
           "parameterTypes": []
+        },
+        {
+          "name": "ofVirtual",
+          "parameterTypes": []
         }
       ]
+    },
+    {
+      "type": "java.lang.Thread$Builder",
+      "methods": [
+        {
+          "name": "factory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Void",
+      "fields": [
+        {
+          "name": "TYPE"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.management.BufferPoolMXBean"
+    },
+    {
+      "type": "java.lang.management.ClassLoadingMXBean"
+    },
+    {
+      "type": "java.lang.management.CompilationMXBean"
+    },
+    {
+      "type": "java.lang.management.LockInfo"
+    },
+    {
+      "type": "java.lang.management.MemoryMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryManagerMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryPoolMXBean"
+    },
+    {
+      "type": "java.lang.management.MemoryUsage"
+    },
+    {
+      "type": "java.lang.management.MonitorInfo"
+    },
+    {
+      "type": "java.lang.management.PlatformLoggingMXBean"
+    },
+    {
+      "type": "java.lang.management.RuntimeMXBean"
+    },
+    {
+      "type": "java.lang.management.ThreadInfo"
+    },
+    {
+      "type": "java.math.BigDecimal"
+    },
+    {
+      "type": "java.math.BigInteger"
     },
     {
       "type": "java.nio.ByteBuffer",
@@ -2925,6 +3228,18 @@
       ]
     },
     {
+      "type": "java.util.Arrays",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "asList",
+          "parameterTypes": [
+            "java.lang.Object[]"
+          ]
+        }
+      ]
+    },
+    {
       "type": "java.util.Collections",
       "jniAccessible": true,
       "methods": [
@@ -2935,6 +3250,9 @@
           ]
         }
       ]
+    },
+    {
+      "type": "java.util.Date"
     },
     {
       "type": "java.util.HashMap",
@@ -3051,6 +3369,17 @@
           "name": "toArray",
           "parameterTypes": [
             "java.lang.Object[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.util.concurrent.Executors",
+      "methods": [
+        {
+          "name": "newThreadPerTaskExecutor",
+          "parameterTypes": [
+            "java.util.concurrent.ThreadFactory"
           ]
         }
       ]
@@ -3216,6 +3545,63 @@
     },
     {
       "type": "javax.imageio.spi.ImageWriterSpi"
+    },
+    {
+      "type": "javax.management.MBeanOperationInfo"
+    },
+    {
+      "type": "javax.management.MBeanServerBuilder",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "javax.management.ObjectName"
+    },
+    {
+      "type": "javax.management.StandardEmitterMBean"
+    },
+    {
+      "type": "javax.management.openmbean.CompositeData"
+    },
+    {
+      "type": "javax.management.openmbean.CompositeData[]"
+    },
+    {
+      "type": "javax.management.openmbean.OpenMBeanOperationInfoSupport"
+    },
+    {
+      "type": "javax.management.openmbean.TabularData"
+    },
+    {
+      "type": "jdk.management.HotSpotAOTCacheMXBean"
+    },
+    {
+      "type": "jdk.management.VirtualThreadSchedulerMXBean"
+    },
+    {
+      "type": "jdk.management.jfr.ConfigurationInfo"
+    },
+    {
+      "type": "jdk.management.jfr.EventTypeInfo"
+    },
+    {
+      "type": "jdk.management.jfr.FlightRecorderMXBean"
+    },
+    {
+      "type": "jdk.management.jfr.FlightRecorderMXBeanImpl"
+    },
+    {
+      "type": "jdk.management.jfr.RecordingInfo"
+    },
+    {
+      "type": "jdk.management.jfr.SettingDescriptorInfo"
+    },
+    {
+      "type": "long[]"
     },
     {
       "type": "org.bouncycastle.asn1.bc.BCObjectIdentifiers",
@@ -4501,6 +4887,61 @@
       ]
     },
     {
+      "type": "org.eclipse.jetty.compression.gzip.GzipCompression"
+    },
+    {
+      "type": "org.eclipse.jetty.http.Http10FieldPreEncoder"
+    },
+    {
+      "type": "org.eclipse.jetty.http.Http11FieldPreEncoder"
+    },
+    {
+      "type": "org.eclipse.jetty.util.TypeUtil",
+      "methods": [
+        {
+          "name": "getClassLoaderLocation",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        },
+        {
+          "name": "getCodeSourceLocation",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        },
+        {
+          "name": "getModuleLocation",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        },
+        {
+          "name": "getSystemClassLoaderLocation",
+          "parameterTypes": [
+            "java.lang.Class"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.jetty.util.Utf8StringBuilder",
+      "methods": [
+        {
+          "name": "errorActionIgnore",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorActionReplace",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorActionReport",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "org.njmule.app.logging.internal.NjMuleLogbackConfigurator"
     },
     {
@@ -4514,6 +4955,9 @@
     },
     {
       "type": "org.osgi.framework.BundleContext"
+    },
+    {
+      "type": "short[]"
     },
     {
       "type": "sun.awt.AWTAutoShutdown",
@@ -5679,6 +6123,60 @@
       ]
     },
     {
+      "type": "sun.management.ClassLoadingImpl"
+    },
+    {
+      "type": "sun.management.CompilationImpl"
+    },
+    {
+      "type": "sun.management.ManagementFactoryHelper$1"
+    },
+    {
+      "type": "sun.management.ManagementFactoryHelper$PlatformLoggingImpl"
+    },
+    {
+      "type": "sun.management.MemoryImpl"
+    },
+    {
+      "type": "sun.management.MemoryManagerImpl"
+    },
+    {
+      "type": "sun.management.MemoryPoolImpl"
+    },
+    {
+      "type": "sun.management.RuntimeImpl"
+    },
+    {
+      "type": "sun.management.VMManagementImpl",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "compTimeMonitoringSupport"
+        },
+        {
+          "name": "currentThreadCpuTimeSupport"
+        },
+        {
+          "name": "objectMonitorUsageSupport"
+        },
+        {
+          "name": "otherThreadCpuTimeSupport"
+        },
+        {
+          "name": "remoteDiagnosticCommandsSupport"
+        },
+        {
+          "name": "synchronizerUsageSupport"
+        },
+        {
+          "name": "threadAllocatedMemorySupport"
+        },
+        {
+          "name": "threadContentionMonitoringSupport"
+        }
+      ]
+    },
+    {
       "type": "sun.net.www.protocol.http.Handler",
       "methods": [
         {
@@ -5693,6 +6191,19 @@
         {
           "name": "<init>",
           "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.reflect.misc.Trampoline",
+      "methods": [
+        {
+          "name": "invoke",
+          "parameterTypes": [
+            "java.lang.reflect.Method",
+            "java.lang.Object",
+            "java.lang.Object[]"
+          ]
         }
       ]
     },
@@ -5873,6 +6384,15 @@
     },
     {
       "type": "sun.security.ssl.SSLContextImpl$DefaultSSLContext",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.SSLContextImpl$TLSContext",
       "methods": [
         {
           "name": "<init>",
@@ -6106,6 +6626,12 @@
     },
     {
       "glob": "META-INF/services/javax.sound.sampled.spi.MixerProvider"
+    },
+    {
+      "glob": "META-INF/services/org.eclipse.jetty.compression.Compression"
+    },
+    {
+      "glob": "META-INF/services/org.eclipse.jetty.http.HttpFieldPreEncoder"
     },
     {
       "glob": "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
@@ -16440,6 +16966,22 @@
       "glob": "vcruntime140_1.dll"
     },
     {
+      "module": "jdk.jfr",
+      "glob": "jdk/jfr/internal/query/view.ini"
+    },
+    {
+      "module": "org.eclipse.jetty.http",
+      "glob": "org/eclipse/jetty/http/encoding.properties"
+    },
+    {
+      "module": "org.eclipse.jetty.http",
+      "glob": "org/eclipse/jetty/http/mime.properties"
+    },
+    {
+      "module": "org.eclipse.jetty.util",
+      "glob": "org/eclipse/jetty/version/build.properties"
+    },
+    {
       "module": "org.kordamp.ikonli.core",
       "glob": "META-INF/resources/ikonli/0.0.0/fonts/ikonli.ttf"
     },
@@ -16462,6 +17004,10 @@
     {
       "module": "org.njmule.core",
       "glob": "org/njmule/core/api/build-info.properties"
+    },
+    {
+      "module": "org.njmule.core",
+      "glob": "org/njmule/core/engine/server.met"
     },
     {
       "module": "org.njmule.gui",
