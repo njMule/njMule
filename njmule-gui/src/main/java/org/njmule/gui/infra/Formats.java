@@ -36,6 +36,9 @@ public final class Formats {
     // The texts that name the units in each language: none names petabytes.
     private static final String[] UNIT_KEYS = {"IDS_BYTESPERSEC", "IDS_KBYTES", "IDS_MBYTES", "IDS_GBYTES", "IDS_TBYTES"
     };
+    // Days, hours, minutes and seconds as eMule's texts name them, English when a language does not.
+    private static final String[] TIME_UNITS = {"d", "h", "mins", "secs"};
+    private static final String[] TIME_KEYS = {"IDS_DAYS", "IDS_HOURS", "IDS_MINS", "IDS_SECS"};
     private static final String RATE = "KB/s";
     private static final String RATE_KEY = "IDS_KBYTESPERSEC";
     private static final long MINUTE = 60;
@@ -48,6 +51,7 @@ public final class Formats {
     private final DateTimeFormatter dateTime;
     private final DateTimeFormatter time;
     private final String[] units;
+    private final String[] timeUnits;
     private final String rateUnit;
 
     /** Formats with the English units. */
@@ -73,6 +77,13 @@ public final class Formats {
         }
         if (this.units[0].isEmpty()) {
             this.units[0] = UNITS[0];
+        }
+        this.timeUnits = TIME_UNITS.clone();
+        for (int i = 0; i < TIME_KEYS.length; i++) {
+            String named = unit(text.apply(TIME_KEYS[i]));
+            if (named != null) {
+                this.timeUnits[i] = named;
+            }
         }
         String rate = unit(text.apply(RATE_KEY));
         this.rateUnit = rate == null ? RATE : rate;
@@ -156,19 +167,22 @@ public final class Formats {
         return this.oneDecimal.format(ratio * 100) + " %";
     }
 
-    /** A duration as {@code 2d 3h}, {@code 1h 05m}, {@code 4m 07s} or {@code 9s}. */
+    /**
+     * A duration in the units of the language, the largest first: {@code 2 d 3 h}, {@code 1:05 h}, {@code 4:07 mins} or
+     * {@code 9 secs} in English, {@code 2 g 3 h} or {@code 4:07 min} in Italian.
+     */
     public String duration(long seconds) {
         long s = Math.max(0, seconds);
         if (s >= DAY) {
-            return s / DAY + "d " + s % DAY / HOUR + "h";
+            return s / DAY + " " + this.timeUnits[0] + " " + s % DAY / HOUR + " " + this.timeUnits[1];
         }
         if (s >= HOUR) {
-            return s / HOUR + "h " + twoDigits(s % HOUR / MINUTE) + "m";
+            return s / HOUR + ":" + twoDigits(s % HOUR / MINUTE) + " " + this.timeUnits[1];
         }
         if (s >= MINUTE) {
-            return s / MINUTE + "m " + twoDigits(s % MINUTE) + "s";
+            return s / MINUTE + ":" + twoDigits(s % MINUTE) + " " + this.timeUnits[2];
         }
-        return s + "s";
+        return s + " " + this.timeUnits[3];
     }
 
     /** A playing time as {@code 1:02:03} or {@code 3:25}. */

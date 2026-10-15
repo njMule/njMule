@@ -105,10 +105,10 @@ class InfraTest {
         assertThat(it.count(1234567)).isEqualTo("1.234.567");
         assertThat(en.percent(1, 3)).isEqualTo("33.3 %");
         assertThat(en.percent(5, 0)).isEqualTo("0.0 %");
-        assertThat(en.duration(9)).isEqualTo("9s");
-        assertThat(en.duration(247)).isEqualTo("4m 07s");
-        assertThat(en.duration(3900)).isEqualTo("1h 05m");
-        assertThat(en.duration(2 * 86400 + 3 * 3600)).isEqualTo("2d 3h");
+        assertThat(en.duration(9)).isEqualTo("9 secs");
+        assertThat(en.duration(247)).isEqualTo("4:07 mins");
+        assertThat(en.duration(3900)).isEqualTo("1:05 h");
+        assertThat(en.duration(2 * 86400 + 3 * 3600)).isEqualTo("2 d 3 h");
     }
 
     @Test
