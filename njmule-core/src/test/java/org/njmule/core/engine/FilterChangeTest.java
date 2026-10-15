@@ -18,6 +18,7 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -28,6 +29,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,65 +46,119 @@ import org.njmule.core.util.Ipv4;
 @Timeout(30)
 class FilterChangeTest {
 
+    private static final Ed2kLink.FileLink FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
+
     @TempDir
     Path dir;
 
+    private final BlockingQueue<EngineEvent> events = new LinkedBlockingQueue<>();
+    private AppDirectories dirs;
+    private ServerSocket server;
+    private NjMuleEngine engine;
+
+    @AfterEach
+    void close() throws IOException {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.server != null) {
+            this.server.close();
+        }
+    }
+
     @Test
-    void aStricterFilterDropsTheServerAndTheSourcesItNowRefuses() throws Exception {
-        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
-        Files.createDirectories(dirs.config());
+    void shouldDropTheServerAndTheSourcesThatAStricterFilterNowRefuses() throws Exception {
+        givenAProfileFilteringAtLevel(40);
+        givenAnIpFilterThatRatesTheLoopbackAt(50);
+        givenAServerOnTheLoopback();
+        givenARunningEngine();
+        givenADownloadWithASourceAt("127.0.0.3");
+        givenTheEngineConnectsToTheServer();
+
+        whenTheFilterLevelIsRaisedTo(100);
+
+        thenTheServerIsLeft();
+        thenTheSourceIsDropped();
+    }
+
+    private void givenAProfileFilteringAtLevel(int level) throws IOException {
+        this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
+        Files.createDirectories(this.dirs.config());
         int tcpPort;
         try (ServerSocket probe = new ServerSocket(0)) {
             tcpPort = probe.getLocalPort();
         }
         Files.writeString(
-                dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + tcpPort + "\nnet.kad.enabled=false\nsecurity.ipFilterLevel=40\n");
-        // Level 50 is let through at 40 and blocked at 100.
+                this.dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + tcpPort + "\nnet.kad.enabled=false\nsecurity.ipFilterLevel=" + level + "\n");
+    }
+
+    // Level 50 is let through at 40 and blocked at 100.
+    private void givenAnIpFilterThatRatesTheLoopbackAt(int level) throws IOException {
         Files.write(
-                dirs.config().resolve(Network.IPFILTER_FILE),
-                IpFilterDat.write(
-                        List.of(new IpFilterDat.Range(Ipv4.of(127, 0, 0, 1), Ipv4.of(127, 0, 0, 3), 50, "loopback"))));
-        Ed2kLink.FileLink link = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
-        BlockingQueue<EngineEvent> events = new LinkedBlockingQueue<>();
+                this.dirs.config().resolve(Network.IPFILTER_FILE),
+                IpFilterDat.write(List.of(
+                        new IpFilterDat.Range(Ipv4.of(127, 0, 0, 1), Ipv4.of(127, 0, 0, 3), level, "loopback"))));
+    }
 
-        try (ServerSocket server = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
-                NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            engine.events().subscribe(new Flow.Subscriber<>() {
-                @Override
-                public void onSubscribe(Flow.Subscription subscription) {
-                    subscription.request(Long.MAX_VALUE);
-                }
+    private void givenAServerOnTheLoopback() throws IOException {
+        this.server = new ServerSocket(0, 5, InetAddress.getLoopbackAddress());
+    }
 
-                @Override
-                public void onNext(EngineEvent item) {
-                    events.add(item);
-                }
+    private void givenARunningEngine() throws IOException {
+        this.engine = NjMuleEngine.start(new EngineConfig(this.dirs));
+        BlockingQueue<EngineEvent> recorded = this.events;
+        this.engine.events().subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
 
-                @Override
-                public void onError(Throwable throwable) {}
+            @Override
+            public void onNext(EngineEvent item) {
+                recorded.add(item);
+            }
 
-                @Override
-                public void onComplete() {}
-            });
-            engine.addDownload(link).get(5, TimeUnit.SECONDS);
-            assertThat(engine.addSource(link.hash(), new ServerAddress("127.0.0.3", 4662))
-                            .get(5, TimeUnit.SECONDS))
-                    .isTrue();
-            engine.connect(Optional.of(new ServerAddress("127.0.0.1", server.getLocalPort())))
-                    .get(5, TimeUnit.SECONDS);
-            assertThat(next(events, EngineEvent.ServerConnecting.class)).isTrue();
+            @Override
+            public void onError(Throwable throwable) {}
 
-            engine.updatePreferences(p -> p.toBuilder().ipFilterLevel(100).build())
-                    .get(5, TimeUnit.SECONDS);
+            @Override
+            public void onComplete() {}
+        });
+    }
 
-            assertThat(next(events, EngineEvent.ServerDisconnected.class))
-                    .as("the server is left")
-                    .isTrue();
-            assertThat(engine.sources().get(5, TimeUnit.SECONDS))
-                    .as("the source is dropped")
-                    .isEmpty();
-        }
+    private void givenADownloadWithASourceAt(String ip) throws Exception {
+        this.engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
+        assertThat(this.engine
+                        .addSource(FILM.hash(), new ServerAddress(ip, 4662))
+                        .get(5, TimeUnit.SECONDS))
+                .isTrue();
+    }
+
+    private void givenTheEngineConnectsToTheServer() throws Exception {
+        this.engine
+                .connect(Optional.of(new ServerAddress("127.0.0.1", this.server.getLocalPort())))
+                .get(5, TimeUnit.SECONDS);
+        assertThat(next(this.events, EngineEvent.ServerConnecting.class)).isTrue();
+    }
+
+    private void whenTheFilterLevelIsRaisedTo(int level) throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().ipFilterLevel(level).build())
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenTheServerIsLeft() throws InterruptedException {
+        assertThat(next(this.events, EngineEvent.ServerDisconnected.class))
+                .as("the server is left")
+                .isTrue();
+    }
+
+    private void thenTheSourceIsDropped() throws Exception {
+        assertThat(this.engine.sources().get(5, TimeUnit.SECONDS))
+                .as("the source is dropped")
+                .isEmpty();
     }
 
     private static boolean next(BlockingQueue<EngineEvent> events, Class<? extends EngineEvent> type)

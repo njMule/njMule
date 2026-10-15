@@ -27,6 +27,7 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,41 +41,87 @@ class LiveSettingsTest {
     @TempDir
     Path dir;
 
+    private int firstPort;
+    private NjMuleEngine engine;
+
+    @AfterEach
+    void close() {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+    }
+
     @Test
-    void newPortsAndKadApplyWithoutARestart() throws Exception {
+    void shouldApplyNewPortsAndKadWithoutARestart() throws Exception {
+        givenAnEngineListeningOnAFreeTcpPort();
+        givenTheTcpPortIsMovedToAnotherFreeOne();
+        givenKadIsConnectedByHand();
+        givenKadIsDisconnectedByHand();
+        givenKadIsTurnedOnInTheSettings();
+        givenKadIsTurnedOffInTheSettings();
+
+        whenTheEngineIsClosed();
+
+        thenTheFirstPortIsNoLongerListenedOn();
+    }
+
+    private void givenAnEngineListeningOnAFreeTcpPort() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
-        int first = freeTcpPort();
+        this.firstPort = freeTcpPort();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + first + "\nnet.udpPort=" + freeUdpPort() + "\nnet.kad.enabled=false\n");
-        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            assertThat(accepts(first)).isTrue();
-            int second = freeTcpPort();
+                "net.tcpPort=" + this.firstPort + "\nnet.udpPort=" + freeUdpPort() + "\nnet.kad.enabled=false\n");
+        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        assertThat(accepts(this.firstPort)).isTrue();
+    }
 
-            engine.updatePreferences(p -> p.toBuilder().tcpPort(second).build()).get(10, TimeUnit.SECONDS);
+    private void givenTheTcpPortIsMovedToAnotherFreeOne() throws Exception {
+        int second = freeTcpPort();
 
-            assertThat(accepts(second)).as("the new port listens at once").isTrue();
-            assertThat(accepts(first)).as("the old one is let go").isFalse();
+        this.engine
+                .updatePreferences(p -> p.toBuilder().tcpPort(second).build())
+                .get(10, TimeUnit.SECONDS);
 
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
-            engine.connectKad().get(10, TimeUnit.SECONDS);
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS))
-                    .as("connected by hand")
-                    .isPresent();
-            engine.disconnectKad().get(10, TimeUnit.SECONDS);
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
+        assertThat(accepts(second)).as("the new port listens at once").isTrue();
+        assertThat(accepts(this.firstPort)).as("the old one is let go").isFalse();
+    }
 
-            engine.updatePreferences(p -> p.toBuilder().kadEnabled(true).build())
-                    .get(10, TimeUnit.SECONDS);
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS))
-                    .as("turned on in the settings")
-                    .isPresent();
-            engine.updatePreferences(p -> p.toBuilder().kadEnabled(false).build())
-                    .get(10, TimeUnit.SECONDS);
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
-        }
-        assertThat(accepts(first)).as("closed with the engine").isFalse();
+    private void givenKadIsConnectedByHand() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
+        this.engine.connectKad().get(10, TimeUnit.SECONDS);
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS))
+                .as("connected by hand")
+                .isPresent();
+    }
+
+    private void givenKadIsDisconnectedByHand() throws Exception {
+        this.engine.disconnectKad().get(10, TimeUnit.SECONDS);
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void givenKadIsTurnedOnInTheSettings() throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().kadEnabled(true).build())
+                .get(10, TimeUnit.SECONDS);
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS))
+                .as("turned on in the settings")
+                .isPresent();
+    }
+
+    private void givenKadIsTurnedOffInTheSettings() throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().kadEnabled(false).build())
+                .get(10, TimeUnit.SECONDS);
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void whenTheEngineIsClosed() {
+        this.engine.close();
+    }
+
+    private void thenTheFirstPortIsNoLongerListenedOn() {
+        assertThat(accepts(this.firstPort)).as("closed with the engine").isFalse();
     }
 
     private static boolean accepts(int port) {

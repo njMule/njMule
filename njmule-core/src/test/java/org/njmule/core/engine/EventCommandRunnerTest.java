@@ -52,8 +52,8 @@ class EventCommandRunnerTest {
     void shouldFillTheDownloadInsideItsArgumentsWhenADownloadCompletes() {
         givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify --file=%FILE \"%NAME (%SIZE bytes)\" %HASH");
         givenTheRunner();
+        givenTheEngineSaid(completed("My Holiday.avi"));
 
-        whenTheEngineSays(completed("My Holiday.avi"));
         whenTheWaitingCommandsRun();
 
         thenTheCommandLaunchedIs(List.of(
@@ -68,8 +68,8 @@ class EventCommandRunnerTest {
         givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
         givenTheCommandIsTurnedOff(EventCommands.Event.DOWNLOAD_COMPLETED);
         givenTheRunner();
+        givenTheEngineSaid(completed("a.iso"));
 
-        whenTheEngineSays(completed("a.iso"));
         whenTheWaitingCommandsRun();
 
         thenNothingWasLaunched();
@@ -79,8 +79,8 @@ class EventCommandRunnerTest {
     void shouldTellTheReasonWhenADownloadFails() {
         givenTheCommand(EventCommands.Event.DOWNLOAD_FAILED, "alert %NAME %MESSAGE %FILE");
         givenTheRunner();
+        givenTheEngineSaid(new EngineEvent.DownloadFailed(download("b.iso"), "disk full"));
 
-        whenTheEngineSays(new EngineEvent.DownloadFailed(download("b.iso"), "disk full"));
         whenTheWaitingCommandsRun();
 
         thenTheCommandLaunchedIs(List.of("alert", "b.iso", "disk full", ""));
@@ -90,9 +90,9 @@ class EventCommandRunnerTest {
     void shouldNameTheSenderOrItsAddressForAChatMessage() {
         givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %SENDER: %MESSAGE");
         givenTheRunner();
+        givenTheEngineSaid(message(Optional.of("ann"), "hello there"));
+        givenTheEngineSaid(message(Optional.empty(), "hi"));
 
-        whenTheEngineSays(message(Optional.of("ann"), "hello there"));
-        whenTheEngineSays(message(Optional.empty(), "hi"));
         whenTheWaitingCommandsRun();
 
         thenTheCommandsLaunchedAre(
@@ -104,8 +104,8 @@ class EventCommandRunnerTest {
         givenTheCommand(EventCommands.Event.CHAT_MESSAGE, "say %MESSAGE");
         givenTheSystemIsWindows();
         givenTheRunner();
+        givenTheEngineSaid(message(Optional.of("eve"), "x\" --delete-all \"y"));
 
-        whenTheEngineSays(message(Optional.of("eve"), "x\" --delete-all \"y"));
         whenTheWaitingCommandsRun();
 
         thenTheCommandLaunchedIs(List.of("say", "x' --delete-all 'y"));
@@ -115,9 +115,9 @@ class EventCommandRunnerTest {
     void shouldRunTheDiskCommandOnlyWhenSpaceRunsShort() {
         givenTheCommand(EventCommands.Event.DISK_SPACE_SHORT, "warn %FILE");
         givenTheRunner();
+        givenTheEngineSaid(new EngineEvent.DiskSpace(this.dir, true));
+        givenTheEngineSaid(new EngineEvent.DiskSpace(this.dir, false));
 
-        whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, true));
-        whenTheEngineSays(new EngineEvent.DiskSpace(this.dir, false));
         whenTheWaitingCommandsRun();
 
         thenTheCommandLaunchedIs(List.of("warn", this.dir.toAbsolutePath().toString()));
@@ -127,8 +127,8 @@ class EventCommandRunnerTest {
     void shouldRunNothingForACommandWithAQuoteLeftOpen() {
         givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify \"%NAME");
         givenTheRunner();
+        givenTheEngineSaid(completed("c.iso"));
 
-        whenTheEngineSays(completed("c.iso"));
         whenTheWaitingCommandsRun();
 
         thenNothingWasLaunched();
@@ -149,8 +149,8 @@ class EventCommandRunnerTest {
         givenTheCommand(EventCommands.Event.DOWNLOAD_COMPLETED, "notify %NAME");
         givenTheRunner();
         givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
+        givenTheWaitingCommandsRan();
 
-        whenTheWaitingCommandsRun();
         whenDownloadsComplete(1);
 
         thenCommandsAreWaitingToRun(1);
@@ -162,8 +162,8 @@ class EventCommandRunnerTest {
         givenTheLauncherFails();
         givenTheRunner();
         givenDownloadsCompleted(EventCommandRunner.MAX_RUNNING);
+        givenTheWaitingCommandsRan();
 
-        whenTheWaitingCommandsRun();
         whenDownloadsComplete(EventCommandRunner.MAX_RUNNING);
 
         thenCommandsAreWaitingToRun(EventCommandRunner.MAX_RUNNING);
@@ -203,7 +203,11 @@ class EventCommandRunnerTest {
         whenDownloadsComplete(count);
     }
 
-    private void whenTheEngineSays(EngineEvent event) {
+    private void givenTheWaitingCommandsRan() {
+        whenTheWaitingCommandsRun();
+    }
+
+    private void givenTheEngineSaid(EngineEvent event) {
         this.runner.handle(event);
     }
 

@@ -24,6 +24,7 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,44 +38,105 @@ class KadSettingsTest {
     @TempDir
     Path dir;
 
-    @Test
-    void kadConnectedByHandSurvivesOtherSettings() throws Exception {
-        try (NjMuleEngine engine = start(freeUdpPort(), false)) {
-            engine.connectKad().get(10, TimeUnit.SECONDS);
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
+    private DatagramSocket taken;
+    private int udpPort;
+    private NjMuleEngine engine;
 
-            engine.updatePreferences(p -> p.toBuilder().nick("renamed").build()).get(10, TimeUnit.SECONDS);
-
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS))
-                    .as("still connected")
-                    .isPresent();
+    @AfterEach
+    void close() {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.taken != null) {
+            this.taken.close();
         }
     }
 
     @Test
-    void kadThatCouldNotTakeItsPortStartsOnTheNextOne() throws Exception {
-        try (DatagramSocket taken = new DatagramSocket(0);
-                NjMuleEngine engine = start(taken.getLocalPort(), true)) {
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
-            int free = freeUdpPort();
+    void shouldKeepKadConnectedByHandWhenOtherSettingsChange() throws Exception {
+        givenAFreeUdpPort();
+        givenAnEngineWithKad(false);
+        givenKadIsConnectedByHand();
 
-            engine.updatePreferences(p -> p.toBuilder().udpPort(free).build()).get(10, TimeUnit.SECONDS);
+        whenTheNickIsChangedTo("renamed");
 
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
-        }
+        thenKadIsStillConnected();
     }
 
     @Test
-    void kadStoppedByHandStaysStoppedWhenThePortChanges() throws Exception {
-        try (NjMuleEngine engine = start(freeUdpPort(), true)) {
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
-            engine.disconnectKad().get(10, TimeUnit.SECONDS);
-            int free = freeUdpPort();
+    void shouldStartKadThatCouldNotTakeItsPortOnTheNextOne() throws Exception {
+        givenAUdpPortTakenByAnotherProgram();
+        givenAnEngineWithKad(true);
+        givenKadDidNotStart();
 
-            engine.updatePreferences(p -> p.toBuilder().udpPort(free).build()).get(10, TimeUnit.SECONDS);
+        whenTheUdpPortIsChangedToAFreeOne();
 
-            assertThat(engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
-        }
+        thenKadRuns();
+    }
+
+    @Test
+    void shouldKeepKadStoppedByHandStoppedWhenThePortChanges() throws Exception {
+        givenAFreeUdpPort();
+        givenAnEngineWithKad(true);
+        givenKadStarted();
+        givenKadIsDisconnectedByHand();
+
+        whenTheUdpPortIsChangedToAFreeOne();
+
+        thenKadDoesNotRun();
+    }
+
+    private void givenAFreeUdpPort() throws IOException {
+        this.udpPort = freeUdpPort();
+    }
+
+    private void givenAUdpPortTakenByAnotherProgram() throws IOException {
+        this.taken = new DatagramSocket(0);
+        this.udpPort = this.taken.getLocalPort();
+    }
+
+    private void givenAnEngineWithKad(boolean kad) throws IOException {
+        this.engine = start(this.udpPort, kad);
+    }
+
+    private void givenKadIsConnectedByHand() throws Exception {
+        this.engine.connectKad().get(10, TimeUnit.SECONDS);
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
+    }
+
+    private void givenKadIsDisconnectedByHand() throws Exception {
+        this.engine.disconnectKad().get(10, TimeUnit.SECONDS);
+    }
+
+    private void givenKadStarted() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
+    }
+
+    private void givenKadDidNotStart() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void whenTheNickIsChangedTo(String nick) throws Exception {
+        this.engine.updatePreferences(p -> p.toBuilder().nick(nick).build()).get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenTheUdpPortIsChangedToAFreeOne() throws Exception {
+        int free = freeUdpPort();
+        this.engine.updatePreferences(p -> p.toBuilder().udpPort(free).build()).get(10, TimeUnit.SECONDS);
+    }
+
+    private void thenKadIsStillConnected() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS))
+                .as("still connected")
+                .isPresent();
+    }
+
+    private void thenKadRuns() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isPresent();
+    }
+
+    private void thenKadDoesNotRun() throws Exception {
+        assertThat(this.engine.kad().get(5, TimeUnit.SECONDS)).isEmpty();
     }
 
     private NjMuleEngine start(int udpPort, boolean kad) throws IOException {

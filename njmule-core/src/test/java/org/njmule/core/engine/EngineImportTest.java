@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -53,136 +54,258 @@ class EngineImportTest {
     @TempDir
     Path dir;
 
-    @Test
-    void importedDownloadsGoOnAndTheIdentityFollowsAtTheNextStart() throws Exception {
-        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        SortedMap<String, String> before = emule.fingerprint();
-        int port = freePort();
-        AppDirectories dirs = directories(port);
+    private SyntheticEmuleProfile emule;
+    private SortedMap<String, String> before;
+    private int port;
+    private AppDirectories dirs;
+    private NjMuleEngine engine;
+    private ImportReport report;
 
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, true, true))
-                    .get(30, TimeUnit.SECONDS);
-
-            assertThat(report.items())
-                    .filteredOn(i -> i.outcome() == ImportReport.Outcome.FAILED)
-                    .isEmpty();
-            assertThat(engine.preferences().nick()).isEqualTo(SyntheticEmuleProfile.NICK);
-            assertThat(engine.preferences().tcpPort()).isEqualTo(port);
-            assertThat(NodesDat.read(Files.readAllBytes(dirs.config().resolve(KadNode.NODES_FILE)))
-                            .contacts())
-                    .hasSize(3);
-            // Both copies are one file: the complete one finishes, the other is then known. The name is reserved by
-            // an empty file before the data replaces it.
-            Path finished = engine.preferences().effectiveIncomingDir(dirs).resolve("complete.bin");
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-            while (!Files.exists(finished) || Files.size(finished) != emule.downloadData.length) {
-                assertThat(System.nanoTime()).isLessThan(deadline);
-                Thread.sleep(50);
-            }
-            assertThat(Files.readAllBytes(finished)).isEqualTo(emule.downloadData);
-            List<DownloadInfo> downloads = engine.downloads().get(5, TimeUnit.SECONDS);
-            assertThat(downloads).hasSize(1);
-            assertThat(downloads.getFirst().hash()).isEqualTo(emule.halfHash);
-            assertThat(downloads.getFirst().completed()).isEqualTo(SyntheticEmuleProfile.DOWNLOAD_SIZE / 2);
-            assertThat(engine.sharedFiles().get(5, TimeUnit.SECONDS))
-                    .anyMatch(f -> f.name().equals("shared.bin"));
-            assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).isDirectory();
-        }
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            assertThat(engine.isRunning()).isTrue();
-            assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-            assertThat(PreferencesDat.read(Files.readAllBytes(dirs.config().resolve(UserHashStore.FILE_NAME)))
-                            .userHash())
-                    .isEqualTo(PreferencesDat.read(Files.readAllBytes(emule.config.resolve(UserHashStore.FILE_NAME)))
-                            .userHash());
-        }
-        assertThat(emule.fingerprint()).isEqualTo(before);
-    }
-
-    @Test
-    void theEngineStartsAfterTwoIdentityImports() throws Exception {
-        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        AppDirectories dirs = directories(freePort());
-        ImportOptions identity = new ImportOptions(false, true, false);
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            engine.importFromEmule(emule.config, identity).get(30, TimeUnit.SECONDS);
-            engine.importFromEmule(emule.config, identity).get(30, TimeUnit.SECONDS);
-        }
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            assertThat(engine.isRunning()).isTrue();
-            assertThat(dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
-            assertThat(dirs.config().resolve("cryptkey.dat"))
-                    .hasSameBinaryContentAs(emule.config.resolve("cryptkey.dat"));
+    @AfterEach
+    void close() {
+        if (this.engine != null) {
+            this.engine.close();
         }
     }
 
     @Test
-    void eMulesSearchesOutliveTheSessionOfTheImport() throws Exception {
-        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
+    void shouldGoOnWithTheImportedDownloadsAndTakeTheIdentityAtTheNextStart() throws Exception {
+        givenAnEmuleProfile();
+        givenAProfileOfOurs();
+        givenARunningEngine();
+        givenTheEmuleProfileWasImported(new ImportOptions(false, true, true));
+        givenNothingFailedInTheImport();
+        givenTheNickIsTakenButNotThePort();
+        givenTheKadContactsSaved(3);
+        givenTheCompleteDownloadIsFinished();
+        givenTheHalfDownloadGoesOn();
+        givenTheFileIsShared("shared.bin");
+        givenTheIdentityWaitsForTheNextStart();
+
+        whenTheEngineStartsAgain();
+
+        thenTheEngineRuns();
+        thenNoIdentityWaitsAnyMore();
+        thenTheUserHashIsTheOneOfTheEmuleProfile();
+        thenTheEmuleProfileIsUntouched();
+    }
+
+    @Test
+    void shouldStartAfterTwoIdentityImports() throws Exception {
+        givenAnEmuleProfile();
+        givenAProfileOfOurs();
+        givenARunningEngine();
+        givenTheEmuleProfileWasImported(new ImportOptions(false, true, false));
+        givenTheEmuleProfileWasImported(new ImportOptions(false, true, false));
+
+        whenTheEngineStartsAgain();
+
+        thenTheEngineRuns();
+        thenNoIdentityWaitsAnyMore();
+        thenOurFileIsTheOneOfTheEmuleProfile("cryptkey.dat");
+    }
+
+    @Test
+    void shouldKeepTheSearchesOfEmuleBeyondTheSessionOfTheImport() throws Exception {
+        givenAnEmuleProfile();
+        givenTheEmuleProfileHasTheSearch("linux");
+        givenAProfileOfOurs();
+        givenARunningEngine();
+        givenTheEmuleProfileWasImported(new ImportOptions(false, false, false));
+        givenTheReportSaysTheSearchesComeFromTheNextStart();
+        givenTheInterfaceSavesItsSearches();
+
+        whenTheEngineStartsAgain();
+
+        thenTheSavedSearchesAre("linux");
+    }
+
+    @Test
+    void shouldNotPutADownloadInAnUnrelatedCategoryOfOurs() throws Exception {
+        givenAnEmuleProfile();
+        givenTheEmuleProfileHasTheCategory("Films");
+        givenTheHalfDownloadOfEmuleIsInCategory(1);
+        givenAProfileOfOurs();
+        givenARunningEngine();
+        givenOurCategory(1, "Mine");
+
+        whenTheEmuleProfileIsImported(new ImportOptions(false, false, true));
+
+        thenTheHalfDownloadIsInCategory(Category.NONE);
+    }
+
+    @Test
+    void shouldLeaveTheEngineAsItWasAfterADryRun() throws Exception {
+        givenAnEmuleProfile();
+        givenAProfileOfOurs();
+        givenARunningEngine();
+
+        whenTheEmuleProfileIsImported(new ImportOptions(true, true, true));
+
+        thenTheReportIsADryRun();
+        thenTheNickIsNotTaken();
+        thenThereIsNoDownload();
+        thenNoKadContactIsSaved();
+    }
+
+    private void givenAnEmuleProfile() throws IOException {
+        this.emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
+        this.before = this.emule.fingerprint();
+    }
+
+    private void givenTheEmuleProfileHasTheSearch(String title) throws IOException {
         Files.write(
-                emule.config.resolve(StoredSearches.FILE_NAME),
+                this.emule.config.resolve(StoredSearches.FILE_NAME),
                 SearchFiles.writeStored(
-                        List.of(new SearchFiles.StoredSearch(1, 1, false, "linux", "linux", "", List.of()))));
-        AppDirectories dirs = directories(freePort());
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(false, false, false))
-                    .get(30, TimeUnit.SECONDS);
-            assertThat(report.items())
-                    .filteredOn(i -> i.file().equals(StoredSearches.FILE_NAME))
-                    .singleElement()
-                    .satisfies(i -> assertThat(i.detail()).endsWith("from the next start"));
-            // What closing the interface after a look at the searches does.
-            engine.saveSearches(List.of()).get(5, TimeUnit.SECONDS);
-        }
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            assertThat(engine.savedSearches().get(5, TimeUnit.SECONDS))
-                    .extracting(SavedSearch::title)
-                    .containsExactly("linux");
-        }
+                        List.of(new SearchFiles.StoredSearch(1, 1, false, title, title, "", List.of()))));
     }
 
-    @Test
-    void aDownloadDoesNotLandInAnUnrelatedCategoryOfOurs() throws Exception {
-        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        Files.writeString(emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=Films\r\n");
-        emule.putInCategory(2, 1);
-        AppDirectories dirs = directories(freePort());
-
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            engine.setCategories(
-                            List.of(new Category(1, "Mine", Optional.empty(), "", 0, DownloadPriority.AUTO, "", false)))
-                    .get(5, TimeUnit.SECONDS);
-            engine.importFromEmule(emule.config, new ImportOptions(false, false, true))
-                    .get(30, TimeUnit.SECONDS);
-
-            assertThat(engine.downloads().get(5, TimeUnit.SECONDS))
-                    .filteredOn(d -> d.hash().equals(emule.halfHash))
-                    .singleElement()
-                    .extracting(DownloadInfo::category)
-                    .isEqualTo(Category.NONE);
-        }
+    private void givenTheEmuleProfileHasTheCategory(String title) throws IOException {
+        Files.writeString(this.emule.config.resolve("Category.ini"), "[Cat#1]\r\nTitle=" + title + "\r\n");
     }
 
-    @Test
-    void aDryRunLeavesTheEngineAsItWas() throws Exception {
-        SyntheticEmuleProfile emule = SyntheticEmuleProfile.create(this.dir.resolve("emule"));
-        AppDirectories dirs = directories(freePort());
+    private void givenTheHalfDownloadOfEmuleIsInCategory(int category) throws IOException {
+        this.emule.putInCategory(2, category);
+    }
 
-        try (NjMuleEngine engine = Engine.start(new EngineConfig(dirs), () -> false)) {
-            ImportReport report = engine.importFromEmule(emule.config, new ImportOptions(true, true, true))
-                    .get(30, TimeUnit.SECONDS);
+    private void givenAProfileOfOurs() throws IOException {
+        this.port = freePort();
+        this.dirs = directories(this.port);
+    }
 
-            assertThat(report.dryRun()).isTrue();
-            assertThat(engine.preferences().nick()).isNotEqualTo(SyntheticEmuleProfile.NICK);
-            assertThat(engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
-            assertThat(dirs.config().resolve(KadNode.NODES_FILE)).doesNotExist();
+    private void givenARunningEngine() throws IOException {
+        this.engine = Engine.start(new EngineConfig(this.dirs), () -> false);
+    }
+
+    private void givenOurCategory(int id, String name) throws Exception {
+        this.engine
+                .setCategories(
+                        List.of(new Category(id, name, Optional.empty(), "", 0, DownloadPriority.AUTO, "", false)))
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheEmuleProfileWasImported(ImportOptions options) throws Exception {
+        whenTheEmuleProfileIsImported(options);
+    }
+
+    private void givenNothingFailedInTheImport() {
+        assertThat(this.report.items())
+                .filteredOn(i -> i.outcome() == ImportReport.Outcome.FAILED)
+                .isEmpty();
+    }
+
+    private void givenTheNickIsTakenButNotThePort() {
+        assertThat(this.engine.preferences().nick()).isEqualTo(SyntheticEmuleProfile.NICK);
+        assertThat(this.engine.preferences().tcpPort()).isEqualTo(this.port);
+    }
+
+    private void givenTheKadContactsSaved(int count) throws IOException {
+        assertThat(NodesDat.read(Files.readAllBytes(this.dirs.config().resolve(KadNode.NODES_FILE)))
+                        .contacts())
+                .hasSize(count);
+    }
+
+    // Both copies are one file: the complete one finishes, the other is then known. The name is reserved by an empty
+    // file before the data replaces it.
+    private void givenTheCompleteDownloadIsFinished() throws Exception {
+        Path finished =
+                this.engine.preferences().effectiveIncomingDir(this.dirs).resolve("complete.bin");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (!Files.exists(finished) || Files.size(finished) != this.emule.downloadData.length) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(50);
         }
+        assertThat(Files.readAllBytes(finished)).isEqualTo(this.emule.downloadData);
+    }
+
+    private void givenTheHalfDownloadGoesOn() throws Exception {
+        List<DownloadInfo> downloads = this.engine.downloads().get(5, TimeUnit.SECONDS);
+        assertThat(downloads).hasSize(1);
+        assertThat(downloads.getFirst().hash()).isEqualTo(this.emule.halfHash);
+        assertThat(downloads.getFirst().completed()).isEqualTo(SyntheticEmuleProfile.DOWNLOAD_SIZE / 2);
+    }
+
+    private void givenTheFileIsShared(String name) throws Exception {
+        assertThat(this.engine.sharedFiles().get(5, TimeUnit.SECONDS))
+                .anyMatch(f -> f.name().equals(name));
+    }
+
+    private void givenTheIdentityWaitsForTheNextStart() {
+        assertThat(this.dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).isDirectory();
+    }
+
+    private void givenTheReportSaysTheSearchesComeFromTheNextStart() {
+        assertThat(this.report.items())
+                .filteredOn(i -> i.file().equals(StoredSearches.FILE_NAME))
+                .singleElement()
+                .satisfies(i -> assertThat(i.detail()).endsWith("from the next start"));
+    }
+
+    // What closing the interface after a look at the searches does.
+    private void givenTheInterfaceSavesItsSearches() throws Exception {
+        this.engine.saveSearches(List.of()).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheEmuleProfileIsImported(ImportOptions options) throws Exception {
+        this.report = this.engine.importFromEmule(this.emule.config, options).get(30, TimeUnit.SECONDS);
+    }
+
+    private void whenTheEngineStartsAgain() throws IOException {
+        this.engine.close();
+        this.engine = Engine.start(new EngineConfig(this.dirs), () -> false);
+    }
+
+    private void thenTheEngineRuns() {
+        assertThat(this.engine.isRunning()).isTrue();
+    }
+
+    private void thenNoIdentityWaitsAnyMore() {
+        assertThat(this.dirs.config().resolve(EmuleImporter.PENDING_IDENTITY)).doesNotExist();
+    }
+
+    private void thenTheUserHashIsTheOneOfTheEmuleProfile() throws IOException {
+        assertThat(PreferencesDat.read(Files.readAllBytes(this.dirs.config().resolve(UserHashStore.FILE_NAME)))
+                        .userHash())
+                .isEqualTo(PreferencesDat.read(Files.readAllBytes(this.emule.config.resolve(UserHashStore.FILE_NAME)))
+                        .userHash());
+    }
+
+    private void thenOurFileIsTheOneOfTheEmuleProfile(String name) {
+        assertThat(this.dirs.config().resolve(name)).hasSameBinaryContentAs(this.emule.config.resolve(name));
+    }
+
+    private void thenTheEmuleProfileIsUntouched() throws IOException {
+        assertThat(this.emule.fingerprint()).isEqualTo(this.before);
+    }
+
+    private void thenTheSavedSearchesAre(String... titles) throws Exception {
+        assertThat(this.engine.savedSearches().get(5, TimeUnit.SECONDS))
+                .extracting(SavedSearch::title)
+                .containsExactly(titles);
+    }
+
+    private void thenTheHalfDownloadIsInCategory(int category) throws Exception {
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS))
+                .filteredOn(d -> d.hash().equals(this.emule.halfHash))
+                .singleElement()
+                .extracting(DownloadInfo::category)
+                .isEqualTo(category);
+    }
+
+    private void thenTheReportIsADryRun() {
+        assertThat(this.report.dryRun()).isTrue();
+    }
+
+    private void thenTheNickIsNotTaken() {
+        assertThat(this.engine.preferences().nick()).isNotEqualTo(SyntheticEmuleProfile.NICK);
+    }
+
+    private void thenThereIsNoDownload() throws Exception {
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenNoKadContactIsSaved() {
+        assertThat(this.dirs.config().resolve(KadNode.NODES_FILE)).doesNotExist();
     }
 
     // No Kad: the imported contacts must not be greeted from a test.

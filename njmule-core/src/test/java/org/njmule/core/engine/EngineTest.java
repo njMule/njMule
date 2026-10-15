@@ -17,7 +17,7 @@
 package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,9 +25,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -35,7 +35,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,8 +63,52 @@ import org.njmule.core.util.Ipv4;
 @Timeout(20)
 class EngineTest {
 
+    private static final Ed2kLink.FileLink FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
+    private static final Ed2kLink.FileLink SONG =
+            Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a2".repeat(16)));
+    private static final Category FILMS =
+            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false);
+    private static final Category MUSIC =
+            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false);
+    // Holds all week: stops the downloads of category 1 and resumes those of category 2.
+    private static final Schedule.Rule NIGHT = new Schedule.Rule(
+            "night",
+            true,
+            EnumSet.allOf(DayOfWeek.class),
+            LocalTime.MIDNIGHT,
+            LocalTime.MIDNIGHT,
+            OptionalInt.empty(),
+            OptionalInt.empty(),
+            OptionalInt.empty(),
+            OptionalInt.empty(),
+            OptionalInt.of(1),
+            OptionalInt.of(2));
+    // Holds all week with an upload limit of 7 KiB/s.
+    private static final Schedule.Rule ALWAYS = new Schedule.Rule(
+            "always",
+            true,
+            EnumSet.allOf(DayOfWeek.class),
+            LocalTime.MIDNIGHT,
+            LocalTime.MIDNIGHT,
+            OptionalInt.of(7),
+            OptionalInt.empty(),
+            OptionalInt.empty(),
+            OptionalInt.empty());
+
     @TempDir
     Path root;
+
+    private final Recorder recorder = new Recorder();
+    private Engine engine;
+    private Engine second;
+    private AppDirectories dirs;
+    private Path met;
+    private Preferences updated;
+    private int added;
+    private boolean removed;
+    private EngineStatus status;
+    private Throwable exception;
 
     private static final class Recorder implements Flow.Subscriber<EngineEvent> {
         private final List<EngineEvent> events = new CopyOnWriteArrayList<>();
@@ -95,59 +139,285 @@ class EngineTest {
         return NjMuleEngine.start(new EngineConfig(AppDirectories.underRoot(this.root, false)));
     }
 
-    @Test
-    void startCreatesTheLayoutAndPersistsDefaultPreferences() throws IOException {
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.isRunning()).isTrue();
-            assertThat(engine.directories().logs()).isDirectory();
-            assertThat(engine.directories().config().resolve(PreferencesCodec.FILE_NAME))
-                    .exists();
-            assertThat(engine.preferences()).isEqualTo(Preferences.defaults());
+    @AfterEach
+    void close() {
+        if (this.engine != null) {
+            this.engine.close();
+        }
+        if (this.second != null) {
+            this.second.close();
         }
     }
 
     @Test
-    void updatePersistsPublishesAndSurvivesARestart() throws Exception {
-        Recorder recorder = new Recorder();
-        try (NjMuleEngine engine = start()) {
-            engine.events().subscribe(recorder);
-            Preferences updated = engine.updatePreferences(
-                            p -> p.toBuilder().nick("renamed").build())
-                    .get(5, TimeUnit.SECONDS);
-            assertThat(updated.nick()).isEqualTo("renamed");
-            assertThat(engine.preferences()).isEqualTo(updated);
+    void shouldCreateTheLayoutAndSaveTheDefaultPreferencesAtTheStart() throws IOException {
+        whenTheEngineStarts();
 
-            // A no-op change does not publish again.
-            engine.updatePreferences(p -> p).get(5, TimeUnit.SECONDS);
-        }
-        assertThat(recorder.completed.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(recorder.events)
-                .filteredOn(EngineEvent.PreferencesChanged.class::isInstance)
-                .hasSize(1);
-        assertThat(recorder.events).last().isInstanceOf(EngineEvent.Stopping.class);
-
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.preferences().nick()).isEqualTo("renamed");
-        }
+        thenTheEngineRuns();
+        thenTheLogFolderExists();
+        thenThePreferencesAreSaved();
+        thenThePreferencesAreTheDefaults();
     }
 
     @Test
-    void invalidUpdateFailsAndKeepsThePreviousPreferences() throws IOException {
-        try (NjMuleEngine engine = start()) {
-            assertThatThrownBy(() -> engine.updatePreferences(
-                                    p -> p.toBuilder().tcpPort(0).build())
-                            .get())
-                    .isInstanceOf(ExecutionException.class)
-                    .hasCauseInstanceOf(IllegalArgumentException.class);
-            assertThat(engine.preferences()).isEqualTo(Preferences.defaults());
-        }
+    void shouldPublishAChangeOfThePreferencesOnceAndTheStopLast() throws Exception {
+        givenARunningEngine();
+        givenSomeoneListens();
+        givenTheNickIsChangedTo("renamed");
+        givenTheSamePreferencesAreSetAgain();
+
+        whenTheEngineIsClosed();
+
+        thenTheEventsEnd();
+        thenTheChangesOfThePreferencesPublishedAre(1);
+        thenTheLastEventIs(EngineEvent.Stopping.class);
     }
 
     @Test
-    void listsAndRemovesServersAndTellsItsStatus() throws Exception {
-        Path met = this.root.resolve("other-server.met");
+    void shouldKeepAChangedNickAfterARestart() throws Exception {
+        givenARunningEngine();
+        givenTheNickIsChangedTo("renamed");
+
+        whenTheEngineIsRestarted();
+
+        thenTheNickIs("renamed");
+    }
+
+    @Test
+    void shouldRefuseAnInvalidChangeAndKeepThePreviousPreferences() throws IOException {
+        givenARunningEngine();
+
+        whenTheTcpPortIsChangedTo(0);
+
+        thenExceptionOccurred(ExecutionException.class, IllegalArgumentException.class);
+        thenThePreferencesAreTheDefaults();
+    }
+
+    @Test
+    void shouldAddTheServersOfAServerMetWithTheirNamesAndPriorities() throws Exception {
+        givenAServerMetOfTwoServers();
+        givenARunningEngine();
+
+        whenTheServersOfTheFileAreAdded();
+
+        thenTheServersAddedAre(2);
+        thenTheServerNamesAre("One", "81.2.3.5:4242");
+        thenTheServerPrioritiesAre(ServerInfo.Priority.HIGH, ServerInfo.Priority.NORMAL);
+    }
+
+    @Test
+    void shouldRemoveAServerOnlyOnce() throws Exception {
+        givenAServerMetOfTwoServers();
+        givenARunningEngine();
+        givenTheServersOfTheFileWereAdded(2);
+        givenTheServerWasRemoved("81.2.3.4:4661");
+
+        whenTheServerIsRemoved("81.2.3.4:4661");
+
+        thenNothingIsRemoved();
+        thenTheServerCountIs(1);
+    }
+
+    @Test
+    void shouldTellAStatusWithoutServerTrafficOrUploads() throws Exception {
+        givenAServerMetOfTwoServers();
+        givenARunningEngine();
+        givenTheServersOfTheFileWereAdded(2);
+        givenTheServerWasRemoved("81.2.3.4:4661");
+
+        whenTheEngineStatusIsAsked();
+
+        thenTheStatusHasNoServerNoIdNoDownloadAndNoTraffic();
+        thenThereAreNoUploads();
+    }
+
+    @Test
+    void shouldKeepServersKnownByHostNameAndActOnThemByIt() throws Exception {
+        givenAServerMetOfServersKnownByName("localhost", "b.example");
+        givenARunningEngine();
+        givenTheServersOfTheFileWereAdded(2);
+        givenTheServerAddressesAre("localhost:4661", "b.example:4661");
+        givenTheServerIsMadeStatic("localhost:4661");
+        givenTheServerPriorityIsSet("localhost:4661", ServerInfo.Priority.LOW);
+
+        whenTheServerIsRemoved("localhost:4661");
+
+        thenTheServerIsRemoved();
+        thenTheServerAddressesAre("b.example:4661");
+    }
+
+    @Test
+    void shouldStopTheDownloadsOfOneCategoryAndResumeThoseOfAnotherByARule() throws Exception {
+        givenARunningEngine();
+        givenTheCategories(FILMS, MUSIC);
+        givenTheDownloadInCategory(FILM, 1);
+        givenTheDownloadInCategory(SONG, 2);
+        givenTheDownloadIsPaused(SONG);
+
+        whenTheScheduleHolds(NIGHT);
+
+        thenTheStatusOfTheDownloadIs(FILM, DownloadInfo.Status.STOPPED);
+        thenTheStatusOfTheDownloadIs(SONG, DownloadInfo.Status.DOWNLOADING);
+    }
+
+    @Test
+    void shouldApplyTheRuleInForceOverThePreferences() throws Exception {
+        givenARunningEngine();
+        givenNoRuleIsInForce();
+
+        whenTheScheduleHolds(ALWAYS);
+
+        thenTheRuleInForceIs(ALWAYS);
+        thenTheRulesAre(ALWAYS);
+        thenTheEffectiveUploadLimitIs(7);
+        thenTheUploadLimitOfThePreferencesIs(0);
+    }
+
+    @Test
+    void shouldKeepTheRuleInForceWhenThePreferencesChange() throws Exception {
+        givenARunningEngine();
+        givenTheScheduleHolds(ALWAYS);
+
+        whenTheNickIsChangedTo("other");
+
+        thenTheEffectiveNickIs("other");
+        thenTheEffectiveUploadLimitIs(7);
+    }
+
+    @Test
+    void shouldLiftTheRuleKeptAcrossARestartWhenTheScheduleIsEmptied() throws Exception {
+        givenARunningEngine();
+        givenTheScheduleHolds(ALWAYS);
+        givenTheEngineWasRestarted();
+        givenTheRuleInForceIsStill(ALWAYS);
+
+        whenTheScheduleIsEmptied();
+
+        thenNoRuleIsInForce();
+        thenTheEffectiveUploadLimitIs(0);
+    }
+
+    @Test
+    void shouldCountTheFirstSession() throws Exception {
+        whenTheEngineStarts();
+
+        thenTheSessionsAre(1);
+        thenTheTotalDownloadedIs(0);
+        thenTheTotalTimeIsThatOfTheSession();
+    }
+
+    @Test
+    void shouldCountTheSessionsAcrossRestarts() throws Exception {
+        givenARunningEngine();
+
+        whenTheEngineIsRestarted();
+
+        thenTheSessionsAre(2);
+    }
+
+    @Test
+    void shouldTakeOnlyTheValidTotalsOfTheStatistics() throws Exception {
+        givenARunningEngine();
+        givenTheEngineWasRestarted();
+        givenTheEngineWasClosed();
+        givenTheStatistics("downloaded=12\nuploaded=x\nsessions=-4\n");
+
+        whenTheEngineStarts();
+
+        thenTheTotalDownloadedIs(12);
+        thenTheTotalUploadedIs(0);
+        thenTheSessionsAre(1);
+    }
+
+    @Test
+    void shouldSaveTheServerListAddressesInAddressesDat() throws Exception {
+        givenARunningEngine();
+        givenNoServerListAddressIsKnown();
+        givenTheServerListAddresses("https://example.org/server.met");
+
+        whenTheEngineIsClosed();
+
+        thenTheConfigurationHasTheFile("addresses.dat");
+    }
+
+    @Test
+    void shouldReadTheServerListAddressesBackAtTheNextStart() throws Exception {
+        givenARunningEngine();
+        givenTheServerListAddresses("https://example.org/server.met");
+        givenTheEngineWasClosed();
+
+        whenTheEngineStarts();
+
+        thenTheServerListAddressesAre("https://example.org/server.met");
+    }
+
+    @Test
+    void shouldStayClosedWhenClosedAgain() throws IOException {
+        givenARunningEngine();
+        givenTheEngineWasClosed();
+
+        whenTheEngineIsClosed();
+
+        thenTheEngineDoesNotRun();
+    }
+
+    @Test
+    void shouldRefuseASecondEngineOnTheSameConfiguration() throws IOException {
+        givenAnEngineOnTheConfigurationIn("locked");
+
+        whenASecondEngineStartsOnTheSameConfiguration();
+
+        thenExceptionOccurred(IOException.class, "already running");
+        thenTheEngineRuns();
+    }
+
+    @Test
+    void shouldLetTheNextEngineStartOnceTheFirstIsClosed() throws IOException {
+        givenAnEngineOnTheConfigurationIn("locked");
+        givenASecondEngineWasRefused();
+        givenTheEngineWasClosed();
+
+        whenASecondEngineStartsOnTheSameConfiguration();
+
+        thenNoExceptionOccurred();
+    }
+
+    private void givenARunningEngine() throws IOException {
+        whenTheEngineStarts();
+    }
+
+    private void givenAnEngineOnTheConfigurationIn(String folder) throws IOException {
+        this.dirs = AppDirectories.underRoot(this.root.resolve(folder), false);
+        this.engine = Engine.start(new EngineConfig(this.dirs), () -> false);
+    }
+
+    private void givenSomeoneListens() {
+        this.engine.events().subscribe(this.recorder);
+    }
+
+    private void givenTheNickIsChangedTo(String nick) throws Exception {
+        whenTheNickIsChangedTo(nick);
+        assertThat(this.updated.nick()).isEqualTo(nick);
+        assertThat(this.engine.preferences()).isEqualTo(this.updated);
+    }
+
+    // A no-op change does not publish again.
+    private void givenTheSamePreferencesAreSetAgain() throws Exception {
+        this.engine.updatePreferences(p -> p).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheEngineWasClosed() {
+        whenTheEngineIsClosed();
+    }
+
+    private void givenTheEngineWasRestarted() throws IOException {
+        whenTheEngineIsRestarted();
+    }
+
+    private void givenAServerMetOfTwoServers() throws IOException {
+        this.met = this.root.resolve("other-server.met");
         Files.write(
-                met,
+                this.met,
                 ServerMet.write(List.of(
                         new ServerMet.Server(
                                 Ipv4.of(81, 2, 3, 4),
@@ -156,180 +426,294 @@ class EngineTest {
                                         new Tag.StringTag(TagName.id(ServerTag.SERVERNAME), "One"),
                                         new Tag.IntTag(TagName.id(ServerTag.PREFERENCE), 1))),
                         new ServerMet.Server(Ipv4.of(81, 2, 3, 5), 4242, List.of()))));
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
-
-            List<ServerInfo> servers = engine.servers().get(5, TimeUnit.SECONDS);
-            assertThat(servers).extracting(ServerInfo::name).containsExactly("One", "81.2.3.5:4242");
-            assertThat(servers.getFirst().priority()).isEqualTo(ServerInfo.Priority.HIGH);
-            assertThat(servers.get(1).priority()).isEqualTo(ServerInfo.Priority.NORMAL);
-            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get())
-                    .isTrue();
-            assertThat(engine.removeServer(ServerAddress.parse("81.2.3.4:4661")).get())
-                    .isFalse();
-            assertThat(engine.servers().get(5, TimeUnit.SECONDS)).hasSize(1);
-
-            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
-            assertThat(status.server()).isEmpty();
-            assertThat(status.clientId()).isZero();
-            assertThat(status.downloads()).isZero();
-            assertThat(status.downloadBytesPerSecond()).isZero();
-            assertThat(engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
-        }
     }
 
-    @Test
-    void serversKnownByHostNameAreKeptAndActedOnByIt() throws Exception {
-        Path met = this.root.resolve("named-server.met");
-        // localhost resolves without any network: acting on it by name must not resolve it.
+    // localhost resolves without any network: acting on it by name must not resolve it.
+    private void givenAServerMetOfServersKnownByName(String host, String otherHost) throws IOException {
+        this.met = this.root.resolve("named-server.met");
         Files.write(
-                met,
+                this.met,
                 ServerMet.write(List.of(
+                        new ServerMet.Server(0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), host))),
                         new ServerMet.Server(
-                                0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "localhost"))),
-                        new ServerMet.Server(
-                                0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), "b.example"))))));
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.addServers(met).get(5, TimeUnit.SECONDS)).isEqualTo(2);
-            assertThat(engine.servers().get(5, TimeUnit.SECONDS))
-                    .extracting(ServerInfo::address)
-                    .containsExactly("localhost:4661", "b.example:4661");
-            ServerAddress named = new ServerAddress("localhost", 4661);
-
-            assertThat(engine.setStaticServer(named, true).get(5, TimeUnit.SECONDS))
-                    .isTrue();
-            assertThat(engine.setServerPriority(named, ServerInfo.Priority.LOW).get(5, TimeUnit.SECONDS))
-                    .isTrue();
-            assertThat(engine.removeServer(named).get(5, TimeUnit.SECONDS)).isTrue();
-
-            assertThat(engine.servers().get(5, TimeUnit.SECONDS))
-                    .extracting(ServerInfo::address)
-                    .containsExactly("b.example:4661");
-        }
+                                0, 4661, List.of(new Tag.StringTag(TagName.id(ServerTag.DYNIP), otherHost))))));
     }
 
-    @Test
-    void aRuleStopsTheDownloadsOfOneCategoryAndResumesThoseOfAnother() throws Exception {
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a1".repeat(16)));
-        Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a2".repeat(16)));
-        Schedule.Rule night = new Schedule.Rule(
-                "night",
-                true,
-                EnumSet.allOf(DayOfWeek.class),
-                LocalTime.MIDNIGHT,
-                LocalTime.MIDNIGHT,
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.of(1),
-                OptionalInt.of(2));
-        try (Engine engine = (Engine) start()) {
-            engine.setCategories(List.of(
-                            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false),
-                            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false)))
-                    .get(5, TimeUnit.SECONDS);
-            engine.addDownload(film).get(5, TimeUnit.SECONDS);
-            engine.addDownload(song).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(film.hash(), 1).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(song.hash(), 2).get(5, TimeUnit.SECONDS);
-            engine.pauseDownload(song.hash()).get(5, TimeUnit.SECONDS);
-
-            engine.updateSchedule(new Schedule(List.of(night))).get(5, TimeUnit.SECONDS);
-
-            Map<Hash16, DownloadInfo.Status> statuses = engine.downloads().get(5, TimeUnit.SECONDS).stream()
-                    .collect(Collectors.toMap(DownloadInfo::hash, DownloadInfo::status));
-            assertThat(statuses)
-                    .containsEntry(film.hash(), DownloadInfo.Status.STOPPED)
-                    .containsEntry(song.hash(), DownloadInfo.Status.DOWNLOADING);
-        }
+    private void givenTheServersOfTheFileWereAdded(int count) throws Exception {
+        whenTheServersOfTheFileAreAdded();
+        assertThat(this.added).isEqualTo(count);
     }
 
-    @Test
-    void theSchedulerAppliesItsRuleOverThePreferences() throws Exception {
-        Schedule.Rule always = new Schedule.Rule(
-                "always",
-                true,
-                EnumSet.allOf(DayOfWeek.class),
-                LocalTime.MIDNIGHT,
-                LocalTime.MIDNIGHT,
-                OptionalInt.of(7),
-                OptionalInt.empty(),
-                OptionalInt.empty(),
-                OptionalInt.empty());
-        try (Engine engine = (Engine) start()) {
-            assertThat(engine.activeRule()).isEmpty();
-            engine.updateSchedule(new Schedule(List.of(always))).get(5, TimeUnit.SECONDS);
-
-            assertThat(engine.activeRule()).contains(always);
-            assertThat(engine.schedule().rules()).containsExactly(always);
-            assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
-            assertThat(engine.preferences().maxUploadKiBps()).isZero();
-            engine.updatePreferences(p -> p.toBuilder().nick("other").build()).get(5, TimeUnit.SECONDS);
-            assertThat(engine.effective().nick()).isEqualTo("other");
-            assertThat(engine.effective().maxUploadKiBps()).isEqualTo(7);
-        }
-        try (Engine engine = (Engine) start()) {
-            assertThat(engine.activeRule()).contains(always);
-            engine.updateSchedule(Schedule.EMPTY).get(5, TimeUnit.SECONDS);
-            assertThat(engine.activeRule()).isEmpty();
-            assertThat(engine.effective().maxUploadKiBps()).isZero();
-        }
+    private void givenTheServerWasRemoved(String address) throws Exception {
+        whenTheServerIsRemoved(address);
+        assertThat(this.removed).isTrue();
     }
 
-    @Test
-    void totalsLastAcrossSessions() throws Exception {
-        try (NjMuleEngine engine = start()) {
-            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
-            assertThat(status.sessions()).isEqualTo(1);
-            assertThat(status.totalDownloaded()).isZero();
-            assertThat(status.totalSeconds()).isEqualTo(status.sessionSeconds());
-        }
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.status().get(5, TimeUnit.SECONDS).sessions()).isEqualTo(2);
-        }
-        Files.writeString(
-                this.root.resolve("config").resolve("statistics.properties"),
-                "downloaded=12\nuploaded=x\nsessions=-4\n");
-        try (NjMuleEngine engine = start()) {
-            EngineStatus status = engine.status().get(5, TimeUnit.SECONDS);
-            assertThat(status.totalDownloaded()).isEqualTo(12);
-            assertThat(status.totalUploaded()).isZero();
-            assertThat(status.sessions()).isEqualTo(1);
-        }
+    private void givenTheServerAddressesAre(String... addresses) throws Exception {
+        thenTheServerAddressesAre(addresses);
     }
 
-    @Test
-    void keepsTheServerListAddressesInAddressesDat() throws Exception {
-        URI list = URI.create("https://example.org/server.met");
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).isEmpty();
-            engine.setServerListAddresses(List.of(list)).get(5, TimeUnit.SECONDS);
-        }
-        assertThat(this.root.resolve("config").resolve("addresses.dat")).exists();
-        try (NjMuleEngine engine = start()) {
-            assertThat(engine.serverListAddresses().get(5, TimeUnit.SECONDS)).containsExactly(list);
-        }
+    private void givenTheServerIsMadeStatic(String address) throws Exception {
+        assertThat(this.engine
+                        .setStaticServer(ServerAddress.parse(address), true)
+                        .get(5, TimeUnit.SECONDS))
+                .isTrue();
     }
 
-    @Test
-    void closeIsIdempotent() throws IOException {
-        NjMuleEngine engine = start();
-        engine.close();
-        engine.close();
-        assertThat(engine.isRunning()).isFalse();
+    private void givenTheServerPriorityIsSet(String address, ServerInfo.Priority priority) throws Exception {
+        assertThat(this.engine
+                        .setServerPriority(ServerAddress.parse(address), priority)
+                        .get(5, TimeUnit.SECONDS))
+                .isTrue();
     }
 
-    @Test
-    void aSecondEngineCannotUseTheSameConfiguration() throws Exception {
-        AppDirectories dirs = AppDirectories.underRoot(this.root.resolve("locked"), false);
-        try (Engine first = Engine.start(new EngineConfig(dirs), () -> false)) {
-            assertThatThrownBy(() -> Engine.start(new EngineConfig(dirs), () -> false))
-                    .isInstanceOf(IOException.class)
-                    .hasMessageContaining("already running");
-            assertThat(first.isRunning()).isTrue();
-        }
-        // Closing the first engine lets the next one start.
-        Engine.start(new EngineConfig(dirs), () -> false).close();
+    private void givenTheCategories(Category... categories) throws Exception {
+        this.engine.setCategories(Arrays.asList(categories)).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheDownloadInCategory(Ed2kLink.FileLink link, int category) throws Exception {
+        this.engine.addDownload(link).get(5, TimeUnit.SECONDS);
+        this.engine.setDownloadCategory(link.hash(), category).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheDownloadIsPaused(Ed2kLink.FileLink link) throws Exception {
+        this.engine.pauseDownload(link.hash()).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenNoRuleIsInForce() {
+        thenNoRuleIsInForce();
+    }
+
+    private void givenTheScheduleHolds(Schedule.Rule rule) throws Exception {
+        whenTheScheduleHolds(rule);
+    }
+
+    private void givenTheRuleInForceIsStill(Schedule.Rule rule) {
+        thenTheRuleInForceIs(rule);
+    }
+
+    private void givenTheStatistics(String content) throws IOException {
+        Files.writeString(this.root.resolve("config").resolve("statistics.properties"), content);
+    }
+
+    private void givenNoServerListAddressIsKnown() throws Exception {
+        assertThat(this.engine.serverListAddresses().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void givenTheServerListAddresses(String... addresses) throws Exception {
+        this.engine
+                .setServerListAddresses(
+                        Arrays.stream(addresses).map(URI::create).toList())
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenASecondEngineWasRefused() {
+        whenASecondEngineStartsOnTheSameConfiguration();
+        thenExceptionOccurred(IOException.class, "already running");
+    }
+
+    private void whenTheEngineStarts() throws IOException {
+        this.engine = (Engine) start();
+    }
+
+    private void whenTheEngineIsClosed() {
+        this.engine.close();
+    }
+
+    private void whenTheEngineIsRestarted() throws IOException {
+        this.engine.close();
+        whenTheEngineStarts();
+    }
+
+    private void whenTheNickIsChangedTo(String nick) throws Exception {
+        this.updated = this.engine
+                .updatePreferences(p -> p.toBuilder().nick(nick).build())
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheTcpPortIsChangedTo(int port) {
+        this.exception = catchThrowable(() -> this.engine
+                .updatePreferences(p -> p.toBuilder().tcpPort(port).build())
+                .get());
+    }
+
+    private void whenTheServersOfTheFileAreAdded() throws Exception {
+        this.added = this.engine.addServers(this.met).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheServerIsRemoved(String address) throws Exception {
+        this.removed = this.engine.removeServer(ServerAddress.parse(address)).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheEngineStatusIsAsked() throws Exception {
+        this.status = this.engine.status().get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheScheduleHolds(Schedule.Rule rule) throws Exception {
+        this.engine.updateSchedule(new Schedule(List.of(rule))).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheScheduleIsEmptied() throws Exception {
+        this.engine.updateSchedule(Schedule.EMPTY).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenASecondEngineStartsOnTheSameConfiguration() {
+        this.exception = catchThrowable(() -> this.second = Engine.start(new EngineConfig(this.dirs), () -> false));
+    }
+
+    private void thenTheEngineRuns() {
+        assertThat(this.engine.isRunning()).isTrue();
+    }
+
+    private void thenTheEngineDoesNotRun() {
+        assertThat(this.engine.isRunning()).isFalse();
+    }
+
+    private void thenTheLogFolderExists() {
+        assertThat(this.engine.directories().logs()).isDirectory();
+    }
+
+    private void thenThePreferencesAreSaved() {
+        assertThat(this.engine.directories().config().resolve(PreferencesCodec.FILE_NAME))
+                .exists();
+    }
+
+    private void thenThePreferencesAreTheDefaults() {
+        assertThat(this.engine.preferences()).isEqualTo(Preferences.defaults());
+    }
+
+    private void thenTheEventsEnd() throws InterruptedException {
+        assertThat(this.recorder.completed.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void thenTheChangesOfThePreferencesPublishedAre(int count) {
+        assertThat(this.recorder.events)
+                .filteredOn(EngineEvent.PreferencesChanged.class::isInstance)
+                .hasSize(count);
+    }
+
+    private void thenTheLastEventIs(Class<? extends EngineEvent> type) {
+        assertThat(this.recorder.events).last().isInstanceOf(type);
+    }
+
+    private void thenTheNickIs(String nick) {
+        assertThat(this.engine.preferences().nick()).isEqualTo(nick);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type, Class<? extends Throwable> cause) {
+        assertThat(this.exception).isInstanceOf(type).hasCauseInstanceOf(cause);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type, String messagePart) {
+        assertThat(this.exception).isInstanceOf(type).hasMessageContaining(messagePart);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheServersAddedAre(int count) {
+        assertThat(this.added).isEqualTo(count);
+    }
+
+    private void thenTheServerNamesAre(String... names) throws Exception {
+        assertThat(this.engine.servers().get(5, TimeUnit.SECONDS))
+                .extracting(ServerInfo::name)
+                .containsExactly(names);
+    }
+
+    private void thenTheServerPrioritiesAre(ServerInfo.Priority... priorities) throws Exception {
+        assertThat(this.engine.servers().get(5, TimeUnit.SECONDS))
+                .extracting(ServerInfo::priority)
+                .containsExactly(priorities);
+    }
+
+    private void thenTheServerAddressesAre(String... addresses) throws Exception {
+        assertThat(this.engine.servers().get(5, TimeUnit.SECONDS))
+                .extracting(ServerInfo::address)
+                .containsExactly(addresses);
+    }
+
+    private void thenTheServerIsRemoved() {
+        assertThat(this.removed).isTrue();
+    }
+
+    private void thenNothingIsRemoved() {
+        assertThat(this.removed).isFalse();
+    }
+
+    private void thenTheServerCountIs(int count) throws Exception {
+        assertThat(this.engine.servers().get(5, TimeUnit.SECONDS)).hasSize(count);
+    }
+
+    private void thenTheStatusHasNoServerNoIdNoDownloadAndNoTraffic() {
+        assertThat(this.status.server()).isEmpty();
+        assertThat(this.status.clientId()).isZero();
+        assertThat(this.status.downloads()).isZero();
+        assertThat(this.status.downloadBytesPerSecond()).isZero();
+    }
+
+    private void thenThereAreNoUploads() throws Exception {
+        assertThat(this.engine.uploads().get(5, TimeUnit.SECONDS)).isEmpty();
+    }
+
+    private void thenTheStatusOfTheDownloadIs(Ed2kLink.FileLink link, DownloadInfo.Status status) throws Exception {
+        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS))
+                .filteredOn(d -> d.hash().equals(link.hash()))
+                .singleElement()
+                .extracting(DownloadInfo::status)
+                .isEqualTo(status);
+    }
+
+    private void thenNoRuleIsInForce() {
+        assertThat(this.engine.activeRule()).isEmpty();
+    }
+
+    private void thenTheRuleInForceIs(Schedule.Rule rule) {
+        assertThat(this.engine.activeRule()).contains(rule);
+    }
+
+    private void thenTheRulesAre(Schedule.Rule... rules) {
+        assertThat(this.engine.schedule().rules()).containsExactly(rules);
+    }
+
+    private void thenTheEffectiveUploadLimitIs(int kibps) {
+        assertThat(this.engine.effective().maxUploadKiBps()).isEqualTo(kibps);
+    }
+
+    private void thenTheUploadLimitOfThePreferencesIs(int kibps) {
+        assertThat(this.engine.preferences().maxUploadKiBps()).isEqualTo(kibps);
+    }
+
+    private void thenTheEffectiveNickIs(String nick) {
+        assertThat(this.engine.effective().nick()).isEqualTo(nick);
+    }
+
+    private void thenTheSessionsAre(int count) throws Exception {
+        assertThat(this.engine.status().get(5, TimeUnit.SECONDS).sessions()).isEqualTo(count);
+    }
+
+    private void thenTheTotalDownloadedIs(long bytes) throws Exception {
+        assertThat(this.engine.status().get(5, TimeUnit.SECONDS).totalDownloaded())
+                .isEqualTo(bytes);
+    }
+
+    private void thenTheTotalUploadedIs(long bytes) throws Exception {
+        assertThat(this.engine.status().get(5, TimeUnit.SECONDS).totalUploaded())
+                .isEqualTo(bytes);
+    }
+
+    private void thenTheTotalTimeIsThatOfTheSession() throws Exception {
+        EngineStatus status = this.engine.status().get(5, TimeUnit.SECONDS);
+        assertThat(status.totalSeconds()).isEqualTo(status.sessionSeconds());
+    }
+
+    private void thenTheConfigurationHasTheFile(String name) {
+        assertThat(this.root.resolve("config").resolve(name)).exists();
+    }
+
+    private void thenTheServerListAddressesAre(String... addresses) throws Exception {
+        assertThat(this.engine.serverListAddresses().get(5, TimeUnit.SECONDS))
+                .containsExactly(Arrays.stream(addresses).map(URI::create).toArray(URI[]::new));
     }
 }

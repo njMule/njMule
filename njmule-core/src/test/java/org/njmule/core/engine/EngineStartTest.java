@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -32,6 +33,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,76 +57,148 @@ class EngineStartTest {
     @TempDir
     Path dir;
 
-    @Test
-    void theLogOfTheStartReachesThoseWhoListenLater() throws Exception {
-        try (NjMuleEngine engine = start()) {
-            Lines lines = new Lines(engine);
+    private NjMuleEngine engine;
+    private Lines lines;
 
-            assertThat(lines.await(line -> line.contains("started"))).isTrue();
+    @AfterEach
+    void close() {
+        if (this.engine != null) {
+            this.engine.close();
         }
     }
 
     @Test
-    void aRuleThatHoldsAtTheStartActsOnce() throws Exception {
-        try (NjMuleEngine engine = start()) {
-            engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
-            engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
-            engine.updateSchedule(new Schedule(List.of(always("night", 1)))).get(5, TimeUnit.SECONDS);
-        }
-        try (NjMuleEngine engine = start()) {
-            Lines lines = new Lines(engine);
-            assertThat(lines.await(line -> line.contains("started"))).isTrue();
+    void shouldHandTheLogOfTheStartToThoseWhoListenLater() throws Exception {
+        givenARunningEngine();
 
-            assertThat(lines.lines)
-                    .filteredOn(line -> line.contains("category 1 stopped"))
-                    .hasSize(1);
-        }
+        whenSomeoneListens();
+
+        thenTheLogSays("started");
     }
 
     @Test
-    void editingTheRuleInForceDoesNotRunItsActionsAgain() throws Exception {
-        try (NjMuleEngine engine = start()) {
-            engine.setCategories(List.of(category(1))).get(5, TimeUnit.SECONDS);
-            engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
-            engine.setDownloadCategory(FILM.hash(), 1).get(5, TimeUnit.SECONDS);
-            engine.updateSchedule(new Schedule(List.of(always("night", 1)))).get(5, TimeUnit.SECONDS);
-            assertThat(status(engine)).isEqualTo(DownloadInfo.Status.STOPPED);
-            engine.resumeDownload(FILM.hash()).get(5, TimeUnit.SECONDS);
+    void shouldActOnceOnARuleThatHoldsAtTheStart() throws Exception {
+        givenARunningEngine();
+        givenTheCategories(1, 2);
+        givenTheFilmInCategory(1);
+        givenARuleHoldingAllWeekThatStopsCategory("night", 1);
 
-            engine.updateSchedule(new Schedule(List.of(always("late night", 1))))
-                    .get(5, TimeUnit.SECONDS);
+        whenTheEngineIsRestarted();
 
-            assertThat(status(engine)).as("resumed by hand").isNotEqualTo(DownloadInfo.Status.STOPPED);
-        }
+        thenTheLogSays("started");
+        thenTheLogSaysOnce("category 1 stopped");
     }
 
     @Test
-    void aDeletedCategoryLeavesTheRules() throws Exception {
-        try (NjMuleEngine engine = start()) {
-            engine.setCategories(List.of(category(1), category(2))).get(5, TimeUnit.SECONDS);
-            Schedule.Rule rule = new Schedule.Rule(
-                    "later",
-                    false,
-                    EnumSet.allOf(DayOfWeek.class),
-                    LocalTime.MIDNIGHT,
-                    LocalTime.MIDNIGHT,
-                    OptionalInt.empty(),
-                    OptionalInt.empty(),
-                    OptionalInt.empty(),
-                    OptionalInt.empty(),
-                    OptionalInt.of(2),
-                    OptionalInt.of(1));
-            engine.updateSchedule(new Schedule(List.of(rule))).get(5, TimeUnit.SECONDS);
+    void shouldNotRunTheActionsOfTheRuleInForceAgainWhenItIsEdited() throws Exception {
+        givenARunningEngine();
+        givenTheCategories(1);
+        givenTheFilmInCategory(1);
+        givenARuleHoldingAllWeekThatStopsCategory("night", 1);
+        givenTheFilmWasStoppedByTheRule();
+        givenTheFilmIsResumedByHand();
 
-            engine.setCategories(List.of(category(1))).get(5, TimeUnit.SECONDS);
+        whenTheRuleInForceBecomesARuleThatStopsCategory("late night", 1);
 
-            Schedule.Rule kept = engine.schedule().rules().getFirst();
-            assertThat(kept.stopCategory())
-                    .as("a new category 2 is not stopped")
-                    .isEmpty();
-            assertThat(kept.resumeCategory()).hasValue(1);
-        }
+        thenTheFilmIsStillResumed();
+    }
+
+    @Test
+    void shouldTakeADeletedCategoryOutOfTheRules() throws Exception {
+        givenARunningEngine();
+        givenTheCategories(1, 2);
+        givenADisabledRuleThatStopsAndResumes(2, 1);
+
+        whenTheCategoriesAre(1);
+
+        thenTheRuleStopsNoCategory();
+        thenTheRuleResumesCategory(1);
+    }
+
+    private void givenARunningEngine() throws IOException {
+        this.engine = start();
+    }
+
+    private void givenTheCategories(int... ids) throws Exception {
+        whenTheCategoriesAre(ids);
+    }
+
+    private void givenTheFilmInCategory(int category) throws Exception {
+        this.engine.addDownload(FILM).get(5, TimeUnit.SECONDS);
+        this.engine.setDownloadCategory(FILM.hash(), category).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenARuleHoldingAllWeekThatStopsCategory(String name, int category) throws Exception {
+        whenTheRuleInForceBecomesARuleThatStopsCategory(name, category);
+    }
+
+    private void givenADisabledRuleThatStopsAndResumes(int stop, int resume) throws Exception {
+        Schedule.Rule rule = new Schedule.Rule(
+                "later",
+                false,
+                EnumSet.allOf(DayOfWeek.class),
+                LocalTime.MIDNIGHT,
+                LocalTime.MIDNIGHT,
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.of(stop),
+                OptionalInt.of(resume));
+        this.engine.updateSchedule(new Schedule(List.of(rule))).get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenTheFilmWasStoppedByTheRule() throws Exception {
+        assertThat(status(this.engine)).isEqualTo(DownloadInfo.Status.STOPPED);
+    }
+
+    private void givenTheFilmIsResumedByHand() throws Exception {
+        this.engine.resumeDownload(FILM.hash()).get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenSomeoneListens() {
+        this.lines = new Lines(this.engine);
+    }
+
+    private void whenTheEngineIsRestarted() throws IOException {
+        this.engine.close();
+        this.engine = start();
+        whenSomeoneListens();
+    }
+
+    private void whenTheRuleInForceBecomesARuleThatStopsCategory(String name, int category) throws Exception {
+        this.engine
+                .updateSchedule(new Schedule(List.of(always(name, category))))
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void whenTheCategoriesAre(int... ids) throws Exception {
+        this.engine
+                .setCategories(
+                        Arrays.stream(ids).mapToObj(EngineStartTest::category).toList())
+                .get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenTheLogSays(String text) throws InterruptedException {
+        assertThat(this.lines.await(line -> line.contains(text))).isTrue();
+    }
+
+    private void thenTheLogSaysOnce(String text) {
+        assertThat(this.lines.lines).filteredOn(line -> line.contains(text)).hasSize(1);
+    }
+
+    private void thenTheFilmIsStillResumed() throws Exception {
+        assertThat(status(this.engine)).as("resumed by hand").isNotEqualTo(DownloadInfo.Status.STOPPED);
+    }
+
+    private void thenTheRuleStopsNoCategory() {
+        assertThat(this.engine.schedule().rules().getFirst().stopCategory())
+                .as("a new category 2 is not stopped")
+                .isEmpty();
+    }
+
+    private void thenTheRuleResumesCategory(int category) {
+        assertThat(this.engine.schedule().rules().getFirst().resumeCategory()).hasValue(category);
     }
 
     private NjMuleEngine start() throws IOException {

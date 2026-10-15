@@ -20,24 +20,63 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.njmule.core.persist.format.IpFilterDat;
 
 class IpFilterUpdateTest {
 
-    @Test
-    void theFormOfAListFromTheWebIsFoundWhateverItsName() {
-        byte[] emule = "001.002.003.000 - 001.002.003.255 , 000 , somebody\n".getBytes(StandardCharsets.US_ASCII);
-        byte[] guardian = "somebody:1.2.4.0-1.2.4.255\n".getBytes(StandardCharsets.US_ASCII);
+    private static final String EMULE_LIST = "001.002.003.000 - 001.002.003.255 , 000 , somebody\n";
+    private static final String GUARDIAN_LIST = "somebody:1.2.4.0-1.2.4.255\n";
 
-        assertThat(Engine.ipRanges(emule, URI.create("https://example.org/ipfilter.zip")))
-                .hasSize(1);
-        assertThat(Engine.ipRanges(guardian, URI.create("https://example.org/guarding.p2p.gz")))
-                .hasSize(1);
-        assertThat(Engine.ipRanges(guardian, URI.create("https://example.org/download?list=level1")))
-                .as("an address that does not name the form")
-                .hasSize(1);
-        assertThat(Engine.ipRanges(
-                        "<html>nothing</html>".getBytes(StandardCharsets.US_ASCII), URI.create("https://x.org/")))
-                .isEmpty();
+    private byte[] list;
+    private List<IpFilterDat.Range> ranges;
+
+    @Test
+    void shouldFindTheFormOfAnIpFilterDatWhateverItsName() {
+        givenTheList(EMULE_LIST);
+
+        whenTheListIsReadFrom("https://example.org/ipfilter.zip");
+
+        thenTheRangesFoundAre(1);
+    }
+
+    @Test
+    void shouldFindTheFormOfAGuardianListWhateverItsName() {
+        givenTheList(GUARDIAN_LIST);
+
+        whenTheListIsReadFrom("https://example.org/guarding.p2p.gz");
+
+        thenTheRangesFoundAre(1);
+    }
+
+    @Test
+    void shouldFindTheFormOfAListAtAnAddressThatDoesNotNameIt() {
+        givenTheList(GUARDIAN_LIST);
+
+        whenTheListIsReadFrom("https://example.org/download?list=level1");
+
+        thenTheRangesFoundAre(1);
+    }
+
+    @Test
+    void shouldFindNoRangeInAPageThatIsNoList() {
+        givenTheList("<html>nothing</html>");
+
+        whenTheListIsReadFrom("https://x.org/");
+
+        thenTheRangesFoundAre(0);
+    }
+
+    private void givenTheList(String content) {
+        this.list = content.getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private void whenTheListIsReadFrom(String address) {
+        this.ranges = Engine.ipRanges(this.list, URI.create(address));
+    }
+
+    private void thenTheRangesFoundAre(int count) {
+        assertThat(this.ranges).hasSize(count);
     }
 }

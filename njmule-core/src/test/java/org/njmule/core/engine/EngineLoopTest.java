@@ -18,6 +18,7 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -37,108 +38,199 @@ import org.junit.jupiter.api.Timeout;
 class EngineLoopTest {
 
     private final EngineLoop loop = EngineLoop.start(16, "test-engine");
+    // Holds a task on the engine thread until the test lets it go.
+    private final CountDownLatch release = new CountDownLatch(1);
+    private final AtomicInteger runs = new AtomicInteger();
+    private final List<Integer> order = Collections.synchronizedList(new ArrayList<>());
+    private final List<Boolean> posts = new ArrayList<>();
+    private final CountDownLatch oneShot = new CountDownLatch(1);
+    private final CountDownLatch outcomes = new CountDownLatch(2);
+    private Object answer;
+    private Throwable exception;
+    private int accepted;
+    private boolean outcomeAccepted;
 
     @AfterEach
     void stop() {
+        this.release.countDown();
         this.loop.close();
     }
 
     @Test
-    void submitRunsOnTheEngineThread() throws Exception {
-        assertThat(this.loop.submit(this.loop::isEngineThread).get()).isTrue();
-        assertThat(this.loop.isEngineThread()).isFalse();
+    void shouldRunASubmittedTaskOnTheEngineThread() throws Exception {
+        whenATaskAsksWhetherItRunsOnTheEngineThread();
+
+        thenTheAnswerIs(true);
     }
 
     @Test
-    void tasksRunInPostingOrder() throws Exception {
-        List<Integer> order = Collections.synchronizedList(new ArrayList<>());
-        for (int i = 0; i < 10; i++) {
-            int n = i;
-            assertThat(this.loop.post(() -> order.add(n))).isTrue();
-        }
-        this.loop.submit(() -> null).get();
-        assertThat(order).containsExactly(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+    void shouldNotTakeTheCallerForTheEngineThread() {
+        whenTheCallerAsksWhetherItIsTheEngineThread();
+
+        thenTheAnswerIs(false);
     }
 
     @Test
-    void failingTaskDoesNotKillTheLoop() throws Exception {
+    void shouldRunTasksInPostingOrder() throws Exception {
+        whenTasksArePosted(10);
+
+        thenEveryPostIsAccepted();
+        thenTheTasksRanInTheOrder(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+    }
+
+    @Test
+    void shouldKeepRunningAfterAFailingTask() throws Exception {
+        givenAPostedTaskThatFails();
+
+        whenATaskIsSubmittedThatAnswers(42);
+
+        thenTheAnswerIs(42);
+    }
+
+    @Test
+    void shouldHandBackTheExceptionOfASubmittedTask() {
+        whenATaskIsSubmittedThatThrows(new IllegalArgumentException("bad"));
+
+        thenExceptionOccurred(ExecutionException.class, IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseTasksWithoutBlockingOnceTheQueueIsFull() throws Exception {
+        givenTheEngineThreadIsBusy();
+
+        whenTasksArePostedUntilOneIsRefused();
+
+        thenTheAcceptedTasksAre(16);
+    }
+
+    @Test
+    void shouldStillTakeOutcomesAndFollowUpsWhenTheQueueIsFull() throws Exception {
+        givenTheEngineThreadIsBusy();
+        givenTheQueueIsFull();
+
+        whenAnOutcomeAndAFollowUpArePostedBeforeTheBusyTaskEnds();
+
+        thenTheOutcomeIsAccepted();
+        thenTheOutcomeAndTheFollowUpRun();
+    }
+
+    @Test
+    void shouldRunAScheduledJob() throws Exception {
+        whenAJobIsScheduledIn(Duration.ofMillis(5));
+
+        thenTheJobRuns();
+    }
+
+    @Test
+    void shouldKeepRepeatingAJobWhoseFirstRunFails() throws Exception {
+        whenAJobThatFailsItsFirstRunIsRepeatedEvery(Duration.ofMillis(5));
+
+        thenTheJobRunsAtLeast(3);
+    }
+
+    @Test
+    void shouldNotRunACancelledTimer() throws Exception {
+        whenATimerIsCancelledBeforeItIsDue(Duration.ofMillis(50));
+
+        thenTheTimerHasNotRunAfter(Duration.ofMillis(150));
+    }
+
+    @Test
+    void shouldRunTheQueuedTasksThenRefuseNewOnesWhenShutDown() throws Exception {
+        givenTheEngineThreadIsBusy();
+        givenTasksAreQueued(5);
+
+        whenTheLoopIsShutDown();
+
+        thenTheQueuedTasksRan(5);
+        thenANewTaskIsRefused();
+        thenANewOutcomeIsRefused();
+        thenASubmittedTaskIsRejected();
+    }
+
+    private void givenAPostedTaskThatFails() {
         this.loop.post(() -> {
             throw new IllegalStateException("boom");
         });
-        assertThat(this.loop.submit(() -> 42).get()).isEqualTo(42);
     }
 
-    @Test
-    void submitPropagatesExceptions() {
-        CompletableFuture<Object> f = this.loop.submit(() -> {
-            throw new IllegalArgumentException("bad");
-        });
-        assertThatThrownBy(f::get)
-                .isInstanceOf(ExecutionException.class)
-                .hasCauseInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void fullQueueRefusesTasksWithoutBlocking() throws Exception {
-        CountDownLatch release = new CountDownLatch(1);
+    private void givenTheEngineThreadIsBusy() throws InterruptedException {
         CountDownLatch blocked = new CountDownLatch(1);
         this.loop.post(() -> {
             blocked.countDown();
-            awaitQuietly(release);
+            awaitQuietly(this.release);
         });
         blocked.await();
-
-        int accepted = 0;
-        while (this.loop.post(() -> {})) {
-            accepted++;
-        }
-        assertThat(accepted).isEqualTo(16);
-
-        // The outcome of work in flight still gets in, as does a follow-up of finished work.
-        CountDownLatch outcomes = new CountDownLatch(2);
-        assertThat(this.loop.postOutcome(outcomes::countDown)).isTrue();
-        this.loop.whenDone(CompletableFuture.completedFuture(1), (value, failure) -> outcomes.countDown());
-        release.countDown();
-        assertThat(outcomes.await(10, TimeUnit.SECONDS)).isTrue();
     }
 
-    @Test
-    void scheduledJobsRunAndFailingRunsDoNotStopRepeatingOnes() throws Exception {
-        CountDownLatch oneShot = new CountDownLatch(1);
-        CountDownLatch repeating = new CountDownLatch(3);
-        AtomicInteger runs = new AtomicInteger();
-        this.loop.schedule("one", Duration.ofMillis(5), oneShot::countDown);
-        this.loop.scheduleRepeating("tick", Duration.ZERO, Duration.ofMillis(5), () -> {
-            repeating.countDown();
-            if (runs.incrementAndGet() == 1) {
+    private void givenTheQueueIsFull() {
+        whenTasksArePostedUntilOneIsRefused();
+    }
+
+    private void givenTasksAreQueued(int count) {
+        for (int i = 0; i < count; i++) {
+            this.loop.post(this.runs::incrementAndGet);
+        }
+    }
+
+    private void whenATaskAsksWhetherItRunsOnTheEngineThread() throws Exception {
+        this.answer = this.loop.submit(this.loop::isEngineThread).get();
+    }
+
+    private void whenTheCallerAsksWhetherItIsTheEngineThread() {
+        this.answer = this.loop.isEngineThread();
+    }
+
+    private void whenTasksArePosted(int count) throws Exception {
+        for (int i = 0; i < count; i++) {
+            int n = i;
+            this.posts.add(this.loop.post(() -> this.order.add(n)));
+        }
+        this.loop.submit(() -> null).get();
+    }
+
+    private void whenATaskIsSubmittedThatAnswers(int value) throws Exception {
+        this.answer = this.loop.submit(() -> value).get();
+    }
+
+    private void whenATaskIsSubmittedThatThrows(RuntimeException failure) {
+        this.exception = catchThrowable(() -> this.loop
+                .submit(() -> {
+                    throw failure;
+                })
+                .get());
+    }
+
+    private void whenTasksArePostedUntilOneIsRefused() {
+        while (this.loop.post(() -> {})) {
+            this.accepted++;
+        }
+    }
+
+    // The outcome of work in flight still gets in, as does a follow-up of finished work.
+    private void whenAnOutcomeAndAFollowUpArePostedBeforeTheBusyTaskEnds() {
+        this.outcomeAccepted = this.loop.postOutcome(this.outcomes::countDown);
+        this.loop.whenDone(CompletableFuture.completedFuture(1), (value, failure) -> this.outcomes.countDown());
+        this.release.countDown();
+    }
+
+    private void whenAJobIsScheduledIn(Duration delay) {
+        this.loop.schedule("one", delay, this.oneShot::countDown);
+    }
+
+    private void whenAJobThatFailsItsFirstRunIsRepeatedEvery(Duration period) {
+        this.loop.scheduleRepeating("tick", Duration.ZERO, period, () -> {
+            if (this.runs.incrementAndGet() == 1) {
                 throw new IllegalStateException("first run fails");
             }
         });
-
-        assertThat(oneShot.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(repeating.await(5, TimeUnit.SECONDS)).isTrue();
     }
 
-    @Test
-    void cancelledTimersDoNotRun() throws Exception {
-        AtomicInteger runs = new AtomicInteger();
-        this.loop
-                .schedule("never", Duration.ofMillis(50), runs::incrementAndGet)
-                .cancel(false);
-        Thread.sleep(150);
-
-        assertThat(runs).hasValue(0);
+    private void whenATimerIsCancelledBeforeItIsDue(Duration delay) {
+        this.loop.schedule("never", delay, this.runs::incrementAndGet).cancel(false);
     }
 
-    @Test
-    void shutdownRunsQueuedTasksThenRefusesNewOnes() throws Exception {
-        AtomicInteger ran = new AtomicInteger();
-        CountDownLatch release = new CountDownLatch(1);
-        this.loop.post(() -> awaitQuietly(release));
-        for (int i = 0; i < 5; i++) {
-            this.loop.post(ran::incrementAndGet);
-        }
-
+    private void whenTheLoopIsShutDown() throws InterruptedException {
         Thread stopper = Thread.ofPlatform().start(() -> {
             try {
                 this.loop.shutdown(Duration.ofSeconds(5));
@@ -149,12 +241,68 @@ class EngineLoopTest {
         while (this.loop.isRunning()) {
             Thread.onSpinWait();
         }
-        release.countDown();
+        this.release.countDown();
         stopper.join();
+    }
 
-        assertThat(ran).hasValue(5);
+    private void thenTheAnswerIs(Object expected) {
+        assertThat(this.answer).isEqualTo(expected);
+    }
+
+    private void thenEveryPostIsAccepted() {
+        assertThat(this.posts).isNotEmpty().containsOnly(true);
+    }
+
+    private void thenTheTasksRanInTheOrder(Integer... expected) {
+        assertThat(this.order).containsExactly(expected);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type, Class<? extends Throwable> cause) {
+        assertThat(this.exception).isInstanceOf(type).hasCauseInstanceOf(cause);
+    }
+
+    private void thenTheAcceptedTasksAre(int count) {
+        assertThat(this.accepted).isEqualTo(count);
+    }
+
+    private void thenTheOutcomeIsAccepted() {
+        assertThat(this.outcomeAccepted).isTrue();
+    }
+
+    private void thenTheOutcomeAndTheFollowUpRun() throws InterruptedException {
+        assertThat(this.outcomes.await(10, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void thenTheJobRuns() throws InterruptedException {
+        assertThat(this.oneShot.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+
+    private void thenTheJobRunsAtLeast(int times) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (this.runs.get() < times && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+        assertThat(this.runs.get()).isGreaterThanOrEqualTo(times);
+    }
+
+    private void thenTheTimerHasNotRunAfter(Duration wait) throws InterruptedException {
+        Thread.sleep(wait.toMillis());
+        assertThat(this.runs).hasValue(0);
+    }
+
+    private void thenTheQueuedTasksRan(int count) {
+        assertThat(this.runs).hasValue(count);
+    }
+
+    private void thenANewTaskIsRefused() {
         assertThat(this.loop.post(() -> {})).isFalse();
+    }
+
+    private void thenANewOutcomeIsRefused() {
         assertThat(this.loop.postOutcome(() -> {})).isFalse();
+    }
+
+    private void thenASubmittedTaskIsRejected() {
         assertThatThrownBy(() -> this.loop.submit(() -> 1).get()).hasCauseInstanceOf(RejectedExecutionException.class);
     }
 

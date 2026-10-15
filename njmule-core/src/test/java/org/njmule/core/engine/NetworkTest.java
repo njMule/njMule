@@ -18,6 +18,7 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -29,8 +30,8 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.BlockingQueue;
@@ -40,11 +41,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -92,6 +97,42 @@ class NetworkTest {
     private static final Hash16 USER = Hash16.parseHex("0a".repeat(16));
     private static final long HIGH_ID = Ipv4.toEd2k(Ipv4.parse("1.2.3.4"));
     private static final long OTHER_HIGH_ID = Ipv4.toEd2k(Ipv4.parse("5.6.7.8"));
+    private static final int BLOCKED = Ipv4.of(203, 0, 113, 7);
+    private static final int CRYPT =
+            Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT | Hello.MISC2_REQUIRES_CRYPT;
+    private static final SearchResult SPAM =
+            new SearchResult(Hash16.parseHex("b1".repeat(16)), "free movie installer.exe", 100, 1, 0, Optional.empty());
+    private static final Category FILMS =
+            new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false);
+    private static final Category MUSIC =
+            new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false);
+    // Documentation addresses: the network is not started, nothing is sent to them.
+    private static final ServerList.Address KNOWN_SERVER = new ServerList.Address(Ipv4.of(198, 51, 100, 7), 4661);
+    private static final ServerList.Address UNKNOWN_SERVER = new ServerList.Address(Ipv4.of(198, 51, 100, 8), 4661);
+    private static final NodesDat.Contact FIRST_CONTACT = new NodesDat.Contact(
+            UInt128.parseHex("c1".repeat(16)), Ipv4.of(198, 51, 100, 11), 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
+    private static final NodesDat.Contact SECOND_CONTACT = new NodesDat.Contact(
+            UInt128.parseHex("c2".repeat(16)), Ipv4.of(198, 51, 100, 12), 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
+    // A LAN address the preferences filter: a running node never sends anything beyond this machine.
+    private static final NodesDat.Contact LAN_CONTACT = new NodesDat.Contact(
+            UInt128.parseHex("c3".repeat(16)), Ipv4.of(10, 0, 0, 7), 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
+    private static final Ed2kLink.FileLink FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f1".repeat(16)));
+    private static final Ed2kLink.FileLink OTHER_FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f2".repeat(16)));
+    private static final Ed2kLink.FileLink CANCELLED_FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f4".repeat(16)));
+    private static final Ed2kLink.FileLink CATEGORISED_FILM =
+            Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a3".repeat(16)));
+    private static final Ed2kLink.FileLink CATEGORISED_SONG =
+            Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a4".repeat(16)));
+    private static final Ed2kLink.FileLink LARGE_FILE =
+            Ed2kLink.FileLink.of("large.iso", 5_000_000_000L, Hash16.parseHex("d1".repeat(16)));
+    private static final Ed2kLink.FileLink SMALL_FILE =
+            Ed2kLink.FileLink.of("small.iso", 5000, Hash16.parseHex("d2".repeat(16)));
+    private static final Hash16 PAL = Hash16.parseHex("e1".repeat(16));
+    private static final Hash16 PEER_HASH = Hash16.parseHex("21".repeat(16));
+    private static final Hello PEER_HELLO = Hello.of(PEER_HASH, 0, 4999, "peer", 0, 0, 0, 0, 0, 0);
 
     /** A line of the front ends' log. */
     private record Logged(LogLine.Level level, String text) {}
@@ -107,6 +148,22 @@ class NetworkTest {
     private Network network;
     private ScriptedServer scripted;
     private int serverSocketPort;
+    private ServerSocket takenTcpPort;
+    private DatagramSocket takenUdpPort;
+    private ServerSocket peerSocket;
+    private Socket peerConnection;
+    private CompletableFuture<PeerInfo> answer;
+    private PeerInfo info;
+    private Packet packet;
+    private SpamMarks marks;
+    private Object reply;
+    private Throwable exception;
+    private int kadPort;
+    private int newTcpPort;
+    private int newUdpPort;
+    private byte[] remembered;
+    private EngineEvent.ServerConnected connected;
+    private EngineEvent.ServerDisconnected disconnected;
 
     @BeforeEach
     void open() throws IOException {
@@ -132,660 +189,640 @@ class NetworkTest {
         if (this.scripted != null) {
             this.scripted.close();
         }
-    }
-
-    @Test
-    void spamMarksStayWhenTheyCannotBeSaved() throws Exception {
-        Network network = create();
-        Hash16 hash = Hash16.parseHex("b1".repeat(16));
-        SearchResult result = new SearchResult(hash, "free movie installer.exe", 100, 1, 0, Optional.empty());
-
-        SpamMarks marked = onLoop(() -> network.markSpam(List.of(result), true));
-        assertThat(marked.spam()).containsExactly(hash);
-        assertThat(this.dirs.config().resolve(SpamFilter.FILE_NAME)).exists();
-
-        blockWrites(this.dirs.config().resolve(SpamFilter.FILE_NAME));
-        SpamMarks unmarked = onLoop(() -> network.markSpam(List.of(result), false));
-
-        assertThat(unmarked.spam()).isEmpty();
-        assertThat(unmarked.notSpam()).containsExactly(hash);
-        assertThat(onLoop(network::spamMarks)).isEqualTo(unmarked);
-    }
-
-    @Test
-    void sharingNeedsTheNetworkStarted() throws Exception {
-        Network network = create();
-        Path folder = Files.createDirectories(this.dir.resolve("films"));
-
-        assertThatThrownBy(() -> onLoop(() -> {
-                    network.shareDirectory(folder, false);
-                    return null;
-                }))
-                .hasCauseInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> onLoop(() -> {
-                    network.unshareDirectory(folder);
-                    return null;
-                }))
-                .hasCauseInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> onLoop(() -> network.addKnownFiles(List.of(), List.of())))
-                .hasCauseInstanceOf(IllegalStateException.class);
-        assertThat(onLoop(() -> network.renameSharedFile(USER, "other.iso"))).isFalse();
-        assertThat(onLoop(() -> network.setUploadPriority(USER, UploadPriority.HIGH)))
-                .isFalse();
-        assertThat(onLoop(network::sharedFiles)).isEmpty();
-        assertThat(onLoop(network::sharedDirectories)).isEmpty();
-        assertThat(onLoop(network::status).sharedFiles()).isZero();
-        assertThat(onLoop(network::history).downloaded(USER)).isFalse();
-    }
-
-    @Test
-    void aStartedNetworkSharesAndUnsharesFolders() throws Exception {
-        Network network = started();
-        Path folder = Files.createDirectories(this.dir.resolve("films"));
-        Path tree = Files.createDirectories(this.dir.resolve("music"));
-
-        onLoop(() -> {
-            network.shareDirectory(folder, false);
-            network.shareDirectory(tree, true);
-            return null;
-        });
-        assertThat(onLoop(network::sharedDirectories))
-                .extracting(d -> d.path().getFileName().toString() + (d.subdirectories() ? "/**" : ""))
-                .containsExactlyInAnyOrder("films", "music/**");
-
-        onLoop(() -> {
-            network.unshareDirectory(folder);
-            return null;
-        });
-        assertThat(onLoop(network::sharedDirectories)).hasSize(1);
-        assertThat(onLoop(network::describe)).startsWith("downloads:").contains("uploads: ");
-    }
-
-    @Test
-    void anIpFilterIsReplacedByAListButNeverByNothing() throws Exception {
-        Network network = create();
-        int blocked = Ipv4.of(203, 0, 113, 7);
-
-        assertThatThrownBy(() -> onLoop(() -> network.setIpFilter(List.of()))).hasCauseInstanceOf(IOException.class);
-        int ranges = onLoop(() -> network.setIpFilter(
-                List.of(new IpFilterDat.Range(blocked, blocked, 0, "test"), new IpFilterDat.Range(1, 2, 0, "low"))));
-
-        assertThat(ranges).isEqualTo(2);
-        assertThat(this.dirs.config().resolve(Network.IPFILTER_FILE)).exists();
-        assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "2 IP filter ranges"));
-        assertThatThrownBy(() -> onLoop(() -> {
-                    network.connect(Optional.of(new ServerList.Address(blocked, 4661)));
-                    return null;
-                }))
-                .hasCauseInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("IP filter");
-    }
-
-    @Test
-    void categoriesNeedTheirOwnIds() throws Exception {
-        Network network = create();
-        Category films = new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false);
-
-        assertThatThrownBy(() -> onLoop(() -> {
-                    network.setCategories(List.of(films, films));
-                    return null;
-                }))
-                .hasCauseInstanceOf(IllegalArgumentException.class);
-        assertThat(onLoop(network::categories)).isEmpty();
-    }
-
-    @Test
-    void unreadableFilesAreTakenAsEmpty() throws Exception {
-        Files.write(this.dirs.config().resolve(StoredSearches.FILE_NAME), new byte[] {9, 9, 9});
-        Files.write(this.dirs.config().resolve(CancelledFiles.FILE_NAME), new byte[] {9, 9, 9});
-
-        Network network = create();
-
-        assertThat(onLoop(network::savedSearches)).isEmpty();
-        assertThat(onLoop(network::history).cancelled(USER)).isFalse();
-    }
-
-    @Test
-    void serversChangeEvenWhenTheirFilesCannotBeSaved() throws Exception {
-        this.preferences =
-                this.preferences.toBuilder().manualServersHighPriority(true).build();
-        Network network = create();
-        // Documentation addresses: the network is not started, nothing is sent to them.
-        ServerList.Address first = new ServerList.Address(Ipv4.of(198, 51, 100, 7), 4661);
-        ServerList.Address unknown = new ServerList.Address(Ipv4.of(198, 51, 100, 8), 4661);
-        blockWrites(this.dirs.config().resolve(ServerList.FILE_NAME));
-        blockWrites(this.dirs.config().resolve(ServerList.STATIC_FILE_NAME));
-
-        assertThat(onLoop(() -> network.addServer(first))).isTrue();
-        assertThat(onLoop(() -> network.addServer(first))).as("known").isFalse();
-        assertThat(onLoop(network::servers))
-                .singleElement()
-                .satisfies(s -> assertThat(s.priority()).isEqualTo(ServerInfo.Priority.HIGH));
-        assertThat(onLoop(() -> network.setStaticServer(first, true))).isTrue();
-        assertThat(onLoop(() -> network.setServerPriority(first, ServerInfo.Priority.LOW)))
-                .isTrue();
-        assertThat(onLoop(() -> network.setStaticServer(unknown, true))).isFalse();
-        assertThat(onLoop(() -> network.setServerPriority(unknown, ServerInfo.Priority.LOW)))
-                .isFalse();
-        assertThat(next(EngineEvent.ServerUpdated.class).server().isStatic()).isTrue();
-
-        assertThat(onLoop(() -> network.removeServer(first))).isTrue();
-        assertThat(onLoop(network::servers)).isEmpty();
-    }
-
-    @Test
-    void datagramsThatAreNoAnswerOrCannotBeReadAreDropped() throws Exception {
-        Network network = create();
-        InetSocketAddress from = new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665);
-
-        onLoop(() -> {
-            network.datagram(from, Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHREQ.code(), new byte[4]));
-            network.datagram(from, Packet.of(Protocol.EDONKEY, Opcodes.ServerUdp.GLOBSEARCHRES.code(), new byte[3]));
-            return null;
-        });
-
-        assertThat(this.events).isEmpty();
-    }
-
-    @Test
-    void settingsChangedBeforeTheStartOrAfterTheEndAreIgnored() throws Exception {
-        Network network = create();
-        Preferences was = this.preferences;
-        Preferences now = was.toBuilder().tcpPort(freeTcpPort()).build();
-
-        onLoop(() -> {
-            network.reconfigure(was, now);
-            return null;
-        });
-        onLoop(() -> {
-            network.close();
-            return null;
-        });
-        onLoop(() -> {
-            network.reconfigure(was, now);
-            return null;
-        });
-
-        assertThat(this.log).isEmpty();
-    }
-
-    @Test
-    void aPortTakenByAnotherProgramLeavesUsUnreachable() throws Exception {
-        try (ServerSocket taken = new ServerSocket(this.preferences.tcpPort())) {
-            Network network = started();
-
-            assertThat(this.log)
-                    .anySatisfy(
-                            l -> assertThat(l.text()).startsWith("Cannot listen on TCP port " + taken.getLocalPort()));
-            assertThat(onLoop(network::status).tcpPort()).isEqualTo(taken.getLocalPort());
+        if (this.peerConnection != null) {
+            this.peerConnection.close();
+        }
+        if (this.peerSocket != null) {
+            this.peerSocket.close();
+        }
+        if (this.takenTcpPort != null) {
+            this.takenTcpPort.close();
+        }
+        if (this.takenUdpPort != null) {
+            this.takenUdpPort.close();
         }
     }
 
     @Test
-    void kadIsCheckedBootstrappedAndListedOnlyWhileItRuns() throws Exception {
-        Network network = started();
+    void shouldKeepSpamMarksThatCannotBeSaved() throws Exception {
+        givenANetwork();
+        givenTheResultIsMarkedAsSpam();
+        givenTheSpamMarksCannotBeSaved();
 
-        assertThat(onLoop(network::recheckKadFirewall)).isFalse();
-        assertThatThrownBy(() -> onLoop(() -> {
-                    network.kadBootstrap(Ipv4.of(127, 0, 0, 1), 9);
-                    return null;
-                }))
-                .hasCauseInstanceOf(IllegalStateException.class);
-        assertThat(onLoop(network::kadContacts)).isEmpty();
-        assertThat(onLoop(network::kadSearches)).isEmpty();
+        whenTheResultIsMarkedAsNotSpam();
 
-        onLoop(() -> {
-            network.connectKad();
-            network.connectKad();
-            return null;
-        });
-        assertThat(onLoop(network::kadInfo)).isPresent();
-        assertThat(onLoop(network::recheckKadFirewall)).isTrue();
-        assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "Kad: checking the firewall again"));
-        onLoop(() -> {
-            network.kadBootstrap(Ipv4.of(127, 0, 0, 1), freeUdpPort());
-            return null;
-        });
-        // A LAN address the preferences filter: a running node never sends anything beyond this machine.
-        NodesDat.Contact lan = new NodesDat.Contact(
-                UInt128.parseHex("c3".repeat(16)), Ipv4.of(10, 0, 0, 7), 4672, 4662, 8, 0, NodesDat.UdpKey.NONE, true);
-        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(lan)))))
-                .isZero();
-        assertThat(onLoop(network::kadContacts)).isEmpty();
-        assertThat(onLoop(network::kadSearches)).isEmpty();
-
-        onLoop(() -> {
-            network.disconnectKad();
-            network.disconnectKad();
-            return null;
-        });
-        assertThat(onLoop(network::kadInfo)).isEmpty();
-        assertThat(this.log).filteredOn(l -> l.text().equals("Kad stopped")).hasSize(1);
+        thenNothingIsSpam();
+        thenTheResultIsNotSpam();
+        thenTheNetworkKeepsTheseMarks();
     }
 
     @Test
-    void kadSearchesNeedKadAndContacts() throws Exception {
-        Network network = started();
-        SearchRequest kad = new SearchRequest("ubuntu", SearchRequest.Scope.KAD);
-        assertThatThrownBy(() -> onLoop(() -> network.search(kad)))
-                .hasCauseInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not running");
+    void shouldRefuseToShareAFolderBeforeTheStart() throws Exception {
+        givenANetwork();
+        givenTheFolder("films");
 
-        onLoop(() -> {
-            network.connectKad();
-            return null;
-        });
+        whenTheFolderIsShared("films");
 
-        assertThatThrownBy(() -> onLoop(() -> network.search(kad)))
-                .as("no contact to ask")
-                .hasCauseInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("now");
-        assertThat(onLoop(network::kadSearches)).isEmpty();
+        thenExceptionOccurredWithTheCause(IllegalStateException.class);
     }
 
     @Test
-    void ourHelloSaysHowMuchObfuscationWeWant() throws Exception {
-        Network network = create();
-        int crypt = Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT | Hello.MISC2_REQUIRES_CRYPT;
-        Map<ObfuscationMode, Integer> wanted = Map.of(
-                ObfuscationMode.DISABLED,
-                0,
-                ObfuscationMode.SUPPORTED,
-                Hello.MISC2_SUPPORTS_CRYPT,
-                ObfuscationMode.REQUESTED,
-                Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT,
-                ObfuscationMode.REQUIRED,
-                crypt);
-        try (ServerSocket peer = new ServerSocket(0, 4, InetAddress.getLoopbackAddress())) {
-            for (Map.Entry<ObfuscationMode, Integer> mode : wanted.entrySet()) {
-                this.preferences =
-                        this.preferences.toBuilder().obfuscation(mode.getKey()).build();
-                CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
-                try (Socket socket = peer.accept()) {
-                    assertThat(Hello.decode(read(socket)).miscOptions2() & crypt)
-                            .as(mode.getKey().name())
-                            .isEqualTo(mode.getValue());
-                }
-                assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
-            }
-        }
+    void shouldRefuseToUnshareAFolderBeforeTheStart() throws Exception {
+        givenANetwork();
+        givenTheFolder("films");
+
+        whenTheFolderIsUnshared("films");
+
+        thenExceptionOccurredWithTheCause(IllegalStateException.class);
     }
 
     @Test
-    void kadThatCannotTakeItsPortIsReportedAndTurnedOffQuietly() throws Exception {
-        try (DatagramSocket taken = new DatagramSocket(this.preferences.udpPort())) {
-            this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
-            Network network = started();
-            assertThat(this.log)
-                    .anySatisfy(l ->
-                            assertThat(l.text()).startsWith("Cannot start Kad on UDP port " + taken.getLocalPort()));
+    void shouldRefuseToAddKnownFilesBeforeTheStart() throws Exception {
+        givenANetwork();
 
-            onLoop(() -> {
-                network.connectKad();
-                return null;
-            });
-            assertThat(onLoop(network::kadInfo)).as("still no port").isEmpty();
+        whenNoKnownFilesAreAdded();
 
-            reconfigure(network, p -> p.kadEnabled(false));
-
-            assertThat(onLoop(network::kadInfo)).isEmpty();
-            assertThat(this.log).noneMatch(l -> l.text().equals("Kad stopped"));
-        }
+        thenExceptionOccurredWithTheCause(IllegalStateException.class);
     }
 
     @Test
-    void cancelledFilesThatCannotBeForgottenStayOnDisk() throws Exception {
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f4".repeat(16)));
-        Network first = create();
-        onLoop(() -> first.addDownload(film) != null && first.cancelDownload(film.hash()));
-        assertThat(onLoop(first::history).cancelled(film.hash())).isTrue();
-        onLoop(() -> {
-            first.close();
-            return null;
-        });
-        Path file = this.dirs.config().resolve(CancelledFiles.FILE_NAME);
-        byte[] remembered = Files.readAllBytes(file);
-        blockWrites(file);
-        this.preferences =
-                this.preferences.toBuilder().rememberCancelledFiles(false).build();
+    void shouldRenameNoSharedFileBeforeTheStart() throws Exception {
+        givenANetwork();
 
-        Network forgetting = create();
+        whenTheSharedFileIsRenamed(USER, "other.iso");
 
-        assertThat(onLoop(forgetting::history).cancelled(film.hash())).isFalse();
-        assertThat(Files.readAllBytes(file)).as("left as it was").isEqualTo(remembered);
+        thenTheNetworkAnswers(false);
     }
 
     @Test
-    void kadContactsGoToNodesDatWhileKadIsOff() throws Exception {
-        Network network = create();
-        NodesDat.Contact first = new NodesDat.Contact(
-                UInt128.parseHex("c1".repeat(16)),
-                Ipv4.of(198, 51, 100, 11),
-                4672,
-                4662,
-                8,
-                0,
-                NodesDat.UdpKey.NONE,
-                true);
-        NodesDat.Contact second = new NodesDat.Contact(
-                UInt128.parseHex("c2".repeat(16)),
-                Ipv4.of(198, 51, 100, 12),
-                4672,
-                4662,
-                8,
-                0,
-                NodesDat.UdpKey.NONE,
-                true);
-        Path file = this.dirs.config().resolve(KadNode.NODES_FILE);
-        // A bootstrap list keeps nothing of its own.
-        Files.write(file, NodesDat.write(List.of(first)));
+    void shouldPrioritiseNoSharedFileBeforeTheStart() throws Exception {
+        givenANetwork();
 
-        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, true, List.of(second)))))
-                .isZero();
-        assertThat(onLoop(() -> network.addKadContacts(new NodesDat.Contents(2, false, List.of(first, second)))))
-                .isEqualTo(1);
+        whenTheUploadPriorityIsSet(USER, UploadPriority.HIGH);
 
-        assertThat(NodesDat.read(Files.readAllBytes(file)).contacts())
-                .extracting(NodesDat.Contact::id)
-                .containsExactly(first.id(), second.id());
+        thenTheNetworkAnswers(false);
     }
 
     @Test
-    void newSettingsMoveTheServerAndKadAndTurnTheNetworksOff() throws Exception {
-        this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
-        Network network = started();
-        try (ScriptedServer server = ScriptedServer.start(HIGH_ID, 0)) {
-            connect(network, server);
-            assertThat(server.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10)))
-                    .isPresent();
-            next(EngineEvent.ServerConnected.class);
-            int kadPort = onLoop(network::kadInfo).orElseThrow().udpPort();
+    void shouldShareNothingBeforeTheStart() throws Exception {
+        whenTheNetworkIsCreated();
 
-            int tcp = freeTcpPort();
-            int udp = freeUdpPort();
-            reconfigure(network, p -> p.tcpPort(tcp).udpPort(udp));
-
-            Packet login = server.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10))
-                    .orElseThrow();
-            assertThat(ServerMessages.Login.decode(login).tcpPort())
-                    .as("logged in again with the new port")
-                    .isEqualTo(tcp);
-            assertThat(onLoop(network::kadInfo).orElseThrow().udpPort())
-                    .as("Kad moved too")
-                    .isEqualTo(udp)
-                    .isNotEqualTo(kadPort);
-            next(EngineEvent.ServerConnected.class);
-            // Not asked for: not taken.
-            server.send(
-                    ServerMessages.serverList(List.of(new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 31), 65_534))));
-            server.send(ServerMessages.message("after the list"));
-            next(EngineEvent.ServerMessage.class);
-            assertThat(onLoop(network::servers)).isEmpty();
-
-            reconfigure(network, p -> p.ed2kEnabled(false).rememberCancelledFiles(false));
-
-            next(EngineEvent.ServerDisconnected.class);
-            assertThat(onLoop(network::status).server()).isEmpty();
-        }
+        thenThereAreNoSharedFiles();
+        thenThereAreNoSharedFolders();
+        thenTheStatusCountsNoSharedFile();
+        thenTheHistoryHasNoDownloadOf(USER);
     }
 
     @Test
-    void whatTheServerSaysIsLoggedAndTheServersItKnowsAreLearnt() throws Exception {
-        this.preferences = this.preferences.toBuilder()
-                .addServersFromServer(true)
-                .filterLanAddresses(true)
-                .build();
-        int blocked = Ipv4.of(203, 0, 113, 7);
-        Files.write(
-                this.dirs.config().resolve(Network.IPFILTER_FILE),
-                IpFilterDat.write(List.of(new IpFilterDat.Range(blocked, blocked, 0, "test"))));
-        Network network = started();
-        // Failed too often: gone once logged in, before any could be pinged.
-        List<ServerMet.Server> dead = List.of(
-                new ServerMet.Server(
-                        Ipv4.of(198, 51, 100, 21), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))),
-                new ServerMet.Server(
-                        Ipv4.of(198, 51, 100, 22), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))));
-        assertThat(onLoop(() -> network.addServers(dead))).isEqualTo(2);
-        try (ScriptedServer server = ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH)) {
-            connect(network, server);
-            EngineEvent.ServerConnected connected = next(EngineEvent.ServerConnected.class);
-            assertThat(connected.clientId()).isEqualTo(HIGH_ID);
-            assertThat(onLoop(network::status).relatedSearch()).isTrue();
-            assertThat(server.next(Opcodes.Server.GETSERVERLIST.code(), Duration.ofSeconds(10)))
-                    .isPresent();
+    void shouldShareAndUnshareFoldersOnceStarted() throws Exception {
+        givenAStartedNetwork();
+        givenTheFolderIsShared("films", false);
+        givenTheFolderIsShared("music", true);
+        givenTheSharedFoldersAre("films", "music/**");
 
-            server.send(
-                    ServerMessages.message("ERROR: no more room\nWARNING: low id\nWelcome"),
-                    ServerMessages.serverList(List.of(
-                            // No UDP port above these: they are never pinged.
-                            new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 1), 65_534),
-                            new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 2), 65_533))),
-                    callback(Ipv4.of(10, 0, 0, 5)),
-                    callback(blocked),
-                    callback(Ipv4.of(127, 0, 0, 9)),
-                    Packet.empty(Protocol.EDONKEY, Opcodes.Server.REJECT.code()),
-                    Packet.of(Protocol.EDONKEY, Opcodes.Server.CALLBACKREQUESTED.code(), new byte[2]),
-                    Packet.of(Protocol.EDONKEY, 0xEE, new byte[2]),
-                    new ServerMessages.ServerStatus(500, 600).encode());
+        whenTheFolderIsUnshared("films");
 
-            assertThat(next(EngineEvent.ServerUpdated.class).server().users()).isEqualTo(500);
-            assertThat(this.log)
-                    .contains(
-                            new Logged(LogLine.Level.ERROR, "ERROR: no more room"),
-                            new Logged(LogLine.Level.WARNING, "WARNING: low id"),
-                            new Logged(LogLine.Level.INFO, "2 dead servers removed"),
-                            new Logged(LogLine.Level.INFO, "2 new servers from 127.0.0.1:" + server.port()));
-            assertThat(onLoop(network::servers)).hasSize(2);
-            server.send(new ServerMessages.ServerIdent(
-                            Hash16.parseHex("33".repeat(16)),
-                            server.ip(),
-                            server.port(),
-                            Optional.of("Scripted"),
-                            Optional.empty())
-                    .encode());
-            assertThat(next(EngineEvent.ServerUpdated.class).server().name()).isEqualTo("Scripted");
-
-            server.hangUp();
-
-            EngineEvent.ServerDisconnected gone = next(EngineEvent.ServerDisconnected.class);
-            assertThat(gone.server()).isPresent();
-            assertThat(onLoop(network::status).clientId()).isZero();
-            assertThat(this.log)
-                    .anySatisfy(l -> assertThat(l.text())
-                            .startsWith("Disconnected from Scripted (127.0.0.1:" + server.port() + ")"));
-        }
+        thenTheSharedFolderCountIs(1);
+        thenTheNetworkDescribesItsDownloadsAndUploads();
     }
 
     @Test
-    void largeFilesAreAskedForOnlyFromServersThatTakeThem() throws Exception {
-        this.preferences = this.preferences.toBuilder().addDownloadsPaused(true).build();
-        Network network = started();
-        Ed2kLink.FileLink large = Ed2kLink.FileLink.of("large.iso", 5_000_000_000L, Hash16.parseHex("d1".repeat(16)));
-        Ed2kLink.FileLink small = Ed2kLink.FileLink.of("small.iso", 5000, Hash16.parseHex("d2".repeat(16)));
-        assertThat(onLoop(() -> network.addDownload(large)).status()).isEqualTo(DownloadInfo.Status.PAUSED);
-        assertThat(onLoop(() -> network.addDownload(large)).status())
-                .as("added again: left as it is")
-                .isEqualTo(DownloadInfo.Status.PAUSED);
-        onLoop(() -> network.addDownload(small));
-        try (ScriptedServer server = ScriptedServer.start(HIGH_ID, ServerMessages.TCP_OBFUSCATION)) {
-            connect(network, server);
-            next(EngineEvent.ServerConnected.class);
+    void shouldNeverReplaceTheIpFilterByNothing() throws Exception {
+        givenANetwork();
 
-            onLoop(() -> network.resumeDownload(large.hash()) && network.resumeDownload(small.hash()));
+        whenTheIpFilterIsReplacedByNoRange();
 
-            Packet asked = server.next(Opcodes.Server.GETSOURCES_OBFU.code(), Duration.ofSeconds(10))
-                    .orElseThrow();
-            assertThat(asked.reader().hash16()).isEqualTo(small.hash());
-            assertThat(server.next(Opcodes.Server.GETSOURCES_OBFU.code(), Duration.ofSeconds(3)))
-                    .as("never for the large one")
-                    .isEmpty();
-        }
+        thenExceptionOccurredWithTheCause(IOException.class);
     }
 
     @Test
-    void theFriendSlotGoesWithTheFriend() throws Exception {
-        Network network = create();
-        Hash16 pal = Hash16.parseHex("e1".repeat(16));
-        onLoop(() -> {
-            network.addFriend(new Friend(pal, "pal", Optional.empty()));
-            return null;
-        });
-        assertThat(onLoop(() -> network.setFriendSlot(Optional.of(USER))))
-                .as("not a friend")
-                .isFalse();
-        assertThat(onLoop(() -> network.setFriendSlot(Optional.of(pal)))).isTrue();
+    void shouldReplaceTheIpFilterByAList() throws Exception {
+        givenANetwork();
 
-        assertThat(onLoop(() -> network.removeFriend(pal))).isTrue();
+        whenTheIpFilterIsReplacedByTheTestRanges();
 
-        assertThat(onLoop(network::friendSlot)).isEmpty();
-        assertThat(onLoop(network::friends)).isEmpty();
+        thenTheNetworkAnswers(2);
+        thenTheConfigurationHasTheFile(Network.IPFILTER_FILE);
+        thenTheLogHas(LogLine.Level.INFO, "2 IP filter ranges");
     }
 
     @Test
-    void downloadsCanBeStoppedPrioritisedAndPreviewed() throws Exception {
-        this.preferences =
-                this.preferences.toBuilder().rememberCancelledFiles(false).build();
-        Network network = create();
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f1".repeat(16)));
-        onLoop(() -> network.addDownload(film));
+    void shouldRefuseToConnectToAServerTheIpFilterBlocks() throws Exception {
+        givenANetwork();
+        givenTheIpFilterIsReplacedByTheTestRanges();
 
-        assertThat(onLoop(() -> network.setDownloadPriority(film.hash(), DownloadPriority.HIGH)))
-                .isTrue();
-        assertThat(onLoop(() -> network.setDownloadPreview(film.hash(), true))).isTrue();
-        assertThat(onLoop(() -> network.downloadData(film.hash())))
-                .as("nothing to preview yet")
-                .isEmpty();
-        assertThat(onLoop(() -> network.stopDownload(film.hash()))).isTrue();
-        assertThat(onLoop(network::downloads)).singleElement().satisfies(d -> {
-            assertThat(d.status()).isEqualTo(DownloadInfo.Status.STOPPED);
-            assertThat(d.priority()).isEqualTo(DownloadPriority.HIGH);
-        });
+        whenTheNetworkConnectsTo(BLOCKED, 4661);
 
-        assertThat(onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
-        assertThat(onLoop(network::history).cancelled(film.hash()))
-                .as("not remembered")
-                .isFalse();
+        thenExceptionOccurredWithTheCause(IllegalArgumentException.class, "IP filter");
     }
 
     @Test
-    void aCancelledDownloadThatCannotBeRememberedIsStillCancelled() throws Exception {
-        Network network = create();
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f2".repeat(16)));
-        onLoop(() -> network.addDownload(film));
-        blockWrites(this.dirs.config().resolve(CancelledFiles.FILE_NAME));
+    void shouldRefuseCategoriesThatShareAnId() throws Exception {
+        givenANetwork();
 
-        assertThat(onLoop(() -> network.cancelDownload(film.hash()))).isTrue();
+        whenTheCategoriesAre(FILMS, FILMS);
 
-        assertThat(onLoop(network::downloads)).isEmpty();
+        thenExceptionOccurredWithTheCause(IllegalArgumentException.class);
+        thenThereAreNoCategories();
     }
 
     @Test
-    void aSchedulerRuleLeavesDownloadsOfOtherCategoriesAndRunningOnesAlone() throws Exception {
-        Network network = create();
-        Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("a3".repeat(16)));
-        Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("a4".repeat(16)));
-        onLoop(() -> {
-            network.setCategories(List.of(
-                    new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false),
-                    new Category(2, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "", false)));
-            network.addDownload(film);
-            network.addDownload(song);
-            network.setDownloadCategory(film.hash(), 1);
-            network.setDownloadCategory(song.hash(), 2);
-            return null;
-        });
+    void shouldTakeUnreadableFilesAsEmpty() throws Exception {
+        givenAnUnreadableFile(StoredSearches.FILE_NAME);
+        givenAnUnreadableFile(CancelledFiles.FILE_NAME);
 
-        onLoop(() -> {
-            network.scheduleCategories(OptionalInt.empty(), OptionalInt.of(2));
-            network.scheduleCategories(OptionalInt.of(3), OptionalInt.empty());
-            return null;
-        });
+        whenTheNetworkIsCreated();
 
-        assertThat(onLoop(network::downloads))
-                .extracting(DownloadInfo::status)
-                .containsOnly(DownloadInfo.Status.DOWNLOADING);
-        assertThat(this.log)
-                .contains(
-                        new Logged(LogLine.Level.INFO, "Scheduler: downloads of category 2 resumed"),
-                        new Logged(LogLine.Level.INFO, "Scheduler: downloads of category 3 stopped"));
+        thenThereAreNoSavedSearches();
+        thenTheFileIsNotCancelled(USER);
     }
 
     @Test
-    void aHelloToNobodyOrToAClientThatHangsUpFails() throws Exception {
-        Network network = create();
-        int closed = freeTcpPort();
+    void shouldChangeServersEvenWhenTheirFilesCannotBeSaved() throws Exception {
+        givenManualServersOfHighPriority();
+        givenANetwork();
+        givenTheServerFilesCannotBeSaved();
+        givenTheServerIsAdded(KNOWN_SERVER);
+        givenTheServerIsNotAddedAgain(KNOWN_SERVER);
+        givenTheOnlyServerHasThePriority(ServerInfo.Priority.HIGH);
+        givenTheServerIsMadeStatic(KNOWN_SERVER);
+        givenTheServerPriorityIsSet(KNOWN_SERVER, ServerInfo.Priority.LOW);
+        givenAnUnknownServerIsNeitherMadeStaticNorPrioritised(UNKNOWN_SERVER);
+        givenTheServerUpdateTellsItIsStatic();
 
-        assertThatThrownBy(() -> network.hello(local(closed)).get(20, TimeUnit.SECONDS))
-                .hasCauseInstanceOf(IOException.class);
+        whenTheServerIsRemoved(KNOWN_SERVER);
 
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
-            try (Socket socket = peer.accept()) {
-                assertThat(read(socket).opcode()).isEqualTo(Opcodes.Client.HELLO.code());
-            }
-            assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(IOException.class);
-        }
-
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
-            try (Socket socket = peer.accept()) {
-                read(socket);
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(
-                                Packet.of(Protocol.EDONKEY, Opcodes.Client.HELLOANSWER.code(), new byte[3])));
-                assertThatThrownBy(() -> answer.get(20, TimeUnit.SECONDS))
-                        .as("an answer that cannot be read")
-                        .hasCauseInstanceOf(IOException.class);
-            }
-        }
+        thenTheNetworkAnswers(true);
+        thenThereAreNoServers();
     }
 
     @Test
-    void aClientWithoutTheIdentificationIsTold() throws Exception {
-        Network network = create();
-        Hash16 peerHash = Hash16.parseHex("21".repeat(16));
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            CompletableFuture<PeerInfo> answer = network.hello(local(peer.getLocalPort()));
-            try (Socket socket = peer.accept()) {
-                Hello ours = Hello.decode(read(socket));
-                assertThat(ours.userHash()).isEqualTo(USER);
-                Hello theirs = Hello.of(peerHash, 0, 4999, "peer", 0, 0, 0, 0, 0, 0);
-                // A hello before the answer is not taken for it.
-                socket.getOutputStream().write(TcpFraming.encode(theirs.encode(false)));
-                socket.getOutputStream().write(TcpFraming.encode(theirs.encode(true)));
+    void shouldDropADatagramThatIsNoAnswer() throws Exception {
+        givenANetwork();
 
-                PeerInfo info = answer.get(20, TimeUnit.SECONDS);
-                assertThat(info.userHash()).isEqualTo(peerHash);
-                assertThat(info.nick()).contains("peer");
-                assertThat(info.identification()).isEqualTo(PeerInfo.Identification.NOT_SUPPORTED);
+        whenADatagramArrives(Opcodes.ServerUdp.GLOBSEARCHREQ, 4);
 
-                // Other packets afterwards are ignored; a hello of its own is answered.
-                socket.getOutputStream().write(TcpFraming.encode(emule()));
-                socket.getOutputStream()
-                        .write(TcpFraming.encode(Packet.empty(Protocol.EDONKEY, Opcodes.Client.HELLOANSWER.code())));
-                socket.getOutputStream().write(TcpFraming.encode(theirs.encode(false)));
-                assertThat(read(socket).opcode()).isEqualTo(Opcodes.Client.HELLOANSWER.code());
-            }
-        }
+        thenNoEventIsReported();
     }
 
     @Test
-    void theServerOfAClientIsLearntWhenThePreferencesAskForIt() throws Exception {
-        this.preferences =
-                this.preferences.toBuilder().addServersFromClients(true).build();
-        started();
-        // A documentation address with no UDP port above it: never pinged, never connected to.
-        Hello hello = Hello.of(
-                Hash16.parseHex("23".repeat(16)), 0, 4999, "peer", 0, 0, 0, 0, Ipv4.of(198, 51, 100, 3), 65_534);
+    void shouldDropADatagramThatCannotBeRead() throws Exception {
+        givenANetwork();
 
-        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.preferences.tcpPort())) {
-            socket.setSoTimeout(10_000);
-            socket.getOutputStream().write(TcpFraming.encode(hello.encode(false)));
+        whenADatagramArrives(Opcodes.ServerUdp.GLOBSEARCHRES, 3);
 
-            assertThat(next(EngineEvent.ServersChanged.class).count()).isEqualTo(1);
-        }
-        assertThat(this.log).contains(new Logged(LogLine.Level.INFO, "1 new server from a client"));
+        thenNoEventIsReported();
+    }
+
+    @Test
+    void shouldIgnoreSettingsChangedBeforeTheStart() throws Exception {
+        givenANetwork();
+
+        whenTheSettingsMoveTheTcpPort();
+
+        thenNothingIsLogged();
+    }
+
+    @Test
+    void shouldIgnoreSettingsChangedAfterTheEnd() throws Exception {
+        givenANetwork();
+        givenTheSettingsMovedTheTcpPort();
+        givenTheNetworkIsClosed();
+
+        whenTheSettingsMoveTheTcpPort();
+
+        thenNothingIsLogged();
+    }
+
+    @Test
+    void shouldLeaveUsUnreachableWhenAnotherProgramHoldsOurPort() throws Exception {
+        givenTheTcpPortIsTakenByAnotherProgram();
+
+        whenTheNetworkStarts();
+
+        thenTheLogTellsItCannotListenOnTheTakenPort();
+        thenTheStatusTellsTheTakenPort();
+    }
+
+    @Test
+    void shouldNotRecheckTheKadFirewallNorListAnythingWhileKadDoesNotRun() throws Exception {
+        givenAStartedNetwork();
+
+        whenTheKadFirewallIsRechecked();
+
+        thenTheNetworkAnswers(false);
+        thenThereAreNoKadContacts();
+        thenThereAreNoKadSearches();
+    }
+
+    @Test
+    void shouldRefuseAKadBootstrapWhileKadDoesNotRun() throws Exception {
+        givenAStartedNetwork();
+
+        whenKadIsBootstrappedFrom(Ipv4.of(127, 0, 0, 1), 9);
+
+        thenExceptionOccurredWithTheCause(IllegalStateException.class);
+    }
+
+    @Test
+    void shouldRecheckTheKadFirewallWhileKadRuns() throws Exception {
+        givenAStartedNetwork();
+        givenKadIsConnectedTwice();
+
+        whenTheKadFirewallIsRechecked();
+
+        thenTheNetworkAnswers(true);
+        thenTheLogHas(LogLine.Level.INFO, "Kad: checking the firewall again");
+    }
+
+    @Test
+    void shouldTakeNoLanContactWhileKadRuns() throws Exception {
+        givenAStartedNetwork();
+        givenKadIsConnectedTwice();
+        givenKadIsBootstrappedFromAFreePortOfThisMachine();
+
+        whenAContactListIsAdded(LAN_CONTACT);
+
+        thenTheNetworkAnswers(0);
+        thenThereAreNoKadContacts();
+        thenThereAreNoKadSearches();
+    }
+
+    @Test
+    void shouldStopKadOnceWhenDisconnectedTwice() throws Exception {
+        givenAStartedNetwork();
+        givenKadIsConnectedTwice();
+
+        whenKadIsDisconnectedTwice();
+
+        thenKadDoesNotRun();
+        thenTheLogHasOnce("Kad stopped");
+    }
+
+    @Test
+    void shouldRefuseAKadSearchWhileKadDoesNotRun() throws Exception {
+        givenAStartedNetwork();
+
+        whenKadIsSearchedFor("ubuntu");
+
+        thenExceptionOccurredWithTheCause(IllegalStateException.class, "not running");
+    }
+
+    @Test
+    void shouldRefuseAKadSearchWithoutAContactToAsk() throws Exception {
+        givenAStartedNetwork();
+        givenKadIsConnected();
+
+        whenKadIsSearchedFor("ubuntu");
+
+        thenExceptionOccurredWithTheCause(IllegalStateException.class, "now");
+        thenThereAreNoKadSearches();
+    }
+
+    @ParameterizedTest
+    @MethodSource("obfuscationWanted")
+    void shouldTellInOurHelloHowMuchObfuscationWeWant(ObfuscationMode mode, int wanted) throws Exception {
+        givenANetwork();
+        givenTheObfuscation(mode);
+        givenAClientListeningWithABacklogOf(4);
+
+        whenWeSayHelloToTheClientWhichHangsUp();
+
+        thenOurHelloTellsTheCryptOptions(wanted);
+        thenTheHelloFailsWith(IOException.class);
+    }
+
+    @Test
+    void shouldReportKadThatCannotTakeItsPort() throws Exception {
+        givenTheUdpPortIsTakenByAnotherProgram();
+        givenKadIsEnabled();
+
+        whenTheNetworkStarts();
+
+        thenTheLogTellsKadCannotStartOnTheTakenPort();
+    }
+
+    @Test
+    void shouldNotStartKadByHandWithoutItsPort() throws Exception {
+        givenTheUdpPortIsTakenByAnotherProgram();
+        givenKadIsEnabled();
+        givenAStartedNetwork();
+
+        whenKadIsConnected();
+
+        thenKadHasStillNoPort();
+    }
+
+    @Test
+    void shouldTurnOffQuietlyKadThatCouldNotTakeItsPort() throws Exception {
+        givenTheUdpPortIsTakenByAnotherProgram();
+        givenKadIsEnabled();
+        givenAStartedNetwork();
+        givenKadIsConnected();
+
+        whenKadIsTurnedOffInTheSettings();
+
+        thenKadDoesNotRun();
+        thenTheLogNeverHas("Kad stopped");
+    }
+
+    @Test
+    void shouldLeaveOnDiskTheCancelledFilesThatCannotBeForgotten() throws Exception {
+        givenANetwork();
+        givenTheDownloadIsCancelled(CANCELLED_FILM);
+        givenTheNetworkIsClosed();
+        givenTheCancelledFilesAreOnDisk();
+        givenTheCancelledFilesCannotBeSaved();
+        givenCancelledFilesAreNotRemembered();
+
+        whenTheNetworkIsCreated();
+
+        thenTheFileIsNotCancelled(CANCELLED_FILM.hash());
+        thenTheCancelledFilesOnDiskAreLeftAsTheyWere();
+    }
+
+    @Test
+    void shouldKeepNothingOfABootstrapList() throws Exception {
+        givenANetwork();
+        givenNodesDatHolds(FIRST_CONTACT);
+
+        whenABootstrapListIsAdded(SECOND_CONTACT);
+
+        thenTheNetworkAnswers(0);
+    }
+
+    @Test
+    void shouldAddTheNewKadContactsToNodesDatWhileKadIsOff() throws Exception {
+        givenANetwork();
+        givenNodesDatHolds(FIRST_CONTACT);
+
+        whenAContactListIsAdded(FIRST_CONTACT, SECOND_CONTACT);
+
+        thenTheNetworkAnswers(1);
+        thenNodesDatHolds(FIRST_CONTACT, SECOND_CONTACT);
+    }
+
+    @Test
+    void shouldLogInAgainAndMoveKadWhenThePortsChange() throws Exception {
+        givenKadIsEnabled();
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenTheServerGotALogin();
+        givenKadRunsOnItsPort();
+
+        whenThePortsAreMovedToFreeOnes();
+
+        thenTheServerGetsALoginWithTheNewTcpPort();
+        thenKadMovedToTheNewUdpPort();
+        thenTheNetworkConnectsAgain();
+    }
+
+    @Test
+    void shouldNotTakeAServerListItDidNotAskFor() throws Exception {
+        givenKadIsEnabled();
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenTheServerGotALogin();
+        givenThePortsWereMovedToFreeOnes();
+        givenTheNetworkLoggedInAgainWithTheNewPorts();
+
+        whenTheServerSendsAListNotAskedFor();
+
+        thenThereAreNoServers();
+    }
+
+    @Test
+    void shouldDisconnectWhenEd2kIsTurnedOff() throws Exception {
+        givenKadIsEnabled();
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenTheServerGotALogin();
+        givenThePortsWereMovedToFreeOnes();
+        givenTheNetworkLoggedInAgainWithTheNewPorts();
+
+        whenEd2kAndTheMemoryOfCancelledFilesAreTurnedOff();
+
+        thenTheNetworkIsDisconnected();
+        thenTheStatusHasNoServer();
+    }
+
+    @Test
+    void shouldLogInAndAskForTheServersTheServerKnows() throws Exception {
+        givenServersAreLearntFromServersAndLanAddressesFiltered();
+        givenAnIpFilterBlocking(BLOCKED);
+        givenAStartedNetwork();
+        givenDeadServersAreKnown();
+
+        whenTheNetworkConnectsTo(ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH));
+
+        thenTheClientIdIs(HIGH_ID);
+        thenRelatedSearchIsOn();
+        thenTheServerIsAskedForItsList();
+    }
+
+    @Test
+    void shouldLogWhatTheServerSaysAndLearnTheServersItKnows() throws Exception {
+        givenServersAreLearntFromServersAndLanAddressesFiltered();
+        givenAnIpFilterBlocking(BLOCKED);
+        givenAStartedNetwork();
+        givenDeadServersAreKnown();
+        givenTheNetworkConnectedTo(ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH));
+        givenTheServerWasAskedForItsList();
+
+        whenTheServerSendsMessagesServersCallbacksAndItsStatus();
+
+        thenTheServerUpdateTellsTheUsers(500);
+        thenTheLogHas(LogLine.Level.ERROR, "ERROR: no more room");
+        thenTheLogHas(LogLine.Level.WARNING, "WARNING: low id");
+        thenTheLogHas(LogLine.Level.INFO, "2 dead servers removed");
+        thenTheLogHasTheNewServersFromTheServer(2);
+        thenTheServerCountIs(2);
+    }
+
+    @Test
+    void shouldTakeTheNameTheServerGivesItself() throws Exception {
+        givenAStartedNetwork();
+        givenTheNetworkConnectedTo(ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH));
+
+        whenTheServerTellsItsName("Scripted");
+
+        thenTheServerUpdateTellsTheName("Scripted");
+    }
+
+    @Test
+    void shouldTellWhenTheServerHangsUp() throws Exception {
+        givenAStartedNetwork();
+        givenTheNetworkConnectedTo(ScriptedServer.start(HIGH_ID, ServerMessages.TCP_RELATED_SEARCH));
+        givenTheServerToldItsName("Scripted");
+
+        whenTheServerHangsUp();
+
+        thenTheDisconnectionNamesTheServer();
+        thenOurClientIdIs(0);
+        thenTheLogTellsTheDisconnectionFrom("Scripted");
+    }
+
+    @Test
+    void shouldLeaveAPausedDownloadAsItIsWhenAddedAgain() throws Exception {
+        givenDownloadsAreAddedPaused();
+        givenAStartedNetwork();
+        givenTheDownloadIsAddedPaused(LARGE_FILE);
+
+        whenTheDownloadIsAddedAgain(LARGE_FILE);
+
+        thenTheDownloadIsLeftAsItIs(DownloadInfo.Status.PAUSED);
+    }
+
+    @Test
+    void shouldAskForLargeFilesOnlyFromServersThatTakeThem() throws Exception {
+        givenDownloadsAreAddedPaused();
+        givenAStartedNetwork();
+        givenTheDownloadIsAddedPaused(LARGE_FILE);
+        givenTheDownload(SMALL_FILE);
+        givenTheNetworkConnectedTo(ScriptedServer.start(HIGH_ID, ServerMessages.TCP_OBFUSCATION));
+
+        whenTheDownloadsAreResumed(LARGE_FILE, SMALL_FILE);
+
+        thenTheServerIsAskedForTheSourcesOf(SMALL_FILE);
+        thenTheServerIsNeverAskedForTheSourcesOfTheLargeFile();
+    }
+
+    @Test
+    void shouldGiveTheFriendSlotOnlyToAFriend() throws Exception {
+        givenANetwork();
+        givenTheFriend(PAL, "pal");
+
+        whenTheFriendSlotIsGivenTo(USER);
+
+        thenTheNetworkAnswers(false);
+    }
+
+    @Test
+    void shouldTakeTheFriendSlotAwayWithTheFriend() throws Exception {
+        givenANetwork();
+        givenTheFriend(PAL, "pal");
+        givenTheFriendSlotIsGivenTo(PAL);
+
+        whenTheFriendIsRemoved(PAL);
+
+        thenTheNetworkAnswers(true);
+        thenThereIsNoFriendSlot();
+        thenThereAreNoFriends();
+    }
+
+    @Test
+    void shouldStopPrioritiseAndPreviewADownload() throws Exception {
+        givenCancelledFilesAreNotRemembered();
+        givenANetwork();
+        givenTheDownload(FILM);
+        givenTheDownloadPriorityIsSet(FILM, DownloadPriority.HIGH);
+        givenThePreviewIsTurnedOn(FILM);
+        givenThereIsNothingToPreviewYet(FILM);
+
+        whenTheDownloadIsStopped(FILM);
+
+        thenTheNetworkAnswers(true);
+        thenTheOnlyDownloadIs(DownloadInfo.Status.STOPPED, DownloadPriority.HIGH);
+    }
+
+    @Test
+    void shouldNotRememberACancelledDownloadWhenThePreferencesSaySo() throws Exception {
+        givenCancelledFilesAreNotRemembered();
+        givenANetwork();
+        givenTheDownload(FILM);
+
+        whenTheDownloadIsCancelled(FILM);
+
+        thenTheNetworkAnswers(true);
+        thenTheFileIsNotCancelled(FILM.hash());
+    }
+
+    @Test
+    void shouldCancelADownloadThatCannotBeRemembered() throws Exception {
+        givenANetwork();
+        givenTheDownload(OTHER_FILM);
+        givenTheCancelledFilesCannotBeSaved();
+
+        whenTheDownloadIsCancelled(OTHER_FILM);
+
+        thenTheNetworkAnswers(true);
+        thenThereAreNoDownloads();
+    }
+
+    @Test
+    void shouldLeaveDownloadsOfOtherCategoriesAndRunningOnesAloneByASchedulerRule() throws Exception {
+        givenANetwork();
+        givenTheCategories(FILMS, MUSIC);
+        givenTheDownloadInCategory(CATEGORISED_FILM, 1);
+        givenTheDownloadInCategory(CATEGORISED_SONG, 2);
+
+        whenTheSchedulerResumesThenStops(2, 3);
+
+        thenEveryDownloadIs(DownloadInfo.Status.DOWNLOADING);
+        thenTheLogHas(LogLine.Level.INFO, "Scheduler: downloads of category 2 resumed");
+        thenTheLogHas(LogLine.Level.INFO, "Scheduler: downloads of category 3 stopped");
+    }
+
+    @Test
+    void shouldFailAHelloToNobody() throws Exception {
+        givenANetwork();
+
+        whenWeSayHelloToNobody();
+
+        thenTheHelloFailsWith(IOException.class);
+    }
+
+    @Test
+    void shouldFailAHelloToAClientThatHangsUp() throws Exception {
+        givenANetwork();
+        givenAClientListeningWithABacklogOf(1);
+
+        whenWeSayHelloToTheClientWhichHangsUp();
+
+        thenTheClientGets(Opcodes.Client.HELLO);
+        thenTheHelloFailsWith(IOException.class);
+    }
+
+    @Test
+    void shouldFailAHelloAnsweredUnreadably() throws Exception {
+        givenANetwork();
+        givenAClientListeningWithABacklogOf(1);
+
+        whenTheClientAnswersOurHelloUnreadably();
+
+        thenTheHelloFailsWith(IOException.class);
+    }
+
+    @Test
+    void shouldTellAClientWithoutTheIdentification() throws Exception {
+        givenANetwork();
+        givenAClientListeningWithABacklogOf(1);
+        givenWeSaidHelloToTheClient();
+
+        whenTheClientSendsAHelloThenItsAnswerWithoutTheIdentification();
+
+        thenTheAnswerComesFrom(PEER_HASH, "peer");
+        thenTheIdentificationIs(PeerInfo.Identification.NOT_SUPPORTED);
+    }
+
+    @Test
+    void shouldIgnoreOtherPacketsButAnswerAHelloOfTheClientAfterwards() throws Exception {
+        givenANetwork();
+        givenAClientListeningWithABacklogOf(1);
+        givenWeSaidHelloToTheClient();
+        givenTheClientAnsweredWithoutTheIdentification();
+
+        whenTheClientSendsOtherPacketsThenAHello();
+
+        thenTheClientGets(Opcodes.Client.HELLOANSWER);
+    }
+
+    @Test
+    void shouldLearnTheServerOfAClientWhenThePreferencesAskForIt() throws Exception {
+        givenServersAreLearntFromClients();
+        givenAStartedNetwork();
+
+        whenAClientSaysHelloWithItsServer();
+
+        thenTheServerCountChangesTo(1);
+        thenTheLogHas(LogLine.Level.INFO, "1 new server from a client");
     }
 
     @Test
@@ -906,6 +943,834 @@ class NetworkTest {
         Thread.sleep(2000);
         assertThat(this.events).noneMatch(e -> e instanceof EngineEvent.ServerConnecting);
         assertThat(this.scripted.connections()).isZero();
+    }
+
+    private void givenANetwork() throws Exception {
+        create();
+    }
+
+    private void givenAStartedNetwork() throws Exception {
+        started();
+    }
+
+    private void givenTheNetworkIsClosed() throws Exception {
+        onLoop(() -> {
+            this.network.close();
+            return null;
+        });
+    }
+
+    private void givenTheResultIsMarkedAsSpam() throws Exception {
+        this.marks = onLoop(() -> this.network.markSpam(List.of(SPAM), true));
+        assertThat(this.marks.spam()).containsExactly(SPAM.hash());
+        assertThat(this.dirs.config().resolve(SpamFilter.FILE_NAME)).exists();
+    }
+
+    private void givenTheSpamMarksCannotBeSaved() throws IOException {
+        blockWrites(this.dirs.config().resolve(SpamFilter.FILE_NAME));
+    }
+
+    private void givenTheFolder(String name) throws IOException {
+        Files.createDirectories(this.dir.resolve(name));
+    }
+
+    private void givenTheFolderIsShared(String name, boolean subdirectories) throws Exception {
+        Path folder = Files.createDirectories(this.dir.resolve(name));
+        onLoop(() -> {
+            this.network.shareDirectory(folder, subdirectories);
+            return null;
+        });
+    }
+
+    private void givenTheSharedFoldersAre(String... folders) throws Exception {
+        assertThat(onLoop(this.network::sharedDirectories))
+                .extracting(d -> d.path().getFileName().toString() + (d.subdirectories() ? "/**" : ""))
+                .containsExactlyInAnyOrder(folders);
+    }
+
+    private void givenTheIpFilterIsReplacedByTheTestRanges() throws Exception {
+        whenTheIpFilterIsReplacedByTheTestRanges();
+        assertThat(this.reply).isEqualTo(2);
+    }
+
+    private void givenAnUnreadableFile(String name) throws IOException {
+        Files.write(this.dirs.config().resolve(name), new byte[] {9, 9, 9});
+    }
+
+    private void givenManualServersOfHighPriority() {
+        this.preferences =
+                this.preferences.toBuilder().manualServersHighPriority(true).build();
+    }
+
+    private void givenTheServerFilesCannotBeSaved() throws IOException {
+        blockWrites(this.dirs.config().resolve(ServerList.FILE_NAME));
+        blockWrites(this.dirs.config().resolve(ServerList.STATIC_FILE_NAME));
+    }
+
+    private void givenTheServerIsAdded(ServerList.Address server) throws Exception {
+        assertThat(onLoop(() -> this.network.addServer(server))).isTrue();
+    }
+
+    private void givenTheServerIsNotAddedAgain(ServerList.Address server) throws Exception {
+        assertThat(onLoop(() -> this.network.addServer(server))).as("known").isFalse();
+    }
+
+    private void givenTheOnlyServerHasThePriority(ServerInfo.Priority priority) throws Exception {
+        assertThat(onLoop(this.network::servers))
+                .singleElement()
+                .satisfies(s -> assertThat(s.priority()).isEqualTo(priority));
+    }
+
+    private void givenTheServerIsMadeStatic(ServerList.Address server) throws Exception {
+        assertThat(onLoop(() -> this.network.setStaticServer(server, true))).isTrue();
+    }
+
+    private void givenTheServerPriorityIsSet(ServerList.Address server, ServerInfo.Priority priority) throws Exception {
+        assertThat(onLoop(() -> this.network.setServerPriority(server, priority)))
+                .isTrue();
+    }
+
+    private void givenAnUnknownServerIsNeitherMadeStaticNorPrioritised(ServerList.Address server) throws Exception {
+        assertThat(onLoop(() -> this.network.setStaticServer(server, true))).isFalse();
+        assertThat(onLoop(() -> this.network.setServerPriority(server, ServerInfo.Priority.LOW)))
+                .isFalse();
+    }
+
+    private void givenTheServerUpdateTellsItIsStatic() throws Exception {
+        assertThat(next(EngineEvent.ServerUpdated.class).server().isStatic()).isTrue();
+    }
+
+    private void givenTheSettingsMovedTheTcpPort() throws Exception {
+        whenTheSettingsMoveTheTcpPort();
+    }
+
+    private void givenTheTcpPortIsTakenByAnotherProgram() throws IOException {
+        this.takenTcpPort = new ServerSocket(this.preferences.tcpPort());
+    }
+
+    private void givenTheUdpPortIsTakenByAnotherProgram() throws IOException {
+        this.takenUdpPort = new DatagramSocket(this.preferences.udpPort());
+    }
+
+    private void givenKadIsEnabled() {
+        this.preferences = this.preferences.toBuilder().kadEnabled(true).build();
+    }
+
+    private void givenKadIsConnected() throws Exception {
+        whenKadIsConnected();
+    }
+
+    private void givenKadIsConnectedTwice() throws Exception {
+        onLoop(() -> {
+            this.network.connectKad();
+            this.network.connectKad();
+            return null;
+        });
+        assertThat(onLoop(this.network::kadInfo)).isPresent();
+    }
+
+    private void givenKadIsBootstrappedFromAFreePortOfThisMachine() throws Exception {
+        int port = freeUdpPort();
+        onLoop(() -> {
+            this.network.kadBootstrap(Ipv4.of(127, 0, 0, 1), port);
+            return null;
+        });
+    }
+
+    private void givenTheDownloadIsCancelled(Ed2kLink.FileLink link) throws Exception {
+        onLoop(() -> this.network.addDownload(link) != null && this.network.cancelDownload(link.hash()));
+        assertThat(onLoop(this.network::history).cancelled(link.hash())).isTrue();
+    }
+
+    private void givenTheCancelledFilesAreOnDisk() throws IOException {
+        this.remembered = Files.readAllBytes(this.dirs.config().resolve(CancelledFiles.FILE_NAME));
+    }
+
+    private void givenTheCancelledFilesCannotBeSaved() throws IOException {
+        blockWrites(this.dirs.config().resolve(CancelledFiles.FILE_NAME));
+    }
+
+    private void givenCancelledFilesAreNotRemembered() {
+        this.preferences =
+                this.preferences.toBuilder().rememberCancelledFiles(false).build();
+    }
+
+    private void givenNodesDatHolds(NodesDat.Contact... contacts) throws IOException {
+        Files.write(this.dirs.config().resolve(KadNode.NODES_FILE), NodesDat.write(List.of(contacts)));
+    }
+
+    private void givenTheServerGotALogin() throws InterruptedException {
+        assertThat(this.scripted.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10)))
+                .isPresent();
+    }
+
+    private void givenKadRunsOnItsPort() throws Exception {
+        this.kadPort = onLoop(this.network::kadInfo).orElseThrow().udpPort();
+    }
+
+    private void givenThePortsWereMovedToFreeOnes() throws Exception {
+        whenThePortsAreMovedToFreeOnes();
+    }
+
+    private void givenTheNetworkLoggedInAgainWithTheNewPorts() throws Exception {
+        thenTheServerGetsALoginWithTheNewTcpPort();
+        thenTheNetworkConnectsAgain();
+    }
+
+    private void givenServersAreLearntFromServersAndLanAddressesFiltered() {
+        this.preferences = this.preferences.toBuilder()
+                .addServersFromServer(true)
+                .filterLanAddresses(true)
+                .build();
+    }
+
+    private void givenAnIpFilterBlocking(int ip) throws IOException {
+        Files.write(
+                this.dirs.config().resolve(Network.IPFILTER_FILE),
+                IpFilterDat.write(List.of(new IpFilterDat.Range(ip, ip, 0, "test"))));
+    }
+
+    // Failed too often: gone once logged in, before any could be pinged.
+    private void givenDeadServersAreKnown() throws Exception {
+        List<ServerMet.Server> dead = List.of(
+                new ServerMet.Server(
+                        Ipv4.of(198, 51, 100, 21), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))),
+                new ServerMet.Server(
+                        Ipv4.of(198, 51, 100, 22), 65_534, List.of(new Tag.IntTag(TagName.id(ServerTag.FAIL), 99))));
+        assertThat(onLoop(() -> this.network.addServers(dead))).isEqualTo(2);
+    }
+
+    private void givenTheNetworkConnectedTo(ScriptedServer server) throws Exception {
+        whenTheNetworkConnectsTo(server);
+    }
+
+    private void givenTheServerWasAskedForItsList() throws InterruptedException {
+        thenTheServerIsAskedForItsList();
+    }
+
+    private void givenTheServerToldItsName(String name) throws Exception {
+        whenTheServerTellsItsName(name);
+        thenTheServerUpdateTellsTheName(name);
+    }
+
+    private void givenDownloadsAreAddedPaused() {
+        this.preferences = this.preferences.toBuilder().addDownloadsPaused(true).build();
+    }
+
+    private void givenTheDownloadIsAddedPaused(Ed2kLink.FileLink link) throws Exception {
+        assertThat(onLoop(() -> this.network.addDownload(link)).status()).isEqualTo(DownloadInfo.Status.PAUSED);
+    }
+
+    private void givenTheDownload(Ed2kLink.FileLink link) throws Exception {
+        onLoop(() -> this.network.addDownload(link));
+    }
+
+    private void givenTheFriend(Hash16 hash, String nick) throws Exception {
+        onLoop(() -> {
+            this.network.addFriend(new Friend(hash, nick, Optional.empty()));
+            return null;
+        });
+    }
+
+    private void givenTheFriendSlotIsGivenTo(Hash16 friend) throws Exception {
+        whenTheFriendSlotIsGivenTo(friend);
+        assertThat(this.reply).isEqualTo(true);
+    }
+
+    private void givenTheDownloadPriorityIsSet(Ed2kLink.FileLink link, DownloadPriority priority) throws Exception {
+        assertThat(onLoop(() -> this.network.setDownloadPriority(link.hash(), priority)))
+                .isTrue();
+    }
+
+    private void givenThePreviewIsTurnedOn(Ed2kLink.FileLink link) throws Exception {
+        assertThat(onLoop(() -> this.network.setDownloadPreview(link.hash(), true)))
+                .isTrue();
+    }
+
+    private void givenThereIsNothingToPreviewYet(Ed2kLink.FileLink link) throws Exception {
+        assertThat(onLoop(() -> this.network.downloadData(link.hash())))
+                .as("nothing to preview yet")
+                .isEmpty();
+    }
+
+    private void givenTheCategories(Category... categories) throws Exception {
+        onLoop(() -> {
+            this.network.setCategories(List.of(categories));
+            return null;
+        });
+    }
+
+    private void givenTheDownloadInCategory(Ed2kLink.FileLink link, int category) throws Exception {
+        onLoop(() -> {
+            this.network.addDownload(link);
+            this.network.setDownloadCategory(link.hash(), category);
+            return null;
+        });
+    }
+
+    private void givenAClientListeningWithABacklogOf(int backlog) throws IOException {
+        this.peerSocket = new ServerSocket(0, backlog, InetAddress.getLoopbackAddress());
+    }
+
+    private void givenTheObfuscation(ObfuscationMode mode) {
+        this.preferences = this.preferences.toBuilder().obfuscation(mode).build();
+    }
+
+    private void givenWeSaidHelloToTheClient() throws IOException {
+        this.answer = this.network.hello(local(this.peerSocket.getLocalPort()));
+        this.peerConnection = this.peerSocket.accept();
+        assertThat(Hello.decode(read(this.peerConnection)).userHash()).isEqualTo(USER);
+    }
+
+    private void givenTheClientAnsweredWithoutTheIdentification() throws Exception {
+        whenTheClientSendsAHelloThenItsAnswerWithoutTheIdentification();
+        thenTheIdentificationIs(PeerInfo.Identification.NOT_SUPPORTED);
+    }
+
+    private void givenServersAreLearntFromClients() {
+        this.preferences =
+                this.preferences.toBuilder().addServersFromClients(true).build();
+    }
+
+    private void whenTheResultIsMarkedAsNotSpam() throws Exception {
+        this.marks = onLoop(() -> this.network.markSpam(List.of(SPAM), false));
+    }
+
+    private void whenTheFolderIsShared(String name) {
+        Path folder = this.dir.resolve(name);
+        this.exception = catchThrowable(() -> onLoop(() -> {
+            this.network.shareDirectory(folder, false);
+            return null;
+        }));
+    }
+
+    private void whenTheFolderIsUnshared(String name) {
+        Path folder = this.dir.resolve(name);
+        this.exception = catchThrowable(() -> onLoop(() -> {
+            this.network.unshareDirectory(folder);
+            return null;
+        }));
+    }
+
+    private void whenNoKnownFilesAreAdded() {
+        this.exception = catchThrowable(() -> onLoop(() -> this.network.addKnownFiles(List.of(), List.of())));
+    }
+
+    private void whenTheSharedFileIsRenamed(Hash16 hash, String name) throws Exception {
+        this.reply = onLoop(() -> this.network.renameSharedFile(hash, name));
+    }
+
+    private void whenTheUploadPriorityIsSet(Hash16 hash, UploadPriority priority) throws Exception {
+        this.reply = onLoop(() -> this.network.setUploadPriority(hash, priority));
+    }
+
+    private void whenTheNetworkIsCreated() throws Exception {
+        create();
+    }
+
+    private void whenTheIpFilterIsReplacedByNoRange() {
+        this.exception = catchThrowable(() -> onLoop(() -> this.network.setIpFilter(List.of())));
+    }
+
+    private void whenTheIpFilterIsReplacedByTheTestRanges() throws Exception {
+        this.reply = onLoop(() -> this.network.setIpFilter(
+                List.of(new IpFilterDat.Range(BLOCKED, BLOCKED, 0, "test"), new IpFilterDat.Range(1, 2, 0, "low"))));
+    }
+
+    private void whenTheNetworkConnectsTo(int ip, int port) {
+        this.exception = catchThrowable(() -> onLoop(() -> {
+            this.network.connect(Optional.of(new ServerList.Address(ip, port)));
+            return null;
+        }));
+    }
+
+    private void whenTheCategoriesAre(Category... categories) {
+        this.exception = catchThrowable(() -> onLoop(() -> {
+            this.network.setCategories(List.of(categories));
+            return null;
+        }));
+    }
+
+    private void whenTheServerIsRemoved(ServerList.Address server) throws Exception {
+        this.reply = onLoop(() -> this.network.removeServer(server));
+    }
+
+    private void whenADatagramArrives(Opcodes.ServerUdp opcode, int length) throws Exception {
+        InetSocketAddress from = new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665);
+        onLoop(() -> {
+            this.network.datagram(from, Packet.of(Protocol.EDONKEY, opcode.code(), new byte[length]));
+            return null;
+        });
+    }
+
+    // Straight to the network: the preferences it reads stay as they were.
+    private void whenTheSettingsMoveTheTcpPort() throws Exception {
+        Preferences was = this.preferences;
+        Preferences now = was.toBuilder().tcpPort(freeTcpPort()).build();
+        onLoop(() -> {
+            this.network.reconfigure(was, now);
+            return null;
+        });
+    }
+
+    private void whenTheNetworkStarts() throws Exception {
+        started();
+    }
+
+    private void whenTheKadFirewallIsRechecked() throws Exception {
+        this.reply = onLoop(this.network::recheckKadFirewall);
+    }
+
+    private void whenKadIsBootstrappedFrom(int ip, int port) {
+        this.exception = catchThrowable(() -> onLoop(() -> {
+            this.network.kadBootstrap(ip, port);
+            return null;
+        }));
+    }
+
+    // A bootstrap list keeps nothing of its own.
+    private void whenABootstrapListIsAdded(NodesDat.Contact... contacts) throws Exception {
+        this.reply = onLoop(() -> this.network.addKadContacts(new NodesDat.Contents(2, true, List.of(contacts))));
+    }
+
+    private void whenAContactListIsAdded(NodesDat.Contact... contacts) throws Exception {
+        this.reply = onLoop(() -> this.network.addKadContacts(new NodesDat.Contents(2, false, List.of(contacts))));
+    }
+
+    private void whenKadIsConnected() throws Exception {
+        onLoop(() -> {
+            this.network.connectKad();
+            return null;
+        });
+    }
+
+    private void whenKadIsDisconnectedTwice() throws Exception {
+        onLoop(() -> {
+            this.network.disconnectKad();
+            this.network.disconnectKad();
+            return null;
+        });
+    }
+
+    private void whenKadIsSearchedFor(String text) {
+        SearchRequest kad = new SearchRequest(text, SearchRequest.Scope.KAD);
+        this.exception = catchThrowable(() -> onLoop(() -> this.network.search(kad)));
+    }
+
+    private void whenWeSayHelloToTheClientWhichHangsUp() throws IOException {
+        this.answer = this.network.hello(local(this.peerSocket.getLocalPort()));
+        try (Socket socket = this.peerSocket.accept()) {
+            this.packet = read(socket);
+        }
+    }
+
+    private void whenKadIsTurnedOffInTheSettings() throws Exception {
+        reconfigure(this.network, p -> p.kadEnabled(false));
+    }
+
+    private void whenThePortsAreMovedToFreeOnes() throws Exception {
+        this.newTcpPort = freeTcpPort();
+        this.newUdpPort = freeUdpPort();
+        reconfigure(this.network, p -> p.tcpPort(this.newTcpPort).udpPort(this.newUdpPort));
+    }
+
+    // Not asked for: not taken.
+    private void whenTheServerSendsAListNotAskedFor() throws Exception {
+        this.scripted.send(
+                ServerMessages.serverList(List.of(new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 31), 65_534))));
+        this.scripted.send(ServerMessages.message("after the list"));
+        next(EngineEvent.ServerMessage.class);
+    }
+
+    private void whenEd2kAndTheMemoryOfCancelledFilesAreTurnedOff() throws Exception {
+        reconfigure(this.network, p -> p.ed2kEnabled(false).rememberCancelledFiles(false));
+    }
+
+    private void whenTheNetworkConnectsTo(ScriptedServer server) throws Exception {
+        this.scripted = server;
+        connect(this.network, server);
+        this.connected = next(EngineEvent.ServerConnected.class);
+    }
+
+    private void whenTheServerSendsMessagesServersCallbacksAndItsStatus() throws Exception {
+        this.scripted.send(
+                ServerMessages.message("ERROR: no more room\nWARNING: low id\nWelcome"),
+                ServerMessages.serverList(List.of(
+                        // No UDP port above these: they are never pinged.
+                        new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 1), 65_534),
+                        new ServerMessages.Endpoint(Ipv4.of(198, 51, 100, 2), 65_533))),
+                callback(Ipv4.of(10, 0, 0, 5)),
+                callback(BLOCKED),
+                callback(Ipv4.of(127, 0, 0, 9)),
+                Packet.empty(Protocol.EDONKEY, Opcodes.Server.REJECT.code()),
+                Packet.of(Protocol.EDONKEY, Opcodes.Server.CALLBACKREQUESTED.code(), new byte[2]),
+                Packet.of(Protocol.EDONKEY, 0xEE, new byte[2]),
+                new ServerMessages.ServerStatus(500, 600).encode());
+    }
+
+    private void whenTheServerTellsItsName(String name) throws Exception {
+        this.scripted.send(new ServerMessages.ServerIdent(
+                        Hash16.parseHex("33".repeat(16)),
+                        this.scripted.ip(),
+                        this.scripted.port(),
+                        Optional.of(name),
+                        Optional.empty())
+                .encode());
+    }
+
+    private void whenTheServerHangsUp() throws Exception {
+        this.scripted.hangUp();
+        this.disconnected = next(EngineEvent.ServerDisconnected.class);
+    }
+
+    private void whenTheDownloadIsAddedAgain(Ed2kLink.FileLink link) throws Exception {
+        this.reply = onLoop(() -> this.network.addDownload(link)).status();
+    }
+
+    private void whenTheDownloadsAreResumed(Ed2kLink.FileLink... links) throws Exception {
+        onLoop(() -> Arrays.stream(links).allMatch(link -> this.network.resumeDownload(link.hash())));
+    }
+
+    private void whenTheFriendSlotIsGivenTo(Hash16 friend) throws Exception {
+        this.reply = onLoop(() -> this.network.setFriendSlot(Optional.of(friend)));
+    }
+
+    private void whenTheFriendIsRemoved(Hash16 friend) throws Exception {
+        this.reply = onLoop(() -> this.network.removeFriend(friend));
+    }
+
+    private void whenTheDownloadIsStopped(Ed2kLink.FileLink link) throws Exception {
+        this.reply = onLoop(() -> this.network.stopDownload(link.hash()));
+    }
+
+    private void whenTheDownloadIsCancelled(Ed2kLink.FileLink link) throws Exception {
+        this.reply = onLoop(() -> this.network.cancelDownload(link.hash()));
+    }
+
+    private void whenTheSchedulerResumesThenStops(int resume, int stop) throws Exception {
+        onLoop(() -> {
+            this.network.scheduleCategories(OptionalInt.empty(), OptionalInt.of(resume));
+            this.network.scheduleCategories(OptionalInt.of(stop), OptionalInt.empty());
+            return null;
+        });
+    }
+
+    private void whenWeSayHelloToNobody() throws IOException {
+        this.answer = this.network.hello(local(freeTcpPort()));
+    }
+
+    private void whenTheClientAnswersOurHelloUnreadably() throws IOException {
+        this.answer = this.network.hello(local(this.peerSocket.getLocalPort()));
+        this.peerConnection = this.peerSocket.accept();
+        read(this.peerConnection);
+        this.peerConnection
+                .getOutputStream()
+                .write(TcpFraming.encode(Packet.of(Protocol.EDONKEY, Opcodes.Client.HELLOANSWER.code(), new byte[3])));
+    }
+
+    // A hello before the answer is not taken for it.
+    private void whenTheClientSendsAHelloThenItsAnswerWithoutTheIdentification() throws Exception {
+        this.peerConnection.getOutputStream().write(TcpFraming.encode(PEER_HELLO.encode(false)));
+        this.peerConnection.getOutputStream().write(TcpFraming.encode(PEER_HELLO.encode(true)));
+        this.info = this.answer.get(20, TimeUnit.SECONDS);
+    }
+
+    // Other packets afterwards are ignored; a hello of its own is answered.
+    private void whenTheClientSendsOtherPacketsThenAHello() throws IOException {
+        this.peerConnection.getOutputStream().write(TcpFraming.encode(emule()));
+        this.peerConnection
+                .getOutputStream()
+                .write(TcpFraming.encode(Packet.empty(Protocol.EDONKEY, Opcodes.Client.HELLOANSWER.code())));
+        this.peerConnection.getOutputStream().write(TcpFraming.encode(PEER_HELLO.encode(false)));
+        this.packet = read(this.peerConnection);
+    }
+
+    // A documentation address with no UDP port above it: never pinged, never connected to.
+    private void whenAClientSaysHelloWithItsServer() throws IOException {
+        Hello hello = Hello.of(
+                Hash16.parseHex("23".repeat(16)), 0, 4999, "peer", 0, 0, 0, 0, Ipv4.of(198, 51, 100, 3), 65_534);
+        this.peerConnection = new Socket(InetAddress.getLoopbackAddress(), this.preferences.tcpPort());
+        this.peerConnection.setSoTimeout(10_000);
+        this.peerConnection.getOutputStream().write(TcpFraming.encode(hello.encode(false)));
+    }
+
+    private void thenNothingIsSpam() {
+        assertThat(this.marks.spam()).isEmpty();
+    }
+
+    private void thenTheResultIsNotSpam() {
+        assertThat(this.marks.notSpam()).containsExactly(SPAM.hash());
+    }
+
+    private void thenTheNetworkKeepsTheseMarks() throws Exception {
+        assertThat(onLoop(this.network::spamMarks)).isEqualTo(this.marks);
+    }
+
+    private void thenExceptionOccurredWithTheCause(Class<? extends Throwable> cause) {
+        assertThat(this.exception).hasCauseInstanceOf(cause);
+    }
+
+    private void thenExceptionOccurredWithTheCause(Class<? extends Throwable> cause, String messagePart) {
+        assertThat(this.exception).hasCauseInstanceOf(cause).hasMessageContaining(messagePart);
+    }
+
+    private void thenTheNetworkAnswers(Object expected) {
+        assertThat(this.reply).isEqualTo(expected);
+    }
+
+    private void thenThereAreNoSharedFiles() throws Exception {
+        assertThat(onLoop(this.network::sharedFiles)).isEmpty();
+    }
+
+    private void thenThereAreNoSharedFolders() throws Exception {
+        assertThat(onLoop(this.network::sharedDirectories)).isEmpty();
+    }
+
+    private void thenTheStatusCountsNoSharedFile() throws Exception {
+        assertThat(onLoop(this.network::status).sharedFiles()).isZero();
+    }
+
+    private void thenTheHistoryHasNoDownloadOf(Hash16 hash) throws Exception {
+        assertThat(onLoop(this.network::history).downloaded(hash)).isFalse();
+    }
+
+    private void thenTheSharedFolderCountIs(int count) throws Exception {
+        assertThat(onLoop(this.network::sharedDirectories)).hasSize(count);
+    }
+
+    private void thenTheNetworkDescribesItsDownloadsAndUploads() throws Exception {
+        assertThat(onLoop(this.network::describe)).startsWith("downloads:").contains("uploads: ");
+    }
+
+    private void thenTheConfigurationHasTheFile(String name) {
+        assertThat(this.dirs.config().resolve(name)).exists();
+    }
+
+    private void thenTheLogHas(LogLine.Level level, String text) {
+        assertThat(this.log).contains(new Logged(level, text));
+    }
+
+    private void thenTheLogHasOnce(String text) {
+        assertThat(this.log).filteredOn(l -> l.text().equals(text)).hasSize(1);
+    }
+
+    private void thenTheLogNeverHas(String text) {
+        assertThat(this.log).noneMatch(l -> l.text().equals(text));
+    }
+
+    private void thenNothingIsLogged() {
+        assertThat(this.log).isEmpty();
+    }
+
+    private void thenThereAreNoCategories() throws Exception {
+        assertThat(onLoop(this.network::categories)).isEmpty();
+    }
+
+    private void thenThereAreNoSavedSearches() throws Exception {
+        assertThat(onLoop(this.network::savedSearches)).isEmpty();
+    }
+
+    private void thenTheFileIsNotCancelled(Hash16 hash) throws Exception {
+        assertThat(onLoop(this.network::history).cancelled(hash)).isFalse();
+    }
+
+    private void thenThereAreNoServers() throws Exception {
+        assertThat(onLoop(this.network::servers)).isEmpty();
+    }
+
+    private void thenNoEventIsReported() {
+        assertThat(this.events).isEmpty();
+    }
+
+    private void thenTheLogTellsItCannotListenOnTheTakenPort() {
+        int port = this.takenTcpPort.getLocalPort();
+        assertThat(this.log).anySatisfy(l -> assertThat(l.text()).startsWith("Cannot listen on TCP port " + port));
+    }
+
+    private void thenTheStatusTellsTheTakenPort() throws Exception {
+        assertThat(onLoop(this.network::status).tcpPort()).isEqualTo(this.takenTcpPort.getLocalPort());
+    }
+
+    private void thenThereAreNoKadContacts() throws Exception {
+        assertThat(onLoop(this.network::kadContacts)).isEmpty();
+    }
+
+    private void thenThereAreNoKadSearches() throws Exception {
+        assertThat(onLoop(this.network::kadSearches)).isEmpty();
+    }
+
+    private void thenKadDoesNotRun() throws Exception {
+        assertThat(onLoop(this.network::kadInfo)).isEmpty();
+    }
+
+    private void thenKadHasStillNoPort() throws Exception {
+        assertThat(onLoop(this.network::kadInfo)).as("still no port").isEmpty();
+    }
+
+    private void thenTheLogTellsKadCannotStartOnTheTakenPort() {
+        int port = this.takenUdpPort.getLocalPort();
+        assertThat(this.log).anySatisfy(l -> assertThat(l.text()).startsWith("Cannot start Kad on UDP port " + port));
+    }
+
+    private void thenOurHelloTellsTheCryptOptions(int wanted) throws IOException {
+        assertThat(Hello.decode(this.packet).miscOptions2() & CRYPT)
+                .as(this.preferences.obfuscation().name())
+                .isEqualTo(wanted);
+    }
+
+    private void thenTheHelloFailsWith(Class<? extends Throwable> cause) {
+        assertThatThrownBy(() -> this.answer.get(20, TimeUnit.SECONDS)).hasCauseInstanceOf(cause);
+    }
+
+    private void thenTheCancelledFilesOnDiskAreLeftAsTheyWere() throws IOException {
+        assertThat(Files.readAllBytes(this.dirs.config().resolve(CancelledFiles.FILE_NAME)))
+                .as("left as it was")
+                .isEqualTo(this.remembered);
+    }
+
+    private void thenNodesDatHolds(NodesDat.Contact... contacts) throws IOException {
+        assertThat(NodesDat.read(Files.readAllBytes(this.dirs.config().resolve(KadNode.NODES_FILE)))
+                        .contacts())
+                .extracting(NodesDat.Contact::id)
+                .containsExactly(
+                        Arrays.stream(contacts).map(NodesDat.Contact::id).toArray(UInt128[]::new));
+    }
+
+    private void thenTheServerGetsALoginWithTheNewTcpPort() throws IOException, InterruptedException {
+        Packet login = this.scripted
+                .next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10))
+                .orElseThrow();
+        assertThat(ServerMessages.Login.decode(login).tcpPort())
+                .as("logged in again with the new port")
+                .isEqualTo(this.newTcpPort);
+    }
+
+    private void thenKadMovedToTheNewUdpPort() throws Exception {
+        assertThat(onLoop(this.network::kadInfo).orElseThrow().udpPort())
+                .as("Kad moved too")
+                .isEqualTo(this.newUdpPort)
+                .isNotEqualTo(this.kadPort);
+    }
+
+    private void thenTheNetworkConnectsAgain() throws InterruptedException {
+        next(EngineEvent.ServerConnected.class);
+    }
+
+    private void thenTheNetworkIsDisconnected() throws InterruptedException {
+        next(EngineEvent.ServerDisconnected.class);
+    }
+
+    private void thenTheStatusHasNoServer() throws Exception {
+        assertThat(onLoop(this.network::status).server()).isEmpty();
+    }
+
+    private void thenTheClientIdIs(long id) {
+        assertThat(this.connected.clientId()).isEqualTo(id);
+    }
+
+    private void thenRelatedSearchIsOn() throws Exception {
+        assertThat(onLoop(this.network::status).relatedSearch()).isTrue();
+    }
+
+    private void thenTheServerIsAskedForItsList() throws InterruptedException {
+        assertThat(this.scripted.next(Opcodes.Server.GETSERVERLIST.code(), Duration.ofSeconds(10)))
+                .isPresent();
+    }
+
+    private void thenTheServerUpdateTellsTheUsers(int users) throws InterruptedException {
+        assertThat(next(EngineEvent.ServerUpdated.class).server().users()).isEqualTo(users);
+    }
+
+    private void thenTheLogHasTheNewServersFromTheServer(int count) {
+        thenTheLogHas(LogLine.Level.INFO, count + " new servers from 127.0.0.1:" + this.scripted.port());
+    }
+
+    private void thenTheServerCountIs(int count) throws Exception {
+        assertThat(onLoop(this.network::servers)).hasSize(count);
+    }
+
+    private void thenTheServerUpdateTellsTheName(String name) throws InterruptedException {
+        assertThat(next(EngineEvent.ServerUpdated.class).server().name()).isEqualTo(name);
+    }
+
+    private void thenTheDisconnectionNamesTheServer() {
+        assertThat(this.disconnected.server()).isPresent();
+    }
+
+    private void thenOurClientIdIs(long id) throws Exception {
+        assertThat(onLoop(this.network::status).clientId()).isEqualTo(id);
+    }
+
+    private void thenTheLogTellsTheDisconnectionFrom(String name) {
+        String start = "Disconnected from " + name + " (127.0.0.1:" + this.scripted.port() + ")";
+        assertThat(this.log).anySatisfy(l -> assertThat(l.text()).startsWith(start));
+    }
+
+    private void thenTheDownloadIsLeftAsItIs(DownloadInfo.Status status) {
+        assertThat(this.reply).as("added again: left as it is").isEqualTo(status);
+    }
+
+    private void thenTheServerIsAskedForTheSourcesOf(Ed2kLink.FileLink link) throws IOException, InterruptedException {
+        Packet asked = this.scripted
+                .next(Opcodes.Server.GETSOURCES_OBFU.code(), Duration.ofSeconds(10))
+                .orElseThrow();
+        assertThat(asked.reader().hash16()).isEqualTo(link.hash());
+    }
+
+    private void thenTheServerIsNeverAskedForTheSourcesOfTheLargeFile() throws InterruptedException {
+        assertThat(this.scripted.next(Opcodes.Server.GETSOURCES_OBFU.code(), Duration.ofSeconds(3)))
+                .as("never for the large one")
+                .isEmpty();
+    }
+
+    private void thenThereIsNoFriendSlot() throws Exception {
+        assertThat(onLoop(this.network::friendSlot)).isEmpty();
+    }
+
+    private void thenThereAreNoFriends() throws Exception {
+        assertThat(onLoop(this.network::friends)).isEmpty();
+    }
+
+    private void thenTheOnlyDownloadIs(DownloadInfo.Status status, DownloadPriority priority) throws Exception {
+        assertThat(onLoop(this.network::downloads)).singleElement().satisfies(d -> {
+            assertThat(d.status()).isEqualTo(status);
+            assertThat(d.priority()).isEqualTo(priority);
+        });
+    }
+
+    private void thenThereAreNoDownloads() throws Exception {
+        assertThat(onLoop(this.network::downloads)).isEmpty();
+    }
+
+    private void thenEveryDownloadIs(DownloadInfo.Status status) throws Exception {
+        assertThat(onLoop(this.network::downloads))
+                .extracting(DownloadInfo::status)
+                .containsOnly(status);
+    }
+
+    private void thenTheClientGets(Opcodes.Client opcode) {
+        assertThat(this.packet.opcode()).isEqualTo(opcode.code());
+    }
+
+    private void thenTheAnswerComesFrom(Hash16 userHash, String nick) {
+        assertThat(this.info.userHash()).isEqualTo(userHash);
+        assertThat(this.info.nick()).contains(nick);
+    }
+
+    private void thenTheIdentificationIs(PeerInfo.Identification identification) {
+        assertThat(this.info.identification()).isEqualTo(identification);
+    }
+
+    private void thenTheServerCountChangesTo(int count) throws InterruptedException {
+        assertThat(next(EngineEvent.ServersChanged.class).count()).isEqualTo(count);
+    }
+
+    private static Stream<Arguments> obfuscationWanted() {
+        return Stream.of(
+                Arguments.of(ObfuscationMode.DISABLED, 0),
+                Arguments.of(ObfuscationMode.SUPPORTED, Hello.MISC2_SUPPORTS_CRYPT),
+                Arguments.of(ObfuscationMode.REQUESTED, Hello.MISC2_SUPPORTS_CRYPT | Hello.MISC2_REQUESTS_CRYPT),
+                Arguments.of(ObfuscationMode.REQUIRED, CRYPT));
     }
 
     private Network create() throws Exception {

@@ -26,6 +26,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -54,6 +56,8 @@ class HelloOutcomeTest {
 
     private EngineLoop loop;
     private Network network;
+    private ServerSocket peer;
+    private final List<PeerInfo> answers = new ArrayList<>();
 
     @BeforeEach
     void open() throws Exception {
@@ -92,39 +96,66 @@ class HelloOutcomeTest {
                 })
                 .get(10, TimeUnit.SECONDS);
         this.loop.close();
-    }
-
-    @Test
-    void aClientThatLeavesRightAfterItsAnswerIsReportedAtOnce() throws Exception {
-        try (ServerSocket peer = new ServerSocket(0, 5, InetAddress.getLoopbackAddress())) {
-            // The connection may close before the answer is handled: the outcome must not depend on it.
-            for (int i = 0; i < 3; i++) {
-                CompletableFuture<PeerInfo> answer = this.network.hello(local(peer.getLocalPort()));
-                try (Socket socket = peer.accept()) {
-                    read(socket);
-                    socket.getOutputStream().write(TcpFraming.encode(PEER.encode(true)));
-                }
-
-                PeerInfo info = answer.get(10, TimeUnit.SECONDS);
-
-                assertThat(info.userHash()).isEqualTo(PEER.userHash());
-                assertThat(info.identification()).isEqualTo(PeerInfo.Identification.PENDING);
-            }
+        if (this.peer != null) {
+            this.peer.close();
         }
     }
 
     @Test
-    void aClientThatCannotSignIsReportedFailed() throws Exception {
-        try (ServerSocket peer = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            CompletableFuture<PeerInfo> answer = this.network.hello(local(peer.getLocalPort()));
-            try (Socket socket = peer.accept()) {
+    void shouldReportAClientThatLeavesRightAfterItsAnswerAtOnce() throws Exception {
+        givenAClientListeningWithABacklogOf(5);
+
+        whenTheClientAnswersOurHelloAndLeaves(3);
+
+        thenEveryAnswerComesFrom(PEER.userHash());
+        thenEveryIdentificationIs(PeerInfo.Identification.PENDING);
+    }
+
+    @Test
+    void shouldReportAClientThatCannotSignAsFailed() throws Exception {
+        givenAClientListeningWithABacklogOf(1);
+
+        whenTheClientAnswersOurHelloWithAFakeProof();
+
+        thenEveryIdentificationIs(PeerInfo.Identification.FAILED);
+    }
+
+    private void givenAClientListeningWithABacklogOf(int backlog) throws IOException {
+        this.peer = new ServerSocket(0, backlog, InetAddress.getLoopbackAddress());
+    }
+
+    // The connection may close before the answer is handled: the outcome must not depend on it.
+    private void whenTheClientAnswersOurHelloAndLeaves(int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            CompletableFuture<PeerInfo> answer = this.network.hello(local(this.peer.getLocalPort()));
+            try (Socket socket = this.peer.accept()) {
                 read(socket);
                 socket.getOutputStream().write(TcpFraming.encode(PEER.encode(true)));
-                IdentityProof.fake(socket.getOutputStream());
-
-                assertThat(answer.get(10, TimeUnit.SECONDS).identification()).isEqualTo(PeerInfo.Identification.FAILED);
             }
+            this.answers.add(answer.get(10, TimeUnit.SECONDS));
         }
+    }
+
+    private void whenTheClientAnswersOurHelloWithAFakeProof() throws Exception {
+        CompletableFuture<PeerInfo> answer = this.network.hello(local(this.peer.getLocalPort()));
+        try (Socket socket = this.peer.accept()) {
+            read(socket);
+            socket.getOutputStream().write(TcpFraming.encode(PEER.encode(true)));
+            IdentityProof.fake(socket.getOutputStream());
+            this.answers.add(answer.get(10, TimeUnit.SECONDS));
+        }
+    }
+
+    private void thenEveryAnswerComesFrom(Hash16 userHash) {
+        assertThat(this.answers)
+                .isNotEmpty()
+                .allSatisfy(info -> assertThat(info.userHash()).isEqualTo(userHash));
+    }
+
+    private void thenEveryIdentificationIs(PeerInfo.Identification identification) {
+        assertThat(this.answers)
+                .isNotEmpty()
+                .allSatisfy(info -> assertThat(info.identification()).isEqualTo(identification));
     }
 
     private static InetSocketAddress local(int port) {
