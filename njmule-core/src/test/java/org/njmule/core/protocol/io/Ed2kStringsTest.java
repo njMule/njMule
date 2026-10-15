@@ -18,14 +18,21 @@ package org.njmule.core.protocol.io;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.stream.Stream;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
 import net.jqwik.api.Assume;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -107,6 +114,15 @@ class Ed2kStringsTest {
     }
 
     @Property
+    void shouldTakeAsUtf8ExactlyWhatAStrictDecoderAccepts(@ForAll("nearlyUtf8") byte[] raw) {
+        givenTheRawBytes(raw);
+
+        whenTheBytesAreDecoded();
+
+        thenTheTextIsWhatAStrictDecoderOrWindows1252Gives();
+    }
+
+    @Property
     void shouldDecodeAnyBytesToSomeText(@ForAll byte[] raw) {
         givenTheRawBytes(raw);
 
@@ -136,12 +152,29 @@ class Ed2kStringsTest {
         thenTheEncodedBytesAre("c3a0");
     }
 
+    // Valid UTF-8, the same with one byte changed, and plain random bytes.
+    @Provide
+    Arbitrary<byte[]> nearlyUtf8() {
+        Arbitrary<byte[]> valid = Arbitraries.strings().ofMinLength(1).map(t -> t.getBytes(StandardCharsets.UTF_8));
+        return Arbitraries.oneOf(
+                valid,
+                valid.flatMap(
+                        b -> Arbitraries.integers().between(0, b.length - 1).map(i -> {
+                            byte[] changed = b.clone();
+                            changed[i] ^= (byte) 0x40;
+                            return changed;
+                        })),
+                Arbitraries.bytes().array(byte[].class).ofMaxSize(40));
+    }
+
     private static Stream<Arguments> malformedUtf8() {
         return Stream.of(
                 Arguments.of("overlong /", "c0af", "À¯"),
                 Arguments.of("an encoded surrogate", "eda080", "í" + Character.toString(0xA0) + "€"),
                 Arguments.of("a cut BOM", "efbb", "ï»"),
                 Arguments.of("a lone lead byte", "ef", "ï"),
+                Arguments.of("a lead byte beyond U+10FFFF", "f5808080", "õ€€€"),
+                Arguments.of("a sequence cut at the end", "41c3", "AÃ"),
                 Arguments.of("no bytes", "", ""));
     }
 
@@ -188,6 +221,27 @@ class Ed2kStringsTest {
 
     private void thenTheTextIsEmpty() {
         assertThat(this.decoded).isEmpty();
+    }
+
+    private void thenTheTextIsWhatAStrictDecoderOrWindows1252Gives() {
+        int at = this.bytes.length >= 3
+                        && this.bytes[0] == (byte) 0xEF
+                        && this.bytes[1] == (byte) 0xBB
+                        && this.bytes[2] == (byte) 0xBF
+                ? 3
+                : 0;
+        String expected;
+        try {
+            expected = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(this.bytes, at, this.bytes.length - at))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            expected = new String(this.bytes, at, this.bytes.length - at, Charset.forName("windows-1252"));
+        }
+        assertThat(this.decoded).isEqualTo(expected);
     }
 
     private void thenSomeTextIsDecoded() {

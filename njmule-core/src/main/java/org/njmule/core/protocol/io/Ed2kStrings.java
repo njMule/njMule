@@ -16,11 +16,8 @@
  */
 package org.njmule.core.protocol.io;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
+import com.google.common.base.Utf8;
 import java.nio.charset.Charset;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -41,13 +38,18 @@ public final class Ed2kStrings {
         return decode(raw, 0, raw.length);
     }
 
+    // Guava's check rejects what a strict decoder does (overlong forms, surrogates, beyond U+10FFFF), without the
+    // exception a decoder throws for every string that is not UTF-8.
     public static String decode(byte[] raw, int offset, int length) {
-        if (length >= 3 && raw[offset] == BOM[0] && raw[offset + 1] == BOM[1] && raw[offset + 2] == BOM[2]) {
-            String utf8 = strictUtf8(raw, offset + 3, length - 3);
-            return utf8 != null ? utf8 : cp1252(raw, offset + 3, length - 3);
+        int at = offset;
+        int n = length;
+        if (n >= 3 && raw[at] == BOM[0] && raw[at + 1] == BOM[1] && raw[at + 2] == BOM[2]) {
+            at += 3;
+            n -= 3;
         }
-        String utf8 = strictUtf8(raw, offset, length);
-        return utf8 != null ? utf8 : cp1252(raw, offset, length);
+        return Utf8.isWellFormed(raw, at, n)
+                ? new String(raw, at, n, StandardCharsets.UTF_8)
+                : new String(raw, at, n, WINDOWS_1252);
     }
 
     public static byte[] encode(String value, StringEncoding encoding) {
@@ -72,22 +74,5 @@ public final class Ed2kStrings {
             }
         }
         return true;
-    }
-
-    private static String strictUtf8(byte[] raw, int offset, int length) {
-        try {
-            CharBuffer chars = StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(raw, offset, length));
-            return chars.toString();
-        } catch (CharacterCodingException e) {
-            return null;
-        }
-    }
-
-    private static String cp1252(byte[] raw, int offset, int length) {
-        return new String(raw, offset, length, WINDOWS_1252);
     }
 }

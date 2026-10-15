@@ -16,11 +16,12 @@
  */
 package org.njmule.bench;
 
-import com.google.common.base.Utf8;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import org.njmule.core.protocol.io.Ed2kStrings;
@@ -53,7 +54,6 @@ public class StringDecodeBench {
     @Param({"ascii", "utf8", "windows1252"})
     public String kind;
 
-    private final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
     private byte[] raw;
 
     @Setup
@@ -65,55 +65,45 @@ public class StringDecodeBench {
         };
     }
 
-    /** Today's code: a strict CharsetDecoder created for each string. */
+    /** The replaced code: a strict CharsetDecoder for each string, and an exception for each one not UTF-8. */
     @Benchmark
     public String charsetDecoder() {
-        return Ed2kStrings.decode(this.raw);
+        int[] span = withoutBom(this.raw);
+        try {
+            return StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(this.raw, span[0], span[1]))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            return new String(this.raw, span[0], span[1], WINDOWS_1252);
+        }
     }
 
-    /** Guava's well-formedness check, then the JDK's String decoding. */
+    /** Today's code: Guava's well-formedness check, then the JDK's String decoding. */
     @Benchmark
     public String guavaUtf8() {
-        return decode(this.raw, 0, this.raw.length);
+        return Ed2kStrings.decode(this.raw);
     }
 
     /** The same strict JDK decoder, reading its result instead of catching an exception. */
     @Benchmark
     public String jdkCoderResult() {
-        return decode(StandardCharsets.UTF_8.newDecoder(), this.raw, 0, this.raw.length);
-    }
-
-    /** As above, with one decoder per thread, reset for each string. */
-    @Benchmark
-    public String jdkCoderResultReused() {
-        return decode(this.decoder.reset(), this.raw, 0, this.raw.length);
-    }
-
-    private static String decode(CharsetDecoder decoder, byte[] raw, int offset, int length) {
-        int at = offset;
-        int n = length;
-        if (n >= 3 && raw[at] == (byte) 0xEF && raw[at + 1] == (byte) 0xBB && raw[at + 2] == (byte) 0xBF) {
-            at += 3;
-            n -= 3;
-        }
+        int[] span = withoutBom(this.raw);
+        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
         // UTF-8 never yields more chars than bytes, so the buffer cannot overflow.
-        CharBuffer out = CharBuffer.allocate(n);
-        if (decoder.decode(ByteBuffer.wrap(raw, at, n), out, true).isError()
+        CharBuffer out = CharBuffer.allocate(span[1]);
+        if (decoder.decode(ByteBuffer.wrap(this.raw, span[0], span[1]), out, true)
+                        .isError()
                 || decoder.flush(out).isError()) {
-            return new String(raw, at, n, WINDOWS_1252);
+            return new String(this.raw, span[0], span[1], WINDOWS_1252);
         }
         return out.flip().toString();
     }
 
-    private static String decode(byte[] raw, int offset, int length) {
-        int at = offset;
-        int n = length;
-        if (n >= 3 && raw[at] == (byte) 0xEF && raw[at + 1] == (byte) 0xBB && raw[at + 2] == (byte) 0xBF) {
-            at += 3;
-            n -= 3;
-        }
-        return Utf8.isWellFormed(raw, at, n)
-                ? new String(raw, at, n, StandardCharsets.UTF_8)
-                : new String(raw, at, n, WINDOWS_1252);
+    private static int[] withoutBom(byte[] raw) {
+        boolean bom = raw.length >= 3 && raw[0] == (byte) 0xEF && raw[1] == (byte) 0xBB && raw[2] == (byte) 0xBF;
+        return bom ? new int[] {3, raw.length - 3} : new int[] {0, raw.length};
     }
 }
