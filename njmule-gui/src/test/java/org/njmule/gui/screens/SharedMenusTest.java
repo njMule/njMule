@@ -27,6 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
@@ -139,7 +140,7 @@ class SharedMenusTest {
         AtomicReference<String> warning = new AtomicReference<>();
 
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> {
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE, pane -> {
                 warning.set(this.warning(pane));
                 ((CheckBox) pane.lookup(".check-box")).setSelected(false);
             });
@@ -153,12 +154,12 @@ class SharedMenusTest {
         // The root of a disk is never shared without a warning; here the user steps back.
         Path root = this.dir.toAbsolutePath().getRoot();
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.CANCEL, pane -> warning.set(this.warning(pane)));
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE, pane -> warning.set(this.warning(pane)));
             screen.confirmShare(root);
         });
         assertThat(warning.get()).contains(root.toString(), "personal or system files");
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK);
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
             screen.confirmShare(folder);
         });
         assertThat(this.calls).containsExactly("share " + folder + " false", "share " + folder + " true");

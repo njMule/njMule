@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
@@ -130,13 +130,13 @@ class ServersMenusTest {
 
         // Remove All asks first.
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
             this.item(menu, "IDS_REMOVEALL").fire();
         });
         assertThat(this.calls).noneMatch(c -> c.startsWith("remove"));
         FxTesting.onFx(() -> {
             this.test.model.connect(Optional.empty());
-            FxTesting.answer(ButtonType.YES);
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
             this.item(menu, "IDS_REMOVEALL").fire();
         });
         assertThat(this.calls).contains("remove [81.2.3.4:4661, 81.2.3.5:4242]");

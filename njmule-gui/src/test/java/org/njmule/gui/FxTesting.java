@@ -33,10 +33,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.DialogPane;
 import javafx.scene.control.Labeled;
@@ -110,6 +112,25 @@ public final class FxTesting {
      * before the code that waits for the dialog.
      */
     public static void answer(ButtonType button, Consumer<DialogPane> fill) {
+        answer(pane -> (Button) pane.lookupButton(button), fill);
+    }
+
+    /** As {@link #answer(ButtonType, Consumer)}, with the button whose role is {@code role}, as named answers have. */
+    public static void answer(ButtonBar.ButtonData role, Consumer<DialogPane> fill) {
+        answer(
+                pane -> pane.getButtonTypes().stream()
+                        .filter(t -> t.getButtonData() == role)
+                        .map(t -> (Button) pane.lookupButton(t))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no button for " + role)),
+                fill);
+    }
+
+    public static void answer(ButtonBar.ButtonData role) {
+        answer(role, pane -> {});
+    }
+
+    private static void answer(Function<DialogPane, Button> button, Consumer<DialogPane> fill) {
         Platform.runLater(new Runnable() {
             private int tries;
 
@@ -123,7 +144,7 @@ public final class FxTesting {
                     return;
                 }
                 fill.accept(pane.get());
-                ((Button) pane.get().lookupButton(button)).fire();
+                button.apply(pane.get()).fire();
             }
         });
     }

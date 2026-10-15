@@ -536,10 +536,10 @@ public final class ServersScreen implements Screen {
     }
 
     private void askRemoveAll() {
-        Alert confirm = this.gui.orient(new Alert(
-                Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS"), ButtonType.YES, ButtonType.NO));
+        Alert confirm = this.gui.orient(new Alert(Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS")));
+        ButtonType go = Fx.answers(confirm, this.gui.t("IDS_REMOVEALL"), this.gui.t("IDS_CANCEL"), true);
         confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> this.removeAll());
+        confirm.showAndWait().filter(go::equals).ifPresent(b -> this.removeAll());
     }
 
     void removeAll() {

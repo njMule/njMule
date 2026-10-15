@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
@@ -214,12 +215,12 @@ class TransfersMenusTest {
 
         // Cancel asks first.
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.CANCEL);
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
             this.item(menu, "IDS_CANCEL").fire();
         });
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS)).hasSize(1);
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK);
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
             screen.cancelSelected();
         });
         FxTesting.await("cancelled", () -> screen.downloads().getItems().isEmpty());

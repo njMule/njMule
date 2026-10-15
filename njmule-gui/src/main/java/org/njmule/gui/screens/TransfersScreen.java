@@ -462,13 +462,12 @@ public final class TransfersScreen implements Screen {
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm = this.gui.orient(new Alert(
-                Alert.AlertType.CONFIRMATION,
-                this.gui.f("nj.transfers.cancelConfirm", selected.size()),
-                ButtonType.OK,
-                ButtonType.CANCEL));
+        Alert confirm = this.gui.orient(
+                new Alert(Alert.AlertType.CONFIRMATION, this.gui.f("nj.transfers.cancelConfirm", selected.size())));
+        ButtonType go =
+                Fx.answers(confirm, this.gui.t("nj.transfers.cancelYes"), this.gui.t("nj.transfers.cancelNo"), true);
         confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b -> this.cancel(selected));
+        confirm.showAndWait().filter(go::equals).ifPresent(b -> this.cancel(selected));
     }
 
     void cancel(List<DownloadInfo> selected) {

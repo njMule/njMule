@@ -162,17 +162,17 @@ public final class SharedScreen implements Screen {
             warning.getStyleClass().add(Styles.DANGER);
             content.getChildren().add(warning);
         }
-        Alert ask = this.gui.orient(new Alert(
-                sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION,
-                null,
-                ButtonType.OK,
-                ButtonType.CANCEL));
+        Alert ask =
+                this.gui.orient(new Alert(sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION, null));
+        ButtonType go = Fx.answers(
+                ask,
+                this.gui.t(sensitive ? "nj.shared.shareAnyway" : "nj.shared.share"),
+                this.gui.t("IDS_CANCEL"),
+                sensitive);
         ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
         ask.getDialogPane().setContent(content);
         ask.initOwner(this.view.getScene().getWindow());
-        ask.showAndWait()
-                .filter(b -> b == ButtonType.OK)
-                .ifPresent(b -> this.share(directory, subfolders.isSelected()));
+        ask.showAndWait().filter(go::equals).ifPresent(b -> this.share(directory, subfolders.isSelected()));
     }
 
     void share(Path directory, boolean subdirectories) {

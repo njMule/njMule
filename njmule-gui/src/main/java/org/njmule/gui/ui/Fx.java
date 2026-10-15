@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.ui;
 
+import atlantafx.base.theme.Styles;
 import java.text.Bidi;
 import java.util.Comparator;
 import java.util.List;
@@ -30,8 +31,11 @@ import javafx.collections.transformation.SortedList;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
@@ -174,6 +178,23 @@ public final class Fx {
         button.setAccessibleText(text);
         button.setOnAction(e -> action.run());
         return whole(button);
+    }
+
+    /**
+     * Gives {@code alert} two answers named by their outcome, {@code go} and {@code stay}, and returns the type of
+     * {@code go}. A {@code risky} go is marked as dangerous and never the default: Enter keeps things as they are.
+     */
+    public static ButtonType answers(Alert alert, String go, String stay, boolean risky) {
+        ButtonType yes = new ButtonType(go, ButtonBar.ButtonData.OK_DONE);
+        ButtonType no = new ButtonType(stay, ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(yes, no);
+        if (risky) {
+            Button goButton = (Button) alert.getDialogPane().lookupButton(yes);
+            goButton.setDefaultButton(false);
+            goButton.getStyleClass().add(Styles.DANGER);
+            ((Button) alert.getDialogPane().lookupButton(no)).setDefaultButton(true);
+        }
+        return yes;
     }
 
     /** Marks {@code button} as the main action of its screen, shown in the brand colour. */
