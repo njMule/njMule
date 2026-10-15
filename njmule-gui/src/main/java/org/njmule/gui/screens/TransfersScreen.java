@@ -55,7 +55,6 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
@@ -168,27 +167,29 @@ public final class TransfersScreen implements Screen {
         TableColumn<LiveList.Row<DownloadInfo>, Double> progress =
                 Fx.column(this.gui.t("IDS_DL_PROGRESS"), 170, TransfersScreen::fraction);
         progress.setCellFactory(c -> new ProgressCell());
-        this.downloads
-                .getColumns()
-                .addAll(List.of(
-                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name)),
-                        Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size)),
-                        progress,
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size)),
-                        Fx.leftToRight(
-                                Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
-                        statusColumn(),
-                        Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
-                        Fx.ownDirection(
-                                Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_DL_REMAINS"),
-                                90,
-                                TransfersScreen::remaining,
-                                s -> s < 0 ? "?" : formats.duration(s)))));
+        List<TableColumn<LiveList.Row<DownloadInfo>, ?>> columns = List.of(
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name)),
+                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size)),
+                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size)),
+                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
+                progress,
+                Fx.leftToRight(
+                        Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
+                statusColumn(),
+                Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
+                Fx.leftToRight(Fx.column(
+                        this.gui.t("IDS_DL_REMAINS"),
+                        90,
+                        TransfersScreen::remaining,
+                        s -> s < 0 ? "?" : formats.duration(s))));
+        // Known by name rather than place, a saved layout stays right when the columns move.
+        List<String> ids = List.of(
+                "name", "size", "completed", "speed", "progress", "sources", "status", "priority", "category", "left");
+        for (int i = 0; i < columns.size(); i++) {
+            columns.get(i).setId("download-" + ids.get(i));
+        }
+        this.downloads.getColumns().addAll(columns);
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
         MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"), Fx.icon(Material2MZ.PAUSE));
         pause.setOnAction(e -> pauseSelected());
@@ -1026,17 +1027,18 @@ public final class TransfersScreen implements Screen {
         }
     }
 
-    /** The part bar of the download, with the percentage next to it. */
+    /** The part bar of the download, with the percentage written over it. */
     private final class ProgressCell extends TableCell<LiveList.Row<DownloadInfo>, Double> {
         private final PartBar bar = new PartBar();
         private final Label text = Fx.leftToRight(new Label());
-        private final HBox box = new HBox(6, this.bar, this.text);
+        private final StackPane box = new StackPane(this.bar, this.text);
 
         ProgressCell() {
-            HBox.setHgrow(this.bar, Priority.ALWAYS);
             this.bar.setMaxWidth(Double.MAX_VALUE);
-            this.text.setMinWidth(Region.USE_PREF_SIZE);
-            this.box.setAlignment(Pos.CENTER_LEFT);
+            // A halo of the surface's colour keeps the figure readable over any part of the bar.
+            this.text.getStyleClass().add("progress-percent");
+            this.text.setMouseTransparent(true);
+            this.box.setAlignment(Pos.CENTER);
         }
 
         @Override

@@ -102,13 +102,14 @@ All notable changes to this project are documented here. The format follows
   removal, the clients uploading and waiting, one status with connections, rates and session
   totals, and the part map of each download.
 - Desktop interface: a top bar with the connection, the eD2K and Kad state and the rates, a
-  navigation rail (Ctrl+1 to Ctrl+7) and a status strip; screens for servers with the log,
-  transfers with eMule-style part bars and the upload queue, searches in tabs, shared files, Kad,
-  statistics with a rate graph and the options; the eMule import with a check before the import
-  (offered at the first start when an eMule is found), messages for errors and finished downloads,
-  and About. AtlantaFX themes (Nord by default), light, dark or as the system, with sober pastel
-  colour tokens; English and Italian, with eMule's own interface texts converted from its string
-  tables by `tools/Rc2Properties.java`. Tables keep their selection and order while they refresh.
+  navigation rail (Ctrl+1 to Ctrl+7) and a status strip; screens for servers with the log, transfers
+  with eMule-style part bars (after the speed, the percentage written over them) and the upload
+  queue, searches in tabs, shared files, Kad, statistics with a rate graph and the options; the
+  eMule import with a check before the import (offered at the first start when an eMule is found),
+  messages for errors and finished downloads, and About. AtlantaFX themes (Nord by default), light,
+  dark or as the system, with sober pastel colour tokens; English and Italian, with eMule's own
+  interface texts converted from its string tables by `tools/Rc2Properties.java`. Tables keep their
+  selection and order while they refresh.
 - Proxy for outgoing TCP connections (SOCKS 4/5, with or without credentials, and HTTP CONNECT)
   and for the server, Kad and IP filter lists fetched from the web (SOCKS 5 or HTTP), also taken
   from an eMule profile.

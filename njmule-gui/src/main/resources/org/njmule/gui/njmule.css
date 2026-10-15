@@ -757,6 +757,15 @@
     -fx-max-height: 10;
 }
 
+/* The percentage over a download's part bar: the theme's text, with a halo of the surface around it so that it reads
+   over any colour of the bar. */
+.progress-percent {
+    -fx-text-fill: -color-fg-default;
+    -fx-font-size: 0.85em;
+    -fx-font-weight: bold;
+    -fx-effect: dropshadow(gaussian, -color-bg-default, 3, 0.85, 0, 0);
+}
+
 /* Swatches the part bars take their colours from. */
 .bar-bg { -fx-background-color: -nj-bar-bg; }
 .bar-have { -fx-background-color: -nj-bar-have; }

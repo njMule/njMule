@@ -20,14 +20,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
+import javafx.scene.layout.StackPane;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -42,6 +47,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
+import org.njmule.gui.ui.PartBar;
 
 @Timeout(60)
 class TransfersViewTest {
@@ -123,6 +129,20 @@ class TransfersViewTest {
         thenTheFilterHasTheCursor();
     }
 
+    @Test
+    void shouldShowTheProgressRightAfterTheSpeed() throws Exception {
+        whenTheTransfersShowTheDownloads("film.mkv");
+
+        thenTheColumnsBegin("IDS_DL_FILENAME", "IDS_DL_SIZE", "IDS_DL_TRANSFCOMPL", "IDS_DL_SPEED", "IDS_DL_PROGRESS");
+    }
+
+    @Test
+    void shouldWriteThePercentageOverThePartBar() throws Exception {
+        whenTheTransfersShowTheDownloads("film.mkv");
+
+        thenThePercentageOverTheBarIs(this.test.gui.formats().percent(100, 1000));
+    }
+
     private void givenTheDownloads(String... names) throws Exception {
         List<DownloadInfo> downloads = new ArrayList<>();
         for (int i = 0; i < names.length; i++) {
@@ -145,6 +165,10 @@ class TransfersViewTest {
         FxTesting.await(
                 "the downloads", () -> this.screen.downloads().getItems().size() == names.length);
         FxTesting.await("the sources", () -> this.test.model.sources().rows().size() == sources.size());
+    }
+
+    private void whenTheTransfersShowTheDownloads(String... names) throws Exception {
+        givenTheDownloads(names);
     }
 
     private void givenTheFilterReads(String text) throws Exception {
@@ -187,6 +211,36 @@ class TransfersViewTest {
 
     private void whenCtrlFIsPressed() throws Exception {
         FxTesting.onFx(() -> this.screen.downloads().fireEvent(FxTesting.key(KeyCode.F, true)));
+    }
+
+    private void thenTheColumnsBegin(String... keys) throws Exception {
+        List<String> expected = Arrays.stream(keys).map(this.test.gui::t).toList();
+        assertThat(FxTesting.onFx(() -> this.screen.downloads().getColumns().stream()
+                        .map(TableColumn::getText)
+                        .limit(keys.length)
+                        .toList()))
+                .isEqualTo(expected);
+    }
+
+    // The bar and its figure share the cell: the figure is drawn over the bar, not beside it.
+    private void thenThePercentageOverTheBarIs(String percent) throws Exception {
+        FxTesting.await("the progress cell", () -> progressCell().isPresent());
+        StackPane cell = FxTesting.onFx(() -> progressCell().orElseThrow());
+        assertThat(FxTesting.onFx(() -> cell.getChildren().stream()
+                        .map(n -> n.getClass().getSimpleName())
+                        .toList()))
+                .containsExactly("PartBar", "Label");
+        assertThat(FxTesting.onFx(() -> ((Label) cell.getChildren().getLast()).getText()))
+                .isEqualTo(percent);
+    }
+
+    private Optional<StackPane> progressCell() {
+        return this.screen.downloads().lookupAll(".table-cell").stream()
+                .map(n -> ((TableCell<?, ?>) n).getGraphic())
+                .filter(StackPane.class::isInstance)
+                .map(StackPane.class::cast)
+                .filter(p -> p.getChildren().stream().anyMatch(PartBar.class::isInstance))
+                .findFirst();
     }
 
     private void thenItShowsAs(TransfersScreen.Shown expected) {
