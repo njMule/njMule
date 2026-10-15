@@ -98,6 +98,7 @@ import org.njmule.gui.dialogs.SharedFoldersDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.screens.CaptureAccess;
@@ -107,6 +108,7 @@ import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.TrayMenu;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Subscriptions;
 
 /**
  * Pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu, icon-button tooltip and dialog
@@ -217,6 +219,12 @@ class CaptureTour {
                 w.message(text);
             }
         };
+        Consumer<String> problemToWindow = text -> {
+            MainWindow w = this.forMessages.get();
+            if (w != null) {
+                w.problem(text);
+            }
+        };
         this.gui = FxTesting.onFx(() -> new Gui(
                 i18n,
                 Formats.of(i18n),
@@ -225,7 +233,11 @@ class CaptureTour {
                 GuiSettings.load(dirs.gui()),
                 dirs,
                 toWindow,
-                () -> {}));
+                problemToWindow,
+                () -> {},
+                new Subscriptions(),
+                SoundPlayer.SILENT,
+                Optional.empty()));
         this.model.onError(text -> {});
         this.model.start();
         this.window = FxTesting.onFx(() -> new MainWindow(this.gui));
@@ -820,11 +832,11 @@ class CaptureTour {
     private void toasts() throws Exception {
         this.fx(() -> this.window.show("transfers"));
         this.fx(() -> {
-            this.window.message(this.gui.f("nj.transfers.completed", "LibreOffice_25.8.1_Win_x86-64.msi"));
+            this.window.success(this.gui.f("nj.transfers.completed", "LibreOffice_25.8.1_Win_x86-64.msi"));
             this.window.message(this.gui.f("nj.chat.from", "Owl"));
-            this.window.message("203.0.113.11:4232: connection refused");
+            this.window.problem("203.0.113.11:4232: connection refused");
         });
-        this.shot("toasts", "Messages stacked over the window");
+        this.shot("toasts", "A success, a piece of news and a problem, stacked");
     }
 
     private void trayWindows() throws Exception {
